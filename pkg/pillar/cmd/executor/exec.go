@@ -53,7 +53,6 @@ type executorContext struct {
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
 	flag.Parse()
 	execCtx := executorContext{}
@@ -65,11 +64,7 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 	execCtx.timeLimit = *timeLimitPtr
-	curpart := *curpartPtr
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -95,7 +90,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Ctx:           &execCtx,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
@@ -347,7 +342,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	execCtx.debug, gcp = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
 		execCtx.debugOverride)
 	if gcp != nil {

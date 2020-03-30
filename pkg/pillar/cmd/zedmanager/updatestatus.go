@@ -173,7 +173,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 
 	var totalAppDiskSize uint64
 
-	if ctxPtr.globalConfig.IgnoreDiskCheckForApps {
+	if ctxPtr.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
 		log.Debugf("Ignoring diskchecks for Apps")
 		return nil
 	}
@@ -207,7 +207,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 	}
 	deviceDiskSize := deviceDiskUsage.Total
 	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
-		(float64(ctxPtr.globalConfig.Dom0MinDiskUsagePercent) * 0.01))
+		(float64(ctxPtr.globalConfig.GlobalValueInt(types.Dom0MinDiskUsagePercent)) * 0.01))
 	allowedDeviceDiskSizeForApps := deviceDiskSize - diskReservedForDom0
 	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
 		err := fmt.Errorf("Disk space not available for app - "+
@@ -557,11 +557,13 @@ func doInstall(ctx *zedmanagerContext,
 			changed = true
 		}
 		ds := lookupDownloaderStatus(ctx, imageID)
-		if ds == nil || ds.Expired {
+		if ds == nil || ds.Expired || ds.RefCount == 0 {
 			if ds == nil {
 				log.Infof("downloadStatus not found. name: %s", imageID)
-			} else {
+			} else if ds.Expired {
 				log.Infof("downloadStatusExpired set. name: %s", imageID)
+			} else {
+				log.Infof("downloadStatus RefCount=0 ignored. name: %s", imageID)
 			}
 			minState = types.DOWNLOAD_STARTED
 			ss.State = types.DOWNLOAD_STARTED

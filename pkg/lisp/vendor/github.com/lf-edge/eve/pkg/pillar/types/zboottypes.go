@@ -3,6 +3,8 @@
 
 package types
 
+import "time"
+
 // ZbootConfig contains information fed from zedagent to baseosmgr.
 // Only used to indicate that the testing of the image/partition is complete.
 type ZbootConfig struct {
@@ -27,4 +29,13 @@ type ZbootStatus struct {
 
 func (status ZbootStatus) Key() string {
 	return status.PartitionLabel
+}
+
+// LastImageVersion - Info about the Last version of the image used on the
+// device
+type LastImageVersion struct {
+	// Version - EVE version string
+	Version string
+	// LastUpgradeTime - Timestamp of when the Upgrade was completed.
+	LastUpgradeTime time.Time
 }

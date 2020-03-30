@@ -17,8 +17,8 @@ package nodeagent
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -29,7 +29,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -62,9 +61,10 @@ const (
 var Version = "No version specified"
 
 type nodeagentContext struct {
+	agentBaseContext       agentbase.Context
 	GCInitialized          bool // Received initial GlobalConfig
 	DNSinitialized         bool // Received DeviceNetworkStatus
-	globalConfig           *types.GlobalConfig
+	globalConfig           *types.ConfigItemValueMap
 	subGlobalConfig        pubsub.Subscription
 	subZbootStatus         pubsub.Subscription
 	subZedAgentStatus      pubsub.Subscription
@@ -113,7 +113,7 @@ func newNodeagentContext() nodeagentContext {
 	nodeagentCtx.domainHaltWaitIncrement = domainHaltWaitIncrement
 
 	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
-	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
+	nodeagentCtx.globalConfig = types.DefaultConfigItemValueMap()
 
 	// start the watchdog process timer tick
 	duration := time.Duration(watchdogInterval) * time.Second
@@ -123,39 +123,34 @@ func newNodeagentContext() nodeagentContext {
 	duration = time.Duration(timeTickInterval) * time.Second
 	nodeagentCtx.tickerTimer = time.NewTicker(duration)
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
+
+	nodeagentCtx.agentBaseContext.ErrorTime = errorTime
+	nodeagentCtx.agentBaseContext.AgentName = agentName
+	nodeagentCtx.agentBaseContext.WarningTime = warningTime
+
+	curpart := agentlog.EveCurrentPartition()
+	nodeagentCtx.curPart = strings.TrimSpace(curpart)
+	nodeagentCtx.agentBaseContext.NeedWatchdog = true
 	return nodeagentCtx
+}
+
+func (ctxPtr *nodeagentContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func (ctxPtr *nodeagentContext) AddAgentSpecificCLIFlags() {
+	return
+}
+
+func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
+	return
 }
 
 // Run : nodeagent run entry function
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	curpart := *curpartPtr
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Infof("Starting %s, on %s\n", agentName, curpart)
-
 	nodeagentCtx := newNodeagentContext()
-	nodeagentCtx.curPart = strings.TrimSpace(curpart)
+
+	agentbase.Run(&nodeagentCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
@@ -190,7 +185,7 @@ func Run(ps *pubsub.PubSub) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &nodeagentCtx,
 		ModifyHandler: handleGlobalConfigModify,
@@ -359,17 +354,11 @@ func handleGlobalConfigModify(ctxArg interface{},
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctxPtr.GCInitialized {
-		updated := types.ApplyGlobalConfig(*gcp)
-		log.Infof("handleGlobalConfigModify setting initials to %+v\n",
-			updated)
-		sane := types.EnforceGlobalConfigMinimums(updated)
-		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
-			cmp.Diff(updated, sane))
-		ctxPtr.globalConfig = &sane
+		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify(%s): done\n", key)
@@ -386,7 +375,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
-	ctxPtr.globalConfig = &types.GlobalConfigDefaults
+	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

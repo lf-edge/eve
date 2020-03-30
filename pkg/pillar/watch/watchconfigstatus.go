@@ -12,14 +12,15 @@
 package watch
 
 import (
-	"github.com/fsnotify/fsnotify"
-	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	log "github.com/sirupsen/logrus"
 )
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -158,7 +159,8 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool,
 	foundRestarted := false
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("***watchReadDir - Failed to read Directory %s . err: %s",
+			configDir, err)
 	}
 
 	for _, file := range files {

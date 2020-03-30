@@ -38,10 +38,9 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Ctx:           ctx,
 	})
-
 	if err != nil {
 		return err
 	}

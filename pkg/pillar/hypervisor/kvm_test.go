@@ -38,6 +38,9 @@ func TestCreateDomConfig(t *testing.T) {
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
 		},
+		IoAdapterList: []types.IoAdapter{
+			{Type: types.IoNetEth, Name: "eth0"},
+		},
 	}
 	disks := []types.DiskStatus{
 		{Format: zconfig.Format_QCOW2, ActiveFileLocation: "/foo/bar.qcow2", Devtype: "HDD"},
@@ -45,7 +48,19 @@ func TestCreateDomConfig(t *testing.T) {
 		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/bar.raw", Devtype: "HDD_EMPTY"},
 		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/cd.iso", Devtype: "CDROM"},
 	}
-	aa := types.AssignableAdapters{}
+	aa := types.AssignableAdapters{
+		Initialized: true,
+		IoBundleList: []types.IoBundle{
+			{
+				Type:            types.IoNetEth,
+				AssignmentGroup: "eth0-1",
+				Phylabel:        "eth0",
+				Ifname:          "eth0",
+				PciLong:         "0000:03:00.0",
+				UsedByUUID:      config.UUIDandVersion.UUID,
+			},
+		},
+	}
 	conf, err := ioutil.TempFile("/tmp", "config")
 	if err != nil {
 		t.Errorf("Can't create config file for a domain %v", err)
@@ -270,6 +285,10 @@ func TestCreateDomConfig(t *testing.T) {
   mac = "6a:00:03:61:a6:91"
   bus = "pci.7"
   addr = "0x0"
+
+[device]
+  driver = "vfio-pci"
+  host = "03:00.0"
 ` {
 		t.Errorf("got an unexpected resulting config %s", string(result))
 	}

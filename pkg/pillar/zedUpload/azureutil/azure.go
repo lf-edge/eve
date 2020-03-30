@@ -246,7 +246,7 @@ func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile str
 }
 
 // GenerateBlobSasURI is used to generate the URI which can be used to access the blob until the the URI expries
-func GenerateBlobSasURI(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, startTime time.Time, endTime time.Time) (string, error) {
+func GenerateBlobSasURI(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, duration time.Duration) (string, error) {
 	c, err := NewClient(accountName, accountKey, httpClient)
 	if err != nil {
 		return "", err
@@ -270,8 +270,8 @@ func GenerateBlobSasURI(accountName, accountKey, containerName, remoteFile strin
 	}
 	options := storage.BlobSASOptions{}
 	options.Read = true
-	options.Start = startTime
-	options.Expiry = endTime
+	options.Start = time.Now()
+	options.Expiry = options.Start.Add(duration)
 	options.UseHTTPS = true
 
 	sasURI, err := blob.GetSASURI(options)

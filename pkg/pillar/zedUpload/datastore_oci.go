@@ -41,6 +41,7 @@ func (ep *OCITransportMethod) Action(req *DronaRequest) error {
 	var size int64
 	var list []string
 	var contentLength int64
+	var sha256 string
 
 	switch req.operation {
 	case SyncOpDownload:
@@ -53,8 +54,9 @@ func (ep *OCITransportMethod) Action(req *DronaRequest) error {
 		list, err = ep.processList(req)
 		req.imgList = list
 	case SyncOpGetObjectMetaData:
-		contentLength, err = ep.processObjectMetaData(req)
+		sha256, contentLength, err = ep.processObjectMetaData(req)
 		req.contentLength = contentLength
+		req.ImageSha256 = sha256
 	default:
 		err = fmt.Errorf("Unknown OCI registry operation")
 	}
@@ -188,13 +190,15 @@ func (ep *OCITransportMethod) processList(req *DronaRequest) ([]string, error) {
 }
 
 // processObjectMetaData Artifact Metadata from OCI registry
-func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (int64, error) {
+func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (string, int64, error) {
 	var (
-		err  error
-		size int64
+		err           error
+		size          int64
+		imageSha256   string
+		imageManifest []byte
 	)
 	if ep.registry == "" {
-		return size, fmt.Errorf("cannot download from blank registry")
+		return imageSha256, size, fmt.Errorf("cannot download from blank registry")
 	}
 	prgChan := make(ociutil.NotifChan)
 	defer close(prgChan)
@@ -215,12 +219,15 @@ func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (int64, e
 			}
 		}(req, prgChan)
 	}
-	_, _, size, err = ociutil.Manifest(ep.registry, ep.path, ep.uname, ep.apiKey, ep.hClient, prgChan)
+	_, imageManifest, size, err = ociutil.Manifest(ep.registry, ep.path, ep.uname, ep.apiKey, ep.hClient, prgChan)
 	if err != nil {
-		return 0, err
+		return imageSha256, 0, err
 	}
-	return size, nil
+	hash := sha256.Sum256(imageManifest)
+	imageSha256 = strings.ToUpper(fmt.Sprintf("%x", hash))
+	return imageSha256, size, nil
 }
+
 func (ep *OCITransportMethod) getContext() *DronaCtx {
 	return ep.ctx
 }

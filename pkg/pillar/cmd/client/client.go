@@ -69,7 +69,7 @@ type clientContext struct {
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
 	subGlobalConfig        pubsub.Subscription
-	globalConfig           *types.GlobalConfig
+	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	getCertsTimer          *time.Timer
 }
@@ -86,7 +86,6 @@ var (
 func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max retries")
 	flag.Parse()
@@ -99,7 +98,6 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
 	args := flag.Args()
@@ -108,10 +106,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		return
 	}
 	// Sending json log format to stdout
-	err := agentlog.Init("client", curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init("client")
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)
@@ -165,20 +160,21 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
-		globalConfig:        &types.GlobalConfigDefaults,
+		globalConfig:        types.DefaultConfigItemValueMap(),
 	}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		TopicImpl:     types.ConfigItemValueMap{},
 		Ctx:           &clientCtx,
 	})
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -200,10 +196,9 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
-
 	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
-		Timeout:          clientCtx.globalConfig.NetworkSendTimeout,
+		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
@@ -667,7 +662,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -687,7 +682,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

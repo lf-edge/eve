@@ -65,7 +65,7 @@ type logDirDeleteHandler func(ctx interface{}, logFileName string, source string
 
 type logmanagerContext struct {
 	subGlobalConfig pubsub.Subscription
-	globalConfig    *types.GlobalConfig
+	globalConfig    *types.ConfigItemValueMap
 	subDomainStatus pubsub.Subscription
 	GCInitialized   bool
 	sync.RWMutex
@@ -130,12 +130,9 @@ type zedcloudLogs struct {
 
 // Run is an entry point into running logmanager
 func Run(ps *pubsub.PubSub) {
-	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
-	curpartPtr := flag.String("c", "", "Current partition")
 	forcePtr := flag.Bool("f", false, "Force")
-	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
 	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
 	flag.Parse()
@@ -148,22 +145,16 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
-	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s watching %s\n", agentName, logDirName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -180,12 +171,12 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	logmanagerCtx := logmanagerContext{
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &logmanagerCtx,
 		CreateHandler: handleGlobalConfigModify,
@@ -324,7 +315,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-deferredChan:
 			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
 			if err != nil {
-				log.Infof("logmanager(Run): log message processing still in deferred state")
+				log.Errorf("logmanager(Run): log message processing still in "+
+					"deferred state. err: %s", err)
 				continue
 			}
 			start := time.Now()
@@ -477,8 +469,8 @@ func processEvents(image string, logChan <-chan logEntry,
 			}
 			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
 			if err != nil {
-				log.Infof("processEvents:(%s) log message processing still in deferred state",
-					image)
+				log.Warnf("processEvents:(%s) log message processing still"+
+					" in deferred state", image)
 				continue
 			}
 			log.Infof("processEvents(%s) deferInprogress done",
@@ -760,7 +752,8 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	//get server name
 	serverBytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to read ServerFileName (%s). Err: %s",
+			types.ServerFileName, err)
 	}
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(serverBytes))
@@ -827,7 +820,8 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	//get server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
+			types.ServerFileName, err)
 	}
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(bytes))
@@ -836,7 +830,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	//set log url
 	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
-		Timeout:          ctx.globalConfig.NetworkSendTimeout,
+		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
@@ -886,8 +880,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	status := statusArg.(types.GlobalConfig)
-	var gcp *types.GlobalConfig
+	status := statusArg.(types.ConfigItemValueMap)
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)
 	if gcp != nil {
@@ -895,15 +889,17 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 	}
 	foundAgents := make(map[string]bool)
-	if status.DefaultRemoteLogLevel != "" {
+	defaultRemoteLogLevel := types.DefaultConfigItemValueMap().GlobalValueString(types.DefaultRemoteLogLevel)
+	if defaultRemoteLogLevel != "" {
 		foundAgents["default"] = true
-		addRemoteMap("default", status.DefaultRemoteLogLevel)
+		addRemoteMap("default", defaultRemoteLogLevel)
 	}
-	for agentName, perAgentSetting := range status.AgentSettings {
+	for agentName := range status.AgentSettings {
 		log.Debugf("Processing agentName %s\n", agentName)
 		foundAgents[agentName] = true
-		if perAgentSetting.RemoteLogLevel != "" {
-			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
+		remoteLogLevel := status.AgentSettingStringValue(agentName, types.RemoteLogLevel)
+		if remoteLogLevel != "" {
+			addRemoteMap(agentName, remoteLogLevel)
 		}
 	}
 	// Any deletes?
@@ -922,7 +918,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

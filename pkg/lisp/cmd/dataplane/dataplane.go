@@ -18,11 +18,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/lisp/dataplane/dptypes"
 	"github.com/lf-edge/eve/pkg/lisp/dataplane/etr"
 	"github.com/lf-edge/eve/pkg/lisp/dataplane/fib"
 	"github.com/lf-edge/eve/pkg/lisp/dataplane/itr"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
@@ -65,11 +65,10 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	log.Infof("Dataplane: Using %s for LISP directory.\n", lispConfigDir)
 	configHolePath = lispConfigDir + "/lisp-ipc-data-plane"
@@ -241,7 +240,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 
 	// Look for global config like debug
 	subGlobalConfig, err := pubsublegacy.Subscribe("",
-		types.GlobalConfig{}, false, dataplaneContext, &pubsub.SubscriptionOptions{
+		types.ConfigItemValueMap{}, false, dataplaneContext, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,

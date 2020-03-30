@@ -115,7 +115,8 @@ type zedagentContext struct {
 	devicePortConfigList      types.DevicePortConfigList
 	remainingTestTime         time.Duration
 	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
-	globalConfig              types.GlobalConfig
+	globalConfig              types.ConfigItemValueMap
+	specMap                   types.ConfigItemSpecMap
 	globalStatus              types.GlobalStatus
 	getCertsTimer             *time.Timer
 }
@@ -125,9 +126,9 @@ var debugOverride bool // From command line arg
 var flowQ *list.List
 
 func Run(ps *pubsub.PubSub) {
+	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	parsePtr := flag.String("p", "", "parse checkpoint file")
 	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
 	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
@@ -142,7 +143,6 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	parse := *parsePtr
 	validate := *validatePtr
 	if *versionPtr {
@@ -155,7 +155,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if parse != "" {
 		res, config := readValidateConfig(
-			types.GlobalConfigDefaults.StaleConfigTime, parse)
+			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
 		if !res {
 			fmt.Printf("Failed to parse %s\n", parse)
 			os.Exit(1)
@@ -170,10 +170,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -182,7 +179,8 @@ func Run(ps *pubsub.PubSub) {
 
 	triggerDeviceInfo := make(chan struct{}, 1)
 	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
-	zedagentCtx.globalConfig = types.GlobalConfigDefaults
+	zedagentCtx.specMap = types.NewConfigItemSpecMap()
+	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
 	zedagentCtx.globalStatus.ConfigItems = make(
 		map[string]types.ConfigItemStatus)
 	zedagentCtx.globalStatus.UpdateItemValuesFromGlobalConfig(
@@ -194,7 +192,7 @@ func Run(ps *pubsub.PubSub) {
 
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  "",
-		TopicType:  types.GlobalConfig{},
+		TopicType:  types.ConfigItemValueMap{},
 		Persistent: true,
 	})
 	if err != nil {
@@ -210,7 +208,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
-	handleInit(zedagentCtx.globalConfig.NetworkSendTimeout)
+	handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
@@ -472,7 +470,7 @@ func Run(ps *pubsub.PubSub) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
 		CreateHandler: handleGlobalConfigModify,
@@ -1491,17 +1489,11 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctx.GCInitialized {
-		updated := types.ApplyGlobalConfig(*gcp)
-		log.Infof("handleGlobalConfigModify setting initials to %+v\n",
-			updated)
-		sane := types.EnforceGlobalConfigMinimums(updated)
-		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
-			cmp.Diff(updated, sane))
-		ctx.globalConfig = sane
+		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -1518,7 +1510,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	ctx.globalConfig = types.GlobalConfigDefaults
+	ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

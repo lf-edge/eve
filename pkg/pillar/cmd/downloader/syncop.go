@@ -323,12 +323,19 @@ func sourceFailureError(ip, ifname, url string, err error) {
 
 func getDatastoreCredential(ctx *downloaderContext,
 	dst types.DatastoreConfig) (zconfig.CredentialBlock, error) {
-	cred := utils.PrepareCipherCred(dst.ApiKey, dst.Password)
-	status, cred, err := utils.GetCipherCredentials(agentName,
-		dst.CipherBlockStatus, cred)
-	if status.IsCipher && len(status.Error) == 0 {
+	if dst.CipherBlockStatus.IsCipher {
+		status, cred, err := utils.GetCipherCredentials(agentName,
+			dst.CipherBlockStatus)
+		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
+		if err != nil {
+			log.Infof("%s, datastore config cipherblock decryption unsuccessful: %v\n", dst.Key(), err)
+			cred = utils.PrepareCipherCred(dst.ApiKey, dst.Password)
+			return cred, nil
+		}
 		log.Infof("%s, cipherblock decryption successful\n", dst.Key())
+		return cred, nil
 	}
-	ctx.pubCipherBlockStatus.Publish(status.Key(), status)
-	return cred, err
+	log.Infof("%s, datastore config cipherblock not present\n", dst.Key())
+	cred := utils.PrepareCipherCred(dst.ApiKey, dst.Password)
+	return cred, nil
 }

@@ -43,7 +43,7 @@ type tpmMgrContext struct {
 	subNodeAgentStatus pubsub.Subscription
 	subAttestNonce     pubsub.Subscription
 	pubAttestQuote     pubsub.Publication
-	globalConfig       *types.GlobalConfig
+	globalConfig       *types.ConfigItemValueMap
 	GCInitialized      bool // GlobalConfig initialized
 	DeviceReboot       bool //is the device rebooting?
 }
@@ -788,13 +788,14 @@ func DecryptCipherBlock(cipherBlock types.CipherBlockStatus) ([]byte, error) {
 
 	case zconfig.KeyExchangeScheme_KEA_ECDH:
 		clearData, err := decryptCipherBlockWithECDH(cipherBlock)
-		if err == nil {
-			if ret := validateDataHash(clearData,
-				cipherBlock.ClearTextHash); !ret {
-				return []byte{}, errors.New("Data Validation Failed")
-			}
-			return clearData, nil
+		if err != nil {
+			return []byte{}, err
 		}
+		if ret := validateDataHash(clearData,
+			cipherBlock.ClearTextHash); !ret {
+			return []byte{}, errors.New("Data Validation Failed")
+		}
+		return clearData, nil
 	}
 	return []byte{}, errors.New("Unsupported Cipher Key Exchange Scheme")
 }
@@ -935,7 +936,7 @@ func createCerts() error {
 }
 
 func Run(ps *pubsub.PubSub) {
-	curpartPtr := flag.String("c", "", "Current partition")
+	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -946,12 +947,8 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	curpart := *curpartPtr
 	// Sending json log format to stdout
-	err := agentlog.Init("tpmmgr", curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init("tpmmgr")
 
 	if len(flag.Args()) == 0 {
 		log.Fatal("Insufficient arguments")
@@ -1019,7 +1016,7 @@ func Run(ps *pubsub.PubSub) {
 		// Look for global config such as log levels
 		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &ctx,
 			CreateHandler: handleGlobalConfigModify,
@@ -1164,7 +1161,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {

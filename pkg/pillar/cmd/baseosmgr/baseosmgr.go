@@ -64,7 +64,7 @@ type baseOsMgrContext struct {
 	pubZbootStatus           pubsub.Publication
 
 	subGlobalConfig          pubsub.Subscription
-	globalConfig             *types.GlobalConfig
+	globalConfig             *types.ConfigItemValueMap
 	GCInitialized            bool
 	subBaseOsConfig          pubsub.Subscription
 	subZbootConfig           pubsub.Subscription
@@ -85,7 +85,6 @@ var debugOverride bool // From command line arg
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -94,15 +93,11 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -115,7 +110,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Context to pass around
 	ctx := baseOsMgrContext{
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 
 	// initialize publishing handles
@@ -454,7 +449,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -475,7 +470,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -568,7 +563,7 @@ func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           ctx,
 			CreateHandler: handleGlobalConfigModify,

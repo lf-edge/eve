@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"runtime"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1"
@@ -28,8 +29,6 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		ref                              name.Reference
 	)
 	log.Infof("manifestsDescImg(%s)", image)
-	// this one should go away
-	log.Infof("options %#v", options)
 
 	// FIXME tar archive size is 1024 bytes greater than the sizes of
 	// the underlying file. Currently, it has been added purely on the
@@ -42,6 +41,10 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		log.Errorf("error parsing image (%s): %v", image, err)
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("parsing reference %q: %v", image, err)
 	}
+
+	// resolve out platform
+	options = append(options, remote.WithPlatform(v1.Platform{Architecture: runtime.GOARCH, OS: runtime.GOOS}))
+	log.Debugf("options %#v", options)
 
 	// first get the root manifest. This might be an index or a manifest
 	log.Infof("manifestsDescImg(%s) getting image ref %#v", image, ref)

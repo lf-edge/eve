@@ -18,15 +18,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.DownloadGCTime != 0 {
-			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
+			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
 		}
-		if gcp.DownloadRetryTime != 0 {
-			downloadRetryTime = time.Duration(gcp.DownloadRetryTime) * time.Second
+		if gcp.GlobalValueInt(types.DownloadRetryTime) != 0 {
+			downloadRetryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
 		}
 		ctx.GCInitialized = true
 	}

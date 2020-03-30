@@ -67,7 +67,7 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		return
 	}
 	// apply the fallback time function,wait for fallback timeout
-	fallbackLimit := ctxPtr.globalConfig.FallbackIfCloudGoneTime
+	fallbackLimit := ctxPtr.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
 	timePassed := ctxPtr.timeTickCount - ctxPtr.lastConfigReceivedTime
 	if timePassed > fallbackLimit {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
@@ -80,7 +80,7 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 // on cloud disconnect for a specified amount time, reset the node
 func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	// apply the reset time function
-	resetLimit := ctxPtr.globalConfig.ResetIfCloudGoneTime
+	resetLimit := ctxPtr.globalConfig.GlobalValueInt(types.ResetIfCloudGoneTime)
 	timePassed := ctxPtr.timeTickCount - ctxPtr.lastConfigReceivedTime
 	if timePassed > resetLimit {
 		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
@@ -108,7 +108,7 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 // check for upgrade validation time expiry
 func checkUpgradeValidationTestTimeExpiry(ctxPtr *nodeagentContext) bool {
 	timePassed := ctxPtr.timeTickCount - ctxPtr.upgradeTestStartTime
-	successLimit := ctxPtr.globalConfig.MintimeUpdateSuccess
+	successLimit := ctxPtr.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)
 	if timePassed < successLimit {
 		ctxPtr.remainingTestTime = time.Second *
 			time.Duration(successLimit-timePassed)
@@ -130,11 +130,11 @@ func setTestStartTime(ctxPtr *nodeagentContext) {
 		ctxPtr.testComplete || ctxPtr.updateComplete {
 		return
 	}
-	log.Infof("Starting upgrade validation for %d seconds\n",
-		ctxPtr.globalConfig.MintimeUpdateSuccess)
+	mintimeUpdateSuccess := ctxPtr.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)
+	log.Infof("Starting upgrade validation for %d seconds\n", mintimeUpdateSuccess)
 	ctxPtr.testInprogress = true
 	ctxPtr.upgradeTestStartTime = ctxPtr.timeTickCount
-	successLimit := ctxPtr.globalConfig.MintimeUpdateSuccess
+	successLimit := mintimeUpdateSuccess
 	ctxPtr.remainingTestTime = time.Second * time.Duration(successLimit)
 }
 

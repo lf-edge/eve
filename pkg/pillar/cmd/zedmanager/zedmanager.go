@@ -56,7 +56,7 @@ type zedmanagerContext struct {
 	pubAppImgPersistConfig  pubsub.Publication
 	subAppImgPersistStatus  pubsub.Subscription
 	subGlobalConfig         pubsub.Subscription
-	globalConfig            *types.GlobalConfig
+	globalConfig            *types.ConfigItemValueMap
 	pubUuidToNum            pubsub.Publication
 	pubAppAndImageToHash    pubsub.Publication
 	GCInitialized           bool
@@ -70,7 +70,6 @@ var debugOverride bool // From command line arg
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -79,15 +78,11 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -100,7 +95,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	// Create publish before subscribing and activating subscriptions
 	pubAppInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -200,7 +195,7 @@ func Run(ps *pubsub.PubSub) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &ctx,
 		CreateHandler: handleGlobalConfigModify,
@@ -1011,7 +1006,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -1032,6 +1027,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

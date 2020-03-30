@@ -126,7 +126,7 @@ func configTimerTask(handleChannel chan interface{},
 		getconfigCtx)
 	publishZedAgentStatus(getconfigCtx)
 
-	configInterval := getconfigCtx.zedagentCtx.globalConfig.ConfigInterval
+	configInterval := getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.ConfigInterval)
 	interval := time.Duration(configInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
@@ -230,7 +230,7 @@ func getLatestConfig(url string, iteration int,
 			!getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
 
 			config, err := readSavedProtoMessage(
-				getconfigCtx.zedagentCtx.globalConfig.StaleConfigTime,
+				getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 				checkpointDirname+"/lastconfig", false)
 			if err != nil {
 				log.Errorf("getconfig: %v\n", err)

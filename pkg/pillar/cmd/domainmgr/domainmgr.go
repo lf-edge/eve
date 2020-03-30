@@ -120,11 +120,11 @@ var debugOverride bool          // From command line arg
 var hyper hypervisor.Hypervisor // Current hypervisor
 
 func Run(ps *pubsub.PubSub) {
+	var err error
 	handlersInit()
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	hypervisorPtr := flag.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 	flag.Parse()
 	debug = *debugPtr
@@ -134,15 +134,11 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)
 	if err != nil {
@@ -283,7 +279,7 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &domainCtx,
 			CreateHandler: handleGlobalConfigModify,
@@ -1820,6 +1816,9 @@ func addNoDuplicate(list []string, add string) []string {
 }
 
 func cp(dst, src string) error {
+	if strings.Compare(dst, src) == 0 {
+		return nil
+	}
 	s, err := os.Open(src)
 	if err != nil {
 		return err
@@ -2139,27 +2138,27 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.VdiskGCTime != 0 {
-			ctx.vdiskGCTime = gcp.VdiskGCTime
+		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
+			ctx.vdiskGCTime = gcp.GlobalValueInt(types.VdiskGCTime)
 		}
-		if gcp.DomainBootRetryTime != 0 {
-			ctx.domainBootRetryTime = gcp.DomainBootRetryTime
+		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
+			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
 		}
-		if gcp.UsbAccess != ctx.usbAccess {
-			ctx.usbAccess = gcp.UsbAccess
+		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess {
+			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
 			updateUsbAccess(ctx)
 		}
-		if gcp.MetricInterval != 0 {
-			ctx.metricInterval = gcp.MetricInterval
+		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
+			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
 		}
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s. VdiskGCTime: %d, "+
-		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d, "+
+		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d",
 		key, ctx.vdiskGCTime, ctx.domainBootRetryTime, ctx.usbAccess,
 		ctx.metricInterval)
 }

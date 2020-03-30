@@ -71,7 +71,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	log.Infoln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
-	interval := time.Duration(ctx.globalConfig.MetricInterval) * time.Second
+	interval := time.Duration(ctx.globalConfig.GlobalValueInt(types.MetricInterval)) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))

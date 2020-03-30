@@ -52,7 +52,7 @@ type diagContext struct {
 	ledCounter              int
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
 	subGlobalConfig         pubsub.Subscription
-	globalConfig            *types.GlobalConfig
+	globalConfig            *types.ConfigItemValueMap
 	subLedBlinkCounter      pubsub.Subscription
 	subDeviceNetworkStatus  pubsub.Subscription
 	subDevicePortConfigList pubsub.Subscription
@@ -78,9 +78,9 @@ var outfile = os.Stdout
 var nilUUID uuid.UUID
 
 func Run(ps *pubsub.PubSub) {
+	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	foreverPtr := flag.Bool("f", false, "Forever flag")
 	pacContentsPtr := flag.Bool("p", false, "Print PAC file contents")
 	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
@@ -94,7 +94,6 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	simulateDnsFailure = *simulateDnsFailurePtr
 	simulatePingFailure = *simulatePingFailurePtr
 	outputFile := *outputFilePtr
@@ -102,10 +101,7 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	if outputFile != "" {
 		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -117,7 +113,7 @@ func Run(ps *pubsub.PubSub) {
 	ctx := diagContext{
 		forever:      *foreverPtr,
 		pacContents:  *pacContentsPtr,
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
@@ -129,7 +125,7 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &ctx,
 			CreateHandler: handleGlobalConfigModify,
@@ -153,7 +149,7 @@ func Run(ps *pubsub.PubSub) {
 
 	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.DeviceNetworkStatus,
-		Timeout:          ctx.globalConfig.NetworkTestTimeout,
+		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
@@ -1057,7 +1053,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -1077,6 +1073,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

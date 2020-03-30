@@ -439,7 +439,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 //Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub) {
 
-	curpartPtr := flag.String("c", "", "Current partition")
+	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -449,13 +449,9 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 
 	// Sending json log format to stdout
-	err := agentlog.Init(agentName, curpart)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	if len(flag.Args()) == 0 {
 		log.Fatal("Insufficient arguments")
@@ -488,7 +484,7 @@ func Run(ps *pubsub.PubSub) {
 		// Look for global config such as log levels
 		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &ctx,
 			CreateHandler: handleGlobalConfigModify,
@@ -544,7 +540,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
