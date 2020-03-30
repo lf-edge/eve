@@ -112,10 +112,12 @@ func (cfg *config) proxyForURL(reqURL *url.URL) (*url.URL, error) {
 			}
 		}
 	*/
+	// since ws and wss use the same port numbers as http and https, send ws and wss
+	// to the same proxy configured makes sense
 	switch reqURL.Scheme {
-	case "https":
+	case "https", "wss":
 		proxy = cfg.httpsProxy
-	case "http":
+	case "http", "ws":
 		proxy = cfg.httpProxy
 	}
 	if proxy == nil {

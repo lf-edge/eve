@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -46,6 +47,7 @@ type wstunnelclientContext struct {
 	serverNameAndPort    string
 	wstunnelclient       *zedcloud.WSTunnelClient
 	dnsContext           *DNSContext
+	devUUID              uuid.UUID
 	// XXX add any output from scanAIConfigs()?
 }
 
@@ -145,6 +147,19 @@ func Run(ps *pubsub.PubSub) {
 	wscCtx.serverNameAndPort = strings.TrimSpace(string(bytes))
 
 	subAppInstanceConfig.Activate()
+
+	if zedcloud.UseV2API() {
+		b, err := ioutil.ReadFile(types.UUIDFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		uuidStr := strings.TrimSpace(string(b))
+		wscCtx.devUUID, err = uuid.FromString(uuidStr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Infof("Read devUUID %s\n", wscCtx.devUUID.String())
+	}
 
 	// Pick up debug aka log level before we start real work
 	for !wscCtx.GCInitialized {
@@ -346,7 +361,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 
 			proxyURL, _ := zedcloud.LookupProxy(deviceNetworkStatus,
 				ifname, destURL)
-			if err := wstunnelclient.TestConnection(deviceNetworkStatus, proxyURL, localAddr); err != nil {
+			if err := wstunnelclient.TestConnection(deviceNetworkStatus, proxyURL, localAddr, ctx.devUUID); err != nil {
 				log.Info(err)
 				continue
 			}
