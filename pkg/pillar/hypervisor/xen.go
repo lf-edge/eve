@@ -473,8 +473,8 @@ func (ctx xenContext) LookupByName(domainName string, domainID int) (int, error)
 	// Avoid wrap since we are called periodically
 	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		log.Debugln("xl domid failed ", err)
-		log.Debugln("xl domid output ", string(stdoutStderr))
+		log.Errorln("xl domid failed ", err)
+		log.Errorln("xl domid output ", string(stdoutStderr))
 		return domainID, fmt.Errorf("xl domid failed: %s\n",
 			string(stdoutStderr))
 	}
@@ -488,7 +488,10 @@ func (ctx xenContext) LookupByName(domainName string, domainID int) (int, error)
 		log.Warningf("domainid changed from %d to %d for %s\n",
 			domainID, domainID2, domainName)
 	}
-	return domainID2, err
+	if !isDomainRunning(domainID2) { //check if domain is shutting down.
+		return domainID2, fmt.Errorf("xl domain %s not running", domainName)
+	}
+	return domainID2, nil
 }
 
 // Perform xenstore write to disable all of these for all VIFs
@@ -828,4 +831,46 @@ func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	return out, true, err
+}
+
+//verifyDomainState: Verifies if a domain is up and running by its state. Domain can have the following states:
+//r - currently running
+//b - blocked, and not running or runnable
+//p - paused
+//s - a shutdown command has been sent, but the domain isn't dying yet
+//c - the domain has crashed
+//d - the domain is dying, but hasn't properly shut down or crashed
+func isDomainRunning(domainID int) bool {
+	cmd := "xl"
+	args := []string{
+		"list",
+		strconv.Itoa(domainID),
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		//domain is not present
+		log.Errorln("verifyDomainState: xl list failed ", err)
+		log.Errorln("verifyDomainState: xl list output ", string(stdoutStderr))
+		return false
+	}
+	//Removing all extra space between column result and split the result as array.
+	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(strings.Split(string(stdoutStderr), "\n")[1], " ")
+	//Domain's status is 5th column in xl list <domain> result
+	domainState := strings.Split(xlDomainResult, " ")[4]
+	//Sometimes the domain can be in multiple states (logically possible) at the same time.
+	// In such cases we can consider the last state. For example when a domain is shutting down its state will be
+	//"--psc-", we can consider "c" to represent that domain is in middle of shutting down.
+	var lastState string
+	for _, state := range domainState {
+		if state != '-' {
+			lastState = string(state)
+		}
+	}
+	log.Debugf("verifyDomainState: domain: %d domainState: %s.", domainID, domainState)
+	log.Debugf("verifyDomainState: domain: %d lastState: %s.", domainID, lastState)
+	if lastState == "r" || lastState == "b" {
+		//domain is up and running.
+		return true
+	}
+	return false
 }
