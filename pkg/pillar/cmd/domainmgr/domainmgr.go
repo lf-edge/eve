@@ -1995,7 +1995,7 @@ func deleteStorageDisksForDomain(ctx *domainContext,
 			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
 				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
 			}
-		} else if !ds.ReadOnly && !ds.Preserve {
+		} else if !ds.ReadOnly && ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
 				log.Errorln(err)
