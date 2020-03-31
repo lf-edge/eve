@@ -142,7 +142,7 @@ func ctrRm(containerPath string, silent bool) error {
 	if container == nil {
 		return nil
 	}
-	if err := container.Delete(ctrdCtx); err != nil {
+	if err := container.Delete(ctrdCtx, containerd.WithSnapshotCleanup); err != nil {
 		err = fmt.Errorf("ctrRm: unable to delete container: %v. %v", containerID, err.Error())
 		log.Error(err)
 		if !silent {
