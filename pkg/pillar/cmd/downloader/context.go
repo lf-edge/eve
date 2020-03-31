@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"sync"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -10,6 +11,7 @@ import (
 )
 
 type downloaderContext struct {
+	agentBaseContext        agentbase.Context
 	dCtx                    *zedUpload.DronaCtx
 	subDeviceNetworkStatus  pubsub.Subscription
 	subAppImgConfig         pubsub.Subscription
@@ -32,7 +34,7 @@ type downloaderContext struct {
 	GCInitialized           bool
 }
 
-func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
+func (ctxPtr *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleGlobalConfigModify,
@@ -41,12 +43,12 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subGlobalConfig = subGlobalConfig
+	ctxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -56,13 +58,13 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		TopicImpl:     types.DeviceNetworkStatus{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 		AgentName:     "nim",
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	subGlobalDownloadConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -70,13 +72,13 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		ModifyHandler: handleGlobalDownloadConfigModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 		TopicImpl:     types.GlobalDownloadConfig{},
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
+	ctxPtr.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
 	// Look for DatastoreConfig. We should process this
@@ -90,12 +92,12 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		ErrorTime:     errorTime,
 		AgentName:     "zedagent",
 		TopicImpl:     types.DatastoreConfig{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subDatastoreConfig = subDatastoreConfig
+	ctxPtr.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
 
 	pubCipherBlockStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -105,7 +107,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubCipherBlockStatus = pubCipherBlockStatus
+	ctxPtr.pubCipherBlockStatus = pubCipherBlockStatus
 
 	pubGlobalDownloadStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -114,7 +116,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
+	ctxPtr.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -125,7 +127,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubAppImgStatus = pubAppImgStatus
+	ctxPtr.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
 	pubBaseOsStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -136,7 +138,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubBaseOsStatus = pubBaseOsStatus
+	ctxPtr.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
 	pubCertObjStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -147,7 +149,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubCertObjStatus = pubCertObjStatus
+	ctxPtr.pubCertObjStatus = pubCertObjStatus
 	pubCertObjStatus.ClearRestarted()
 
 	pubAppImgResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -158,7 +160,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubAppImgResolveStatus = pubAppImgResolveStatus
+	ctxPtr.pubAppImgResolveStatus = pubAppImgResolveStatus
 	pubAppImgResolveStatus.ClearRestarted()
 
 	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -170,12 +172,12 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		AgentName:     "volumemgr",
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.DownloaderConfig{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subAppImgConfig = subAppImgConfig
+	ctxPtr.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -187,12 +189,12 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		AgentName:     "volumemgr",
 		AgentScope:    types.BaseOsObj,
 		TopicImpl:     types.DownloaderConfig{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subBaseOsConfig = subBaseOsConfig
+	ctxPtr.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
 	subCertObjConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -204,12 +206,12 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		AgentName:     "volumemgr",
 		AgentScope:    types.CertObj,
 		TopicImpl:     types.DownloaderConfig{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subCertObjConfig = subCertObjConfig
+	ctxPtr.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
 	subAppImgResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -221,12 +223,12 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		AgentName:     "zedmanager",
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.ResolveConfig{},
-		Ctx:           ctx,
+		Ctx:           ctxPtr,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subAppImgResolveConfig = subAppImgResolveConfig
+	ctxPtr.subAppImgResolveConfig = subAppImgResolveConfig
 	subAppImgResolveConfig.Activate()
 
 	pubAppImgStatus.SignalRestarted()
@@ -237,15 +239,15 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	return nil
 }
 
-func (ctx *downloaderContext) subscription(objType string) pubsub.Subscription {
+func (ctxPtr *downloaderContext) subscription(objType string) pubsub.Subscription {
 	var sub pubsub.Subscription
 	switch objType {
 	case types.AppImgObj:
-		sub = ctx.subAppImgConfig
+		sub = ctxPtr.subAppImgConfig
 	case types.BaseOsObj:
-		sub = ctx.subBaseOsConfig
+		sub = ctxPtr.subBaseOsConfig
 	case types.CertObj:
-		sub = ctx.subCertObjConfig
+		sub = ctxPtr.subCertObjConfig
 	default:
 		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
 			objType)
@@ -253,15 +255,15 @@ func (ctx *downloaderContext) subscription(objType string) pubsub.Subscription {
 	return sub
 }
 
-func (ctx *downloaderContext) publication(objType string) pubsub.Publication {
+func (ctxPtr *downloaderContext) publication(objType string) pubsub.Publication {
 	var pub pubsub.Publication
 	switch objType {
 	case types.AppImgObj:
-		pub = ctx.pubAppImgStatus
+		pub = ctxPtr.pubAppImgStatus
 	case types.BaseOsObj:
-		pub = ctx.pubBaseOsStatus
+		pub = ctxPtr.pubBaseOsStatus
 	case types.CertObj:
-		pub = ctx.pubCertObjStatus
+		pub = ctxPtr.pubCertObjStatus
 	default:
 		log.Fatalf("downloaderPublication: Unknown ObjType %s\n",
 			objType)

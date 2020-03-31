@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"net"
 	"strings"
 
@@ -26,32 +27,47 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var debugOverride bool // From command line arg
+var ctxPtr *icpContext
+
+type icpContext struct {
+	agentBaseContext agentbase.Context
+	agentName        string
+	agentScope       string
+	topic            string
+}
+
+func newIcpContext() *icpContext {
+	ctx := icpContext{}
+	ctx.agentBaseContext.InitializeAgent = false
+	ctx.agentBaseContext.NeedWatchdog = false
+	ctx.agentBaseContext.CheckAndCreatePidFile = false
+
+	ctx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+
+	return &ctx
+}
+
+func (ctxPtr *icpContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.StringVar(&ctxPtr.agentName, "a", "zedrouter", "Agent name")
+	flag.StringVar(&ctxPtr.agentScope, "s", "", "agentScope")
+	flag.StringVar(&ctxPtr.topic, "t", "DeviceNetworkStatus", "topic")
+}
 
 func Run(ps *pubsub.PubSub) {
-	agentNamePtr := flag.String("a", "zedrouter",
-		"Agent name")
-	agentScopePtr := flag.String("s", "", "agentScope")
-	topicPtr := flag.String("t", "DeviceNetworkStatus",
-		"topic")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	agentName := *agentNamePtr
-	agentScope := *agentScopePtr
-	topic := *topicPtr
-	debugOverride = *debugPtr
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	name := nameString(agentName, agentScope, topic)
+	ctxPtr = newIcpContext()
+
+	agentbase.Run(ctxPtr)
+	name := nameString(ctxPtr.agentName, ctxPtr.agentScope, ctxPtr.topic)
 	sockName := fmt.Sprintf("/var/run/%s.sock", name)
 	s, err := net.Dial("unixpacket", sockName)
 	if err != nil {
 		log.Fatal("Dial:", err)
 	}
-	req := fmt.Sprintf("request %s", topic)
+	req := fmt.Sprintf("request %s", ctxPtr.topic)
 	s.Write([]byte(req))
 	buf := make([]byte, 65536)
 	for {
@@ -72,9 +88,9 @@ func Run(ps *pubsub.PubSub) {
 		msg := reply[0]
 		t := reply[1]
 
-		if t != topic {
+		if t != ctxPtr.topic {
 			log.Errorf("Mismatched topic %s vs. %s for %s\n",
-				t, topic, msg)
+				t, ctxPtr.topic, msg)
 			continue
 		}
 

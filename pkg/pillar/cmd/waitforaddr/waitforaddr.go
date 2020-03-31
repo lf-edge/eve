@@ -8,13 +8,11 @@ package waitforaddr
 
 import (
 	"flag"
-	"fmt"
-	"os"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -27,9 +25,6 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Context for handleDNSModify
 type DNSContext struct {
 	deviceNetworkStatus    types.DeviceNetworkStatus
@@ -38,37 +33,43 @@ type DNSContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 }
 
-var debug = false
-var debugOverride bool // From command line arg
+type waitforaddrContext struct {
+	agentBaseContext agentbase.Context
+	// CLI Args
+	noPid bool
+}
+
+var ctxPtr *waitforaddrContext
+
+func newWfaContext() *waitforaddrContext {
+	ctx := waitforaddrContext{}
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	ctx.agentBaseContext.ProcessAgentCLIFlagsFnPtr = processAgentSpecificCLIFlags
+	ctx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+
+	return &ctx
+}
+
+func (ctxPtr *waitforaddrContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.BoolVar(&ctxPtr.noPid, "p", false, "Do not check for running agent")
+}
+
+func processAgentSpecificCLIFlags() {
+	ctxPtr.agentBaseContext.CheckAndCreatePidFile = !ctxPtr.noPid
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	noPidPtr := flag.Bool("p", false, "Do not check for running agent")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	noPidFlag := *noPidPtr
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
-	if !noPidFlag {
-		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-			log.Fatal(err)
-		}
-	}
-	log.Infof("Starting %s\n", agentName)
+	ctxPtr = newWfaContext()
 
-	// Run a periodic timer so we always update StillRunning
+	agentbase.Run(ctxPtr)
+
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	DNSctx := DNSContext{}
 

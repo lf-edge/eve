@@ -20,7 +20,7 @@ func lookupDomainName(ctxArg interface{}, domainName string) string {
 }
 
 // Map from domainName to the UUID
-var domainUuid map[string]string = make(map[string]string)
+var domainUuid = make(map[string]string)
 
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {

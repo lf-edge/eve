@@ -11,7 +11,7 @@ package nim
 
 import (
 	"flag"
-	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"os"
 	"reflect"
 	"sort"
@@ -21,7 +21,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -38,6 +37,7 @@ const (
 )
 
 type nimContext struct {
+	agentBaseContext agentbase.Context
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig   pubsub.Subscription
 	GCInitialized     bool // Received initial GlobalConfig
@@ -51,60 +51,44 @@ type nimContext struct {
 	networkFallbackAnyEth types.TriState
 	fallbackPortMap       map[string]bool
 	filteredFallback      map[string]bool
-
-	// CLI args
-	debug         bool
-	debugOverride bool // From command line arg
-	useStdout     bool
-	version       bool
+	// CLI Agrs
+	useStdout bool
 }
 
-// Set from Makefile
-var Version = "No version specified"
+var nimCtxPtr *nimContext
 
-func (ctx *nimContext) processArgs() {
-	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
-	debugPtr := flag.Bool("d", false, "Set Debug level")
-	stdoutPtr := flag.Bool("s", false, "Use stdout")
-	flag.Parse()
+func newNimContext() *nimContext {
+	ctx := nimContext{}
+	ctx.fallbackPortMap = make(map[string]bool)
+	ctx.filteredFallback = make(map[string]bool)
 
-	ctx.debug = *debugPtr
-	ctx.debugOverride = ctx.debug
-	ctx.useStdout = *stdoutPtr
-	if ctx.debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	ctx.version = *versionPtr
+	ctx.AssignableAdapters = &types.AssignableAdapters{}
+	ctx.sshAccess = true // Kernel default - no iptables filters
+	ctx.globalConfig = types.DefaultConfigItemValueMap()
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	ctx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+
+	return &ctx
+}
+
+func (ctxPtr *nimContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.BoolVar(&nimCtxPtr.useStdout, "s", false, "Use stdout")
 }
 
 // Run - Main function - invoked from zedbox.go
 func Run(ps *pubsub.PubSub) {
-	nimCtx := nimContext{
-		fallbackPortMap:  make(map[string]bool),
-		filteredFallback: make(map[string]bool),
-	}
-	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
-	nimCtx.sshAccess = true // Kernel default - no iptables filters
-	nimCtx.globalConfig = types.DefaultConfigItemValueMap()
+	nimCtxPtr = newNimContext()
 
-	nimCtx.processArgs()
-	if nimCtx.version {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-
-	agentlog.Init(agentName)
-
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+	agentbase.Run(nimCtxPtr)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
@@ -145,7 +129,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &nimCtx,
+		Ctx:           &nimCtxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -156,15 +140,15 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nimCtx.subGlobalConfig = subGlobalConfig
+	nimCtxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	nimCtx.DevicePortConfig = &types.DevicePortConfig{}
-	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
-	nimCtx.PubDevicePortConfig = pubDevicePortConfig
-	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
-	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
-	dnc := &nimCtx.DeviceNetworkContext
+	nimCtxPtr.DevicePortConfig = &types.DevicePortConfig{}
+	nimCtxPtr.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
+	nimCtxPtr.PubDevicePortConfig = pubDevicePortConfig
+	nimCtxPtr.PubDevicePortConfigList = pubDevicePortConfigList
+	nimCtxPtr.PubDeviceNetworkStatus = pubDeviceNetworkStatus
+	dnc := &nimCtxPtr.DeviceNetworkContext
 	devicenetwork.IngestPortConfigList(dnc)
 
 	// We get DevicePortConfig from three sources in this priority:
@@ -175,7 +159,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "zedagent",
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
-		Ctx:           &nimCtx.DeviceNetworkContext,
+		Ctx:           &nimCtxPtr.DeviceNetworkContext,
 		CreateHandler: devicenetwork.HandleDPCModify,
 		ModifyHandler: devicenetwork.HandleDPCModify,
 		DeleteHandler: devicenetwork.HandleDPCDelete,
@@ -185,14 +169,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
+	nimCtxPtr.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
 
 	subDevicePortConfigO, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
-		Ctx:           &nimCtx.DeviceNetworkContext,
+		Ctx:           &nimCtxPtr.DeviceNetworkContext,
 		CreateHandler: devicenetwork.HandleDPCModify,
 		ModifyHandler: devicenetwork.HandleDPCModify,
 		DeleteHandler: devicenetwork.HandleDPCDelete,
@@ -202,14 +186,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
+	nimCtxPtr.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
 
 	subDevicePortConfigS, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     agentName,
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
-		Ctx:           &nimCtx.DeviceNetworkContext,
+		Ctx:           &nimCtxPtr.DeviceNetworkContext,
 		CreateHandler: devicenetwork.HandleDPCModify,
 		ModifyHandler: devicenetwork.HandleDPCModify,
 		DeleteHandler: devicenetwork.HandleDPCDelete,
@@ -219,14 +203,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
+	nimCtxPtr.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
-		Ctx:           &nimCtx.DeviceNetworkContext,
+		Ctx:           &nimCtxPtr.DeviceNetworkContext,
 		CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
 		ModifyHandler: devicenetwork.HandleAssignableAdaptersModify,
 		DeleteHandler: devicenetwork.HandleAssignableAdaptersDelete,
@@ -236,14 +220,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nimCtx.SubAssignableAdapters = subAssignableAdapters
+	nimCtxPtr.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
 	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		TopicImpl:     types.NetworkInstanceStatus{},
 		Activate:      false,
-		Ctx:           &nimCtx,
+		Ctx:           &nimCtxPtr,
 		CreateHandler: handleNetworkInstanceModify,
 		ModifyHandler: handleNetworkInstanceModify,
 		DeleteHandler: handleNetworkInstanceDelete,
@@ -253,16 +237,16 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
+	nimCtxPtr.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
-	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
+	devicenetwork.DoDNSUpdate(&nimCtxPtr.DeviceNetworkContext)
 
 	// Apply any changes from the port config to date.
-	publishDeviceNetworkStatus(&nimCtx)
+	publishDeviceNetworkStatus(nimCtxPtr)
 
 	// Wait for initial GlobalConfig
-	for !nimCtx.GCInitialized {
+	for !nimCtxPtr.GCInitialized {
 		log.Infof("Waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -273,17 +257,17 @@ func Run(ps *pubsub.PubSub) {
 
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, plus periodically based on this timer
-	geoRedoTime := time.Duration(nimCtx.globalConfig.GlobalValueInt(types.NetworkGeoRedoTime)) * time.Second
+	geoRedoTime := time.Duration(nimCtxPtr.globalConfig.GlobalValueInt(types.NetworkGeoRedoTime)) * time.Second
 
 	// Timer for retries after failure etc. Should be less than geoRedoTime
-	geoInterval := time.Duration(nimCtx.globalConfig.GlobalValueInt(types.NetworkGeoRetryTime)) * time.Second
+	geoInterval := time.Duration(nimCtxPtr.globalConfig.GlobalValueInt(types.NetworkGeoRetryTime)) * time.Second
 	geoMax := float64(geoInterval)
 	geoMin := geoMax * 0.3
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
 	// Time we wait for DHCP to get an address before giving up
-	dnc.DPCTestDuration = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestDuration)
+	dnc.DPCTestDuration = nimCtxPtr.globalConfig.GlobalValueInt(types.NetworkTestDuration)
 
 	// Timer for checking/verifying pending device network status
 	// We stop this timer before using in the select loop below, because
@@ -296,12 +280,12 @@ func Run(ps *pubsub.PubSub) {
 	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
-	dnc.NetworkTestInterval = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestInterval)
+	dnc.NetworkTestInterval = nimCtxPtr.globalConfig.GlobalValueInt(types.NetworkTestInterval)
 	dnc.NetworkTestTimer = time.NewTimer(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
-	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestBetterInterval)
+	dnc.NetworkTestBetterInterval = nimCtxPtr.globalConfig.GlobalValueInt(types.NetworkTestBetterInterval)
 	if dnc.NetworkTestBetterInterval == 0 {
 		log.Warnln("NOT running TestBetterTimer")
 		// Dummy which is stopped needed for select loop
@@ -324,14 +308,14 @@ func Run(ps *pubsub.PubSub) {
 	for idx := 0; idx < 16; idx++ {
 		devicenetwork.IfindexToName(idx)
 	}
-	handleLinkChange(&nimCtx)
-	updateFilteredFallback(&nimCtx)
+	handleLinkChange(nimCtxPtr)
+	updateFilteredFallback(nimCtxPtr)
 
 	// Kick off intial configuration, which could be remembered from last boot
 	// Prunes any useless entries
 	devicenetwork.IngestPortConfigList(dnc)
 
-	for nimCtx.networkFallbackAnyEth == types.TS_ENABLED &&
+	for nimCtxPtr.networkFallbackAnyEth == types.TS_ENABLED &&
 		len(dnc.DevicePortConfigList.PortConfigList) == 0 {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -357,7 +341,7 @@ func Run(ps *pubsub.PubSub) {
 	// This wait can take a very long time since we first need to get
 	// some usable IP addresses, or have waitforaddr time out, before we
 	// even start the other agents. Punch StillRunning
-	for !nimCtx.AssignableAdapters.Initialized {
+	for !nimCtxPtr.AssignableAdapters.Initialized {
 		log.Infof("Waiting for AA to initialize")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -371,7 +355,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
-			updateFilteredFallback(&nimCtx)
+			updateFilteredFallback(nimCtxPtr)
 
 		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
@@ -383,9 +367,9 @@ func Run(ps *pubsub.PubSub) {
 				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
+				ch, ifindex := devicenetwork.AddrChange(nimCtxPtr.DeviceNetworkContext, change)
 				if ch {
-					handleInterfaceChange(&nimCtx, ifindex,
+					handleInterfaceChange(nimCtxPtr, ifindex,
 						"AddrChange", true)
 				}
 			}
@@ -401,8 +385,8 @@ func Run(ps *pubsub.PubSub) {
 			} else {
 				ch, ifindex := devicenetwork.LinkChange(change)
 				if ch {
-					handleLinkChange(&nimCtx)
-					handleInterfaceChange(&nimCtx, ifindex,
+					handleLinkChange(nimCtxPtr)
+					handleInterfaceChange(nimCtxPtr, ifindex,
 						"LinkChange", true)
 				}
 			}
@@ -415,9 +399,9 @@ func Run(ps *pubsub.PubSub) {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
+				ch, ifindex := devicenetwork.RouteChange(nimCtxPtr.DeviceNetworkContext, change)
 				if ch {
-					handleInterfaceChange(&nimCtx, ifindex,
+					handleInterfaceChange(nimCtxPtr, ifindex,
 						"RouteChange", false)
 				}
 			}
@@ -428,9 +412,9 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
-				geoRedoTime, nimCtx.DeviceNetworkStatus)
+				geoRedoTime, nimCtxPtr.DeviceNetworkStatus)
 			if change {
-				publishDeviceNetworkStatus(&nimCtx)
+				publishDeviceNetworkStatus(nimCtxPtr)
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "geoTimer", start,
 				warningTime, errorTime)
@@ -450,7 +434,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Infof("Network test timer stopped?")
-			} else if nimCtx.DevicePortConfigList.CurrentIndex == -1 {
+			} else if nimCtxPtr.DevicePortConfigList.CurrentIndex == -1 {
 				log.Debugf("Starting looking for working Device connectivity to cloud")
 				devicenetwork.RestartVerify(dnc,
 					"Looking for working")
@@ -464,7 +448,7 @@ func Run(ps *pubsub.PubSub) {
 						time.Since(start))
 					// Look for DNS etc update
 					devicenetwork.CheckDNSUpdate(
-						&nimCtx.DeviceNetworkContext)
+						&nimCtxPtr.DeviceNetworkContext)
 				} else {
 					log.Infof("Device connectivity to cloud failed. Took %v",
 						time.Since(start))
@@ -512,7 +496,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
-			updateFilteredFallback(&nimCtx)
+			updateFilteredFallback(nimCtxPtr)
 
 		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
@@ -524,9 +508,9 @@ func Run(ps *pubsub.PubSub) {
 				addrChanges = devicenetwork.AddrChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
+				ch, ifindex := devicenetwork.AddrChange(nimCtxPtr.DeviceNetworkContext, change)
 				if ch {
-					handleInterfaceChange(&nimCtx, ifindex,
+					handleInterfaceChange(nimCtxPtr, ifindex,
 						"AddrChange", true)
 				}
 			}
@@ -542,8 +526,8 @@ func Run(ps *pubsub.PubSub) {
 			} else {
 				ch, ifindex := devicenetwork.LinkChange(change)
 				if ch {
-					handleLinkChange(&nimCtx)
-					handleInterfaceChange(&nimCtx, ifindex,
+					handleLinkChange(nimCtxPtr)
+					handleInterfaceChange(nimCtxPtr, ifindex,
 						"LinkChange", true)
 				}
 			}
@@ -556,9 +540,9 @@ func Run(ps *pubsub.PubSub) {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
+				ch, ifindex := devicenetwork.RouteChange(nimCtxPtr.DeviceNetworkContext, change)
 				if ch {
-					handleInterfaceChange(&nimCtx, ifindex,
+					handleInterfaceChange(nimCtxPtr, ifindex,
 						"RouteChange", false)
 				}
 			}
@@ -569,9 +553,9 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
-				geoRedoTime, nimCtx.DeviceNetworkStatus)
+				geoRedoTime, nimCtxPtr.DeviceNetworkStatus)
 			if change {
-				publishDeviceNetworkStatus(&nimCtx)
+				publishDeviceNetworkStatus(nimCtxPtr)
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "geoTimer", start,
 				warningTime, errorTime)
@@ -784,8 +768,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		ctx.debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	first := !ctx.GCInitialized
 	if gcp != nil {
 		gcpSSHAccess := gcp.GlobalValueString(types.SSHAuthorizedKeys) != ""
@@ -844,8 +828,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		ctx.debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

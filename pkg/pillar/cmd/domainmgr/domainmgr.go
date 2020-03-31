@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -51,9 +52,6 @@ const (
 // Really a constant
 var nilUUID = uuid.UUID{}
 
-// Set from Makefile
-var Version = "No version specified"
-
 func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
 	defer ctx.dnsLock.Unlock()
@@ -64,6 +62,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 type domainContext struct {
 	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
+	agentBaseContext       agentbase.Context
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
@@ -82,39 +81,49 @@ type domainContext struct {
 	GCInitialized          bool
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
+	// CLI Args
+	hyper    hypervisor.Hypervisor // Current hypervisor
+	hyperStr string
 }
 
-func (ctx *domainContext) publishAssignableAdapters() {
-	log.Infof("Publishing %v", *ctx.assignableAdapters)
-	ctx.pubAssignableAdapters.Publish("global", *ctx.assignableAdapters)
+func (ctxPtr *domainContext) publishAssignableAdapters() {
+	log.Infof("Publishing %v", *ctxPtr.assignableAdapters)
+	ctxPtr.pubAssignableAdapters.Publish("global", *ctxPtr.assignableAdapters)
 }
 
-var debug = false
-var debugOverride bool          // From command line arg
-var hyper hypervisor.Hypervisor // Current hypervisor
+func (ctxPtr *domainContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+func newDomainContext() *domainContext {
+	domainCtx := domainContext{
+		usbAccess:           true,
+		domainBootRetryTime: 600,
+	}
+
+	domainCtx.agentBaseContext = agentbase.DefaultContext(agentName)
+	domainCtx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+
+	// Allow only one concurrent domain create
+	domainCtx.createSema = sema.Create(1)
+	domainCtx.createSema.P(1)
+
+	return &domainCtx
+}
+func addAgentSpecificCLIFlags() {
+	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
+	flag.StringVar(&domainCtx.hyperStr, "h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
+}
+
+var domainCtx *domainContext
 
 func Run(ps *pubsub.PubSub) {
 	var err error
 	handlersInit()
-	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	hypervisorPtr := flag.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
-
-	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)
+	domainCtx = newDomainContext()
+	aa := &types.AssignableAdapters{}
+	domainCtx.assignableAdapters = aa
+	agentbase.Run(domainCtx)
+	domainCtx.hyper, err = hypervisor.GetHypervisor(domainCtx.hyperStr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -122,7 +131,7 @@ func Run(ps *pubsub.PubSub) {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s with %s hypervisor backend\n", agentName, hyper.Name())
+	log.Infof("Starting %s with %s hypervisor backend\n", agentName, domainCtx.hyper.Name())
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -169,16 +178,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// These settings can be overridden by GlobalConfig
-	domainCtx := domainContext{
-		usbAccess:           true,
-		domainBootRetryTime: 600,
-	}
-	aa := types.AssignableAdapters{}
-	domainCtx.assignableAdapters = &aa
-
-	// Allow only one concurrent domain create
-	domainCtx.createSema = sema.Create(1)
-	domainCtx.createSema.P(1)
 
 	pubDomainStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -282,7 +281,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	go metricsTimerTask(&domainCtx, hyper)
+	go metricsTimerTask(domainCtx, domainCtx.hyper)
 
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.
@@ -582,7 +581,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		configActivate = true
 	}
 
-	domainID, err := hyper.LookupByName(status.DomainName, status.DomainId)
+	domainID, err := domainCtx.hyper.LookupByName(status.DomainName, status.DomainId)
 	if err != nil {
 		if status.Activated && configActivate {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
@@ -624,8 +623,8 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		}
 		// check if qemu processes has crashed
 		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
-		if configActivate && status.Activated && hasQemu && !hyper.IsDomainPotentiallyShuttingDown(status.DomainName) &&
-			!hyper.IsDeviceModelAlive(status.DomainId) {
+		if configActivate && status.Activated && hasQemu && !domainCtx.hyper.IsDomainPotentiallyShuttingDown(status.DomainName) &&
+			!domainCtx.hyper.IsDeviceModelAlive(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -634,7 +633,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
-			if err := hyper.Delete(status.DomainName, status.DomainId); err != nil {
+			if err := domainCtx.hyper.Delete(status.DomainName, status.DomainId); err != nil {
 				log.Errorf("failed to delete domain: %s (%v)\n", status.DomainName, err)
 			}
 		}
@@ -933,14 +932,14 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 		}
 	}
 	for i, long := range assignments {
-		err := hyper.PCIReserve(long)
+		err := domainCtx.hyper.PCIReserve(long)
 		if err != nil {
 			// Undo what we assigned
 			for j, long := range assignments {
 				if j >= i {
 					break
 				}
-				hyper.PCIRelease(long)
+				domainCtx.hyper.PCIRelease(long)
 			}
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
@@ -1017,7 +1016,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := hyper.CreateDomConfig(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
+	if err := domainCtx.hyper.CreateDomConfig(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v\n", config)
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -1066,14 +1065,14 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	publishDomainStatus(ctx, status)
 
 	// Disable offloads for all vifs
-	err := hyper.Tune(status.DomainName, domainID,
+	err := domainCtx.hyper.Tune(status.DomainName, domainID,
 		len(status.VifList))
 	if err != nil {
 		// XXX continuing even if we get a failure?
 		log.Errorf("Tuning domain %s failed: %s\n",
 			status.DomainName, err)
 	}
-	err = hyper.Start(status.DomainName, domainID)
+	err = domainCtx.hyper.Start(status.DomainName, domainID)
 	if err != nil {
 		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s\n", status.DomainName, err)
@@ -1087,9 +1086,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 
 	status.State = types.RUNNING
 	// XXX dumping status to log
-	hyper.Info(status.DomainName, status.DomainId)
+	domainCtx.hyper.Info(status.DomainName, status.DomainId)
 
-	domainID, err = hyper.LookupByName(status.DomainName, status.DomainId)
+	domainID, err = domainCtx.hyper.LookupByName(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1107,7 +1106,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
-	domainID, err := hyper.LookupByName(status.DomainName, status.DomainId)
+	domainID, err := domainCtx.hyper.LookupByName(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1199,7 +1198,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// container to exit state and the domain is destroyed
 	// Issue Domain Destroy irrespective in container case
 	if status.IsContainer || status.DomainId != 0 {
-		if err := hyper.Delete(status.DomainName, status.DomainId); err != nil {
+		if err := domainCtx.hyper.Delete(status.DomainName, status.DomainId); err != nil {
 			log.Errorf("Failed to delete domain %s (%v)\n", status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
@@ -1278,7 +1277,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 		checkIoBundleAll(ctx)
 	}
 	for _, long := range assignments {
-		err := hyper.PCIRelease(long)
+		err := domainCtx.hyper.PCIRelease(long)
 		if err != nil && !ignoreErrors {
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
@@ -1649,7 +1648,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			time.Sleep(delay)
 			waited += delay
 		}
-		if err := hyper.Info(status.DomainName, status.DomainId); err != nil {
+		if err := domainCtx.hyper.Info(status.DomainName, status.DomainId); err != nil {
 			log.Infof("waitForDomainGone(%v) for %s: domain is gone\n",
 				status.UUIDandVersion, status.DisplayName)
 			gone = true
@@ -1676,7 +1675,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 
 	// XXX dumping status to log
-	hyper.Info(status.DomainName, status.DomainId)
+	domainCtx.hyper.Info(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
 	publishDomainStatus(ctx, status)
@@ -1733,7 +1732,7 @@ func DomainCreate(status types.DomainStatus) (int, error) {
 
 	// Now create a domain
 	log.Infof("Creating domain with the config - %s\n", filename)
-	domainID, err = hyper.Create(status.DomainName, filename, status.VirtualizationMode)
+	domainID, err = domainCtx.hyper.Create(status.DomainName, filename, status.VirtualizationMode)
 
 	return domainID, err
 }
@@ -1746,7 +1745,7 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 
 	// Stop the domain
 	log.Infof("Stopping domain - %s\n", status.DomainName)
-	err = hyper.Stop(status.DomainName, status.DomainId, force)
+	err = domainCtx.hyper.Stop(status.DomainName, status.DomainId, force)
 
 	return err
 }
@@ -1799,8 +1798,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	domainCtx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		domainCtx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
 			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
@@ -1829,8 +1828,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	domainCtx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		domainCtx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -2130,7 +2129,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			if ib.PciLong != "" {
 				log.Infof("Removing %s (%s) from pciback\n",
 					ib.Phylabel, ib.PciLong)
-				err := hyper.PCIRelease(ib.PciLong)
+				err := domainCtx.hyper.PCIRelease(ib.PciLong)
 				if err != nil {
 					log.Errorf("checkAndSetIoMember(%d %s %s) PCIRelease %s failed %v\n",
 						ib.Type, ib.Phylabel, ib.AssignmentGroup, ib.PciLong, err)
@@ -2210,7 +2209,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 		} else if ib.PciLong != "" {
 			log.Infof("Assigning %s (%s) to pciback\n",
 				ib.Phylabel, ib.PciLong)
-			err := hyper.PCIReserve(ib.PciLong)
+			err := domainCtx.hyper.PCIReserve(ib.PciLong)
 			if err != nil {
 				return err
 			}
@@ -2319,7 +2318,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 		}
 	}
 	for _, long := range assignments {
-		err := hyper.PCIReserve(long)
+		err := domainCtx.hyper.PCIReserve(long)
 		if err != nil {
 			log.Errorf("maybeAssignableAdd: add failed: %s", err)
 		}
@@ -2354,7 +2353,7 @@ func maybeAssignableRem(ctx *domainContext) {
 		}
 	}
 	for _, long := range assignments {
-		err := hyper.PCIRelease(long)
+		err := domainCtx.hyper.PCIRelease(long)
 		if err != nil {
 			log.Errorf("maybeAssignableRem remove failed: %s\n", err)
 		}
@@ -2379,7 +2378,7 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 		log.Infof("handleIBDelete: Assigning %s (%s) back\n",
 			ib.Phylabel, ib.PciLong)
 		if ib.PciLong != "" {
-			err := hyper.PCIRelease(ib.PciLong)
+			err := domainCtx.hyper.PCIRelease(ib.PciLong)
 			if err != nil {
 				log.Errorf("handleIBDelete(%d %s %s) PCIRelease %s failed %v\n",
 					ib.Type, ib.Phylabel, ib.AssignmentGroup, ib.PciLong, err)

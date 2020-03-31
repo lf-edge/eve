@@ -8,15 +8,14 @@
 package downloader
 
 import (
-	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"os"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
@@ -32,43 +31,35 @@ const (
 	warningTime = 40 * time.Second
 )
 
+func newDownloaderContext() *downloaderContext {
+	ctx := downloaderContext{}
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	ctx.agentBaseContext.NeedWatchdog = false
+
+	return &ctx
+}
+
 // Go doesn't like this as a constant
 var (
-	debug              = false
-	debugOverride      bool                               // From command line arg
 	downloadGCTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
 	downloadRetryTime  = time.Duration(600) * time.Second // Unless from GlobalConfig
 	downloaderObjTypes = []string{types.AppImgObj, types.BaseOsObj, types.CertObj}
-	Version            = "No version specified" // Set from Makefile
-	nilUUID            uuid.UUID                // should be a const, just the default nil value of uuid.UUID
+	nilUUID            uuid.UUID // should be a const, just the default nil value of uuid.UUID
 	dHandler           = makeDownloadHandler()
+	ctxPtr             *downloaderContext
 )
 
+func (ctxPtr *downloaderContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
+	ctxPtr = newDownloaderContext()
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+	agentbase.Run(ctxPtr)
 
-	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -87,20 +78,19 @@ func Run(ps *pubsub.PubSub) {
 		time.Duration(max))
 
 	// Any state needed by handler functions
-	ctx := downloaderContext{}
 
 	// set up any state needed by handler functions
-	err = ctx.registerHandlers(ps)
+	err = ctxPtr.registerHandlers(ps)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
+	for !ctxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-ctx.subGlobalConfig.MsgChan():
-			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctxPtr.subGlobalConfig.MsgChan():
+			ctxPtr.subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -110,19 +100,19 @@ func Run(ps *pubsub.PubSub) {
 	// First wait to have some management ports with addresses
 	// Looking at any management ports since we can do baseOS download over all
 	// Also ensure GlobalDownloadConfig has been read
-	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
-		ctx.globalConfig.MaxSpace == 0 {
+	for types.CountLocalAddrAnyNoLinkLocal(ctxPtr.deviceNetworkStatus) == 0 ||
+		ctxPtr.globalConfig.MaxSpace == 0 {
 		log.Infof("Waiting for management port addresses or Global Config\n")
 
 		select {
-		case change := <-ctx.subGlobalConfig.MsgChan():
-			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctxPtr.subGlobalConfig.MsgChan():
+			ctxPtr.subGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
-			ctx.subDeviceNetworkStatus.ProcessChange(change)
+		case change := <-ctxPtr.subDeviceNetworkStatus.MsgChan():
+			ctxPtr.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-ctx.subGlobalDownloadConfig.MsgChan():
-			ctx.subGlobalDownloadConfig.ProcessChange(change)
+		case change := <-ctxPtr.subGlobalDownloadConfig.MsgChan():
+			ctxPtr.subGlobalDownloadConfig.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
@@ -131,9 +121,9 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d management ports addresses to use\n",
-		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
+		types.CountLocalAddrAnyNoLinkLocal(ctxPtr.deviceNetworkStatus))
 
-	ctx.dCtx = downloaderInit(&ctx)
+	ctxPtr.dCtx = downloaderInit(ctxPtr)
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -141,29 +131,28 @@ func Run(ps *pubsub.PubSub) {
 
 	for {
 		select {
-		case change := <-ctx.subGlobalConfig.MsgChan():
-			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctxPtr.subGlobalConfig.MsgChan():
+			ctxPtr.subGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
-			ctx.subDeviceNetworkStatus.ProcessChange(change)
+		case change := <-ctxPtr.subDeviceNetworkStatus.MsgChan():
+			ctxPtr.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-ctx.subCertObjConfig.MsgChan():
-			ctx.subCertObjConfig.ProcessChange(change)
+		case change := <-ctxPtr.subCertObjConfig.MsgChan():
+			ctxPtr.subCertObjConfig.ProcessChange(change)
 
-		case change := <-ctx.subAppImgConfig.MsgChan():
-			ctx.subAppImgConfig.ProcessChange(change)
+		case change := <-ctxPtr.subAppImgConfig.MsgChan():
+			ctxPtr.subAppImgConfig.ProcessChange(change)
 
-		case change := <-ctx.subAppImgResolveConfig.MsgChan():
-			ctx.subAppImgResolveConfig.ProcessChange(change)
+		case change := <-ctxPtr.subAppImgResolveConfig.MsgChan():
+			ctxPtr.subAppImgResolveConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsConfig.MsgChan():
-			ctx.subBaseOsConfig.ProcessChange(change)
+		case change := <-ctxPtr.subBaseOsConfig.MsgChan():
+			ctxPtr.subBaseOsConfig.ProcessChange(change)
+		case change := <-ctxPtr.subDatastoreConfig.MsgChan():
+			ctxPtr.subDatastoreConfig.ProcessChange(change)
 
-		case change := <-ctx.subDatastoreConfig.MsgChan():
-			ctx.subDatastoreConfig.ProcessChange(change)
-
-		case change := <-ctx.subGlobalDownloadConfig.MsgChan():
-			ctx.subGlobalDownloadConfig.ProcessChange(change)
+		case change := <-ctxPtr.subGlobalDownloadConfig.MsgChan():
+			ctxPtr.subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
 			start := time.Now()
@@ -176,7 +165,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-gc.C:
 			start := time.Now()
-			gcObjects(&ctx)
+			gcObjects(ctxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 

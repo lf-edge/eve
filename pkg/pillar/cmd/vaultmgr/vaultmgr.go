@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -25,9 +26,10 @@ import (
 )
 
 type vaultMgrContext struct {
-	pubVaultStatus  pubsub.Publication
-	subGlobalConfig pubsub.Subscription
-	GCInitialized   bool // GlobalConfig initialized
+	agentBaseContext agentbase.Context
+	pubVaultStatus   pubsub.Publication
+	subGlobalConfig  pubsub.Subscription
+	GCInitialized    bool // GlobalConfig initialized
 }
 
 const (
@@ -59,8 +61,9 @@ var (
 	statusParams      = []string{"status", mountPoint}
 	vaultStatusParams = []string{"status"}
 	setupParams       = []string{"setup", "--quiet"}
-	debug             = false
-	debugOverride     bool // From command line arg
+	ctxPtr            *vaultMgrContext
+	//Error values
+	errInvalKeyLen = errors.New("Unexpected key length")
 )
 
 func getEncryptParams(vaultPath string) []string {
@@ -121,11 +124,6 @@ func changeProtector(vaultPath string) error {
 	return err
 }
 
-//Error values
-var (
-	ErrInvalKeyLen = errors.New("Unexpected key length")
-)
-
 func execCmd(command string, args ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 
@@ -167,7 +165,7 @@ func retrieveCloudKey() ([]byte, error) {
 func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
 	if len(key1) != vaultKeyLen ||
 		len(key2) != vaultKeyLen {
-		return nil, ErrInvalKeyLen
+		return nil, errInvalKeyLen
 	}
 
 	//merge first half of key1 with second half of key2
@@ -436,23 +434,28 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 	}
 }
 
+func newVaultMgrContext() *vaultMgrContext {
+	ctx := vaultMgrContext{}
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+	ctx.agentBaseContext.NeedWatchdog = false
+	ctx.agentBaseContext.CheckAndCreatePidFile = false
+
+	return &ctx
+}
+
+func (ctxPtr *vaultMgrContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
 //Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub) {
 
+	ctxPtr = newVaultMgrContext()
+
+	agentbase.Run(ctxPtr)
+
 	var err error
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-
-	// Sending json log format to stdout
-	agentlog.Init(agentName)
-
 	if len(flag.Args()) == 0 {
 		log.Fatal("Insufficient arguments")
 	}
@@ -479,14 +482,14 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
-		ctx := vaultMgrContext{}
+		ctxPtr = &vaultMgrContext{}
 
 		// Look for global config such as log levels
 		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "",
 			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
-			Ctx:           &ctx,
+			Ctx:           &ctxPtr,
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
@@ -496,11 +499,11 @@ func Run(ps *pubsub.PubSub) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		ctx.subGlobalConfig = subGlobalConfig
+		ctxPtr.subGlobalConfig = subGlobalConfig
 		subGlobalConfig.Activate()
 
 		// Pick up debug aka log level before we start real work
-		for !ctx.GCInitialized {
+		for !ctxPtr.GCInitialized {
 			log.Infof("waiting for GCInitialized")
 			select {
 			case change := <-subGlobalConfig.MsgChan():
@@ -512,12 +515,12 @@ func Run(ps *pubsub.PubSub) {
 		log.Infof("processed GlobalConfig")
 
 		// initialize publishing handles
-		initializeSelfPublishHandles(ps, &ctx)
+		initializeSelfPublishHandles(ps, ctxPtr)
 
 		fscryptStatus, fscryptErr := fetchFscryptStatus()
-		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault,
+		publishVaultStatus(ctxPtr, defaultImgVaultName, defaultImgVault,
 			fscryptStatus, fscryptErr)
-		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault,
+		publishVaultStatus(ctxPtr, defaultCfgVaultName, defaultCfgVault,
 			fscryptStatus, fscryptErr)
 		for {
 			select {
@@ -541,8 +544,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -558,7 +561,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

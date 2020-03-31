@@ -24,8 +24,8 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
-	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -34,10 +34,8 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -51,20 +49,15 @@ const (
 	preserveFilename = types.TmpDirname + "/preserve"
 )
 
-// Really a constant
-var nilUUID uuid.UUID
-
 // Go doesn't like this as a constant
 var (
 	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
 	vHandler         = makeVerifyHandler()
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Any state used by handlers goes here
 type verifierContext struct {
+	agentBaseContext       agentbase.Context
 	subAppImgConfig        pubsub.Subscription
 	pubAppImgStatus        pubsub.Publication
 	subAppImgPersistConfig pubsub.Subscription
@@ -80,44 +73,35 @@ type verifierContext struct {
 	GCInitialized          bool
 }
 
-var debug = false
-var debugOverride bool                                // From command line arg
-var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var (
+	downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+	ctxPtr         *verifierContext
+)
+
+func newVerifierContext() *verifierContext {
+	ctx := verifierContext{}
+
+	aa := types.AssignableAdapters{}
+	ctx.assignableAdapters = &aa
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	return &ctx
+}
+
+func (ctxPtr *verifierContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	agentlog.Init(agentName)
+	ctxPtr = newVerifierContext()
 
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+	agentbase.Run(ctxPtr)
 
-	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// create the directories
 	initializeDirs()
-
-	// Any state needed by handler functions
-	aa := types.AssignableAdapters{}
-	ctx := verifierContext{
-		assignableAdapters: &aa,
-	}
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := ps.NewPublication(
@@ -129,7 +113,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppImgStatus = pubAppImgStatus
+	ctxPtr.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
 	pubBaseOsStatus, err := ps.NewPublication(
@@ -141,7 +125,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubBaseOsStatus = pubBaseOsStatus
+	ctxPtr.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
 	// Set up our publications before the subscriptions so ctx is set
@@ -154,7 +138,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppImgPersistStatus = pubAppImgPersistStatus
+	ctxPtr.pubAppImgPersistStatus = pubAppImgPersistStatus
 
 	pubBaseOsPersistStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -165,14 +149,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
+	ctxPtr.pubBaseOsPersistStatus = pubBaseOsPersistStatus
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -182,7 +166,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subGlobalConfig = subGlobalConfig
+	ctxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -190,7 +174,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VerifyImageConfig{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleAppImgCreate,
 		ModifyHandler: handleAppImgModify,
 		DeleteHandler: handleAppImgDelete,
@@ -200,7 +184,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAppImgConfig = subAppImgConfig
+	ctxPtr.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -208,7 +192,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentScope:    types.BaseOsObj,
 		TopicImpl:     types.VerifyImageConfig{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleBaseOsCreate,
 		ModifyHandler: handleBaseOsModify,
 		DeleteHandler: handleBaseOsDelete,
@@ -218,7 +202,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subBaseOsConfig = subBaseOsConfig
+	ctxPtr.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
 	subAppImgPersistConfig, err := ps.NewSubscription(
@@ -227,7 +211,7 @@ func Run(ps *pubsub.PubSub) {
 			AgentScope:    types.AppImgObj,
 			TopicImpl:     types.PersistImageConfig{},
 			Activate:      false,
-			Ctx:           &ctx,
+			Ctx:           &ctxPtr,
 			CreateHandler: handleAppImgCreate,
 			ModifyHandler: handleAppImgModify,
 			DeleteHandler: handleAppImgDelete,
@@ -237,7 +221,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAppImgPersistConfig = subAppImgPersistConfig
+	ctxPtr.subAppImgPersistConfig = subAppImgPersistConfig
 	subAppImgPersistConfig.Activate()
 
 	subBaseOsPersistConfig, err := ps.NewSubscription(
@@ -246,7 +230,7 @@ func Run(ps *pubsub.PubSub) {
 			AgentScope:    types.BaseOsObj,
 			TopicImpl:     types.PersistImageConfig{},
 			Activate:      false,
-			Ctx:           &ctx,
+			Ctx:           &ctxPtr,
 			CreateHandler: handleBaseOsCreate,
 			ModifyHandler: handleBaseOsModify,
 			DeleteHandler: handleBaseOsDelete,
@@ -257,14 +241,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subBaseOsPersistConfig = subBaseOsPersistConfig
+	ctxPtr.subBaseOsPersistConfig = subBaseOsPersistConfig
 	subBaseOsPersistConfig.Activate()
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		ModifyHandler: handleAAModify,
 		DeleteHandler: handleAADelete,
 		WarningTime:   warningTime,
@@ -273,11 +257,11 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAssignableAdapters = subAssignableAdapters
+	ctxPtr.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
 	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
+	for !ctxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -290,7 +274,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Publish status for any objects that were verified before reboot
 	// The signatures will be re-checked during handleModify for App images.
-	handleInit(&ctx)
+	handleInit(ctxPtr)
 
 	// Report to volumemgr that init is done
 	pubAppImgStatus.SignalRestarted()
@@ -302,8 +286,8 @@ func Run(ps *pubsub.PubSub) {
 	// Here initialize the gc before the select handles it, but stop
 	// the timer since it waits until we are connected to the cloud and
 	// gets the AA init before declare something is stale and need deletion
-	ctx.gc = time.NewTicker(downloadGCTime / 10)
-	ctx.gc.Stop()
+	ctxPtr.gc = time.NewTicker(downloadGCTime / 10)
+	ctxPtr.gc.Stop()
 
 	for {
 		select {
@@ -325,9 +309,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case <-ctx.gc.C:
+		case <-ctxPtr.gc.C:
 			start := time.Now()
-			gcVerifiedObjects(&ctx)
+			gcVerifiedObjects(ctxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
@@ -1249,8 +1233,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
 			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
@@ -1269,8 +1253,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	dbg "runtime/debug"
@@ -24,7 +25,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -45,37 +45,39 @@ const (
 	metricsPublishInterval = 300 * time.Second
 )
 
-var (
-	devUUID             uuid.UUID
-	deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
-	debug               bool
-	debugOverride       bool // From command line arg
-	serverName          string
-	logsURL             string
-	zedcloudCtx         zedcloud.ZedCloudContext
-
-	globalDeferInprogress bool
-	eveVersion            = agentlog.EveVersion()
-	// Really a constant
-	nilUUID uuid.UUID
-)
+var logContextPtr *logmanagerContext
 
 // global stuff
 type logDirModifyHandler func(ctx interface{}, logFileName string, source string)
 type logDirDeleteHandler func(ctx interface{}, logFileName string, source string)
 
 type logmanagerContext struct {
-	subGlobalConfig pubsub.Subscription
-	globalConfig    *types.ConfigItemValueMap
-	subDomainStatus pubsub.Subscription
-	GCInitialized   bool
-	metricsPub      pubsub.Publication
-	inputMetrics    *inputLogMetrics
+	agentBaseContext agentbase.Context
+	subGlobalConfig  pubsub.Subscription
+	globalConfig     *types.ConfigItemValueMap
+	subDomainStatus  pubsub.Subscription
+	GCInitialized    bool
+	metricsPub       pubsub.Publication
+	inputMetrics     *inputLogMetrics
 	sync.RWMutex
-}
 
-// Version is set from Makefile
-var Version = "No version specified"
+	devUUID             uuid.UUID
+	deviceNetworkStatus *types.DeviceNetworkStatus
+	serverName          string
+	logsURL             string
+	zedcloudCtx         zedcloud.ZedCloudContext
+
+	globalDeferInprogress bool
+	eveVersion            string
+	// Really a constant
+	nilUUID    uuid.UUID
+	domainUUID map[string]string
+
+	// CLI Args
+	fatalFlag bool
+	hangFlag  bool
+	force     bool
+}
 
 // Based on the proto file
 type logEntry struct {
@@ -135,37 +137,36 @@ type inputLogMetrics struct {
 	totalAppLogInput    uint64
 }
 
+func newLogManagerContext() *logmanagerContext {
+	ctx := logmanagerContext{}
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+	ctx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+
+	ctx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
+	ctx.eveVersion = agentlog.EveVersion()
+
+	return &ctx
+}
+
+func (ctxPtr *logmanagerContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.BoolVar(&logContextPtr.force, "f", false, "Force")
+	flag.BoolVar(&logContextPtr.fatalFlag, "F", false, "Cause log.Fatal fault injection")
+	flag.BoolVar(&logContextPtr.hangFlag, "H", false, "Cause watchdog .touch fault injection")
+}
+
 // Run is an entry point into running logmanager
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug")
-	forcePtr := flag.Bool("f", false, "Force")
-	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
-	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	fatalFlag := *fatalPtr
-	hangFlag := *hangPtr
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	force := *forcePtr
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
+	logContextPtr = newLogManagerContext()
 
-	// Run a periodic timer so we always update StillRunning
+	agentbase.Run(logContextPtr)
+
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := ps.NewPublication(
@@ -231,7 +232,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Wait until we have at least one useable address?
 	DNSctx := DNSContext{}
-	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*logContextPtr.deviceNetworkStatus)
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
@@ -263,7 +264,7 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("processed GlobalConfig")
 
 	log.Infof("Waiting until we have some management ports with usable addresses\n")
-	for DNSctx.usableAddressCount == 0 && !force {
+	for DNSctx.usableAddressCount == 0 && !logContextPtr.force {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -275,11 +276,11 @@ func Run(ps *pubsub.PubSub) {
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
 			// Fault injection
-			if fatalFlag {
+			if logContextPtr.fatalFlag {
 				log.Fatal("Requested fault injection to cause watchdog")
 			}
 		}
-		if hangFlag {
+		if logContextPtr.hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
 			agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -310,7 +311,7 @@ func Run(ps *pubsub.PubSub) {
 		inputMetrics: &inputMetrics}
 
 	// Start sender of log events
-	go processEvents(currentPartition, loggerChan, eveVersion, &logmanagerCtx)
+	go processEvents(currentPartition, loggerChan, logContextPtr.eveVersion, &logmanagerCtx)
 
 	go parseAndSendSyslogEntries(&ctx)
 
@@ -336,7 +337,7 @@ func Run(ps *pubsub.PubSub) {
 				warningTime, errorTime)
 
 		case change := <-deferredChan:
-			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			_, err := devicenetwork.VerifyDeviceNetworkStatus(*logContextPtr.deviceNetworkStatus, 1, 15)
 			if err != nil {
 				log.Errorf("logmanager(Run): log message processing still in "+
 					"deferred state. err: %s", err)
@@ -345,8 +346,8 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			done := zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
-			globalDeferInprogress = !done
-			if globalDeferInprogress {
+			logContextPtr.globalDeferInprogress = !done
+			if logContextPtr.globalDeferInprogress {
 				log.Warnf("logmanager: globalDeferInprogress")
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
@@ -354,11 +355,11 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 			// Fault injection
-			if fatalFlag {
+			if logContextPtr.fatalFlag {
 				log.Fatal("Requested fault injection to cause watchdog")
 			}
 		}
-		if hangFlag {
+		if logContextPtr.hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
 			agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -426,19 +427,19 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if cmp.Equal(deviceNetworkStatus, status) {
+	if cmp.Equal(logContextPtr.deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
 		return
 	}
-	*deviceNetworkStatus = status
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
+	*logContextPtr.deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*logContextPtr.deviceNetworkStatus)
 	cameOnline := (ctx.usableAddressCount == 0) && (newAddrCount != 0)
 	ctx.usableAddressCount = newAddrCount
 	if cameOnline && ctx.doDeferred {
 		change := time.Now()
 		done := zedcloud.HandleDeferred(change, 1*time.Second)
-		globalDeferInprogress = !done
-		if globalDeferInprogress {
+		logContextPtr.globalDeferInprogress = !done
+		if logContextPtr.globalDeferInprogress {
 			log.Warnf("handleDNSModify: globalDeferInprogress")
 		}
 	}
@@ -460,8 +461,8 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
-	*deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
+	*logContextPtr.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*logContextPtr.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
@@ -501,12 +502,12 @@ func processEvents(image string, logChan <-chan logEntry,
 		if deferInprogress {
 			log.Warnf("processEvents(%s) deferInprogress", image)
 			time.Sleep(30 * time.Second)
-			if globalDeferInprogress {
+			if logContextPtr.globalDeferInprogress {
 				log.Warnf("processEvents(%s) globalDeferInprogress",
 					image)
 				continue
 			}
-			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			_, err := devicenetwork.VerifyDeviceNetworkStatus(*logContextPtr.deviceNetworkStatus, 1, 15)
 			if err != nil {
 				log.Warnf("processEvents:(%s) log message processing still"+
 					" in deferred state", image)
@@ -767,7 +768,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		return true
 	}
 	reportLogs.Timestamp = ptypes.TimestampNow()
-	reportLogs.DevID = *proto.String(devUUID.String())
+	reportLogs.DevID = *proto.String(logContextPtr.devUUID.String())
 	reportLogs.Image = image
 	reportLogs.EveVersion = eveVersion
 
@@ -796,12 +797,12 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
 			image)
-		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
+		zedcloud.AddDeferred(image, buf, size, logContextPtr.logsURL, logContextPtr.zedcloudCtx,
 			return400)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, logsURL,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&logContextPtr.zedcloudCtx, logContextPtr.logsURL,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
@@ -809,7 +810,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	// this one?
 	if resp != nil && resp.StatusCode == 400 {
 		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
-			size, image, logsURL)
+			size, image, logContextPtr.logsURL)
 		reportLogs.Log = []*logs.LogEntry{}
 		return true
 	}
@@ -824,12 +825,12 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
+		zedcloud.AddDeferred(image, buf, size, logContextPtr.logsURL, logContextPtr.zedcloudCtx,
 			return400)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsURL)
+	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logContextPtr.logsURL)
 	reportLogs.Log = []*logs.LogEntry{}
 	return true
 }
@@ -867,20 +868,20 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	}
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(serverBytes))
-	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false,
-		nilUUID, appLogURL)
+	appLogsURL := zedcloud.URLPathString(serverNameAndPort, logContextPtr.zedcloudCtx.V2API, false,
+		logContextPtr.nilUUID, appLogURL)
 
 	// For any 400 error we abandon
 	const return400 = true
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForAppLogs queued after existing for %s\n",
 			image)
-		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
+		zedcloud.AddDeferred(image, buf, size, appLogsURL, logContextPtr.zedcloudCtx,
 			return400)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
 	}
-	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, appLogsURL,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&logContextPtr.zedcloudCtx, appLogsURL,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
@@ -908,7 +909,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
+		zedcloud.AddDeferred(image, buf, size, appLogsURL, logContextPtr.zedcloudCtx,
 			return400)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
@@ -935,11 +936,11 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	}
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(bytes))
-	serverName = strings.Split(serverName, ":")[0]
+	logContextPtr.serverName = strings.Split(logContextPtr.serverName, ":")[0]
 
 	//set log url
-	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
-		DevNetworkStatus: deviceNetworkStatus,
+	logContextPtr.zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: logContextPtr.deviceNetworkStatus,
 		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
@@ -947,12 +948,12 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	})
 	log.Infof("sendCtxInit: Use V2 API %v\n", zedcloud.UseV2API())
 
-	dnsCtx.zedcloudCtx = &zedcloudCtx
-	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
-		zedcloudCtx.DevSoftSerial)
+	dnsCtx.zedcloudCtx = &logContextPtr.zedcloudCtx
+	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", logContextPtr.zedcloudCtx.DevSerial,
+		logContextPtr.zedcloudCtx.DevSoftSerial)
 
 	// XXX need to redo this since the root certificates can change when DeviceNetworkStatus changes
-	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
+	err = zedcloud.UpdateTLSConfig(&logContextPtr.zedcloudCtx, logContextPtr.serverName, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -966,18 +967,18 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 			continue
 		}
 		uuidStr := strings.TrimSpace(string(b))
-		devUUID, err = uuid.FromString(uuidStr)
+		logContextPtr.devUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
 			log.Errorln("uuid.FromString", err, string(b))
 			time.Sleep(time.Second)
 			continue
 		}
-		zedcloudCtx.DevUUID = devUUID
+		logContextPtr.zedcloudCtx.DevUUID = logContextPtr.devUUID
 		break
 	}
 	// wait for uuid of logs V2 URL string
-	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "logs")
-	log.Infof("Read UUID %s\n", devUUID)
+	logContextPtr.logsURL = zedcloud.URLPathString(serverNameAndPort, logContextPtr.zedcloudCtx.V2API, false, logContextPtr.devUUID, "logs")
+	log.Infof("Read UUID %s\n", logContextPtr.devUUID)
 }
 
 // Handles both create and modify events
@@ -992,8 +993,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
-		agentName, debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
+		agentName, ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
@@ -1026,8 +1027,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)

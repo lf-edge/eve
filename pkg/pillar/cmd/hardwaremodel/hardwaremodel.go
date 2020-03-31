@@ -18,9 +18,6 @@ import (
 	"github.com/rackn/gohai/plugins/system"
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 type info interface {
 	Class() string
 }
@@ -54,14 +51,9 @@ func hwFp() {
 }
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
 	cPtr := flag.Bool("c", false, "No CRLF")
 	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
 	flag.Parse()
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
 	if *hwPtr {
 		hwFp()
 		return

@@ -4,17 +4,15 @@
 package wstunnelclient
 
 import (
-	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"strings"
 
-	"os"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -29,9 +27,6 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
@@ -41,6 +36,7 @@ type DNSContext struct {
 }
 
 type wstunnelclientContext struct {
+	agentBaseContext     agentbase.Context
 	subGlobalConfig      pubsub.Subscription
 	GCInitialized        bool
 	subAppInstanceConfig pubsub.Subscription
@@ -51,47 +47,35 @@ type wstunnelclientContext struct {
 	// XXX add any output from scanAIConfigs()?
 }
 
-var debug = false
-var debugOverride bool // From command line arg
+func newWscContext() *wstunnelclientContext {
+	ctx := wstunnelclientContext{}
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	return &ctx
+}
+
+func (ctxPtr *wstunnelclientContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
+	wscCtxPtr := newWscContext()
 
-	log.Infof("Starting %s\n", agentName)
+	agentbase.Run(wscCtxPtr)
 
-	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	DNSctx := DNSContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
 	}
-
-	wscCtx := wstunnelclientContext{}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &wscCtx,
+		Ctx:           &wscCtxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -101,7 +85,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	wscCtx.subGlobalConfig = subGlobalConfig
+	wscCtxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -127,7 +111,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "zedagent",
 		TopicImpl:     types.AppInstanceConfig{},
 		Activate:      false,
-		Ctx:           &wscCtx,
+		Ctx:           &wscCtxPtr,
 		CreateHandler: handleAppInstanceConfigModify,
 		ModifyHandler: handleAppInstanceConfigModify,
 		DeleteHandler: handleAppInstanceConfigDelete,
@@ -137,14 +121,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	wscCtx.subAppInstanceConfig = subAppInstanceConfig
+	wscCtxPtr.subAppInstanceConfig = subAppInstanceConfig
 
 	//get server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	wscCtx.serverNameAndPort = strings.TrimSpace(string(bytes))
+	wscCtxPtr.serverNameAndPort = strings.TrimSpace(string(bytes))
 
 	subAppInstanceConfig.Activate()
 
@@ -154,15 +138,15 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatal(err)
 		}
 		uuidStr := strings.TrimSpace(string(b))
-		wscCtx.devUUID, err = uuid.FromString(uuidStr)
+		wscCtxPtr.devUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Infof("Read devUUID %s\n", wscCtx.devUUID.String())
+		log.Infof("Read devUUID %s\n", wscCtxPtr.devUUID.String())
 	}
 
 	// Pick up debug aka log level before we start real work
-	for !wscCtx.GCInitialized {
+	for !wscCtxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -173,7 +157,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	wscCtx.dnsContext = &DNSctx
+	wscCtxPtr.dnsContext = &DNSctx
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
 		log.Infof("Waiting for DeviceNetworkStatus\n")
@@ -214,8 +198,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -231,8 +215,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

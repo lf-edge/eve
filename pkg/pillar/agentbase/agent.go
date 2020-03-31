@@ -14,47 +14,77 @@ import (
 // this interface.
 type AgentBase interface {
 	AgentBaseContext() *Context
-	AddAgentSpecificCLIFlags()
-	ProcessAgentSpecificCLIFlags()
+}
+
+const (
+	defaultErrorTime   = 3 * time.Minute
+	defaultWarningTime = 40 * time.Second
+)
+
+// DefaultContext - returns a context with default values
+func DefaultContext(agentName string) Context {
+	return Context{
+		AgentName:             agentName,
+		WarningTime:           defaultWarningTime,
+		ErrorTime:             defaultErrorTime,
+		NeedWatchdog:          true,
+		CheckAndCreatePidFile: true,
+		InitializeAgent:       true,
+	}
 }
 
 // CliParams - stores all the common cli params
 type CliParams struct {
 	DebugOverride bool
+	Debug         bool
 }
+
+// ContextCallbackFnType - Defines a structure for the type of function we use to add and process cli flags
+type ContextCallbackFnType func()
 
 // Context - a struct that represents a general agent context
 type Context struct {
-	CLIParams    CliParams
-	ErrorTime    time.Duration
-	WarningTime  time.Duration
-	AgentName    string
-	NeedWatchdog bool
+	CLIParams                 CliParams
+	ErrorTime                 time.Duration
+	WarningTime               time.Duration
+	AgentName                 string
+	NeedWatchdog              bool
+	CheckAndCreatePidFile     bool
+	AddAgentCLIFlagsFnPtr     ContextCallbackFnType
+	ProcessAgentCLIFlagsFnPtr ContextCallbackFnType
+	InitializeAgent           bool
 }
 
 // processCLIFlags - Add flags common to all agents
 func processCLIFlags(agentBase AgentBase) {
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	agentBase.AddAgentSpecificCLIFlags()
-	flag.Parse()
 	ctx := agentBase.AgentBaseContext()
-	ctx.CLIParams.DebugOverride = *debugPtr
-	agentBase.ProcessAgentSpecificCLIFlags()
+	flag.BoolVar(&ctx.CLIParams.Debug, "d", false, "Debug flag")
+	if ctx.AddAgentCLIFlagsFnPtr != nil {
+		ctx.AddAgentCLIFlagsFnPtr()
+	}
+	flag.Parse()
+	if ctx.ProcessAgentCLIFlagsFnPtr != nil {
+		ctx.ProcessAgentCLIFlagsFnPtr()
+	}
+	ctx.CLIParams.DebugOverride = ctx.CLIParams.Debug
 }
 
 // Run - a general run function that will handle all of the common code for agents
 func Run(agentSpecificContext AgentBase) {
 	processCLIFlags(agentSpecificContext)
 	ctx := agentSpecificContext.AgentBaseContext()
-	debugOverride := ctx.CLIParams.DebugOverride
-	if debugOverride {
+	if ctx.CLIParams.DebugOverride {
 		log.SetLevel(log.DebugLevel)
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	agentlog.Init(ctx.AgentName)
-	if err := pidfile.CheckAndCreatePidfile(ctx.AgentName); err != nil {
-		log.Fatal(err)
+	if ctx.InitializeAgent {
+		agentlog.Init(ctx.AgentName)
+	}
+	if ctx.CheckAndCreatePidFile {
+		if err := pidfile.CheckAndCreatePidfile(ctx.AgentName); err != nil {
+			log.Fatal(err)
+		}
 	}
 	log.Infof("Starting %s\n", ctx.AgentName)
 	if ctx.NeedWatchdog {

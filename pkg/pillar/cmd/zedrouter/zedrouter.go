@@ -12,8 +12,8 @@ package zedrouter
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"net"
 	"os"
 	"strconv"
@@ -25,7 +25,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
@@ -43,13 +42,10 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 type zedrouterContext struct {
+	agentBaseContext agentbase.Context
 	// Legacy data plane enable/disable flag
-	legacyDataPlane bool
-
+	legacyDataPlane       bool
 	agentStartTime        time.Time
 	receivedConfigTime    time.Time
 	triggerNumGC          bool // For appNum and bridgeNum
@@ -86,34 +82,32 @@ type zedrouterContext struct {
 	appNetCreateTimer         *time.Timer
 }
 
-var debug = false
-var debugOverride bool // From command line arg
+func newZedrouterContext() *zedrouterContext {
+
+	ctx := zedrouterContext{
+		legacyDataPlane: false,
+		agentStartTime:  time.Now(),
+		dnsServers:      make(map[string][]net.IP),
+	}
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	ctx.networkInstanceStatusMap = make(map[uuid.UUID]*types.NetworkInstanceStatus)
+
+	return &ctx
+}
+
+func (ctxPtr *zedrouterContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
+	zedrouterCtxPtr := newZedrouterContext()
+	aa := types.AssignableAdapters{}
+	zedrouterCtxPtr.assignableAdapters = &aa
+	agentbase.Run(zedrouterCtxPtr)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
-
-	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Infof("Create %s\n", runDirname)
@@ -143,21 +137,11 @@ func Run(ps *pubsub.PubSub) {
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 
-	aa := types.AssignableAdapters{}
-	zedrouterCtx := zedrouterContext{
-		legacyDataPlane:    false,
-		assignableAdapters: &aa,
-		agentStartTime:     time.Now(),
-		dnsServers:         make(map[string][]net.IP),
-	}
-	zedrouterCtx.networkInstanceStatusMap =
-		make(map[uuid.UUID]*types.NetworkInstanceStatus)
-
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		CreateHandler: handleDNSModify,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
@@ -167,14 +151,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	zedrouterCtxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		CreateHandler: handleAAModify,
 		ModifyHandler: handleAAModify,
 		DeleteHandler: handleAADelete,
@@ -184,7 +168,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
+	zedrouterCtxPtr.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
 	// Look for global config such as log levels
@@ -192,7 +176,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -202,11 +186,11 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subGlobalConfig = subGlobalConfig
+	zedrouterCtxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
-	zedrouterCtx.pubUuidToNum = pubUuidToNum
+	zedrouterCtxPtr.deviceNetworkStatus = &types.DeviceNetworkStatus{}
+	zedrouterCtxPtr.pubUuidToNum = pubUuidToNum
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
@@ -219,7 +203,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
+	zedrouterCtxPtr.pubNetworkInstanceStatus = pubNetworkInstanceStatus
 
 	pubAppNetworkStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -228,7 +212,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
+	zedrouterCtxPtr.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
 
 	pubLispDataplaneConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -238,7 +222,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
+	zedrouterCtxPtr.pubLispDataplaneConfig = pubLispDataplaneConfig
 
 	pubNetworkInstanceMetrics, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -247,7 +231,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
+	zedrouterCtxPtr.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
 
 	pubAppFlowMonitor, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -256,7 +240,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
+	zedrouterCtxPtr.pubAppFlowMonitor = pubAppFlowMonitor
 
 	pubAppVifIPTrig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -265,9 +249,9 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.pubAppVifIPTrig = pubAppVifIPTrig
+	zedrouterCtxPtr.pubAppVifIPTrig = pubAppVifIPTrig
 
-	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
+	nms := getNetworkMetrics(zedrouterCtxPtr) // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: nms,
@@ -277,7 +261,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// Pick up debug aka log level before we start real work
-	for !zedrouterCtx.GCInitialized {
+	for !zedrouterCtxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -288,13 +272,13 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	appNumAllocatorInit(&zedrouterCtx)
-	bridgeNumAllocatorInit(&zedrouterCtx)
+	appNumAllocatorInit(zedrouterCtxPtr)
+	bridgeNumAllocatorInit(zedrouterCtxPtr)
 	handleInit(runDirname)
 
 	// Before we process any NetworkInstances we want to know the
 	// assignable adapters.
-	for !zedrouterCtx.assignableAdapters.Initialized {
+	for !zedrouterCtxPtr.assignableAdapters.Initialized {
 		log.Infof("Waiting for AssignableAdapters\n")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -319,7 +303,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "zedagent",
 		TopicImpl:     types.NetworkInstanceConfig{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		CreateHandler: handleNetworkInstanceModify,
 		ModifyHandler: handleNetworkInstanceModify,
 		DeleteHandler: handleNetworkInstanceDelete,
@@ -329,7 +313,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
+	zedrouterCtxPtr.subNetworkInstanceConfig = subNetworkInstanceConfig
 	subNetworkInstanceConfig.Activate()
 	log.Infof("Subscribed to NetworkInstanceConfig")
 
@@ -338,7 +322,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:      "zedmanager",
 		TopicImpl:      types.AppNetworkConfig{},
 		Activate:       false,
-		Ctx:            &zedrouterCtx,
+		Ctx:            &zedrouterCtxPtr,
 		CreateHandler:  handleAppNetworkCreate,
 		ModifyHandler:  handleAppNetworkModify,
 		DeleteHandler:  handleAppNetworkConfigDelete,
@@ -349,7 +333,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
+	zedrouterCtxPtr.subAppNetworkConfig = subAppNetworkConfig
 	subAppNetworkConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager
@@ -357,7 +341,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "zedagent",
 		TopicImpl:     types.AppNetworkConfig{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		CreateHandler: handleAppNetworkCreate,
 		ModifyHandler: handleAppNetworkModify,
 		DeleteHandler: handleAppNetworkConfigDelete,
@@ -367,14 +351,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
+	zedrouterCtxPtr.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
 	subLispInfoStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "lisp-ztr",
 		TopicImpl:     types.LispInfoStatus{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		ModifyHandler: handleLispInfoModify,
 		DeleteHandler: handleLispInfoDelete,
 		WarningTime:   warningTime,
@@ -383,14 +367,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
+	zedrouterCtxPtr.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
 
 	subLispMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "lisp-ztr",
 		TopicImpl:     types.LispMetrics{},
 		Activate:      false,
-		Ctx:           &zedrouterCtx,
+		Ctx:           &zedrouterCtxPtr,
 		ModifyHandler: handleLispMetricsModify,
 		DeleteHandler: handleLispMetricsDelete,
 		WarningTime:   warningTime,
@@ -399,10 +383,10 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedrouterCtx.subLispMetrics = subLispMetrics
+	zedrouterCtxPtr.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
 
-	PbrInit(&zedrouterCtx)
+	PbrInit(zedrouterCtxPtr)
 	routeChanges := devicenetwork.RouteChangeInit()
 	addrChanges := devicenetwork.AddrChangeInit()
 	linkChanges := devicenetwork.LinkChangeInit()
@@ -414,7 +398,7 @@ func Run(ps *pubsub.PubSub) {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
+	updateLispConfiglets(zedrouterCtxPtr, zedrouterCtxPtr.legacyDataPlane)
 
 	flowStatIntv := time.Duration(120 * time.Second) // 120 sec, flow timeout if less than150 sec
 	fmax := float64(flowStatIntv)
@@ -422,13 +406,13 @@ func Run(ps *pubsub.PubSub) {
 	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
 		time.Duration(fmax))
 
-	setProbeTimer(&zedrouterCtx, nhProbeInterval)
-	zedrouterCtx.checkNIUplinks = make(chan bool, 1) // allow one signal without blocking
+	setProbeTimer(zedrouterCtxPtr, nhProbeInterval)
+	zedrouterCtxPtr.checkNIUplinks = make(chan bool, 1) // allow one signal without blocking
 
-	zedrouterCtx.appNetCreateTimer = time.NewTimer(1 * time.Second)
-	zedrouterCtx.appNetCreateTimer.Stop()
+	zedrouterCtxPtr.appNetCreateTimer = time.NewTimer(1 * time.Second)
+	zedrouterCtxPtr.appNetCreateTimer.Stop()
 
-	zedrouterCtx.ready = true
+	zedrouterCtxPtr.ready = true
 	log.Infof("zedrouterCtx.ready\n")
 
 	// First wait for restarted from zedmanager to
@@ -444,7 +428,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppNetworkConfig.MsgChan():
 			// If we have an NetworkInstanceConfig process it first
-			checkAndProcessNetworkInstanceConfig(&zedrouterCtx)
+			checkAndProcessNetworkInstanceConfig(zedrouterCtxPtr)
 			subAppNetworkConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
@@ -456,13 +440,13 @@ func Run(ps *pubsub.PubSub) {
 			subNetworkInstanceConfig.ProcessChange(change)
 		}
 		// Are we likely to have seen all of the initial config?
-		if zedrouterCtx.triggerNumGC &&
-			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
+		if zedrouterCtxPtr.triggerNumGC &&
+			time.Since(zedrouterCtxPtr.receivedConfigTime) > 5*time.Minute {
 
 			start := time.Now()
-			bridgeNumAllocatorGC(&zedrouterCtx)
-			appNumAllocatorGC(&zedrouterCtx)
-			zedrouterCtx.triggerNumGC = false
+			bridgeNumAllocatorGC(zedrouterCtxPtr)
+			appNumAllocatorGC(zedrouterCtxPtr)
+			zedrouterCtxPtr.triggerNumGC = false
 			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
@@ -479,7 +463,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppNetworkConfig.MsgChan():
 			// If we have an NetworkInstanceConfig process it first
-			checkAndProcessNetworkInstanceConfig(&zedrouterCtx)
+			checkAndProcessNetworkInstanceConfig(zedrouterCtxPtr)
 			subAppNetworkConfig.ProcessChange(change)
 
 		case change := <-subAppNetworkConfigAg.MsgChan():
@@ -495,16 +479,16 @@ func Run(ps *pubsub.PubSub) {
 				addrChanges = devicenetwork.AddrChangeInit()
 				break
 			}
-			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
+			ifname := PbrAddrChange(zedrouterCtxPtr.deviceNetworkStatus,
 				change)
 			if ifname != "" &&
-				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
+				!types.IsMgmtPort(*zedrouterCtxPtr.deviceNetworkStatus,
 					ifname) {
 				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
 				maybeUpdateBridgeIPAddr(
-					&zedrouterCtx, ifname)
+					zedrouterCtxPtr, ifname)
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
 				warningTime, errorTime)
@@ -516,16 +500,16 @@ func Run(ps *pubsub.PubSub) {
 				linkChanges = devicenetwork.LinkChangeInit()
 				break
 			}
-			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
+			ifname := PbrLinkChange(zedrouterCtxPtr.deviceNetworkStatus,
 				change)
 			if ifname != "" &&
-				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
+				!types.IsMgmtPort(*zedrouterCtxPtr.deviceNetworkStatus,
 					ifname) {
 				log.Debugf("linkChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
 				maybeUpdateBridgeIPAddr(
-					&zedrouterCtx, ifname)
+					zedrouterCtxPtr, ifname)
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
 				warningTime, errorTime)
@@ -537,8 +521,8 @@ func Run(ps *pubsub.PubSub) {
 				routeChanges = devicenetwork.RouteChangeInit()
 				break
 			}
-			PbrRouteChange(&zedrouterCtx,
-				zedrouterCtx.deviceNetworkStatus, change)
+			PbrRouteChange(zedrouterCtxPtr,
+				zedrouterCtxPtr.deviceNetworkStatus, change)
 			pubsub.CheckMaxTimeTopic(agentName, "routeChanges", start,
 				warningTime, errorTime)
 
@@ -546,11 +530,11 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global",
-				getNetworkMetrics(&zedrouterCtx))
+				getNetworkMetrics(zedrouterCtxPtr))
 			if err != nil {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
-			publishNetworkInstanceMetricsAll(&zedrouterCtx)
+			publishNetworkInstanceMetricsAll(zedrouterCtxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
 				warningTime, errorTime)
 
@@ -558,7 +542,7 @@ func Run(ps *pubsub.PubSub) {
 			// Check for changes to DHCP leases
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
-			checkAndPublishDhcpLeases(&zedrouterCtx)
+			checkAndPublishDhcpLeases(zedrouterCtxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
 				warningTime, errorTime)
 
@@ -566,29 +550,29 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			log.Debugf("FlowStatTimer at %v", time.Now())
 			// XXX why start a new go routine for each change?
-			go FlowStatsCollect(&zedrouterCtx)
+			go FlowStatsCollect(zedrouterCtxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
 				warningTime, errorTime)
 
-		case <-zedrouterCtx.hostProbeTimer.C:
+		case <-zedrouterCtxPtr.hostProbeTimer.C:
 			start := time.Now()
 			log.Debugf("HostProbeTimer at %v", time.Now())
 			// launch the go function gateway/remote hosts probing check
-			go launchHostProbe(&zedrouterCtx)
+			go launchHostProbe(zedrouterCtxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
 				warningTime, errorTime)
 
-		case <-zedrouterCtx.appNetCreateTimer.C:
+		case <-zedrouterCtxPtr.appNetCreateTimer.C:
 			start := time.Now()
 			log.Debugf("appNetCreateTimer: at %v", time.Now())
-			scanAppNetworkStatusInErrorAndUpdate(&zedrouterCtx)
+			scanAppNetworkStatusInErrorAndUpdate(zedrouterCtxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
 				warningTime, errorTime)
 
-		case <-zedrouterCtx.checkNIUplinks:
+		case <-zedrouterCtxPtr.checkNIUplinks:
 			start := time.Now()
 			log.Infof("checkNIUplinks channel signal\n")
-			checkAndReprogramNetworkInstances(&zedrouterCtx)
+			checkAndReprogramNetworkInstances(zedrouterCtxPtr)
 			pubsub.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
 				warningTime, errorTime)
 
@@ -606,12 +590,12 @@ func Run(ps *pubsub.PubSub) {
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 		// Are we likely to have seen all of the initial config?
-		if zedrouterCtx.triggerNumGC &&
-			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
+		if zedrouterCtxPtr.triggerNumGC &&
+			time.Since(zedrouterCtxPtr.receivedConfigTime) > 5*time.Minute {
 			start := time.Now()
-			bridgeNumAllocatorGC(&zedrouterCtx)
-			appNumAllocatorGC(&zedrouterCtx)
-			zedrouterCtx.triggerNumGC = false
+			bridgeNumAllocatorGC(zedrouterCtxPtr)
+			appNumAllocatorGC(zedrouterCtxPtr)
+			zedrouterCtxPtr.triggerNumGC = false
 			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
@@ -2762,8 +2746,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -2779,8 +2763,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

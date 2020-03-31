@@ -19,16 +19,14 @@ package ledmanager
 
 import (
 	"flag"
-	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -41,6 +39,7 @@ const (
 
 // State passed to handlers
 type ledManagerContext struct {
+	agentBaseContext       agentbase.Context
 	countChange            chan int
 	ledCounter             int // Supress work and logging if no change
 	subGlobalConfig        pubsub.Subscription
@@ -50,6 +49,9 @@ type ledManagerContext struct {
 	usableAddressCount     int
 	derivedLedCounter      int // Based on ledCounter + usableAddressCount
 	GCInitialized          bool
+	// CLI Args
+	fatalFlag bool
+	hangFlag  bool
 }
 
 type Blink200msFunc func()
@@ -106,41 +108,33 @@ var mToF = []modelToFuncs{
 		blinkFunc: ExecuteDDCmd},
 }
 
-var debug bool
-var debugOverride bool // From command line arg
+var ctxPtr *ledManagerContext
 
-// Set from Makefile
-var Version = "No version specified"
+func newLedManagerContext() *ledManagerContext {
+	ctx := ledManagerContext{}
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	ctx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+
+	return &ctx
+}
+
+func (ctxPtr *ledManagerContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.BoolVar(&ctxPtr.fatalFlag, "F", false, "Cause log.Fatal fault injection")
+	flag.BoolVar(&ctxPtr.hangFlag, "H", false, "Cause watchdog .touch fault injection")
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug")
-	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
-	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	fatalFlag := *fatalPtr
-	hangFlag := *hangPtr
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
+	ctxPtr = newLedManagerContext()
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+	agentbase.Run(ctxPtr)
 
-	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	model := hardware.GetHardwareModel()
 	log.Infof("Got HardwareModel %s\n", model)
@@ -166,15 +160,14 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// Any state needed by handler functions
-	ctx := ledManagerContext{}
-	ctx.countChange = make(chan int)
-	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
+	ctxPtr.countChange = make(chan int)
+	go TriggerBlinkOnDevice(ctxPtr.countChange, blinkFunc)
 
 	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		TopicImpl:     types.LedBlinkCounter{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleLedBlinkModify,
 		ModifyHandler: handleLedBlinkModify,
 		DeleteHandler: handleLedBlinkDelete,
@@ -184,14 +177,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subLedBlinkCounter = subLedBlinkCounter
+	ctxPtr.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleDNSModify,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
@@ -201,7 +194,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Look for global config such as log levels
@@ -209,7 +202,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -219,11 +212,11 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subGlobalConfig = subGlobalConfig
+	ctxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
+	for !ctxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -247,11 +240,11 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 			// Fault injection
-			if fatalFlag {
+			if ctxPtr.fatalFlag {
 				log.Fatal("Requested fault injection to cause watchdog")
 			}
 		}
-		if hangFlag {
+		if ctxPtr.hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
 			agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -438,8 +431,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -455,7 +448,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
