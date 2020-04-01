@@ -713,7 +713,7 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	}
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
-		log.Errorf("TPM open failed: %v\n",err)
+		log.Errorf("TPM open failed: %v\n", err)
 		return [32]byte{}, err
 	}
 	defer rw.Close()
