@@ -1,0 +1,1 @@
+brcm/brcmfmac43430a0-sdio.jumper-ezpad-mini3.txt

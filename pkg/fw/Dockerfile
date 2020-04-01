@@ -22,3 +22,5 @@ COPY --from=build /lib/firmware/mrvl /lib/firmware/mrvl
 COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
 COPY --from=build /lib/firmware/rtlwifi /lib/firmware/rtlwifi
 COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
+# FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
+COPY rpi /lib/firmware/
