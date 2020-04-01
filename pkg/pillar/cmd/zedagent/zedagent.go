@@ -110,15 +110,21 @@ type zedagentContext struct {
 	rebootReason              string    // Previous reboot from nodeagent
 	rebootStack               string    // Previous reboot from nodeagent
 	rebootTime                time.Time // Previous reboot from nodeagent
-	restartCounter            uint32
-	subDevicePortConfigList   pubsub.Subscription
-	devicePortConfigList      types.DevicePortConfigList
-	remainingTestTime         time.Duration
-	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
-	globalConfig              types.ConfigItemValueMap
-	specMap                   types.ConfigItemSpecMap
-	globalStatus              types.GlobalStatus
-	getCertsTimer             *time.Timer
+	// restartCounter - counts number of reboots of the device by Eve
+	restartCounter uint32
+	// rebootConfigCounter - reboot counter sent by the cloud in its config.
+	//  This is the value of counter that triggered reboot. This is sent in
+	//  device info msg. Can be used to verify device is caught up on all
+	// outstanding reboot commands from cloud.
+	rebootConfigCounter     uint32
+	subDevicePortConfigList pubsub.Subscription
+	devicePortConfigList    types.DevicePortConfigList
+	remainingTestTime       time.Duration
+	physicalIoAdapterMap    map[string]types.PhysicalIOAdapter
+	globalConfig            types.ConfigItemValueMap
+	specMap                 types.ConfigItemSpecMap
+	globalStatus            types.GlobalStatus
+	getCertsTimer           *time.Timer
 }
 
 var debug = false
@@ -187,6 +193,11 @@ func Run(ps *pubsub.PubSub) {
 		zedagentCtx.globalConfig)
 	zedagentCtx.globalStatus.UnknownConfigItems = make(
 		map[string]types.ConfigItemStatus)
+
+	rebootConfig := readRebootConfig()
+	zedagentCtx.rebootConfigCounter = rebootConfig.Counter
+	log.Infof("Zedagent Run - rebootConfigCounter at init is %+v",
+		rebootConfig)
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 

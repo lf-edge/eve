@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
 	psutilnet "github.com/shirou/gopsutil/net"
@@ -907,9 +908,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.LastRebootTime = rebootTime
 	}
 
-	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx.devicePortConfigList)
+	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx)
 
 	ReportDeviceInfo.RestartCounter = ctx.restartCounter
+	ReportDeviceInfo.RebootConfigCounter = ctx.rebootConfigCounter
 
 	//Operational information about TPM presence/absence/usage.
 	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
@@ -1173,7 +1175,8 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	return status
 }
 
-func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *info.SystemAdapterInfo {
+func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
+	dpcl := ctx.devicePortConfigList
 	sainfo := new(info.SystemAdapterInfo)
 	sainfo.CurrentIndex = uint32(dpcl.CurrentIndex)
 	sainfo.Status = make([]*info.DevicePortStatus, len(dpcl.PortConfigList))
@@ -1195,7 +1198,7 @@ func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *info.SystemAdapte
 
 		dps.Ports = make([]*info.DevicePort, len(dpc.Ports))
 		for j, p := range dpc.Ports {
-			dps.Ports[j] = encodeNetworkPortConfig(&p)
+			dps.Ports[j] = encodeNetworkPortConfig(ctx, &p)
 		}
 		sainfo.Status[i] = dps
 	}
@@ -1203,11 +1206,20 @@ func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *info.SystemAdapte
 	return sainfo
 }
 
-func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
+func encodeNetworkPortConfig(ctx *zedagentContext,
+	npc *types.NetworkPortConfig) *info.DevicePort {
+	aa := ctx.assignableAdapters
+
 	dp := new(info.DevicePort)
 	dp.Ifname = npc.IfName
 	// XXX rename the protobuf field Name to Phylabel and add Logicallabel?
 	dp.Name = npc.Phylabel
+
+	ibPtr := aa.LookupIoBundlePhylabel(npc.Phylabel)
+	if ibPtr != nil {
+		dp.Usage = info.InfoPhyIoMemberUsage(ibPtr.Usage)
+	}
+
 	dp.IsMgmt = npc.IsMgmt
 	dp.Free = npc.Free
 	// DhcpConfig
@@ -1236,6 +1248,11 @@ func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 		errTime, _ := ptypes.TimestampProto(npc.ParseErrorTime)
 		errInfo.Timestamp = errTime
 		dp.Err = errInfo
+	}
+
+	var nilUUID uuid.UUID
+	if npc.NetworkUUID != nilUUID {
+		dp.NetworkUUID = npc.NetworkUUID.String()
 	}
 	return dp
 }
