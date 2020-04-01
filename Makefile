@@ -77,6 +77,7 @@ ROOTFS_IMG=$(INSTALLER)/rootfs-$(HV).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 EFI_PART=$(INSTALLER)/EFI
+BOOT_PART=$(INSTALLER)/boot
 
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
@@ -176,6 +177,9 @@ $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 $(EFI_PART): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) $(notdir $@)
 
+$(BOOT_PART): $(LINUXKIT) | $(INSTALLER)
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/u-boot)-$(DOCKER_ARCH_TAG) $(notdir $@)
+
 $(INITRD_IMG): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/mkimage-raw-efi)-$(DOCKER_ARCH_TAG) $(notdir $@ $(EFI_PART))
 
@@ -220,6 +224,7 @@ initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
 live: $(LIVE_IMG).img
+live.rpi: $(LIVE_IMG).rpi
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
 
@@ -239,6 +244,10 @@ $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
+
+$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
+	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
 
 $(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
