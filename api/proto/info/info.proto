@@ -4,7 +4,6 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-// XXX import "github.com/lf-edge/eve/api/config/devmodel.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/info";
 
@@ -63,7 +62,8 @@ enum ZInfoTypes {
 }
 
 // XXX duplicate from devmodel.proto:
-// Needs to have a separate name
+// Needs to have a separate name than the one in devmodel.proto
+// XXX Remove this once we can import from config/devmodel.proto
 enum IPhyIoType {
   IPhyIoNoop = 0;
   IPhyIoNetEth = 1;
@@ -76,6 +76,25 @@ enum IPhyIoType {
   IPhyIoOther = 255;
 }
 
+// XXX duplicate from devmodel.proto:
+// Needs to have a separate name than the one in devmodel.proto
+// XXX Remove this once we can import from config/devmodel.proto
+// InfoPhyIoMemberUsage - Indicates how each adaptor must be used by Eve.
+enum InfoPhyIoMemberUsage {
+  InfoPhyIoUsageNone      = 0;
+  // Used by both management and apps.
+  InfoPhyIoUsageMgmtAndApps = 1;
+  // Shared by multiple apps
+  InfoPhyIoUsageShared    = 2;
+  // used by only one app
+  InfoPhyIoUsageDedicated = 3;
+  // Adapter Blocked. Do not use the Adapter.
+  InfoPhyIoUsageDisabled   = 4;
+  // Used for Management traffic only. Cannot be used by Apps.
+  InfoPhyIoUsageMgmtOnly = 5;
+}
+
+
 // Information about assignable I/O adapter bundles
 message ZioBundle {
   IPhyIoType type = 1;
@@ -84,6 +103,8 @@ message ZioBundle {
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
   repeated IoAddresses ioAddressList = 6; // One per member
+  InfoPhyIoMemberUsage usage = 7; // Usage of the IoBundle
+  ErrorInfo err = 8; // Any errors on the IoBundle
 }
 
 message IoAddresses {
@@ -179,7 +200,7 @@ message ZInfoSW {
   string imageName = 9;         // Name of the disk image
 }
 
-// Errors in response to the applicatioan of configuration
+// Errors in response to the application of configuration
 message ErrorInfo {
   string description = 1;
   google.protobuf.Timestamp timestamp = 2;
@@ -268,6 +289,9 @@ message ZInfoDevice {
 
   ZInfoConfigItemStatus configItemStatus = 31;
   repeated ZInfoAppInstance appInstances = 32;
+  // rebootConfigCounter - reboot command counter from config last processed by
+  // eve
+  uint32 rebootConfigCounter = 33;
 }
 
 // The current and fallback system adapter information
@@ -312,6 +336,8 @@ message DevicePort {
   bool up = 26;      // operational up/down status.
   GeoLoc location = 27;
   ErrorInfo err = 29; // Any errors on the interface.
+  InfoPhyIoMemberUsage usage = 30; // Usage of the Device port
+  string networkUUID = 31; // Network UUID configured for the port.
 }
 
 message ProxyStatus {
