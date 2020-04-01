@@ -145,7 +145,7 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|u-boot")
+PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
 
 # Top-level targets
 
