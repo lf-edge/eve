@@ -673,6 +673,7 @@ func aesEncrypt(ciphertext, plaintext, key, iv []byte) error {
 func aesDecrypt(plaintext, ciphertext, key, iv []byte) error {
 	aesBlockDecrypter, err := aes.NewCipher([]byte(key))
 	if err != nil {
+		log.Errorf("creating aes new cipher failed: %v\n", err)
 		return err
 	}
 	aesDecrypter := cipher.NewCFBDecrypter(aesBlockDecrypter, iv)
@@ -691,6 +692,7 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
 	decryptKey, err := getDecryptKey(X, Y)
 	if err != nil {
+		log.Errorf("getDecryptKey failed: %v\n", err)
 		return err
 	}
 	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
@@ -702,6 +704,7 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	if !etpm.IsTpmEnabled() {
 		privateKey, err := getDevicePrivateKey()
 		if err != nil {
+			log.Errorf("getDevicePrivateKey failed: %v\n", err)
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
@@ -710,7 +713,7 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	}
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("TPM open failed: %v\n",err)
 		return [32]byte{}, err
 	}
 	defer rw.Close()
@@ -724,7 +727,7 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	//Recover the key, and decrypt the message (EVE node Part)
 	z, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
 	if err != nil {
-		fmt.Printf("recovering Shared Secret failed: %s", err)
+		log.Errorf("recovering Shared Secret failed: %v", err)
 		return [32]byte{}, err
 	}
 	decryptKey := sha256FromECPoint(z.X, z.Y)
