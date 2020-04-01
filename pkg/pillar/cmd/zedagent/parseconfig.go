@@ -736,6 +736,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.ParseErrorTime = time.Now()
 		} else {
 			net := networkXObject.(types.NetworkXObjectConfig)
+			port.NetworkUUID = net.UUID
 			network = &net
 			if network.Error != "" {
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
@@ -1921,6 +1922,22 @@ func parseOpCmds(config *zconfig.EdgeDevConfig,
 	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
+func readRebootConfig() zconfig.DeviceOpsCmd {
+	rebootConfig := zconfig.DeviceOpsCmd{}
+
+	log.Infof("readRebootConfigCounter - reading %s\n", rebootConfigFilename)
+
+	bytes, err := ioutil.ReadFile(rebootConfigFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = json.Unmarshal(bytes, &rebootConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return rebootConfig
+}
+
 var rebootPrevConfigHash []byte
 var rebootPrevReturn bool
 
@@ -1957,20 +1974,8 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			log.Fatal(err)
 		}
 	}
-	rebootConfig := &zconfig.DeviceOpsCmd{}
-
-	log.Infof("scheduleReboot - reading %s\n",
-		rebootConfigFilename)
-	// read old reboot config
-	bytes, err := ioutil.ReadFile(rebootConfigFilename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = json.Unmarshal(bytes, rebootConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("scheduleReboot read %v\n", rebootConfig)
+	rebootConfig := readRebootConfig()
+	log.Infof("scheduleReboot - CurrentRebootConfig %v\n", rebootConfig)
 
 	// If counter value has changed it means new reboot event
 	if rebootConfig.Counter != reboot.Counter {
@@ -1979,7 +1984,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			rebootConfig.Counter, reboot.Counter)
 
 		// store current config, persistently
-		bytes, err = json.Marshal(reboot)
+		bytes, err := json.Marshal(reboot)
 		if err == nil {
 			err := fileutils.WriteRename(rebootConfigFilename, bytes)
 			if err != nil {
@@ -1987,6 +1992,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 					err)
 			}
 		}
+		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
 
 		// if device reboot is set, ignore op-command
 		if getconfigCtx.zedagentCtx.deviceReboot {
