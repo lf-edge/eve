@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"mime"
 	"net/http"
 	"os"
 	"strings"
@@ -192,6 +191,9 @@ func getLatestConfig(url string, iteration int,
 
 	log.Debugf("getLatestConfig(%s, %d)\n", url, iteration)
 
+	// trigger a one sec timer to acquire new certs from cloud
+	triggerFetchCerts(getconfigCtx.zedagentCtx)
+
 	const return400 = false
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest()
@@ -247,8 +249,8 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
-	if err := validateProtoMessage(url, resp); err != nil {
-		log.Errorln("validateProtoMessage: ", err)
+	if err := utils.ValidateProtoMessage(url, resp); err != nil {
+		log.Errorln("ValidateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
@@ -308,7 +310,7 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 		return false
 	}
 
-	err = validateProtoMessage(certURL, resp)
+	err = utils.ValidateProtoMessage(certURL, resp)
 	if err != nil {
 		log.Errorf("getCloudCertChain: resp header error\n")
 		return false
@@ -336,31 +338,6 @@ func triggerFetchCerts(ctx *zedagentContext) {
 	// trigger a one sec timer to acquire new certs from cloud
 	log.Infof("triggerFetchCerts: set timer for 1 sec\n")
 	ctx.getCertsTimer = time.NewTimer(1 * time.Second)
-}
-
-func validateProtoMessage(url string, r *http.Response) error {
-	//No check Content-Type for empty response
-	if r.ContentLength == 0 {
-		return nil
-	}
-	var ctTypeStr = "Content-Type"
-	var ctTypeProtoStr = "application/x-proto-binary"
-
-	ct := r.Header.Get(ctTypeStr)
-	if ct == "" {
-		return fmt.Errorf("No content-type")
-	}
-	mimeType, _, err := mime.ParseMediaType(ct)
-	if err != nil {
-		return fmt.Errorf("Get Content-type error")
-	}
-	switch mimeType {
-	case ctTypeProtoStr:
-		return nil
-	default:
-		return fmt.Errorf("Content-type %s not supported",
-			mimeType)
-	}
 }
 
 func writeReceivedProtoMessage(contents []byte) {

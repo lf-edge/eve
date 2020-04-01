@@ -6,6 +6,9 @@
 package utils
 
 import (
+	"fmt"
+	"mime"
+	"net/http"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -77,4 +80,31 @@ func ReadAndUpdateGCFile(pub pubsub.Publication) {
 		}
 	}
 	CreateSymlink(symlinkDir, globalConfigDir)
+}
+
+// ValidateProtoMessage will validate that the response content
+// type is of proto binary or not
+func ValidateProtoMessage(url string, r *http.Response) error {
+	//No check Content-Type for empty response
+	if r.ContentLength == 0 {
+		return nil
+	}
+	var ctTypeStr = "Content-Type"
+	var ctTypeProtoStr = "application/x-proto-binary"
+
+	ct := r.Header.Get(ctTypeStr)
+	if ct == "" {
+		return fmt.Errorf("No content-type")
+	}
+	mimeType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return fmt.Errorf("Get Content-type error")
+	}
+	switch mimeType {
+	case ctTypeProtoStr:
+		return nil
+	default:
+		return fmt.Errorf("Content-type %s not supported",
+			mimeType)
+	}
 }
