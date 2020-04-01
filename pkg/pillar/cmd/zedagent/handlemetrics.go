@@ -830,6 +830,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		reportAA := new(info.ZioBundle)
 		reportAA.Type = info.IPhyIoType(ib.Type)
 		reportAA.Name = ib.AssignmentGroup
+		// XXX - Cast is needed because PhyIoMemberUsage was replicated in info
+		//  When this is fixed, we can remove this case.
+		reportAA.Usage = info.InfoPhyIoMemberUsage(ib.Usage)
 		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
 			if ib.AssignmentGroup != "" {
