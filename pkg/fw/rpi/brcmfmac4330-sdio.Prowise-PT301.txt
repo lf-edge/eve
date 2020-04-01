@@ -1,0 +1,1 @@
+brcm/brcmfmac4330-sdio.Prowise-PT301.txt
