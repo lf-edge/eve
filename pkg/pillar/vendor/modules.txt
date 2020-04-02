@@ -248,7 +248,7 @@ github.com/opencontainers/runc/libcontainer/user
 github.com/opencontainers/runc/libcontainer/system
 # github.com/opencontainers/runtime-spec v1.0.1
 github.com/opencontainers/runtime-spec/specs-go
-# github.com/packetcap/go-pcap v0.0.0-20200327113908-1d4572643f75
+# github.com/packetcap/go-pcap v0.0.0-20200402064413-c16ec266c636
 github.com/packetcap/go-pcap
 github.com/packetcap/go-pcap/filter
 # github.com/pkg/errors v0.9.1
