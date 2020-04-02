@@ -90,6 +90,7 @@ message deviceMetric {
   uint64 runtimeStorageOverheadMB = 9;     // In MB
   uint64 appRunTimeStorageMB = 10;         // In MB
   memoryMetric systemServicesMemoryMB = 11;  // In MB
+  logMetric log = 12;
 }
 
 enum MetricItemType {
@@ -142,6 +143,44 @@ message appMetric {
   memoryMetric memory = 4;
   repeated networkMetric network = 5;
   repeated appDiskMetric disk = 6;
+}
+
+// We track device and app logs separately with these counters.
+// An event is counted as a log input that can be sent onwards (to cloud) or
+// dropped for a few reason.
+// Thus:
+// totalAppLogInput = numAppEventsSent + numAppEventErrors + num4xxResponses
+// totalDeviceLogInput = numDeviceEventsSent + numDeviceEventErrors
+message logMetric {
+  uint64 numDeviceEventsSent = 1;
+  uint64 numDeviceBundlesSent = 2;
+  uint64 numAppEventsSent = 3;
+  uint64 numAppBundlesSent = 4;
+  // num4xxResponses: This counter is akin to event errors/drops.
+  //
+  // 4xx response for a device event bundle does not make sense, unless
+  // there is a programming error in EVE code that sends device event bundles to cloud.
+  // But, app instances can disappear from cloud and any futher logs sent by EVE to cloud
+  // will result in a 4xx response back.
+  // Any time an app log bundle gets rejected with 4xx response from cloud, num4xxResponses
+  // should be incremented by the number of events present in that rejected bundle.
+  uint64 num4xxResponses = 5;
+  google.protobuf.Timestamp lastDeviceBundleSendTime = 6;
+  google.protobuf.Timestamp lastAppBundleSendTime = 7;
+
+  bool isLogProcessingDeferred = 8;
+  uint64 numTimesDeferred = 9;
+  google.protobuf.Timestamp lastLogDeferTime = 10;
+
+  uint64 totalDeviceLogInput = 13;
+  uint64 totalAppLogInput = 14;
+
+  // eg:- Size of individual event is larger than the max proto buf size limit.
+  uint64 numDeviceEventErrors = 15;
+  uint64 numAppEventErrors = 16;
+
+  uint64 numDeviceBundleProtoBytesSent = 17;
+  uint64 numAppBundleProtoBytesSent = 18;
 }
 
 // Lisp stats
