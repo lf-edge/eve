@@ -192,9 +192,6 @@ func getLatestConfig(url string, iteration int,
 
 	log.Debugf("getLatestConfig(%s, %d)\n", url, iteration)
 
-	// trigger a one sec timer to acquire new certs from cloud
-	triggerFetchCerts(getconfigCtx.zedagentCtx)
-
 	const return400 = false
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest()
@@ -286,8 +283,6 @@ func getLatestConfig(url string, iteration int,
 }
 
 func getCloudCertChain(ctx *zedagentContext) bool {
-	// get Certs is always V2 API, if the reply turns out it's not, will reset it, use http for now
-	zedcloudCtx.V2API = true
 	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, true, nilUUID, "certs")
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, certURL, 0, nil, 0, false)
 	if err != nil {
@@ -304,7 +299,6 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 		log.Infof("getCloudCertChain: status %s\n", resp.Status)
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotImplemented, http.StatusBadRequest:
 		log.Infof("getCloudCertChain: server %s does not support V2 API\n", serverName)
-		zedcloudCtx.V2API = false
 		return false
 	default:
 		log.Errorf("getCloudCertChain: statuscode %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))

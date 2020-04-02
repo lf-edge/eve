@@ -1047,8 +1047,11 @@ func Run(ps *pubsub.PubSub) {
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
 
+	// let zedagent get the certs for encryption/decryption at least once if V2
 	zedagentCtx.getCertsTimer = time.NewTimer(1 * time.Second)
-	zedagentCtx.getCertsTimer.Stop()
+	if !zedcloud.UseV2API() {
+		zedagentCtx.getCertsTimer.Stop()
+	}
 
 	for {
 		select {
