@@ -702,6 +702,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
 	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
 
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
+
 	return configItemSpecMap
 }
 
