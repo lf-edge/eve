@@ -55,3 +55,11 @@ message AppInstanceConfig {
   // through a remote console session established by the device.
   bool remoteConsole = 12;
 }
+
+// This message will be filled with the app
+// usercdata details and encrypted across
+// wire for data in transit, by the controller
+// for encryption
+message AppInstanceEncryptBlock {
+  string userData = 1;
+}

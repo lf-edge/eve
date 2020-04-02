@@ -61,13 +61,3 @@ message CipherBlock {
   // sha256 of the plaintext sensitive data
   bytes clearTextSha256 = 4;
 }
-
-
-// This message will be filled with the
-// credential details and encrypted across
-//  wire for data in transit, by the controller
-// for encryption
-message CredentialBlock {
-  string identity = 1;
-  string password = 2;
-}
