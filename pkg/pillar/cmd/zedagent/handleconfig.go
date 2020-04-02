@@ -192,9 +192,6 @@ func getLatestConfig(url string, iteration int,
 
 	log.Debugf("getLatestConfig(%s, %d)\n", url, iteration)
 
-	// trigger a one sec timer to acquire new certs from cloud
-	triggerFetchCerts(getconfigCtx.zedagentCtx)
-
 	const return400 = false
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest()
