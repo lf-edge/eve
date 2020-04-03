@@ -215,9 +215,10 @@ github.com/google/go-containerregistry/pkg/internal/retry/wait
 github.com/google/go-tpm/tpm2
 github.com/google/go-tpm/tpmutil
 github.com/google/go-tpm/tpmutil/tbs
-# github.com/google/gopacket v1.1.17
+# github.com/google/gopacket v1.1.16
 github.com/google/gopacket
 github.com/google/gopacket/layers
+github.com/google/gopacket/pcap
 # github.com/gorilla/websocket v1.4.0
 github.com/gorilla/websocket
 # github.com/hashicorp/golang-lru v0.5.3
@@ -235,8 +236,10 @@ github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/register
 github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/info
+github.com/lf-edge/eve/api/go/certs
 github.com/lf-edge/eve/api/go/flowlog
 github.com/lf-edge/eve/api/go/metrics
+github.com/lf-edge/eve/api/go/auth
 # github.com/opencontainers/go-digest v1.0.0-rc1
 github.com/opencontainers/go-digest
 # github.com/opencontainers/image-spec v1.0.1
@@ -248,9 +251,6 @@ github.com/opencontainers/runc/libcontainer/user
 github.com/opencontainers/runc/libcontainer/system
 # github.com/opencontainers/runtime-spec v1.0.1
 github.com/opencontainers/runtime-spec/specs-go
-# github.com/packetcap/go-pcap v0.0.0-20200327113908-1d4572643f75
-github.com/packetcap/go-pcap
-github.com/packetcap/go-pcap/filter
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
 # github.com/pkg/sftp v1.10.0
@@ -313,9 +313,8 @@ golang.org/x/crypto/ed25519
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/ed25519/internal/edwards25519
-# golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
+# golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 golang.org/x/net/html
-golang.org/x/net/bpf
 golang.org/x/net/icmp
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
@@ -324,15 +323,16 @@ golang.org/x/net/context/ctxhttp
 golang.org/x/net/trace
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
+golang.org/x/net/bpf
 golang.org/x/net/internal/timeseries
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/http/httpguts
 golang.org/x/net/idna
-# golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+# golang.org/x/sync v0.0.0-20190423024810-112230192c58
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527
+# golang.org/x/sys v0.0.0-20200120151820-655fe14d7479
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/cpu
@@ -390,5 +390,5 @@ gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser/rfc5424
 # gopkg.in/sourcemap.v1 v1.0.5
 gopkg.in/sourcemap.v1
 gopkg.in/sourcemap.v1/base64vlq
-# gopkg.in/yaml.v2 v2.2.8
+# gopkg.in/yaml.v2 v2.2.4
 gopkg.in/yaml.v2
