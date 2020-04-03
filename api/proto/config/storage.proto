@@ -49,14 +49,6 @@ message DatastoreConfig {
   CipherBlock cipherData = 7;
 }
 
-// This message will be filled with the
-// data store credential details and encrypted across
-// wire for data in transit, by the controller
-// for encryption
-message DatastoreCredentialBlock {
-  string apiKey = 1;
-  string password = 2;
-}
 
 enum Format {
   FmtUnknown = 0;

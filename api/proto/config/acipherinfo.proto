@@ -61,3 +61,16 @@ message CipherBlock {
   // sha256 of the plaintext sensitive data
   bytes clearTextSha256 = 4;
 }
+
+
+// This message will be filled with the
+// details to be encrypted and shared across
+// wire for data in transit, by the controller
+// for encryption
+message EncryptionBlock {
+  string dsAPIKey = 1;
+  string dsPassword = 2;
+  string wifiUserName = 3;	// If the authentication type is EAP
+  string wifiPassword = 4;
+  string protectedUserData = 5;
+}

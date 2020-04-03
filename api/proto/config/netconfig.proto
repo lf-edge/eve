@@ -75,11 +75,3 @@ message WifiConfig {
 
   CipherBlock cipherData = 30;     // contains encrypted credential information
 }
-
-// This message will be filled with the wifi
-// password details and encrypted across
-// wire for data in transit, by the controller
-// for encryption
-message WifiCredentialBlock {
-  string password = 1;
-}
