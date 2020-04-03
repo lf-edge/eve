@@ -256,8 +256,8 @@ type kvmContext struct {
 	domains map[string]int
 	// for now the following is statically configured and can not be changed per domain
 	devicemodel string
-	dm_exec     string
-	dm_args     []string
+	dmExec      string
+	dmArgs      []string
 }
 
 func newKvm() Hypervisor {
@@ -270,15 +270,15 @@ func newKvm() Hypervisor {
 		return kvmContext{
 			domains:     map[string]int{},
 			devicemodel: "virt",
-			dm_exec:     "qemu-system-aarch64",
-			dm_args:     []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-cpu", "host", "-serial", "pty"},
+			dmExec:      "qemu-system-aarch64",
+			dmArgs:      []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-cpu", "host", "-serial", "pty"},
 		}
 	case "amd64":
 		return kvmContext{
 			domains:     map[string]int{},
 			devicemodel: "pc-q35-3.1",
-			dm_exec:     "qemu-system-x86_64",
-			dm_args:     []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-no-hpet"},
+			dmExec:      "qemu-system-x86_64",
+			dmArgs:      []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-no-hpet"},
 		}
 	}
 	return nil
@@ -407,7 +407,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string) (int, error)
 	qmpFile := kvmStateDir + domainName + "/qmp"
 	consFile := kvmStateDir + domainName + "/cons"
 
-	stdoutStderr, err := wrap.Command(ctx.dm_exec, append(ctx.dm_args,
+	stdoutStderr, err := wrap.Command(ctx.dmExec, append(ctx.dmArgs,
 		"-name", domainName, "-readconfig", cfgFilename, "-pidfile", pidFile)...).CombinedOutput()
 	if err != nil {
 		return 0, logError("starting qemu failed %s (%v)", string(stdoutStderr), err)

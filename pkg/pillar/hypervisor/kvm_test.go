@@ -26,14 +26,14 @@ func init() {
 	kvmIntel = kvmContext{
 		domains:     map[string]int{},
 		devicemodel: "pc-q35-3.1",
-		dm_exec:     "",
-		dm_args:     []string{},
+		dmExec:      "",
+		dmArgs:      []string{},
 	}
 	kvmArm = kvmContext{
 		domains:     map[string]int{},
 		devicemodel: "virt",
-		dm_exec:     "",
-		dm_args:     []string{},
+		dmExec:      "",
+		dmArgs:      []string{},
 	}
 }
 
