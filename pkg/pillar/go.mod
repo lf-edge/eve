@@ -38,7 +38,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.0.1
-	github.com/packetcap/go-pcap v0.0.0-20200403115109-5bd1be6d5d80
+	github.com/packetcap/go-pcap v0.0.0-20200402170521-031cd2d3274b
 	github.com/pkg/sftp v1.10.0
 	github.com/prometheus/procfs v0.0.5
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
