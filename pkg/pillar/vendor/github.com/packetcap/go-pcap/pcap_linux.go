@@ -53,6 +53,7 @@ type Handle struct {
 	syscalls        bool
 	promiscuous     bool
 	index           int
+	iface           string
 	snaplen         int32
 	fd              int
 	ring            []byte
@@ -118,12 +119,18 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	logger := log.WithFields(log.Fields{
 		"func":   "readPacketDataMmap",
 		"method": "mmap",
+		"iface":  h.iface,
 	})
-	logger.Debug("started")
+	logger.Debugf("started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d", h.framesPerBuffer, h.blockSize, h.frameSize, h.frameNumbers, h.blockNumbers)
 	// we check the bit setting on the pointer
-	logger.Debugf("checking for packet at block %d", h.framePtr)
 	blockBase := h.framePtr * h.blockSize
-	if h.ring[blockBase+offsetToBlockStatus]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
+	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
+	flagIndex := blockBase + offsetToBlockStatus
+	for {
+		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d", h.framePtr, blockBase, flagIndex)
+		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
+			break
+		}
 		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
 		logger.Debug("poll returned")
@@ -135,12 +142,14 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			logger.Error("negative return value from polling socket")
 			return nil, errors.New("negative return value from polling socket")
 		}
-		// socket was ready, so read from the mmap now
+		// if we got here, the poll() returned, but we still should check the packet flag, so continue the loop
 	}
 	// read the header
+	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
 	b := h.ring[blockBase : blockBase+h.blockSize]
 	buf := bytes.NewBuffer(b[:])
 	bHdr := blockHeader{}
+	logger.Debugf("binary parsing block header of size %d", buf.Len())
 	if err := binary.Read(buf, h.endian, &bHdr); err != nil {
 		logger.Errorf("error reading block header: %v", err)
 		return nil, fmt.Errorf("error reading block header: %v", err)
@@ -153,8 +162,10 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	nextOffset := bHdr.H1.Offset_to_first_pkt
 	for i := 0; i < numPkts; i++ {
 		hdr := syscall.Tpacket3Hdr{}
+		logger.Debugf("packet number %d/%d at position %d in block", i, numPkts, nextOffset)
 		b = b[nextOffset:]
 		buf := bytes.NewBuffer(b[:alignedTpacketHdrSize])
+		logger.Debugf("binary parsing packet header of size %d", buf.Len())
 		if err := binary.Read(buf, h.endian, &hdr); err != nil {
 			msg := fmt.Sprintf("error reading tpacket3 header on byte %d: %v", i, err)
 			logger.Errorf(msg)
@@ -162,6 +173,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		}
 		logger.Debugf("tpacket3 header %#v", hdr)
 		nextOffset = hdr.Next_offset
+		logger.Debugf("setting next offset to %d", nextOffset)
 
 		// read the sockaddr_ll
 		// unfortunately, we cannot do binary.Read() because syscall.SockaddrLinklayer has an embedded slice
@@ -190,7 +202,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 
 	// indicate we are done with this frame, send back to the kernel
 	logger.Debugf("returning block at pos %d to kernel", h.framePtr)
-	h.ring[blockBase+offsetToBlockStatus] = syscall.TP_STATUS_KERNEL
+	h.ring[flagIndex] = syscall.TP_STATUS_KERNEL
 
 	h.framePtr = (h.framePtr + 1) % h.blockNumbers
 	logger.Debugf("final block: %d", h.framePtr)
@@ -242,6 +254,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h := Handle{
 		snaplen:  snaplen,
 		syscalls: syscalls,
+		iface:    iface,
 	}
 	// we need to know our endianness
 	endianness, err := getEndianness()
