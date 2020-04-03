@@ -123,12 +123,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	// we check the bit setting on the pointer
 	blockBase := h.framePtr * h.blockSize
 	logger.Debugf("checking for packet at block %d, buffer position %d", h.framePtr, blockBase)
-	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
-	flagIndex := blockBase + offsetToBlockStatus
-	for {
-		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
-			break
-		}
+	if h.ring[blockBase+offsetToBlockStatus]&syscall.TP_STATUS_USER != syscall.TP_STATUS_USER {
 		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
 		logger.Debug("poll returned")
@@ -140,7 +135,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			logger.Error("negative return value from polling socket")
 			return nil, errors.New("negative return value from polling socket")
 		}
-		// if we got here, the poll() returned, but we still should check the packet flag, so continue the loop
+		// socket was ready, so read from the mmap now
 	}
 	// read the header
 	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
@@ -200,7 +195,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 
 	// indicate we are done with this frame, send back to the kernel
 	logger.Debugf("returning block at pos %d to kernel", h.framePtr)
-	h.ring[flagIndex] = syscall.TP_STATUS_KERNEL
+	h.ring[blockBase+offsetToBlockStatus] = syscall.TP_STATUS_KERNEL
 
 	h.framePtr = (h.framePtr + 1) % h.blockNumbers
 	logger.Debugf("final block: %d", h.framePtr)
