@@ -292,12 +292,12 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
   "Name System IMGA IMGB CONFIG P3"*)
       echo "Found EVE GPT partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
-      dd if=/dev/zero of=$IMGFILE bs=512 count=1 conv=notrunc
+      dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
       sgdisk -Z --clear $IMGFILE 2>/dev/null || :
       ;;
    *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
-      dd if=/dev/zero of=$IMGFILE bs=512 count=1 conv=notrunc
+      dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
       sgdisk -Z --clear $IMGFILE 2>/dev/null || :
       ;;
 esac
@@ -310,15 +310,16 @@ done
 # even put a BIOS GRUB in there, for now -- just do it for RPi
 if echo "$PARTS" | grep -q rpi_boot; then
   # creat a hybrid MBR partition table with only this partition visible
-  sgdisk -h$(( PART_OFFSET + 1 )) $IMGFILE
-  PROT_PART=$(busybox hexdump -s 446 -n 16 -v -e '"" 16/1 "\\%03o"' $IMGFILE)
+  sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
+  PROT_PART=$(busybox hexdump -s 446 -n 16 -v -e '"" 16/1 "\\%03o"' "$IMGFILE")
   NULL_PART="\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
   # we need to replace 1st byte with \200 (bootable) and 4th byte with \014 (vfat filesystem type)
-  RPI_BOOT_PART=$(busybox hexdump -s $(( 446 + 17 )) -n 3 -v -e '"\\200" 3/1 "\\%03o" "\\014"' $IMGFILE)
-  RPI_BOOT_PART="$RPI_BOOT_PART"$(busybox hexdump -s $(( 446 + 21 )) -n 11 -v -e '"" 11/1 "\\%03o"' $IMGFILE)
-  # sadly, busybox doesn't support xxd -r -- so make do with awk
+  RPI_BOOT_PART=$(busybox hexdump -s $(( 446 + 17 )) -n 3 -v -e '"\\200" 3/1 "\\%03o" "\\014"' "$IMGFILE")
+  RPI_BOOT_PART="$RPI_BOOT_PART"$(busybox hexdump -s $(( 446 + 21 )) -n 11 -v -e '"" 11/1 "\\%03o"' "$IMGFILE")
+  # sadly, busybox doesn't support xxd -r -- so make do with printf that interprets \ooo escape sequences
+  #shellcheck disable=SC2059
   printf "${RPI_BOOT_PART}${PROT_PART}${NULL_PART}${NULL_PART}" |\
-      dd of=$IMGFILE bs=1 seek=446 conv=noerror,sync,notrunc
+      dd of="$IMGFILE" bs=1 seek=446 conv=noerror,sync,notrunc
 fi
 
 # Update embedded boot partition with our own bootloader

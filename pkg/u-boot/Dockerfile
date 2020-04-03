@@ -22,7 +22,7 @@ WORKDIR /u-boot
 # FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
 RUN if [ "$(uname -m)" = x86_64 ]; then                                              \
        cp /etc/apk/repositories.upstream /etc/apk/repositories                     &&\
-       apk add python3-dev=3.6.9-r2                                                &&\
+       apk add --no-cache python3-dev=3.6.9-r2                                     &&\
        sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h  ;\
     fi
 RUN eval make \$TARGET_"$(uname -m)"
