@@ -265,8 +265,10 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	@true
-pkg/kernel: eve-kernel
-	TAG=`$(LINUXKIT) pkg show-tag $@`-$(NEW_KERNEL)-$(DOCKER_ARCH_TAG)                                    ;\
+pkg/kernel: pkg/kernel/Dockerfile build-tools $(RESCAN_DEPS)
+	D=`date '+%s'` ; $(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $@                          &&\
+	if [ $$(( `date '+%s'` - $$D )) -lt 60 ]; then exit 0; fi                                            &&\
+	TAG=`$(LINUXKIT) pkg show-tag $@`-$(NEW_KERNEL)-$(DOCKER_ARCH_TAG)                                   &&\
 	if echo $$TAG | grep -q -v -- -dirty && ! docker pull $$TAG ; then                                     \
 		docker $(LINUXKIT_PKG_TARGET) --build-arg KERNEL_VERSION_`uname -m`=$(NEW_KERNEL) -t $$TAG $@ ;\
 	fi

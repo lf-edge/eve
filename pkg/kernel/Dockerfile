@@ -16,23 +16,23 @@ RUN apk add \
     gnupg \
     installkernel \
     kmod \
-    libelf-dev \
-    libressl-dev \
+    elfutils-dev \
     linux-headers \
+    libunwind-dev \
+    mpc1-dev \
+    mpfr-dev \
     ncurses-dev \
-    python2 \
     findutils \
+    openssl-dev \
+    patch \
+    rsync \
     sed \
     squashfs-tools \
     tar \
     xz \
     xz-dev \
     zlib-dev \
-    openssl \
-    rsync
-
-# libunwind-dev pkg is missed from arm64 now, below statement will be removed if the pkg is available.
-RUN [ $(uname -m) == x86_64 ] && apk add libunwind-dev || true
+    openssl
 
 ARG KERNEL_VERSION_aarch64=4.19.5
 ARG KERNEL_VERSION_x86_64=4.19.5
@@ -140,15 +140,6 @@ RUN DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdept
                       -name '*.lds' -o -name '*.pl' -o -name '*.sh' \) | \
          tar cf - -T - | (cd $dir; tar xf -) && \
     ( cd /tmp && tar cf /out/kernel-dev.tar usr/src )
-
-
-# perf (Don't compile for 4.4.x, it's broken and tedious to fix)
-RUN if [ "${KERNEL_SERIES}" != "4.4.x" -a $(uname -m) != aarch64 ]; then \
-       mkdir -p /build/perf && \
-       make -C tools/perf LDFLAGS=-static O=/build/perf && \
-       strip /build/perf/perf && \
-       cp /build/perf/perf /out; \
-     fi
 
 FROM scratch
 ENTRYPOINT []
