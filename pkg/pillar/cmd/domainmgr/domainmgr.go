@@ -2073,7 +2073,7 @@ func DomainCreate(status types.DomainStatus) (int, error) {
 
 	// Now create a domain
 	log.Infof("Creating domain with the config - %s\n", filename)
-	domainID, err = hyper.Create(status.DomainName, filename)
+	domainID, err = hyper.Create(status.DomainName, filename, status.VirtualizationMode)
 
 	return domainID, err
 }

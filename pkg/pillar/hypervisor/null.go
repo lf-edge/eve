@@ -44,7 +44,7 @@ func (ctx nullContext) CreateDomConfig(string, types.DomainConfig, []types.DiskS
 	return nil
 }
 
-func (ctx nullContext) Create(domainName string, cfgFilename string) (int, error) {
+func (ctx nullContext) Create(domainName string, cfgFilename string, VirtualizationMode types.VmMode) (int, error) {
 	// pre-flight checks
 	if _, err := os.Stat(cfgFilename); domainName == "" || err != nil {
 		return 0, fmt.Errorf("Null Domain create failed to create domain with either empty name or empty config %s\n", domainName)
