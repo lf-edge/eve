@@ -273,9 +273,11 @@ func logError(format string, a ...interface{}) error {
 type kvmContext struct {
 	domains map[string]int
 	// for now the following is statically configured and can not be changed per domain
-	devicemodel string
-	dmExec      string
-	dmArgs      []string
+	devicemodel  string
+	dmExec       string
+	dmArgs       []string
+	dmCPUArgs    []string
+	dmFmlCPUArgs []string
 }
 
 func newKvm() Hypervisor {
@@ -286,17 +288,21 @@ func newKvm() Hypervisor {
 	switch runtime.GOARCH {
 	case "arm64":
 		return kvmContext{
-			domains:     map[string]int{},
-			devicemodel: "virt",
-			dmExec:      "qemu-system-aarch64",
-			dmArgs:      []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-cpu", "host", "-serial", "pty"},
+			domains:      map[string]int{},
+			devicemodel:  "virt",
+			dmExec:       "qemu-system-aarch64",
+			dmArgs:       []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "pty"},
+			dmCPUArgs:    []string{"-cpu", "host"},
+			dmFmlCPUArgs: []string{""},
 		}
 	case "amd64":
 		return kvmContext{
-			domains:     map[string]int{},
-			devicemodel: "pc-q35-3.1",
-			dmExec:      "qemu-system-x86_64",
-			dmArgs:      []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-no-hpet"},
+			domains:      map[string]int{},
+			devicemodel:  "pc-q35-3.1",
+			dmExec:       "qemu-system-x86_64",
+			dmArgs:       []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-no-hpet"},
+			dmCPUArgs:    []string{""},
+			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
 		}
 	}
 	return nil
@@ -314,7 +320,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}{ctx.devicemodel, config}
 	tmplCtx.Memory = (config.Memory + 1023) / 1024
 	tmplCtx.DisplayName = domainName
-	tmplCtx.BootLoader = "" // could be /usr/lib/xen/boot/ovmf.bin
+	if config.VirtualizationMode == types.FML {
+		tmplCtx.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+	} else {
+		tmplCtx.BootLoader = ""
+	}
 	if config.IsContainer {
 		tmplCtx.Kernel = "/hostfs/boot/kernel"
 		tmplCtx.Ramdisk = "/usr/lib/xen/boot/runx-initrd"
@@ -443,7 +453,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	return nil
 }
 
-func (ctx kvmContext) Create(domainName string, cfgFilename string) (int, error) {
+func (ctx kvmContext) Create(domainName string, cfgFilename string, VirtualizationMode types.VmMode) (int, error) {
 	log.Infof("starting KVM domain %s with config %s\n", domainName, cfgFilename)
 
 	os.MkdirAll(kvmStateDir+domainName, 0777)
@@ -452,7 +462,13 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string) (int, error)
 	qmpFile := kvmStateDir + domainName + "/qmp"
 	consFile := kvmStateDir + domainName + "/cons"
 
-	stdoutStderr, err := wrap.Command(ctx.dmExec, append(ctx.dmArgs,
+	dmArgs := ctx.dmArgs
+	if VirtualizationMode == types.FML {
+		dmArgs = append(dmArgs, ctx.dmFmlCPUArgs...)
+	} else {
+		dmArgs = append(dmArgs, ctx.dmCPUArgs...)
+	}
+	stdoutStderr, err := wrap.Command(ctx.dmExec, append(dmArgs,
 		"-name", domainName, "-readconfig", cfgFilename, "-pidfile", pidFile)...).CombinedOutput()
 	if err != nil {
 		return 0, logError("starting qemu failed %s (%v)", string(stdoutStderr), err)
