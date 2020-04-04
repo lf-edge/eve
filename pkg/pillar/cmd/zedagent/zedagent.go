@@ -101,6 +101,7 @@ type zedagentContext struct {
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
+	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
 	rebootCmd                 bool
@@ -800,6 +801,18 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
+
+	// Subscribe to Log metrics from logmanager
+	subLogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "logmanager",
+		TopicImpl: types.LogMetrics{},
+		Activate:  false,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subLogMetrics = subLogMetrics
 
 	// Pick up debug aka log level before we start real work
 

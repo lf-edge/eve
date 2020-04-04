@@ -1050,6 +1050,8 @@ func (m *AppMetric) GetDisk() []*AppDiskMetric {
 // totalAppLogInput = numAppEventsSent + numAppEventErrors + num4xxResponses
 // totalDeviceLogInput = numDeviceEventsSent + numDeviceEventErrors
 type LogMetric struct {
+	// Sent events count also includes events that the device tried to send but got deferred.
+	// Because deferred logs will eventually reach cloud after network is restored.
 	NumDeviceEventsSent  uint64 `protobuf:"varint,1,opt,name=numDeviceEventsSent,proto3" json:"numDeviceEventsSent,omitempty"`
 	NumDeviceBundlesSent uint64 `protobuf:"varint,2,opt,name=numDeviceBundlesSent,proto3" json:"numDeviceBundlesSent,omitempty"`
 	NumAppEventsSent     uint64 `protobuf:"varint,3,opt,name=numAppEventsSent,proto3" json:"numAppEventsSent,omitempty"`

@@ -219,6 +219,33 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 	log.Debugln("network metrics: ", ReportDeviceMetric.Network)
 
+	lm, _ := ctx.subLogMetrics.Get("global")
+	if lm != nil {
+		logMetrics := lm.(types.LogMetrics)
+		deviceLogMetric := new(metrics.LogMetric)
+		deviceLogMetric.NumDeviceEventsSent = logMetrics.NumDeviceEventsSent
+		deviceLogMetric.NumDeviceBundlesSent = logMetrics.NumDeviceBundlesSent
+		deviceLogMetric.NumAppEventsSent = logMetrics.NumAppEventsSent
+		deviceLogMetric.NumAppBundlesSent = logMetrics.NumAppBundlesSent
+		deviceLogMetric.Num4XxResponses = logMetrics.Num4xxResponses
+		pTime, _ := ptypes.TimestampProto(logMetrics.LastDeviceBundleSendTime)
+		deviceLogMetric.LastDeviceBundleSendTime = pTime
+		pTime, _ = ptypes.TimestampProto(logMetrics.LastAppBundleSendTime)
+		deviceLogMetric.LastAppBundleSendTime = pTime
+		deviceLogMetric.IsLogProcessingDeferred = logMetrics.IsLogProcessingDeferred
+		deviceLogMetric.NumTimesDeferred = logMetrics.NumTimesDeferred
+		pTime, _ = ptypes.TimestampProto(logMetrics.LastLogDeferTime)
+		deviceLogMetric.LastLogDeferTime = pTime
+		deviceLogMetric.TotalDeviceLogInput = logMetrics.TotalDeviceLogInput
+		deviceLogMetric.TotalAppLogInput = logMetrics.TotalAppLogInput
+		deviceLogMetric.NumDeviceEventErrors = logMetrics.NumDeviceEventErrors
+		deviceLogMetric.NumAppEventErrors = logMetrics.NumAppEventErrors
+		deviceLogMetric.NumDeviceBundleProtoBytesSent = logMetrics.NumDeviceBundleProtoBytesSent
+		deviceLogMetric.NumAppBundleProtoBytesSent = logMetrics.NumAppBundleProtoBytesSent
+		ReportDeviceMetric.Log = deviceLogMetric
+	}
+	log.Debugln("log metrics: ", ReportDeviceMetric.Log)
+
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
 	if clientMetrics != nil {
