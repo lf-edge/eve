@@ -14,7 +14,7 @@ export CGO_ENABLED GOOS GOARCH PATH
 # A set of tweakable knobs for our build needs (tweak at your risk!)
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images. AMD64 only
+# The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=kvm'
 HV=xen
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
@@ -62,11 +62,7 @@ endif
 DOCKER_ARCH_TAG=$(ZARCH)
 
 # EVE rootfs image manifest
-ROOTFS_YML_xen_amd64=images/rootfs-xen.yml
-ROOTFS_YML_xen_arm64=images/rootfs-xen.yml
-ROOTFS_YML_acrn_amd64=images/rootfs-acrn.yml
-ROOTFS_YML_acrn_arm64=ACRN-IS-NOT-SUPPORTED-ON-ARM
-ROOTFS_YML=$(ROOTFS_YML_$(HV)_$(ZARCH))
+ROOTFS_YML=images/rootfs-$(HV).yml
 
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
@@ -77,7 +73,7 @@ LIVE_IMG=$(DIST)/live
 TARGET_IMG=$(DIST)/target.img
 INSTALLER=$(DIST)/installer
 
-ROOTFS_IMG=$(INSTALLER)/rootfs.img
+ROOTFS_IMG=$(INSTALLER)/rootfs-$(HV).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 EFI_PART=$(INSTALLER)/EFI
@@ -227,13 +223,14 @@ live: $(LIVE_IMG).img
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
 
-$(CONFIG_IMG): $(CONF_DIR) FORCE | $(INSTALLER)
+$(CONFIG_IMG): $(CONF_DIR) $(shell ls -d $(CONF_DIR)/*) | $(INSTALLER)
 	./tools/makeconfig.sh $< $@
 
 $(ROOTFS_IMG): $(ROOTFS_YML) | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@rm -f $(dir $@)/rootfs.img ; ln -s $(notdir $@) $(dir $@)/rootfs.img
 
 $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
@@ -270,6 +267,7 @@ pkg/%: eve-% FORCE
 	@true
 
 eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG).img $(ROOTFS_YML)
+	make HV=kvm rootfs
 	cp pkg/eve/* Makefile $(ROOTFS_YML) $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
