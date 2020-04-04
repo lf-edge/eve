@@ -20,13 +20,13 @@ RUN git clone https://git.openwrt.org/project/libubox.git
 RUN git clone https://github.com/json-c/json-c.git
 
 WORKDIR /json-c
-RUN ./autogen.sh && ./configure && make install
+RUN git checkout ed54353d && ./autogen.sh && ./configure && make install
 
 WORKDIR /libubox
-RUN cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && make install
+RUN git checkout 7da66430 && cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && make install
 
 WORKDIR /uqmi
-RUN cmake -DBUILD_STATIC=true . && make
+RUN git checkout 1965c713 && cmake -DBUILD_STATIC=true . && make
 
 # second stage (new-ish Docker feature) for smaller image
 FROM alpine:3.6 
