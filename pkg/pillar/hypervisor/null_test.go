@@ -21,11 +21,11 @@ func init() {
 }
 
 func TestNullCreate(t *testing.T) {
-	if _, err := hyper.Create("", ""); err == nil {
+	if _, err := hyper.Create("", "", 0); err == nil {
 		t.Errorf("Create domain should've failed for empty arguments")
 	}
 
-	if _, err := hyper.Create("", "/foo-bar-baz"); err == nil {
+	if _, err := hyper.Create("", "/foo-bar-baz", 0); err == nil {
 		t.Errorf("Create domain should've failed for non-existen config")
 	}
 }
@@ -77,7 +77,7 @@ serial = ['pty']
 		conf.Close()
 	}
 
-	domID, err := hyper.Create("test.1", conf.Name())
+	domID, err := hyper.Create("test.1", conf.Name(), 0)
 	if err != nil {
 		t.Errorf("Create domain test failed %v", err)
 	}
