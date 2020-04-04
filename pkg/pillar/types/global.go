@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -173,12 +174,19 @@ const (
 	RemoteLogLevel AgentSettingKey = "debug.remote.loglevel"
 )
 
+const (
+	agentSettingKeyPattern       = `^agent\.([0-9A-Za-z_]+)\.([0-9A-Za-z_.]+)$`
+	legacyAgentSettingKeyPattern = `^debug\.([0-9A-Za-z_]+)\.([0-9A-Za-z_.]+)$`
+)
+
 // ConfigItemType - Defines what type of item we are storing
 type ConfigItemType uint8
 
 const (
+	// ConfigItemTypeInvalid - Invalid type. Never use it for a valid entry
+	ConfigItemTypeInvalid ConfigItemType = iota
 	// ConfigItemTypeInt - for config item's who's value is an integer
-	ConfigItemTypeInt ConfigItemType = iota + 1
+	ConfigItemTypeInt
 	// ConfigItemTypeBool - for config item's who's value is a boolean
 	ConfigItemTypeBool
 	// ConfigItemTypeString - for config item's who's value is a string
@@ -307,35 +315,41 @@ func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey,
 	log.Debugf("Added string item %s", key)
 }
 
+// parseAgentSettingKey
+//  Returns AgentName, AgentSettingKey, error ( nil if success )
+func parseAgentSettingKey(key string) (string, AgentSettingKey, error) {
+	// Check new Agent Key Setting
+	re := regexp.MustCompile(agentSettingKeyPattern)
+	if re.MatchString(key) {
+		parsedStrings := re.FindStringSubmatch(key)
+		return parsedStrings[1], AgentSettingKey(parsedStrings[2]), nil
+	}
+	// Check if Legacy Agent Setting
+	re = regexp.MustCompile(legacyAgentSettingKeyPattern)
+	if re.MatchString(key) {
+		parsedStrings := re.FindStringSubmatch(key)
+		return parsedStrings[1], AgentSettingKey("debug." + parsedStrings[2]), nil
+	}
+	// Neither New or Legacy.. Return Error
+	err := fmt.Errorf("parseAgentSettingKey: Key %s Doesn't match agent "+
+		"Setting Key Pattern", key)
+	log.Errorf("Err: %s", err)
+	return "", "", err
+}
+
 func (specMap *ConfigItemSpecMap) parseAgentItem(
 	newConfigMap *ConfigItemValueMap, oldConfigMap *ConfigItemValueMap,
 	key string, value string) (ConfigItemValue, error) {
-	// legacy per-agent setting key debug.<agentname>.xxx
-	// new per-agent setting key agent.<agentname>.debug.xxx
 	log.Debugf("ParseItem: Agent or Lagecy Agent Item. key: %s, Value: %s",
 		key, value)
-	keyStr := key
-
-	// Get Key and AgentName
-	components := strings.Split(key, ".")
-	agentName := components[1]
-	if strings.HasPrefix(key, "agent") && len(components) > 2 {
-		components = components[2:]
-		key = strings.Join(components, ".")
-	} else if strings.HasPrefix(key, "debug") && len(components) > 3 {
-		key = components[0] + "." + strings.Join(components[2:], ".")
-	} else {
-		err := fmt.Errorf("Unable to find agent name for per-agent setting. "+
-			"Key: %s", key)
-		log.Errorf("***parseAgentItem: ERROR: %s", err)
+	agentName, asKey, err := parseAgentSettingKey(key)
+	if err != nil {
 		return ConfigItemValue{}, err
 	}
-
-	asKey := AgentSettingKey(key)
 	itemSpec, ok := specMap.AgentSettings[asKey]
 	if !ok {
-		err := fmt.Errorf("Cannot find key (%s) in AgentSettings. KeyStr: %s",
-			key, keyStr)
+		err := fmt.Errorf("Cannot find key (%s) in AgentSettings. asKey: %s",
+			key, asKey)
 		log.Errorf("***parseAgentItem: ERROR: %s", err)
 		return ConfigItemValue{}, err
 	}
@@ -343,23 +357,27 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 	if err == nil {
 		newConfigMap.setAgentSettingValue(agentName, asKey, val)
 		log.Debugf("parseAgentItem: Successfully parsed Agent Setting. "+
-			"Agent: %s, key: %s, Value: %s", agentName, key, value)
+			"Agent: %s, key: %s, Value: %+v", agentName, key, value)
 		return val, nil
 	}
+	log.Errorf("***ParseItem: Invalid Value for agent Setting - "+
+		"agentName: %s, Key: %s. Err: %s.", agentName, key, err)
+
 	// Parse Error. Get the Value from old config
-	existingValue, asErr := oldConfigMap.agentConfigItemValue(agentName, asKey)
+	val, asErr := oldConfigMap.agentConfigItemValue(agentName, asKey)
 	if asErr == nil {
 		newConfigMap.setAgentSettingValue(agentName, asKey, val)
-		log.Errorf("***ParseItem: Can't find existing value for agent "+
-			"Setting - agentName: %s, Key: %s. Using Existing Value: %+v",
-			agentName, key, existingValue)
+		err := fmt.Errorf("ParseItem: Invalid Value for agent Setting - "+
+			"agentName: %s, Key: %s. Err: %s. Using Existing Value: %+v",
+			agentName, key, err, val)
 		return val, err
 	}
 	// No Existing Value for Agent. It will use the default value.
-	log.Errorf("***ParseItem: Can't find existing value for agent "+
-		"Setting - agentName: %s, Key: %s. No Existing Value Either."+
-		" Use Default", agentName, key)
-	return ConfigItemValue{}, err
+	val = itemSpec.DefaultValue()
+	log.Infof("ParseItem: Invalid Value for agent Setting - "+
+		"agentName: %s, Key: %s, err: %s. No Existing Value Either. "+
+		"Using Default Value: %+v", agentName, key, err, val)
+	return val, err
 }
 
 // ParseItem - Parses the Key/Value pair into a ConfigItem and updates
@@ -368,18 +386,13 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 	oldConfigMap *ConfigItemValueMap,
 	key string, value string) (ConfigItemValue, error) {
-	// legacy per-agent setting key debug.<agentname>.xxx
-	// new per-agent setting key agent.<agentname>.debug.xxx
-	if strings.HasPrefix(key, "agent") || specMap.isLegacyAgent(key) {
-		return specMap.parseAgentItem(newConfigMap, oldConfigMap, key, value)
-	}
+
+	// First check if this is a Global Setting
 	gsKey := GlobalSettingKey(key)
 	itemSpec, ok := specMap.GlobalSettings[gsKey]
 	if !ok {
-		err := fmt.Errorf("ParseItem: Item is neither a global nor a "+
-			"per-agent setting. Key: %s, Value: %s", key, value)
-		log.Errorf("ParseItem: ERROR: %s", err)
-		return ConfigItemValue{}, err
+		// Not a Global Setting. Check if this is a per-agent setting
+		return specMap.parseAgentItem(newConfigMap, oldConfigMap, key, value)
 	}
 	// Global Setting
 	log.Debugf("ParseItem: Global Setting. key: %s, Value: %s", key, value)
@@ -391,16 +404,19 @@ func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 		return val, nil
 	}
 	// Parse Error. Get the Value from old config
-	existingValue, ok := oldConfigMap.GlobalSettings[gsKey]
-	if !ok {
-		existingValue = itemSpec.DefaultValue()
-		log.Errorf("**ParseItem: Can't find existing value for Key: %s"+
-			". Using default value ( %+v)", key, existingValue)
+	val, ok = oldConfigMap.GlobalSettings[gsKey]
+	if ok {
+		err = fmt.Errorf("***ParseItem: Error in parsing Item. Replacing it "+
+			"with existing Value. key: %s, value: %s, Existing Value: %+v. "+
+			"Err: %s", key, value, val, err)
+	} else {
+		val = itemSpec.DefaultValue()
+		err = fmt.Errorf("***ParseItem: Error in parsing Item. No Existing "+
+			"Value Found. Using Default Value. key: %s, value: %s, "+
+			"Default Value: %+v. Err: %s", key, value, val, err)
 	}
 	newConfigMap.GlobalSettings[gsKey] = val
-	log.Error("ParseItem: Error in parsing Item. Replacing it with "+
-		"existing Value. key: %s, value: %s, Existing Value: %+v. "+
-		"Err: %s", key, value, existingValue, err)
+	log.Errorf(err.Error())
 	return val, err
 }
 
@@ -702,6 +718,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
 	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
 
+	// Add Agent Settings
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
+
 	return configItemSpecMap
 }
 
@@ -743,21 +763,6 @@ func agentSettingKeyFromLegacyKey(key string) string {
 	}
 	agentKey := components[0] + "." + strings.Join(components[2:], ".")
 	return agentKey
-}
-
-func (specMap ConfigItemSpecMap) isLegacyAgent(key string) bool {
-	if !strings.HasPrefix(key, "debug") {
-		return false
-	}
-	agentKey := agentSettingKeyFromLegacyKey(key)
-	log.Debugf("isLegacyAgent: agentKey %s", agentKey)
-	_, ok := specMap.AgentSettings[AgentSettingKey(agentKey)]
-
-	if !ok {
-		log.Debugf("isLegacyAgent: Key (%s) Not Found. specMap.AgentSettings: %+v",
-			agentKey, specMap.AgentSettings)
-	}
-	return ok
 }
 
 // OldGlobalConfig - Legacy version of global config. Kept for upgradeconverter

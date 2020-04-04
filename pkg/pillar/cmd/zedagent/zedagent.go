@@ -196,8 +196,8 @@ func Run(ps *pubsub.PubSub) {
 
 	rebootConfig := readRebootConfig()
 	zedagentCtx.rebootConfigCounter = rebootConfig.Counter
-	log.Infof("Zedagent Run - rebootConfigCounter at init is %+v",
-		rebootConfig)
+	log.Infof("Zedagent Run - rebootConfigCounter at init is %d",
+		zedagentCtx.rebootConfigCounter)
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
