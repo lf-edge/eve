@@ -40,8 +40,9 @@ const (
 	logMaxMessages = 100
 	logMaxBytes    = 32768 // Approximate - no headers counted
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime              = 3 * time.Minute
+	warningTime            = 40 * time.Second
+	metricsPublishInterval = 300 * time.Second
 )
 
 var (
@@ -68,6 +69,8 @@ type logmanagerContext struct {
 	globalConfig    *types.ConfigItemValueMap
 	subDomainStatus pubsub.Subscription
 	GCInitialized   bool
+	metricsPub      pubsub.Publication
+	inputMetrics    *inputLogMetrics
 	sync.RWMutex
 }
 
@@ -88,9 +91,9 @@ type logEntry struct {
 
 // List of log files we watch
 type loggerContext struct {
-	logfileReaders []logfileReader
-	image          string
-	logChan        chan<- logEntry
+	image        string
+	logChan      chan<- logEntry
+	inputMetrics *inputLogMetrics
 }
 
 type logfileReader struct {
@@ -110,7 +113,6 @@ type imageLogfileReader struct {
 
 // List of log files we watch where channel/image is per file
 type imageLoggerContext struct {
-	logfileReaders []imageLogfileReader
 }
 
 // DNSContext holds context for handleDNSModify
@@ -126,6 +128,11 @@ type zedcloudLogs struct {
 	SuccessCount uint64
 	LastFailure  time.Time
 	LastSuccess  time.Time
+}
+
+type inputLogMetrics struct {
+	totalDeviceLogInput uint64
+	totalAppLogInput    uint64
 }
 
 // Run is an entry point into running logmanager
@@ -170,9 +177,22 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
+	var inputMetrics inputLogMetrics
+	metricsPub, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.LogMetrics{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	logmanagerCtx := logmanagerContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
+		metricsPub:   metricsPub,
+		inputMetrics: &inputMetrics,
 	}
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -284,7 +304,10 @@ func Run(ps *pubsub.PubSub) {
 
 	currentPartition := zboot.GetCurrentPartition()
 	loggerChan := make(chan logEntry)
-	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
+	ctx := loggerContext{
+		logChan:      loggerChan,
+		image:        currentPartition,
+		inputMetrics: &inputMetrics}
 
 	// Start sender of log events
 	go processEvents(currentPartition, loggerChan, eveVersion, &logmanagerCtx)
@@ -384,6 +407,12 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			isAppLog:  appLog,
 		}
 		ctx.logChan <- logMsg
+
+		if appLog {
+			ctx.inputMetrics.totalAppLogInput++
+		} else {
+			ctx.inputMetrics.totalDeviceLogInput++
+		}
 	}
 }
 
@@ -450,11 +479,21 @@ func processEvents(image string, logChan <-chan logEntry,
 	min := max * 0.3
 	flushTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
+
+	// Metrics publish timer. Publish log metrics every 5 minutes.
+	interval = time.Duration(metricsPublishInterval)
+	max = float64(interval)
+	min = max * 0.3
+	metricsPublishTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+
 	messageCount := 0
+	byteCount := 0
 	dropped := 0
 	deferInprogress := false
 	appUUID := ""
 	var appLogBundle *logs.AppInstanceLogBundle
+	var logMetrics types.LogMetrics
 	for {
 		// If we had a defer wait until it has been taken care of
 		// Note that globalDeferInprogress might not yet be set
@@ -476,16 +515,20 @@ func processEvents(image string, logChan <-chan logEntry,
 			log.Infof("processEvents(%s) deferInprogress done",
 				image)
 			deferInprogress = false
+			logMetrics.IsLogProcessingDeferred = false
+			// Publish LogMetrics
+			publishLogMetrics(ctx, &logMetrics)
 		}
 
 		select {
 		case event, more := <-logChan:
 			sent := false
+			is4xx := false
 			if !more {
 				log.Infof("processEvents(%s) end\n",
 					image)
 				flushAllLogBundles(image, iteration, eveVersion,
-					reportLogs, appLogBundles)
+					reportLogs, appLogBundles, &logMetrics)
 				return
 			}
 			if event.isAppLog {
@@ -507,14 +550,20 @@ func processEvents(image string, logChan <-chan logEntry,
 						event.source, appUUID)
 				}
 
-				handleAppLogEvent(event, appLogBundle)
+				ok = handleAppLogEvent(event, appLogBundle)
+				if !ok {
+					logMetrics.NumAppEventErrors++
+				}
 				messageCount = len(appLogBundle.Log)
+				byteCount = proto.Size(appLogBundle)
 			} else {
-				handleLogEvent(event, reportLogs)
+				ok := handleLogEvent(event, reportLogs)
+				if !ok {
+					logMetrics.NumDeviceEventErrors++
+				}
 				messageCount = len(reportLogs.Log)
+				byteCount = proto.Size(reportLogs)
 			}
-			// Bytes before appending this one
-			byteCount := proto.Size(reportLogs)
 
 			if messageCount < logMaxMessages &&
 				byteCount < logMaxBytes {
@@ -525,15 +574,32 @@ func processEvents(image string, logChan <-chan logEntry,
 			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
 				image, messageCount, byteCount)
 			if event.isAppLog {
-				sent = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+				sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+				if is4xx {
+					logMetrics.Num4xxResponses += uint64(messageCount)
+				} else {
+					logMetrics.NumAppEventsSent += uint64(messageCount)
+					logMetrics.NumAppBundleProtoBytesSent += uint64(byteCount)
+					logMetrics.NumAppBundlesSent++
+					logMetrics.LastAppBundleSendTime = time.Now()
+				}
 				delete(appLogBundles, appUUID)
 			} else {
-				sent = sendProtoStrForLogs(reportLogs, image,
-					iteration, eveVersion)
+				sent = sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
+				logMetrics.NumDeviceEventsSent += uint64(messageCount)
+				logMetrics.NumDeviceBundleProtoBytesSent += uint64(byteCount)
+				logMetrics.NumDeviceBundlesSent++
+				logMetrics.LastDeviceBundleSendTime = time.Now()
 			}
+
 			iteration++
 			if !sent {
 				deferInprogress = true
+				logMetrics.IsLogProcessingDeferred = true
+				logMetrics.NumTimesDeferred++
+				logMetrics.LastLogDeferTime = time.Now()
+				// Publish LogMetrics
+				publishLogMetrics(ctx, &logMetrics)
 			}
 
 		case <-flushTimer.C:
@@ -541,32 +607,72 @@ func processEvents(image string, logChan <-chan logEntry,
 				image, time.Now().String(),
 				dropped, messageCount,
 				proto.Size(reportLogs))
-			// Iterate the app log bundle map and send out all app logs
-			sent := flushAllLogBundles(image, iteration, eveVersion, reportLogs, appLogBundles)
+			// Iterate the app/device log bundle map and send out all app logs
+			sent := flushAllLogBundles(image, iteration, eveVersion,
+				reportLogs, appLogBundles, &logMetrics)
 			iteration++
 			if !sent {
 				deferInprogress = true
+				logMetrics.IsLogProcessingDeferred = true
+				logMetrics.NumTimesDeferred++
+				logMetrics.LastLogDeferTime = time.Now()
+				// Publish LogMetrics
+				publishLogMetrics(ctx, &logMetrics)
 			}
+		case <-metricsPublishTimer.C:
+			publishLogMetrics(ctx, &logMetrics)
+			log.Debugf("processEvents(%s): Published log metrics at %s",
+				image, time.Now().String())
 		}
 	}
 }
 
+func publishLogMetrics(ctx *logmanagerContext, outMetrics *types.LogMetrics) {
+	outMetrics.TotalDeviceLogInput = ctx.inputMetrics.totalDeviceLogInput
+	outMetrics.TotalAppLogInput = ctx.inputMetrics.totalAppLogInput
+	ctx.metricsPub.Publish("global", *outMetrics)
+}
+
 func flushAllLogBundles(image string, iteration int, eveVersion string,
-	reportLogs *logs.LogBundle, appLogBundles map[string]*logs.AppInstanceLogBundle) bool {
+	reportLogs *logs.LogBundle, appLogBundles map[string]*logs.AppInstanceLogBundle,
+	logMetrics *types.LogMetrics) bool {
+	messageCount := len(reportLogs.Log)
+	byteCount := proto.Size(reportLogs)
 	sent := sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
+	// Take care of metrics
+	logMetrics.NumDeviceEventsSent += uint64(messageCount)
+	logMetrics.NumDeviceBundleProtoBytesSent += uint64(byteCount)
+	logMetrics.NumDeviceBundlesSent++
+	logMetrics.LastDeviceBundleSendTime = time.Now()
+
 	if !sent {
 		return false
 	}
+
+	var is4xx bool
 	appBundlesToDelete := []string{}
 	for appUUID, appLogBundle := range appLogBundles {
 		log.Debugf("flushAllLogBundles: Trying to flush App bundle with UUID %s and %d logs",
 			appUUID, len(appLogBundle.Log))
-		sent = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+		messageCount := len(appLogBundle.Log)
+		byteCount := proto.Size(appLogBundle)
+		sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+
+		// Take care of metrics
+		if is4xx {
+			logMetrics.Num4xxResponses += uint64(messageCount)
+		} else {
+			logMetrics.NumAppEventsSent += uint64(messageCount)
+			logMetrics.NumAppBundleProtoBytesSent += uint64(byteCount)
+			logMetrics.NumAppBundlesSent++
+			logMetrics.LastAppBundleSendTime = time.Now()
+		}
+
+		log.Debugf("flushAllLogBundles: Flushed App bundle with UUID %s", appUUID)
+		appBundlesToDelete = append(appBundlesToDelete, appUUID)
 		if !sent {
 			break
 		}
-		log.Debugf("flushAllLogBundles: Flushed App bundle with UUID %s", appUUID)
-		appBundlesToDelete = append(appBundlesToDelete, appUUID)
 	}
 	for _, appUUID := range appBundlesToDelete {
 		delete(appLogBundles, appUUID)
@@ -577,7 +683,8 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 var msgIDCounter = 1
 var iteration = 0
 
-func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) {
+// returns false when app log event is dropped
+func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool {
 	log.Debugf("Read event from %s time %v",
 		event.source, event.timestamp)
 	// Have to discard if too large since service doesn't
@@ -586,11 +693,11 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) {
 	if strLen > logMaxBytes {
 		log.Errorf("handleLogEvent: dropping source %s %d bytes",
 			event.source, strLen)
-		return
+		return false
 	}
 
 	logDetails := &logs.LogEntry{}
-	// XXX Is this still required. rsyslogd is not configured to do the same
+	// XXX Is this still required. rsyslogd is now configured to do the same
 	logDetails.Content = strings.Map(func(r rune) rune {
 		if r == utf8.RuneError {
 			return -1
@@ -610,9 +717,11 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) {
 		log.Warnf("handleLogEvent: source %s from %d to %d bytes",
 			event.source, oldLen, newLen)
 	}
+	return true
 }
 
-func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) {
+// returns false when the device log event is dropped
+func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) bool {
 	// Assign a unique msgID for each message
 	msgID := msgIDCounter
 	msgIDCounter++
@@ -624,7 +733,7 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) {
 	if strLen > logMaxBytes {
 		log.Errorf("handleLogEvent: dropping source %s %d bytes",
 			event.source, strLen)
-		return
+		return false
 	}
 
 	logDetails := &logs.LogEntry{}
@@ -648,6 +757,7 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) {
 		log.Warnf("handleLogEvent: source %s from %d to %d bytes",
 			event.source, oldLen, newLen)
 	}
+	return true
 }
 
 // Returns true if a message was successfully sent
@@ -726,9 +836,9 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 
 // Returns true if a message was successfully sent
 func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
-	iteration int, image string) bool {
+	iteration int, image string) (sent, is4xx bool) {
 	if len(appLogs.Log) == 0 {
-		return true
+		return true, false
 	}
 	log.Debugln("sendProtoStrForAppLogs called...", iteration)
 	data, err := proto.Marshal(appLogs)
@@ -768,7 +878,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
 			return400)
 		appLogs.Log = []*logs.LogEntry{}
-		return false
+		return false, false
 	}
 	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, appLogsURL,
 		size, buf, iteration, return400)
@@ -784,7 +894,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
 				size, image, appLogsURL, resp.StatusCode)
 			appLogs.Log = []*logs.LogEntry{}
-			return true
+			return true, true
 		}
 	}
 	if err != nil {
@@ -801,11 +911,11 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
 			return400)
 		appLogs.Log = []*logs.LogEntry{}
-		return false
+		return false, false
 	}
 	log.Debugf("Sent %d bytes image %s to %s\n", size, image, appLogsURL)
 	appLogs.Log = []*logs.LogEntry{}
-	return true
+	return true, false
 }
 
 func isResp4xx(code int) bool {

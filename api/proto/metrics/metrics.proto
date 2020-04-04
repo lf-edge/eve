@@ -152,6 +152,8 @@ message appMetric {
 // totalAppLogInput = numAppEventsSent + numAppEventErrors + num4xxResponses
 // totalDeviceLogInput = numDeviceEventsSent + numDeviceEventErrors
 message logMetric {
+  // Sent events count also includes events that the device tried to send but got deferred.
+  // Because deferred logs will eventually reach cloud after network is restored.
   uint64 numDeviceEventsSent = 1;
   uint64 numDeviceBundlesSent = 2;
   uint64 numAppEventsSent = 3;
