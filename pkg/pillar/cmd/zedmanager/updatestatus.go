@@ -485,10 +485,9 @@ func doInstall(ctx *zedmanagerContext,
 		// Odd; no StorageConfig in list
 		minState = types.DOWNLOADED
 	}
-	switch status.State {
-	case types.RESTARTING, types.PURGING:
+	if status.State >= types.BOOTING {
 		// Leave unchanged
-	default:
+	} else {
 		status.State = minState
 		changed = true
 	}
@@ -558,11 +557,11 @@ func doPrepare(ctx *zedmanagerContext,
 		return changed, false
 	}
 	// Automatically move from DELIVERED to INSTALLED
-	switch status.State {
-	case types.RESTARTING, types.PURGING:
+	if status.State >= types.BOOTING {
 		// Leave unchanged
-	default:
+	} else {
 		status.State = types.INSTALLED
+		changed = true
 	}
 	changed = true
 	log.Infof("Done with EID allocations for %s\n", uuidStr)
