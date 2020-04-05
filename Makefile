@@ -268,7 +268,8 @@ pkg/kernel: pkg/kernel/Dockerfile build-tools $(RESCAN_DEPS)
 	if [ $$(( `date '+%s'` - $$D )) -lt 60 ]; then exit 0; fi                                  &&\
 	TAG=`echo NEW_KERNEL_TAG | $(PARSE_PKGS)` && V=$${TAG%-*} && V=$${V##*-}                   &&\
 	if echo $$TAG | grep -q -v -- -dirty && ! docker pull $$TAG ; then                           \
-		docker $(LINUXKIT_PKG_TARGET) --build-arg KERNEL_VERSION_`uname -m`=$$V -t $$TAG $@ ;\
+		docker build --build-arg KERNEL_VERSION_`uname -m`=$$V -t $$TAG $@                 &&\
+		if [ "$(LINUXKIT_PKG_TARGET)" = push ]; then docker push $$TAG ;fi                  ;\
 	fi
 pkg/%: eve-% FORCE
 	@true
