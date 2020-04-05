@@ -177,19 +177,16 @@ Raspberry Pi 4 is a tiny, but capable enough ARM board that allows EVE to run wi
 
 Note that full Raspberry Pi 4 support is only available in upstream Linux kernels starting from 5.6.0. Hence you'll have to build that flavor of the EVE kernel package yourself. On top of that, since the kernel configuration we're using relies on device tree blob available from UEFI and not being explicitly loaded, you'll have to move the device tree out of the way in your build. Finally, since for now EVE only support KVM configuration you'll have to use a GRUB config that enables KVM mode.
 
-Putting it all together, here are the steps to run EVE on Raspberry Pi 4:
+While you need to be aware of all the tweaks required for Raspberry Pi 4 in case you want to debug the build, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4:
 
-1. Build 5.6.1 kernel `cd pkg/kernel ; docker build --build-arg KERNEL_VERSION_aarch64=5.6.1 -t XXX .`
-2. Edit `images/rootfs-xen.yml.in` and replace 2nd line with `image: XXX`
-3. Move device tree config out of the way `mv conf/eve.dts conf/eve.dts.not.used`
-4. Enable KVM boot mode `cp conf/grub.cfg.kvm conf/grub.cfg`
-5. Build a live image `make ZARCH=arm64 MEDIA_SIZE=15000 live.rpi`
-6. Flash the `dist/arm64/live.rpi` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
-7. Always make sure to verify the image by running `gdisk /dev/XXX` and picking 'v' option
+1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
+2. Build a live image `make ZARCH=arm64 MEDIA_SIZE=15000 live.rpi`
+3. Flash the `dist/arm64/live.rpi` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+4. Always make sure to verify the image by running `gdisk /dev/XXX` and picking 'v' option
 
-In step #5 you should replace MEDIA_SIZE with the value that corresponds to the size of your SD card in MB. Note, however, that because of flash wear, the actual size may be smaller than what is advertised by the manufacturer (it is likely to use 15000 for a card that is advertised as 16G).
+In step #2 you should replace MEDIA_SIZE with the value that corresponds to the size of your SD card in MB. Note, however, that because of flash wear, the actual size may be smaller than what is advertised by the manufacturer (it is likely to use 15000 for a card that is advertised as 16G).
 
-Step #7 is extermely important and can NOT be skipped (otherwise you will end up with and EVE image that can NOT be upgraded).
+Step #4 is extermely important and can NOT be skipped (otherwise you will end up with and EVE image that can NOT be upgraded).
 
 ## How to use on an HiKey ARM board
 
