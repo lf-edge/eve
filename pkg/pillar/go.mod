@@ -13,13 +13,13 @@ require (
 	github.com/containerd/ttrpc v0.0.0-20200121165050-0be804eadb15 // indirect
 	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737
 	github.com/coreos/ioprogress v0.0.0-20151023204047-4637e494fd9b // indirect
-	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 	github.com/fsnotify/fsnotify v1.4.7
+	github.com/go-logfmt/logfmt v0.4.0 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/gogo/googleapis v1.3.2 // indirect
 	github.com/golang/protobuf v1.3.2
@@ -38,14 +38,14 @@ require (
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.0.1
-	github.com/packetcap/go-pcap v0.0.0-20200405180300-8c26e5c2d594
+	github.com/packetcap/go-pcap v0.0.0-20200406093224-b4b47c1ea359
 	github.com/pkg/sftp v1.10.0
 	github.com/prometheus/procfs v0.0.5
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
-	github.com/sirupsen/logrus v1.4.2
+	github.com/sirupsen/logrus v1.5.0
 	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/gocapability v0.0.0-20180916011248-d98352740cb2 // indirect
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -53,7 +53,8 @@ require (
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
-	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
+	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
+	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d // indirect
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
