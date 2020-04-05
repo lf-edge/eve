@@ -184,9 +184,7 @@ func init() {
 	proto.RegisterType((*DeviceLispDetails)(nil), "DeviceLispDetails")
 }
 
-func init() {
-	proto.RegisterFile("mesh.proto", fileDescriptor_b29fb4a916ab9601)
-}
+func init() { proto.RegisterFile("mesh.proto", fileDescriptor_b29fb4a916ab9601) }
 
 var fileDescriptor_b29fb4a916ab9601 = []byte{
 	// 373 bytes of a gzipped FileDescriptorProto

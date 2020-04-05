@@ -70,7 +70,7 @@ message CipherBlock {
 message EncryptionBlock {
   string dsAPIKey = 1;
   string dsPassword = 2;
-  string wifiUserName = 3;	// If the authentication type is EAP
+  string wifiUserName = 3;      // If the authentication type is EAP
   string wifiPassword = 4;
   string protectedUserData = 5;
 }

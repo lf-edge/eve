@@ -296,9 +296,7 @@ func init() {
 	proto.RegisterType((*ConfigResponse)(nil), "ConfigResponse")
 }
 
-func init() {
-	proto.RegisterFile("devconfig.proto", fileDescriptor_fc17241cd6d97458)
-}
+func init() { proto.RegisterFile("devconfig.proto", fileDescriptor_fc17241cd6d97458) }
 
 var fileDescriptor_fc17241cd6d97458 = []byte{
 	// 594 bytes of a gzipped FileDescriptorProto

@@ -489,9 +489,7 @@ func init() {
 	proto.RegisterType((*NetworkInstanceConfig)(nil), "NetworkInstanceConfig")
 }
 
-func init() {
-	proto.RegisterFile("netinst.proto", fileDescriptor_5d61ed8cf2f4078e)
-}
+func init() { proto.RegisterFile("netinst.proto", fileDescriptor_5d61ed8cf2f4078e) }
 
 var fileDescriptor_5d61ed8cf2f4078e = []byte{
 	// 800 bytes of a gzipped FileDescriptorProto

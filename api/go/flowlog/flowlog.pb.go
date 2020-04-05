@@ -442,9 +442,7 @@ func init() {
 	proto.RegisterType((*FlowMessage)(nil), "FlowMessage")
 }
 
-func init() {
-	proto.RegisterFile("flowlog.proto", fileDescriptor_da9140283b83e97c)
-}
+func init() { proto.RegisterFile("flowlog.proto", fileDescriptor_da9140283b83e97c) }
 
 var fileDescriptor_da9140283b83e97c = []byte{
 	// 608 bytes of a gzipped FileDescriptorProto

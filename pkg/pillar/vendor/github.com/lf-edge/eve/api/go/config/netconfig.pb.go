@@ -456,9 +456,7 @@ func init() {
 	proto.RegisterType((*WifiConfigCryptoblock)(nil), "WifiConfig.cryptoblock")
 }
 
-func init() {
-	proto.RegisterFile("netconfig.proto", fileDescriptor_5aa19e8dfa9a5274)
-}
+func init() { proto.RegisterFile("netconfig.proto", fileDescriptor_5aa19e8dfa9a5274) }
 
 var fileDescriptor_5aa19e8dfa9a5274 = []byte{
 	// 651 bytes of a gzipped FileDescriptorProto

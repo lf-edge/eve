@@ -255,9 +255,7 @@ func init() {
 	proto.RegisterType((*AppInstanceLogBundle)(nil), "AppInstanceLogBundle")
 }
 
-func init() {
-	proto.RegisterFile("log.proto", fileDescriptor_a153da538f858886)
-}
+func init() { proto.RegisterFile("log.proto", fileDescriptor_a153da538f858886) }
 
 var fileDescriptor_a153da538f858886 = []byte{
 	// 406 bytes of a gzipped FileDescriptorProto

@@ -3686,9 +3686,7 @@ func init() {
 	proto.RegisterType((*ZInfoMsg)(nil), "ZInfoMsg")
 }
 
-func init() {
-	proto.RegisterFile("info.proto", fileDescriptor_f140d5b28dddb141)
-}
+func init() { proto.RegisterFile("info.proto", fileDescriptor_f140d5b28dddb141) }
 
 var fileDescriptor_f140d5b28dddb141 = []byte{
 	// 4054 bytes of a gzipped FileDescriptorProto
