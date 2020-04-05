@@ -54,6 +54,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	if getconfigCtx.rebootFlag || ctx.deviceReboot {
 		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
 	} else {
+		parseCipherContextConfig(getconfigCtx, config)
 		parseDatastoreConfig(config, getconfigCtx)
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
@@ -64,7 +65,6 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// on Physio configuration and Networks configuration. If either of
 		// Physio or Networks change, we should re-parse system adapters and
 		// publish updated configuration.
-		parseCipherContextConfig(getconfigCtx, config)
 		forceSystemAdaptersParse := physioChanged || networksChanged
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
