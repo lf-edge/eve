@@ -188,6 +188,10 @@ In step #2 you should replace MEDIA_SIZE with the value that corresponds to the 
 
 Step #4 is extermely important and can NOT be skipped (otherwise you will end up with and EVE image that can NOT be upgraded).
 
+Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 rootfs-rpi` and give resulting `dist/arm64/installer/rootfs-rpi.img` to the controller.
+
+One final note about Raspberry Pi 4 GPU support is that since we are running EVE in 64bit (aarch64) mode we are still waiting for the proper [VC4 DRM BCM2711 drivers](https://lore.kernel.org/dri-devel/cover.6c896ace9a5a7840e9cec008b553cbb004ca1f91.1582533919.git-series.maxime@cerno.tech/T/#m0275b55e1518be1fb2154d3c95e13c1b7de1f347) to be upstreamed. Currently it is expected that Kernel 5.7 may actually ship the fully functional driver.
+
 ## How to use on an HiKey ARM board
 
 Unlike Raspberry Pi boards, HiKey boards come with a built-in flash, so we will be using EVE's installer to install a copy of EVE onto that storage. You can follow these steps to prepare your installation media:
