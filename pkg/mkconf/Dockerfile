@@ -4,7 +4,7 @@ RUN apk add --no-cache \
   dosfstools=4.1-r1    \
   dtc=1.4.4-r0
 COPY make-config /
-RUN mkdir /conf
+RUN mkdir -p /conf/raw
 
 WORKDIR /
 ENTRYPOINT [ "/make-config" ]

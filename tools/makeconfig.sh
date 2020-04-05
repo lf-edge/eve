@@ -1,18 +1,19 @@
 #!/bin/sh
 # Usage:
 #
-#      ./makeconfig.sh <conf dir> <output.img>
+#      ./makeconfig.sh <output.img> [list of config files]
 #
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 MKCONFIG_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkconf")"
-SOURCE="$(cd "$1" && pwd)"
-IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+IMAGE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
-if [ ! -d "$SOURCE" ] || [ $# -ne 2 ]; then
-   echo "Usage: $0 <input dir> <output config image file>"
+if [ $# -lt 2 ]; then
+   echo "Usage: $0 <output.img> [list of config files]"
    exit 1
 fi
 
+shift
+
 : > "$IMAGE"
-(cd "$SOURCE" ; tar chf - ./*) | docker run -i -e ZARCH -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img
+(tar -chf - "$@") | docker run -i -e ZARCH -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img

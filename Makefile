@@ -85,6 +85,8 @@ DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_PART=$(CURDIR)/../adam/run/config
 
+CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
+
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
@@ -228,8 +230,8 @@ live.rpi: $(LIVE_IMG).rpi
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
 
-$(CONFIG_IMG): $(CONF_DIR) $(shell ls -d $(CONF_DIR)/*) | $(INSTALLER)
-	./tools/makeconfig.sh $< $@
+$(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
+	./tools/makeconfig.sh $@ $^
 
 $(ROOTFS_IMG): $(ROOTFS_YML) | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
@@ -245,9 +247,15 @@ $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) | $(INSTALLER)
+# The following two rules are overrides of the generic ones specifically for supporting Raspberry Pi 4
+# $(LIVE_IMG).rpi can be generalized into can be generalized into a trampoline (readconfig vs. chainload)
+# style bootloader image and images/rootfs-rpi.yml will go away once we migrate to a NEW_KERNEL
+$(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
+$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(INSTALLER)/rootfs-rpi.img $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
 	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
+images/rootfs-rpi.yml: images/rootfs-kvm.yml.in
+	@sed -e 's#KERNEL_TAG#NEW_KERNEL_TAG#' < $< | $(PARSE_PKGS) > $@
 
 $(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
