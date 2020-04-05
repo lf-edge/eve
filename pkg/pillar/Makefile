@@ -24,7 +24,7 @@ APPS1 = $(notdir $(wildcard cmd/*))
 
 all: build
 
-$(DISTDIR): 
+$(DISTDIR):
 	mkdir -p $(DISTDIR)
 
 build: $(APPS) $(APPS1)
@@ -32,7 +32,7 @@ build: $(APPS) $(APPS1)
 $(APPS): $(DISTDIR)/$(APPS)
 $(DISTDIR)/$(APPS): $(DISTDIR)
 	@echo "Building $@"
-	GO111MODULE=on GOOS=linux CGO_ENABLED=1 go build -mod=vendor -ldflags -X=main.Version=$(BUILD_VERSION) -o $@ ./$(@F)
+	GO111MODULE=on GOOS=linux CGO_ENABLED=0 go build -mod=vendor -ldflags -X=main.Version=$(BUILD_VERSION) -o $@ ./$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@

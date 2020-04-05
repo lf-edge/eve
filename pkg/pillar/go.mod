@@ -26,7 +26,7 @@ require (
 	github.com/google/go-cmp v0.3.0
 	github.com/google/go-containerregistry v0.0.0-20200123184029-53ce695e4179
 	github.com/google/go-tpm v0.1.1
-	github.com/google/gopacket v1.1.16
+	github.com/google/gopacket v1.1.17
 	github.com/gorilla/websocket v1.4.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/klauspost/compress v1.9.4 // indirect
@@ -38,6 +38,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.0.1
+	github.com/packetcap/go-pcap v0.0.0-20200405180300-8c26e5c2d594
 	github.com/pkg/sftp v1.10.0
 	github.com/prometheus/procfs v0.0.5
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
@@ -52,7 +53,7 @@ require (
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
-	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
