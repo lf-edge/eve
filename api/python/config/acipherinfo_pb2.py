@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x11\x61\x63ipherinfo.proto\"\xdc\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12(\n\nhashScheme\x18\x02 \x01(\x0e\x32\x14.cipherHashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*V\n\x13\x63ipherHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x11\x61\x63ipherinfo.proto\"\xdc\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12(\n\nhashScheme\x18\x02 \x01(\x0e\x32\x14.cipherHashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*V\n\x13\x63ipherHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
@@ -40,8 +40,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=406,
-  serialized_end=453,
+  serialized_start=479,
+  serialized_end=526,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -63,8 +63,8 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=455,
-  serialized_end=506,
+  serialized_start=528,
+  serialized_end=579,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
@@ -90,8 +90,8 @@ _CIPHERHASHALGORITHM = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=508,
-  serialized_end=594,
+  serialized_start=581,
+  serialized_end=667,
 )
 _sym_db.RegisterEnumDescriptor(_CIPHERHASHALGORITHM)
 
@@ -224,23 +224,44 @@ _CIPHERBLOCK = _descriptor.Descriptor(
 )
 
 
-_CREDENTIALBLOCK = _descriptor.Descriptor(
-  name='CredentialBlock',
-  full_name='CredentialBlock',
+_ENCRYPTIONBLOCK = _descriptor.Descriptor(
+  name='EncryptionBlock',
+  full_name='EncryptionBlock',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='identity', full_name='CredentialBlock.identity', index=0,
+      name='dsAPIKey', full_name='EncryptionBlock.dsAPIKey', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='password', full_name='CredentialBlock.password', index=1,
+      name='dsPassword', full_name='EncryptionBlock.dsPassword', index=1,
       number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='wifiUserName', full_name='EncryptionBlock.wifiUserName', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='wifiPassword', full_name='EncryptionBlock.wifiPassword', index=3,
+      number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='protectedUserData', full_name='EncryptionBlock.protectedUserData', index=4,
+      number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -258,7 +279,7 @@ _CREDENTIALBLOCK = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=351,
-  serialized_end=404,
+  serialized_end=477,
 )
 
 _CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = _CIPHERHASHALGORITHM
@@ -266,7 +287,7 @@ _CIPHERCONTEXT.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEM
 _CIPHERCONTEXT.fields_by_name['encryptionScheme'].enum_type = _ENCRYPTIONSCHEME
 DESCRIPTOR.message_types_by_name['CipherContext'] = _CIPHERCONTEXT
 DESCRIPTOR.message_types_by_name['CipherBlock'] = _CIPHERBLOCK
-DESCRIPTOR.message_types_by_name['CredentialBlock'] = _CREDENTIALBLOCK
+DESCRIPTOR.message_types_by_name['EncryptionBlock'] = _ENCRYPTIONBLOCK
 DESCRIPTOR.enum_types_by_name['KeyExchangeScheme'] = _KEYEXCHANGESCHEME
 DESCRIPTOR.enum_types_by_name['EncryptionScheme'] = _ENCRYPTIONSCHEME
 DESCRIPTOR.enum_types_by_name['cipherHashAlgorithm'] = _CIPHERHASHALGORITHM
@@ -286,12 +307,12 @@ CipherBlock = _reflection.GeneratedProtocolMessageType('CipherBlock', (_message.
   ))
 _sym_db.RegisterMessage(CipherBlock)
 
-CredentialBlock = _reflection.GeneratedProtocolMessageType('CredentialBlock', (_message.Message,), dict(
-  DESCRIPTOR = _CREDENTIALBLOCK,
+EncryptionBlock = _reflection.GeneratedProtocolMessageType('EncryptionBlock', (_message.Message,), dict(
+  DESCRIPTOR = _ENCRYPTIONBLOCK,
   __module__ = 'acipherinfo_pb2'
-  # @@protoc_insertion_point(class_scope:CredentialBlock)
+  # @@protoc_insertion_point(class_scope:EncryptionBlock)
   ))
-_sym_db.RegisterMessage(CredentialBlock)
+_sym_db.RegisterMessage(EncryptionBlock)
 
 
 DESCRIPTOR._options = None
