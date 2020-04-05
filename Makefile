@@ -16,8 +16,6 @@ export CGO_ENABLED GOOS GOARCH PATH
 PROTO_LANGS=go python
 # The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=kvm'
 HV=xen
-# Version of the Linux kernel that we build for early testing
-NEW_KERNEL=5.6.1
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
 # Image type for final disk images
@@ -266,11 +264,11 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	@true
 pkg/kernel: pkg/kernel/Dockerfile build-tools $(RESCAN_DEPS)
-	D=`date '+%s'` ; $(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $@                          &&\
-	if [ $$(( `date '+%s'` - $$D )) -lt 60 ]; then exit 0; fi                                            &&\
-	TAG=`$(LINUXKIT) pkg show-tag $@`-$(NEW_KERNEL)-$(DOCKER_ARCH_TAG)                                   &&\
-	if echo $$TAG | grep -q -v -- -dirty && ! docker pull $$TAG ; then                                     \
-		docker $(LINUXKIT_PKG_TARGET) --build-arg KERNEL_VERSION_`uname -m`=$(NEW_KERNEL) -t $$TAG $@ ;\
+	@D=`date '+%s'` ; $(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $@               &&\
+	if [ $$(( `date '+%s'` - $$D )) -lt 60 ]; then exit 0; fi                                  &&\
+	TAG=`echo NEW_KERNEL_TAG | $(PARSE_PKGS)` && V=$${TAG%-*} && V=$${V##*-}                   &&\
+	if echo $$TAG | grep -q -v -- -dirty && ! docker pull $$TAG ; then                           \
+		docker $(LINUXKIT_PKG_TARGET) --build-arg KERNEL_VERSION_`uname -m`=$$V -t $$TAG $@ ;\
 	fi
 pkg/%: eve-% FORCE
 	@true
