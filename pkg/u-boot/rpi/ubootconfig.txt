@@ -1,2 +1,0 @@
-# Boot in AArch64 mode
-arm_64bit=1
