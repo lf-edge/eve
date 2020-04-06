@@ -4,6 +4,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -166,4 +167,74 @@ func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 			objType)
 		return false
 	}
+}
+
+// ResolveConfig key/index to this is the combination of
+// DatastoreID which is allocated by the controller, name
+// and the sequence counter.
+// It will resolve the tag in name to sha256
+type ResolveConfig struct {
+	DatastoreID      uuid.UUID
+	Name             string
+	AllowNonFreePort bool
+	Counter          uint32
+}
+
+// Key : DatastoreID, name and sequence counter are used
+// to differentiate different config
+func (config ResolveConfig) Key() string {
+	return fmt.Sprintf("%s+%s+%v", config.DatastoreID.String(), config.Name, config.Counter)
+}
+
+// VerifyFilename will verify the key name
+func (config ResolveConfig) VerifyFilename(fileName string) bool {
+	expect := config.Key() + ".json"
+	ret := expect == fileName
+	if !ret {
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
+			fileName, expect)
+	}
+	return ret
+}
+
+// ResolveStatus key/index to this is the combination of
+// DatastoreID, name and the sequence counter which comes
+// from the ResolveConfig
+type ResolveStatus struct {
+	DatastoreID uuid.UUID
+	Name        string
+	ImageSha256 string
+	Counter     uint32
+	ErrorInfo
+}
+
+// Key : DatastoreID, name and sequence counter are used
+// to differentiate different config
+func (status ResolveStatus) Key() string {
+	return fmt.Sprintf("%s+%s+%v", status.DatastoreID.String(), status.Name, status.Counter)
+}
+
+// VerifyFilename will verify the key name
+func (status ResolveStatus) VerifyFilename(fileName string) bool {
+	expect := status.Key() + ".json"
+	ret := expect == fileName
+	if !ret {
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
+			fileName, expect)
+	}
+	return ret
+}
+
+// SetErrorInfo : sets errorinfo on the app image resolve status object
+func (status *ResolveStatus) SetErrorInfo(agentName, errStr string) {
+	status.Error = errStr
+	status.ErrorTime = time.Now()
+	status.ErrorSource = agentName
+}
+
+// ClearErrorInfo : clears errorinfo on the app image resolve status object
+func (status *ResolveStatus) ClearErrorInfo() {
+	status.Error = ""
+	status.ErrorSource = ""
+	status.ErrorTime = time.Time{}
 }
