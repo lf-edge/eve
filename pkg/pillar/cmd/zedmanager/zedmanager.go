@@ -434,7 +434,7 @@ func handleCreate(ctxArg interface{}, key string,
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
 			status.PurgeCmd.Counter = config.PurgeCmd.Counter
-			status.PurgeInprogress = types.DOWNLOAD
+			status.PurgeInprogress = types.RecreateVolumes
 			status.State = types.PURGING
 			// We persist the PurgeCmd Counter when
 			// PurgeInprogress is done
@@ -600,7 +600,7 @@ func handleModify(ctxArg interface{}, key string,
 			// would also restart the app. Hence we can update
 			// the status counter here.
 			status.RestartCmd.Counter = config.RestartCmd.Counter
-			status.RestartInprogress = types.BRING_DOWN
+			status.RestartInprogress = types.BringDown
 			status.State = types.RESTARTING
 		} else {
 			log.Infof("handleModify(%v) for %s restartcmd ignored config !Activate\n",
@@ -615,7 +615,7 @@ func handleModify(ctxArg interface{}, key string,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
 		status.PurgeCmd.Counter = config.PurgeCmd.Counter
-		status.PurgeInprogress = types.DOWNLOAD
+		status.PurgeInprogress = types.RecreateVolumes
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
 	}
