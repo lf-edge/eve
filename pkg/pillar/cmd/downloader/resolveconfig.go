@@ -157,7 +157,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.AppImgResolveConfig) {
 	}
 
 	// Loop through all interfaces until a success
-	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
+	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		var ipSrc net.IP
 		if !rc.AllowNonFreePort {
 			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
