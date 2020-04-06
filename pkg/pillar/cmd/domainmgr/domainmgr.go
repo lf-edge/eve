@@ -946,6 +946,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// Assign any I/O devices
 	doAssignIoAdaptersToDomain(ctx, config, status)
 
+	// Finish preparing for container runtime.
 	for _, ds := range status.DiskStatusList {
 		if ds.Format != zconfig.Format_CONTAINER {
 			continue
@@ -1514,6 +1515,18 @@ func handleModify(ctx *domainContext, key string,
 			updateStatusFromConfig(status, *config)
 			changed = true
 		}
+		// Update disks based on any change to volumes
+		if err := configToStatus(ctx, *config, status); err != nil {
+			log.Errorf("Failed to update DomainStatus from %v: %s\n",
+				config, err)
+			status.PendingModify = false
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			publishDomainStatus(ctx, status)
+			return
+		}
+		updateStatusFromConfig(status, *config)
+		changed = true
 	}
 	if changed {
 		// XXX could we also have changes in the IoBundle?

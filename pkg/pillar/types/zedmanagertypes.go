@@ -136,11 +136,12 @@ type AppInstanceStatus struct {
 // Track more complicated workflows
 type Inprogress uint8
 
+// NotInprogress and other values for Inprogress
 const (
-	NONE     Inprogress = iota
-	DOWNLOAD            // Download and verify new images
-	BRING_DOWN
-	BRING_UP
+	NotInprogress   Inprogress = iota
+	RecreateVolumes            // Download and verify new images if need be
+	BringDown
+	BringUp
 )
 
 func (status AppInstanceStatus) Key() string {

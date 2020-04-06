@@ -56,7 +56,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		return
 	}
 	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil || (status.PurgeInprogress == types.BRING_DOWN) {
+	if config == nil || (status.PurgeInprogress == types.BringDown) {
 		removeAIStatus(ctx, status)
 		return
 	}
@@ -84,7 +84,7 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uuidStr := status.Key()
-	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
+	uninstall := (status.PurgeInprogress != types.BringDown)
 	changed, done := doRemove(ctx, status, uninstall)
 	if changed {
 		log.Infof("removeAIStatus status change for %s\n",
@@ -110,7 +110,7 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	}
 	log.Infof("removeAIStatus(%s): PurgeInprogress bringing it up\n",
 		status.Key())
-	status.PurgeInprogress = types.BRING_UP
+	status.PurgeInprogress = types.BringUp
 	publishAppInstanceStatus(ctx, status)
 	config := lookupAppInstanceConfig(ctx, uuidStr)
 	if config != nil {
@@ -155,7 +155,7 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	uuidStr := status.Key()
 	log.Infof("updateOrRemove(%s)\n", uuidStr)
 	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil || (status.PurgeInprogress == types.BRING_DOWN) {
+	if config == nil || (status.PurgeInprogress == types.BringDown) {
 		log.Infof("updateOrRemove: remove for %s\n", uuidStr)
 		removeAIStatus(ctx, &status)
 	} else {
@@ -240,10 +240,10 @@ func doUpdate(ctx *zedmanagerContext,
 	}
 
 	// Are we doing a purge?
-	if status.PurgeInprogress == types.DOWNLOAD {
+	if status.PurgeInprogress == types.RecreateVolumes {
 		log.Infof("PurgeInprogress(%s) volumemgr done\n",
 			status.Key())
-		status.PurgeInprogress = types.BRING_DOWN
+		status.PurgeInprogress = types.BringDown
 		changed = true
 		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
@@ -313,9 +313,9 @@ func doInstall(ctx *zedmanagerContext,
 		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n",
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
-		if status.PurgeInprogress == types.NONE {
+		if status.PurgeInprogress == types.NotInprogress {
 			log.Errorln(errString)
-			status.SetError(errString, "Invalid PurgeInProgress", time.Now())
+			status.SetError(errString, "Invalid PurgeInprogress", time.Now())
 			return true, false
 		}
 		log.Warnln(errString)
@@ -339,7 +339,7 @@ func doInstall(ctx *zedmanagerContext,
 	}
 	// If we are purging and we failed to activate due some images
 	// which are not removed from StorageConfigList we remove them
-	if status.PurgeInprogress == types.DOWNLOAD && !status.Activated {
+	if status.PurgeInprogress == types.RecreateVolumes && !status.Activated {
 		removed := false
 		newSs := []types.StorageStatus{}
 		for i := range status.StorageStatusList {
@@ -381,7 +381,7 @@ func doInstall(ctx *zedmanagerContext,
 		if ss != nil {
 			continue
 		}
-		if status.PurgeInprogress == types.NONE {
+		if status.PurgeInprogress == types.NotInprogress {
 			errString := fmt.Sprintf("New storageConfig (Name: %s, "+
 				"ImageSha256: %s, ImageID: %s, PurgeCounter: %d) found. New Storage configs are "+
 				"not allowed unless purged",
@@ -423,8 +423,11 @@ func doInstall(ctx *zedmanagerContext,
 				log.Infof("VolumeStatus RefCount zero. name: %s",
 					ss.Name)
 			}
-			minState = types.DOWNLOAD_STARTED
-			ss.State = types.DOWNLOAD_STARTED
+			// XXX state name could be "waiting for volumes(s)" but
+			// painful to introduce a new state end to end
+			// Downloader/verifier will fill in more specific state
+			minState = types.INITIAL
+			ss.State = types.INITIAL
 			changed = true
 			continue
 		}
@@ -483,7 +486,7 @@ func doInstall(ctx *zedmanagerContext,
 
 	if minState == types.MAXSTATE {
 		// Odd; no StorageConfig in list
-		minState = types.DOWNLOADED
+		minState = types.INITIAL
 	}
 	if status.State >= types.BOOTING {
 		// Leave unchanged
@@ -582,7 +585,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Are we doing a restart and it came down?
 	switch status.RestartInprogress {
-	case types.BRING_DOWN:
+	case types.BringDown:
 		// If !status.Activated e.g, due to error, then
 		// need to bring down first.
 		ds := lookupDomainStatus(ctx, config.Key())
@@ -605,7 +608,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			if !ds.Activated && ds.LastErr == "" {
 				log.Infof("RestartInprogress(%s) came down - set bring up\n",
 					status.Key())
-				status.RestartInprogress = types.BRING_UP
+				status.RestartInprogress = types.BringUp
 				changed = true
 			}
 		}
@@ -690,7 +693,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	// Are we doing a restart?
-	if status.RestartInprogress == types.BRING_DOWN {
+	if status.RestartInprogress == types.BringDown {
 		dc := lookupDomainConfig(ctx, config.Key())
 		if dc == nil {
 			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
@@ -703,7 +706,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		} else if !ds.Activated {
 			log.Infof("RestartInprogress(%s) Set Activate\n",
 				status.Key())
-			status.RestartInprogress = types.BRING_UP
+			status.RestartInprogress = types.BringUp
 			changed = true
 			dc.Activate = true
 			publishDomainConfig(ctx, dc)
@@ -713,7 +716,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	// Look for xen errors. Ignore if we are going down
-	if status.RestartInprogress != types.BRING_DOWN {
+	if status.RestartInprogress != types.BringDown {
 		if ds.LastErr != "" {
 			log.Errorf("Received error from domainmgr for %s: %s\n",
 				uuidStr, ds.LastErr)
@@ -791,11 +794,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	// Are we doing a restart?
-	if status.RestartInprogress == types.BRING_UP {
+	if status.RestartInprogress == types.BringUp {
 		if ds.Activated {
 			log.Infof("RestartInprogress(%s) activated\n",
 				status.Key())
-			status.RestartInprogress = types.NONE
+			status.RestartInprogress = types.NotInprogress
 			status.State = types.RUNNING
 			changed = true
 		} else {
@@ -803,11 +806,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 		}
 	}
-	if status.PurgeInprogress == types.BRING_UP {
+	if status.PurgeInprogress == types.BringUp {
 		if ds.Activated {
 			log.Infof("PurgeInprogress(%s) activated\n",
 				status.Key())
-			status.PurgeInprogress = types.NONE
+			status.PurgeInprogress = types.NotInprogress
 			status.State = types.RUNNING
 			_ = purgeCmdDone(ctx, config, status)
 			changed = true
@@ -961,7 +964,7 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	log.Infof("doInactivate for %s\n", uuidStr)
 	changed := false
 	done := false
-	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
+	uninstall := (status.PurgeInprogress != types.BringDown)
 
 	if uninstall {
 		log.Infof("doInactivate uninstall for %s\n", uuidStr)
