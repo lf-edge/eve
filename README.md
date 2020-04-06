@@ -173,11 +173,9 @@ While running everything on your laptop with QEMU could be fun, nothing beats re
 
 ## How to use on a Raspberry Pi 4 ARM board
 
-Raspberry Pi 4 is a tiny, but capable enough ARM board that allows EVE to run with KVM (and soon Xen) hypervisors. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB RAM option.
+Raspberry Pi 4 is a tiny, but capable enough ARM board that allows EVE to run with KVM hypervisor (and soon Xen) hypervisors. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB RAM option.
 
-Note that full Raspberry Pi 4 support is only available in upstream Linux kernels starting from 5.6.0. Hence you'll have to build that flavor of the EVE kernel package yourself. On top of that, since the kernel configuration we're using relies on device tree blob available from UEFI and not being explicitly loaded, you'll have to move the device tree out of the way in your build. Finally, since for now EVE only support KVM configuration you'll have to use a GRUB config that enables KVM mode.
-
-While you need to be aware of all the tweaks required for Raspberry Pi 4 in case you want to debug the build, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4:
+Since a full Raspberry Pi 4 support is only available in upstream Linux kernels starting from 5.6.0, you'll have to use that bleeding edge kernel for your build. Another peculiar aspect of this board is that it doesn't use a standard [bootloader (e.g. u-boot or UEFI)](https://www.raspberrypi.org/documentation/configuration/boot_folder.md) so we need to trick it into using our own u-boot as UEFI environment. Thankfully, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4:
 
 1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
 2. Build a live image `make ZARCH=arm64 MEDIA_SIZE=15000 live.rpi`
@@ -189,6 +187,8 @@ In step #2 you should replace MEDIA_SIZE with the value that corresponds to the 
 Step #4 is extermely important and can NOT be skipped (otherwise you will end up with and EVE image that can NOT be upgraded).
 
 Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 rootfs-rpi` and give resulting `dist/arm64/installer/rootfs-rpi.img` to the controller.
+
+You may notice that the Makefile logic doesn't produce regular devicetree blob for Raspberry Pi 4 and only enables it to run in KVM hypervisor mode. Both of these may change in the future as we evolve support for this board, but for now you just need to keep this in mind and alway build `live.rpi` instead of `live.img` (the default live image of EVE).
 
 One final note about Raspberry Pi 4 GPU support is that since we are running EVE in 64bit (aarch64) mode we are still waiting for the proper [VC4 DRM BCM2711 drivers](https://lore.kernel.org/dri-devel/cover.6c896ace9a5a7840e9cec008b553cbb004ca1f91.1582533919.git-series.maxime@cerno.tech/T/#m0275b55e1518be1fb2154d3c95e13c1b7de1f347) to be upstreamed. Currently it is expected that Kernel 5.7 may actually ship the fully functional driver.
 
