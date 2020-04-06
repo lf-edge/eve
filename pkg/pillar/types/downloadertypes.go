@@ -174,16 +174,18 @@ func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 // AppImgResolveConfig key/index to this is the ImageID which is allocated by the controller.
 // It will resolve container image tag to sha256
 type AppImgResolveConfig struct {
-	ImageID     uuid.UUID
-	DatastoreID uuid.UUID
-	Name        string
-	NameIsURL   bool // If not we form URL based on datastore info
-	IsContainer bool
+	AppID            uuid.UUID
+	ImageID          uuid.UUID
+	DatastoreID      uuid.UUID
+	Name             string
+	NameIsURL        bool // If not we form URL based on datastore info
+	AllowNonFreePort bool
+	PurgeCounter     uint32
 }
 
 // Key : ImageID is used to differentiate different config
 func (config AppImgResolveConfig) Key() string {
-	return fmt.Sprintf("%s", config.ImageID.String())
+	return fmt.Sprintf("%s-%s-%v", config.AppID.String(), config.ImageID.String(), config.PurgeCounter)
 }
 
 // VerifyFilename will verify the key name
@@ -199,17 +201,17 @@ func (config AppImgResolveConfig) VerifyFilename(fileName string) bool {
 
 // AppImgResolveStatus : The key/index to this is the ImageID which comes from AppImgResolveConfig.
 type AppImgResolveStatus struct {
-	ImageID     uuid.UUID
-	DatastoreID uuid.UUID
-	Name        string
-	IsContainer bool
-	NameIsURL   bool // If not we form URL based on datastore info
-	ImageSha256 string
+	AppID        uuid.UUID
+	ImageID      uuid.UUID
+	Name         string
+	ImageSha256  string
+	PurgeCounter uint32
+	ErrorInfo
 }
 
 // Key : ImageID is used to differentiate different config
 func (status AppImgResolveStatus) Key() string {
-	return fmt.Sprintf("%s", status.ImageID.String())
+	return fmt.Sprintf("%s-%s-%v", status.AppID.String(), status.ImageID.String(), status.PurgeCounter)
 }
 
 // VerifyFilename will verify the key name
@@ -221,4 +223,18 @@ func (status AppImgResolveStatus) VerifyFilename(fileName string) bool {
 			fileName, expect)
 	}
 	return ret
+}
+
+// SetErrorInfo : sets errorinfo on the app image resolve status object
+func (status *AppImgResolveStatus) SetErrorInfo(agentName, errStr string) {
+	status.Error = errStr
+	status.ErrorTime = time.Now()
+	status.ErrorSource = agentName
+}
+
+// ClearErrorInfo : clears errorinfo on the app image resolve status object
+func (status *AppImgResolveStatus) ClearErrorInfo() {
+	status.Error = ""
+	status.ErrorSource = ""
+	status.ErrorTime = time.Time{}
 }

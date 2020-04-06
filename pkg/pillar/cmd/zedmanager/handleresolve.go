@@ -5,7 +5,6 @@ package zedmanager
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,6 +15,7 @@ func publishResolveConfig(ctx *zedmanagerContext,
 	log.Debugf("publishResolveConfig(%s)\n", key)
 	pub := ctx.pubAppImgResolveConfig
 	pub.Publish(key, *config)
+	log.Debugf("publishResolveConfig(%s) Done\n", key)
 }
 
 func unpublishResolveConfig(ctx *zedmanagerContext,
@@ -25,15 +25,16 @@ func unpublishResolveConfig(ctx *zedmanagerContext,
 	log.Debugf("unpublishResolveConfig(%s)\n", key)
 	pub := ctx.pubAppImgResolveConfig
 	pub.Unpublish(key)
+	log.Debugf("unpublishResolveConfig(%s) Done\n", key)
 }
 
 func lookupResolveConfig(ctx *zedmanagerContext,
-	imageID uuid.UUID) *types.AppImgResolveConfig {
+	key string) *types.AppImgResolveConfig {
 
 	pub := ctx.pubAppImgResolveConfig
-	c, _ := pub.Get(imageID.String())
+	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveConfig(%s) not found\n", imageID)
+		log.Infof("lookupResolveConfig(%s) not found\n", key)
 		return nil
 	}
 	config := c.(types.AppImgResolveConfig)
@@ -41,12 +42,12 @@ func lookupResolveConfig(ctx *zedmanagerContext,
 }
 
 func lookupResolveStatus(ctx *zedmanagerContext,
-	imageID uuid.UUID) *types.AppImgResolveStatus {
+	key string) *types.AppImgResolveStatus {
 
 	sub := ctx.subAppImgResolveStatus
-	c, _ := sub.Get(imageID.String())
+	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveStatus(%s) not found\n", imageID)
+		log.Infof("lookupResolveStatus(%s) not found\n", key)
 		return nil
 	}
 	status := c.(types.AppImgResolveStatus)
@@ -59,7 +60,7 @@ func handleResolveStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleResolveStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	status := statusArg.(types.AppImgResolveStatus)
-	config := lookupResolveConfig(ctx, status.ImageID)
+	config := lookupResolveConfig(ctx, status.Key())
 	if config != nil {
 		log.Infof("handleResolveStatusDelete delete config for %s\n",
 			key)

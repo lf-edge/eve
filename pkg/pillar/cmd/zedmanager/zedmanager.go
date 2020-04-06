@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -875,6 +876,24 @@ func fetchLatestContainerImage(ctx *zedmanagerContext,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
 
 	for i, sc := range config.StorageConfigList {
+		if sc.Format == zconfig.Format_CONTAINER {
+			if !strings.Contains(sc.Name, "@sha256:") {
+				resolveConfig := types.AppImgResolveConfig{
+					AppID:       config.UUIDandVersion.UUID,
+					ImageID:     sc.ImageID,
+					DatastoreID: sc.DatastoreID,
+					Name:        sc.Name,
+					NameIsURL:   sc.NameIsURL,
+					AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+						types.AppImgObj),
+					PurgeCounter: config.PurgeCmd.Counter,
+				}
+				publishResolveConfig(ctx, &resolveConfig)
+			} else {
+				parts := strings.Split(sc.Name, "@sha256:")
+				sc.ImageSha256 = strings.ToUpper(parts[1])
+			}
+		}
 		ss := &status.StorageStatusList[i]
 		if ss.ImageSha256 != sc.ImageSha256 {
 			log.Infof("ImageSha256 changed from %v to %v in storage status\n",

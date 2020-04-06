@@ -102,25 +102,19 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 }
 
 func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
-	status Status, syncOp zedUpload.SyncOpType, downloadURL string,
-	auth *zedUpload.AuthInput, dpath, region string, maxsize uint64, ifname string,
-	ipSrc net.IP, filename, locFilename string) (string, error) {
+	syncOp zedUpload.SyncOpType, downloadURL string,
+	auth *zedUpload.AuthInput, dpath, region string, ifname string,
+	ipSrc net.IP, filename string) (string, error) {
 
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
 	var err error
 	var sha256 string
 	switch trType {
-	case zedUpload.SyncHttpTr, zedUpload.SyncSftpTr:
-		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
-	case zedUpload.SyncAzureTr:
-		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
-	case zedUpload.SyncAwsTr:
-		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
 	case zedUpload.SyncOCIRegistryTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, filename, auth)
 	default:
-		err = fmt.Errorf("unknown transfer type: %s", trType)
+		err = fmt.Errorf("Not supported transport type: %s", trType)
 	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s\n", err)
@@ -139,14 +133,12 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	var respChan = make(chan *zedUpload.DronaRequest)
 
 	log.Infof("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
-		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
-		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
-		locFilename)
+		"downloadURL: <%s>, ifname: %s, ipSrc: %+v",
+		trType, dpath, region, filename, downloadURL, ifname, ipSrc)
 	// create Request
 	// Round up from bytes to Mbytes
-	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
-	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
-		int64(maxMB), true, respChan)
+	req := dEndPoint.NewRequest(syncOp, filename, "",
+		0, true, respChan)
 	if req == nil {
 		return sha256, errors.New("NewRequest failed")
 	}
@@ -154,24 +146,9 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	req.Post()
 	for resp := range respChan {
 		if resp.IsDnUpdate() {
-			asize, osize, progress := resp.Progress()
-			log.Infof("Update progress for %v: %v/%v",
-				resp.GetLocalName(), asize, osize)
-			// sometime, the download goes to an infinite loop,
-			// showing it has downloaded, more than it is supposed to
-			// aborting download, marking it as an error
-			if asize > osize {
-				errStr := fmt.Sprintf("%s, downloaded more than 100%% (%v / %v). Which is impossible. Aborting the download",
-					resp.GetLocalName(), asize, osize)
-				log.Errorln(errStr)
-				return sha256, errors.New(errStr)
-			}
-			status.Progress(progress)
 			continue
 		}
-		if syncOp == zedUpload.SyncOpDownload {
-			err = resp.GetDnStatus()
-		} else if syncOp == zedUpload.SyncOpGetObjectMetaData {
+		if syncOp == zedUpload.SyncOpGetObjectMetaData {
 			sha256 = resp.GetSha256()
 		} else {
 			_, err = resp.GetUpStatus()
@@ -179,10 +156,8 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		if resp.IsError() {
 			return sha256, err
 		}
-		log.Infof("Done for %v: size %v/%v",
-			resp.GetLocalName(),
-			resp.GetAsize(), resp.GetOsize())
-		status.Progress(100)
+		log.Infof("Resolve config Done for %v: sha %v",
+			filename, resp.GetSha256())
 		return sha256, nil
 	}
 	// if we got here, channel was closed

@@ -35,7 +35,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// construct the datastore context
-	dsCtx, err := constructDatastoreContext(ctx, config, status, *dst)
+	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", config.Name, err)
 		handleSyncOpResponse(ctx, config, status, locFilename, key, errStr)
@@ -189,11 +189,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ctx:    ctx,
 			status: status,
 		}
-		sha256, err := objectMetadata(ctx, trType, st, zedUpload.SyncOpGetObjectMetaData, serverURL, auth,
-			dsCtx.Dpath, dsCtx.Region,
-			config.Size, ifname, ipSrc, remoteName, locFilename)
-		log.Infof("Rishabh Testing: %v ---- %v\n",
-			sha256, err)
 		err = download(ctx, trType, st, syncOp, serverURL, auth,
 			dsCtx.Dpath, dsCtx.Region,
 			config.Size, ifname, ipSrc, remoteName, locFilename)
@@ -291,16 +286,16 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 }
 
 // cloud storage interface functions/APIs
-func constructDatastoreContext(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
+func constructDatastoreContext(ctx *downloaderContext, configName string, NameIsURL bool, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
 	dpath := dst.Dpath
-	downloadURL := config.Name
-	if !config.NameIsURL {
+	downloadURL := configName
+	if !NameIsURL {
 		downloadURL = dst.Fqdn
 		if len(dpath) > 0 {
 			downloadURL = downloadURL + "/" + dpath
 		}
-		if len(config.Name) > 0 {
-			downloadURL = downloadURL + "/" + config.Name
+		if len(configName) > 0 {
+			downloadURL = downloadURL + "/" + configName
 		}
 	}
 
