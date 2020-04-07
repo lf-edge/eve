@@ -55,6 +55,7 @@ func TestCreateDomConfig(t *testing.T) {
 		},
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},
+			{Type: types.IoCom, Name: "COM1"},
 		},
 	}
 	disks := []types.DiskStatus{
@@ -72,6 +73,14 @@ func TestCreateDomConfig(t *testing.T) {
 				Phylabel:        "eth0",
 				Ifname:          "eth0",
 				PciLong:         "0000:03:00.0",
+				UsedByUUID:      config.UUIDandVersion.UUID,
+			},
+			{
+				Type:            types.IoCom,
+				AssignmentGroup: "COM1",
+				Phylabel:        "COM1",
+				Ifname:          "COM1",
+				Serial:          "/dev/ttyS0",
 				UsedByUUID:      config.UUIDandVersion.UUID,
 			},
 		},
@@ -105,6 +114,7 @@ func TestCreateDomConfig(t *testing.T) {
   usb = "off"
   dump-guest-core = "off"
   vmport = "off"
+  kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
   append = "init=/bin/sh"
@@ -128,6 +138,9 @@ func TestCreateDomConfig(t *testing.T) {
 [rtc]
   base = "localtime"
   driftfix = "slew"
+
+[device]
+  driver = "intel-iommu"
 
 [realtime]
   mlock = "off"
@@ -308,6 +321,13 @@ func TestCreateDomConfig(t *testing.T) {
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
+[chardev "charserial-usr0"]
+  backend = "tty"
+  path = "/dev/ttyS0"
+
+[device "serial-usr0"]
+  driver = "isa-serial"
+  chardev = "charserial-usr0"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
@@ -755,6 +775,13 @@ func TestCreateDomConfig(t *testing.T) {
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
+[chardev "charserial-usr0"]
+  backend = "tty"
+  path = "/dev/ttyS0"
+
+[device "serial-usr0"]
+  driver = "isa-serial"
+  chardev = "charserial-usr0"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}

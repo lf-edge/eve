@@ -14,7 +14,7 @@ while [ $# != 0 ]; do
 done
 
 sudo mount -o loop ${ROOTFS} /mnt
-VERS=`sudo cat /mnt/containers/services/pillar/lower/opt/zededa/bin/versioninfo`
+VERS=`sudo cat /mnt/etc/eve-release`
 ZA=`sudo file -L /mnt/containers/services/pillar/lower/opt/zededa/bin/zedagent`
 LZ=`sudo file /mnt/containers/services/pillar/lower/opt/zededa/bin/lisp-ztr`
 sudo umount /mnt

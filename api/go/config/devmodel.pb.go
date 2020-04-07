@@ -529,9 +529,7 @@ func init() {
 	proto.RegisterMapType((map[string]string)(nil), "PhysicalIO.PhyaddrsEntry")
 }
 
-func init() {
-	proto.RegisterFile("devmodel.proto", fileDescriptor_9fb58492383773ea)
-}
+func init() { proto.RegisterFile("devmodel.proto", fileDescriptor_9fb58492383773ea) }
 
 var fileDescriptor_9fb58492383773ea = []byte{
 	// 764 bytes of a gzipped FileDescriptorProto

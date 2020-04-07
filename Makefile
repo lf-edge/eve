@@ -61,9 +61,6 @@ endif
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
-# EVE rootfs image manifest
-ROOTFS_YML=images/rootfs-$(HV).yml
-
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
@@ -73,16 +70,19 @@ LIVE_IMG=$(DIST)/live
 TARGET_IMG=$(DIST)/target.img
 INSTALLER=$(DIST)/installer
 
-ROOTFS_IMG=$(INSTALLER)/rootfs-$(HV).img
+ROOTFS_IMG=$(INSTALLER)/rootfs.img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 EFI_PART=$(INSTALLER)/EFI
+BOOT_PART=$(INSTALLER)/boot
 
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_PART=$(CURDIR)/../adam/run/config
+
+CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
 
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
@@ -145,7 +145,7 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|u-boot")
+PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
 
 # Top-level targets
 
@@ -156,8 +156,7 @@ test: $(GOBUILDER) | $(DIST)
 	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
 clean:
-	rm -rf $(DIST) $(ROOTFS_YML_xen_$(ZARCH)) $(ROOTFS_YML_acrn_$(ZARCH)) \
-               pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile
+	rm -rf $(DIST) images/*.yml pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile pkg/xen-tools/Dockerfile
 
 yetus:
 	@echo Running yetus
@@ -175,6 +174,9 @@ $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 
 $(EFI_PART): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) $(notdir $@)
+
+$(BOOT_PART): $(LINUXKIT) | $(INSTALLER)
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/u-boot)-$(DOCKER_ARCH_TAG) $(notdir $@)
 
 $(INITRD_IMG): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/mkimage-raw-efi)-$(DOCKER_ARCH_TAG) $(notdir $@ $(EFI_PART))
@@ -220,17 +222,17 @@ initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
 live: $(LIVE_IMG).img
+live.rpi: $(LIVE_IMG).rpi
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
+rootfs-%: $(INSTALLER)/rootfs-%.img
+	@true
 
-$(CONFIG_IMG): $(CONF_DIR) $(shell ls -d $(CONF_DIR)/*) | $(INSTALLER)
-	./tools/makeconfig.sh $< $@
+$(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
+	./tools/makeconfig.sh $@ $(CONF_FILES)
 
-$(ROOTFS_IMG): $(ROOTFS_YML) | $(INSTALLER)
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
-	@rm -f $(dir $@)/rootfs.img ; ln -s $(notdir $@) $(dir $@)/rootfs.img
+$(ROOTFS_IMG): $(INSTALLER)/rootfs-$(HV).img
+	@rm -f $@ && ln -s $(notdir $<) $@
 
 $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
@@ -239,6 +241,17 @@ $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
+
+# The following two rules are overrides of the generic ones specifically for supporting Raspberry Pi 4
+# $(LIVE_IMG).rpi can be generalized into can be generalized into a trampoline (readconfig vs. chainload)
+# style bootloader image and images/rootfs-rpi.yml will go away once we migrate to a NEW_KERNEL
+$(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
+$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-rpi | $(INSTALLER)
+	mv $(INSTALLER)/rootfs-rpi.img $(INSTALLER)/rootfs.img
+	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
+	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
+images/rootfs-rpi.yml: images/rootfs-kvm.yml.in
+	@sed -e 's#KERNEL_TAG#NEW_KERNEL_TAG#' < $< | $(PARSE_PKGS) > $@
 
 $(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
@@ -263,12 +276,19 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	@true
+pkg/kernel: pkg/kernel/Dockerfile build-tools $(RESCAN_DEPS)
+	@D=`date '+%s'` ; $(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $@               &&\
+	if [ $$(( `date '+%s'` - $$D )) -lt 60 ]; then exit 0; fi                                  &&\
+	TAG=`echo NEW_KERNEL_TAG | $(PARSE_PKGS)` && V=$${TAG%-*} && V=$${V##*-}                   &&\
+	if echo $$TAG | grep -q -v -- -dirty && ! docker pull $$TAG ; then                           \
+		docker build --build-arg KERNEL_VERSION_`uname -m`=$$V -t $$TAG $@                 &&\
+		if [ "$(LINUXKIT_PKG_TARGET)" = push ]; then docker push $$TAG ;fi                  ;\
+	fi
 pkg/%: eve-% FORCE
 	@true
 
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG).img $(ROOTFS_YML)
-	make HV=kvm rootfs
-	cp pkg/eve/* Makefile $(ROOTFS_YML) $(DIST)
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG).img rootfs-kvm
+	cp pkg/eve/* Makefile images/*.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
 proto-vendor:
@@ -333,6 +353,11 @@ endif
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
 
+$(INSTALLER)/rootfs-%.img: images/rootfs-%.yml | $(INSTALLER)
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
+	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+
 %-show-tag:
 	@$(LINUXKIT) pkg show-tag pkg/$*
 
@@ -376,8 +401,10 @@ help:
 	@echo "   config         builds a bundle with initial EVE configs"
 	@echo "   pkgs           builds all EVE packages"
 	@echo "   pkg/XXX        builds XXX EVE package"
-	@echo "   rootfs         builds EVE rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm, rpi)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
+	@echo "   live-rpi       builds a full disk image of EVE which can be used to run Raspberry Pi 4 board"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo

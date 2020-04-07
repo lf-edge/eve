@@ -1,0 +1,41 @@
+# Get more options/information on http://elinux.org/RPiconfig
+# or on https://www.raspberrypi.org/documentation/configuration/config-txt.md
+
+# Our kernels are located on a Linux partition. Chainload U-Boot to load them.
+kernel=u-boot.bin
+
+# Use 32 MB for GPU for all RPis (Min 16 - Max 192 MB)
+# We don't need that much memory reserved for it, because we drive most hardware
+# from Linux, not the VPU OS
+gpu_mem=32
+
+# Turbo mode: 0 = enable dynamic freq/voltage - 1 = always max
+force_turbo=0
+# Start in turbo mode for 30 seconds or until cpufreq sets a frequency
+initial_turbo=30
+
+# DO NOT overvoltage manually to not void warranty!
+over_voltage=0
+
+# Fix mini UART input frequency, and setup/enable up the UART.
+enable_uart=1
+
+# Disable warning overlays as they don't work well together with linux's graphical output
+avoid_warnings=1
+
+# This overlay fixes divergences between the RPi device tree and what
+# upstream provides
+dtoverlay=upstream
+dtoverlay=disable-vc4
+dtoverlay=rpi4-cma
+dtoverlay=rpi4-thermal
+dtoverlay=rpi4-gpio-names
+
+# overscan is only needed on old TV sets and if analog gear is in the chain (e.g. DPI)
+disable_overscan=1
+
+# Boot in AArch64 mode
+arm_64bit=1
+
+# Allow user overrides of config options
+include extraconfig.txt
