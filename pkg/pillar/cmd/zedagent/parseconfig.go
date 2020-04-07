@@ -1925,17 +1925,35 @@ func parseOpCmds(config *zconfig.EdgeDevConfig,
 func readRebootConfig() zconfig.DeviceOpsCmd {
 	rebootConfig := zconfig.DeviceOpsCmd{}
 
-	log.Infof("readRebootConfigCounter - reading %s\n", rebootConfigFilename)
+	log.Debugf("readRebootConfigCounter - reading %s\n", rebootConfigFilename)
 
 	bytes, err := ioutil.ReadFile(rebootConfigFilename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = json.Unmarshal(bytes, &rebootConfig)
-	if err != nil {
-		log.Fatal(err)
+	if err == nil {
+		err = json.Unmarshal(bytes, &rebootConfig)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		// Check if the file exists - if not, create one with
+		// default rebootConfig
+		log.Infof("readRebootConfigCounter - %s doesn't exist. Creating it. "+
+			"rebootConfig.Counter: %d",
+			rebootConfigFilename, rebootConfig.Counter)
+		saveRebootConfig(rebootConfig)
 	}
 	return rebootConfig
+}
+
+func saveRebootConfig(reboot zconfig.DeviceOpsCmd) {
+	log.Infof("saveRebootConfig - reboot.Counter: %d", reboot.Counter)
+	bytes, err := json.Marshal(reboot)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = fileutils.WriteRename(rebootConfigFilename, bytes)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 var rebootPrevConfigHash []byte
@@ -1960,20 +1978,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	}
 
 	log.Infof("scheduleReboot: Applying updated config %v\n", reboot)
-
-	if _, err := os.Stat(rebootConfigFilename); err != nil {
-		// Take received as current and store in file
-		log.Infof("scheduleReboot - writing initial %s\n",
-			rebootConfigFilename)
-		bytes, err := json.Marshal(reboot)
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = fileutils.WriteRename(rebootConfigFilename, bytes)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
 	rebootConfig := readRebootConfig()
 	log.Infof("scheduleReboot - CurrentRebootConfig %v\n", rebootConfig)
 
@@ -1982,16 +1986,8 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 
 		log.Infof("scheduleReboot: old %d new %d\n",
 			rebootConfig.Counter, reboot.Counter)
-
 		// store current config, persistently
-		bytes, err := json.Marshal(reboot)
-		if err == nil {
-			err := fileutils.WriteRename(rebootConfigFilename, bytes)
-			if err != nil {
-				log.Errorf("scheduleReboot: failed %s\n",
-					err)
-			}
-		}
+		saveRebootConfig(*reboot)
 		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
 
 		// if device reboot is set, ignore op-command
