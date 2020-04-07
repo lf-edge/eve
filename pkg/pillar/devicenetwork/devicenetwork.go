@@ -343,18 +343,18 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 			case types.KeySchemeWpaPsk: // WPA-PSK
 				tmpfile.WriteString("        key_mgmt=WPA-PSK\n")
 				// this assumes a hashed passphrase, otherwise need "" around string
-				if len(cred.Password) > 0 {
-					s = fmt.Sprintf("        psk=%s\n", cred.Password)
+				if len(cred.WifiPassword) > 0 {
+					s = fmt.Sprintf("        psk=%s\n", cred.WifiPassword)
 					tmpfile.WriteString(s)
 				}
 			case types.KeySchemeWpaEap: // EAP PEAP
 				tmpfile.WriteString("        key_mgmt=WPA-EAP\n        eap=PEAP\n")
-				if len(cred.Identity) > 0 {
-					s = fmt.Sprintf("        identity=\"%s\"\n", cred.Identity)
+				if len(cred.WifiUserName) > 0 {
+					s = fmt.Sprintf("        identity=\"%s\"\n", cred.WifiUserName)
 					tmpfile.WriteString(s)
 				}
-				if len(cred.Password) > 0 {
-					s = fmt.Sprintf("        password=hash:%s\n", cred.Password)
+				if len(cred.WifiPassword) > 0 {
+					s = fmt.Sprintf("        password=hash:%s\n", cred.WifiPassword)
 					tmpfile.WriteString(s)
 				}
 				// comment out the certifacation verify. file.WriteString("        ca_cert=\"/config/ca.pem\"\n")
@@ -382,20 +382,23 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	return true
 }
 
-func getWifiCredential(wifi types.WifiConfig) (zconfig.CredentialBlock, error) {
+func getWifiCredential(wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
 	if wifi.CipherBlockStatus.IsCipher {
 		_, cred, err := utils.GetCipherCredentials("devicenetwork",
 			wifi.CipherBlockStatus)
 		if err != nil {
 			log.Infof("%s, wifi config cipherblock decryption unsuccessful: %v\n", wifi.SSID, err)
-			cred = utils.PrepareCipherCred(wifi.Identity, wifi.Password)
+			cred.WifiUserName = wifi.Identity
+			cred.WifiPassword = wifi.Password
 			return cred, nil
 		}
 		log.Infof("%s, wifi config cipherblock decryption successful\n", wifi.SSID)
 		return cred, nil
 	}
 	log.Infof("%s, wifi config cipherblock not present\n", wifi.SSID)
-	cred := utils.PrepareCipherCred(wifi.Identity, wifi.Password)
+	cred := zconfig.EncryptionBlock{}
+	cred.WifiUserName = wifi.Identity
+	cred.WifiPassword = wifi.Password
 	return cred, nil
 }
 
