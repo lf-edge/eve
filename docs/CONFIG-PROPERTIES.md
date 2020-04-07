@@ -30,9 +30,12 @@
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
 | storage.apps.ignore.disk.check | boolean | false | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
 
-In addition, for each agentname, there are specific overrides for the default ones with the names:
+
+In addition, there can be per-agent settings.
+The Per-agent settings begin with "agent.*agentame*.*setting*"
+The following per-agent settings override the corresponding default ones:
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| debug.*agentname*.loglevel | string | if set overrides debug.default.loglevel |
-| debug.*agentname*.remote.loglevel | string | if set overrides debug.default.remote.loglevel |
+| agent.*agentname*.loglevel | string | if set overrides debug.default.loglevel | (Legacy setting debug.*agentname*.loglevel still supported)
+| agent.*agentname*.remote.loglevel | string | if set overrides debug.default.remote.loglevel | (Legacy setting debug.*agentname*.remote.loglevel)

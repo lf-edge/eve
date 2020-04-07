@@ -1,7 +1,4 @@
-FROM alpine:3.6 as kernel-build
-#linuxkit/alpine:f2f4db272c910d136380781a97e475013fabda8b AS kernel-build
-
-RUN apk update
+FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 AS kernel-build
 
 RUN apk add \
     argp-standalone \
@@ -19,35 +16,32 @@ RUN apk add \
     gnupg \
     installkernel \
     kmod \
-    libelf-dev \
-    libressl-dev \
+    elfutils-dev \
     linux-headers \
+    libunwind-dev \
+    mpc1-dev \
+    mpfr-dev \
     ncurses-dev \
-    python2 \
     findutils \
+    openssl-dev \
+    patch \
+    rsync \
     sed \
     squashfs-tools \
     tar \
     xz \
     xz-dev \
-    zlib-dev
+    zlib-dev \
+    openssl
 
-# libunwind-dev pkg is missed from arm64 now, below statement will be removed if the pkg is available.
-RUN [ $(uname -m) == x86_64 ] && apk add libunwind-dev || true
+ARG KERNEL_VERSION_aarch64=4.19.5
+ARG KERNEL_VERSION_x86_64=4.19.5
+ARG KERNEL_SOURCE
+ARG KERNEL_SHA256_SUMS
+ARG KERNEL_PGP2_SIGN
 
-ENV KERNEL_VERSION_aarch64 4.19.5
-ENV KERNEL_SERIES_aarch64 4.19.x
-
-ENV KERNEL_VERSION_x86_64 4.19.5
-ENV KERNEL_SERIES_x86_64 4.19.x
-
-ENV KERNEL_SOURCE=https://www.kernel.org/pub/linux/kernel/v4.x/linux-\${KERNEL_VERSION}.tar.xz
-ENV KERNEL_SHA256_SUMS=https://www.kernel.org/pub/linux/kernel/v4.x/sha256sums.asc
-ENV KERNEL_PGP2_SIGN=https://www.kernel.org/pub/linux/kernel/v4.x/linux-\${KERNEL_VERSION}.tar.sign
-
-
-# The following hack allows us to build different version 
-SHELL ["/bin/sh", "-c", "export KERNEL_VERSION=$(eval echo \\$KERNEL_VERSION_$(uname -m)) ; export KERNEL_SERIES=$(eval echo \\$KERNEL_SERIES_$(uname -m)) ; eval KERNEL_SOURCE=$KERNEL_SOURCE ; eval export KERNEL_PGP2_SIGN=$KERNEL_PGP2_SIGN ; /bin/sh -c \"$1\"", "-" ]
+# The only variable that is used everywhere is KERNEL_SERIES, so we stick it into env
+SHELL ["/bin/sh", "-c", "export KERNEL_SERIES=$(eval echo \\$KERNEL_VERSION_$(uname -m) | sed -e 's#.[^.]*$#.x#') ; /bin/sh -c \"$1\"", "-" ]
 
 # We copy the entire directory. This copies some unneeded files, but
 # allows us to check for the existence /patches-${KERNEL_SERIES} to
@@ -56,7 +50,11 @@ COPY / /
 
 # Download and verify kernel
 # PGP keys: 589DA6B1 (greg@kroah.com) & 6092693E (autosigner@kernel.org) & 00411886 (torvalds@linux-foundation.org)
-RUN curl -fsSLO ${KERNEL_SHA256_SUMS} && \
+RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR="$(echo "$KERNEL_VERSION" | cut -f1 -d.)" && \
+    KERNEL_SOURCE=${KERNEL_SOURCE:-https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.xz} && \
+    KERNEL_SHA256_SUMS=${KERNEL_SHA256_SUMS:-https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/sha256sums.asc} && \
+    KERNEL_PGP2_SIGN=${KERNEL_PGP2_SIGN:-https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.sign} && \
+    curl -fsSLO ${KERNEL_SHA256_SUMS} && \
     gpg2 -q --import keys.asc && \
     gpg2 --verify sha256sums.asc && \
     KERNEL_SHA256=$(grep linux-${KERNEL_VERSION}.tar.xz sha256sums.asc | cut -d ' ' -f 1) && \
@@ -65,7 +63,8 @@ RUN curl -fsSLO ${KERNEL_SHA256_SUMS} && \
     xz -d linux-${KERNEL_VERSION}.tar.xz && \
     curl -fsSLO ${KERNEL_PGP2_SIGN} && \
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
-    cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux
+    cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
+    mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
 # Apply local patches
 WORKDIR /linux
@@ -73,9 +72,6 @@ RUN set -e ; [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KE
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
-
-# Kernel config
-RUN mkdir /out
 
 RUN case $(uname -m) in \
     x86_64) \
@@ -144,16 +140,6 @@ RUN DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdept
                       -name '*.lds' -o -name '*.pl' -o -name '*.sh' \) | \
          tar cf - -T - | (cd $dir; tar xf -) && \
     ( cd /tmp && tar cf /out/kernel-dev.tar usr/src )
-
-RUN printf "KERNEL_SOURCE=${KERNEL_SOURCE}\n" > /out/kernel-source-info
-
-# perf (Don't compile for 4.4.x, it's broken and tedious to fix)
-RUN if [ "${KERNEL_SERIES}" != "4.4.x" -a $(uname -m) != aarch64 ]; then \
-       mkdir -p /build/perf && \
-       make -C tools/perf LDFLAGS=-static O=/build/perf && \
-       strip /build/perf/perf && \
-       cp /build/perf/perf /out; \
-     fi
 
 FROM scratch
 ENTRYPOINT []

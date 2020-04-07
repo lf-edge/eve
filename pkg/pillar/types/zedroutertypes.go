@@ -410,8 +410,10 @@ type NetworkPortConfig struct {
 	IfName       string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string
-	IsMgmt       bool // Used to talk to controller
-	Free         bool // Higher priority to talk to controller since no cost
+	// NetworkUUID - UUID of the Network Object configured for the port.
+	NetworkUUID uuid.UUID
+	IsMgmt      bool // Used to talk to controller
+	Free        bool // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
 	WirelessCfg WirelessConfig

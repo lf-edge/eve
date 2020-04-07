@@ -1,21 +1,42 @@
-#FROM alpine@sha256:286be1c7f84de7cbae6cf8aa4e13b3ce2f2512353b3e734336e47e92de4a881e as build
-FROM alpine@sha256:2ed83b97395753366d69f46eb997970baf60fced4cd85932afcfee5ee97d568f as build
-#FROM alpine:3.7 as build
+FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 as build
 
-ENV VERSION v2018.03 
-ENV SOURCE_URL=https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
+ENV VERSION v2020.01
+ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
+ENV TARGET_x86_64 qemu-x86_defconfig
+ENV TARGET_aarch64 rpi_4_defconfig
 
-RUN apk add --no-cache \
-    binutils-dev \
-    build-base \
-    bc \
-    curl
+RUN apk add --no-cache     \
+    binutils-dev=2.31.1-r2 \
+    build-base=0.5-r1      \
+    bc=1.07.1-r0           \
+    curl=7.64.0-r2         \
+    bison=3.0.5-r0         \
+    flex=2.6.4-r1          \
+    openssl-dev=1.1.1b-r1  \
+    python3                \
+    swig
 
-RUN [ -f `basename ${SOURCE_URL}` ] || curl -fsSL ${SOURCE_URL} | tar -C / -xzvf -
-RUN cd /u-boot* ; make vexpress_ca9x4_config ; make
+RUN curl -fsSL ${SOURCE_URL} | tar -C / -xzf - && mv /u-boot* /u-boot
+
+WORKDIR /u-boot
+# FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
+RUN if [ "$(uname -m)" = x86_64 ]; then                                              \
+       cp /etc/apk/repositories.upstream /etc/apk/repositories                     &&\
+       apk add --no-cache python3-dev=3.6.9-r2                                     &&\
+       sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h  ;\
+    fi
+RUN eval make \$TARGET_"$(uname -m)"
+RUN make -j "$(getconf _NPROCESSORS_ONLN)"
+
+# export a final set of u-boot artifacts into /boot
+RUN mkdir /boot && cp /u-boot/u-boot.bin /boot
+# FIXME: copy RPi4 binary blobs for now
+COPY rpi /tmp/rpi
+RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi/* /boot ; fi
+
 
 FROM scratch
 ENTRYPOINT []
 CMD []
-WORKDIR /boot
-COPY --from=build /u-boot*/u-boot .
+COPY --from=build /u-boot/u-boot* /u-boot/
+COPY --from=build /boot /boot

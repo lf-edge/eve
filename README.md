@@ -169,28 +169,36 @@ make run CONF_PART=/path/to/partition
 
 Note that the directory must exist to be mounted; if not, it will be ignored. The most common use case is a config directory output on the run of [adam](https://github.com/zededa/adam).
 
-## How to use on an ARM board
+While running everything on your laptop with QEMU could be fun, nothing beats real hardware. The most cost-effective option, not surprisingly, is ARM. We recommend two popular board [HiKey](http://www.lenovator.com/product/90.html) and [Raspberry Pi 4](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/). The biggest difference between the two is that on Raspberry Pi (since it doesn't have any built-in flash storage) you won't be able to utlize EVE's installer and you'll have to build a live image. With HiKey you can use a standard EVE's installer. The steps to do both are outlined below:
 
-While running everything on your laptop with QEMU could be fun, nothing
-beats real hardware. The most cost-effective option, not surprisingly,
-is ARM. We recommend using HiKey board [http://www.lenovator.com/product/90.html](http://www.lenovator.com/product/90.html).
-Once you acquire the board you will need to build an installer image by running
-(note that if you're building it on an ARM server you can drop ZARCH=arm64 part):
+## How to use on a Raspberry Pi 4 ARM board
 
-```sh
-make ZARCH=arm64 installer
-```
+Raspberry Pi 4 is a tiny, but capable enough ARM board that allows EVE to run with KVM hypervisor (and soon Xen) hypervisors. While EVE would run in the lowest memory configuration (1GB) if you plan to use it for actual EVE development we strongly recommend buying a 4GB RAM option.
 
-and then flashing it onto an SD card. For example, here's how you can do the
-flashing on Mac OS X (where XXX is the name of your SD card as shown by
-diskutil list):
+Since a full Raspberry Pi 4 support is only available in upstream Linux kernels starting from 5.6.0, you'll have to use that bleeding edge kernel for your build. Another peculiar aspect of this board is that it doesn't use a standard [bootloader (e.g. u-boot or UEFI)](https://www.raspberrypi.org/documentation/configuration/boot_folder.md) so we need to trick it into using our own u-boot as UEFI environment. Thankfully, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4:
 
-```sh
-diskutil list
-diskutil unmountDisk /dev/rdiskXXX
-sudo dd if=dist/arm64/installer.raw of=/dev/rdiskXXX bs=1m
-diskutil eject /dev/rdiskXXX
-```
+1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
+2. Build a live image `make ZARCH=arm64 MEDIA_SIZE=15000 live.rpi`
+3. Flash the `dist/arm64/live.rpi` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+4. Always make sure to verify the image by running `gdisk /dev/XXX` and picking 'v' option
+
+In step #2 you should replace MEDIA_SIZE with the value that corresponds to the size of your SD card in MB. Note, however, that because of flash wear, the actual size may be smaller than what is advertised by the manufacturer (it is likely to use 15000 for a card that is advertised as 16G).
+
+Step #4 is extermely important and can NOT be skipped (otherwise you will end up with and EVE image that can NOT be upgraded).
+
+Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 rootfs-rpi` and give resulting `dist/arm64/installer/rootfs-rpi.img` to the controller.
+
+You may notice that the Makefile logic doesn't produce regular devicetree blob for Raspberry Pi 4 and only enables it to run in KVM hypervisor mode. Both of these may change in the future as we evolve support for this board, but for now you just need to keep this in mind and alway build `live.rpi` instead of `live.img` (the default live image of EVE).
+
+One final note about Raspberry Pi 4 GPU support is that since we are running EVE in 64bit (aarch64) mode we are still waiting for the proper [VC4 DRM BCM2711 drivers](https://lore.kernel.org/dri-devel/cover.6c896ace9a5a7840e9cec008b553cbb004ca1f91.1582533919.git-series.maxime@cerno.tech/T/#m0275b55e1518be1fb2154d3c95e13c1b7de1f347) to be upstreamed. Currently it is expected that Kernel 5.7 may actually ship the fully functional driver.
+
+## How to use on an HiKey ARM board
+
+Unlike Raspberry Pi boards, HiKey boards come with a built-in flash, so we will be using EVE's installer to install a copy of EVE onto that storage. You can follow these steps to prepare your installation media:
+
+1. Start by cloning EVE git repository `git clone https://github.com/lf-edge/eve.git`
+2. Build an installer image `cd eve ; make ZARCH=arm64 installer`
+3. Flash the `dist/arm64/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
 Since by default HiKey is using WiFi for all its networking, you will also
 have to provide SSID and password for your WiFi network. On Mac OS X you
@@ -278,15 +286,38 @@ Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 
 ## How to use on an AMD board
 
-The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04.
+The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04:
+
+1. Start by cloning EVE git repository `git clone https://github.com/lf-edge/eve.git`
+2. Build an installer image `cd eve ; make ZARCH=amd64 installer`
+3. Flash the `dist/amd64/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+4. Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE
+
+You will see an installation sequence scroll on screen and the output that indicates a successful install will look like this:
 
 ```bash
-git clone https://github.com/lf-edge/eve.git
-cd eve
-make ZARCH=amd64 installer
+[10.69716164] mmcblk0:
+[11.915943]   mmcblk0: p1
+[13.606346]   mmcblk0: p1 p2
+[29.656563]   mmcblk0: p1 p2 p3
+[30.876806]   mmcblk0: p1 p2 p3 p4
+[32.156930]   mmcblk0: p1 p2 p3 p4 p9
+NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation.
+[43.185325]   ACPI: Preparing to enter system sleep state S5
+[43.187349]   reboot: Power down
 ```
 
-Find the device using
+At this point you should remove your USB Disk from the UP Squared Board slot and reboot the board. If everything went as planned you will boot right into the running system.
+
+## How to write EVE image and installer onto an SD card or an installer medium
+
+EVE is an very low-level engine that requires producing USB sticks and SD cards that are formatted in a very particular way in order to make EVE install and/or run on a given Edge Node. This, in turn, requires EVE hackers to be comfortable with following instructions which, with a simple typo, can completely destroy the system you're running them on (by overwriting your own disk instead of SD card or a USB stick).
+
+PROCEED AT YOUR OWN RISK
+
+If you want to write any binary artifact foo.bin produced by an EVE build onto an SD card (or any other installation medium) try the following:
+
+Find the device that you will be writing to using
 
 ### On Ubuntu
 
@@ -306,7 +337,7 @@ Now format the USB Disk and run the following commands
 
 ```bash
 umount /dev/sdXXX
-sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+sudo dd if=dist/XXX/foo.bin of=/dev/sdXXX
 eject /dev/sdXXX
 ```
 
@@ -314,43 +345,19 @@ eject /dev/sdXXX
 
 ```bash
 diskutil unmountDisk /dev/sdXXX
-sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+sudo dd if=dist/XXX/foo.bin of=/dev/sdXXX
 diskutil eject /dev/sdXXX
 ```
 
-Alternatively the image can be written with tools like [balenaEtcher](https://www.balena.io/etcher/)
+Alternatively the image can be written with tools like [Balena's Etcher](https://www.balena.io/etcher/)
 
-Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE.
+## A quick note on linuxkit
 
-You will see an installation sequence scroll on screen and the output that indicates a successful install will look like this:
-
-```bash
-[10.69716164] mmcblk0:
-[11.915943]   mmcblk0: p1
-[13.606346]   mmcblk0: p1 p2
-[29.656563]   mmcblk0: p1 p2 p3
-[30.876806]   mmcblk0: p1 p2 p3 p4
-[32.156930]   mmcblk0: p1 p2 p3 p4 p9
-NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation.
-[43.185325]   ACPI: Preparing to enter system sleep state S5
-[43.187349]   reboot: Power down
-```
-
-At this point you should remove your USB Disk from the UP Squared Board slot and reboot the board. If everything went as planned you will boot right into the running system.
-
-A quick note on linuxkit: you may be wondering why do we have a container-based
-architecture for a Xen-centric environment. First of all, OCI containers
-are a key type of a workload for our platform. Which means having
-OCI environment to run them is a key requirement. We run them
-via:
+You may be wondering why do we have a container-based architecture for a Xen-centric environment. First of all, OCI containers are a key type of a workload for our platform. Which means having OCI environment to run them is a key requirement. We run them via:
 
 1. Set up the filesystem root using [containerd](https://containerd.io)
 1. Launch the domU using Xen via `xl`
 
-In addition to that, while we plan to build a fully disagregated system
-(with even device drivers running in their separate domains) right now
-we are just getting started and having containers as a first step towards
-full disagreagation seems like a very convenient stepping stone.
+In addition to that, while we plan to build a fully disagregated system (with even device drivers running in their separate domains) right now we are just getting started and having containers as a first step towards full disagreagation seems like a very convenient stepping stone.
 
-Let us know what you think by filing GitHub issues, and feel free to
-send us pull requests if something doesn't quite work.
+Let us know what you think by filing GitHub issues, and feel free to send us pull requests if something doesn't quite work.

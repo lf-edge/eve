@@ -95,7 +95,7 @@ func (PhyIoType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_9fb58492383773ea, []int{1}
 }
 
-// How does EVE should use them, for what purpose it is for
+// PhyIoMemberUsage - Indicates how each adaptor must be used by Eve.
 type PhyIoMemberUsage int32
 
 const (
@@ -399,6 +399,7 @@ type PhysicalIO struct {
 	//    separated list of integers or even a range of integers. Hence using
 	//    a string to address this.
 	// "ioports": the address is a string such as "2f8-2ff"
+	// If the type is PhyIoNet*, then there needs to be an "ifname" physaddr.
 	Phyaddrs map[string]string `protobuf:"bytes,3,rep,name=phyaddrs,proto3" json:"phyaddrs,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// logicallabel - provides the ability to model designer to refer
 	//    the physicalIO port to using more friendly name
@@ -528,9 +529,7 @@ func init() {
 	proto.RegisterMapType((map[string]string)(nil), "PhysicalIO.PhyaddrsEntry")
 }
 
-func init() {
-	proto.RegisterFile("devmodel.proto", fileDescriptor_9fb58492383773ea)
-}
+func init() { proto.RegisterFile("devmodel.proto", fileDescriptor_9fb58492383773ea) }
 
 var fileDescriptor_9fb58492383773ea = []byte{
 	// 764 bytes of a gzipped FileDescriptorProto

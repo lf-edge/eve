@@ -100,7 +100,7 @@ enum PhyIoType {
   PhyIoOther = 255;
 }
 
-// How does EVE should use them, for what purpose it is for
+// PhyIoMemberUsage - Indicates how each adaptor must be used by Eve.
 enum PhyIoMemberUsage {
   PhyIoUsageNone      = 0;
   // Used by both management and apps.

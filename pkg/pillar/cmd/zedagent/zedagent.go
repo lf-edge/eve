@@ -101,6 +101,7 @@ type zedagentContext struct {
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
+	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
 	rebootCmd                 bool
@@ -110,15 +111,21 @@ type zedagentContext struct {
 	rebootReason              string    // Previous reboot from nodeagent
 	rebootStack               string    // Previous reboot from nodeagent
 	rebootTime                time.Time // Previous reboot from nodeagent
-	restartCounter            uint32
-	subDevicePortConfigList   pubsub.Subscription
-	devicePortConfigList      types.DevicePortConfigList
-	remainingTestTime         time.Duration
-	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
-	globalConfig              types.ConfigItemValueMap
-	specMap                   types.ConfigItemSpecMap
-	globalStatus              types.GlobalStatus
-	getCertsTimer             *time.Timer
+	// restartCounter - counts number of reboots of the device by Eve
+	restartCounter uint32
+	// rebootConfigCounter - reboot counter sent by the cloud in its config.
+	//  This is the value of counter that triggered reboot. This is sent in
+	//  device info msg. Can be used to verify device is caught up on all
+	// outstanding reboot commands from cloud.
+	rebootConfigCounter     uint32
+	subDevicePortConfigList pubsub.Subscription
+	devicePortConfigList    types.DevicePortConfigList
+	remainingTestTime       time.Duration
+	physicalIoAdapterMap    map[string]types.PhysicalIOAdapter
+	globalConfig            types.ConfigItemValueMap
+	specMap                 types.ConfigItemSpecMap
+	globalStatus            types.GlobalStatus
+	getCertsTimer           *time.Timer
 }
 
 var debug = false
@@ -187,6 +194,11 @@ func Run(ps *pubsub.PubSub) {
 		zedagentCtx.globalConfig)
 	zedagentCtx.globalStatus.UnknownConfigItems = make(
 		map[string]types.ConfigItemStatus)
+
+	rebootConfig := readRebootConfig()
+	zedagentCtx.rebootConfigCounter = rebootConfig.Counter
+	log.Infof("Zedagent Run - rebootConfigCounter at init is %d",
+		zedagentCtx.rebootConfigCounter)
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
@@ -789,6 +801,18 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
+
+	// Subscribe to Log metrics from logmanager
+	subLogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "logmanager",
+		TopicImpl: types.LogMetrics{},
+		Activate:  false,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subLogMetrics = subLogMetrics
 
 	// Pick up debug aka log level before we start real work
 

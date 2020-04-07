@@ -8,20 +8,21 @@ package zedrouter
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"io/ioutil"
+	"syscall"
 
 	"github.com/eriknordmark/netlink"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	pcap "github.com/packetcap/go-pcap"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -623,7 +624,7 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 		switched = true
 		filter = "udp and (port 53 or port 67)"
 	}
-	log.Infof("(FlowStats) DNS Monitor on %s(bridge-num %d) switched=%v, filter=%s", bn, bnNum, switched, filter)
+	log.Infof("(FlowStats) DNS Monitor on %s(bridge-num %d) swithced=%v, filter=%s", bn, bnNum, switched, filter)
 
 	handle, err := pcap.OpenLive(bn, snapshotLen, promiscuous, timeout, false)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -18,22 +19,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// PrepareCipherCred : fill-in the plain-text credentials
-func PrepareCipherCred(id, password string) zconfig.CredentialBlock {
-	cred := zconfig.CredentialBlock{}
-	if len(id) != 0 || len(password) != 0 {
-		cred.Identity = id
-		cred.Password = password
-	}
-	return cred
-}
-
 // GetCipherCredentials : decrypt credential block
 func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (types.CipherBlockStatus,
-	zconfig.CredentialBlock, error) {
+	zconfig.EncryptionBlock, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
-	var cred zconfig.CredentialBlock
+	var cred zconfig.EncryptionBlock
 	if !cipherBlock.IsCipher {
 		return handleCipherBlockCredError(agentName, cipherBlock, cred, nil)
 	}
@@ -96,13 +87,13 @@ func GetCipherData(agentName string, status types.CipherBlockStatus,
 
 // for credential block
 func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatus,
-	cred zconfig.CredentialBlock, err error) (types.CipherBlockStatus, zconfig.CredentialBlock, error) {
+	cred zconfig.EncryptionBlock, err error) (types.CipherBlockStatus, zconfig.EncryptionBlock, error) {
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		status.SetErrorInfo(agentName, errStr)
 		// we have already captured the error info above
 		// for valid cred info, reset the error to proceed
-		if len(cred.Identity) != 0 || len(cred.Password) != 0 {
+		if !reflect.DeepEqual(cred, zconfig.EncryptionBlock{}) {
 			err = nil
 		}
 	}
