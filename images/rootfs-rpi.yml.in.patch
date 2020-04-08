@@ -1,0 +1,18 @@
+--- images/rootfs.yml.in	2020-04-08 18:14:23.000000000 -0700
++++ images/rootfs-rpi.yml.in	2020-04-08 18:19:53.000000000 -0700
+@@ -1,5 +1,5 @@
+ kernel:
+-  image: KERNEL_TAG
++  image: NEW_KERNEL_TAG
+   cmdline: "rootdelay=3"
+ init:
+   - linuxkit/init:v0.5
+@@ -50,7 +50,7 @@
+      image: XENTOOLS_TAG
+ files:
+    - path: /etc/eve-release
+-     contents: 'EVE_VERSION'
++     contents: 'EVE_VERSION-kvm'
+ trust:
+   org:
+     - linuxkit
