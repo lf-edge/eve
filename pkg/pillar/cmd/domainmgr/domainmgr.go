@@ -646,9 +646,31 @@ func maybeRetry(ctx *domainContext, status *types.DomainStatus) {
 	maybeRetryAdapters(ctx, status)
 }
 
+// Retry a boot after a failure.
 func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
 	if !status.BootFailed {
+		return
+	}
+	if status.Activated && status.BootFailed {
+		log.Infof("maybeRetryBoot(%s) clearing bootFailed since Activated",
+			status.Key())
+		status.BootFailed = false
+		publishDomainStatus(ctx, status)
+		return
+	}
+	config := lookupDomainConfig(ctx, status.Key())
+	if config == nil {
+		// Odd to have status but no config
+		log.Errorf("maybeRetryBoot(%s) no DomainConfig",
+			status.Key())
+		return
+	}
+	if !config.Activate {
+		log.Errorf("maybeRetryBoot(%s) Config not Activate - nothing to do",
+			status.Key())
+		status.BootFailed = false
+		publishDomainStatus(ctx, status)
 		return
 	}
 
@@ -683,25 +705,36 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainID)
 	publishDomainStatus(ctx, status)
+	log.Infof("maybeRetryBoot(%s) DONE for %s\n",
+		status.Key(), status.DisplayName)
 }
 
+// Retry assigning adapters after a failure.
 func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 
 	if !status.AdaptersFailed {
 		return
 	}
-	log.Infof("maybeRetryAdapters(%s) after %s at %v\n",
-		status.Key(), status.LastErr, status.LastErrTime)
-
+	if status.Activated && status.AdaptersFailed {
+		log.Infof("maybeRetryAdapters(%s) clearing adaptersFailed since Activated",
+			status.Key())
+		status.AdaptersFailed = false
+		publishDomainStatus(ctx, status)
+		return
+	}
 	config := lookupDomainConfig(ctx, status.Key())
 	if config == nil {
-		log.Errorf("maybeRetryAdapters(%s) no DomainConfig\n",
+		// Odd to have status but no config
+		log.Errorf("maybeRetryAdapters(%s) no DomainConfig",
 			status.Key())
 		return
 	}
+	log.Infof("maybeRetryAdapters(%s) after %s at %v\n",
+		status.Key(), status.LastErr, status.LastErrTime)
+
 	if err := configAdapters(ctx, *config); err != nil {
-		log.Errorf("Failed to reserve adapters for %v: %s\n",
-			config, err)
+		log.Errorf("Failed to reserve adapters for %s: %s",
+			config.Key(), err)
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -1459,23 +1492,27 @@ func addNoDuplicate(list []string, add string) []string {
 func handleModify(ctx *domainContext, key string,
 	config *types.DomainConfig, status *types.DomainStatus) {
 
-	log.Infof("handleModify(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Infof("handleModify(%v) activate %t for %s\n",
+		config.UUIDandVersion, config.Activate, config.DisplayName)
 
 	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 
 	changed := false
 	if config.Activate && !status.Activated {
+		log.Infof("handleModify(%v) activating for %s",
+			config.UUIDandVersion, config.DisplayName)
 		// AppNum could have changed if we did not already Activate
 		name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
-		status.DomainName = name
-		status.AppNum = config.AppNum
+		if status.DomainName != name {
+			status.DomainName = name
+			status.AppNum = config.AppNum
+			log.Infof("handleModify(%v) set domainName %s for %s\n",
+				config.UUIDandVersion, status.DomainName,
+				config.DisplayName)
+		}
 		status.VifList = checkIfEmu(config.VifList)
 		publishDomainStatus(ctx, status)
-		log.Infof("handleModify(%v) set domainName %s for %s\n",
-			config.UUIDandVersion, status.DomainName,
-			config.DisplayName)
 
 		// This has the effect of trying a boot again for any
 		// handleModify after an error.
@@ -1501,6 +1538,8 @@ func handleModify(ctx *domainContext, key string,
 		doActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
+		log.Infof("handleModify(%v) NOT activating for %s",
+			config.UUIDandVersion, config.DisplayName)
 		if status.LastErr != "" {
 			log.Infof("handleModify(%v) clearing existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
