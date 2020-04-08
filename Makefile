@@ -12,6 +12,8 @@ PATH:=$(CURDIR)/build-tools/bin:$(PATH)
 export CGO_ENABLED GOOS GOARCH PATH
 
 # A set of tweakable knobs for our build needs (tweak at your risk!)
+# Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
+EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
 # The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=kvm'
@@ -44,7 +46,13 @@ ifeq ($(UNAME_S),Darwin)
 	GID          = 1001
 endif
 
+REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
+REPO_SHA=$(shell git describe --match v --abbrev=8 --always --dirty)
+REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
+
+ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)-$(shell date -u +"%Y-%m-%d.%H.%M"),$(REPO_TAG))
+
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
@@ -70,7 +78,9 @@ LIVE_IMG=$(DIST)/live
 TARGET_IMG=$(DIST)/target.img
 INSTALLER=$(DIST)/installer
 
-ROOTFS_IMG=$(INSTALLER)/rootfs.img
+ROOTFS=$(INSTALLER)/rootfs
+ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
+ROOTFS_IMG=$(ROOTFS).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 EFI_PART=$(INSTALLER)/EFI
@@ -136,7 +146,7 @@ RESCAN_DEPS=FORCE
 FORCE_BUILD=--force
 
 ifeq ($(LINUXKIT_PKG_TARGET),push)
-  EVE_REL:=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+  EVE_REL:=$(REPO_TAG)
   ifneq ($(EVE_REL),snapshot)
     EVE_HASH:=$(EVE_REL)
     EVE_REL:=$(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(EVE_HASH) ] && echo latest)
@@ -225,13 +235,16 @@ live: $(LIVE_IMG).img
 live.rpi: $(LIVE_IMG).rpi
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
-rootfs-%: $(INSTALLER)/rootfs-%.img
+rootfs-%: $(ROOTFS)-%.img
 	@true
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ $(CONF_FILES)
 
-$(ROOTFS_IMG): $(INSTALLER)/rootfs-$(HV).img
+$(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
+	@rm -f $@ && ln -s $(notdir $<) $@
+
+$(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 	@rm -f $@ && ln -s $(notdir $<) $@
 
 $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
@@ -247,11 +260,8 @@ $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 # style bootloader image and images/rootfs-rpi.yml will go away once we migrate to a NEW_KERNEL
 $(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
 $(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-rpi | $(INSTALLER)
-	mv $(INSTALLER)/rootfs-rpi.img $(INSTALLER)/rootfs.img
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
 	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
-images/rootfs-rpi.yml: images/rootfs-kvm.yml.in
-	@sed -e 's#KERNEL_TAG#NEW_KERNEL_TAG#' < $< | $(PARSE_PKGS) > $@
 
 $(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
@@ -345,7 +355,12 @@ endif
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
 
-$(INSTALLER)/rootfs-%.img: images/rootfs-%.yml | $(INSTALLER)
+images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
+	@if [ -e $@.patch ]; then patch -p0 -o $@.sed < $@.patch ;else cp $< $@.sed ;fi
+	@sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
+	@rm $@.sed
+
+$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
@@ -363,6 +378,7 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
+.PRECIOUS: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 

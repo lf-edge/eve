@@ -7,22 +7,8 @@
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 
-# Version of the Linux kernel that we build for early testing
-NEW_KERNEL_VERSION=5.6.1
-
 get_git_tag() {
   echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
-}
-
-eve_version() {
-  local vers="`get_git_tag`"
-
-  if [ -z "$vers" ] ; then
-    vers="${EVE_SNAPSHOT_VERSION:-0.0.0}-$(git rev-parse --abbrev-ref HEAD | tr / _)-$(git describe --match v --abbrev=8 --always --dirty)-$(date -u +"%Y-%m-%d.%H.%M")"
-    vers=`echo ${vers} | sed -e 's#-master##'`
-  fi
-
-  echo $vers
 }
 
 linuxkit_tag() {
@@ -66,7 +52,6 @@ synthetic_tag() {
 resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
-    -e "s#EVE_VERSION#$EVE_VERSION#" \
     -e "s#CURDIR#$(pwd)#" \
     -e "s#ACRN_KERNEL_TAG#$ACRN_KERNEL_TAG#" \
     -e "s#NEW_KERNEL_TAG#$NEW_KERNEL_TAG#" \
@@ -115,10 +100,8 @@ else
   ARCH="-${DOCKER_ARCH_TAG}"
 fi
 
-EVE_VERSION=${EVE_VERSION:-`eve_version`$ARCH}
-
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
-NEW_KERNEL_TAG=${KERNEL_TAG/"$ARCH"/-"$NEW_KERNEL_VERSION$ARCH"}
+NEW_KERNEL_TAG=$(linuxkit_tag pkg/new-kernel)
 ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
