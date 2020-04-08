@@ -165,6 +165,13 @@ echo "$(date -Ins -u) device-steps: Starting upgradeconverter"
 status=$($BINDIR/upgradeconverter)
 echo "$(date -Ins -u) device-steps: upgradeconverter Completed. Status: $status"
 
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+    echo "$(date -Ins -u) device-steps: TPM device, creating additional security certificates"
+    if ! $BINDIR/tpmmgr createCerts; then
+        echo "$(date -Ins -u) device-steps: createCerts failed"
+    fi
+fi
+
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)

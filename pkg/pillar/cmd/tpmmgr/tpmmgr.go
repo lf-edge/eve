@@ -68,14 +68,17 @@ const (
 	//TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
 	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004
 
+	//TpmEcdhKeyHdl is the well known TPM permanent handle for ECDH key
+	TpmEcdhKeyHdl tpmutil.Handle = 0x81000005
+
 	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
 	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
 
 	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
 
-	//location of the attestation certificate
-	attestCertFile = types.IdentityDirname + "/attest.cert.pem"
+	//location of the ecdh certificate
+	ecdhCertFile = types.IdentityDirname + "/ecdh.cert.pem"
 
 	emptyPassword  = ""
 	tpmLockName    = types.TmpDirname + "/tpm.lock"
@@ -175,6 +178,17 @@ var (
 			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
+	defaultEcdhKeyTemplate = tpm2.Public{
+		Type:    tpm2.AlgECC,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
+			tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth,
+		ECCParameters: &tpm2.ECCParams{
+			CurveID: tpm2.CurveNISTP256,
+			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
+		},
+	}
 	debug         = false
 	debugOverride bool // From command line arg
 )
@@ -205,6 +219,13 @@ var vendorRegistry = map[uint32]string{
 	0x57454300: "Winbond",
 	0x524F4343: "Fuzhou Rockchip",
 	0x474F4F47: "Google",
+}
+
+var toGoCurve = map[tpm2.EllipticCurve]elliptic.Curve{
+	tpm2.CurveNISTP224: elliptic.P224(),
+	tpm2.CurveNISTP256: elliptic.P256(),
+	tpm2.CurveNISTP384: elliptic.P384(),
+	tpm2.CurveNISTP521: elliptic.P521(),
 }
 
 //Helps creating various keys, according to the supplied template, and hierarchy
@@ -719,13 +740,9 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	defer rw.Close()
 
 	p := tpm2.ECPoint{X: X, Y: Y}
-	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
-	if err != nil {
-		log.Fatalf("Reading owner credential failed: %s", err)
-	}
 
 	//Recover the key, and decrypt the message (EVE node Part)
-	z, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	z, err := tpm2.RecoverSharedECCSecret(rw, TpmEcdhKeyHdl, "", p)
 	if err != nil {
 		log.Errorf("recovering Shared Secret failed: %v", err)
 		return [32]byte{}, err
@@ -742,8 +759,8 @@ func testEcdhAES() error {
 		fmt.Printf("Failed to generate A private/public key pair: %s\n", err)
 	}
 
-	//read public key from device certificate
-	certBytes, err := ioutil.ReadFile("/config/device.cert.pem")
+	//read public key from ecdh certificate
+	certBytes, err := ioutil.ReadFile("/config/ecdh.cert.pem")
 	if err != nil {
 		fmt.Printf("error in reading device cert file: %v", err)
 		return err
@@ -899,40 +916,84 @@ func tpmKeyToRsa(p tpm2.Public) (crypto.PublicKey, error) {
 	return pubKey, nil
 }
 
-func createCerts() error {
+func tpmKeyToEccKey(p tpm2.Public) (crypto.PublicKey, error) {
+	curve, ok := toGoCurve[p.ECCParameters.CurveID]
+	if !ok {
+		log.Errorf("Unknown curveID: %v", curve)
+		return nil, fmt.Errorf("unknown curve id 0x%x",
+			p.ECCParameters.CurveID)
+	}
+
+	pubKey := &ecdsa.PublicKey{
+		X:     p.ECCParameters.Point.X,
+		Y:     p.ECCParameters.Point.Y,
+		Curve: curve,
+	}
+
+	return pubKey, nil
+}
+
+func createEcdhCert() error {
 	//Check if we already have the certificate in /config
-	if !etpm.FileExists(attestCertFile) {
+	if !etpm.FileExists(ecdhCertFile) {
+		//Cert is not present in /config, generate new one
+		//Store certificate in /config
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 		if err != nil {
-			log.Errorln(err)
 			return err
 		}
+
 		clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 		if err != nil {
 			return nil
 		}
+
 		block, _ := pem.Decode(clientCertBytes)
-		deviceCert, _ := x509.ParseCertificate(block.Bytes)
-		attestKey, _, _, err := tpm2.ReadPublic(rw, TpmAKHdl)
-		publicKey, err := tpmKeyToRsa(attestKey)
+		if block == nil {
+			return fmt.Errorf("error in parsing clientCertBytes")
+		}
+
+		deviceCert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return err
+		}
+
+		ecdhKey, _, _, err := tpm2.ReadPublic(rw, TpmEcdhKeyHdl)
+		if err != nil {
+			return err
+		}
+
+		publicKey, err := tpmKeyToEccKey(ecdhKey)
+		if err != nil {
+			return err
+		}
+
 		tpmPrivKey := etpm.TpmPrivateKey{}
-		tpmPrivKey.PublicKey = tpmPrivKey.Public()
 		template := *deviceCert
+
+		tpmPrivKey.PublicKey = tpmPrivKey.Public()
 		template.SerialNumber = big.NewInt(123456789)
-		fmt.Println(template)
 		cert, err := x509.CreateCertificate(rand.Reader,
-			&template,
-			deviceCert,
-			publicKey,
-			tpmPrivKey)
-		//Cert is not present in /config, generate new one
-		//Store certificate in /config
+			&template, deviceCert, publicKey, tpmPrivKey)
+		if err != nil {
+			return err
+		}
+
 		certBlock := &pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: cert,
 		}
+
 		certBytes := pem.EncodeToMemory(certBlock)
-		ioutil.WriteFile(attestCertFile, certBytes, 0644)
+		if certBytes == nil {
+			return fmt.Errorf("empty bytes after encoding to PEM")
+		}
+
+		err = ioutil.WriteFile(ecdhCertFile, certBytes, 0644)
+		if err != nil {
+			return err
+		}
+
 	}
 	//change state to CERTS_CREATED
 	return nil
@@ -976,6 +1037,14 @@ func Run(ps *pubsub.PubSub) {
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Attestation key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, true); err != nil {
+			log.Errorf("Error in creating Quote key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, true); err != nil {
+			log.Errorf("Error in creating ECDH key: %v ", err)
 			os.Exit(1)
 		}
 	case "readDeviceCert":
@@ -1087,35 +1156,6 @@ func Run(ps *pubsub.PubSub) {
 				log.Fatalf("TPM is enabled, but credential file is absent: %v", err)
 			}
 		}
-		//Try to create additional entries only if we are running in TPM-Enabled mode
-		if etpm.IsTpmEnabled() {
-			//Below, each key creation takes around 30 seconds. It is possible
-			//that the device may be undergoing a reboot and hence we get a
-			//EPIPE from TPM char device driver. Logging reboot reason helps
-			//identify if the EPIPE is because of reboot or because of some other error
-			//FIXME: We might have to avoid Fatal if it is EPIPE and DeviceReboot is true
-			if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-				//are we rebooting? capture that info for EPIPE errors
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
-				log.Fatalf("Error in creating Endorsement key: %v, DeviceReboot is %v %v", err,
-					deviceReboot, ok)
-			}
-			if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
-				log.Fatalf("Error in creating Srk key: %v, DeviceReboot is %v %v", err,
-					deviceReboot, ok)
-			}
-			if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
-				log.Fatalf("Error in creating Attestation key: %v, DeviceReboot is %v %v", err,
-					deviceReboot, ok)
-			}
-			if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
-				log.Fatalf("Error in creating Quote key: %v, DeviceReboot is %v %v", err,
-					deviceReboot, ok)
-			}
-		}
 		for {
 			select {
 			case change := <-subGlobalConfig.MsgChan():
@@ -1134,18 +1174,31 @@ func Run(ps *pubsub.PubSub) {
 		testTpmEcdhSupport()
 	case "testEcdhAES":
 		testEcdhAES()
-	case "createKeys":
+	case "createCerts":
+		//Create additional security keys if already not created, followed by any certificates
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-			fmt.Printf("Error in creating Endorsement key: %v ", err)
+			log.Errorf("Error in creating Endorsement key: %v ", err)
+			os.Exit(1)
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-			fmt.Printf("Error in creating Srk key: %v ", err)
+			log.Errorf("Error in creating Srk key: %v ", err)
+			os.Exit(1)
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-			fmt.Printf("Error in creating Attestation key: %v ", err)
+			log.Errorf("Error in creating Attestation key: %v ", err)
+			os.Exit(1)
 		}
 		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
-			fmt.Printf("Error in creating PCR Quote key: %v ", err)
+			log.Errorf("Error in creating PCR Quote key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, false); err != nil {
+			log.Errorf("Error in creating Ecdh key: %v ", err)
+			os.Exit(1)
+		}
+		if err := createEcdhCert(); err != nil {
+			log.Errorf("Error in creating Ecdh Certificate: %v", err)
+			os.Exit(1)
 		}
 	default:
 		//No need for Fatal, caller will take action based on return code.
