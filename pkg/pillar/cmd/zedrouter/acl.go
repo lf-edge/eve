@@ -878,7 +878,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 			aclRule2.Table = "nat"
 			aclRule2.Chain = "POSTROUTING"
 			aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-p", protocol,
-				"--dport", targetPort}
+				"--dport", targetPort, "-m", "physdev", "!", "--physdev-is-bridged"}
 			aclRule2.Action = []string{"-j", "SNAT", "--to-source", aclArgs.BridgeIP}
 			aclRule2.IsPortMapRule = true
 			aclRule2.IsUserConfigured = true
