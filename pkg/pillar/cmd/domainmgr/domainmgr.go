@@ -976,7 +976,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.IoAdapterList = config.IoAdapterList
 	}
 
-	if status.IsContainer {
+	if status.IsContainer && config.CloudInitUserData != nil {
 		envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
 		if err != nil {
 			fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
