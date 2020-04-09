@@ -8,7 +8,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	"github.com/prometheus/procfs"
+	process "github.com/shirou/gopsutil/process"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -616,31 +616,74 @@ func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
 
-func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
-	// for more precised measurements we should be using https://github.com/cha87de/kvmtop
-	res := map[string]types.DomainMetric{}
-
-	proc, err := procfs.NewFS("/proc")
+//Fetch cpu usage from top output
+func readCPUUsage(pid int) (float64, error) {
+	ps, err := process.NewProcess(int32(pid))
 	if err != nil {
-		return res, logError("can't access /procfs %v", err)
+		return 0, err
 	}
 
+	cput, err := ps.Times()
+	if err != nil {
+		return 0, err
+	}
+
+	return cput.Total(), nil
+}
+
+func readMemUsage(pid int) (uint32, uint32, float64, error) {
+	ps, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	processMemory, err := ps.MemoryInfo()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	usedMem := uint32(roundFromBytesToMbytes(processMemory.RSS))
+	availMem := uint32(roundFromBytesToMbytes(processMemory.VMS))
+
+	usedMemPerc, err := ps.MemoryPercent()
+	if err != nil {
+		return usedMem, availMem, 0, err
+	}
+
+	return usedMem, availMem, float64(usedMemPerc), nil
+}
+
+func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	// for more precised measurements we should be using a tool like https://github.com/cha87de/kvmtop
+	res := map[string]types.DomainMetric{}
+
 	for dom, pid := range ctx.domains {
-		p, err := proc.Proc(pid)
-		if err != nil {
-			return res, logError("can't access stats for domain %s PID %d (%v)", dom, pid, err)
+		var usedMem, availMem uint32
+		var usedMemPerc float64
+		var cpuTotal uint64
+
+		ct, err := readCPUUsage(pid)
+		if err == nil {
+			cpuTotal = uint64(ct)
+		} else {
+			log.Errorf("readCPUUsage failed with error %v", err)
 		}
 
-		s, err := p.Stat()
-		if err != nil {
-			return res, logError("can't access stats for domain %s PID %d (%v)", dom, pid, err)
+		um, am, ump, err := readMemUsage(pid)
+		if err == nil {
+			usedMem = um
+			availMem = am
+			usedMemPerc = ump
+		} else {
+			log.Errorf("readMemUsage failed with error %v", err)
 		}
+
 		res[dom] = types.DomainMetric{
 			UUIDandVersion:    types.UUIDandVersion{},
-			CPUTotal:          0,
-			UsedMemory:        uint32(roundFromBytesToMbytes(uint64(s.ResidentMemory()))),
-			AvailableMemory:   uint32(roundFromBytesToMbytes(uint64(s.VirtualMemory()))),
-			UsedMemoryPercent: float64((float32(s.ResidentMemory()) / float32(s.VirtualMemory())) * 100),
+			CPUTotal:          cpuTotal,
+			UsedMemory:        usedMem,
+			AvailableMemory:   availMem,
+			UsedMemoryPercent: usedMemPerc,
 		}
 	}
 	return res, nil
