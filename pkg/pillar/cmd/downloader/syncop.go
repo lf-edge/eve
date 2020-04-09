@@ -81,6 +81,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 	if addrCount == 0 {
 		errStr = err.Error()
+		log.Errorf(errStr)
+		handleSyncOpResponse(ctx, config, status, locFilename,
+			key, errStr)
+		return
 	}
 
 	switch dsCtx.TransportMethod {
