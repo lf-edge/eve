@@ -976,6 +976,18 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.IoAdapterList = config.IoAdapterList
 	}
 
+	if status.IsContainer {
+		envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
+		if err != nil {
+			fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
+			log.Error(fetchError)
+			status.LastErr = fetchError.Error()
+			status.LastErrTime = time.Now()
+			return
+		}
+		status.EnvVariables = envList
+	}
+
 	// Assign any I/O devices
 	doAssignIoAdaptersToDomain(ctx, config, status)
 
@@ -1315,13 +1327,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
-		if status.IsContainer {
-			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
-			if err != nil {
-				return err
-			}
-			status.EnvVariables = envList
-		} else {
+		if !status.IsContainer {
 			ds, err := createCloudInitISO(ctx, config)
 			if err != nil {
 				return err
