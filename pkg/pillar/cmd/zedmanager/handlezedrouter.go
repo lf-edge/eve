@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// MaybeAddAppNetworkConfig ensures we have an AppNetworkConfig
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig, aiStatus *types.AppInstanceStatus) {
 

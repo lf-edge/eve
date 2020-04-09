@@ -1,31 +1,9 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// baseosmgr orchestrates base os/certs installation
+// baseosmgr orchestrates base os installation
 // interfaces with zedagent for configuration update
-// interfaces with downloader for basos image/certs download
-// interfaces with verifier for image sha/signature verfication
-
-// baswos handles the following orchestration
-//   * base os download config/status <downloader> / <baseos> / <config | status>
-//   * base os verifier config/status <verifier>   / <baseos> / <config | status>
-//   * certs download config/status   <downloader> / <certs>  / <config | status>
-// <base os>
-//   <zedagent>   <baseos> <config> --> <baseosmgr>   <baseos> <status>
-//				<download>...       --> <downloader>  <baseos> <config>
-//   <downloader> <baseos> <config> --> <downloader>  <baseos> <status>
-//				<downloaded>...     --> <downloader>  <baseos> <status>
-//	 <downloader> <baseos> <status> --> <baseosmgr>   <baseos> <status>
-//				<verify>    ...     --> <verifier>    <baseos> <config>
-//   <verifier> <baseos> <config>   --> <verifier>    <baseos> <status>
-//				<verified>  ...     --> <verifier>    <baseos> <status>
-//	 <verifier> <baseos> <status>   --> <baseosmgr>   <baseos> <status>
-// <certs>
-//   <zedagent>   <certs> <config>  --> <baseosmgr>   <certs> <status>
-//				<download>...       --> <downloader>  <certs> <config>
-//   <downloader> <certs> <config>  --> <downloader>  <certs> <status>
-//				<downloaded>...     --> <downloader>  <certs> <status>
-//	 <downloader> <baseos> <status> --> <baseosmgr>   <baseos> <status>
+// interfaces with volumemgr to get the images/blobs as volumes
 
 package baseosmgr
 
@@ -54,29 +32,20 @@ const (
 var Version = "No version specified"
 
 type baseOsMgrContext struct {
-	verifierRestarted        bool // Information from handleVerifierRestarted
-	pubBaseOsStatus          pubsub.Publication
-	pubBaseOsDownloadConfig  pubsub.Publication
-	pubBaseOsVerifierConfig  pubsub.Publication
-	pubBaseOsPersistConfig   pubsub.Publication
-	pubCertObjStatus         pubsub.Publication
-	pubCertObjDownloadConfig pubsub.Publication
-	pubZbootStatus           pubsub.Publication
+	pubBaseOsStatus pubsub.Publication
+	pubVolumeConfig pubsub.Publication
+	pubZbootStatus  pubsub.Publication
 
-	subGlobalConfig          pubsub.Subscription
-	globalConfig             *types.ConfigItemValueMap
-	GCInitialized            bool
-	subBaseOsConfig          pubsub.Subscription
-	subZbootConfig           pubsub.Subscription
-	subCertObjConfig         pubsub.Subscription
-	subBaseOsDownloadStatus  pubsub.Subscription
-	subCertObjDownloadStatus pubsub.Subscription
-	subBaseOsVerifierStatus  pubsub.Subscription
-	subBaseOsPersistStatus   pubsub.Subscription
-	subNodeAgentStatus       pubsub.Subscription
-	rebootReason             string    // From last reboot
-	rebootTime               time.Time // From last reboot
-	rebootImage              string    // Image from which the last reboot happened
+	subGlobalConfig    pubsub.Subscription
+	globalConfig       *types.ConfigItemValueMap
+	GCInitialized      bool
+	subBaseOsConfig    pubsub.Subscription
+	subZbootConfig     pubsub.Subscription
+	subVolumeStatus    pubsub.Subscription
+	subNodeAgentStatus pubsub.Subscription
+	rebootReason       string    // From last reboot
+	rebootTime         time.Time // From last reboot
+	rebootImage        string    // Image from which the last reboot happened
 }
 
 var debug = false
@@ -120,8 +89,7 @@ func Run(ps *pubsub.PubSub) {
 	initializeGlobalConfigHandles(ps, &ctx)
 	initializeNodeAgentHandles(ps, &ctx)
 	initializeZedagentHandles(ps, &ctx)
-	initializeVerifierHandles(ps, &ctx)
-	initializeDownloaderHandles(ps, &ctx)
+	initializeVolumemgrHandles(ps, &ctx)
 
 	// publish zboot partition status
 	publishZbootPartitionStatusAll(&ctx)
@@ -141,39 +109,11 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	// First we process the verifierStatus to avoid downloading
-	// an image we already have in place.
-	log.Infof("Handling initial verifier Status\n")
-	for !ctx.verifierRestarted {
-		select {
-		case change := <-ctx.subGlobalConfig.MsgChan():
-			ctx.subGlobalConfig.ProcessChange(change)
-
-		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
-			ctx.subBaseOsVerifierStatus.ProcessChange(change)
-			if ctx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
-			}
-
-		case change := <-ctx.subBaseOsPersistStatus.MsgChan():
-			ctx.subBaseOsPersistStatus.ProcessChange(change)
-
-		case change := <-ctx.subNodeAgentStatus.MsgChan():
-			ctx.subNodeAgentStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-
 	// start the forever loop for event handling
 	for {
 		select {
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
-
-		case change := <-ctx.subCertObjConfig.MsgChan():
-			ctx.subCertObjConfig.ProcessChange(change)
 
 		case change := <-ctx.subBaseOsConfig.MsgChan():
 			ctx.subBaseOsConfig.ProcessChange(change)
@@ -181,17 +121,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subZbootConfig.MsgChan():
 			ctx.subZbootConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsDownloadStatus.MsgChan():
-			ctx.subBaseOsDownloadStatus.ProcessChange(change)
-
-		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
-			ctx.subBaseOsVerifierStatus.ProcessChange(change)
-
-		case change := <-ctx.subBaseOsPersistStatus.MsgChan():
-			ctx.subBaseOsPersistStatus.ProcessChange(change)
-
-		case change := <-ctx.subCertObjDownloadStatus.MsgChan():
-			ctx.subCertObjDownloadStatus.ProcessChange(change)
+		case change := <-ctx.subVolumeStatus.MsgChan():
+			ctx.subVolumeStatus.ProcessChange(change)
 
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
@@ -199,14 +130,6 @@ func Run(ps *pubsub.PubSub) {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-}
-
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVerifierRestarted(%v)\n", done)
-	if done {
-		ctx.verifierRestarted = true
 	}
 }
 
@@ -241,9 +164,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageID = sc.ImageID
-		ss.Target = sc.Target
+		ss.UpdateFromStorageConfig(sc)
 	}
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)
@@ -298,144 +219,6 @@ func handleBaseOsDelete(ctx *baseOsMgrContext, key string,
 	removeBaseOsConfig(ctx, status.Key())
 }
 
-func handleCertObjConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleCertObjConfigDelete(%s)\n", key)
-	ctx := ctxArg.(*baseOsMgrContext)
-	status := lookupCertObjStatus(ctx, key)
-	if status == nil {
-		log.Infof("handleCertObjConfigDelete: unknown %s\n", key)
-		return
-	}
-	handleCertObjDelete(ctx, key, status)
-	log.Infof("handleCertObjConfigDelete(%s) done\n", key)
-}
-
-// certificate config/status event handlers
-// certificate config create event
-func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := configArg.(types.CertObjConfig)
-	log.Infof("handleCertObjCreate for %s\n", key)
-
-	status := types.CertObjStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		ConfigSha256:   config.ConfigSha256,
-	}
-
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
-
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageID = sc.ImageID
-		ss.FinalObjDir = types.CertificateDirname
-	}
-
-	publishCertObjStatus(ctx, &status)
-
-	certObjHandleStatusUpdate(ctx, &config, &status)
-}
-
-// certificate config modify event
-func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := configArg.(types.CertObjConfig)
-	status := lookupCertObjStatus(ctx, key)
-	uuidStr := config.Key()
-	log.Infof("handleCertObjModify for %s\n", uuidStr)
-
-	if config.UUIDandVersion.Version != status.UUIDandVersion.Version {
-		log.Infof("handleCertObjModify(%s), New config version %v\n", key,
-			config.UUIDandVersion.Version)
-		status.UUIDandVersion = config.UUIDandVersion
-		publishCertObjStatus(ctx, status)
-
-	}
-
-	// on storage config change, purge and recreate
-	if certObjCheckConfigModify(ctx, key, &config, status) {
-		removeCertObjConfig(ctx, key)
-		handleCertObjCreate(ctx, key, config)
-	}
-}
-
-// certificate config delete event
-func handleCertObjDelete(ctx *baseOsMgrContext, key string,
-	status *types.CertObjStatus) {
-
-	uuidStr := status.Key()
-	log.Infof("handleCertObjDelete for %s\n", uuidStr)
-	removeCertObjConfig(ctx, uuidStr)
-}
-
-// base os/certs download status modify event
-// Handles both create and modify events
-func handleDownloadStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.DownloaderStatus)
-	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleDownloadStatusModify for %s\n",
-		status.ImageID)
-	updateDownloaderStatus(ctx, &status)
-}
-
-// base os/certs download status delete event
-func handleDownloadStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.DownloaderStatus)
-	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
-		status.RefCount, status.Expired, key)
-	// Nothing to do
-}
-
-// base os verifier status modify event
-// Handles both create and modify events
-func handleVerifierStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.VerifyImageStatus)
-	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
-	updateVerifierStatus(ctx, &status)
-}
-
-// base os verifier status delete event
-func handleVerifierStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.VerifyImageStatus)
-	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
-		status.RefCount, key)
-	removeVerifierStatus(ctx, &status)
-}
-
-// Handles both create and modify events
-func handlePersistStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.PersistImageStatus)
-	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handlePersistStatusModify for %s\n", key)
-	updatePersistStatus(ctx, &status)
-}
-
-// base os persist status delete event
-func handlePersistStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.PersistImageStatus)
-	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handlePersistStatusDelete RefCount %d expired %t for %s\n",
-		status.RefCount, status.Expired, key)
-	removePersistStatus(ctx, &status)
-}
-
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
@@ -486,64 +269,16 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	pubBaseOsStatus.ClearRestarted()
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubBaseOsDownloadConfig, err := ps.NewPublication(
+	pubVolumeConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			AgentScope: types.BaseOsObj,
-			TopicType:  types.DownloaderConfig{},
+			TopicType:  types.VolumeConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubBaseOsDownloadConfig.ClearRestarted()
-	ctx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
-
-	pubBaseOsVerifierConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.BaseOsObj,
-			TopicType:  types.VerifyImageConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubBaseOsVerifierConfig.ClearRestarted()
-	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
-
-	pubBaseOsPersistConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.BaseOsObj,
-			TopicType:  types.PersistImageConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsPersistConfig = pubBaseOsPersistConfig
-
-	pubCertObjStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.CertObjStatus{},
-		})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCertObjStatus.ClearRestarted()
-	ctx.pubCertObjStatus = pubCertObjStatus
-
-	pubCertObjDownloadConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.CertObj,
-			TopicType:  types.DownloaderConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCertObjDownloadConfig.ClearRestarted()
-	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
+	ctx.pubVolumeConfig = pubVolumeConfig
 
 	pubZbootStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -637,109 +372,28 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
-
-	// Look for CertObjConfig, from zedagent
-	subCertObjConfig, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			TopicImpl:     types.CertObjConfig{},
-			Activate:      false,
-			Ctx:           ctx,
-			CreateHandler: handleCertObjCreate,
-			ModifyHandler: handleCertObjModify,
-			DeleteHandler: handleCertObjConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subCertObjConfig = subCertObjConfig
-	subCertObjConfig.Activate()
 }
 
-func initializeDownloaderHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
-	// Look for BaseOs DownloaderStatus from downloader
-	subBaseOsDownloadStatus, err := ps.NewSubscription(
+func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
+	// Look for BaseOs VolumeStatus from volumemgr
+	subVolumeStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "downloader",
+			AgentName:     "volumemgr",
 			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.DownloaderStatus{},
+			TopicImpl:     types.VolumeStatus{},
 			Activate:      false,
 			Ctx:           ctx,
-			CreateHandler: handleDownloadStatusModify,
-			ModifyHandler: handleDownloadStatusModify,
-			DeleteHandler: handleDownloadStatusDelete,
+			CreateHandler: handleVolumeStatusModify,
+			ModifyHandler: handleVolumeStatusModify,
+			DeleteHandler: handleVolumeStatusDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
-	subBaseOsDownloadStatus.Activate()
-
-	// Look for Certs DownloaderStatus from downloader
-	subCertObjDownloadStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "downloader",
-			AgentScope:    types.CertObj,
-			TopicImpl:     types.DownloaderStatus{},
-			Activate:      false,
-			Ctx:           ctx,
-			CreateHandler: handleDownloadStatusModify,
-			ModifyHandler: handleDownloadStatusModify,
-			DeleteHandler: handleDownloadStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
-	subCertObjDownloadStatus.Activate()
-
-}
-
-func initializeVerifierHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
-	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:      "verifier",
-			AgentScope:     types.BaseOsObj,
-			TopicImpl:      types.VerifyImageStatus{},
-			Activate:       false,
-			Ctx:            ctx,
-			CreateHandler:  handleVerifierStatusModify,
-			ModifyHandler:  handleVerifierStatusModify,
-			RestartHandler: handleVerifierRestarted,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
-	subBaseOsVerifierStatus.Activate()
-	// Look for PersistImageStatus from verifier
-	subBaseOsPersistStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "verifier",
-			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.PersistImageStatus{},
-			Activate:      false,
-			Ctx:           ctx,
-			CreateHandler: handlePersistStatusModify,
-			ModifyHandler: handlePersistStatusModify,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
-	subBaseOsPersistStatus.Activate()
+	ctx.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
 }
 
 // This handles both the create and modify events

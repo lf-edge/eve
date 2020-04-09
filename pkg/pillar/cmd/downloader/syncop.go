@@ -35,7 +35,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// construct the datastore context
-	dsCtx, err := constructDatastoreContext(ctx, config, status, *dst)
+	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", config.Name, err)
 		handleSyncOpResponse(ctx, config, status, locFilename, key, errStr)
@@ -81,6 +81,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 	if addrCount == 0 {
 		errStr = err.Error()
+		log.Errorf(errStr)
+		handleSyncOpResponse(ctx, config, status, locFilename,
+			key, errStr)
+		return
 	}
 
 	switch dsCtx.TransportMethod {
@@ -286,21 +290,21 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 }
 
 // cloud storage interface functions/APIs
-func constructDatastoreContext(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
+func constructDatastoreContext(ctx *downloaderContext, configName string, NameIsURL bool, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
 	dpath := dst.Dpath
-	downloadURL := config.Name
-	if !config.NameIsURL {
+	downloadURL := configName
+	if !NameIsURL {
 		downloadURL = dst.Fqdn
 		if len(dpath) > 0 {
 			downloadURL = downloadURL + "/" + dpath
 		}
-		if len(config.Name) > 0 {
-			downloadURL = downloadURL + "/" + config.Name
+		if len(configName) > 0 {
+			downloadURL = downloadURL + "/" + configName
 		}
 	}
 
-	// get the decrypted credentials
-	cred, err := getDatastoreCredential(ctx, dst)
+	// get the decrypted encryption block
+	decBlock, err := getDatastoreCredential(ctx, dst)
 	if err != nil {
 		return nil, err
 	}
@@ -309,8 +313,8 @@ func constructDatastoreContext(ctx *downloaderContext, config types.DownloaderCo
 		DownloadURL:     downloadURL,
 		TransportMethod: dst.DsType,
 		Dpath:           dpath,
-		APIKey:          cred.DsAPIKey,
-		Password:        cred.DsPassword,
+		APIKey:          decBlock.DsAPIKey,
+		Password:        decBlock.DsPassword,
 		Region:          dst.Region,
 	}
 	return &dsCtx, nil
@@ -324,21 +328,21 @@ func sourceFailureError(ip, ifname, url string, err error) {
 func getDatastoreCredential(ctx *downloaderContext,
 	dst types.DatastoreConfig) (zconfig.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
-		status, cred, err := utils.GetCipherCredentials(agentName,
+		status, decBlock, err := utils.GetCipherCredentials(agentName,
 			dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Infof("%s, datastore config cipherblock decryption unsuccessful: %v\n", dst.Key(), err)
-			cred.DsAPIKey = dst.ApiKey
-			cred.DsPassword = dst.Password
-			return cred, nil
+			decBlock.DsAPIKey = dst.ApiKey
+			decBlock.DsPassword = dst.Password
+			return decBlock, nil
 		}
 		log.Infof("%s, cipherblock decryption successful\n", dst.Key())
-		return cred, nil
+		return decBlock, nil
 	}
 	log.Infof("%s, datastore config cipherblock not present\n", dst.Key())
-	cred := zconfig.EncryptionBlock{}
-	cred.DsAPIKey = dst.ApiKey
-	cred.DsPassword = dst.Password
-	return cred, nil
+	decBlock := zconfig.EncryptionBlock{}
+	decBlock.DsAPIKey = dst.ApiKey
+	decBlock.DsPassword = dst.Password
+	return decBlock, nil
 }

@@ -346,10 +346,10 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	t, _ = template.New("qemuDisk").Parse(qemuDiskTemplate)
 	for _, ds := range diskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
-			diskContext.DiskFile = ds.FSVolumeLocation
+			diskContext.DiskFile = ds.FileLocation
 			diskContext.Devtype = "CONTAINER"
 		} else {
-			diskContext.DiskFile = ds.ActiveFileLocation
+			diskContext.DiskFile = ds.FileLocation
 			diskContext.Devtype = strings.ToUpper(ds.Devtype)
 		}
 		diskContext.ro = ds.ReadOnly

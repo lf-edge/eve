@@ -331,7 +331,7 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	} else {
 		tmpfile.WriteString("# Automatically generated\n")
 		for _, wifi := range wconfig.Wifi {
-			cred, err := getWifiCredential(wifi)
+			decBlock, err := getWifiCredential(wifi)
 			if err != nil {
 				continue
 			}
@@ -343,18 +343,18 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 			case types.KeySchemeWpaPsk: // WPA-PSK
 				tmpfile.WriteString("        key_mgmt=WPA-PSK\n")
 				// this assumes a hashed passphrase, otherwise need "" around string
-				if len(cred.WifiPassword) > 0 {
-					s = fmt.Sprintf("        psk=%s\n", cred.WifiPassword)
+				if len(decBlock.WifiPassword) > 0 {
+					s = fmt.Sprintf("        psk=%s\n", decBlock.WifiPassword)
 					tmpfile.WriteString(s)
 				}
 			case types.KeySchemeWpaEap: // EAP PEAP
 				tmpfile.WriteString("        key_mgmt=WPA-EAP\n        eap=PEAP\n")
-				if len(cred.WifiUserName) > 0 {
-					s = fmt.Sprintf("        identity=\"%s\"\n", cred.WifiUserName)
+				if len(decBlock.WifiUserName) > 0 {
+					s = fmt.Sprintf("        identity=\"%s\"\n", decBlock.WifiUserName)
 					tmpfile.WriteString(s)
 				}
-				if len(cred.WifiPassword) > 0 {
-					s = fmt.Sprintf("        password=hash:%s\n", cred.WifiPassword)
+				if len(decBlock.WifiPassword) > 0 {
+					s = fmt.Sprintf("        password=hash:%s\n", decBlock.WifiPassword)
 					tmpfile.WriteString(s)
 				}
 				// comment out the certifacation verify. file.WriteString("        ca_cert=\"/config/ca.pem\"\n")
@@ -384,22 +384,22 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 
 func getWifiCredential(wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
 	if wifi.CipherBlockStatus.IsCipher {
-		_, cred, err := utils.GetCipherCredentials("devicenetwork",
+		_, decBlock, err := utils.GetCipherCredentials("devicenetwork",
 			wifi.CipherBlockStatus)
 		if err != nil {
 			log.Infof("%s, wifi config cipherblock decryption unsuccessful: %v\n", wifi.SSID, err)
-			cred.WifiUserName = wifi.Identity
-			cred.WifiPassword = wifi.Password
-			return cred, nil
+			decBlock.WifiUserName = wifi.Identity
+			decBlock.WifiPassword = wifi.Password
+			return decBlock, nil
 		}
 		log.Infof("%s, wifi config cipherblock decryption successful\n", wifi.SSID)
-		return cred, nil
+		return decBlock, nil
 	}
 	log.Infof("%s, wifi config cipherblock not present\n", wifi.SSID)
-	cred := zconfig.EncryptionBlock{}
-	cred.WifiUserName = wifi.Identity
-	cred.WifiPassword = wifi.Password
-	return cred, nil
+	decBlock := zconfig.EncryptionBlock{}
+	decBlock.WifiUserName = wifi.Identity
+	decBlock.WifiPassword = wifi.Password
+	return decBlock, nil
 }
 
 // CheckDNSUpdate sees if we should update based on DNS

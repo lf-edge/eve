@@ -182,10 +182,11 @@ type VifInfo struct {
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
-	ImageID     uuid.UUID // UUID of the image
-	ImageSha256 string    // sha256 of immutable image
-	ReadOnly    bool
-	Preserve    bool // If set a rw disk will be preserved across
+	ImageID      uuid.UUID // UUID of the image
+	ImageSha256  string    // sha256 of immutable image
+	FileLocation string    // Where to find the volume
+	ReadOnly     bool
+	Preserve     bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
 	Maxsizebytes uint64 // Resize filesystem to this size if set
 	Format       zconfig.Format
@@ -193,35 +194,15 @@ type DiskConfig struct {
 }
 
 type DiskStatus struct {
-	ImageID            uuid.UUID // UUID of immutable image
-	ImageSha256        string    // sha256 of immutable image
-	ReadOnly           bool
-	Preserve           bool
-	FileLocation       string // Local location of Image
-	Maxsizebytes       uint64 // Resize filesystem to this size if set
-	Format             zconfig.Format
-	Devtype            string // From config
-	Vdev               string // Allocated
-	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
-	FSVolumeLocation   string // Allocated; for containers this has path to the FSVolume
-}
-
-// Track the active image files in rwImgDirname
-// The ImageSha256 is used when an app instance has multiple virtual disks.
-// We do not have an imageID in the pathnames for the RW images hence we can't report
-// an imageID on startup.
-type ImageStatus struct {
-	AppInstUUID  uuid.UUID // UUID of App Instance using the image.
-	ImageSha256  string    // ImageSha256 of original image
-	Filename     string    // Basename; used as key
-	FileLocation string    // Local location of Image
-	RefCount     uint
-	LastUse      time.Time // When RefCount dropped to zero
-	Size         uint64
-}
-
-func (status ImageStatus) Key() string {
-	return status.Filename
+	ImageID      uuid.UUID // UUID of immutable image
+	ImageSha256  string    // sha256 of immutable image
+	ReadOnly     bool
+	Preserve     bool
+	FileLocation string // From DiskConfig
+	Maxsizebytes uint64 // Resize filesystem to this size if set
+	Format       zconfig.Format
+	Devtype      string // From config
+	Vdev         string // Allocated
 }
 
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead

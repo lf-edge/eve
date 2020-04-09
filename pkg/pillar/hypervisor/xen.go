@@ -194,14 +194,14 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	for i, ds := range diskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
 			p9Strings = append(p9Strings,
-				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FSVolumeLocation))
+				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FileLocation))
 		} else {
 			access := "rw"
 			if ds.ReadOnly {
 				access = "ro"
 			}
 			oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-				ds.ActiveFileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
+				ds.FileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
 			log.Debugf("Processing disk %d: %s\n", i, oneDisk)
 			diskStrings = append(diskStrings, oneDisk)
 		}

@@ -18,6 +18,8 @@ type downloaderContext struct {
 	pubBaseOsStatus         pubsub.Publication
 	subCertObjConfig        pubsub.Subscription
 	pubCertObjStatus        pubsub.Publication
+	subAppImgResolveConfig  pubsub.Subscription
+	pubAppImgResolveStatus  pubsub.Publication
 	subGlobalDownloadConfig pubsub.Subscription
 	pubGlobalDownloadStatus pubsub.Publication
 	pubCipherBlockStatus    pubsub.Publication
@@ -148,13 +150,24 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.pubCertObjStatus = pubCertObjStatus
 	pubCertObjStatus.ClearRestarted()
 
+	pubAppImgResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.ResolveStatus{},
+	})
+	if err != nil {
+		return err
+	}
+	ctx.pubAppImgResolveStatus = pubAppImgResolveStatus
+	pubAppImgResolveStatus.ClearRestarted()
+
 	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleAppImgCreate,
 		ModifyHandler: handleAppImgModify,
 		DeleteHandler: handleAppImgDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		AgentName:     "zedmanager",
+		AgentName:     "volumemgr",
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.DownloaderConfig{},
 		Ctx:           ctx,
@@ -171,7 +184,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		DeleteHandler: handleBaseOsDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		AgentName:     "baseosmgr",
+		AgentName:     "volumemgr",
 		AgentScope:    types.BaseOsObj,
 		TopicImpl:     types.DownloaderConfig{},
 		Ctx:           ctx,
@@ -188,7 +201,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		DeleteHandler: handleCertObjDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		AgentName:     "baseosmgr",
+		AgentName:     "volumemgr",
 		AgentScope:    types.CertObj,
 		TopicImpl:     types.DownloaderConfig{},
 		Ctx:           ctx,
@@ -199,9 +212,27 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
+	subAppImgResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleAppImgResolveModify,
+		ModifyHandler: handleAppImgResolveModify,
+		DeleteHandler: handleAppImgResolveDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zedmanager",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ResolveConfig{},
+		Ctx:           ctx,
+	})
+	if err != nil {
+		return err
+	}
+	ctx.subAppImgResolveConfig = subAppImgResolveConfig
+	subAppImgResolveConfig.Activate()
+
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 	pubCertObjStatus.SignalRestarted()
+	pubAppImgResolveStatus.SignalRestarted()
 
 	return nil
 }
