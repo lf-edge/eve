@@ -1836,14 +1836,24 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 // getCloudInitUserData : returns decrypted cloud-init user data
 func getCloudInitUserData(ctx *domainContext,
-	config types.DomainConfig) (*string, error) {
-	status, clearTextData, err := utils.GetCipherData(agentName,
-		config.CipherBlockStatus, config.CloudInitUserData)
-	publishCipherBlockStatus(ctx, status)
-	if status.IsCipher && len(status.Error) == 0 {
-		log.Infof("%s, cipherblock decryption successful\n", config.Key())
+	dc types.DomainConfig) (zconfig.EncryptionBlock, error) {
+	if dc.CipherBlockStatus.IsCipher {
+		status, decBlock, err := utils.GetCipherCredentials(agentName,
+			dc.CipherBlockStatus)
+		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
+		if err != nil {
+			log.Errorf("%s, domain config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+				dc.Key(), err)
+			decBlock.ProtectedUserData = *dc.CloudInitUserData
+			return decBlock, nil
+		}
+		log.Infof("%s, domain config cipherblock decryption successful\n", dc.Key())
+		return decBlock, nil
 	}
-	return clearTextData, err
+	log.Infof("%s, domain config cipherblock not present\n", dc.Key())
+	decBlock := zconfig.EncryptionBlock{}
+	decBlock.ProtectedUserData = *dc.CloudInitUserData
+	return decBlock, nil
 }
 
 // Fetch the list of environment variables from the cloud init
@@ -1853,14 +1863,14 @@ func getCloudInitUserData(ctx *domainContext,
 // Key2:Val2 ...
 func fetchEnvVariablesFromCloudInit(ctx *domainContext,
 	config types.DomainConfig) (map[string]string, error) {
-	userData, err := getCloudInitUserData(ctx, config)
+	decBlock, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, cloud-init data get failed %s\n",
 			config.DisplayName, err)
 		return nil, errors.New(errStr)
 	}
 
-	ud, err := base64.StdEncoding.DecodeString(*userData)
+	ud, err := base64.StdEncoding.DecodeString(decBlock.ProtectedUserData)
 	if err != nil {
 		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s\n", err)
 		return nil, errors.New(errStr)
@@ -1909,11 +1919,11 @@ func createCloudInitISO(ctx *domainContext,
 		log.Fatalf("createCloudInitISO failed %s\n", err)
 	}
 
-	userData, err := getCloudInitUserData(ctx, config)
+	decBlock, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	ud, err := base64.StdEncoding.DecodeString(*userData)
+	ud, err := base64.StdEncoding.DecodeString(decBlock.ProtectedUserData)
 	if err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
 		return nil, errors.New(errStr)
