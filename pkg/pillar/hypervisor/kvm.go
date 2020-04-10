@@ -459,7 +459,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string, Virtualizati
 	os.MkdirAll(kvmStateDir+domainName, 0777)
 
 	pidFile := kvmStateDir + domainName + "/pid"
-	qmpFile := kvmStateDir + domainName + "/qmp"
+	qmpFile := getQmpFile(domainName)
 	consFile := kvmStateDir + domainName + "/cons"
 
 	dmArgs := ctx.dmArgs
@@ -500,7 +500,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string, Virtualizati
 }
 
 func (ctx kvmContext) Start(domainName string, domainID int) error {
-	qmpFile := kvmStateDir + domainName + "/qmp"
+	qmpFile := getQmpFile(domainName)
 
 	if err := execContinue(qmpFile); err != nil {
 		return logError("failed to start domain that is stopped %v", err)
@@ -514,14 +514,14 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 }
 
 func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
-	if err := execShutdown(kvmStateDir + domainName + "/qmp"); err != nil {
+	if err := execShutdown(getQmpFile(domainName)); err != nil {
 		return logError("failed to execute shutdown command %v", err)
 	}
 	return nil
 }
 
 func (ctx kvmContext) Delete(domainName string, domainID int) error {
-	if err := execQuit(kvmStateDir + domainName + "/qmp"); err != nil {
+	if err := execQuit(getQmpFile(domainName)); err != nil {
 		return logError("failed to execute quite command %v", err)
 	}
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
@@ -532,7 +532,7 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx kvmContext) Info(domainName string, domainID int) error {
-	res, err := execQueryCLIOptions(kvmStateDir + domainName + "/qmp")
+	res, err := execQueryCLIOptions(getQmpFile(domainName))
 	log.Infof("KVM Info for domain %s %d %s (%v)", domainName, domainID, res, err)
 	return err
 }
@@ -607,6 +607,16 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	return nil
 }
 
+//IsDomainKnownHealthy: returns true if domain's status is healthy (i.e. 'running')
+func (ctx kvmContext) IsDomainKnownHealthy(domainName string) bool {
+	if status, err := getQemuStatus(getQmpFile(domainName)); err != nil || status != "running" {
+		log.Errorf("IsDomainKnownHealthy: domain %s is not healthy. domainState: %s", domainName, status)
+		return false
+	}
+	log.Debugf("IsDomainKnownHealthy: domain %s is healthy", domainName)
+	return true
+}
+
 func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
 	_, err := os.Stat(fmt.Sprintf("/proc/%d", domid))
 	return err == nil
@@ -644,4 +654,8 @@ func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 		}
 	}
 	return res, nil
+}
+
+func getQmpFile(domainName string) string {
+	return kvmStateDir + domainName + "/qmp"
 }
