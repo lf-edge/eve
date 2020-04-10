@@ -1699,6 +1699,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	publishDomainStatus(ctx, status)
 
+	// Check if the USB controller became available for dom0
 	updateUsbAccess(ctx)
 
 	// Delete xen cfg file for good measure
@@ -1816,7 +1817,9 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
 			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
 		}
-		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess {
+		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess ||
+			!ctx.GCInitialized {
+
 			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
 			updateUsbAccess(ctx)
 		}
@@ -2138,8 +2141,8 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 			isPort = true
 		}
 	}
-	log.Infof("checkAndSetIoBundle(%d %s %s) isPort %t members %v",
-		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, list)
+	log.Infof("checkAndSetIoBundle(%d %s %s) isPort %t members %d",
+		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, len(list))
 	for _, ib := range list {
 		err := checkAndSetIoMember(ctx, ib, isPort, publish)
 		if err != nil {
@@ -2332,20 +2335,31 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 	return nil
 }
 
+// Move the USB controllers to/from pciback based on usbAccess
+// Also enable/disable usbhid and related mouse/keyboard based on that
+// XXX should we have a separate knob for HID and for usb-storage?
 func updateUsbAccess(ctx *domainContext) {
 
 	log.Infof("updateUsbAccess(%t)", ctx.usbAccess)
 	if !ctx.usbAccess {
-		maybeAssignableAddUSB(ctx)
+		if removeUSBfromKernel() {
+			maybeAssignableAddUSB(ctx)
+		}
 	} else {
-		maybeAssignableRemUSB(ctx)
+		if maybeAssignableRemUSB(ctx) {
+			addUSBtoKernel()
+		}
 	}
 	checkIoBundleAll(ctx)
 }
 
-func maybeAssignableAddUSB(ctx *domainContext) {
+// Try to add all of USB group to pciback
+// Returns success/failure
+func maybeAssignableAddUSB(ctx *domainContext) bool {
 
+	log.Infof("maybeAssignableAddUSB()")
 	var assignments []string
+	ret := true
 	aa := ctx.assignableAdapters
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
@@ -2366,16 +2380,22 @@ func maybeAssignableAddUSB(ctx *domainContext) {
 		err := hyper.PCIReserve(long)
 		if err != nil {
 			log.Errorf("maybeAssignableAddUSB: add failed: %s", err)
+			ret = false
 		}
 	}
 	if len(assignments) != 0 {
 		ctx.publishAssignableAdapters()
 	}
+	return ret
 }
 
-func maybeAssignableRemUSB(ctx *domainContext) {
+// Remove everything in USB group from pciback
+// Returns success/failure based on current usage
+func maybeAssignableRemUSB(ctx *domainContext) bool {
 
+	log.Infof("maybeAssignableAddUSB()")
 	var assignments []string
+	ret := true
 	aa := ctx.assignableAdapters
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
@@ -2394,6 +2414,7 @@ func maybeAssignableRemUSB(ctx *domainContext) {
 			} else {
 				log.Warnf("No removing %s (%s) from pciback: used by %s",
 					ib.Phylabel, ib.PciLong, ib.UsedByUUID)
+				ret = false
 			}
 		}
 	}
@@ -2401,11 +2422,88 @@ func maybeAssignableRemUSB(ctx *domainContext) {
 		err := hyper.PCIRelease(long)
 		if err != nil {
 			log.Errorf("maybeAssignableRemUSB remove failed: %s", err)
+			ret = false
 		}
 	}
 	if len(assignments) != 0 {
 		ctx.publishAssignableAdapters()
 	}
+	return ret
+}
+
+// Track which ones of these are loaded
+// loaded starts off as TS_NONE at boot since we don't know the state
+// in the kernel.
+type loadedDriver struct {
+	driverName string
+	loaded     types.TriState
+}
+
+var usbDrivers = []loadedDriver{
+	{"usbhid", types.TS_NONE},
+	{"usbkbd", types.TS_NONE},
+	{"usbmouse", types.TS_NONE},
+	{"usb_storage", types.TS_NONE},
+}
+
+// Enable the above drivers; record which ones loaded
+func addUSBtoKernel() {
+
+	log.Infof("addUSBtoKernel()")
+	for i := range usbDrivers {
+		drv := &usbDrivers[i]
+		if drv.loaded == types.TS_ENABLED {
+			log.Errorf("drober %s already loaded",
+				drv.driverName)
+			continue
+		}
+		if err := doModprobe(drv.driverName, true); err != nil {
+			log.Errorf("modprobe failed to add %s: %s",
+				drv.driverName, err)
+			drv.loaded = types.TS_DISABLED
+		} else {
+			drv.loaded = types.TS_ENABLED
+		}
+	}
+}
+
+// Disable usbhid etc
+func removeUSBfromKernel() bool {
+
+	log.Infof("removeUSBfromKernel()")
+	ret := true
+	for i := range usbDrivers {
+		drv := &usbDrivers[i]
+		if drv.loaded == types.TS_DISABLED {
+			log.Infof("driver %s not loaded; no unload",
+				drv.driverName)
+			continue
+		}
+		if err := doModprobe(drv.driverName, false); err != nil {
+			log.Errorf("modprobe failed to remove %s: %s",
+				drv.driverName, err)
+			ret = false
+		} else {
+			drv.loaded = types.TS_DISABLED
+		}
+	}
+	return ret
+}
+
+func doModprobe(driver string, add bool) error {
+	cmd := "modprobe"
+	args := []string{}
+	if !add {
+		args = append(args, "-r")
+	}
+	args = append(args, driver)
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Error(err)
+		log.Errorf("modprobe output: %s", stdoutStderr)
+		return err
+	}
+	return nil
 }
 
 func handleIBDelete(ctx *domainContext, phylabel string) {
