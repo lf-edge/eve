@@ -1,0 +1,34 @@
+// Copyright(c) 2017-2020 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/lf-edge/eve/api/go/common";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+enum PhyIoType {
+  PhyIoNoop = 0;
+  PhyIoNetEth = 1;
+  PhyIoUSB = 2;
+  PhyIoCOM = 3;
+  PhyIoAudio = 4;
+  PhyIoNetWLAN = 5;
+  PhyIoNetWWAN = 6;
+  PhyIoHDMI = 7;
+  PhyIoOther = 255;
+}
+
+// PhyIoMemberUsage - Indicates how each adaptor must be used by Eve.
+enum PhyIoMemberUsage {
+  PhyIoUsageNone      = 0;
+  // Used by both management and apps.
+  PhyIoUsageMgmtAndApps = 1;
+  // Shared by multiple apps
+  PhyIoUsageShared    = 2;
+  // used by only one app
+  PhyIoUsageDedicated = 3;
+  // Adapter Blocked. Do not use the Adapter.
+  PhyIoUsageDisabled   = 4;
+  // Used for Management traffic only. Cannot be used by Apps.
+  PhyIoUsageMgmtOnly = 5;
+}
