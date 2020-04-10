@@ -7,13 +7,15 @@ package zedagent
 
 import (
 	"bytes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/timestamp"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/flowlog"
 	zinfo "github.com/lf-edge/eve/api/go/info"   // XXX need to stop using
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
@@ -110,7 +112,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 				continue
 			}
 			reportAA := new(zinfo.ZioBundle)
-			reportAA.Type = zinfo.IPhyIoType(ia.Type)
+			reportAA.Type = zconfig.PhyIoType(ia.Type)
 			reportAA.Name = ia.Phylabel
 			reportAA.UsedByAppUUID = zcdevUUID.String()
 			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)

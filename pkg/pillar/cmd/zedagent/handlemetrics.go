@@ -18,6 +18,7 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -867,11 +868,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		seenBundles = append(seenBundles, ib.AssignmentGroup)
 		reportAA := new(info.ZioBundle)
-		reportAA.Type = info.IPhyIoType(ib.Type)
+		reportAA.Type = config.PhyIoType(ib.Type)
 		reportAA.Name = ib.AssignmentGroup
 		// XXX - Cast is needed because PhyIoMemberUsage was replicated in info
 		//  When this is fixed, we can remove this case.
-		reportAA.Usage = info.InfoPhyIoMemberUsage(ib.Usage)
+		reportAA.Usage = config.PhyIoMemberUsage(ib.Usage)
 		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
 			if ib.AssignmentGroup != "" {
@@ -1255,7 +1256,7 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 
 	ibPtr := aa.LookupIoBundlePhylabel(npc.Phylabel)
 	if ibPtr != nil {
-		dp.Usage = info.InfoPhyIoMemberUsage(ibPtr.Usage)
+		dp.Usage = config.PhyIoMemberUsage(ibPtr.Usage)
 	}
 
 	dp.IsMgmt = npc.IsMgmt
@@ -1356,7 +1357,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 		for _, ia := range aiStatus.IoAdapterList {
 			reportAA := new(info.ZioBundle)
-			reportAA.Type = info.IPhyIoType(ia.Type)
+			reportAA.Type = config.PhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
 			list := aa.LookupIoBundleAny(ia.Name)
