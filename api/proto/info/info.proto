@@ -70,7 +70,7 @@ message ZioBundle {
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
   repeated IoAddresses ioAddressList = 6; // One per member
-  InfoPhyIoMemberUsage usage = 7; // Usage of the IoBundle
+  PhyIoMemberUsage usage = 7; // Usage of the IoBundle
   ErrorInfo err = 8; // Any errors on the IoBundle
 }
 
@@ -303,7 +303,7 @@ message DevicePort {
   bool up = 26;      // operational up/down status.
   GeoLoc location = 27;
   ErrorInfo err = 29; // Any errors on the interface.
-  InfoPhyIoMemberUsage usage = 30; // Usage of the Device port
+  PhyIoMemberUsage usage = 30; // Usage of the Device port
   string networkUUID = 31; // Network UUID configured for the port.
 }
 
