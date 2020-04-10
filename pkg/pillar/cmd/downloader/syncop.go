@@ -337,7 +337,7 @@ func getDatastoreCredential(ctx *downloaderContext,
 			decBlock.DsPassword = dst.Password
 			return decBlock, nil
 		}
-		log.Infof("%s, cipherblock decryption successful\n", dst.Key())
+		log.Infof("%s, datastore config cipherblock decryption successful\n", dst.Key())
 		return decBlock, nil
 	}
 	log.Infof("%s, datastore config cipherblock not present\n", dst.Key())
