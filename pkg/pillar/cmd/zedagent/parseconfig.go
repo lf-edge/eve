@@ -541,6 +541,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.CloudInitUserData = &userData
 		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
+		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
+			cfgApp.GetCipherData())
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
