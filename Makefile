@@ -321,7 +321,7 @@ proto: $(addprefix api/go/,$(shell ls api/proto)) $(addprefix api/python/,$(shel
 
 api/%: $(GOBUILDER)
 	rm -rf api/$* ; mkdir api/$* # building $*
-	@$(DOCKER_GO) "protoc -I./proto/$(@F) --$(notdir $(@D))_out=paths=source_relative:./$* proto/$(@F)/*.proto" $(CURDIR)/api api
+	@$(DOCKER_GO) "protoc -I./proto --$(notdir $(@D))_out=paths=source_relative:./$(*D) proto/$(@F)/*.proto" $(CURDIR)/api api
 
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\

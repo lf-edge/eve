@@ -7,8 +7,8 @@ syntax = "proto3";
 option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "acipherinfo.proto";
-import "devcommon.proto";
+import "config/devcommon.proto";
+import "config/acipherinfo.proto"
 
 message SignatureInfo {
   string intercertsurl = 1;
