@@ -69,6 +69,10 @@ func (ctx acrnContext) PCIRelease(long string) error {
 	return nil
 }
 
+func (ctx acrnContext) IsDomainKnownHealthy(domainName string) bool {
+	return true
+}
+
 // IsDeviceModelAlive returns true if a process supplying device model to a domain is still running
 func (ctx acrnContext) IsDeviceModelAlive(domid int) bool {
 	return true

@@ -140,6 +140,10 @@ func (ctx nullContext) PCIRelease(long string) error {
 	}
 }
 
+func (ctx nullContext) IsDomainKnownHealthy(domainName string) bool {
+	return true
+}
+
 func (ctx nullContext) IsDeviceModelAlive(int) bool {
 	return true
 }
