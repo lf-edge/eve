@@ -7,12 +7,3 @@
    cmdline: "rootdelay=3"
  init:
    - linuxkit/init:v0.5
-@@ -50,7 +50,7 @@
-      image: XENTOOLS_TAG
- files:
-    - path: /etc/eve-release
--     contents: 'EVE_VERSION'
-+     contents: 'EVE_VERSION-kvm'
- trust:
-   org:
-     - linuxkit

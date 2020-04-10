@@ -103,14 +103,19 @@ QEMU_ACCEL_Y_Darwin=-M accel=hvf --cpu host
 QEMU_ACCEL_Y_Linux=-enable-kvm
 QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
 
+QEMU_OPTS_NET1=192.168.1.0/24
+QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
+QEMU_OPTS_NET2=192.168.2.0/24
+QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
+
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
-        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device virtio-net-pci,netdev=eth1
+        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
+        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
 QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
@@ -249,17 +254,18 @@ $(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 
 $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
-	ln -s $(notdir $<) $@
+	@ln -s $(notdir $<) $@
 
 $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-# The following two rules are overrides of the generic ones specifically for supporting Raspberry Pi 4
-# $(LIVE_IMG).rpi can be generalized into can be generalized into a trampoline (readconfig vs. chainload)
-# style bootloader image and images/rootfs-rpi.yml will go away once we migrate to a NEW_KERNEL
+# The following rule is an override of the generic one for live.img specifically for supporting Raspberry Pi 4
+# $(LIVE_IMG).rpi can potentially be generalized into a trampoline (readconfig vs. chainload)
+# style bootloader image and rootfs-rpi-kvm will go away once we migrate to a NEW_KERNEL
 $(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
-$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-rpi | $(INSTALLER)
+$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-kvm-rpi | $(INSTALLER)
+	ln -s rootfs-kvm-rpi.img $(ROOTFS_IMG)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
 	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
 
@@ -378,7 +384,7 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
-.PRECIOUS: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
+.PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 
