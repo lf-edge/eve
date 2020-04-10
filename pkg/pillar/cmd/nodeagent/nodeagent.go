@@ -316,6 +316,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
+		case change := <-subDomainStatus.MsgChan():
+			subDomainStatus.ProcessChange(change)
+
 		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 
