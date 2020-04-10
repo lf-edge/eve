@@ -580,16 +580,16 @@ func (ctx xenContext) PCIRelease(long string) error {
 	return nil
 }
 
-//IsDomainKnownHealthy: Verifies if a domain is up and running by its state. Domain can have the following states:
+//IsDomainPotentiallyShuttingDown: Checks if the domain is potentially shutting down. Domain can have the following states:
 //r - currently running
 //b - blocked, and not running or runnable
 //p - paused
 //s - a shutdown command has been sent, but the domain isn't dying yet
 //c - the domain has crashed
 //d - the domain is dying, but hasn't properly shut down or crashed
-//Returns false in case of undetermined/unknown health state ( e.g., due to a pending state transition).
+//Returns true in case of undetermined/unknown health state ( e.g., due to a pending state transition).
 //Caller must not assume that domain is unhealthy, since it might be transitioning between healthy states.
-func (ctx xenContext) IsDomainKnownHealthy(domainName string) bool {
+func (ctx xenContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
 	domainState := ""
 	cmd := "xl"
 	args := []string{
@@ -599,9 +599,9 @@ func (ctx xenContext) IsDomainKnownHealthy(domainName string) bool {
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		//domain is not present
-		log.Errorln("IsDomainKnownHealthy: xl list failed ", err)
-		log.Errorln("IsDomainKnownHealthy: xl list output ", string(stdoutStderr))
-		return false
+		log.Errorln("IsDomainPotentiallyShuttingDown: xl list failed ", err)
+		log.Errorln("IsDomainPotentiallyShuttingDown: xl list output ", string(stdoutStderr))
+		return true
 	}
 	//Removing all extra space between column result and split the result as array.
 	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(strings.Split(string(stdoutStderr), "\n")[1], " ")
@@ -610,20 +610,20 @@ func (ctx xenContext) IsDomainKnownHealthy(domainName string) bool {
 	//Removing all unset state bits represented by "-"
 	domainState = strings.ReplaceAll(domainState, "-", "")
 	if len(domainState) < 1 {
-		log.Errorf("IsDomainKnownHealthy: domain %s in undetermined state", domainName)
-		return false
+		log.Infof("IsDomainPotentiallyShuttingDown: domain %s in undetermined state", domainName)
+		return true
 	}
-	log.Debugf("IsDomainKnownHealthy: domain: %s domainState: %s.", domainName, domainState)
+	log.Debugf("IsDomainPotentiallyShuttingDown: domain: %s domainState: %s.", domainName, domainState)
 	//In case of more that 1 (logically possible) domain state, will consider the last state.
 	lastState := domainState[len(domainState)-1:]
-	log.Debugf("IsDomainKnownHealthy: domain: %s lastState: %s.", domainName, lastState)
+	log.Debugf("IsDomainPotentiallyShuttingDown: domain: %s lastState: %s.", domainName, lastState)
 	//if domainState is not 'r' or 'b' then the domain is not healthy.
 	if lastState != "r" && lastState != "b" {
-		log.Errorf("IsDomainKnownHealthy: domain %s is not healthy. domainState: %s", domainName, lastState)
-		return false
+		log.Errorf("IsDomainPotentiallyShuttingDown: domain %s is not healthy. domainState: %s", domainName, lastState)
+		return true
 	}
-	log.Debugf("IsDomainKnownHealthy: domain %s is healthy", domainName)
-	return true
+	log.Debugf("IsDomainPotentiallyShuttingDown: domain %s is healthy", domainName)
+	return false
 }
 
 func (ctx xenContext) IsDeviceModelAlive(domid int) bool {
