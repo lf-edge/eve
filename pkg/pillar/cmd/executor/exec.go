@@ -9,14 +9,12 @@ package executor
 import (
 	"context"
 	"flag"
-	"fmt"
-	"os"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"os/exec"
 	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -29,11 +27,9 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Version can be set from Makefile
-var Version = "No version specified"
-
 // Any state used by handlers goes here
 type executorContext struct {
+	agentBaseContext  agentbase.Context
 	subTmpConfig      pubsub.Subscription
 	subCommandConfig  pubsub.Subscription
 	subVerifierConfig pubsub.Subscription
@@ -43,41 +39,35 @@ type executorContext struct {
 	subGlobalConfig pubsub.Subscription
 	GCInitialized   bool
 
-	// CLI args
-	debug         bool
-	debugOverride bool // From command line arg
-	timeLimit     uint // In seconds
+	timeLimit uint // In seconds
+}
+
+var execCtx *executorContext
+
+func newExecutorContext() *executorContext {
+	executorContext := executorContext{}
+	executorContext.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	executorContext.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+	return &executorContext
+}
+
+func (ctxPtr *executorContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.UintVar(&execCtx.timeLimit, "t", 120, "Maximum time to wait for command")
 }
 
 // Run is the main aka only entrypoint
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
-	flag.Parse()
-	execCtx := executorContext{}
-	execCtx.debug = *debugPtr
-	execCtx.debugOverride = execCtx.debug
-	if execCtx.debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	execCtx.timeLimit = *timeLimitPtr
-	agentlog.Init(agentName)
 
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+	execCtxPtr := newExecutorContext()
 
-	// Run a periodic timer so we always update StillRunning
+	agentbase.Run(execCtxPtr)
+
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	pubExecStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -86,12 +76,12 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	execCtx.pubExecStatus = pubExecStatus
+	execCtxPtr.pubExecStatus = pubExecStatus
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		TopicImpl:     types.ConfigItemValueMap{},
-		Ctx:           &execCtx,
+		Ctx:           &execCtxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -101,11 +91,11 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	execCtx.subGlobalConfig = subGlobalConfig
+	execCtxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Pick up debug aka log level before we start real work
-	for !execCtx.GCInitialized {
+	for !execCtxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -118,7 +108,7 @@ func Run(ps *pubsub.PubSub) {
 
 	subTmpConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		TopicImpl:     types.ExecConfig{},
-		Ctx:           &execCtx,
+		Ctx:           &execCtxPtr,
 		CreateHandler: handleCreate,
 		ModifyHandler: handleModify,
 		DeleteHandler: handleDelete,
@@ -128,12 +118,12 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	execCtx.subTmpConfig = subTmpConfig
+	execCtxPtr.subTmpConfig = subTmpConfig
 	subTmpConfig.Activate()
 
 	subCommandConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "command",
-		Ctx:           &execCtx,
+		Ctx:           &execCtxPtr,
 		TopicImpl:     types.ExecConfig{},
 		CreateHandler: handleCreate,
 		ModifyHandler: handleModify,
@@ -144,12 +134,12 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	execCtx.subCommandConfig = subCommandConfig
+	execCtxPtr.subCommandConfig = subCommandConfig
 	subCommandConfig.Activate()
 
 	subVerifierConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "verifier",
-		Ctx:           &execCtx,
+		Ctx:           &execCtxPtr,
 		TopicImpl:     types.ExecConfig{},
 		CreateHandler: handleCreate,
 		ModifyHandler: handleModify,
@@ -160,12 +150,12 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	execCtx.subVerifierConfig = subVerifierConfig
+	execCtxPtr.subVerifierConfig = subVerifierConfig
 	subVerifierConfig.Activate()
 
 	subDomainConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
-		Ctx:           &execCtx,
+		Ctx:           &execCtxPtr,
 		TopicImpl:     types.ExecConfig{},
 		CreateHandler: handleCreate,
 		ModifyHandler: handleModify,
@@ -176,7 +166,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	execCtx.subDomainConfig = subDomainConfig
+	execCtxPtr.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
 	for {
@@ -184,14 +174,14 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-execCtx.subTmpConfig.MsgChan():
-			execCtx.subTmpConfig.ProcessChange(change)
-		case change := <-execCtx.subCommandConfig.MsgChan():
-			execCtx.subCommandConfig.ProcessChange(change)
-		case change := <-execCtx.subVerifierConfig.MsgChan():
-			execCtx.subVerifierConfig.ProcessChange(change)
-		case change := <-execCtx.subDomainConfig.MsgChan():
-			execCtx.subDomainConfig.ProcessChange(change)
+		case change := <-execCtxPtr.subTmpConfig.MsgChan():
+			execCtxPtr.subTmpConfig.ProcessChange(change)
+		case change := <-execCtxPtr.subCommandConfig.MsgChan():
+			execCtxPtr.subCommandConfig.ProcessChange(change)
+		case change := <-execCtxPtr.subVerifierConfig.MsgChan():
+			execCtxPtr.subVerifierConfig.ProcessChange(change)
+		case change := <-execCtxPtr.subDomainConfig.MsgChan():
+			execCtxPtr.subDomainConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -343,8 +333,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	execCtx.debug, gcp = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
-		execCtx.debugOverride)
+	execCtx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
+		execCtx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		execCtx.GCInitialized = true
 	}
@@ -360,7 +350,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	execCtx.debug, _ = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
-		execCtx.debugOverride)
+	execCtx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
+		execCtx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

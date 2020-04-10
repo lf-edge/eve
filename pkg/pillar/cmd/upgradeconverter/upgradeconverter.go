@@ -4,10 +4,8 @@
 package upgradeconverter
 
 import (
-	"flag"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -21,9 +19,7 @@ var conversionHandlers = []ConversionHandler{
 }
 
 type ucContext struct {
-	agentName     string
-	debugOverride bool
-
+	agentBaseContext agentbase.Context
 	// FilePaths. These are defined here instead of consts for easier unit tests
 	persistConfigDir string
 	varTmpDir        string
@@ -53,28 +49,30 @@ func runHandlers(ctxPtr *ucContext) {
 		}
 	}
 }
+func newUcContext() *ucContext {
+	ctx := ucContext{
+		persistConfigDir: types.PersistConfigDir,
+		varTmpDir:        "/var/tmp",
+	}
+
+	ctx.agentBaseContext = agentbase.DefaultContext("upgradeconverter")
+	ctx.agentBaseContext.NeedWatchdog = false
+	ctx.agentBaseContext.CheckAndCreatePidFile = true
+
+	return &ctx
+}
+
+func (ctx *ucContext) AgentBaseContext() *agentbase.Context {
+	return &ctx.agentBaseContext
+}
 
 // Run - runs the main upgradeconverter process
 func Run(ps *pubsub.PubSub) {
-	log.Infof("upgradeconverter.Run")
-	ctx := &ucContext{agentName: "upgradeconverter",
-		persistConfigDir: types.PersistConfigDir,
-		varTmpDir:        "/var/tmp"}
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	ctx.debugOverride = *debugPtr
-	if ctx.debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
+	ctxPtr := newUcContext()
 
-	agentlog.Init("upgradeconverter")
-	if err := pidfile.CheckAndCreatePidfile(ctx.agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", ctx.agentName)
-	runHandlers(ctx)
+	agentbase.Run(ctxPtr)
+
+	runHandlers(ctxPtr)
 }
 
 // HandlerFunc - defines functions to handle each conversion

@@ -39,6 +39,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io"
 	"os"
 	"strings"
@@ -51,12 +52,39 @@ import (
 
 const agentName = "command"
 
-var (
-	timeLimit      uint
-	combinedOutput bool
-	environ        []string
-	dontWait       bool
-)
+var commandContextPtr *commandContext
+
+type commandContext struct {
+	agentBaseContext agentbase.Context
+	timeLimit        uint
+	combinedOutput   bool
+	dontWait         bool
+	quiet            bool
+	environ          []string
+	environZero      string
+}
+
+func newCommandContext() *commandContext {
+	commandCtx := commandContext{}
+	commandCtx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	commandCtx.agentBaseContext.NeedWatchdog = false
+
+	commandCtx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+	return &commandCtx
+}
+
+func (ctxPtr *commandContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func addAgentSpecificCLIFlags() {
+	flag.BoolVar(&commandContextPtr.quiet, "q", false, "Quiet flag")
+	flag.UintVar(&commandContextPtr.timeLimit, "t", 200, "Maximum time to wait for command")
+	flag.BoolVar(&commandContextPtr.combinedOutput, "c", false, "Combine stdout and stderr")
+	flag.StringVar(&commandContextPtr.environZero, "e", "", "set single environment variable with name=val syntax")
+	flag.BoolVar(&commandContextPtr.dontWait, "W", false, "don't wait for result")
+}
 
 // Run is the main aka only entrypoint
 func Run(ps *pubsub.PubSub) {
@@ -66,26 +94,16 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.SetFormatter(&formatter)
 
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	quietPtr := flag.Bool("q", false, "Quiet flag")
-	timeLimitPtr := flag.Uint("t", 200, "Maximum time to wait for command")
-	combinedPtr := flag.Bool("c", false, "Combine stdout and stderr")
-	environPtr := flag.String("e", "", "set single environment variable with name=val syntax")
-	dontWaitPtr := flag.Bool("W", false, "don't wait for result")
-	flag.Parse()
-	timeLimit = *timeLimitPtr
-	combinedOutput = *combinedPtr
-	dontWait = *dontWaitPtr
-	if *environPtr != "" {
+	commandContextPtr = newCommandContext()
+
+	agentbase.Run(commandContextPtr)
+
+	if commandContextPtr.environZero != "" {
 		// XXX Syntax to add multiple? This is just for testing
-		environ = append(environ, *environPtr)
+		commandContextPtr.environ = append(commandContextPtr.environ, commandContextPtr.environZero)
 	}
-	if *quietPtr {
+	if commandContextPtr.quiet {
 		log.SetLevel(log.WarnLevel)
-	} else if *debugPtr {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
 	}
 
 	hdl, err := execlib.New(ps, agentName, "executor")
@@ -114,17 +132,17 @@ func execute(hdl *execlib.ExecuteHandle, command string, args []string) {
 	out, err := hdl.Execute(execlib.ExecuteArgs{
 		Command:        command,
 		Args:           args,
-		Environ:        environ,
-		TimeLimit:      timeLimit,
-		CombinedOutput: combinedOutput,
-		DontWait:       dontWait,
+		Environ:        commandContextPtr.environ,
+		TimeLimit:      commandContextPtr.timeLimit,
+		CombinedOutput: commandContextPtr.combinedOutput,
+		DontWait:       commandContextPtr.dontWait,
 	})
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		fmt.Printf("Failed output: %s\n", out)
 		return
 	}
-	if dontWait {
+	if commandContextPtr.dontWait {
 		fmt.Printf("requested DontWait: no output\n")
 	} else {
 		fmt.Printf("Output:\n%s\n", out)

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -39,6 +40,7 @@ import (
 )
 
 type tpmMgrContext struct {
+	agentBaseContext   agentbase.Context
 	subGlobalConfig    pubsub.Subscription
 	subNodeAgentStatus pubsub.Subscription
 	subAttestNonce     pubsub.Subscription
@@ -175,8 +177,7 @@ var (
 			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
-	debug         = false
-	debugOverride bool // From command line arg
+	ctxPtr *tpmMgrContext
 )
 
 //Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
@@ -938,24 +939,29 @@ func createCerts() error {
 	return nil
 }
 
-func Run(ps *pubsub.PubSub) {
-	var err error
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
+func newTpmMgrContext() *tpmMgrContext {
+	ctx := tpmMgrContext{}
 
-	// Sending json log format to stdout
-	agentlog.Init("tpmmgr")
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+	ctx.agentBaseContext.NeedWatchdog = false
+	ctx.agentBaseContext.CheckAndCreatePidFile = false
+
+	return &ctx
+}
+
+func (ctxPtr *tpmMgrContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func Run(ps *pubsub.PubSub) {
+	ctxPtr = newTpmMgrContext()
+
+	agentbase.Run(ctxPtr)
 
 	if len(flag.Args()) == 0 {
 		log.Fatal("Insufficient arguments")
 	}
+	var err error
 	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
@@ -1014,14 +1020,14 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
-		ctx := tpmMgrContext{}
+		ctxPtr = &tpmMgrContext{}
 
 		// Look for global config such as log levels
 		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "",
 			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
-			Ctx:           &ctx,
+			Ctx:           &ctxPtr,
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
@@ -1031,14 +1037,14 @@ func Run(ps *pubsub.PubSub) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		ctx.subGlobalConfig = subGlobalConfig
+		ctxPtr.subGlobalConfig = subGlobalConfig
 		subGlobalConfig.Activate()
 
 		subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "nodeagent",
 			TopicImpl:     types.NodeAgentStatus{},
 			Activate:      false,
-			Ctx:           &ctx,
+			Ctx:           &ctxPtr,
 			ModifyHandler: handleNodeAgentStatusModify,
 			DeleteHandler: handleNodeAgentStatusDelete,
 			WarningTime:   warningTime,
@@ -1047,14 +1053,14 @@ func Run(ps *pubsub.PubSub) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		ctx.subNodeAgentStatus = subNodeAgentStatus
+		ctxPtr.subNodeAgentStatus = subNodeAgentStatus
 		subNodeAgentStatus.Activate()
 
 		subAttestNonce, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
 			TopicImpl:     types.AttestNonce{},
 			Activate:      false,
-			Ctx:           &ctx,
+			Ctx:           &ctxPtr,
 			CreateHandler: handleAttestNonceModify,
 			ModifyHandler: handleAttestNonceModify,
 			WarningTime:   warningTime,
@@ -1063,17 +1069,17 @@ func Run(ps *pubsub.PubSub) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		ctx.subAttestNonce = subAttestNonce
+		ctxPtr.subAttestNonce = subAttestNonce
 		//subAttestNonce.Activate()
 
 		// Pick up debug aka log level before we start real work
-		for !ctx.GCInitialized {
+		for !ctxPtr.GCInitialized {
 			log.Infof("waiting for GCInitialized")
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
-			case change := <-ctx.subNodeAgentStatus.MsgChan():
-				ctx.subNodeAgentStatus.ProcessChange(change)
+			case change := <-ctxPtr.subNodeAgentStatus.MsgChan():
+				ctxPtr.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 			}
 			agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -1096,22 +1102,22 @@ func Run(ps *pubsub.PubSub) {
 			//FIXME: We might have to avoid Fatal if it is EPIPE and DeviceReboot is true
 			if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
 				//are we rebooting? capture that info for EPIPE errors
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				deviceReboot, ok := readNodeAgentStatus(ctxPtr)
 				log.Fatalf("Error in creating Endorsement key: %v, DeviceReboot is %v %v", err,
 					deviceReboot, ok)
 			}
 			if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				deviceReboot, ok := readNodeAgentStatus(ctxPtr)
 				log.Fatalf("Error in creating Srk key: %v, DeviceReboot is %v %v", err,
 					deviceReboot, ok)
 			}
 			if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				deviceReboot, ok := readNodeAgentStatus(ctxPtr)
 				log.Fatalf("Error in creating Attestation key: %v, DeviceReboot is %v %v", err,
 					deviceReboot, ok)
 			}
 			if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
-				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				deviceReboot, ok := readNodeAgentStatus(ctxPtr)
 				log.Fatalf("Error in creating Quote key: %v, DeviceReboot is %v %v", err,
 					deviceReboot, ok)
 			}
@@ -1120,8 +1126,8 @@ func Run(ps *pubsub.PubSub) {
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
-			case change := <-ctx.subNodeAgentStatus.MsgChan():
-				ctx.subNodeAgentStatus.ProcessChange(change)
+			case change := <-ctxPtr.subNodeAgentStatus.MsgChan():
+				ctxPtr.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 				agentlog.StillRunning(agentName, warningTime, errorTime)
 			}
@@ -1165,8 +1171,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -1182,8 +1188,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

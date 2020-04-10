@@ -8,15 +8,12 @@
 package zedmanager
 
 import (
-	"flag"
-	"fmt"
-	"os"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
@@ -30,11 +27,9 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Version can be set from Makefile
-var Version = "No version specified"
-
 // State used by handlers
 type zedmanagerContext struct {
+	agentBaseContext     agentbase.Context
 	subAppInstanceConfig pubsub.Subscription
 	pubAppInstanceStatus pubsub.Publication
 	pubVolumeConfig      pubsub.Publication
@@ -52,39 +47,27 @@ type zedmanagerContext struct {
 	GCInitialized        bool
 }
 
-var debug = false
-var debugOverride bool // From command line arg
+func newZedmanagerContext() *zedmanagerContext {
+	ctx := zedmanagerContext{}
+
+	ctx.globalConfig = types.DefaultConfigItemValueMap()
+
+	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
+
+	return &ctx
+}
+
+func (ctxPtr *zedmanagerContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
+	ctxPtr := newZedmanagerContext()
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+	agentbase.Run(ctxPtr)
 
-	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
-	// Any state needed by handler functions
-	ctx := zedmanagerContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
-	}
 	// Create publish before subscribing and activating subscriptions
 	pubAppInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -93,7 +76,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppInstanceStatus = pubAppInstanceStatus
+	ctxPtr.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
 	pubVolumeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -104,7 +87,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubVolumeConfig = pubVolumeConfig
+	ctxPtr.pubVolumeConfig = pubVolumeConfig
 
 	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -113,7 +96,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppNetworkConfig = pubAppNetworkConfig
+	ctxPtr.pubAppNetworkConfig = pubAppNetworkConfig
 	pubAppNetworkConfig.ClearRestarted()
 
 	pubDomainConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -123,7 +106,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubDomainConfig = pubDomainConfig
+	ctxPtr.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
 
 	pubEIDConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -133,7 +116,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubEIDConfig = pubEIDConfig
+	ctxPtr.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -144,7 +127,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubUuidToNum = pubUuidToNum
+	ctxPtr.pubUuidToNum = pubUuidToNum
 	pubUuidToNum.ClearRestarted()
 
 	pubAppAndImageToHash, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -155,14 +138,14 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppAndImageToHash = pubAppAndImageToHash
+	ctxPtr.pubAppAndImageToHash = pubAppAndImageToHash
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -172,7 +155,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subGlobalConfig = subGlobalConfig
+	ctxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Get AppInstanceConfig from zedagent
@@ -180,7 +163,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:      "zedagent",
 		TopicImpl:      types.AppInstanceConfig{},
 		Activate:       false,
-		Ctx:            &ctx,
+		Ctx:            &ctxPtr,
 		CreateHandler:  handleCreate,
 		ModifyHandler:  handleModify,
 		DeleteHandler:  handleAppInstanceConfigDelete,
@@ -191,7 +174,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAppInstanceConfig = subAppInstanceConfig
+	ctxPtr.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
 	// Look for VolumeStatus from volumemgr
@@ -200,7 +183,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeStatus{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           ctxPtr,
 		CreateHandler: handleVolumeStatusModify,
 		ModifyHandler: handleVolumeStatusModify,
 		DeleteHandler: handleVolumeStatusDelete,
@@ -210,7 +193,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subVolumeStatus = subVolumeStatus
+	ctxPtr.subVolumeStatus = subVolumeStatus
 	subVolumeStatus.Activate()
 
 	// Get AppNetworkStatus from zedrouter
@@ -218,7 +201,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:      "zedrouter",
 		TopicImpl:      types.AppNetworkStatus{},
 		Activate:       false,
-		Ctx:            &ctx,
+		Ctx:            &ctxPtr,
 		CreateHandler:  handleAppNetworkStatusModify,
 		ModifyHandler:  handleAppNetworkStatusModify,
 		DeleteHandler:  handleAppNetworkStatusDelete,
@@ -229,7 +212,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAppNetworkStatus = subAppNetworkStatus
+	ctxPtr.subAppNetworkStatus = subAppNetworkStatus
 	subAppNetworkStatus.Activate()
 
 	// Get DomainStatus from domainmgr
@@ -237,7 +220,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "domainmgr",
 		TopicImpl:     types.DomainStatus{},
 		Activate:      false,
-		Ctx:           &ctx,
+		Ctx:           &ctxPtr,
 		CreateHandler: handleDomainStatusModify,
 		ModifyHandler: handleDomainStatusModify,
 		DeleteHandler: handleDomainStatusDelete,
@@ -247,7 +230,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subDomainStatus = subDomainStatus
+	ctxPtr.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
 	// Get IdentityStatus from identitymgr
@@ -255,7 +238,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:      "identitymgr",
 		TopicImpl:      types.EIDStatus{},
 		Activate:       false,
-		Ctx:            &ctx,
+		Ctx:            &ctxPtr,
 		CreateHandler:  handleEIDStatusModify,
 		ModifyHandler:  handleEIDStatusModify,
 		DeleteHandler:  handleEIDStatusDelete,
@@ -266,11 +249,11 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subEIDStatus = subEIDStatus
+	ctxPtr.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
 	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
+	for !ctxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -279,6 +262,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
+
 	log.Infof("Handling all inputs\n")
 	for {
 		select {
@@ -797,8 +781,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
@@ -815,8 +799,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.agentBaseContext.CLIParams.Debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.agentBaseContext.CLIParams.DebugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
