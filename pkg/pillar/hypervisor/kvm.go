@@ -607,14 +607,14 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	return nil
 }
 
-//IsDomainKnownHealthy: returns true if domain's status is healthy (i.e. 'running')
-func (ctx kvmContext) IsDomainKnownHealthy(domainName string) bool {
+//IsDomainPotentiallyShuttingDown: returns false if domain's status is healthy (i.e. 'running')
+func (ctx kvmContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
 	if status, err := getQemuStatus(getQmpFile(domainName)); err != nil || status != "running" {
-		log.Errorf("IsDomainKnownHealthy: domain %s is not healthy. domainState: %s", domainName, status)
-		return false
+		log.Errorf("IsDomainPotentiallyShuttingDown: domain %s is not healthy. domainState: %s", domainName, status)
+		return true
 	}
-	log.Debugf("IsDomainKnownHealthy: domain %s is healthy", domainName)
-	return true
+	log.Debugf("IsDomainPotentiallyShuttingDown: domain %s is healthy", domainName)
+	return false
 }
 
 func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {

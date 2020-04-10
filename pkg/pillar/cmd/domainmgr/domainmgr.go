@@ -624,8 +624,8 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		}
 		// check if qemu processes has crashed
 		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
-		if configActivate && status.Activated && hyper.IsDomainKnownHealthy(status.DomainName) &&
-			hasQemu && !hyper.IsDeviceModelAlive(status.DomainId) {
+		if configActivate && status.Activated && hasQemu && !hyper.IsDomainPotentiallyShuttingDown(status.DomainName) &&
+			!hyper.IsDeviceModelAlive(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -1058,7 +1058,6 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 
 	log.Infof("created domainID %d for %s\n", domainID, status.DomainName)
 	status.DomainId = domainID
-	status.Activated = true
 	status.BootTime = time.Now()
 	log.Infof("Set domainId %d bootTime %s for %s",
 		status.DomainId, status.BootTime.Format(time.RFC3339Nano),
@@ -1098,6 +1097,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 			status.Key())
 	}
+	status.Activated = true
 	log.Infof("doActivateTail(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
