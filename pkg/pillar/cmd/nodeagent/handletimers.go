@@ -217,8 +217,9 @@ func allDomainsHalted(ctxPtr *nodeagentContext) bool {
 				ds.UUIDandVersion.UUID.String(), ds.DisplayName, ds.State)
 			return false
 		}
+		log.Debugf("allDomainsHalted: %s is deactivated", ds.DisplayName)
 	}
-	log.Debugf("allDomainsHalted: All Domains Halted.")
+	log.Infof("allDomainsHalted: All Domains Halted.")
 	return true
 
 }
