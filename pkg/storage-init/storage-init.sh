@@ -34,6 +34,56 @@ fi
 
 P3_FS_TYPE="ext3"
 FSCK_FAILED=0
+
+# First lets see if we're missing P3 altogether and try to create it.
+# This is safe, since the worst case scenario we may hose the system,
+# but the system without P3 is a warm brick anyways
+P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
+IMGA=$(/hostfs/sbin/findfs PARTLABEL=IMGA)
+if [ -z "$P3" ] && [ -n "$IMGA" ]; then
+   DEV=$(echo /sys/block/*/"${IMGA#/dev/}")
+   DEV="/dev/$(echo "$DEV" | cut -f4 -d/)"
+
+   # if sgdisk complains we need to repair the GPT
+   if sgdisk -v "$DEV" | grep -q 'Identified.*problems'; then
+       # save a copy of the first MBR entry to make sure sgdisk
+       # doesn't mess it up, the logic is: whatever booted us
+       # seemed to be good enough to get us here
+       dd if="$DEV" of=/tmp/mbr.bin bs=1 skip=446 count=16
+
+       sgdisk -h1 -e "$DEV"
+
+       # move 1st MBR entry to 2nd place
+       dd if="$DEV" of="$DEV" bs=1 skip=446 seek=$(( 446 + 16)) count=16
+       # restore 1st MBR entry
+       dd if=/tmp/mbr.bin of="$DEV" bs=1 seek=446 count=16
+
+       # focrce kernel to re-scan partition table
+       partprobe "$DEV"
+   fi
+
+   # lets see if IMGB partition is around, if not - create it
+   IMGB=$(/hostfs/sbin/findfs PARTLABEL=IMGB)
+   if [ -z "$IMGB" ]; then
+      IMGA_ID=$(sgdisk -p "$DEV" | grep "IMGA$" | awk '{print $1;}')
+
+      IMGA_SIZE=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition size:/ { print $3; }')
+      IMGA_GUID=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition unique GUID:/ { print $4; }')
+
+      SEC_START=$(sgdisk -f "$DEV")
+      SEC_END=$((SEC_START + IMGA_SIZE))
+      IMGB_ID=$((IMGA_ID + 1))
+
+      sgdisk --new "$IMGB_ID:$SEC_START:$SEC_END" \
+             --typecode="$IMGB_ID:$IMGA_GUID" --change-name="$IMGB_ID:IMGB" "$DEV"
+   fi
+
+   LAST_PART_ID=$(sgdisk -p "$DEV" | awk '{a=$1;} END { print a;}')
+   P3_ID=$((LAST_PART_ID + 1))
+   sgdisk --largest-new="$P3_ID" \
+          --typecode="$P3_ID:5f24425a-2dfa-11e8-a270-7b663faccc2c" --change-name="$P3_ID:P3" "$DEV"
+fi
+
 #For systems with ext3 filesystem, try not to change to ext4, since it will brick
 #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
 #when we do usb install, this way the transition is more controlled.
