@@ -44,11 +44,14 @@ ENV GRUB_PLATFORM=efi
 RUN eval $BUILD_GRUB
 RUN if [ "$(uname -m)" = x86_64 ]; then GRUB_PLATFORM="pc --disable-efiemu" && eval "$BUILD_GRUB" ; fi
 
+
+COPY embedded.cfg /
+
 # create the grub core image
 RUN case $(uname -m) in \
   x86_64) \
     ./grub-mkimage -O x86_64-efi -d /grub-lib/grub/x86_64-efi -o /grub-lib/BOOTX64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_x86_64} &&\
-    ./grub-mkimage -O i386-pc -d /grub-lib/grub/i386-pc -o /grub-lib/BOOT.pc -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_i386_pc} ;\
+    ./grub-mkimage -O i386-pc -d /grub-lib/grub/i386-pc -o /grub-lib/BOOT.pc -p /EFI/BOOT -c /embedded.cfg ${GRUB_MODULES_PORT} ${GRUB_MODULES_i386_pc} ;\
     ;; \
   aarch64) \
     ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_aarch64} ;\
