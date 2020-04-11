@@ -387,7 +387,8 @@ func getWifiCredential(wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
 		_, decBlock, err := utils.GetCipherCredentials("devicenetwork",
 			wifi.CipherBlockStatus)
 		if err != nil {
-			log.Infof("%s, wifi config cipherblock decryption unsuccessful: %v\n", wifi.SSID, err)
+			log.Errorf("%s, wifi config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+				wifi.SSID, err)
 			decBlock.WifiUserName = wifi.Identity
 			decBlock.WifiPassword = wifi.Password
 			return decBlock, nil
