@@ -12,6 +12,8 @@ PATH:=$(CURDIR)/build-tools/bin:$(PATH)
 export CGO_ENABLED GOOS GOARCH PATH
 
 # A set of tweakable knobs for our build needs (tweak at your risk!)
+# Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
+EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
 # The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=kvm'
@@ -44,7 +46,13 @@ ifeq ($(UNAME_S),Darwin)
 	GID          = 1001
 endif
 
+REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
+REPO_SHA=$(shell git describe --match v --abbrev=8 --always --dirty)
+REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
+
+ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)-$(shell date -u +"%Y-%m-%d.%H.%M"),$(REPO_TAG))
+
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
@@ -70,7 +78,9 @@ LIVE_IMG=$(DIST)/live
 TARGET_IMG=$(DIST)/target.img
 INSTALLER=$(DIST)/installer
 
-ROOTFS_IMG=$(INSTALLER)/rootfs.img
+ROOTFS=$(INSTALLER)/rootfs
+ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
+ROOTFS_IMG=$(ROOTFS).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 EFI_PART=$(INSTALLER)/EFI
@@ -93,14 +103,19 @@ QEMU_ACCEL_Y_Darwin=-M accel=hvf --cpu host
 QEMU_ACCEL_Y_Linux=-enable-kvm
 QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
 
+QEMU_OPTS_NET1=192.168.1.0/24
+QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
+QEMU_OPTS_NET2=192.168.2.0/24
+QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
+
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
-        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device virtio-net-pci,netdev=eth1
+        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
+        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
 QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
@@ -136,7 +151,7 @@ RESCAN_DEPS=FORCE
 FORCE_BUILD=--force
 
 ifeq ($(LINUXKIT_PKG_TARGET),push)
-  EVE_REL:=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+  EVE_REL:=$(REPO_TAG)
   ifneq ($(EVE_REL),snapshot)
     EVE_HASH:=$(EVE_REL)
     EVE_REL:=$(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(EVE_HASH) ] && echo latest)
@@ -225,33 +240,34 @@ live: $(LIVE_IMG).img
 live.rpi: $(LIVE_IMG).rpi
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
-rootfs-%: $(INSTALLER)/rootfs-%.img
+rootfs-%: $(ROOTFS)-%.img
 	@true
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ $(CONF_FILES)
 
-$(ROOTFS_IMG): $(INSTALLER)/rootfs-$(HV).img
+$(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
+	@rm -f $@ && ln -s $(notdir $<) $@
+
+$(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 	@rm -f $@ && ln -s $(notdir $<) $@
 
 $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
-	ln -s $(notdir $<) $@
+	@ln -s $(notdir $<) $@
 
 $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-# The following two rules are overrides of the generic ones specifically for supporting Raspberry Pi 4
-# $(LIVE_IMG).rpi can be generalized into can be generalized into a trampoline (readconfig vs. chainload)
-# style bootloader image and images/rootfs-rpi.yml will go away once we migrate to a NEW_KERNEL
+# The following rule is an override of the generic one for live.img specifically for supporting Raspberry Pi 4
+# $(LIVE_IMG).rpi can potentially be generalized into a trampoline (readconfig vs. chainload)
+# style bootloader image and rootfs-rpi-kvm will go away once we migrate to a NEW_KERNEL
 $(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
-$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-rpi | $(INSTALLER)
-	mv $(INSTALLER)/rootfs-rpi.img $(INSTALLER)/rootfs.img
+$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-kvm-rpi | $(INSTALLER)
+	ln -s rootfs-kvm-rpi.img $(ROOTFS_IMG)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
 	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
-images/rootfs-rpi.yml: images/rootfs-kvm.yml.in
-	@sed -e 's#KERNEL_TAG#NEW_KERNEL_TAG#' < $< | $(PARSE_PKGS) > $@
 
 $(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
@@ -276,14 +292,6 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	@true
-pkg/kernel: pkg/kernel/Dockerfile build-tools $(RESCAN_DEPS)
-	@D=`date '+%s'` ; $(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $@               &&\
-	if [ $$(( `date '+%s'` - $$D )) -lt 60 ]; then exit 0; fi                                  &&\
-	TAG=`echo NEW_KERNEL_TAG | $(PARSE_PKGS)` && V=$${TAG%-*} && V=$${V##*-}                   &&\
-	if echo $$TAG | grep -q -v -- -dirty && ! docker pull $$TAG ; then                           \
-		docker build --build-arg KERNEL_VERSION_`uname -m`=$$V -t $$TAG $@                 &&\
-		if [ "$(LINUXKIT_PKG_TARGET)" = push ]; then docker push $$TAG ;fi                  ;\
-	fi
 pkg/%: eve-% FORCE
 	@true
 
@@ -353,7 +361,12 @@ endif
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
 
-$(INSTALLER)/rootfs-%.img: images/rootfs-%.yml | $(INSTALLER)
+images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
+	@if [ -e $@.patch ]; then patch -p0 -o $@.sed < $@.patch ;else cp $< $@.sed ;fi
+	@sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
+	@rm $@.sed
+
+$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
@@ -371,6 +384,7 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
+.PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 

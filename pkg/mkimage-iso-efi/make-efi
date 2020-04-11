@@ -40,7 +40,7 @@ mcopy -i boot.img EFI/BOOT/* ::/EFI/BOOT/
 # what we need for installer construction but could be dangerous in the
 # generic case for this container
 xorriso -as mkisofs \
-        -f -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot -o /tmp/disk.iso .
+        -m rootfs-\* -f -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot -o /tmp/disk.iso .
 copy /tmp/disk.iso /output.iso
 
 # How to build a VHDX. Commented out because we are currently not using it

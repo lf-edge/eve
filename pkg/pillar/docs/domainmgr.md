@@ -7,12 +7,16 @@ Domainmgr is the interface to the hypervisor to start DomU instances:
 - It starts, stops, and tracks the domUs
 - It includes doing device assignment, i.e. assigning peripheral devices to DomU based on config.
 - It has retry logic for when a domU fails to boot
+- It reports metrics such as CPU and memory from the domains
 
 ## Key Input/Output
 
-Domain Manager interacts with the Cloud controller (e.g. zedcloud) using two key messages:
+Domain Manager interacts with the Cloud controller (e.g. zedcloud) indirectly using three key messages:
 - DomainConfig from controller is fed to domainmgr. This contains the configuration information about a DomU instance. DomainConfig is defined in `pillar/types/domainmgrtypes.go`
 - DomainStatus is fed from `domainmgr` to controller. This contains the operational information about a DomU instance. DomainStatus is defined in `pillar/types/domainmgrtypes.go`
+- DomainMetric with CPU and memory metrics for the host (dom0) and the applications
+
+zedmanager publishes DomainConfig and subscribes to DomainStatus, while zedagent subscribes to DomainMetric.
 
 ## PCI Device Management
 

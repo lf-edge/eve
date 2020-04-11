@@ -13,11 +13,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,7 +73,6 @@ type domainContext struct {
 	subDomainConfig        pubsub.Subscription
 	pubDomainStatus        pubsub.Publication
 	subGlobalConfig        pubsub.Subscription
-	pubImageStatus         pubsub.Publication
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
@@ -84,30 +80,8 @@ type domainContext struct {
 	usbAccess              bool
 	createSema             sema.Semaphore
 	GCInitialized          bool
-	vdiskGCTime            uint32 // In seconds
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
-}
-
-// appRwImageName - Returns name of the image ( including parent dir )
-// Note that we still use the sha in the filename to not impact running images. Otherwise
-// we could switch this to imageID
-func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
-	formatStr := strings.ToLower(format.String())
-	return fmt.Sprintf("%s/%s-%s.%s", rwImgDirname, sha256, uuidStr, formatStr)
-}
-
-// parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
-func parseAppRwImageName(image string) (string, string, string) {
-	// ImageSha is provided by the controller - it can be uppercase
-	// or lowercase.
-	re := regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-(.+)\.(.+)`)
-	if !re.MatchString(image) {
-		log.Errorf("AppRwImageName %s doesn't match pattern", image)
-		return "", "", ""
-	}
-	parsedStrings := re.FindStringSubmatch(image)
-	return parsedStrings[1], parsedStrings[2], parsedStrings[3]
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -197,7 +171,6 @@ func Run(ps *pubsub.PubSub) {
 	// These settings can be overridden by GlobalConfig
 	domainCtx := domainContext{
 		usbAccess:           true,
-		vdiskGCTime:         3600,
 		domainBootRetryTime: 600,
 	}
 	aa := types.AssignableAdapters{}
@@ -217,21 +190,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
-
-	pubImageStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.ImageStatus{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.pubImageStatus = pubImageStatus
-	pubImageStatus.ClearRestarted()
-
-	// Publish existing images with RefCount zero
-	populateInitialImageStatus(&domainCtx, rwImgDirname)
-	pubImageStatus.SignalRestarted()
 
 	pubAssignableAdapters, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -402,18 +360,6 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
-	// We will cleanup zero RefCount objects after a while
-	// We run timer 10 times more often than the limit on LastUse
-	// Update the LastUse again here since it may not get updated since the
-	// device reboot if network is not available
-	duration := time.Duration(domainCtx.vdiskGCTime / 10)
-	gc := time.NewTicker(duration * time.Second)
-	gcResetObjectsLastUse(&domainCtx, rwImgDirname)
-
-	if err := initContainerdClient(); err != nil {
-		log.Fatal(err)
-	}
-	defer ctrdClient.Close()
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -427,12 +373,6 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
-
-		case <-gc.C:
-			start := time.Now()
-			gcObjects(&domainCtx, rwImgDirname)
-			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
-				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
@@ -448,184 +388,6 @@ func handleRestart(ctxArg interface{}, done bool) {
 		ctx.pubDomainStatus.SignalRestarted()
 		return
 	}
-}
-
-func deleteFile(filelocation string) {
-	if err := os.Remove(filelocation); err != nil {
-		log.Errorf("Failed to delete file %s. Error: %s",
-			filelocation, err.Error())
-	}
-}
-
-// recursive scanning for verified objects,
-// to recreate the status files
-func populateInitialImageStatus(ctx *domainContext, dirName string) {
-
-	log.Infof("populateInitialImageStatus(%s)\n", dirName)
-	locations, err := ioutil.ReadDir(dirName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, location := range locations {
-		filelocation := dirName + "/" + location.Name()
-		if location.IsDir() {
-			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filelocation)
-			continue
-		}
-
-		info, err := os.Stat(filelocation)
-		if err != nil {
-			log.Errorf("Error in getting file information. Err: %s. "+
-				"Deleting file %s", err, filelocation)
-			deleteFile(filelocation)
-			continue
-		}
-
-		size := info.Size()
-		_, sha256, appUUIDStr := parseAppRwImageName(filelocation)
-		log.Debugf("populateInitialImageStatus: Processing AppUuid: %s, "+
-			"%d Mbytes, fileLocation:%s",
-			appUUIDStr, size/(1024*1024), filelocation)
-
-		appUUID, err := uuid.FromString(appUUIDStr)
-		if err != nil {
-			log.Errorf("populateInitialImageStatus: Invalid UUIDStr(%s) in "+
-				"filename (%s). err: %s. Deleting the File",
-				appUUIDStr, filelocation, err)
-			deleteFile(filelocation)
-			continue
-		}
-
-		status := types.ImageStatus{
-			AppInstUUID:  appUUID,
-			ImageSha256:  sha256, // Included in case app has multiple vdisks
-			Filename:     location.Name(),
-			FileLocation: filelocation,
-			Size:         uint64(size),
-			RefCount:     0,
-			LastUse:      time.Now(),
-		}
-
-		publishImageStatus(ctx, &status)
-	}
-}
-
-func addImageStatus(ctx *domainContext, fileLocation string) {
-
-	filename := filepath.Base(fileLocation)
-	pub := ctx.pubImageStatus
-	st, _ := pub.Get(filename)
-	if st == nil {
-		log.Infof("addImageStatus(%s) not found\n", filename)
-		info, err := os.Stat(fileLocation)
-		var size int64
-		if err != nil {
-			log.Errorf("Error in getting file information: %s", err)
-			size = 0
-		} else {
-			size = info.Size()
-		}
-		_, sha256, appUUIDStr := parseAppRwImageName(fileLocation)
-		appUUID, err := uuid.FromString(appUUIDStr)
-		if err != nil {
-			log.Errorf("Invalid UUIDStr(%s) in filename (%s):: %s",
-				appUUIDStr, fileLocation, err)
-			appUUID = nilUUID
-		}
-		status := types.ImageStatus{
-			AppInstUUID:  appUUID,
-			ImageSha256:  sha256, // Included in case app has multiple vdisks
-			Filename:     filename,
-			FileLocation: fileLocation,
-			Size:         uint64(size),
-			RefCount:     1,
-			LastUse:      time.Now(),
-		}
-		publishImageStatus(ctx, &status)
-	} else {
-		status := st.(types.ImageStatus)
-		log.Infof("addImageStatus(%s) found RefCount %d LastUse %v\n",
-			filename, status.RefCount, status.LastUse)
-
-		status.RefCount += 1
-		status.LastUse = time.Now()
-		log.Infof("addImageStatus(%s) set RefCount %d LastUse %v\n",
-			filename, status.RefCount, status.LastUse)
-		publishImageStatus(ctx, &status)
-	}
-}
-
-// Remove from ImageStatus since fileLocation has been deleted
-func delImageStatus(ctx *domainContext, fileLocation string) {
-
-	filename := filepath.Base(fileLocation)
-	pub := ctx.pubImageStatus
-	st, _ := pub.Get(filename)
-	if st == nil {
-		log.Errorf("delImageStatus(%s) not found\n", filename)
-		return
-	}
-	status := st.(types.ImageStatus)
-	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
-		filename, status.RefCount, status.LastUse)
-	unpublishImageStatus(ctx, &status)
-}
-
-// Periodic garbage collection looking at RefCount=0 files
-func gcObjects(ctx *domainContext, dirName string) {
-
-	log.Debugf("gcObjects()\n")
-
-	pub := ctx.pubImageStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.ImageStatus)
-		// Make sure we update LastUse if it is still referenced
-		// by a DomainConfig
-		filelocation := status.FileLocation
-		if findActiveFileLocation(ctx, filelocation) {
-			log.Debugln("gcObjects skipping Active file",
-				filelocation)
-			status.LastUse = time.Now()
-			publishImageStatus(ctx, &status)
-			continue
-		}
-		if status.RefCount != 0 {
-			log.Debugf("gcObjects: skipping RefCount %d: %s\n",
-				status.RefCount, status.Key())
-			continue
-		}
-		timePassed := time.Since(status.LastUse)
-		timeLimit := time.Duration(ctx.vdiskGCTime) * time.Second
-		if timePassed < timeLimit {
-			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
-				status.Key(), (timePassed-timeLimit)/time.Second)
-			continue
-		}
-		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
-			filelocation, status.LastUse, time.Now(), status.Key())
-		if err := os.Remove(filelocation); err != nil {
-			log.Errorln(err)
-		}
-		unpublishImageStatus(ctx, &status)
-	}
-}
-
-// Check if the filename is used as ActiveFileLocation
-func findActiveFileLocation(ctx *domainContext, filename string) bool {
-	log.Debugf("findActiveFileLocation(%v)\n", filename)
-	pub := ctx.pubDomainStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.DomainStatus)
-		for _, ds := range status.DiskStatusList {
-			if filename == ds.ActiveFileLocation {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -644,27 +406,6 @@ func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Errorf("unpublishDomainStatus(%s) not found\n", key)
-		return
-	}
-	pub.Unpublish(key)
-}
-
-func publishImageStatus(ctx *domainContext, status *types.ImageStatus) {
-
-	key := status.Key()
-	log.Debugf("publishImageStatus(%s)\n", key)
-	pub := ctx.pubImageStatus
-	pub.Publish(key, *status)
-}
-
-func unpublishImageStatus(ctx *domainContext, status *types.ImageStatus) {
-
-	key := status.Key()
-	log.Debugf("unpublishImageStatus(%s)\n", key)
-	pub := ctx.pubImageStatus
-	st, _ := pub.Get(key)
-	if st == nil {
-		log.Errorf("unpublishImageStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -864,6 +605,9 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.LastErrTime = time.Time{}
 			status.DomainId = domainID
 			status.BootTime = time.Now()
+			log.Infof("Update domainId %d bootTime %s for %s",
+				status.DomainId, status.BootTime.Format(time.RFC3339Nano),
+				status.Key())
 			status.Activated = true
 			status.State = types.RUNNING
 			publishDomainStatus(ctx, status)
@@ -873,11 +617,15 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key(), status.DomainId, domainID)
 			status.DomainId = domainID
 			status.BootTime = time.Now()
+			log.Infof("Update domainId %d bootTime %s for %s",
+				status.DomainId, status.BootTime.Format(time.RFC3339Nano),
+				status.Key())
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
 		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
-		if configActivate && status.Activated && hasQemu && !hyper.IsDeviceModelAlive(status.DomainId) {
+		if configActivate && status.Activated && hasQemu && !hyper.IsDomainPotentiallyShuttingDown(status.DomainName) &&
+			!hyper.IsDeviceModelAlive(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -899,9 +647,31 @@ func maybeRetry(ctx *domainContext, status *types.DomainStatus) {
 	maybeRetryAdapters(ctx, status)
 }
 
+// Retry a boot after a failure.
 func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
 	if !status.BootFailed {
+		return
+	}
+	if status.Activated && status.BootFailed {
+		log.Infof("maybeRetryBoot(%s) clearing bootFailed since Activated",
+			status.Key())
+		status.BootFailed = false
+		publishDomainStatus(ctx, status)
+		return
+	}
+	config := lookupDomainConfig(ctx, status.Key())
+	if config == nil {
+		// Odd to have status but no config
+		log.Errorf("maybeRetryBoot(%s) no DomainConfig",
+			status.Key())
+		return
+	}
+	if !config.Activate {
+		log.Errorf("maybeRetryBoot(%s) Config not Activate - nothing to do",
+			status.Key())
+		status.BootFailed = false
+		publishDomainStatus(ctx, status)
 		return
 	}
 
@@ -935,25 +705,37 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainID)
+	publishDomainStatus(ctx, status)
+	log.Infof("maybeRetryBoot(%s) DONE for %s\n",
+		status.Key(), status.DisplayName)
 }
 
+// Retry assigning adapters after a failure.
 func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 
 	if !status.AdaptersFailed {
 		return
 	}
-	log.Infof("maybeRetryAdapters(%s) after %s at %v\n",
-		status.Key(), status.LastErr, status.LastErrTime)
-
+	if status.Activated && status.AdaptersFailed {
+		log.Infof("maybeRetryAdapters(%s) clearing adaptersFailed since Activated",
+			status.Key())
+		status.AdaptersFailed = false
+		publishDomainStatus(ctx, status)
+		return
+	}
 	config := lookupDomainConfig(ctx, status.Key())
 	if config == nil {
-		log.Errorf("maybeRetryAdapters(%s) no DomainConfig\n",
+		// Odd to have status but no config
+		log.Errorf("maybeRetryAdapters(%s) no DomainConfig",
 			status.Key())
 		return
 	}
+	log.Infof("maybeRetryAdapters(%s) after %s at %v\n",
+		status.Key(), status.LastErr, status.LastErrTime)
+
 	if err := configAdapters(ctx, *config); err != nil {
-		log.Errorf("Failed to reserve adapters for %v: %s\n",
-			config, err)
+		log.Errorf("Failed to reserve adapters for %s: %s",
+			config.Key(), err)
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -1048,49 +830,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		status.LastErrTime = time.Now()
 		publishDomainStatus(ctx, &status)
 		return
-	}
-
-	// Do we need to copy any rw files? !Preserve ones and container FSes are copied upon
-	// activation.
-	for _, ds := range status.DiskStatusList {
-		if ds.ReadOnly || !ds.Preserve || ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
-			if ds.Preserve {
-				log.Infof("Preserve and target exists - skip copy\n")
-			} else {
-				log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
-			}
-		} else {
-			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-				log.Errorf("Copy failed from %s to %s: %s\n",
-					ds.FileLocation, ds.ActiveFileLocation, err)
-				status.PendingAdd = false
-				status.LastErr = fmt.Sprintf("%v", err)
-				status.LastErrTime = time.Now()
-				publishDomainStatus(ctx, &status)
-				return
-			}
-			// Do we need to expand disk?
-			err := maybeResizeDisk(ds.ActiveFileLocation,
-				ds.Maxsizebytes)
-			if err != nil {
-				errStr := fmt.Sprintf("handleCreate(%s) failed %v",
-					status.Key(), err)
-				log.Errorln(errStr)
-				status.LastErr = errStr
-				status.LastErrTime = time.Now()
-				status.PendingAdd = false
-				publishDomainStatus(ctx, &status)
-				return
-			}
-			log.Infof("Copy DONE from %s to %s\n",
-				ds.FileLocation, ds.ActiveFileLocation)
-		}
-		addImageStatus(ctx, ds.ActiveFileLocation)
 	}
 
 	if err := configAdapters(ctx, *config); err != nil {
@@ -1238,45 +977,36 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.IoAdapterList = config.IoAdapterList
 	}
 
+	if status.IsContainer && (config.IsCipher || config.CloudInitUserData != nil) {
+		envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
+		if err != nil {
+			fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
+			log.Error(fetchError)
+			status.LastErr = fetchError.Error()
+			status.LastErrTime = time.Now()
+			return
+		}
+		status.EnvVariables = envList
+	}
+
 	// Assign any I/O devices
 	doAssignIoAdaptersToDomain(ctx, config, status)
 
-	// Do we need to copy any rw files? Preserve ones are copied upon
-	// creation
+	// Finish preparing for container runtime.
 	for _, ds := range status.DiskStatusList {
-		if ds.ReadOnly || ds.Preserve {
+		if ds.Format != zconfig.Format_CONTAINER {
 			continue
-		} else if ds.Format == zconfig.Format_CONTAINER {
-			ociFilename, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
-			if err != nil {
-				log.Errorf("failed to get Image File Location. "+
-					"err: %+s", err.Error())
-				status.LastErr = fmt.Sprintf("failed to get Image File Location. err: %+s", err.Error())
-				status.LastErrTime = time.Now()
-				return
-			}
-			log.Infof("ociFilename %s sha %s", ociFilename, ds.ImageSha256)
-			if err := ctrPrepare(ds.FSVolumeLocation, ociFilename, status.EnvVariables, len(status.DiskStatusList)); err != nil {
-				log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
-				status.LastErr = fmt.Sprintf("%v", err)
-				status.LastErrTime = time.Now()
-				return
-			}
-		} else if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
-			log.Infof("Preserve and target exists - skip copy\n")
-			addImageStatus(ctx, ds.ActiveFileLocation)
-		} else {
-			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-				log.Errorf("Copy failed from %s to %s: %s\n",
-					ds.FileLocation, ds.ActiveFileLocation, err)
-				status.LastErr = fmt.Sprintf("%v", err)
-				status.LastErrTime = time.Now()
-				return
-			}
-			log.Infof("Copy DONE from %s to %s\n",
-				ds.FileLocation, ds.ActiveFileLocation)
-			addImageStatus(ctx, ds.ActiveFileLocation)
+		}
+		// XXX apparently this is under the appInstID and not under
+		// the ImageID aka VolumeID
+		if err := ctrPrepareMount(config.UUIDandVersion.UUID,
+			ds.FileLocation, status.EnvVariables,
+			len(status.DiskStatusList)); err != nil {
+
+			log.Errorf("Failed to create ctr bundle. Error %s", err)
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			return
 		}
 	}
 
@@ -1328,8 +1058,10 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 
 	log.Infof("created domainID %d for %s\n", domainID, status.DomainName)
 	status.DomainId = domainID
-	status.Activated = true
 	status.BootTime = time.Now()
+	log.Infof("Set domainId %d bootTime %s for %s",
+		status.DomainId, status.BootTime.Format(time.RFC3339Nano),
+		status.Key())
 	status.State = types.BOOTING
 	publishDomainStatus(ctx, status)
 
@@ -1361,7 +1093,11 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
+		log.Infof("Update domainId %d bootTime %s for %s",
+			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
+			status.Key())
 	}
+	status.Activated = true
 	log.Infof("doActivateTail(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
@@ -1375,6 +1111,9 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
+		log.Infof("Update domainId %d bootTime %s for %s",
+			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
+			status.Key())
 	}
 	// If this is a delete of the App Instance we wait for a shorter time
 	// since all of the read-write disk images will be deleted.
@@ -1485,23 +1224,6 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	}
 	publishDomainStatus(ctx, status)
 
-	// Do we need to delete any rw files that should
-	// not be preserved across reboots?
-	for _, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			log.Infof("Removing container volume %s\n", ds.FSVolumeLocation)
-			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
-				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
-			}
-		} else if !ds.ReadOnly && !ds.Preserve {
-			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
-			if err := os.Remove(ds.ActiveFileLocation); err != nil {
-				log.Errorln(err)
-				// XXX return? Cleanup status?
-			}
-			delImageStatus(ctx, ds.ActiveFileLocation)
-		}
-	}
 	pciUnassign(ctx, status, false)
 
 	log.Infof("doInactivate(%v) done for %s\n",
@@ -1581,6 +1303,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
 		ds.Preserve = dc.Preserve
+		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
 		ds.Maxsizebytes = dc.Maxsizebytes
 		ds.Devtype = dc.Devtype
@@ -1596,46 +1319,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			xv = "xvd" + string(int('a')+i)
 		}
 		ds.Vdev = xv
-
-		target := ""
-		if ds.Format == zconfig.Format_CONTAINER {
-			ds.FSVolumeLocation = getContainerPath(config.UUIDandVersion.UUID.String())
-		} else if !dc.ReadOnly {
-			// XXX:Why are we excluding container images? Are they supposed to be
-			//  readonly
-			// Pick new location for a per-guest copy
-			// Use App UUID to make sure name is the same even
-			// after adds and deletes of instances and device reboots
-			target = appRwImageName(dc.ImageSha256,
-				config.UUIDandVersion.UUID.String(), dc.Format)
-		}
-		if _, err := os.Stat(target); err == nil && target != "" {
-			log.Infof("using existing rw image file location %s for ImageID(%s), ImageSha256(%s)",
-				target, ds.ImageID.String(), dc.ImageSha256)
-
-			ds.ActiveFileLocation = target
-			ds.FileLocation = target
-		} else {
-			if target != "" {
-				log.Infof("XXX Did not find target at %s for ContainerImageId(%s), ImageSha256(%s)",
-					target, ds.ImageID.String(), dc.ImageSha256)
-			}
-			log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)",
-				status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
-			location, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
-			if err != nil {
-				log.Errorf("configToStatus: Failed to get Image File Location (target %s) err: %s",
-					target, err)
-				return err
-			}
-			ds.FileLocation = location
-			if target != "" {
-				ds.ActiveFileLocation = target
-			} else {
-				ds.ActiveFileLocation = location
-			}
-		}
-
 	}
 	if numOfContainerDisks > 1 {
 		err := `Bundle contains more than one container disk, running multiple containers
@@ -1645,13 +1328,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
-		if status.IsContainer {
-			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
-			if err != nil {
-				return err
-			}
-			status.EnvVariables = envList
-		} else {
+		if !status.IsContainer {
 			ds, err := createCloudInitISO(ctx, config)
 			if err != nil {
 				return err
@@ -1793,7 +1470,7 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 // by comparing the output from 'qemu-img info' and the format passed
 // in object in config
 func checkDiskFormat(diskStatus types.DiskStatus) error {
-	imgInfo, err := diskmetrics.GetImgInfo(diskStatus.ActiveFileLocation)
+	imgInfo, err := diskmetrics.GetImgInfo(diskStatus.FileLocation)
 	if err != nil {
 		return err
 	}
@@ -1815,28 +1492,6 @@ func addNoDuplicate(list []string, add string) []string {
 	return append(list, add)
 }
 
-func cp(dst, src string) error {
-	if strings.Compare(dst, src) == 0 {
-		return nil
-	}
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	// no need to check errors on read only file, we already got everything
-	// we need from the filesystem, so nothing can go wrong now.
-	defer s.Close()
-	d, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(d, s); err != nil {
-		d.Close()
-		return err
-	}
-	return d.Close()
-}
-
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version can change but can't handle disk or
 // vif changes.
@@ -1844,23 +1499,27 @@ func cp(dst, src string) error {
 func handleModify(ctx *domainContext, key string,
 	config *types.DomainConfig, status *types.DomainStatus) {
 
-	log.Infof("handleModify(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Infof("handleModify(%v) activate %t for %s\n",
+		config.UUIDandVersion, config.Activate, config.DisplayName)
 
 	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 
 	changed := false
 	if config.Activate && !status.Activated {
+		log.Infof("handleModify(%v) activating for %s",
+			config.UUIDandVersion, config.DisplayName)
 		// AppNum could have changed if we did not already Activate
 		name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
-		status.DomainName = name
-		status.AppNum = config.AppNum
+		if status.DomainName != name {
+			status.DomainName = name
+			status.AppNum = config.AppNum
+			log.Infof("handleModify(%v) set domainName %s for %s\n",
+				config.UUIDandVersion, status.DomainName,
+				config.DisplayName)
+		}
 		status.VifList = checkIfEmu(config.VifList)
 		publishDomainStatus(ctx, status)
-		log.Infof("handleModify(%v) set domainName %s for %s\n",
-			config.UUIDandVersion, status.DomainName,
-			config.DisplayName)
 
 		// This has the effect of trying a boot again for any
 		// handleModify after an error.
@@ -1872,10 +1531,22 @@ func handleModify(ctx *domainContext, key string,
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status, false)
 		}
+		// Update disks based on any change to volumes
+		if err := configToStatus(ctx, *config, status); err != nil {
+			log.Errorf("Failed to update DomainStatus from %v: %s\n",
+				config, err)
+			status.PendingModify = false
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			publishDomainStatus(ctx, status)
+			return
+		}
 		updateStatusFromConfig(status, *config)
 		doActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
+		log.Infof("handleModify(%v) NOT activating for %s",
+			config.UUIDandVersion, config.DisplayName)
 		if status.LastErr != "" {
 			log.Infof("handleModify(%v) clearing existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
@@ -1890,6 +1561,18 @@ func handleModify(ctx *domainContext, key string,
 			updateStatusFromConfig(status, *config)
 			changed = true
 		}
+		// Update disks based on any change to volumes
+		if err := configToStatus(ctx, *config, status); err != nil {
+			log.Errorf("Failed to update DomainStatus from %v: %s\n",
+				config, err)
+			status.PendingModify = false
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			publishDomainStatus(ctx, status)
+			return
+		}
+		updateStatusFromConfig(status, *config)
+		changed = true
 	}
 	if changed {
 		// XXX could we also have changes in the IoBundle?
@@ -1987,25 +1670,6 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	return gone
 }
 
-func deleteStorageDisksForDomain(ctx *domainContext,
-	statusPtr *types.DomainStatus) {
-	for _, ds := range statusPtr.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			log.Infof("Removing container volume %s\n", ds.FSVolumeLocation)
-			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
-				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
-			}
-		} else if !ds.ReadOnly && ds.Preserve {
-			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
-			if err := os.Remove(ds.ActiveFileLocation); err != nil {
-				log.Errorln(err)
-				// XXX return? Cleanup status?
-			}
-			delImageStatus(ctx, ds.ActiveFileLocation)
-		}
-	}
-}
-
 func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	log.Infof("handleDelete(%v) for %s\n",
@@ -2037,10 +1701,6 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	if err := os.Remove(filename); err != nil {
 		log.Errorln(err)
 	}
-
-	// Do we need to delete any rw files that were not deleted during
-	// inactivation i.e. those preserved across reboots?
-	deleteStorageDisksForDomain(ctx, status)
 
 	status.PendingDelete = false
 	publishDomainStatus(ctx, status)
@@ -2142,9 +1802,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
-			ctx.vdiskGCTime = gcp.GlobalValueInt(types.VdiskGCTime)
-		}
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
 			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
 		}
@@ -2157,9 +1814,9 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		}
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s. VdiskGCTime: %d, "+
+	log.Infof("handleGlobalConfigModify done for %s. "+
 		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d",
-		key, ctx.vdiskGCTime, ctx.domainBootRetryTime, ctx.usbAccess,
+		key, ctx.domainBootRetryTime, ctx.usbAccess,
 		ctx.metricInterval)
 }
 
@@ -2175,26 +1832,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
-}
-
-// Make sure the (virtual) size of the disk is at least maxsizebytes
-func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
-	if maxsizebytes == 0 {
-		return nil
-	}
-	currentSize, err := diskmetrics.GetDiskVirtualSize(diskfile)
-	if err != nil {
-		return err
-	}
-	log.Infof("maybeResizeDisk(%s) current %d to %d",
-		diskfile, currentSize, maxsizebytes)
-	if maxsizebytes < currentSize {
-		log.Warnf("maybeResizeDisk(%s) already above maxsize  %d vs. %d",
-			diskfile, maxsizebytes, currentSize)
-		return nil
-	}
-	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
-	return err
 }
 
 // getCloudInitUserData : returns decrypted cloud-init user data
@@ -2243,6 +1880,7 @@ func fetchEnvVariablesFromCloudInit(ctx *domainContext,
 }
 
 // Create a isofs with user-data and meta-data and add it to DiskStatus
+// XXX this should move to volumemgr
 func createCloudInitISO(ctx *domainContext,
 	config types.DomainConfig) (*types.DiskStatus, error) {
 
@@ -2289,11 +1927,11 @@ func createCloudInitISO(ctx *domainContext,
 	}
 
 	ds := new(types.DiskStatus)
-	ds.ActiveFileLocation = fileName
+	ds.FileLocation = fileName
 	ds.Format = zconfig.Format_RAW
 	ds.Vdev = "hdc:cdrom"
 	ds.ReadOnly = false
-	ds.Preserve = true // Prevent attempt to copy
+	ds.Preserve = true // Prevent attempt to copy; XXX remove
 	return ds, nil
 }
 
@@ -2805,21 +2443,4 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 		}
 	}
 	return false
-}
-
-// gc timer just started, reset the LastUse timestamp
-func gcResetObjectsLastUse(ctx *domainContext, dirName string) {
-
-	log.Debugf("gcResetObjectsLastUse()\n")
-
-	pub := ctx.pubImageStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.ImageStatus)
-		if status.RefCount == 0 {
-			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", status.Key())
-			status.LastUse = time.Now()
-			publishImageStatus(ctx, &status)
-		}
-	}
 }

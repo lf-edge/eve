@@ -1,6 +1,6 @@
 # EVE is Edge Virtualization Engine
 
-[![CircleCI](https://circleci.com/gh/lf-edge/eve.svg?style=svg)](https://circleci.com/gh/lf-edge/eve)
+[![CircleCI](https://circleci.com/gh/lf-edge/eve.svg?style=svg)](https://circleci.com/gh/lf-edge/eve/tree/master)
 [![Goreport](https://goreportcard.com/badge/github.com/lf-edge/eve)](https://goreportcard.com/report/github.com/lf-edge/eve)
 [![Godoc](https://godoc.org/github.com/lf-edge/eve/pkg/pillar?status.svg)](https://godoc.org/github.com/lf-edge/eve/pkg/pillar)
 
@@ -178,15 +178,13 @@ Raspberry Pi 4 is a tiny, but capable enough ARM board that allows EVE to run wi
 Since a full Raspberry Pi 4 support is only available in upstream Linux kernels starting from 5.6.0, you'll have to use that bleeding edge kernel for your build. Another peculiar aspect of this board is that it doesn't use a standard [bootloader (e.g. u-boot or UEFI)](https://www.raspberrypi.org/documentation/configuration/boot_folder.md) so we need to trick it into using our own u-boot as UEFI environment. Thankfully, our Makefile logic tries to automate as much of it as possible. Thus, putting it all together, here are the steps to run EVE on Raspberry Pi 4:
 
 1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
-2. Build a live image `make ZARCH=arm64 MEDIA_SIZE=15000 live.rpi`
+2. Build a live image `make ZARCH=arm64 MEDIA_SIZE=15000 live.rpi` (you should replace MEDIA_SIZE with the value that corresponds to the size of your SD card in MB -- keep in mind that because of flash wear, the actual size may be smaller than what is advertised by the manufacturer e.g  15000 is a reasonable value for a card that is advertised as 16G)
 3. Flash the `dist/arm64/live.rpi` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 4. Always make sure to verify the image by running `gdisk /dev/XXX` and picking 'v' option
 
-In step #2 you should replace MEDIA_SIZE with the value that corresponds to the size of your SD card in MB. Note, however, that because of flash wear, the actual size may be smaller than what is advertised by the manufacturer (it is likely to use 15000 for a card that is advertised as 16G).
-
 Step #4 is extermely important and can NOT be skipped (otherwise you will end up with and EVE image that can NOT be upgraded).
 
-Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 rootfs-rpi` and give resulting `dist/arm64/installer/rootfs-rpi.img` to the controller.
+Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 rootfs-kvm-rpi` and give resulting `dist/arm64/installer/rootfs.img` to the controller.
 
 You may notice that the Makefile logic doesn't produce regular devicetree blob for Raspberry Pi 4 and only enables it to run in KVM hypervisor mode. Both of these may change in the future as we evolve support for this board, but for now you just need to keep this in mind and alway build `live.rpi` instead of `live.img` (the default live image of EVE).
 

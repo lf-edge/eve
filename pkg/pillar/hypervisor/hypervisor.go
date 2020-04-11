@@ -26,6 +26,7 @@ type Hypervisor interface {
 	Info(string, int) error
 	LookupByName(string, int) (int, error)
 
+	IsDomainPotentiallyShuttingDown(string) bool
 	IsDeviceModelAlive(int) bool
 
 	PCIReserve(string) error

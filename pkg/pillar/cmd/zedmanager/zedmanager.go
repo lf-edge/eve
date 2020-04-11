@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
+// Get AppInstanceConfig from zedagent, drive config to VolumeMgr,
 // IdentityMgr, and Zedrouter. Collect status from those services and make
 // the combined AppInstanceStatus available to zedagent.
 
@@ -30,39 +30,27 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Set from Makefile
+// Version can be set from Makefile
 var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	configRestarted         bool
-	verifierRestarted       bool
-	rwImageAvailable        bool
-	subAppInstanceConfig    pubsub.Subscription
-	pubAppInstanceStatus    pubsub.Publication
-	subDeviceNetworkStatus  pubsub.Subscription
-	pubAppNetworkConfig     pubsub.Publication
-	subAppNetworkStatus     pubsub.Subscription
-	pubDomainConfig         pubsub.Publication
-	subDomainStatus         pubsub.Subscription
-	subImageStatus          pubsub.Subscription
-	pubEIDConfig            pubsub.Publication
-	subEIDStatus            pubsub.Subscription
-	subCertObjStatus        pubsub.Subscription
-	pubAppImgDownloadConfig pubsub.Publication
-	subAppImgDownloadStatus pubsub.Subscription
-	pubAppImgVerifierConfig pubsub.Publication
-	subAppImgVerifierStatus pubsub.Subscription
-	pubAppImgPersistConfig  pubsub.Publication
-	subAppImgPersistStatus  pubsub.Subscription
-	subGlobalConfig         pubsub.Subscription
-	globalConfig            *types.ConfigItemValueMap
-	pubUuidToNum            pubsub.Publication
-	pubAppAndImageToHash    pubsub.Publication
-	GCInitialized           bool
+	subAppInstanceConfig pubsub.Subscription
+	pubAppInstanceStatus pubsub.Publication
+	pubVolumeConfig      pubsub.Publication
+	subVolumeStatus      pubsub.Subscription
+	pubAppNetworkConfig  pubsub.Publication
+	subAppNetworkStatus  pubsub.Subscription
+	pubDomainConfig      pubsub.Publication
+	subDomainStatus      pubsub.Subscription
+	pubEIDConfig         pubsub.Publication
+	subEIDStatus         pubsub.Subscription
+	subGlobalConfig      pubsub.Subscription
+	globalConfig         *types.ConfigItemValueMap
+	pubUuidToNum         pubsub.Publication
+	pubAppAndImageToHash pubsub.Publication
+	GCInitialized        bool
 }
-
-var deviceNetworkStatus types.DeviceNetworkStatus
 
 var debug = false
 var debugOverride bool // From command line arg
@@ -108,6 +96,16 @@ func Run(ps *pubsub.PubSub) {
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
+	pubVolumeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.VolumeConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumeConfig = pubVolumeConfig
+
 	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.AppNetworkConfig{},
@@ -137,39 +135,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
-
-	pubAppImgDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.DownloaderConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubAppImgDownloadConfig.ClearRestarted()
-	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
-
-	pubAppImgVerifierConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VerifyImageConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubAppImgVerifierConfig.ClearRestarted()
-	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
-
-	pubAppImgPersistConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.AppImgObj,
-			TopicType:  types.PersistImageConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppImgPersistConfig = pubAppImgPersistConfig
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -229,6 +194,25 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
+	// Look for VolumeStatus from volumemgr
+	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.VolumeStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVolumeStatusModify,
+		ModifyHandler: handleVolumeStatusModify,
+		DeleteHandler: handleVolumeStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
+
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "zedrouter",
@@ -266,81 +250,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Get DomainStatus from domainmgr
-	subImageStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "domainmgr",
-		TopicImpl:      types.ImageStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-		RestartHandler: handleImageStatusRestarted,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subImageStatus = subImageStatus
-	subImageStatus.Activate()
-
-	// Look for DownloaderStatus from downloader
-	subAppImgDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "downloader",
-		AgentScope:    types.AppImgObj,
-		TopicImpl:     types.DownloaderStatus{},
-		Activate:      false,
-		Ctx:           &ctx,
-		CreateHandler: handleDownloaderStatusModify,
-		ModifyHandler: handleDownloaderStatusModify,
-		DeleteHandler: handleDownloaderStatusDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subAppImgDownloadStatus = subAppImgDownloadStatus
-	subAppImgDownloadStatus.Activate()
-
-	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "verifier",
-		AgentScope:     types.AppImgObj,
-		TopicImpl:      types.VerifyImageStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		CreateHandler:  handleVerifyImageStatusModify,
-		ModifyHandler:  handleVerifyImageStatusModify,
-		DeleteHandler:  handleVerifyImageStatusDelete,
-		RestartHandler: handleVerifierRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
-	subAppImgVerifierStatus.Activate()
-
-	// Look for PersistImageStatus from verifier
-	subAppImgPersistStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "verifier",
-			AgentScope:    types.AppImgObj,
-			TopicImpl:     types.PersistImageStatus{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handlePersistImageStatusModify,
-			ModifyHandler: handlePersistImageStatusModify,
-			DeleteHandler: handlePersistImageStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subAppImgPersistStatus = subAppImgPersistStatus
-	subAppImgPersistStatus.Activate()
-
 	// Get IdentityStatus from identitymgr
 	subEIDStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "identitymgr",
@@ -360,41 +269,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
-	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "nim",
-		TopicImpl:     types.DeviceNetworkStatus{},
-		Activate:      false,
-		Ctx:           &ctx,
-		CreateHandler: handleDNSModify,
-		ModifyHandler: handleDNSModify,
-		DeleteHandler: handleDNSDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
-	subDeviceNetworkStatus.Activate()
-
-	// Look for CertObjStatus from baseosmgr
-	subCertObjStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "baseosmgr",
-		TopicImpl:     types.CertObjStatus{},
-		Activate:      false,
-		Ctx:           &ctx,
-		CreateHandler: handleCertObjStatusModify,
-		ModifyHandler: handleCertObjStatusModify,
-		DeleteHandler: handleCertObjStatusDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subCertObjStatus = subCertObjStatus
-	subCertObjStatus.Activate()
-
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -405,56 +279,14 @@ func Run(ps *pubsub.PubSub) {
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
-
-	// First we process the verifierStatus and ImageStatus to avoid downloading
-	// an image we already have in place.
-	for !ctx.verifierRestarted || !ctx.rwImageAvailable {
-		log.Infof("Waiting for verifier %t rwImageAvailable %t",
-			ctx.verifierRestarted, ctx.rwImageAvailable)
-
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-			if ctx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
-			}
-
-		case change := <-subAppImgPersistStatus.MsgChan():
-			subAppImgPersistStatus.ProcessChange(change)
-
-		case change := <-subImageStatus.MsgChan():
-			subImageStatus.ProcessChange(change)
-			if ctx.rwImageAvailable {
-				log.Infof("rwImageAvailable\n")
-			}
-
-		case <-stillRunning.C:
-		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-
 	log.Infof("Handling all inputs\n")
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		// handle cert ObjectsChanges
-		case change := <-subCertObjStatus.MsgChan():
-			subCertObjStatus.ProcessChange(change)
-
-		case change := <-subAppImgDownloadStatus.MsgChan():
-			subAppImgDownloadStatus.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgPersistStatus.MsgChan():
-			subAppImgPersistStatus.ProcessChange(change)
+		case change := <-subVolumeStatus.MsgChan():
+			subVolumeStatus.ProcessChange(change)
 
 		case change := <-subEIDStatus.MsgChan():
 			subEIDStatus.ProcessChange(change)
@@ -465,14 +297,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subDomainStatus.MsgChan():
 			subDomainStatus.ProcessChange(change)
 
-		case change := <-subImageStatus.MsgChan():
-			subImageStatus.ProcessChange(change)
-
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -484,40 +310,16 @@ func Run(ps *pubsub.PubSub) {
 // AppInstanceConfig (which triggers this callback) we propagate a sequence of
 // restarts so that the agents don't do extra work.
 // We propagate a seqence of restarted from the zedmanager config
-// and verifier status to identitymgr, then from identitymgr to zedrouter,
+// to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
-// This removes the need for extra downloads/verifications and extra copying
-// of the rootfs in domainmgr.
+// XXX is that sequence still needed with volumemgr in place?
+// Need EIDs before zedrouter ...
 func handleConfigRestart(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
 
 	log.Infof("handleConfigRestart(%v)\n", done)
 	if done {
-		ctx.configRestarted = true
-		if ctx.verifierRestarted {
-			ctx.pubEIDConfig.SignalRestarted()
-		}
-	}
-}
-
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*zedmanagerContext)
-
-	log.Infof("handleVerifierRestarted(%v)\n", done)
-	if done {
-		ctx.verifierRestarted = true
-		if ctx.configRestarted {
-			ctx.pubEIDConfig.SignalRestarted()
-		}
-	}
-}
-
-func handleImageStatusRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*zedmanagerContext)
-
-	log.Infof("handleImageStatusRestarted(%v)\n", done)
-	if done {
-		ctx.rwImageAvailable = true
+		ctx.pubEIDConfig.SignalRestarted()
 	}
 }
 
@@ -632,7 +434,7 @@ func handleCreate(ctxArg interface{}, key string,
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
 			status.PurgeCmd.Counter = config.PurgeCmd.Counter
-			status.PurgeInprogress = types.DOWNLOAD
+			status.PurgeInprogress = types.RecreateVolumes
 			status.State = types.PURGING
 			// We persist the PurgeCmd Counter when
 			// PurgeInprogress is done
@@ -646,6 +448,16 @@ func handleCreate(ctxArg interface{}, key string,
 			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
 			true, "purgeCmdCounter")
 	}
+	// Pretend that the controller specified purgeCounter for the first
+	// disk. Then StorageStatus will start with that value below.
+	if len(config.StorageConfigList) > 0 &&
+		config.StorageConfigList[0].PurgeCounter != config.PurgeCmd.Counter {
+		sc := &config.StorageConfigList[0]
+		log.Infof("Setting purgeCounter to %d for %s",
+			config.PurgeCmd.Counter, config.Key())
+		sc.PurgeCounter = config.PurgeCmd.Counter
+	}
+
 	status.StorageStatusList = make([]types.StorageStatus,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
@@ -656,6 +468,7 @@ func handleCreate(ctxArg interface{}, key string,
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
 		}
+		// XXX before latching we should ResolveConfig to get the sha
 		maybeLatchImageSha(ctx, config, ss)
 	}
 
@@ -787,7 +600,7 @@ func handleModify(ctxArg interface{}, key string,
 			// would also restart the app. Hence we can update
 			// the status counter here.
 			status.RestartCmd.Counter = config.RestartCmd.Counter
-			status.RestartInprogress = types.BRING_DOWN
+			status.RestartInprogress = types.BringDown
 			status.State = types.RESTARTING
 		} else {
 			log.Infof("handleModify(%v) for %s restartcmd ignored config !Activate\n",
@@ -802,7 +615,7 @@ func handleModify(ctxArg interface{}, key string,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
 		status.PurgeCmd.Counter = config.PurgeCmd.Counter
-		status.PurgeInprogress = types.DOWNLOAD
+		status.PurgeInprogress = types.RecreateVolumes
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
 	}
@@ -853,8 +666,15 @@ func quantifyChanges(config types.AppInstanceConfig,
 			len(config.StorageConfigList))
 		needPurge = true
 	} else {
-		for i, sc := range config.StorageConfigList {
-			ss := status.StorageStatusList[i]
+		for _, sc := range config.StorageConfigList {
+			ss := lookupStorageStatus(&status, sc)
+			if ss == nil {
+				log.Errorf("quantifyChanges missing StorageStatus for (Name: %s, "+
+					"ImageSha256: %s, ImageID: %s, PurgeCounter: %d)",
+					sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
+				needPurge = true
+				continue
+			}
 			if ss.ImageID != sc.ImageID {
 				log.Infof("quantifyChanges storage imageID changed from %s to %s\n",
 					ss.ImageID, sc.ImageID)
@@ -964,36 +784,6 @@ func quantifyChanges(config types.AppInstanceConfig,
 	log.Infof("quantifyChanges for %s %s returns %v, %v\n",
 		config.Key(), config.DisplayName, needPurge, needRestart)
 	return needPurge, needRestart
-}
-
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
-
-	status := statusArg.(types.DeviceNetworkStatus)
-	if key != "global" {
-		log.Debugf("handleDNSModify: ignoring %s\n", key)
-		return
-	}
-	log.Infof("handleDNSModify for %s\n", key)
-	if cmp.Equal(deviceNetworkStatus, status) {
-		log.Infof("handleDNSModify no change\n")
-		return
-	}
-	log.Infof("handleDNSModify: changed %v",
-		cmp.Diff(deviceNetworkStatus, status))
-	deviceNetworkStatus = status
-	log.Infof("handleDNSModify done for %s\n", key)
-}
-
-func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
-
-	log.Infof("handleDNSDelete for %s\n", key)
-	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s\n", key)
-		return
-	}
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
 // Handles both create and modify events

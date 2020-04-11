@@ -100,3 +100,70 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	log.Errorln(errStr)
 	return errors.New(errStr)
 }
+
+func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
+	syncOp zedUpload.SyncOpType, downloadURL string,
+	auth *zedUpload.AuthInput, dpath, region string, ifname string,
+	ipSrc net.IP, filename string) (string, error) {
+
+	// create Endpoint
+	var dEndPoint zedUpload.DronaEndPoint
+	var err error
+	var sha256 string
+	switch trType {
+	case zedUpload.SyncOCIRegistryTr:
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, filename, auth)
+	default:
+		err = fmt.Errorf("Not supported transport type: %s", trType)
+	}
+	if err != nil {
+		log.Errorf("NewSyncerDest failed: %s\n", err)
+		return sha256, err
+	}
+	// check for proxies on the selected management port interface
+	proxyURL, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, downloadURL)
+	if err == nil && proxyURL != nil {
+		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
+		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
+	} else {
+		dEndPoint.WithSrcIPSelection(ipSrc)
+	}
+
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Infof("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
+		"downloadURL: <%s>, ifname: %s, ipSrc: %+v",
+		trType, dpath, region, filename, downloadURL, ifname, ipSrc)
+	// create Request
+	// Round up from bytes to Mbytes
+	req := dEndPoint.NewRequest(syncOp, filename, "",
+		0, true, respChan)
+	if req == nil {
+		return sha256, errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	for resp := range respChan {
+		if resp.IsDnUpdate() {
+			continue
+		}
+		if syncOp == zedUpload.SyncOpGetObjectMetaData {
+			sha256 = resp.GetSha256()
+		} else {
+			_, err = resp.GetUpStatus()
+		}
+		if resp.IsError() {
+			return sha256, err
+		}
+		log.Infof("Resolve config Done for %v: sha %v",
+			filename, resp.GetSha256())
+		return sha256, nil
+	}
+	// if we got here, channel was closed
+	// range ends on a closed channel, which is the equivalent of "!ok"
+	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
+		dpath, region, filename)
+	log.Errorln(errStr)
+	return sha256, errors.New(errStr)
+}

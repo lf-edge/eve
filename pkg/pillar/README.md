@@ -14,6 +14,7 @@ The agents are:
 - zedagent - communicate using the device API to the controller to retrieve configuration and send status and metrics
 - logmanager - send logs to the controller for debugging of these agents
 - baseosmgr - handle updates of the base OS (hypervisors plus all of the services which make up EVE) using dual partitions for fallback
+- volumemgr - create volumes based on downloads or from scratch
 - downloader - download objects like images and certificates
 - verifier - verify cryptographic checksums and signatures on downloaded objects
 - zedmanager - drive the application instance lifecycle

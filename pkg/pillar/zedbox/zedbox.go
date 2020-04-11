@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/volumemgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforaddr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/wstunnelclient"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedagent"
@@ -50,6 +51,7 @@ var entrypoints = map[string]func(*pubsub.PubSub){
 	"nim":              nim.Run,
 	"nodeagent":        nodeagent.Run,
 	"verifier":         verifier.Run,
+	"volumemgr":        volumemgr.Run,
 	"waitforaddr":      waitforaddr.Run,
 	"zedagent":         zedagent.Run,
 	"zedmanager":       zedmanager.Run,

@@ -19,14 +19,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// GetCipherCredentials : decrypt credential block
+// GetCipherCredentials : decrypt encryption block
 func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (types.CipherBlockStatus,
 	zconfig.EncryptionBlock, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
-	var cred zconfig.EncryptionBlock
+	var decBlock zconfig.EncryptionBlock
 	if !cipherBlock.IsCipher {
-		return handleCipherBlockCredError(agentName, cipherBlock, cred, nil)
+		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, nil)
 	}
 	log.Infof("%s, cipherblock decryption, using cipher-context: %s\n",
 		cipherBlock.Key(), cipherBlock.CipherContextID)
@@ -35,24 +35,24 @@ func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (typ
 			cipherBlock.Key(), cipherBlock.Error)
 		log.Errorln(errStr)
 		err := errors.New(errStr)
-		return handleCipherBlockCredError(agentName, cipherBlock, cred, err)
+		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
 	}
 	clearBytes, err := tpmmgr.DecryptCipherBlock(*cipherBlock)
 	if err != nil {
 		log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(agentName, cipherBlock, cred, err)
+		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
 	}
-	if err := proto.Unmarshal(clearBytes, &cred); err != nil {
-		log.Errorf("%s, credential unmarshall failed, %v\n",
+	if err := proto.Unmarshal(clearBytes, &decBlock); err != nil {
+		log.Errorf("%s, encryption block unmarshall failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(agentName, cipherBlock, cred, err)
+		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
 	}
 	if err == nil {
 		log.Infof("%s, cipherblock decryption successful\n",
 			cipherBlock.Key())
 	}
-	return *cipherBlock, cred, err
+	return *cipherBlock, decBlock, err
 }
 
 // GetCipherData : decrypt plain text
@@ -84,20 +84,19 @@ func GetCipherData(agentName string, status types.CipherBlockStatus,
 
 // incase, processing fails for cipher information received from controller,
 // try to return valid plain-text data for further processing
-
-// for credential block
+// for encryption block
 func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatus,
-	cred zconfig.EncryptionBlock, err error) (types.CipherBlockStatus, zconfig.EncryptionBlock, error) {
+	decBlock zconfig.EncryptionBlock, err error) (types.CipherBlockStatus, zconfig.EncryptionBlock, error) {
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		status.SetErrorInfo(agentName, errStr)
 		// we have already captured the error info above
-		// for valid cred info, reset the error to proceed
-		if !reflect.DeepEqual(cred, zconfig.EncryptionBlock{}) {
+		// for valid encryption block info, reset the error to proceed
+		if !reflect.DeepEqual(decBlock, zconfig.EncryptionBlock{}) {
 			err = nil
 		}
 	}
-	return *status, cred, err
+	return *status, decBlock, err
 }
 
 // for plain text data

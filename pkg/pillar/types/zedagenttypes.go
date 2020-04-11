@@ -186,12 +186,10 @@ func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorInfo
 
 // return value holder
 type RetStatus struct {
-	Changed          bool
-	MinState         SwState
-	WaitingForCerts  bool
-	MissingDatastore bool
-	AllErrors        string
-	ErrorTime        time.Time
+	Changed   bool
+	MinState  SwState
+	AllErrors string
+	ErrorTime time.Time
 }
 
 // Mirrors proto definition for ConfigItem

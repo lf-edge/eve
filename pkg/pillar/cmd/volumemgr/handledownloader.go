@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package zedmanager
+package volumemgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -9,47 +9,46 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, imageID uuid.UUID,
-	ss types.StorageStatus) {
+func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeStatus) {
 
-	log.Infof("AddOrRefcountDownloaderConfig for %s\n", imageID)
-	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n", ss)
+	log.Infof("AddOrRefcountDownloaderConfig for %s\n", status.VolumeID)
 
-	m := lookupDownloaderConfig(ctx, imageID)
+	m := lookupDownloaderConfig(ctx, status.ObjType, status.VolumeID)
 	if m != nil {
 		m.RefCount += 1
-		if m.IsContainer != ss.IsContainer {
+		if m.IsContainer != status.DownloadOrigin.IsContainer {
 			log.Infof("change IsContainer to %t for %s",
-				ss.IsContainer, imageID)
+				status.DownloadOrigin.IsContainer, status.VolumeID)
 		}
 		log.Infof("downloader config exists for %s to refcount %d\n",
-			imageID, m.RefCount)
-		publishDownloaderConfig(ctx, m)
+			status.VolumeID, m.RefCount)
+		publishDownloaderConfig(ctx, status.ObjType, m)
 	} else {
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
-			imageID)
+			status.VolumeID)
 		n := types.DownloaderConfig{
-			ImageID:     ss.ImageID,
-			DatastoreID: ss.DatastoreID,
-			Name:        ss.Name,
-			NameIsURL:   ss.NameIsURL,
-			IsContainer: ss.IsContainer,
+			ImageID:     status.VolumeID,
+			DatastoreID: status.DownloadOrigin.DatastoreID,
+			// XXX StorageConfig.Name is what?
+			Name:        status.DownloadOrigin.Name, // XXX URL? DisplayName?
+			NameIsURL:   status.DownloadOrigin.NameIsURL,
+			IsContainer: status.DownloadOrigin.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
-			Size:     ss.Size,
+			Size:     status.DownloadOrigin.MaxSizeBytes, // XXX should this be MaxSize
 			RefCount: 1,
 		}
 		log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v\n", n)
-		publishDownloaderConfig(ctx, &n)
+		publishDownloaderConfig(ctx, status.ObjType, &n)
 	}
 	log.Infof("AddOrRefcountDownloaderConfig done for %s\n",
-		imageID)
+		status.VolumeID)
 }
 
-func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
-	log.Infof("MaybeRemoveDownloaderConfig for %s\n", imageID)
+func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageID uuid.UUID) {
+	log.Infof("MaybeRemoveDownloaderConfig(%s) for %s\n", imageID, objType)
 
-	m := lookupDownloaderConfig(ctx, imageID)
+	m := lookupDownloaderConfig(ctx, objType, imageID)
 	if m == nil {
 		log.Infof("MaybeRemoveDownloaderConfig: config missing for %s\n",
 			imageID)
@@ -64,44 +63,50 @@ func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
 		m.RefCount, imageID)
-	publishDownloaderConfig(ctx, m)
+	publishDownloaderConfig(ctx, objType, m)
 }
 
-func publishDownloaderConfig(ctx *zedmanagerContext,
+func publishDownloaderConfig(ctx *volumemgrContext, objType string,
 	config *types.DownloaderConfig) {
 
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s)\n", key)
-	pub := ctx.pubAppImgDownloadConfig
+	pub := ctx.publication(*config, objType)
 	pub.Publish(key, *config)
 }
 
-func unpublishDownloaderConfig(ctx *zedmanagerContext,
+func unpublishDownloaderConfig(ctx *volumemgrContext, objType string,
 	config *types.DownloaderConfig) {
 
 	key := config.Key()
 	log.Debugf("unpublishDownloaderConfig(%s)\n", key)
-	pub := ctx.pubAppImgDownloadConfig
+	pub := ctx.publication(*config, objType)
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Errorf("unpublishVerifyImageConfig(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 
 func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.DownloaderStatus)
-	ctx := ctxArg.(*zedmanagerContext)
+	ctx := ctxArg.(*volumemgrContext)
 	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d"+
 		"status.Expired: %+v\n",
 		status.ImageID, status.RefCount, status.Expired)
 
 	// Handling even if Pending is set to process Progress updates
 
+	// XXX still need this downloader handshake?
 	// We handle two special cases in the handshake here
 	// 1. downloader added a status with RefCount=0 based on
 	// an existing file. We echo that with a config with RefCount=0
 	// 2. downloader set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupDownloaderConfig(ctx, status.ImageID)
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
 			key)
@@ -117,25 +122,25 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 			Size:     status.Size,
 			RefCount: 0,
 		}
-		publishDownloaderConfig(ctx, &n)
+		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return
 	}
 	if config != nil && config.RefCount == 0 && status.Expired {
 		log.Infof("handleDownloaderStatusModify expired - deleting config %s\n",
 			key)
-		unpublishDownloaderConfig(ctx, config)
+		unpublishDownloaderConfig(ctx, status.ObjType, config)
 		return
 	}
 
 	// Normal update case
-	updateAIStatusWithStorageImageID(ctx, status.ImageID)
+	updateVolumeStatus(ctx, status.ObjType, status.ImageID)
 	log.Infof("handleDownloaderStatusModify done for %s\n", status.ImageID)
 }
 
-func lookupDownloaderConfig(ctx *zedmanagerContext,
+func lookupDownloaderConfig(ctx *volumemgrContext, objType string,
 	imageID uuid.UUID) *types.DownloaderConfig {
 
-	pub := ctx.pubAppImgDownloadConfig
+	pub := ctx.publication(types.DownloaderConfig{}, objType)
 	c, _ := pub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupDownloaderConfig(%s) not found\n", imageID)
@@ -146,10 +151,10 @@ func lookupDownloaderConfig(ctx *zedmanagerContext,
 }
 
 // Note that this function returns the entry even if Pending* is set.
-func lookupDownloaderStatus(ctx *zedmanagerContext,
+func lookupDownloaderStatus(ctx *volumemgrContext, objType string,
 	imageID uuid.UUID) *types.DownloaderStatus {
 
-	sub := ctx.subAppImgDownloadStatus
+	sub := ctx.subscription(types.DownloaderStatus{}, objType)
 	c, _ := sub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupDownloaderStatus(%s) not found\n", imageID)
@@ -163,15 +168,15 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Infof("handleDownloaderStatusDelete for %s\n", key)
-	ctx := ctxArg.(*zedmanagerContext)
+	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.DownloaderStatus)
-	removeAIStatusImageID(ctx, status.ImageID)
+	updateVolumeStatus(ctx, status.ObjType, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupDownloaderConfig(ctx, status.ImageID)
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleDownloaderStatusDelete delete config for %s\n",
 			key)
-		unpublishDownloaderConfig(ctx, config)
+		unpublishDownloaderConfig(ctx, status.ObjType, config)
 	}
 	log.Infof("handleDownloaderStatusDelete done for %s\n", key)
 }

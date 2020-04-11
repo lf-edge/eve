@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
+// Get AppInstanceConfig from zedagent, drive config to VolumeMgr,
 // IdentityMgr, and Zedrouter. Collect status from those services and make
 // the combined AppInstanceStatus available to zedagent.
 

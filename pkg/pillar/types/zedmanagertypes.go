@@ -136,11 +136,12 @@ type AppInstanceStatus struct {
 // Track more complicated workflows
 type Inprogress uint8
 
+// NotInprogress and other values for Inprogress
 const (
-	NONE     Inprogress = iota
-	DOWNLOAD            // Download and verify new images
-	BRING_DOWN
-	BRING_UP
+	NotInprogress   Inprogress = iota
+	RecreateVolumes            // Download and verify new images if need be
+	BringDown
+	BringUp
 )
 
 func (status AppInstanceStatus) Key() string {
@@ -241,6 +242,7 @@ type StorageConfig struct {
 	// ImageID - UUID of the image
 	ImageID          uuid.UUID
 	DatastoreID      uuid.UUID
+	PurgeCounter     uint32
 	Name             string   // XXX Do depend on URL for clobber avoidance?
 	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
@@ -273,6 +275,7 @@ type StorageStatus struct {
 	// ImageID - UUID of the image
 	ImageID            uuid.UUID
 	DatastoreID        uuid.UUID
+	PurgeCounter       uint32
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
 	NameIsURL          bool     // If not we form URL based on datastore info
@@ -288,8 +291,7 @@ type StorageStatus struct {
 	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
 	Progress           uint    // In percent i.e., 0-100
-	HasDownloaderRef   bool    // Reference against downloader to clean up
-	HasVerifierRef     bool    // Reference against verifier to clean up
+	HasVolumemgrRef    bool    // Reference against volumemgr to clean up
 	IsContainer        bool    // Is the image a Container??
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
@@ -300,6 +302,7 @@ type StorageStatus struct {
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
 func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.DatastoreID = sc.DatastoreID
+	ss.PurgeCounter = sc.PurgeCounter
 	ss.Name = sc.Name
 	ss.NameIsURL = sc.NameIsURL
 	ss.ImageID = sc.ImageID
@@ -344,52 +347,59 @@ func (ss *StorageStatus) ClearErrorInfo() {
 	ss.ErrorTime = time.Time{}
 }
 
-// IsCertsAvailable checks certificate requirement/availability for a storage object
-func (ss StorageStatus) IsCertsAvailable(displaystr string) (bool, error) {
-	if !ss.needsCerts() {
+// IsCertsAvailable checks certificate requirement/availability for a Volume object
+func (vs VolumeStatus) IsCertsAvailable(displaystr string) (bool, error) {
+	if !vs.needsCerts() {
 		log.Debugf("%s, Certs are not required\n", displaystr)
 		return false, nil
 	}
-	cidx, err := ss.getCertCount(displaystr)
+	cidx, err := vs.getCertCount(displaystr)
 	return cidx != 0, err
 }
 
-// HandleCertStatus gets the CertObject Status for the storage object
+// HandleCertStatus gets the CertObject Status for the volume object
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
-func (ss StorageStatus) HandleCertStatus(displaystr string,
+func (vs VolumeStatus) HandleCertStatus(displaystr string,
 	certObjStatus CertObjStatus) (bool, ErrorInfo) {
-	if ret, errInfo := ss.checkCertsStatusForObject(certObjStatus); !ret {
+	if ret, errInfo := vs.checkCertsStatusForObject(certObjStatus); !ret {
 		log.Infof("%s, Certs are still not ready\n", displaystr)
 		return ret, errInfo
 	}
-	if ret := ss.checkCertsForObject(); !ret {
+	if ret := vs.checkCertsForObject(); !ret {
 		log.Infof("%s, Certs are still not installed\n", displaystr)
 		return ret, ErrorInfo{}
 	}
 	return true, ErrorInfo{}
 }
 
-// needsCerts whether certificates are required for the Storage Object
-func (ss StorageStatus) needsCerts() bool {
-	if len(ss.ImageSignature) == 0 {
+// needsCerts whether certificates are required for the Volume object
+func (vs VolumeStatus) needsCerts() bool {
+	if vs.DownloadOrigin == nil {
+		return false
+	}
+	if len(vs.DownloadOrigin.ImageSignature) == 0 {
 		return false
 	}
 	return true
 }
 
-// getCertCount returns the number of certificates for the Storage Object
+// getCertCount returns the number of certificates for the Volume Object
 // called with valid ImageSignature only
-func (ss StorageStatus) getCertCount(displaystr string) (int, error) {
+func (vs VolumeStatus) getCertCount(displaystr string) (int, error) {
 	cidx := 0
-	if ss.SignatureKey == "" {
+	if vs.DownloadOrigin == nil {
+		return 0, nil
+	}
+	dos := vs.DownloadOrigin
+	if dos.SignatureKey == "" {
 		errStr := fmt.Sprintf("%s, Invalid Root CertURL\n", displaystr)
 		log.Errorf(errStr)
 		return cidx, errors.New(errStr)
 	}
 	cidx++
-	if len(ss.CertificateChain) != 0 {
-		for _, certURL := range ss.CertificateChain {
+	if len(dos.CertificateChain) != 0 {
+		for _, certURL := range dos.CertificateChain {
 			if certURL == "" {
 				errStr := fmt.Sprintf("%s, Invalid Intermediate CertURL\n", displaystr)
 				log.Errorf(errStr)
@@ -402,16 +412,20 @@ func (ss StorageStatus) getCertCount(displaystr string) (int, error) {
 }
 
 // checkCertsStatusForObject checks certificates for installation status
-func (ss StorageStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorInfo) {
+func (vs VolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorInfo) {
 
-	if ss.SignatureKey != "" {
-		found, installed, errInfo := certObjStatus.getCertStatus(ss.SignatureKey)
+	dos := vs.DownloadOrigin
+	if dos == nil {
+		return true, ErrorInfo{}
+	}
+	if dos.SignatureKey != "" {
+		found, installed, errInfo := certObjStatus.getCertStatus(dos.SignatureKey)
 		if !found || !installed {
 			return false, errInfo
 		}
 	}
 
-	for _, certURL := range ss.CertificateChain {
+	for _, certURL := range dos.CertificateChain {
 		found, installed, errInfo := certObjStatus.getCertStatus(certURL)
 		if !found || !installed {
 			return false, errInfo
@@ -421,10 +435,14 @@ func (ss StorageStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (
 }
 
 // checkCertsForObject checks availability of Certs in Disk
-func (ss StorageStatus) checkCertsForObject() bool {
+func (vs VolumeStatus) checkCertsForObject() bool {
 
-	if ss.SignatureKey != "" {
-		safename := UrlToSafename(ss.SignatureKey, "")
+	dos := vs.DownloadOrigin
+	if dos == nil {
+		return true
+	}
+	if dos.SignatureKey != "" {
+		safename := UrlToSafename(dos.SignatureKey, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
 		// XXX result is just the sha? Or "serverCert.<sha>?
 		if _, err := os.Stat(filename); err != nil {
@@ -434,7 +452,7 @@ func (ss StorageStatus) checkCertsForObject() bool {
 		// XXX check for valid or non-zero length?
 	}
 
-	for _, certURL := range ss.CertificateChain {
+	for _, certURL := range dos.CertificateChain {
 		safename := UrlToSafename(certURL, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
 		// XXX result is just the sha? Or "serverCert.<sha>?

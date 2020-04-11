@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// MaybeAddEIDConfig ensures we have an EIDConfig
 func MaybeAddEIDConfig(ctx *zedmanagerContext,
 	UUIDandVersion types.UUIDandVersion,
 	displayName string, ec *types.EIDOverlayConfig) {
@@ -100,6 +101,6 @@ func handleEIDStatusDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleEIDStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	removeAIStatusUUID(ctx, key)
+	updateAIStatusUUID(ctx, key)
 	log.Infof("handleEIDStatusDelete done for %s\n", key)
 }
