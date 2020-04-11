@@ -626,7 +626,6 @@ func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
 
-//Fetch cpu usage from top output
 func readCPUUsage(pid int) (float64, error) {
 	ps, err := process.NewProcess(int32(pid))
 	if err != nil {
