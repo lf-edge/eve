@@ -332,7 +332,8 @@ func getDatastoreCredential(ctx *downloaderContext,
 			dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
-			log.Infof("%s, datastore config cipherblock decryption unsuccessful: %v\n", dst.Key(), err)
+			log.Errorf("%s, datastore config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+				dst.Key(), err)
 			decBlock.DsAPIKey = dst.ApiKey
 			decBlock.DsPassword = dst.Password
 			return decBlock, nil
