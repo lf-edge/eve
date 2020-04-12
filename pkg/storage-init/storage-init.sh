@@ -46,17 +46,18 @@ if [ -z "$P3" ] && [ -n "$IMGA" ]; then
 
    # if sgdisk complains we need to repair the GPT
    if sgdisk -v "$DEV" | grep -q 'Identified.*problems'; then
-       # save a copy of the first MBR entry to make sure sgdisk
-       # doesn't mess it up, the logic is: whatever booted us
-       # seemed to be good enough to get us here
-       dd if="$DEV" of=/tmp/mbr.bin bs=1 skip=446 count=16
+       # save a copy of the MBR + first partition entry
+       # the logic here is that whatever booted us was good
+       # enough to get us here, so we'd rather sgdisk disn't
+       # mess up a good thing for us
+       dd if="$DEV" of=/tmp/mbr.bin bs=1 count=$((446 + 16)) conv=noerror,sync,notrunc
 
        sgdisk -h1 -e "$DEV"
 
        # move 1st MBR entry to 2nd place
-       dd if="$DEV" of="$DEV" bs=1 skip=446 seek=$(( 446 + 16)) count=16
-       # restore 1st MBR entry
-       dd if=/tmp/mbr.bin of="$DEV" bs=1 seek=446 count=16
+       dd if="$DEV" of="$DEV" bs=1 skip=446 seek=$(( 446 + 16)) count=16 conv=noerror,sync,notrunc
+       # restore 1st MBR entry + first partition entry
+       dd if=/tmp/mbr.bin of="$DEV" bs=1 conv=noerror,sync,notrunc
 
        # focrce kernel to re-scan partition table
        partprobe "$DEV"
