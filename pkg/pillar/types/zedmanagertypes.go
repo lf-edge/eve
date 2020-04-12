@@ -268,6 +268,7 @@ type StorageStatus struct {
 	State              SwState // DOWNLOADED etc
 	Progress           uint    // In percent i.e., 0-100
 	HasVolumemgrRef    bool    // Reference against volumemgr to clean up
+	HasResolverRef     bool    // Reference against resolver for resolving tags
 	IsContainer        bool    // Is the image a Container??
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
@@ -278,25 +279,33 @@ type StorageStatus struct {
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
 func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.ImageID = sc.ImageID
 	ss.DatastoreID = sc.DatastoreID
 	ss.PurgeCounter = sc.PurgeCounter
 	ss.Name = sc.Name
-	ss.NameIsURL = sc.NameIsURL
-	ss.ImageID = sc.ImageID
 	ss.ImageSha256 = sc.ImageSha256
+	ss.NameIsURL = sc.NameIsURL
 	ss.Size = sc.Size
 	ss.CertificateChain = sc.CertificateChain
 	ss.ImageSignature = sc.ImageSignature
 	ss.SignatureKey = sc.SignatureKey
 	ss.ReadOnly = sc.ReadOnly
 	ss.Preserve = sc.Preserve
-	ss.Format = sc.Format
 	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Format = sc.Format
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
+	ss.State = 0
+	ss.Progress = 0
+	ss.HasVolumemgrRef = false
+	ss.HasResolverRef = false
 	if ss.Format == zconfig.Format_CONTAINER {
 		ss.IsContainer = true
 	}
+	ss.Vdev = ""
+	ss.ActiveFileLocation = ""
+	ss.FinalObjDir = ""
+	ss.ErrorInfo = ErrorInfo{}
 	return
 }
 
