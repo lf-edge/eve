@@ -1,3 +1,8 @@
+From 55f70a71f26502c042dcc1457ce7d217bbe9ee7b Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Tue, 8 May 2018 12:37:18 -0700
+Subject: [PATCH] Making it possible to export variables from inner contexts of GRUB
+
 --- a/grub-core/normal/context.c	2012-03-01 21:43:03 +0000
 +++ b/grub-core/normal/context.c	2012-03-04 13:51:28 +0000
 @@ -126,6 +126,20 @@
