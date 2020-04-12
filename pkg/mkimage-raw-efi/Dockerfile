@@ -51,5 +51,6 @@ RUN gzip -d < /initrd.gz | cpio -id && \
     mv /initrd.gz /initrd.img
 
 COPY grub.cfg /EFI/BOOT/
+COPY grub.stage1 /usr/lib/grub/i386-pc/boot.img
 
 ENTRYPOINT [ "/make-raw" ]

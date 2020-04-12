@@ -57,7 +57,7 @@ WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
 # installer system parition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # Raspbery Pi boot partition size
-RPI_BOOT_PART=$(( 20 * 1024 * 1024 ))
+BOOT_PART_SIZE=$(( 20 * 1024 * 1024 ))
 
 sgdisk() {
   # filter out annoying messages we can't get rid of:
@@ -130,11 +130,11 @@ do_efi() {
   do_system_vfat_part "$1" "$EFI_PART_SIZE"
 }
 
-do_rpi_boot() {
+do_boot() {
   mkefifs
   cp /trampoline.grub.cfg /efifs/EFI/BOOT/grub.cfg
   cp -r /parts/boot/* /efifs/
-  do_system_vfat_part "$1" "$RPI_BOOT_PART"
+  do_system_vfat_part "$1" "$BOOT_PART_SIZE"
 }
 
 do_installer() {
@@ -306,21 +306,35 @@ for p in $PARTS ; do
   eval do_$p CUR_SEC 2>/dev/null
 done
 
-# we may potentially decide to always create a hybrid MBR and
-# even put a BIOS GRUB in there, for now -- just do it for RPi
-if echo "$PARTS" | grep -q rpi_boot; then
-  # creat a hybrid MBR partition table with only this partition visible
-  sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
-  PROT_PART=$(busybox hexdump -s 446 -n 16 -v -e '"" 16/1 "\\%03o"' "$IMGFILE")
-  NULL_PART="\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
-  # we need to replace 1st byte with \200 (bootable) and 4th byte with \014 (vfat filesystem type)
-  RPI_BOOT_PART=$(busybox hexdump -s $(( 446 + 17 )) -n 3 -v -e '"\\200" 3/1 "\\%03o" "\\014"' "$IMGFILE")
-  RPI_BOOT_PART="$RPI_BOOT_PART"$(busybox hexdump -s $(( 446 + 21 )) -n 11 -v -e '"" 11/1 "\\%03o"' "$IMGFILE")
-  # sadly, busybox doesn't support xxd -r -- so make do with printf that interprets \ooo escape sequences
-  #shellcheck disable=SC2059
-  printf "${RPI_BOOT_PART}${PROT_PART}${NULL_PART}${NULL_PART}" |\
-      dd of="$IMGFILE" bs=1 seek=446 conv=noerror,sync,notrunc
+# Create a hybrid MBR to allow booting on legacy BIOS PC systems and ARM boards that
+# look for bootloaders in the first entry of the MBR
+
+# creat a hybrid MBR partition table with only #1 GPT entry partition visible
+sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
+
+# if we happen to be building an x86 image, make sure to provision first 446 bytes
+# of MBR as legacy PC BIOS boot code (modified GRUB's assembly) AND add GRUB
+# itself into a gap between GPT and the first parition; theoretically one can
+# instruct grub-install to do this, but it requires much more hoop jumping
+if [ -e /efifs/EFI/BOOT/BOOTX64.EFI ]; then
+   dd if=/usr/lib/grub/i386-pc/boot.img of=$IMGFILE bs=446 count=1 conv=noerror,sync,notrunc
+   dd if=/efifs/EFI/BOOT/BOOT.pc of=$IMGFILE bs=512 seek=34 conv=noerror,sync,notrunc
+   echo '#' | dd of=$IMGFILE bs=1 seek=$((34 * 512 + 500)) count=1 conv=noerror,sync,notrunc
 fi
+
+# Since sgdisk by default puts protective partition first, we need to swap the
+# order to make sone legacy BIOS implementations happy. Strictly speaking, this
+# goes against good recommendations of how to build a protective MBR for the GPT
+# but it doesn't seem to cause any troubles and it helps with compabitlity.
+PROT_PART=$(busybox hexdump -s 446 -n 16 -v -e '"" 16/1 "\\%03o"' "$IMGFILE")
+NULL_PART="\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+# we need to replace 1st byte with \200 (bootable) and 4th byte with \014 (vfat filesystem type)
+BOOT_PART=$(busybox hexdump -s $(( 446 + 17 )) -n 3 -v -e '"\\200" 3/1 "\\%03o" "\\014"' "$IMGFILE")
+BOOT_PART="$BOOT_PART"$(busybox hexdump -s $(( 446 + 21 )) -n 11 -v -e '"" 11/1 "\\%03o"' "$IMGFILE")
+# sadly, busybox doesn't support xxd -r -- so make do with printf that interprets \ooo escape sequences
+#shellcheck disable=SC2059
+printf "${BOOT_PART}${PROT_PART}${NULL_PART}${NULL_PART}" | dd of="$IMGFILE" bs=1 seek=446 conv=noerror,sync,notrunc
+
 
 # Update embedded boot partition with our own bootloader
 GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
