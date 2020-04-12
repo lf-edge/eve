@@ -24,6 +24,8 @@ MEDIA_SIZE=8192
 IMG_FORMAT=qcow2
 # Filesystem type for rootfs image
 ROOTFS_FORMAT=squash
+# Image type for installer image
+INSTALLER_IMG_FORMAT=raw
 # SSH port to use for running images live
 SSH_PORT=2222
 # Use QEMU H/W accelearation (any non-empty value will trigger using it)
@@ -74,9 +76,11 @@ DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
 
 BIOS_IMG=$(DIST)/OVMF.fd
-LIVE_IMG=$(DIST)/live
+LIVE=$(DIST)/live
+LIVE_IMG=$(DIST)/live.$(IMG_FORMAT)
 TARGET_IMG=$(DIST)/target.img
 INSTALLER=$(DIST)/installer
+INSTALLER_IMG=$(INSTALLER).$(INSTALLER_IMG_FORMAT)
 
 ROOTFS=$(INSTALLER)/rootfs
 ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
@@ -92,7 +96,15 @@ DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_PART=$(CURDIR)/../adam/run/config
 
-CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
+# FIXME: this is the only rpi specific stuff left - we'll get rid of it soon
+CONF_FILES_FILTER_kvm_rpi=| grep -v conf/eve.dts
+CONF_FILES_FILTER_rpi_kvm=$(CONF_FILES_FILTER_kvm_rpi)
+CONF_FILES=$(shell ls -d $(CONF_DIR)/* $(CONF_FILES_FILTER_$(subst -,_,$(HV))))
+
+PART_SPEC_$(subst -,_,$(HV))=efi conf imga
+PART_SPEC_kvm_rpi=boot conf imga
+PART_SPEC_rpi_kvm=$(PART_SPEC_kvm_rpi)
+PART_SPEC=$(PART_SPEC_$(subst -,_,$(HV)))
 
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
@@ -108,11 +120,14 @@ QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
 QEMU_OPTS_NET2=192.168.2.0/24
 QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 
+QEMU_OPTS_BIOS=-bios $(BIOS_IMG)
+# BIOS_IMG=$(DIST)/OVMF*
+# QEMU_OPTS_BIOS=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(DIST)/OVMF_VARS.fd
+
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
-# -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
-# [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
-QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
+QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none $(QEMU_OPTS_BIOS) \
+        -serial mon:stdio      \
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
         -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
@@ -211,7 +226,7 @@ run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
 
 run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG).img,format=$(IMG_FORMAT)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG),format=$(IMG_FORMAT)
 
 run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
@@ -236,12 +251,11 @@ $(DIST) $(INSTALLER):
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
-live: $(LIVE_IMG).img
-live.rpi: $(LIVE_IMG).rpi
-installer: $(INSTALLER).raw
-installer-iso: $(INSTALLER).iso
-rootfs-%: $(ROOTFS)-%.img
-	@true
+rootfs-%: $(ROOTFS)-%.img ;
+live: $(LIVE_IMG)
+live-%: $(LIVE).% ;
+installer: $(INSTALLER_IMG)
+installer-%: $(INSTALLER).% ;
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ $(CONF_FILES)
@@ -252,25 +266,8 @@ $(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 $(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 	@rm -f $@ && ln -s $(notdir $<) $@
 
-$(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
-	@rm -f $@ >/dev/null 2>&1 || :
-	@ln -s $(notdir $<) $@
-
-$(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
-	qemu-img convert -c -f raw -O qcow2 $< $@
-	rm $<
-
-# The following rule is an override of the generic one for live.img specifically for supporting Raspberry Pi 4
-# $(LIVE_IMG).rpi can potentially be generalized into a trampoline (readconfig vs. chainload)
-# style bootloader image and rootfs-rpi-kvm will go away once we migrate to a NEW_KERNEL
-$(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
-$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-kvm-rpi | $(INSTALLER)
-	ln -s rootfs-kvm-rpi.img $(ROOTFS_IMG)
-	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
-	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
-
-$(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
-	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
+$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 
 $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
@@ -295,7 +292,7 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG).img rootfs-kvm
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG) rootfs-kvm
 	cp pkg/eve/* Makefile images/*.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
@@ -352,6 +349,17 @@ endif
 #
 # Common, generalized rules
 #
+%.gcp: %.raw | $(DIST)
+	cp $< $@
+	dd of=$@ bs=1 seek=$$(($(MEDIA_SIZE) * 1024 * 1024)) count=0
+	rm -f $(dir $@)/disk.raw ; ln -s $(notdir $@) $(dir $@)/disk.raw
+	$(DOCKER_GO) "tar --mode=644 --owner=root --group=root -S -h -czvf $(notdir $*).img.tar.gz disk.raw" $(DIST) dist
+	rm -f $(dir $@)/disk.raw
+
+%.qcow2: %.raw | $(DIST)
+	qemu-img convert -c -f raw -O qcow2 $< $@
+	qemu-img resize $@ ${MEDIA_SIZE}M
+
 %.yml: %.yml.in build-tools $(RESCAN_DEPS)
 	@$(PARSE_PKGS) $< > $@
 
@@ -418,7 +426,7 @@ help:
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
 	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm, rpi)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
-	@echo "   live-rpi       builds a full disk image of EVE which can be used to run Raspberry Pi 4 board"
+	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp)"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
