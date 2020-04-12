@@ -317,9 +317,9 @@ sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
 # itself into a gap between GPT and the first parition; theoretically one can
 # instruct grub-install to do this, but it requires much more hoop jumping
 if [ -e /efifs/EFI/BOOT/BOOTX64.EFI ]; then
-   dd if=/usr/lib/grub/i386-pc/boot.img of=$IMGFILE bs=446 count=1 conv=noerror,sync,notrunc
-   dd if=/efifs/EFI/BOOT/BOOT.pc of=$IMGFILE bs=512 seek=34 conv=noerror,sync,notrunc
-   echo '#' | dd of=$IMGFILE bs=1 seek=$((34 * 512 + 500)) count=1 conv=noerror,sync,notrunc
+   dd if=/usr/lib/grub/i386-pc/boot.img of="$IMGFILE" bs=446 count=1 conv=noerror,sync,notrunc
+   dd if=/efifs/EFI/BOOT/BOOT.pc of="$IMGFILE" bs=512 seek=34 conv=noerror,sync,notrunc
+   echo '#' | dd of="$IMGFILE" bs=1 seek=$((34 * 512 + 500)) count=1 conv=noerror,sync,notrunc
 fi
 
 # Since sgdisk by default puts protective partition first, we need to swap the
