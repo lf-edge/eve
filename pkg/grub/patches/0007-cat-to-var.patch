@@ -1,3 +1,8 @@
+From 55f70a71f26502c042dcc1457ce7d217bbe9ee7b Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Tue, 8 May 2018 12:37:18 -0700
+Subject: [PATCH] Adding a capability of a GRUB cat command to deposit to a var, not stdout
+
 --- a/grub-core/commands/cat.c
 +++ b/grub-core/commands/cat.c
 @@ -20,6 +20,7 @@
@@ -23,14 +28,14 @@
 +  if (ctxt->state[1].set) {
 +    size = grub_file_read (file, buf, sizeof (buf));
 +    if (size < 0 || (grub_size_t)size >= sizeof (buf)) {
-+      return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("can't read more than disk block size into variable"));    
++      return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("can't read more than disk block size into variable"));
 +    }
 +    buf[size]='\0';
 +    for (;size;size--) {
 +      if (buf[size] == '\n' || buf[size] == '\r')
 +        buf[size]=0;
 +    }
-+    grub_env_set(ctxt->state[1].arg, (const char *)buf); 
++    grub_env_set(ctxt->state[1].arg, (const char *)buf);
 +    goto exit;
 +  }
 +

@@ -1,23 +1,21 @@
-From 55f70a71f26502c042dcc1457ce7d217bbe9ee7b Mon Sep 17 00:00:00 2001
+From d72345d79408082e1ca3b0933e9b91e843fe5961 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@zededa.com>
-Date: Tue, 8 May 2018 12:37:18 -0700
+Date: Sun, 12 Apr 2020 06:43:40 +0000
 Subject: [PATCH] Disabling linuxefi after the merge
 
 ---
  grub-core/Makefile.core.def       |   8 -
  grub-core/loader/i386/efi/linux.c | 361 --------------------------------------
  2 files changed, 369 deletions(-)
- delete mode 100644 grub-core/loader/i386/efi/linux.c
 
 diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
 index 3b5af98fa..6b1472223 100644
 --- a/grub-core/Makefile.core.def
 +++ b/grub-core/Makefile.core.def
-@@ -1812,14 +1812,6 @@ module = {
-   enable = x86_64_efi;
+@@ -1813,14 +1813,6 @@ module = {
  };
  
--module = {
+ module = {
 -  name = linuxefi;
 -  efi = loader/i386/efi/linux.c;
 -  efi = lib/cmdline.c;
@@ -25,14 +23,14 @@ index 3b5af98fa..6b1472223 100644
 -  enable = x86_64_efi;
 -};
 -
- module = {
+-module = {
    name = chain;
    efi = loader/efi/chainloader.c;
+   i386_pc = loader/i386/pc/chainloader.c;
 diff --git a/grub-core/loader/i386/efi/linux.c b/grub-core/loader/i386/efi/linux.c
-deleted file mode 100644
-index 731282ed3..000000000
+index 22a3618d8..e69de29bb 100644
 --- a/grub-core/loader/i386/efi/linux.c
-+++ /dev/null
++++ b/grub-core/loader/i386/efi/linux.c
 @@ -1,361 +0,0 @@
 -/*
 - *  GRUB  --  GRand Unified Bootloader
@@ -230,7 +228,7 @@ index 731282ed3..000000000
 -		int argc, char *argv[])
 -{
 -  grub_file_t file = 0;
--  struct linux_i386_kernel_header lh;
+-  struct linux_kernel_header lh;
 -  grub_ssize_t len, start, filelen;
 -  void *kernel = NULL;
 -
@@ -396,5 +394,5 @@ index 731282ed3..000000000
 -  grub_unregister_command (cmd_initrd);
 -}
 -- 
-2.15.1
+2.13.5
 
