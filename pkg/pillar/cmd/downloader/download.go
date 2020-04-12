@@ -150,6 +150,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 		if syncOp == zedUpload.SyncOpGetObjectMetaData {
 			sha256 = resp.GetSha256()
+			err = resp.GetDnStatus()
 		} else {
 			_, err = resp.GetUpStatus()
 		}

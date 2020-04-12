@@ -35,21 +35,23 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	subAppInstanceConfig pubsub.Subscription
-	pubAppInstanceStatus pubsub.Publication
-	pubVolumeConfig      pubsub.Publication
-	subVolumeStatus      pubsub.Subscription
-	pubAppNetworkConfig  pubsub.Publication
-	subAppNetworkStatus  pubsub.Subscription
-	pubDomainConfig      pubsub.Publication
-	subDomainStatus      pubsub.Subscription
-	pubEIDConfig         pubsub.Publication
-	subEIDStatus         pubsub.Subscription
-	subGlobalConfig      pubsub.Subscription
-	globalConfig         *types.ConfigItemValueMap
-	pubUuidToNum         pubsub.Publication
-	pubAppAndImageToHash pubsub.Publication
-	GCInitialized        bool
+	subAppInstanceConfig   pubsub.Subscription
+	pubAppInstanceStatus   pubsub.Publication
+	pubVolumeConfig        pubsub.Publication
+	subVolumeStatus        pubsub.Subscription
+	pubAppNetworkConfig    pubsub.Publication
+	subAppNetworkStatus    pubsub.Subscription
+	pubDomainConfig        pubsub.Publication
+	subDomainStatus        pubsub.Subscription
+	pubAppImgResolveConfig pubsub.Publication
+	subAppImgResolveStatus pubsub.Subscription
+	pubEIDConfig           pubsub.Publication
+	subEIDStatus           pubsub.Subscription
+	subGlobalConfig        pubsub.Subscription
+	globalConfig           *types.ConfigItemValueMap
+	pubUuidToNum           pubsub.Publication
+	pubAppAndImageToHash   pubsub.Publication
+	GCInitialized          bool
 }
 
 var debug = false
@@ -156,6 +158,17 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubAppAndImageToHash = pubAppAndImageToHash
+
+	pubAppImgResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.ResolveConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppImgResolveConfig.ClearRestarted()
+	ctx.pubAppImgResolveConfig = pubAppImgResolveConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -269,6 +282,25 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
+	// Look for AppImgResolveStatus from downloader
+	subAppImgResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "downloader",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ResolveStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleResolveStatusModify,
+		ModifyHandler: handleResolveStatusModify,
+		DeleteHandler: handleResolveStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppImgResolveStatus = subAppImgResolveStatus
+	subAppImgResolveStatus.Activate()
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -299,6 +331,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
+
+		case change := <-subAppImgResolveStatus.MsgChan():
+			subAppImgResolveStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -458,9 +493,17 @@ func handleCreate(ctxArg interface{}, key string,
 			// FIXME - We really need a top level flag to tell the app is
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
+			ss.HasResolverRef = true
+			publishAppInstanceStatus(ctx, &status)
+			resolveConfig := types.ResolveConfig{
+				DatastoreID: sc.DatastoreID,
+				Name:        sc.Name,
+				AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+					types.AppImgObj),
+				Counter: config.PurgeCmd.Counter,
+			}
+			publishResolveConfig(ctx, &resolveConfig)
 		}
-		// XXX before latching we should ResolveConfig to get the sha
-		maybeLatchImageSha(ctx, config, ss)
 	}
 
 	status.EIDList = make([]types.EIDStatusDetails,
@@ -497,14 +540,18 @@ func handleCreate(ctxArg interface{}, key string,
 		return
 	}
 
-	// If there are no errors, go ahead with Instance creation.
-	changed := doUpdate(ctx, config, &status)
-	if changed {
-		log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
-			config.DisplayName, config.UUIDandVersion.UUID)
-		publishAppInstanceStatus(ctx, &status)
+	if status.IsContainer {
+		log.Infof("Waiting for resolving tags to sha for the container images, handleCreate in progress.")
+	} else {
+		// If there are no errors, go ahead with Instance creation.
+		changed := doUpdate(ctx, config, &status)
+		if changed {
+			log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
+				config.DisplayName, config.UUIDandVersion.UUID)
+			publishAppInstanceStatus(ctx, &status)
+		}
+		log.Infof("handleCreate done for %s\n", config.DisplayName)
 	}
-	log.Infof("handleCreate done for %s\n", config.DisplayName)
 }
 
 func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,

@@ -417,16 +417,6 @@ func doInstall(ctx *zedmanagerContext,
 			log.Infof("From VolumeStatus set ActiveFileLocation to %s for %s",
 				vs.FileLocation, ss.Name)
 		}
-		// XXX should really be done as separate ResolveConfig/Status
-		// XXX might mess up containers
-		if false && ss.ImageSha256 != vs.BlobSha256 {
-			log.Infof("updating image sha from %s to %s",
-				ss.ImageSha256, vs.BlobSha256)
-			ss.ImageSha256 = vs.BlobSha256
-			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-				ss.ImageID, ss.ImageSha256)
-			changed = true
-		}
 		if minState > vs.State {
 			minState = vs.State
 		}
