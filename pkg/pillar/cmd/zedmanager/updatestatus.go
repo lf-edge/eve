@@ -323,8 +323,6 @@ func doInstall(ctx *zedmanagerContext,
 
 	// Any PurgeCounter updates?
 	// For now PurgeCounter applies to first disk
-	// XXX doesn't work with needPurge in zedmanager; turn needPurge into
-	// error there?
 	// Note that this behaves as if we receive a PurgeCounter update from
 	// the controller for the first disk.
 	if len(config.StorageConfigList) > 0 &&

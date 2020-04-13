@@ -579,16 +579,26 @@ func handleModify(ctxArg interface{}, key string,
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
+	// Pretend that the controller specified purgeCounter for the first
+	// disk. Then StorageStatus will start with that value below.
+	if len(config.StorageConfigList) > 0 &&
+		config.StorageConfigList[0].PurgeCounter != config.PurgeCmd.Counter {
+		sc := &config.StorageConfigList[0]
+		log.Infof("Setting purgeCounter to %d for %s",
+			config.PurgeCmd.Counter, config.Key())
+		sc.PurgeCounter = config.PurgeCmd.Counter
+	}
+
 	// We handle at least ACL and activate changes. XXX What else?
 	// Not checking the version here; assume the microservices can handle
 	// some updates.
 
 	// We detect significant changes which require a reboot and/or
-	// purge of disk changes
+	// purge of disk changes, so we can generate errors if it is
+	// not a PurgeCmd and RestartCmd, respectively
 	needPurge, needRestart := quantifyChanges(config, *status)
 
-	if needRestart ||
-		config.RestartCmd.Counter != status.RestartCmd.Counter {
+	if config.RestartCmd.Counter != status.RestartCmd.Counter {
 
 		log.Infof("handleModify(%v) for %s restartcmd from %d to %d "+
 			"needRestart: %v\n",
@@ -607,8 +617,15 @@ func handleModify(ctxArg interface{}, key string,
 				config.UUIDandVersion, config.DisplayName)
 			status.RestartCmd.Counter = config.RestartCmd.Counter
 		}
+	} else if needRestart {
+		errStr := "Need restart due to change but not a restartCmd"
+		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
+		status.SetError(errStr, "", time.Now())
+		publishAppInstanceStatus(ctx, status)
+		return
 	}
-	if needPurge || config.PurgeCmd.Counter != status.PurgeCmd.Counter {
+
+	if config.PurgeCmd.Counter != status.PurgeCmd.Counter {
 		log.Infof("handleModify(%v) for %s purgecmd from %d to %d "+
 			"needPurge: %v\n",
 			config.UUIDandVersion, config.DisplayName,
@@ -618,7 +635,14 @@ func handleModify(ctxArg interface{}, key string,
 		status.PurgeInprogress = types.RecreateVolumes
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
+	} else if needPurge {
+		errStr := "Need purge due to change but not a purgeCmd"
+		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
+		status.SetError(errStr, "", time.Now())
+		publishAppInstanceStatus(ctx, status)
+		return
 	}
+
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
 
