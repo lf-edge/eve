@@ -321,20 +321,6 @@ func doInstall(ctx *zedmanagerContext,
 		log.Warnln(errString)
 	}
 
-	// Any PurgeCounter updates?
-	// For now PurgeCounter applies to first disk
-	// Note that this behaves as if we receive a PurgeCounter update from
-	// the controller for the first disk.
-	if len(config.StorageConfigList) > 0 &&
-		config.StorageConfigList[0].PurgeCounter != config.PurgeCmd.Counter {
-		sc := &config.StorageConfigList[0]
-		log.Infof("Setting purgeCounter to %d for %s",
-			config.PurgeCmd.Counter, config.Key())
-		// We set in config, each time we
-		// are called since StorageConfig is overwritten
-		// by zedagent
-		sc.PurgeCounter = config.PurgeCmd.Counter
-	}
 	// If we are purging and we failed to activate due some images
 	// which are not removed from StorageConfigList we remove them
 	if status.PurgeInprogress == types.RecreateVolumes && !status.Activated {

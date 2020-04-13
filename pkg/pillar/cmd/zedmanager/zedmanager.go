@@ -448,15 +448,6 @@ func handleCreate(ctxArg interface{}, key string,
 			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
 			true, "purgeCmdCounter")
 	}
-	// Pretend that the controller specified purgeCounter for the first
-	// disk. Then StorageStatus will start with that value below.
-	if len(config.StorageConfigList) > 0 &&
-		config.StorageConfigList[0].PurgeCounter != config.PurgeCmd.Counter {
-		sc := &config.StorageConfigList[0]
-		log.Infof("Setting purgeCounter to %d for %s",
-			config.PurgeCmd.Counter, config.Key())
-		sc.PurgeCounter = config.PurgeCmd.Counter
-	}
 
 	status.StorageStatusList = make([]types.StorageStatus,
 		len(config.StorageConfigList))
@@ -578,16 +569,6 @@ func handleModify(ctxArg interface{}, key string,
 	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-
-	// Pretend that the controller specified purgeCounter for the first
-	// disk. Then StorageStatus will start with that value below.
-	if len(config.StorageConfigList) > 0 &&
-		config.StorageConfigList[0].PurgeCounter != config.PurgeCmd.Counter {
-		sc := &config.StorageConfigList[0]
-		log.Infof("Setting purgeCounter to %d for %s",
-			config.PurgeCmd.Counter, config.Key())
-		sc.PurgeCounter = config.PurgeCmd.Counter
-	}
 
 	// We handle at least ACL and activate changes. XXX What else?
 	// Not checking the version here; assume the microservices can handle
