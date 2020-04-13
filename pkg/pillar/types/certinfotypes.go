@@ -6,7 +6,6 @@ package types
 import (
 	"encoding/hex"
 	zcert "github.com/lf-edge/eve/api/go/certs"
-	"time"
 )
 
 // ControllerCert : controller certicate
@@ -16,24 +15,11 @@ type ControllerCert struct {
 	Type     zcert.ZCertType
 	Cert     []byte
 	CertHash []byte
-	ErrorInfo
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 // Key :
 func (cert *ControllerCert) Key() string {
 	return hex.EncodeToString(cert.CertHash)
-}
-
-// SetErrorInfo : sets errorinfo on the controller cert
-func (cert *ControllerCert) SetErrorInfo(agentName, errStr string) {
-	cert.Error = errStr
-	cert.ErrorTime = time.Now()
-	cert.ErrorSource = agentName
-}
-
-// ClearErrorInfo : clears errorinfo on the controller cert
-func (cert *ControllerCert) ClearErrorInfo() {
-	cert.Error = ""
-	cert.ErrorSource = ""
-	cert.ErrorTime = time.Time{}
 }

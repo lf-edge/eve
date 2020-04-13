@@ -4,9 +4,9 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -65,8 +65,8 @@ type BaseOsStatus struct {
 	// Error* set implies error.
 	State SwState
 	// error strings across all steps/StorageStatus
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 func (status BaseOsStatus) Key() string {
@@ -131,8 +131,8 @@ type CertObjStatus struct {
 	// Error* set implies error.
 	State SwState
 	// error strings across all steps/StorageStatus
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 func (status CertObjStatus) Key() string {
@@ -166,22 +166,26 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 //  - whether the cert object status is found
 //  - whether the cert object is installed
 //  - any error information
-func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorInfo) {
+func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorAndTime) {
 	for _, certObj := range status.StorageStatusList {
 		if certObj.Name == certURL {
 			installed := true
 			if certObj.Error != "" || certObj.State != INSTALLED {
 				installed = false
 			}
-			return true, installed, certObj.GetErrorInfo()
+			// An Error in StorageStatus can be from
+			// DownloaderStatus with changing timestamp
+			// from re-trying the download. Carry that to caller.
+			return true, installed, ErrorAndTime{
+				Error:     certObj.Error,
+				ErrorTime: certObj.ErrorTime,
+			}
 		}
 	}
-	errorInfo := ErrorInfo{
-		Error:       "Invalid Certificate, not found",
-		ErrorSource: pubsub.TypeToName(VerifyImageStatus{}),
-		ErrorTime:   time.Now(),
+	return false, false, ErrorAndTime{
+		Error:     fmt.Sprintf("Invalid Certificate %s, not found", certURL),
+		ErrorTime: time.Now(),
 	}
-	return false, false, errorInfo
 }
 
 // return value holder
@@ -229,6 +233,7 @@ type DatastoreConfig struct {
 	CipherBlockStatus
 }
 
+// Key is the key in pubsub
 func (config DatastoreConfig) Key() string {
 	return config.UUID.String()
 }

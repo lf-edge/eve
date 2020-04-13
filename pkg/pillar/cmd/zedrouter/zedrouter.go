@@ -1815,8 +1815,7 @@ func checkAndRecreateAppNetwork(
 			log.Infof("checkAndRecreateAppNetwork(%s) remove error %s for %s\n",
 				network.String(), status.Error,
 				status.DisplayName)
-			status.Error = ""
-			status.ErrorTime = time.Time{}
+			status.ClearError()
 		}
 		doActivate(ctx, *config, &status)
 		log.Infof("checkAndRecreateAppNetwork done for %s\n",
@@ -1930,7 +1929,8 @@ func getUlAddrs(ctx *zedrouterContext,
 func addError(ctx *zedrouterContext,
 	status *types.AppNetworkStatus, tag string, err error) {
 
-	log.Infof("%s: %s\n", tag, err.Error())
+	log.Errorf("%s: %s\n", tag, err.Error())
+	// XXX The use of appendError() could be more normalized
 	status.Error = appendError(status.Error, tag, err.Error())
 	status.ErrorTime = time.Now()
 	publishAppNetworkStatus(ctx, status)
@@ -1950,8 +1950,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	log.Infof("handleAppNetworkModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	// reset error status and mark pending modify as true
-	status.Error = ""
-	status.ErrorTime = time.Time{}
+	status.ClearError()
 	status.PendingModify = true
 	publishAppNetworkStatus(ctx, status)
 

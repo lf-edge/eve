@@ -1083,8 +1083,8 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	if err != nil {
 		errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Malformed UUID ignored: %s",
 			err)
-		config.Error = errStr
-		config.ErrorTime = time.Now()
+		log.Error(errStr)
+		config.SetErrorNow(errStr)
 		return config
 	}
 	config.UUID = id
@@ -1144,8 +1144,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Missing ipspec for %s in %v",
 				config.Key(), netEnt)
 			log.Error(errStr)
-			config.Error = errStr
-			config.ErrorTime = time.Now()
+			config.SetErrorNow(errStr)
 			return config
 		}
 		err := parseIpspecNetworkXObject(ipspec, config)
@@ -1153,8 +1152,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec failed for %s: %s",
 				config.Key(), err)
 			log.Error(errStr)
-			config.Error = errStr
-			config.ErrorTime = time.Now()
+			config.SetErrorNow(errStr)
 			return config
 		}
 	case types.NT_NOOP:
@@ -1167,8 +1165,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec ignored for %s: %s",
 					config.Key(), err)
 				log.Error(errStr)
-				config.Error = errStr
-				config.ErrorTime = time.Now()
+				config.SetErrorNow(errStr)
 				return config
 			}
 		}
@@ -1177,8 +1174,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored",
 			config.Type, id.String(), netEnt)
 		log.Error(errStr)
-		config.Error = errStr
-		config.ErrorTime = time.Now()
+		config.SetErrorNow(errStr)
 		return config
 	}
 
@@ -1200,8 +1196,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: bad dnsEntry %s for %s",
 					strAddr, config.Key())
 				log.Error(errStr)
-				config.Error = errStr
-				config.ErrorTime = time.Now()
+				config.SetErrorNow(errStr)
 				return config
 			}
 		}

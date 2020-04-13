@@ -88,8 +88,7 @@ func GetCipherData(agentName string, status types.CipherBlockStatus,
 func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatus,
 	decBlock zconfig.EncryptionBlock, err error) (types.CipherBlockStatus, zconfig.EncryptionBlock, error) {
 	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		status.SetErrorInfo(agentName, errStr)
+		status.SetErrorNow(err.Error())
 		// we have already captured the error info above
 		// for valid encryption block info, reset the error to proceed
 		if !reflect.DeepEqual(decBlock, zconfig.EncryptionBlock{}) {
@@ -103,8 +102,7 @@ func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatu
 func handleCipherBlockError(agentName string, status *types.CipherBlockStatus,
 	data *string, err error) (types.CipherBlockStatus, *string, error) {
 	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		status.SetErrorInfo(agentName, errStr)
+		status.SetErrorNow(err.Error())
 		// we have already captured the error info above
 		// for valid data, reset the error to proceed
 		if data != nil {

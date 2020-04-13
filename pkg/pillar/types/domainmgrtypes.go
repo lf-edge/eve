@@ -120,12 +120,12 @@ type DomainStatus struct {
 	VncDisplay         uint32
 	VncPasswd          string
 	TriedCount         int
-	LastErr            string // Xen error
-	LastErrTime        time.Time
-	BootFailed         bool
-	AdaptersFailed     bool
-	IsContainer        bool              // Is this Domain for a Container?
-	EnvVariables       map[string]string // List of environment variables to be set in container
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
+	BootFailed     bool
+	AdaptersFailed bool
+	IsContainer    bool              // Is this Domain for a Container?
+	EnvVariables   map[string]string // List of environment variables to be set in container
 }
 
 func (status DomainStatus) Key() string {

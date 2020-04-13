@@ -279,7 +279,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 	log.Infof("handleSyncOpResponse(%s): successful <%s>\n",
 		config.Name, locFilename)
-	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// We do not clear any status.RetryCount, Error, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
 	status.ModTime = time.Now()

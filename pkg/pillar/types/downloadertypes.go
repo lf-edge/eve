@@ -66,9 +66,9 @@ type DownloaderStatus struct {
 	Size             uint64  // Once DOWNLOADED; in bytes
 	Progress         uint    // In percent i.e., 0-100
 	ModTime          time.Time
-	LastErr          string // Download error
-	LastErrTime      time.Time
-	RetryCount       int
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
+	RetryCount int
 }
 
 func (status DownloaderStatus) Key() string {
@@ -101,18 +101,6 @@ func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
-// SetErrorInfo : Set Error Information for DownloaderStatus
-func (status *DownloaderStatus) SetErrorInfo(errStr string) {
-	status.LastErr = errStr
-	status.LastErrTime = time.Now()
-}
-
-// ClearErrorInfo : Clear Error Information for DownloaderStatus
-func (status *DownloaderStatus) ClearErrorInfo() {
-	status.LastErr = ""
-	status.LastErrTime = time.Time{}
-}
-
 // ClearPendingStatus : Clear Pending Status for DownloaderStatus
 func (status *DownloaderStatus) ClearPendingStatus() {
 	if status.PendingAdd {
@@ -125,7 +113,7 @@ func (status *DownloaderStatus) ClearPendingStatus() {
 
 // HandleDownloadFail : Do Failure specific tasks
 func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
-	status.SetErrorInfo(errStr)
+	status.SetErrorNow(errStr)
 	status.ClearPendingStatus()
 }
 
@@ -205,7 +193,8 @@ type ResolveStatus struct {
 	Name        string
 	ImageSha256 string
 	Counter     uint32
-	ErrorInfo
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 // Key : DatastoreID, name and sequence counter are used
@@ -223,18 +212,4 @@ func (status ResolveStatus) VerifyFilename(fileName string) bool {
 			fileName, expect)
 	}
 	return ret
-}
-
-// SetErrorInfo : sets errorinfo on the app image resolve status object
-func (status *ResolveStatus) SetErrorInfo(agentName, errStr string) {
-	status.Error = errStr
-	status.ErrorTime = time.Now()
-	status.ErrorSource = agentName
-}
-
-// ClearErrorInfo : clears errorinfo on the app image resolve status object
-func (status *ResolveStatus) ClearErrorInfo() {
-	status.Error = ""
-	status.ErrorSource = ""
-	status.ErrorTime = time.Time{}
 }

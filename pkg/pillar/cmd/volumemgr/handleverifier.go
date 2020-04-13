@@ -39,7 +39,7 @@ func lookupPersistImageConfig(ctx *volumemgrContext, objType string,
 
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
-	status types.VolumeStatus, checkCerts bool) (bool, types.ErrorInfo) {
+	status types.VolumeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v",
 		status.VolumeID, checkCerts)
@@ -96,7 +96,7 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
 	}
 	log.Infof("MaybeAddVerifyImageConfig done for %s\n", status.VolumeID)
-	return true, types.ErrorInfo{}
+	return true, types.ErrorAndTime{}
 }
 
 // MaybeRemoveVerifyImageConfig decreases the refcount and if it

@@ -5,15 +5,14 @@ package types
 
 import (
 	"github.com/lf-edge/eve/api/go/info"
-	"time"
 )
 
 //VaultStatus represents running status of a Vault
 type VaultStatus struct {
-	Name      string
-	Status    info.DataSecAtRestStatus
-	Error     string
-	ErrorTime time.Time
+	Name   string
+	Status info.DataSecAtRestStatus
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 //Key returns the key used for indexing into a list of vaults

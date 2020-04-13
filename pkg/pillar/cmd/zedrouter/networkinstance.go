@@ -78,7 +78,7 @@ func checkPortAvailable(
 		if isSharedPortLabel(status.CurrentUplinkIntf) {
 			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive network instance %s-%s\n",
 				status.CurrentUplinkIntf, status.Key(), status.DisplayName)
-			log.Errorln(errStr)
+			log.Error(errStr)
 			return errors.New(errStr)
 		}
 	}
@@ -424,7 +424,8 @@ func handleNetworkInstanceCreate(
 	if err != nil {
 		log.Errorf("doNetworkInstanceCreate(%s) failed: %s\n",
 			key, err)
-		status.SetError(err)
+		log.Error(err)
+		status.SetErrorNow(err.Error())
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		publishNetworkInstanceStatus(ctx, &status)
 		return
@@ -436,7 +437,8 @@ func handleNetworkInstanceCreate(
 		err := doNetworkInstanceActivate(ctx, &status)
 		if err != nil {
 			log.Errorf("doNetworkInstanceActivate(%s) failed: %s\n", key, err)
-			status.SetError(err)
+			log.Error(err)
+			status.SetErrorNow(err.Error())
 		} else {
 			log.Infof("Activated network instance %s %s", status.UUID, status.DisplayName)
 			status.Activated = true
@@ -703,15 +705,17 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 	if config.Type != status.Type {
 		log.Infof("doNetworkInstanceModify: key %s\n", config.UUID)
 		// We do not allow Type to change.
-		status.SetError(
-			errors.New("Changing Type of NetworkInstance is not supported"))
+
+		err := fmt.Errorf("Changing Type of NetworkInstance from %d to %d is not supported", status.Type, config.Type)
+		log.Error(err)
+		status.SetErrorNow(err.Error())
 	}
 
 	if config.Logicallabel != status.Logicallabel {
 		err := fmt.Errorf("Changing Logicallabel in NetworkInstance is not yet supported: from %s to %s",
 			status.Logicallabel, config.Logicallabel)
 		log.Error(err)
-		status.SetError(err)
+		status.SetErrorNow(err.Error())
 		return
 	}
 
@@ -720,7 +724,8 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 		if err != nil {
 			log.Errorf("doNetworkInstanceActivate(%s) failed: %s\n",
 				config.Key(), err)
-			status.SetError(err)
+			log.Error(err)
+			status.SetErrorNow(err.Error())
 		} else {
 			status.Activated = true
 		}
@@ -892,7 +897,7 @@ func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
 			mac.String(), status.Key())
-		log.Errorln(errStr)
+		log.Error(errStr)
 		return errors.New(errStr)
 	}
 	delete(status.IPAssignments, mac.String())

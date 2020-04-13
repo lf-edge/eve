@@ -487,10 +487,6 @@ func handleCreate(ctxArg interface{}, key string,
 		errStr := "Invalid Cpu count - 0\n"
 		status.Error += errStr
 	}
-	if status.Error != "" {
-		status.SetError(status.Error, "Zedmanager Create Handler",
-			time.Now())
-	}
 	publishAppInstanceStatus(ctx, &status)
 
 	// if some error, return
@@ -601,7 +597,7 @@ func handleModify(ctxArg interface{}, key string,
 	} else if needRestart {
 		errStr := "Need restart due to change but not a restartCmd"
 		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
-		status.SetError(errStr, "", time.Now())
+		status.SetError(errStr, time.Now())
 		publishAppInstanceStatus(ctx, status)
 		return
 	}
@@ -619,7 +615,7 @@ func handleModify(ctxArg interface{}, key string,
 	} else if needPurge {
 		errStr := "Need purge due to change but not a purgeCmd"
 		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
-		status.SetError(errStr, "", time.Now())
+		status.SetError(errStr, time.Now())
 		publishAppInstanceStatus(ctx, status)
 		return
 	}

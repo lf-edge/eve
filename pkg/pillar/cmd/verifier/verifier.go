@@ -573,8 +573,7 @@ func gcVerifiedObjects(ctx *verifierContext) {
 func updateVerifyErrStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus, lastErr string) {
 
-	status.LastErr = lastErr
-	status.LastErrTime = time.Now()
+	status.SetErrorNow(lastErr)
 	status.PendingAdd = false
 	publishVerifyImageStatus(ctx, status)
 }

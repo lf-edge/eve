@@ -83,9 +83,9 @@ type VerifyImageStatus struct {
 	PendingDelete bool
 	IsContainer   bool    // Is this image for a Container?
 	State         SwState // DELIVERED; LastErr* set if failed
-	LastErr       string  // Verification error
-	LastErrTime   time.Time
-	RefCount      uint
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
+	RefCount uint
 }
 
 // The VerifyStatus is shared between VerifyImageStatus and PersistImageStatus
