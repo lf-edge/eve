@@ -35,11 +35,18 @@ fi
 P3_FS_TYPE="ext3"
 FSCK_FAILED=0
 
-# First lets see if we're missing P3 altogether and try to create it.
-# This is safe, since the worst case scenario we may hose the system,
-# but the system without P3 is a warm brick anyways
+# First lets see if we're missing P3 (/persist) altogether and try to create it.
+# This is safe, since the worst case scenario we may hose the system, but the
+# system without P3 (/persist) is almost a warm brick anyways. The reason we are
+# not refusing to proceed though, is that we still hope that if everything else
+# fails useful feedback will be reported to the controller about the "warm brick"
+# state.
 P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
 IMGA=$(/hostfs/sbin/findfs PARTLABEL=IMGA)
+IMGB=$(/hostfs/sbin/findfs PARTLABEL=IMGB)
+# if we don't have a P3 (/persist) partition, but we do have at least IMGA, then
+# we can calculate where the P3 (/persist) should exist on disk and make it.
+# Optionally same applies to IMGB partition (if it is missing in the GPT).
 if [ -z "$P3" ] && [ -n "$IMGA" ]; then
    DEV=$(echo /sys/block/*/"${IMGA#/dev/}")
    DEV="/dev/$(echo "$DEV" | cut -f4 -d/)"
@@ -64,7 +71,6 @@ if [ -z "$P3" ] && [ -n "$IMGA" ]; then
    fi
 
    # lets see if IMGB partition is around, if not - create it
-   IMGB=$(/hostfs/sbin/findfs PARTLABEL=IMGB)
    if [ -z "$IMGB" ]; then
       IMGA_ID=$(sgdisk -p "$DEV" | grep "IMGA$" | awk '{print $1;}')
 
