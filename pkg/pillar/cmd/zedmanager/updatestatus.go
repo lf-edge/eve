@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
@@ -271,10 +270,8 @@ func doUpdate(ctx *zedmanagerContext,
 			if err != nil {
 				log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 					uuidStr, err)
-				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-				status.Error = fmt.Sprintf("%s", err)
-				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-				status.ErrorTime = time.Now()
+				status.SetErrorWithSource(err.Error(),
+					types.DomainStatus{}, time.Now())
 				changed = true
 			}
 		}
@@ -305,7 +302,7 @@ func doInstall(ctx *zedmanagerContext,
 	log.Infof("doInstall: UUID: %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
-	errorSource := ""
+	var errorSource interface{}
 	var errorTime time.Time
 	changed := false
 
@@ -315,7 +312,7 @@ func doInstall(ctx *zedmanagerContext,
 			len(status.StorageStatusList))
 		if status.PurgeInprogress == types.NotInprogress {
 			log.Errorln(errString)
-			status.SetError(errString, "Invalid PurgeInprogress", time.Now())
+			status.SetError(errString, time.Now())
 			return true, false
 		}
 		log.Warnln(errString)
@@ -335,9 +332,9 @@ func doInstall(ctx *zedmanagerContext,
 			}
 			log.Infof("Removing potentially bad StorageStatus %v\n",
 				ss)
-			if status.ErrorSource == ss.ErrorSource {
+			if status.IsErrorSource(ss.ErrorSourceType) {
 				log.Infof("Removing error %s\n", status.Error)
-				status.ClearError()
+				status.ClearErrorWithSource()
 			}
 			c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
 			if c {
@@ -370,9 +367,8 @@ func doInstall(ctx *zedmanagerContext,
 				"ImageSha256: %s, ImageID: %s, PurgeCounter: %d) found. New Storage configs are "+
 				"not allowed unless purged",
 				sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
-			log.Errorln(errString)
-			status.Error = errString
-			status.ErrorTime = time.Now()
+			log.Error(errString)
+			status.SetError(errString, time.Now())
 			return true, false
 		}
 		newSs := types.StorageStatus{}
@@ -447,23 +443,20 @@ func doInstall(ctx *zedmanagerContext,
 				ss.Name)
 			continue
 		}
-		if vs.LastErr != "" {
+		if vs.Error != "" {
 			log.Errorf("Received error from volumemgr for %s: %s",
-				ss.Name, vs.LastErr)
-			ss.Error = vs.LastErr
-			ss.ErrorSource = pubsub.TypeToName(types.VolumeStatus{})
-			errorSource = ss.ErrorSource
+				ss.Name, vs.Error)
+			ss.SetErrorWithSource(vs.Error,
+				types.VolumeStatus{}, vs.ErrorTime)
+			errorSource = ss.ErrorSourceType
+			errorTime = ss.ErrorTime
 			allErrors = appendError(allErrors, "volumemgr",
-				vs.LastErr)
-			ss.ErrorTime = vs.LastErrTime
-			errorTime = vs.LastErrTime
+				vs.Error)
 			changed = true
 			continue
-		} else if ss.ErrorSource == pubsub.TypeToName(types.VolumeStatus{}) {
+		} else if ss.IsErrorSource(types.VolumeStatus{}) {
 			log.Infof("Clearing volumemgr error %s", ss.Error)
-			ss.Error = ""
-			ss.ErrorSource = ""
-			ss.ErrorTime = time.Time{}
+			ss.ClearErrorWithSource()
 			changed = true
 		}
 	}
@@ -478,9 +471,13 @@ func doInstall(ctx *zedmanagerContext,
 		status.State = minState
 		changed = true
 	}
-	status.Error = allErrors
-	status.ErrorSource = errorSource
-	status.ErrorTime = errorTime
+	if allErrors == "" {
+		status.ClearErrorWithSource()
+	} else if errorSource == nil {
+		status.SetError(allErrors, errorTime)
+	} else {
+		status.SetErrorWithSource(allErrors, errorSource, errorTime)
+	}
 	if allErrors != "" {
 		log.Errorf("Volumemgr error for %s: %s", uuidStr, allErrors)
 		return changed, false
@@ -506,9 +503,8 @@ func doPrepare(ctx *zedmanagerContext,
 		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
 			len(config.OverlayNetworkList),
 			len(status.EIDList))
-		log.Errorln(errString)
-		status.Error = errString
-		status.ErrorTime = time.Now()
+		log.Error(errString)
+		status.SetError(errString, time.Now())
 		changed = true
 		return changed, false
 	}
@@ -589,7 +585,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			if c {
 				changed = true
 			}
-			if !ds.Activated && ds.LastErr == "" {
+			if !ds.Activated && ds.Error == "" {
 				log.Infof("RestartInprogress(%s) came down - set bring up\n",
 					status.Key())
 				status.RestartInprogress = types.BringUp
@@ -604,8 +600,9 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Check
 	err := checkDiskSize(ctx)
 	if err != nil {
-		log.Errorf("doActivate: checkDiskSize Failed. err: %s", err)
-		status.SetError(err.Error(), "CheckDiskSize", time.Now())
+		errStr := fmt.Sprintf("checkDiskSize failed: %s", err)
+		log.Errorf("doActivate: %s", errStr)
+		status.SetError(errStr, time.Now())
 		return true
 	}
 
@@ -625,7 +622,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
-		status.SetError(ns.Error, pubsub.TypeToName(types.AppNetworkStatus{}),
+		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
 			ns.ErrorTime)
 		changed = true
 		return changed
@@ -635,9 +632,9 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus Activated for %s\n", uuidStr)
 		return changed
 	}
-	if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
+	if status.IsErrorSource(types.AppNetworkStatus{}) {
 		log.Infof("Clearing zedrouter error %s\n", status.Error)
-		status.ClearError()
+		status.ClearErrorWithSource()
 		changed = true
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
@@ -647,9 +644,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
-		status.Error = fmt.Sprintf("%s", err)
-		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-		status.ErrorTime = time.Now()
+		status.SetErrorWithSource(err.Error(), types.DomainStatus{},
+			time.Now())
 		changed = true
 		log.Infof("Waiting for DomainStatus Activated for %s\n",
 			uuidStr)
@@ -701,30 +697,25 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	// Look for xen errors. Ignore if we are going down
 	if status.RestartInprogress != types.BringDown {
-		if ds.LastErr != "" {
+		if ds.Error != "" {
 			log.Errorf("Received error from domainmgr for %s: %s\n",
-				uuidStr, ds.LastErr)
-			status.Error = ds.LastErr
-			status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-			status.ErrorTime = ds.LastErrTime
+				uuidStr, ds.Error)
+			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
+				ds.ErrorTime)
 			changed = true
-		} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+		} else if status.IsErrorSource(types.DomainStatus{}) {
 			log.Infof("Clearing domainmgr error %s\n", status.Error)
-			status.Error = ""
-			status.ErrorSource = ""
-			status.ErrorTime = time.Time{}
+			status.ClearErrorWithSource()
 			changed = true
 		}
 	} else {
-		if ds.LastErr != "" {
+		if ds.Error != "" {
 			log.Warnf("bringDown sees error from domainmgr for %s: %s\n",
-				uuidStr, ds.LastErr)
+				uuidStr, ds.Error)
 		}
-		if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+		if status.IsErrorSource(types.DomainStatus{}) {
 			log.Infof("Clearing domainmgr error %s\n", status.Error)
-			status.Error = ""
-			status.ErrorSource = ""
-			status.ErrorTime = time.Time{}
+			status.ClearErrorWithSource()
 			changed = true
 		}
 	}
@@ -998,19 +989,16 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 			changed = true
 		}
 		// Look for errors
-		if ds.LastErr != "" {
+		if ds.Error != "" {
 			log.Errorf("Received error from domainmgr for %s: %s\n",
-				uuidStr, ds.LastErr)
-			status.Error = ds.LastErr
-			status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-			status.ErrorTime = ds.LastErrTime
+				uuidStr, ds.Error)
+			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
+				ds.ErrorTime)
 			changed = true
-		} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+		} else if status.IsErrorSource(types.DomainStatus{}) {
 			log.Infof("Clearing domainmgr error %s\n",
 				status.Error)
-			status.Error = ""
-			status.ErrorSource = ""
-			status.ErrorTime = time.Time{}
+			status.ClearErrorWithSource()
 			changed = true
 		}
 		return changed, done
@@ -1046,15 +1034,12 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 		if ns.Error != "" {
 			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
-			status.Error = ns.Error
-			status.ErrorSource = pubsub.TypeToName(types.AppNetworkStatus{})
-			status.ErrorTime = ns.ErrorTime
+			status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
+				ns.ErrorTime)
 			changed = true
-		} else if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
+		} else if status.IsErrorSource(types.AppNetworkStatus{}) {
 			log.Infof("Clearing zedrouter error %s\n", status.Error)
-			status.Error = ""
-			status.ErrorSource = ""
-			status.ErrorTime = time.Time{}
+			status.ClearErrorWithSource()
 			changed = true
 		}
 		return changed, done
@@ -1152,16 +1137,13 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
-		status.Error = ns.Error
-		status.ErrorSource = pubsub.TypeToName(types.AppNetworkStatus{})
-		status.ErrorTime = ns.ErrorTime
+		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
+			ns.ErrorTime)
 		changed = true
 		return changed
-	} else if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
+	} else if status.IsErrorSource(types.AppNetworkStatus{}) {
 		log.Infof("Clearing zedrouter error %s\n", status.Error)
-		status.Error = ""
-		status.ErrorSource = ""
-		status.ErrorTime = time.Time{}
+		status.ClearErrorWithSource()
 		changed = true
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
@@ -1172,8 +1154,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
-		status.Error = fmt.Sprintf("%s", err)
-		status.ErrorTime = time.Now()
+		status.SetError(err.Error(), time.Now())
 		changed = true
 		log.Infof("Waiting for DomainStatus Activated for %s\n",
 			uuidStr)
@@ -1212,15 +1193,13 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		}
 	}
 	// Ignore errors during a halt
-	if ds.LastErr != "" {
+	if ds.Error != "" {
 		log.Warnf("doInactivateHalt sees error from domainmgr for %s: %s\n",
-			uuidStr, ds.LastErr)
+			uuidStr, ds.Error)
 	}
-	if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+	if status.IsErrorSource(types.DomainStatus{}) {
 		log.Infof("Clearing domainmgr error %s\n", status.Error)
-		status.Error = ""
-		status.ErrorSource = ""
-		status.ErrorTime = time.Time{}
+		status.ClearErrorWithSource()
 		changed = true
 	}
 	// XXX compare with equal before setting changed?

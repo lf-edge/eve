@@ -259,9 +259,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	default:
 		errString := fmt.Sprintf("Wrong partition state %s for %s",
 			partStatus.PartitionState, status.PartitionLabel)
-		log.Errorln(errString)
-		status.Error = errString
-		status.ErrorTime = time.Now()
+		log.Error(errString)
+		status.SetErrorNow(errString)
 		changed = true
 		return changed
 	}
@@ -278,8 +277,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		changed = true
 		// Match the version string inside image?
 		if errString := checkInstalledVersion(ctx, *status); errString != "" {
-			status.Error = errString
-			status.ErrorTime = time.Now()
+			log.Error(errString)
+			status.SetErrorNow(errString)
 			zboot.SetOtherPartitionStateUnused()
 			publishZbootPartitionStatus(ctx,
 				status.PartitionLabel)
@@ -346,9 +345,8 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 				config.BaseOsVersion,
 				sc.Name, ss.Name,
 				sc.ImageID, ss.ImageID)
-			log.Errorln(errString)
-			status.Error = errString
-			status.ErrorTime = time.Now()
+			log.Error(errString)
+			status.SetErrorNow(errString)
 			changed = true
 			return changed, proceed
 		}
@@ -448,9 +446,8 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		if otherPartVersion == config.BaseOsVersion {
 			log.Infoln(errStr)
 		} else {
-			log.Errorln(errStr)
-			status.Error = errStr
-			status.ErrorTime = time.Now()
+			log.Error(errStr)
+			status.SetErrorNow(errStr)
 		}
 		changed = true
 		return changed, proceed
@@ -489,8 +486,7 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 	status.State = ret.MinState
 
 	if ret.AllErrors != "" {
-		status.Error = ret.AllErrors
-		status.ErrorTime = ret.ErrorTime
+		status.SetError(ret.AllErrors, ret.ErrorTime)
 		log.Errorf("checkBaseOsVolumeStatus(%s) for %s, volumemgr error at %v: %v\n",
 			config.BaseOsVersion, uuidStr, status.ErrorTime, status.Error)
 		return ret.Changed, false
@@ -797,8 +793,7 @@ func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig,
 					config.Key(), err)
 				return
 			}
-			bs.Error = err.Error()
-			bs.ErrorTime = time.Now()
+			bs.SetErrorNow(err.Error())
 			publishBaseOsStatus(ctx, bs)
 			// publish the updated partition information
 			publishZbootPartitionStatusAll(ctx)
@@ -862,8 +857,7 @@ func maybeRetryInstall(ctx *baseOsMgrContext) {
 		log.Infof("maybeRetryInstall(%s) redoing after %s %v\n",
 			status.Key(), status.Error, status.ErrorTime)
 		status.TooEarly = false
-		status.Error = ""
-		status.ErrorTime = time.Time{}
+		status.ClearError()
 		baseOsHandleStatusUpdate(ctx, config, &status)
 	}
 }
@@ -974,13 +968,11 @@ func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsS
 		return
 	}
 	if ctxPtr.rebootReason != "" {
-		status.Error = ctxPtr.rebootReason
-		status.ErrorTime = ctxPtr.rebootTime
+		status.SetError(ctxPtr.rebootReason, ctxPtr.rebootTime)
 	} else {
 		dateStr := ctxPtr.rebootTime.Format(time.RFC3339Nano)
 		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
 			dateStr)
-		status.Error = reason
-		status.ErrorTime = ctxPtr.rebootTime
+		status.SetError(reason, ctxPtr.rebootTime)
 	}
 }

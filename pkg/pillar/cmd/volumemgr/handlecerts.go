@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -134,8 +133,8 @@ func doCertObjInstall(ctx *volumemgrContext, uuidStr string, config types.CertOb
 		errString := fmt.Sprintf("%s, Storage length mismatch: %d vs %d\n", uuidStr,
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
-		status.Error = errString
-		status.ErrorTime = time.Now()
+		log.Error(errString)
+		status.SetErrorNow(errString)
 		return changed, false
 	}
 
@@ -147,9 +146,8 @@ func doCertObjInstall(ctx *volumemgrContext, uuidStr string, config types.CertOb
 			errString := fmt.Sprintf("%s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				sc.Name, ss.Name,
 				sc.ImageID, ss.ImageID)
-			log.Errorln(errString)
-			status.Error = errString
-			status.ErrorTime = time.Now()
+			log.Error(errString)
+			status.SetErrorNow(errString)
 			changed = true
 			return changed, false
 		}
@@ -182,8 +180,7 @@ func checkCertObjStorageDownloadStatus(ctx *volumemgrContext, uuidStr string,
 	//		config.StorageConfigList, status.StorageStatusList)
 	var ret types.RetStatus
 	status.State = ret.MinState
-	status.Error = ret.AllErrors
-	status.ErrorTime = ret.ErrorTime
+	status.SetError(ret.AllErrors, ret.ErrorTime)
 
 	log.Infof("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 

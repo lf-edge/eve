@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -96,16 +95,12 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 				imageID)
 			continue
 		}
-		if vs.LastErr != "" {
+		if vs.Error != "" {
 			log.Errorf("checkVolumeStatus %s, volumemgr error, %s\n",
-				uuidStr, vs.LastErr)
-			errInfo := types.ErrorInfo{
-				Error:       vs.LastErr,
-				ErrorTime:   vs.LastErrTime,
-				ErrorSource: pubsub.TypeToName(types.VolumeStatus{}),
-			}
-			ss.SetErrorInfo(errInfo)
-			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", vs.LastErr)
+				uuidStr, vs.Error)
+			ss.SetErrorWithSource(vs.Error, types.VolumeStatus{},
+				vs.ErrorTime)
+			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", vs.Error)
 			ret.ErrorTime = ss.ErrorTime
 			ret.Changed = true
 		}
@@ -188,12 +183,8 @@ func installDownloadedObject(imageID uuid.UUID,
 		ssPtr.State = types.INSTALLED
 		log.Infof("installDownloadedObject(%s) done", imageID)
 	} else {
-		errInfo := types.ErrorInfo{
-			Error:       fmt.Sprintf("installDownloadedObject: %s", ret),
-			ErrorTime:   time.Now(),
-			ErrorSource: pubsub.TypeToName(types.VolumeStatus{}),
-		}
-		ssPtr.SetErrorInfo(errInfo)
+		errStr := fmt.Sprintf("installDownloadedObject: %s", ret)
+		ssPtr.SetErrorWithSource(errStr, types.VolumeStatus{}, time.Now())
 	}
 	return ret
 }

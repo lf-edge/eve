@@ -69,11 +69,11 @@ func parseCipherContext(ctx *getconfigContext,
 			DeviceCertHash:     cfgCipherContext.GetDeviceCertHash(),
 			ControllerCertHash: cfgCipherContext.GetControllerCertHash(),
 		}
-		context.ClearErrorInfo()
+		context.ClearError()
 		if err := updateCipherContextCerts(ctx, &context); err != nil {
 			errStr := fmt.Sprintf("%s, CipherContextUpdateCerts failed, %s",
 				context.Key(), err)
-			context.SetErrorInfo(agentName, errStr)
+			context.SetErrorNow(errStr)
 		}
 		publishCipherContext(ctx, context)
 	}
@@ -127,7 +127,7 @@ func parseCipherBlock(ctx *getconfigContext, key string,
 		len(cipherBlock.CipherContextID) == 0 {
 		errStr := fmt.Sprintf("%s, block contains incomplete data", key)
 		log.Errorf(errStr)
-		cipherBlock.SetErrorInfo(agentName, errStr)
+		cipherBlock.SetErrorNow(errStr)
 		return cipherBlock
 	}
 	cipherBlock.IsCipher = true
@@ -139,7 +139,7 @@ func parseCipherBlock(ctx *getconfigContext, key string,
 		errStr := fmt.Sprintf("parseCipherBlock(%s) cipherContext not found %s\n",
 			key, cipherBlock.CipherContextID)
 		log.Errorf(errStr)
-		cipherBlock.SetErrorInfo(agentName, errStr)
+		cipherBlock.SetErrorNow(errStr)
 	} else {
 		log.Infof("parseCipherBlock(%s) cipherContext found %s\n",
 			key, cipherBlock.CipherContextID)
@@ -161,7 +161,7 @@ func updateCipherBlock(status types.CipherContext,
 
 	// first mark the cipher block as not ready,
 	// copy the relavant attributes, from cipher context to cipher block
-	cipherBlock.ClearErrorInfo()
+	cipherBlock.ClearError()
 	cipherBlock.KeyExchangeScheme = status.KeyExchangeScheme
 	cipherBlock.EncryptionScheme = status.EncryptionScheme
 
@@ -171,13 +171,13 @@ func updateCipherBlock(status types.CipherContext,
 		dcert = []byte{}
 		errStr := fmt.Sprintf("CipherContext(%s) deleted for the cipherBlock",
 			status.Key())
-		cipherBlock.SetErrorInfo(agentName, errStr)
+		cipherBlock.SetErrorNow(errStr)
 		return true
 	}
 	// when we have both the certificates,
 	// mark the cipher block as valid
 	if status.Error != "" {
-		cipherBlock.SetErrorInfo(agentName, status.Error)
+		cipherBlock.SetErrorNow(status.Error)
 	} else {
 		cipherBlock.ControllerCert = ccert
 		cipherBlock.DeviceCert = dcert
@@ -188,7 +188,7 @@ func updateCipherBlock(status types.CipherContext,
 			errStr := fmt.Sprintf("%s, certs are not ready",
 				cipherBlock.Key())
 			log.Errorf(errStr)
-			cipherBlock.SetErrorInfo(agentName, errStr)
+			cipherBlock.SetErrorNow(errStr)
 		}
 	}
 	return true

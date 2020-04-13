@@ -112,8 +112,8 @@ type AppNetworkStatus struct {
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 func (status AppNetworkStatus) Key() string {
@@ -430,8 +430,8 @@ type NetworkPortStatus struct {
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 type AddrInfo struct {
@@ -1131,8 +1131,8 @@ type NetworkXObjectConfig struct {
 	Proxy           *ProxyConfig
 	WirelessCfg     WirelessConfig
 	// Any errrors from the parser
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 type IpRange struct {
@@ -1165,8 +1165,8 @@ type NetworkInstanceInfo struct {
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
 	// Any errrors from provisioning the network
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 
 	// Vif metric map. This should have a union of currently existing
 	// vifs and previously deleted vifs.
@@ -1509,13 +1509,6 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
 		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
 		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
 	}
-}
-
-func (status *NetworkInstanceStatus) SetError(err error) {
-	log.Errorln(err.Error())
-	status.Error = err.Error()
-	status.ErrorTime = time.Now()
-	return
 }
 
 // Returns true if found

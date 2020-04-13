@@ -346,14 +346,12 @@ func publishVaultStatus(ctx *vaultMgrContext,
 	status.Name = vaultName
 	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = fscryptStatus
-		status.Error = fscryptError
-		status.ErrorTime = time.Now()
+		status.SetErrorNow(fscryptError)
 	} else {
 		args := getStatusParams(vaultPath)
 		if stderr, _, err := execCmd(fscryptPath, args...); err != nil {
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-			status.Error = stderr
-			status.ErrorTime = time.Now()
+			status.SetErrorNow(stderr)
 		} else {
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
 		}
