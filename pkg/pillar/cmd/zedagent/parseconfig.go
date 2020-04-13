@@ -545,6 +545,16 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
 
+		// Pretend that the controller specified purgeCounter for the first
+		// disk. Then StorageStatus will start with that value below.
+		if len(appInstance.StorageConfigList) > 0 &&
+			appInstance.StorageConfigList[0].PurgeCounter != appInstance.PurgeCmd.Counter {
+			sc := &appInstance.StorageConfigList[0]
+			log.Infof("Setting purgeCounter to %d for %s",
+				appInstance.PurgeCmd.Counter, appInstance.Key())
+			sc.PurgeCounter = appInstance.PurgeCmd.Counter
+		}
+
 		// write to zedmanager config directory
 		uuidStr := cfgApp.Uuidandversion.Uuid
 		publishAppInstanceConfig(getconfigCtx, appInstance)
