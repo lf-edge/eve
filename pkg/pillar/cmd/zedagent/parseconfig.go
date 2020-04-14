@@ -54,7 +54,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	if getconfigCtx.rebootFlag || ctx.deviceReboot {
 		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
 	} else {
-		parseCipherContextConfig(getconfigCtx, config)
+		parseCipherContext(getconfigCtx, config)
 		parseDatastoreConfig(config, getconfigCtx)
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
