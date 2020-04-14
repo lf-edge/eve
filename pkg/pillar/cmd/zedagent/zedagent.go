@@ -359,8 +359,9 @@ func Run(ps *pubsub.PubSub) {
 
 	pubCipherContextConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.CipherContextConfig{},
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.CipherContextConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -370,8 +371,9 @@ func Run(ps *pubsub.PubSub) {
 
 	pubControllerCertConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.ControllerCertConfig{},
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.ControllerCertConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -382,8 +384,9 @@ func Run(ps *pubsub.PubSub) {
 	// for CipherContextStatus Publisher
 	pubCipherContextStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.CipherContextStatus{},
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.CipherContextStatus{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -394,8 +397,9 @@ func Run(ps *pubsub.PubSub) {
 	// for ControllerCertStatus Publisher
 	pubControllerCertStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.ControllerCertStatus{},
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.ControllerCertStatus{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -415,6 +419,7 @@ func Run(ps *pubsub.PubSub) {
 			DeleteHandler: handleCipherContextConfigDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
+			Persistent:    true,
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -434,6 +439,7 @@ func Run(ps *pubsub.PubSub) {
 			DeleteHandler: handleControllerCertConfigDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
+			Persistent:    true,
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -453,6 +459,7 @@ func Run(ps *pubsub.PubSub) {
 			DeleteHandler: handleCipherContextStatusDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
+			Persistent:    true,
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -472,6 +479,7 @@ func Run(ps *pubsub.PubSub) {
 			DeleteHandler: handleControllerCertStatusDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
+			Persistent:    true,
 		})
 	if err != nil {
 		log.Fatal(err)
