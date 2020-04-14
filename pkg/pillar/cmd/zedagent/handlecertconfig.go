@@ -158,9 +158,9 @@ func updateCipherContextsWithControllerCert(ctx *getconfigContext,
 	status types.ControllerCertStatus, reset bool) {
 	log.Infof("%v, update cipher contexts, reset:%v\n",
 		status.Key(), reset)
-	items := ctx.pubCipherContextStatus.GetAll()
+	items := ctx.pubCipherContext.GetAll()
 	for _, item := range items {
-		cipherCtx := item.(types.CipherContextStatus)
+		cipherCtx := item.(types.CipherContext)
 		if !bytes.Equal(cipherCtx.ControllerCertHash,
 			status.CertHash) {
 			continue
@@ -171,14 +171,14 @@ func updateCipherContextsWithControllerCert(ctx *getconfigContext,
 			cipherCtx.ControllerCert = []byte{}
 			errStr := fmt.Sprintf("Controller Cert deleted")
 			cipherCtx.SetErrorInfo(agentName, errStr)
-			publishCipherContextStatus(ctx, cipherCtx)
+			publishCipherContext(ctx, cipherCtx)
 			continue
 		}
 		cipherCtx.ControllerCert = status.Cert
 		if len(status.Error) != 0 {
 			cipherCtx.SetErrorInfo(agentName, status.Error)
 		}
-		publishCipherContextStatus(ctx, cipherCtx)
+		publishCipherContext(ctx, cipherCtx)
 	}
 }
 

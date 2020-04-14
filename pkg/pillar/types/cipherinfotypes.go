@@ -8,26 +8,10 @@ import (
 	"time"
 )
 
-// CipherContextConfig : a pair of device and controller certificate
+// CipherContext : a pair of device and controller certificate
 // published by controller along with some attributes
 // part of EdgeDevConfig block, received from controller
-type CipherContextConfig struct {
-	ContextID          string
-	HashScheme         zconfig.CipherHashAlgorithm
-	KeyExchangeScheme  zconfig.KeyExchangeScheme
-	EncryptionScheme   zconfig.EncryptionScheme
-	ControllerCertHash []byte
-	DeviceCertHash     []byte
-}
-
-// Key :
-func (config *CipherContextConfig) Key() string {
-	return config.ContextID
-}
-
-// CipherContextStatus : context information for the pair
-// of certificates
-type CipherContextStatus struct {
+type CipherContext struct {
 	ContextID          string
 	HashScheme         zconfig.CipherHashAlgorithm
 	KeyExchangeScheme  zconfig.KeyExchangeScheme
@@ -40,19 +24,19 @@ type CipherContextStatus struct {
 }
 
 // Key :
-func (status *CipherContextStatus) Key() string {
+func (status *CipherContext) Key() string {
 	return status.ContextID
 }
 
 // SetErrorInfo : sets errorinfo on the cipher context status object
-func (status *CipherContextStatus) SetErrorInfo(agentName, strErr string) {
+func (status *CipherContext) SetErrorInfo(agentName, strErr string) {
 	status.Error = strErr
 	status.ErrorTime = time.Now()
 	status.ErrorSource = agentName
 }
 
 // ClearErrorInfo : clears errorinfo on the cipher context status object
-func (status *CipherContextStatus) ClearErrorInfo() {
+func (status *CipherContext) ClearErrorInfo() {
 	status.Error = ""
 	status.ErrorSource = ""
 	status.ErrorTime = time.Time{}

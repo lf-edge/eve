@@ -81,9 +81,7 @@ type zedagentContext struct {
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
-	subCipherContextConfig    pubsub.Subscription
 	subControllerCertConfig   pubsub.Subscription
-	subCipherContextStatus    pubsub.Subscription
 	subControllerCertStatus   pubsub.Subscription
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
@@ -357,18 +355,6 @@ func Run(ps *pubsub.PubSub) {
 	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
 	pubDatastoreConfig.ClearRestarted()
 
-	pubCipherContextConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			Persistent: true,
-			TopicType:  types.CipherContextConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCipherContextConfig.ClearRestarted()
-	getconfigCtx.pubCipherContextConfig = pubCipherContextConfig
-
 	pubControllerCertConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
@@ -382,17 +368,17 @@ func Run(ps *pubsub.PubSub) {
 	getconfigCtx.pubControllerCertConfig = pubControllerCertConfig
 
 	// for CipherContextStatus Publisher
-	pubCipherContextStatus, err := ps.NewPublication(
+	pubCipherContext, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			Persistent: true,
-			TopicType:  types.CipherContextStatus{},
+			TopicType:  types.CipherContext{},
 		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubCipherContextStatus.ClearRestarted()
-	getconfigCtx.pubCipherContextStatus = pubCipherContextStatus
+	pubCipherContext.ClearRestarted()
+	getconfigCtx.pubCipherContext = pubCipherContext
 
 	// for ControllerCertStatus Publisher
 	pubControllerCertStatus, err := ps.NewPublication(
@@ -406,26 +392,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubControllerCertStatus.ClearRestarted()
 	getconfigCtx.pubControllerCertStatus = pubControllerCertStatus
-
-	// for handling changes in the cipher context
-	subCipherContextConfig, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     agentName,
-			TopicImpl:     types.CipherContextConfig{},
-			Activate:      false,
-			Ctx:           &zedagentCtx,
-			CreateHandler: handleCipherContextConfigModify,
-			ModifyHandler: handleCipherContextConfigModify,
-			DeleteHandler: handleCipherContextConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-			Persistent:    true,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subCipherContextConfig = subCipherContextConfig
-	subCipherContextConfig.Activate()
 
 	// for handling changes in the controller certificate
 	subControllerCertConfig, err := ps.NewSubscription(
@@ -446,26 +412,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subControllerCertConfig = subControllerCertConfig
 	subControllerCertConfig.Activate()
-
-	// for CipherContextStatus Subscriber Modify/Delete
-	subCipherContextStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     agentName,
-			TopicImpl:     types.CipherContextStatus{},
-			Activate:      false,
-			Ctx:           &zedagentCtx,
-			CreateHandler: handleCipherContextStatusModify,
-			ModifyHandler: handleCipherContextStatusModify,
-			DeleteHandler: handleCipherContextStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-			Persistent:    true,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subCipherContextStatus = subCipherContextStatus
-	subCipherContextStatus.Activate()
 
 	// for ControllerCertStatus Subscriber Modify/Delete
 	subControllerCertStatus, err := ps.NewSubscription(
@@ -904,14 +850,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
-		case change := <-subCipherContextConfig.MsgChan():
-			subCipherContextConfig.ProcessChange(change)
-
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
-
-		case change := <-subCipherContextStatus.MsgChan():
-			subCipherContextStatus.ProcessChange(change)
 
 		case change := <-subControllerCertStatus.MsgChan():
 			subControllerCertStatus.ProcessChange(change)
@@ -1043,14 +983,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
-		case change := <-subCipherContextConfig.MsgChan():
-			subCipherContextConfig.ProcessChange(change)
-
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
-
-		case change := <-subCipherContextStatus.MsgChan():
-			subCipherContextStatus.ProcessChange(change)
 
 		case change := <-subControllerCertStatus.MsgChan():
 			subControllerCertStatus.ProcessChange(change)
@@ -1204,14 +1138,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
-		case change := <-subCipherContextConfig.MsgChan():
-			subCipherContextConfig.ProcessChange(change)
-
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
-
-		case change := <-subCipherContextStatus.MsgChan():
-			subCipherContextStatus.ProcessChange(change)
 
 		case change := <-subControllerCertStatus.MsgChan():
 			subControllerCertStatus.ProcessChange(change)
