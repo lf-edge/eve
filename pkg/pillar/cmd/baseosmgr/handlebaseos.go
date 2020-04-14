@@ -360,7 +360,8 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 		return changed, false
 	}
 	// check for the volume status change
-	c, done := checkBaseOsVolumeStatus(ctx, uuidStr, config, status)
+	c, done := checkBaseOsVolumeStatus(ctx, status.UUIDandVersion.UUID,
+		config, status)
 	changed = changed || c
 	if !done {
 		log.Infof(" %s, volume still not done", config.BaseOsVersion)
@@ -475,13 +476,14 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	return changed, proceed
 }
 
-func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, uuidStr string,
+func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
+	uuidStr := baseOsUUID.String()
 	log.Infof("checkBaseOsVolumeStatus(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
-	ret := checkVolumeStatus(ctx, uuidStr, config.StorageConfigList,
+	ret := checkVolumeStatus(ctx, baseOsUUID, config.StorageConfigList,
 		status.StorageStatusList)
 
 	status.State = ret.MinState
@@ -613,7 +615,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			log.Infof("doBaseOsUninstall(%s) for %s, HasVolumemgrRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageID)
 
-			MaybeRemoveVolumeConfig(ctx, ss.ImageSha256, nilUUID, ss.ImageID)
+			// We use the baseos object UUID as appInstID here
+			MaybeRemoveVolumeConfig(ctx, ss.ImageSha256,
+				status.UUIDandVersion.UUID, ss.ImageID)
 			ss.HasVolumemgrRef = false
 			changed = true
 		} else {
@@ -621,7 +625,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs := lookupVolumeStatus(ctx, ss.ImageSha256, nilUUID, ss.ImageID)
+		// We use the baseos object UUID as appInstID here
+		vs := lookupVolumeStatus(ctx, ss.ImageSha256,
+			status.UUIDandVersion.UUID, ss.ImageID)
 		if vs != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Volume %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, ss.ImageID,
