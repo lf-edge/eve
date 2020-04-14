@@ -51,6 +51,7 @@ type DeviceNetworkContext struct {
 	SubAssignableAdapters   pubsub.Subscription
 	PubDevicePortConfig     pubsub.Publication
 	PubDevicePortConfigList pubsub.Publication
+	PubCipherBlockStatus    pubsub.Publication
 	PubDeviceNetworkStatus  pubsub.Publication
 	Changed                 bool
 	SubGlobalConfig         pubsub.Subscription
@@ -195,7 +196,7 @@ func compressDPCL(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 
 var nilUUID = uuid.UUID{} // Really a const
 
-func VerifyPending(pending *DPCPending,
+func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	aa *types.AssignableAdapters, timeout uint32) PendDNSStatus {
 
 	log.Infof("VerifyPending()\n")
@@ -225,7 +226,7 @@ func VerifyPending(pending *DPCPending,
 
 	if !pending.PendDPC.Equal(&pending.OldDPC) {
 		log.Infof("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
-		checkAndUpdateWireless(nil, &pending.OldDPC, &pending.PendDPC)
+		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
 		ifname, err := UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
@@ -307,7 +308,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 
 	passed := false
 	for !passed {
-		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters,
+		res := VerifyPending(ctx, &ctx.Pending, ctx.AssignableAdapters,
 			ctx.TestSendTimeout)
 		UpdateResolvConf(ctx.Pending.PendDNS)
 		UpdatePBR(ctx.Pending.PendDNS)
@@ -754,7 +755,7 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
 			} else if pCfg.WirelessCfg.WType == types.WirelessTypeWifi ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi {
-				status := devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg)
+				status := devPortInstallWifiConfig(ctx, pCfg.IfName, pCfg.WirelessCfg)
 				log.Infof("checkAndUpdateWireless: updated wpa file ok %v\n", status)
 			}
 		}
