@@ -140,6 +140,15 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubDevicePortConfigList.ClearRestarted()
 
+	pubCipherBlockStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CipherBlockStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -163,6 +172,7 @@ func Run(ps *pubsub.PubSub) {
 	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.PubDevicePortConfig = pubDevicePortConfig
 	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
+	nimCtx.PubCipherBlockStatus = pubCipherBlockStatus
 	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 	dnc := &nimCtx.DeviceNetworkContext
 	devicenetwork.IngestPortConfigList(dnc)
