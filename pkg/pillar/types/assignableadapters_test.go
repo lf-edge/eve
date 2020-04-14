@@ -6,6 +6,7 @@ package types
 import (
 	"testing"
 
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/stretchr/testify/assert"
 )
@@ -141,7 +142,7 @@ func TestLookupIoBundlePhylabel(t *testing.T) {
 
 func TestIoBundleFromPhyAdapter(t *testing.T) {
 	phyAdapter := PhysicalIOAdapter{
-		Ptype:        zconfig.PhyIoType_PhyIoNetEth,
+		Ptype:        zcommon.PhyIoType_PhyIoNetEth,
 		Phylabel:     "ethernet0",
 		Logicallabel: "shopfloor",
 		Assigngrp:    "eth-grp-1",
@@ -152,8 +153,8 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 			Ioports: "3f8-3ff",
 			Serial:  "/dev/ttyS0",
 		},
-		Usage: zconfig.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
-		UsagePolicy: PhyIOUsagePolicy{
+		Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+		UsagePolicy: zconfig.PhyIOUsagePolicy{
 			FreeUplink: true,
 		},
 	}

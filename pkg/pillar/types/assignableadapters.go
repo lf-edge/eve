@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -45,7 +45,7 @@ type IoBundle struct {
 	// Entire group can be assigned to application or nothing at all
 	AssignmentGroup string
 
-	Usage zconfig.PhyIoMemberUsage
+	Usage zcommon.PhyIoMemberUsage
 
 	// FreeUplink - The network connection through this adapter is Free.
 	// Prefer this adapter for connecting to the cloud.
@@ -144,7 +144,7 @@ func (ib IoBundle) HasAdapterChanged(phyAdapter PhysicalIOAdapter) bool {
 
 // IoBundleFromPhyAdapter - Creates an IoBundle from the given PhyAdapter
 func IoBundleFromPhyAdapter(phyAdapter PhysicalIOAdapter) *IoBundle {
-	// XXX - We should really change IoType to type zconfig.PhyIoType
+	// XXX - We should really change IoType to type zcommon.PhyIoType
 	ib := IoBundle{}
 	ib.Type = IoType(phyAdapter.Ptype)
 	ib.Phylabel = phyAdapter.Phylabel
