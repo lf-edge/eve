@@ -15,7 +15,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	"github.com/lf-edge/eve/api/go/flowlog"
 	zinfo "github.com/lf-edge/eve/api/go/info"   // XXX need to stop using
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
@@ -112,7 +112,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 				continue
 			}
 			reportAA := new(zinfo.ZioBundle)
-			reportAA.Type = zconfig.PhyIoType(ia.Type)
+			reportAA.Type = zcommon.PhyIoType(ia.Type)
 			reportAA.Name = ia.Phylabel
 			reportAA.UsedByAppUUID = zcdevUUID.String()
 			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)

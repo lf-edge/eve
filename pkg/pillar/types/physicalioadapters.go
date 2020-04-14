@@ -7,6 +7,7 @@ package types
 //  These are translated to AssignableAdapters
 
 import (
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 )
 
@@ -30,13 +31,13 @@ type PhyIOUsagePolicy struct {
 // PhysicalIOAdapter - Object used to store Adapter configuration (L1)
 // from controller for each Adapter.
 type PhysicalIOAdapter struct {
-	Ptype        zconfig.PhyIoType // Type of IO Device
+	Ptype        zcommon.PhyIoType // Type of IO Device
 	Phylabel     string            // Label put on the box
 	Phyaddr      PhysicalAddress
 	Logicallabel string
 	Assigngrp    string
-	Usage        zconfig.PhyIoMemberUsage
-	UsagePolicy  PhyIOUsagePolicy
+	Usage        zcommon.PhyIoMemberUsage
+	UsagePolicy  zconfig.PhyIOUsagePolicy
 	// FIXME: cbattr - This needs to be thought through to be made into
 	//  a structure OR may be even various attributes in PhysicalIO structure
 	// itself.
