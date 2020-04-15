@@ -21,6 +21,7 @@ var cipherCtxHash []byte
 func parseCipherContext(ctx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 
+	log.Infof("Started parsing cipher context")
 	cfgCipherContextList := config.GetCipherContexts()
 	h := sha256.New()
 	for _, cfgCipherContext := range cfgCipherContextList {
@@ -76,6 +77,7 @@ func parseCipherContext(ctx *getconfigContext,
 		}
 		publishCipherContext(ctx, context)
 	}
+	log.Infof("parsing cipher context done\n")
 }
 
 // on create/modification, update the cipher context certs
@@ -83,8 +85,7 @@ func updateCipherContextCerts(ctx *getconfigContext,
 	context *types.CipherContext) error {
 	log.Infof("Updating certs of cipher context %s\n", context.ContextID)
 	// get controller cert
-	ccert, err0 := getControllerCert(ctx.zedagentCtx,
-		context.ControllerCertHash)
+	ccert, err0 := getControllerCert(ctx, context.ControllerCertHash)
 	if err0 != nil {
 		log.Errorf("getControllerCert(%s) failed: %s\n", context.ContextID, err0)
 		return err0
@@ -107,7 +108,10 @@ func updateCipherContextCerts(ctx *getconfigContext,
 // ciphercontext will be used to get the certs and encryption schemes
 func parseCipherBlock(ctx *getconfigContext, key string,
 	cfgCipherBlock *zconfig.CipherBlock) types.CipherBlockStatus {
+
+	log.Infof("parseCipherBlock(%s) started\n", key)
 	if cfgCipherBlock == nil {
+		log.Infof("parseCipherBlock(%s) nil cipher block", key)
 		return types.CipherBlockStatus{CipherBlockID: key}
 	}
 	cipherBlock := types.CipherBlockStatus{
@@ -121,36 +125,39 @@ func parseCipherBlock(ctx *getconfigContext, key string,
 	// should contain valid cipher data
 	if len(cipherBlock.CipherData) == 0 ||
 		len(cipherBlock.CipherContextID) == 0 {
-		errStr := fmt.Sprintf("%s, block contains incomplete data, %s",
-			cipherBlock.Key(), cipherBlock.CipherContextID)
+		errStr := fmt.Sprintf("%s, block contains incomplete data", key)
+		log.Errorf(errStr)
 		cipherBlock.SetErrorInfo(agentName, errStr)
 		return cipherBlock
 	}
 	cipherBlock.IsCipher = true
-	log.Infof("%s, marking cipher as true\n",
-		cipherBlock.CipherContextID)
+	log.Infof("%s, marking cipher as true\n", key)
 
 	// get the cipher context
-	cipherCtx := getCipherContext(ctx, cipherBlock.CipherContextID)
+	cipherCtx := lookupCipherContext(ctx, cipherBlock.CipherContextID)
 	if cipherCtx == nil {
-		errStr := fmt.Sprintf("cipherContext not found %s\n",
-			cipherBlock.CipherContextID)
+		errStr := fmt.Sprintf("parseCipherBlock(%s) cipherContext not found %s\n",
+			key, cipherBlock.CipherContextID)
+		log.Errorf(errStr)
 		cipherBlock.SetErrorInfo(agentName, errStr)
 	} else {
-		log.Infof("cipherContext found %s\n", cipherBlock.CipherContextID)
+		log.Infof("parseCipherBlock(%s) cipherContext found %s\n",
+			key, cipherBlock.CipherContextID)
 		updateCipherBlock(*cipherCtx, &cipherBlock, key, false)
 	}
+	log.Infof("parseCipherBlock(%s) done\n", key)
 	return cipherBlock
 }
 
 // cipherContext publish/get utilities
 func updateCipherBlock(status types.CipherContext,
 	cipherBlock *types.CipherBlockStatus, key string, reset bool) bool {
+
+	log.Infof("%s, updating cipherblock\n", status.Key())
 	if !cipherBlock.IsCipher ||
 		cipherBlock.CipherContextID != status.Key() {
 		return false
 	}
-	log.Infof("%s, updating cipherblock\n", status.Key())
 
 	// first mark the cipher block as not ready,
 	// copy the relavant attributes, from cipher context to cipher block
@@ -180,6 +187,7 @@ func updateCipherBlock(status types.CipherContext,
 		} else {
 			errStr := fmt.Sprintf("%s, certs are not ready",
 				cipherBlock.Key())
+			log.Errorf(errStr)
 			cipherBlock.SetErrorInfo(agentName, errStr)
 		}
 	}
@@ -190,24 +198,27 @@ func getCipherContextCerts(status types.CipherContext) ([]byte, []byte) {
 	return status.ControllerCert, status.DeviceCert
 }
 
-func getCipherContext(ctx *getconfigContext,
+func lookupCipherContext(ctx *getconfigContext,
 	key string) *types.CipherContext {
+	log.Infof("lookupCipherContext(%s)\n", key)
 	pub := ctx.pubCipherContext
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Errorf("getCipherContext(%s) not found\n", key)
+		log.Errorf("lookupCipherContext(%s) not found\n", key)
 		return nil
 	}
 	status := st.(types.CipherContext)
+	log.Infof("lookupCipherContext(%s) done\n", key)
 	return &status
 }
 
 func publishCipherContext(ctx *getconfigContext,
 	status types.CipherContext) {
 	key := status.Key()
-	log.Debugf("publishCipherContext %s\n", key)
+	log.Debugf("publishCipherContext(%s)\n", key)
 	pub := ctx.pubCipherContext
 	pub.Publish(key, status)
+	log.Debugf("publishCipherContext(%s) done\n", key)
 }
 
 func unpublishCipherContext(ctx *getconfigContext, key string) {
@@ -219,4 +230,5 @@ func unpublishCipherContext(ctx *getconfigContext, key string) {
 		return
 	}
 	pub.Unpublish(key)
+	log.Debugf("unpublishCipherContext(%s) done\n", key)
 }
