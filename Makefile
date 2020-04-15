@@ -106,6 +106,12 @@ PART_SPEC_kvm_rpi=boot conf imga
 PART_SPEC_rpi_kvm=$(PART_SPEC_kvm_rpi)
 PART_SPEC=$(PART_SPEC_$(subst -,_,$(HV)))
 
+# public cloud settings (only CGP is supported for now)
+CLOUD_IMG_NAME=live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+CLOUD_PROJECT=-project lf-edge-eve
+CLOUD_BUCKET=-bucket eve-live
+CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
+
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
@@ -242,6 +248,17 @@ run-grub: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
 run-compose: images/docker-compose.yml images/version.yml
 	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
 	docker-compose -f $< up
+
+# alternatively (and if you want greater control) you can replace the first command with
+#    gcloud auth activate-service-account --key-file=-
+#    gcloud compute images create $(CLOUD_IMG_NAME) --project=lf-edge-eve
+#           --source-uri=https://storage.googleapis.com/eve-live/live.img.tar.gz
+#           --licenses="https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx"
+run-live-gcp: $(LINUXKIT) | $(LIVE).img.tar.gz
+	if gcloud compute images list $(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
+	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $|                          ;\
+	fi
+	$^ run gcp $(CLOUD_PROJECT) $(CLOUD_INSTANCE) $(CLOUD_IMG_NAME)
 
 # ensure the dist directory exists
 $(DIST) $(INSTALLER):
@@ -433,6 +450,7 @@ help:
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose       runs all EVE microservices via docker-compose deployment"
 	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo "   run-live-gcp      runs a full fledged virtual device on Google Compute Platform (provide your account details)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-installer-iso runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"

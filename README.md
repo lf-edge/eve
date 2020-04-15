@@ -79,6 +79,8 @@ git clone https://github.com/lf-edge/eve.git
 cd eve
 ```
 
+#### Build Project EVE
+
 Build both the build-tools as well as the live image in the source directory:
 
 ```sh
@@ -89,8 +91,10 @@ make live
 This will download the relevant docker images from docker hub and create a bootable
 image `dist/<ARCH>/live.img`.
 
-Please note that not all containers will be fetched from Docker Hub.
-`mkimage-raw-efi` in particular will be built.
+Since almost all developer workflow is driven by the Makefile, it may be useful
+to familiarize yourself with various Makefile targets that Project EVE offers.
+A short summary of those is available by simply running make without any arguments
+`make` and a more detailed explanation [is available as part of our documentation](docs/BUILD.md)
 
 > **_NOTE:_** Since the initial build fetches a LOT of bits
 > over the network it may occasionally time out and fail. Typically
