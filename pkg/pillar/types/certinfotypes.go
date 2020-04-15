@@ -9,23 +9,9 @@ import (
 	"time"
 )
 
-// ControllerCertConfig : controller certicate
+// ControllerCert : controller certicate
 // config received from controller
-type ControllerCertConfig struct {
-	HashAlgo zcert.CertHashAlgorithm
-	Type     zcert.ZCertType
-	Cert     []byte
-	CertHash []byte
-}
-
-// Key :
-func (cert *ControllerCertConfig) Key() string {
-	return hex.EncodeToString(cert.CertHash)
-}
-
-// ControllerCertStatus : controller certicate
-// status
-type ControllerCertStatus struct {
+type ControllerCert struct {
 	HashAlgo zcert.CertHashAlgorithm
 	Type     zcert.ZCertType
 	Cert     []byte
@@ -34,19 +20,19 @@ type ControllerCertStatus struct {
 }
 
 // Key :
-func (cert *ControllerCertStatus) Key() string {
+func (cert *ControllerCert) Key() string {
 	return hex.EncodeToString(cert.CertHash)
 }
 
 // SetErrorInfo : sets errorinfo on the controller cert
-func (cert *ControllerCertStatus) SetErrorInfo(agentName, errStr string) {
+func (cert *ControllerCert) SetErrorInfo(agentName, errStr string) {
 	cert.Error = errStr
 	cert.ErrorTime = time.Now()
 	cert.ErrorSource = agentName
 }
 
 // ClearErrorInfo : clears errorinfo on the controller cert
-func (cert *ControllerCertStatus) ClearErrorInfo() {
+func (cert *ControllerCert) ClearErrorInfo() {
 	cert.Error = ""
 	cert.ErrorSource = ""
 	cert.ErrorTime = time.Time{}
