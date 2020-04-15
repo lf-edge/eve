@@ -64,6 +64,22 @@ var appPersistPaths = []string{
 	types.AppImgDirname,
 }
 
+func encodeErrorInfo(errStr string, errTime time.Time) *info.ErrorInfo {
+	if errTime.IsZero() {
+		// No Success / Error to report
+		return nil
+	}
+	// Timestamp set. Even if the error is "" - the timestamp indicates the last
+	//  testing time. Worth sending it.
+	errInfo := new(info.ErrorInfo)
+	errInfo.Description = errStr
+	protoTime, err := ptypes.TimestampProto(errTime)
+	if err != nil {
+		errInfo.Timestamp = protoTime
+	}
+	return errInfo
+}
+
 // Run a periodic post of the metrics
 func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
@@ -563,9 +579,7 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 		vaultInfo.Name = vault.Name
 		vaultInfo.Status = vault.Status
 		if !vault.ErrorTime.IsZero() {
-			vaultInfo.VaultErr = new(info.ErrorInfo)
-			vaultInfo.VaultErr.Description = vault.Error
-			vaultInfo.VaultErr.Timestamp, _ = ptypes.TimestampProto(vault.ErrorTime)
+			vaultInfo.VaultErr = encodeErrorInfo(vault.Error, vault.ErrorTime)
 		}
 		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
 	}
@@ -754,11 +768,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 					bos.ErrorTime, bos.Error,
 					bos.BaseOsVersion)
-				errInfo := new(info.ErrorInfo)
-				errInfo.Description = bos.Error
-				errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
-				errInfo.Timestamp = errTime
-				swInfo.SwErr = errInfo
+				swInfo.SwErr = encodeErrorInfo(bos.Error, bos.ErrorTime)
 			}
 			if swInfo.ShortVersion == "" {
 				swInfo.Status = info.ZSwState(types.INITIAL)
@@ -811,11 +821,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
-			errInfo := new(info.ErrorInfo)
-			errInfo.Description = bos.Error
-			errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
-			errInfo.Timestamp = errTime
-			swInfo.SwErr = errInfo
+			swInfo.SwErr = encodeErrorInfo(bos.Error, bos.ErrorTime)
 		}
 		addUserSwInfo(ctx, swInfo)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
@@ -1183,11 +1189,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 		}
 		// Any error?
 		if !port.ErrorTime.IsZero() {
-			errInfo := new(info.ErrorInfo)
-			errInfo.Description = port.Error
-			errTime, _ := ptypes.TimestampProto(port.ErrorTime)
-			errInfo.Timestamp = errTime
-			networkInfo.NetworkErr = errInfo
+			networkInfo.NetworkErr = encodeErrorInfo(port.Error, port.ErrorTime)
 		}
 		networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	}
@@ -1321,10 +1323,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportAppInfo.State = info.ZSwState(aiStatus.State)
 
 		if !aiStatus.ErrorTime.IsZero() {
-			errInfo := new(info.ErrorInfo)
-			errInfo.Description = aiStatus.Error
-			errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
-			errInfo.Timestamp = errTime
+			errInfo := encodeErrorInfo(aiStatus.Error, aiStatus.ErrorTime)
 			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr,
 				errInfo)
 		}
