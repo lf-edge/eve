@@ -158,15 +158,14 @@ type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig Methord to Get Port structure by IfName
 func (portConfig *DevicePortConfig) GetPortByIfName(
-	ifname string) (NetworkPortConfig, error) {
-	var port NetworkPortConfig
-	for _, port = range portConfig.Ports {
-		if ifname == port.IfName {
-			return port, nil
+	ifname string) *NetworkPortConfig {
+	for indx := range portConfig.Ports {
+		portPtr := &portConfig.Ports[indx]
+		if ifname == portPtr.IfName {
+			return portPtr
 		}
 	}
-	err := fmt.Errorf("DevicePortConfig can't find port %s", ifname)
-	return port, err
+	return nil
 }
 
 // When new fields and/or new semantics are added to DevicePortConfig a new
