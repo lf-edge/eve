@@ -2,6 +2,57 @@
 
 This document describes how the EVE build process works, its dependencies, inputs and outputs. The planned complementary document [CONTRIBUTING.md](./CONTRIBUTING.md) describes how to contribute to EVE.
 
+## Conceptual structure of EVE Makefile targets
+
+EVE Makefile automates building and running the following artifacts (all of which are described in gory details below):
+
+* linuxkit/Docker packages
+* EVE rootfs images
+* bootable EVE live images
+* bootable EVE installer images
+
+While linuxkit/Docker packages don't provide any knobs to control the flavor of the build, the rest of the artifacts do.
+
+The four main knobs you should be aware of are:
+
+* `ROOTFS_VERSION` - sets the version ID of the EVE image
+* `ZARCH` - sets the architecture (either arm64 or amd64) of the resulting image
+* `HV` - sets the hypervisor flavor of the resulting image (acrn, xen or kvm)
+* `IMAGE_FORMAT` - sets the image format of the resulting bootable image (raw, qcow2 or gcp)
+
+You can always specify an arbitrary combinations of these knobs to set the desired outcome of the build.
+For example, the following command line will build a Google Compute Platform live image with the default
+hypervisor set to `kvm`, hardware architecture set to `amd64` and the version ID set to `snapshot`:
+
+```shell
+make ROOTFS_VERSION=snapshot ZARCH=arm64 HV=kvm IMAGE_FORMAT=gcp live
+```
+
+In addition to that we also provide shortcuts on the target names themselves that allow you to tweak the
+knobs specific only to that target. For example our previous example could've been specified as:
+
+```shell
+make ROOTFS_VERSION=snapshot ZARCH=arm64 HV=kvm live-gcp
+```
+
+instead - since `IMAGE_FORMAT` only applies at the level of a `live` target. Same way, since HV applies at
+the rootfs level (rootfs binary is then fed wholesale into live and installer builds) you can build
+a `snapshot` rootfs with the default hypervisor set to acrn by doing either:
+
+```shell
+make ROOTFS_VERSION=snapshot HV=acrn rootfs
+```
+
+or
+
+```shell
+make ROOTFS_VERSION=snapshot rootfs-acrn
+```
+
+In this hierarchy, think of `ZARCH` and `ROOTFS_VERSION` as applicable to anything hence they don't get a -foo shortcut treatment.
+
+When in doubt, always use a full specification on all the knobs spelled out on the command line.
+
 ## EVE Install Methods
 
 Before describing how EVE is _built_, it is important to understand how EVE is _installed_. EVE has two distinct installation methods:
@@ -75,20 +126,23 @@ specific versions without polluting the user's normal workspace.
 
 The following are the output components from the build process and their purpose. There are two kinds of components: final, intended for actual direct usage, and interim, used to build the final components. Some interim components may be removed as part of the build finalization process.
 
-#### Final
+### Final
 
-* `live.img` - a symlink to `live.qcow2`
+* `rootfs-VERSION.IMG_FORMAT` - a live bootable rootfs filesystem image. This can be either [squashfs](https://en.wikipedia.org/wiki/SquashFS) (default) or [ext4](https://en.wikipedia.org/wiki/Ext4).
+* `rootfs.img` - a symlink to the actual, versioned rootfs image file that was built last
+* `live.raw` - a final bootable live disk image in raw format with only few key partitions created (the rest will be created on first boot):
+    1. UEFI partition with grub
+    2. config partition with the content of `config.img` described below
+    3. root partition from the above `rootfs.img`
 * `live.qcow2` - the final bootable live disk image in [qcow2](https://en.wikipedia.org/wiki/Qcow) format
+* `live.img.tar.gz` - the final bootable live disk image in [Google Compute Platform](https://cloud.google.com/compute/docs/import/import-existing-image) format
+* `live.img` - a symlink to one of the above images that was built last
 * `installer.raw` - a bootable image that can install EVE on a local device. The installer is intended to be flashed to a USB or SD device, or booted via PXE, and then run to install on a local drive.
 * `installer.iso` - a bootable ISO image with a hidden EFI boot partition and an installer partition, with the contents of `installer.raw`. The installer is intended to be booted in a manner typical of iso files, and then run to install on a local drive.
 
-#### Interim
+### Interim
 
-* `rootfs.img` - a live bootable rootfs filesystem image. This can be either [squashfs](https://en.wikipedia.org/wiki/SquashFS) (default) or [ext4](https://en.wikipedia.org/wiki/Ext4).
 * `rootfs_installer.img` - a bootable rootfs filesystem image to run as an installer.
-* `live.raw` - a live bootable disk image, will be converted to [qcow2](https://en.wikipedia.org/wiki/Qcow). Has 2 gpt partitions:
-    1. UEFI partition with grub
-    2. root partition from the above `rootfs.img`
 * `config.img` - 1MB FAT32 image file containing basic configuration information, including wpa supplicant, name of the controller, onboarding key/cert pair, and other configuration information.
 
 ## Build Process
