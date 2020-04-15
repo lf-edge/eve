@@ -7,6 +7,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"reflect"
+	"strings"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -15,12 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"net"
-	"os"
-	"reflect"
-	"strings"
-	"time"
 )
 
 const (
@@ -55,9 +56,9 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 		}
 		config.Ports[ix].IsMgmt = true
 		config.Ports[ix].Dhcp = types.DT_CLIENT
-		port, err := ctx.DevicePortConfig.GetPortByIfName(u)
-		if err == nil {
-			config.Ports[ix].WirelessCfg = port.WirelessCfg
+		portPtr := ctx.DevicePortConfig.GetPortByIfName(u)
+		if portPtr != nil {
+			config.Ports[ix].WirelessCfg = portPtr.WirelessCfg
 		}
 	}
 	return config
