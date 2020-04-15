@@ -885,7 +885,10 @@ func markObjectAsVerifying(ctx *verifierContext,
 	}
 
 	if _, err := os.Stat(verifierFilename); err == nil {
-		log.Fatal(err)
+		log.Warn(verifierFilename + ": file exists")
+		if err := os.RemoveAll(verifierFilename); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if _, err := os.Stat(verifierDirname); err == nil {
