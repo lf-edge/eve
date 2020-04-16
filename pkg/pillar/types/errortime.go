@@ -41,6 +41,11 @@ func (etPtr *ErrorAndTime) HasError() bool {
 	return etPtr.Error != ""
 }
 
+// NewErrorAndTime returns instance of ErrorAndTime with the specified values
+func NewErrorAndTime(errStr string, errTime time.Time) ErrorAndTime {
+	return ErrorAndTime{Error: errStr, ErrorTime: errTime}
+}
+
 // ErrorAndTimeWithSource has an additional field "ErrorSourceType"
 // which is used to selectively clear errors by calling IsErrorSource before
 // calling ClearErrorWithSource. See zedmanager and volumemgr for example use.
@@ -90,6 +95,12 @@ func (etsPtr *ErrorAndTimeWithSource) ClearErrorWithSource() {
 // HasError returns true if there is an error
 func (etsPtr *ErrorAndTimeWithSource) HasError() bool {
 	return etsPtr.Error != ""
+}
+
+// ErrorAndTime returns instance of ErrorAndTime corresponding to
+//  Error and ErrorTime in the instance of ErrorAndTimeWithSource
+func (etsPtr *ErrorAndTimeWithSource) ErrorAndTime() ErrorAndTime {
+	return NewErrorAndTime(etsPtr.Error, etsPtr.ErrorTime)
 }
 
 // Disallow leaf types and pointers, since pointers
