@@ -24,6 +24,10 @@ PATH=$BINDIR:$PATH
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
 
+# For checking whether we have a Keyboard etc at startup
+in=$(cat /sys/class/input/input*/name)
+echo "$(date -Ins -u) input devices: $in"
+
 MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" = -m ]; then
@@ -189,6 +193,7 @@ fi
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     touch $FIRSTBOOTFILE # For nodeagent
 fi
+
 echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent &
 wait_for_touch nodeagent
