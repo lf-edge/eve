@@ -269,12 +269,18 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasVolumemgrRef    bool    // Reference against volumemgr to clean up
 	HasResolverRef     bool    // Reference against resolver for resolving tags
+	ResolveDone        bool    // Is container image tag resolved or not
 	IsContainer        bool    // Is the image a Container??
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
+}
+
+// ResolveKey will return the key of resolver config/status
+func (ss *StorageStatus) ResolveKey() string {
+	return fmt.Sprintf("%s+%s+%v", ss.DatastoreID.String(), ss.Name, ss.PurgeCounter)
 }
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
@@ -298,6 +304,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.State = 0
 	ss.Progress = 0
 	ss.HasVolumemgrRef = false
+	ss.ResolveDone = false
 	ss.HasResolverRef = false
 	if ss.Format == zconfig.Format_CONTAINER {
 		ss.IsContainer = true
@@ -305,7 +312,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.Vdev = ""
 	ss.ActiveFileLocation = ""
 	ss.FinalObjDir = ""
-	ss.ErrorInfo = ErrorInfo{}
+	ss.ErrorAndTimeWithSource = ErrorAndTimeWithSource{}
 	return
 }
 

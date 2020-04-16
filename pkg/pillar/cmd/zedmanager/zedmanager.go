@@ -291,7 +291,6 @@ func Run(ps *pubsub.PubSub) {
 		Ctx:           &ctx,
 		CreateHandler: handleResolveStatusModify,
 		ModifyHandler: handleResolveStatusModify,
-		DeleteHandler: handleResolveStatusDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
@@ -493,16 +492,6 @@ func handleCreate(ctxArg interface{}, key string,
 			// FIXME - We really need a top level flag to tell the app is
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
-			ss.HasResolverRef = true
-			publishAppInstanceStatus(ctx, &status)
-			resolveConfig := types.ResolveConfig{
-				DatastoreID: sc.DatastoreID,
-				Name:        sc.Name,
-				AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-					types.AppImgObj),
-				Counter: config.PurgeCmd.Counter,
-			}
-			publishResolveConfig(ctx, &resolveConfig)
 		}
 	}
 
@@ -540,18 +529,14 @@ func handleCreate(ctxArg interface{}, key string,
 		return
 	}
 
-	if status.IsContainer {
-		log.Infof("Waiting for resolving tags to sha for the container images, handleCreate in progress.")
-	} else {
-		// If there are no errors, go ahead with Instance creation.
-		changed := doUpdate(ctx, config, &status)
-		if changed {
-			log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
-				config.DisplayName, config.UUIDandVersion.UUID)
-			publishAppInstanceStatus(ctx, &status)
-		}
-		log.Infof("handleCreate done for %s\n", config.DisplayName)
+	// If there are no errors, go ahead with Instance creation.
+	changed := doUpdate(ctx, config, &status)
+	if changed {
+		log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
+			config.DisplayName, config.UUIDandVersion.UUID)
+		publishAppInstanceStatus(ctx, &status)
 	}
+	log.Infof("handleCreate done for %s\n", config.DisplayName)
 }
 
 func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
@@ -607,6 +592,7 @@ func maybeInsertSha(name string, sha string) string {
 
 func handleModify(ctxArg interface{}, key string,
 	configArg interface{}) {
+
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
 	status := lookupAppInstanceStatus(ctx, key)

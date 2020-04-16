@@ -374,7 +374,6 @@ func doInstall(ctx *zedmanagerContext,
 		newSs := types.StorageStatus{}
 		newSs.UpdateFromStorageConfig(sc)
 		log.Infof("Adding new StorageStatus %v\n", newSs)
-		maybeLatchImageSha(ctx, config, &newSs)
 		status.StorageStatusList = append(status.StorageStatusList, newSs)
 		changed = true
 	}
@@ -385,6 +384,48 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 
 		if !ss.HasVolumemgrRef {
+			if ss.IsContainer && !ss.ResolveDone {
+				rs := lookupResolveStatus(ctx, ss.ResolveKey())
+				if rs == nil {
+					log.Infof("Resolve status not found for %s\n", ss.ImageID)
+					ss.HasResolverRef = true
+					MaybeAddResolveConfig(ctx, ss)
+					// XXX state name could be "waiting for tag resolutions(s)" but
+					// painful to introduce a new state end to end
+					minState = types.INITIAL
+					ss.State = types.INITIAL
+					changed = true
+					continue
+				}
+				log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%v)\n",
+					ss.ImageID, status.UUIDandVersion.UUID)
+				if rs.HasError() || rs.ImageSha256 == "" {
+					errStr := fmt.Sprintf("Received error or empty SHA from resolver for %s, SHA (%s): %s\n",
+						status.Key(), rs.ImageSha256, rs.Error)
+					log.Error(errStr)
+					ss.SetErrorWithSource(errStr, types.ResolveStatus{}, rs.ErrorTime)
+					errorSource = ss.ErrorSourceType
+					errorTime = ss.ErrorTime
+					allErrors = appendError(allErrors, "resolver",
+						errStr)
+					changed = true
+					continue
+				} else if ss.IsErrorSource(types.ResolveStatus{}) {
+					log.Infof("Clearing resolver error %s", ss.Error)
+					ss.ClearErrorWithSource()
+					changed = true
+				}
+				log.Infof("Added Image SHA (%s) for storage status (%s)\n",
+					rs.ImageSha256, ss.ImageID)
+				ss.ImageSha256 = rs.ImageSha256
+				ss.HasResolverRef = false
+				ss.ResolveDone = true
+				addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+					ss.ImageID, ss.ImageSha256)
+				maybeLatchImageSha(ctx, config, ss)
+				deleteResolveConfig(ctx, rs.Key())
+				changed = true
+			}
 			log.Infof("doInstall !HasVolumemgrRef for %s",
 				ss.Name)
 			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
