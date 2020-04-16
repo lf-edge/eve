@@ -110,7 +110,7 @@ func getControllerCert(ctx *getconfigContext,
 	for _, item := range items {
 		status := item.(types.ControllerCert)
 		if bytes.Equal(status.CertHash, suppliedHash) {
-			if status.Error != "" {
+			if status.HasError() {
 				log.Errorf("get controller cert failed because cert has following error: %v",
 					status.Error)
 				return status.Cert, errors.New(status.Error)

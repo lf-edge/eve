@@ -170,7 +170,7 @@ func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorAndT
 	for _, certObj := range status.StorageStatusList {
 		if certObj.Name == certURL {
 			installed := true
-			if certObj.Error != "" || certObj.State != INSTALLED {
+			if certObj.HasError() || certObj.State != INSTALLED {
 				installed = false
 			}
 			// An Error in StorageStatus can be from

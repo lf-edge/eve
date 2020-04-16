@@ -750,7 +750,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			net := networkXObject.(types.NetworkXObjectConfig)
 			port.NetworkUUID = net.UUID
 			network = &net
-			if network.Error != "" {
+			if network.HasError() {
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
 					port.IfName, network.Error)
 				port.ParseError = errStr

@@ -123,7 +123,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 	netstatus *types.NetworkInstanceStatus) bool {
 	var needTrigPing bool
 	log.Debugf("niProbingUpdatePort: %s, type %v, enter\n", netstatus.BridgeName, netstatus.Type)
-	if netstatus.Error != "" {
+	if netstatus.HasError() {
 		log.Errorf("niProbingUpdatePort: Network instance is in errored state: %s",
 			netstatus.Error)
 		return needTrigPing

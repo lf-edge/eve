@@ -490,7 +490,7 @@ func handleCreate(ctxArg interface{}, key string,
 	publishAppInstanceStatus(ctx, &status)
 
 	// if some error, return
-	if status.Error != "" {
+	if status.HasError() {
 		log.Errorf("AppInstance(Name:%s, UUID:%s): Errors in App Instance "+
 			"Create. Error: %s",
 			config.DisplayName, config.UUIDandVersion.UUID, status.Error)

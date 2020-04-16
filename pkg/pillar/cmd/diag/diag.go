@@ -654,7 +654,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 		fmt.Fprintf(outfile, "INFO: %s: proxy exceptions %s\n",
 			ifname, port.ProxyConfig.Exceptions)
 	}
-	if port.Error != "" {
+	if port.HasError() {
 		fmt.Fprintf(outfile, "ERROR: %s: from WPAD? %s\n", ifname, port.Error)
 	}
 	if port.ProxyConfig.NetworkProxyEnable {

@@ -95,7 +95,7 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 				imageID)
 			continue
 		}
-		if vs.Error != "" {
+		if vs.HasError() {
 			log.Errorf("checkVolumeStatus %s, volumemgr error, %s\n",
 				uuidStr, vs.Error)
 			ss.SetErrorWithSource(vs.Error, types.VolumeStatus{},

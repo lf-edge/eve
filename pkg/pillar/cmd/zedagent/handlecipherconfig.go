@@ -176,7 +176,7 @@ func updateCipherBlock(status types.CipherContext,
 	}
 	// when we have both the certificates,
 	// mark the cipher block as valid
-	if status.Error != "" {
+	if status.HasError() {
 		cipherBlock.SetErrorNow(status.Error)
 	} else {
 		cipherBlock.ControllerCert = ccert

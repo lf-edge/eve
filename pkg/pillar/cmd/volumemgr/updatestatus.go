@@ -53,7 +53,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			log.Infof("lookupVerifyImageStatus %s Pending\n", status.VolumeID)
 			return changed, false
 		}
-		if vs.Error != "" {
+		if vs.HasError() {
 			log.Errorf("Received error from verifier for %s: %s\n",
 				status.VolumeID, vs.Error)
 			status.SetErrorWithSource(vs.Error, types.VerifyImageStatus{},
@@ -140,7 +140,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			status.VolumeID)
 		return changed, false
 	}
-	if ds.Error != "" {
+	if ds.HasError() {
 		log.Errorf("Received error from downloader for %s: %s\n",
 			status.VolumeID, ds.Error)
 		status.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
@@ -178,7 +178,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts bool) bool {
 	changed := false
 	if !status.DownloadOrigin.HasVerifierRef {
-		done, errInfo := MaybeAddVerifyImageConfig(ctx, *status, checkCerts)
+		done, errorAndTime := MaybeAddVerifyImageConfig(ctx, *status, checkCerts)
 		if done {
 			status.DownloadOrigin.HasVerifierRef = true
 			changed = true
@@ -186,8 +186,8 @@ func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts 
 		}
 		// if errors, set the certError flag
 		// otherwise, mark as waiting for certs
-		if errInfo.Error != "" {
-			status.SetError(errInfo.Error, errInfo.ErrorTime)
+		if errorAndTime.HasError() {
+			status.SetError(errorAndTime.Error, errorAndTime.ErrorTime)
 			changed = true
 		} else if !status.WaitingForCerts {
 			status.WaitingForCerts = true

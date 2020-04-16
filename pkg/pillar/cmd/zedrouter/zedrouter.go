@@ -1077,7 +1077,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
 	log.Infof("handleAppNetworkCreate done for %s\n", config.DisplayName)
-	if status.Error != "" && config.Activate && !status.Activated {
+	if status.HasError() && config.Activate && !status.Activated {
 		releaseAppNetworkResources(ctx, key, &status)
 	}
 	log.Infof("handleAppNetworkCreate(%s) done\n", key)
@@ -1210,7 +1210,7 @@ func appNetworkDoActivateUnderlayNetwork(
 		addError(ctx, status, "doActivate underlay", err)
 		return
 	}
-	if netInstStatus.Error != "" {
+	if netInstStatus.HasError() {
 		log.Errorf("doActivate sees network error %s\n",
 			netInstStatus.Error)
 		addError(ctx, status, "error from network instance",
@@ -1373,7 +1373,7 @@ func appNetworkDoActivateOverlayNetwork(
 		addError(ctx, status, "handlecreate overlay", err)
 		return
 	}
-	if netInstStatus.Error != "" {
+	if netInstStatus.HasError() {
 		log.Errorf("doActivate sees network error %s\n",
 			netInstStatus.Error)
 		addError(ctx, status, "netstatus.Error",
@@ -1811,7 +1811,7 @@ func checkAndRecreateAppNetwork(
 		}
 		log.Infof("checkAndRecreateAppNetwork(%s) recreating for %s\n",
 			network.String(), status.DisplayName)
-		if status.Error != "" {
+		if status.HasError() {
 			log.Infof("checkAndRecreateAppNetwork(%s) remove error %s for %s\n",
 				network.String(), status.Error,
 				status.DisplayName)
@@ -2020,7 +2020,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("handleAppNetworkModify done for %s\n", config.DisplayName)
 
-	if status != nil && status.Error != "" &&
+	if status != nil && status.HasError() &&
 		config.Activate && !status.Activated {
 		releaseAppNetworkResources(ctx, key, status)
 	}
@@ -2877,7 +2877,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 		// XXX can an delete+add of app instance with same
 		// portmap result in a failure?
 		if appNetStatus.DisplayName == appNetStatus1.DisplayName ||
-			(appNetStatus1.Error != "" && !appNetStatus1.Activated) || len(ulCfgList1) == 0 {
+			(appNetStatus1.HasError() && !appNetStatus1.Activated) || len(ulCfgList1) == 0 {
 			continue
 		}
 		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
@@ -2969,8 +2969,7 @@ func checkAppNetworkErrorAndStartTimer(ctx *zedrouterContext) {
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
 		config := lookupAppNetworkConfig(ctx, status.Key())
-		if config == nil || !config.Activate ||
-			status.Error == "" {
+		if config == nil || !config.Activate || !status.HasError() {
 			continue
 		}
 		// We wouldn't have even copied underlay/overlay
@@ -2994,8 +2993,7 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext) {
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
 		config := lookupAppNetworkConfig(ctx, status.Key())
-		if config == nil || !config.Activate ||
-			status.Error == "" {
+		if config == nil || !config.Activate || !status.HasError() {
 			continue
 		}
 		// called from the timer, run the AppNetworkCreate to retry
