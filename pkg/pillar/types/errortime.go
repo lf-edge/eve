@@ -36,6 +36,11 @@ func (etPtr *ErrorAndTime) ClearError() {
 	etPtr.ErrorTime = time.Time{}
 }
 
+// HasError returns true if there is an error
+func (etPtr *ErrorAndTime) HasError() bool {
+	return etPtr.Error != ""
+}
+
 // ErrorAndTimeWithSource has an additional field "ErrorSourceType"
 // which is used to selectively clear errors by calling IsErrorSource before
 // calling ClearErrorWithSource. See zedmanager and volumemgr for example use.
@@ -69,7 +74,7 @@ func (etsPtr *ErrorAndTimeWithSource) IsErrorSource(source interface{}) bool {
 	if !allowedSourceType(source) {
 		log.Fatalf("Bad ErrorSourceType %T", source)
 	}
-	if etsPtr.Error == "" {
+	if !etsPtr.HasError() {
 		return false
 	}
 	return reflect.TypeOf(source) == reflect.TypeOf(etsPtr.ErrorSourceType)
@@ -80,6 +85,11 @@ func (etsPtr *ErrorAndTimeWithSource) ClearErrorWithSource() {
 	etsPtr.Error = ""
 	etsPtr.ErrorSourceType = nil
 	etsPtr.ErrorTime = time.Time{}
+}
+
+// HasError returns true if there is an error
+func (etsPtr *ErrorAndTimeWithSource) HasError() bool {
+	return etsPtr.Error != ""
 }
 
 // Disallow leaf types and pointers, since pointers

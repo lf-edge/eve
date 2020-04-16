@@ -1506,7 +1506,7 @@ func handleModify(ctx *domainContext, key string,
 
 		// This has the effect of trying a boot again for any
 		// handleModify after an error.
-		if status.Error != "" {
+		if status.HasError() {
 			log.Infof("handleModify(%v) ignoring existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
 			status.ClearError()
@@ -1528,7 +1528,7 @@ func handleModify(ctx *domainContext, key string,
 	} else if !config.Activate {
 		log.Infof("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
-		if status.Error != "" {
+		if status.HasError() {
 			log.Infof("handleModify(%v) clearing existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
 			status.ClearError()
@@ -1566,7 +1566,7 @@ func handleModify(ctx *domainContext, key string,
 		return
 	}
 
-	// XXX check if we have status.Error != "" and delete and retry
+	// XXX check if we have status.HasError() and delete and retry
 	// even if same version. XXX won't the above Activate/Activated checks
 	// result in redoing things? Could have failures during copy i.e.
 	// before activation.

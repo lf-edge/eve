@@ -1035,6 +1035,7 @@ type OverlayNetworkConfig struct {
 	AppIPAddr     net.IP           // EIDv4 or EIDv6
 	Network       uuid.UUID        // Points to a NetworkInstance.
 
+	// XXX Shouldn't we use ErrorAndTime here
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
@@ -1078,6 +1079,7 @@ type UnderlayNetworkConfig struct {
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	IntfOrder  int32            // XXX need to get from API
 
+	// XXX Shouldn't we use ErrorAndTime here
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated

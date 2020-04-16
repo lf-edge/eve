@@ -292,7 +292,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 
 	// object is either in download progress or,
 	// successfully downloaded, nothing to do
-	if status.Error == "" {
+	if !status.HasError() {
 		return
 	}
 	t := time.Now()

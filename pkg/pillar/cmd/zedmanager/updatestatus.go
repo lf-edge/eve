@@ -443,7 +443,7 @@ func doInstall(ctx *zedmanagerContext,
 				ss.Name)
 			continue
 		}
-		if vs.Error != "" {
+		if vs.HasError() {
 			log.Errorf("Received error from volumemgr for %s: %s",
 				ss.Name, vs.Error)
 			ss.SetErrorWithSource(vs.Error,
@@ -585,7 +585,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			if c {
 				changed = true
 			}
-			if !ds.Activated && ds.Error == "" {
+			if !ds.Activated && !ds.HasError() {
 				log.Infof("RestartInprogress(%s) came down - set bring up\n",
 					status.Key())
 				status.RestartInprogress = types.BringUp
@@ -619,7 +619,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
 		return changed
 	}
-	if ns.Error != "" {
+	if ns.HasError() {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
 		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
@@ -697,7 +697,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	// Look for xen errors. Ignore if we are going down
 	if status.RestartInprogress != types.BringDown {
-		if ds.Error != "" {
+		if ds.HasError() {
 			log.Errorf("Received error from domainmgr for %s: %s\n",
 				uuidStr, ds.Error)
 			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
@@ -709,7 +709,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 		}
 	} else {
-		if ds.Error != "" {
+		if ds.HasError() {
 			log.Warnf("bringDown sees error from domainmgr for %s: %s\n",
 				uuidStr, ds.Error)
 		}
@@ -989,7 +989,7 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 			changed = true
 		}
 		// Look for errors
-		if ds.Error != "" {
+		if ds.HasError() {
 			log.Errorf("Received error from domainmgr for %s: %s\n",
 				uuidStr, ds.Error)
 			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
@@ -1031,7 +1031,7 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 			log.Infof("Waiting for AppNetworkStatus !Activated for %s\n",
 				uuidStr)
 		}
-		if ns.Error != "" {
+		if ns.HasError() {
 			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
 			status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
@@ -1134,7 +1134,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		return changed
 	}
 	// XXX should we make it not Activated?
-	if ns.Error != "" {
+	if ns.HasError() {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
 		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
@@ -1193,7 +1193,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		}
 	}
 	// Ignore errors during a halt
-	if ds.Error != "" {
+	if ds.HasError() {
 		log.Warnf("doInactivateHalt sees error from domainmgr for %s: %s\n",
 			uuidStr, ds.Error)
 	}
