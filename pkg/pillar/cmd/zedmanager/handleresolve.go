@@ -11,6 +11,22 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// MaybeAddResolveConfig will publish the resolve config for
+// container images for which resolution of tags to sha requires
+func MaybeAddResolveConfig(ctx *zedmanagerContext, ss *types.StorageStatus) {
+
+	log.Infof("MaybeAddResolveConfig for %s", ss.ImageID)
+	resolveConfig := types.ResolveConfig{
+		DatastoreID: ss.DatastoreID,
+		Name:        ss.Name,
+		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+			types.AppImgObj),
+		Counter: ss.PurgeCounter,
+	}
+	publishResolveConfig(ctx, &resolveConfig)
+	log.Infof("MaybeAddResolveConfig for %s Done", ss.ImageID)
+}
+
 func publishResolveConfig(ctx *zedmanagerContext,
 	config *types.ResolveConfig) {
 
@@ -61,19 +77,14 @@ func lookupResolveStatus(ctx *zedmanagerContext,
 	return &status
 }
 
-func handleResolveStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Infof("handleResolveStatusDelete for %s\n", key)
-	ctx := ctxArg.(*zedmanagerContext)
-	status := statusArg.(types.ResolveStatus)
-	config := lookupResolveConfig(ctx, status.Key())
-	if config != nil {
-		log.Infof("handleResolveStatusDelete delete config for %s\n",
-			key)
-		unpublishResolveConfig(ctx, config)
+func deleteResolveConfig(ctx *zedmanagerContext, key string) {
+	log.Infof("deleteResolveConfig for %s\n", key)
+	rc := lookupResolveConfig(ctx, key)
+	if rc != nil {
+		log.Infof("deleteResolveConfig for %s found\n", key)
+		unpublishResolveConfig(ctx, rc)
 	}
-	log.Infof("handleResolveStatusDelete done for %s\n", key)
+	log.Infof("deleteResolveConfig for %s Done\n", key)
 }
 
 func handleResolveStatusModify(ctxArg interface{}, key string,
@@ -85,13 +96,14 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	for _, st := range items {
+		update := false
 		status := st.(types.AppInstanceStatus)
 		config := lookupAppInstanceConfig(ctx, status.Key())
 		if config == nil {
 			errStr := fmt.Sprintf("App Instance config not found for %s while resolving tags\n",
 				status.Key())
-			log.Errorf(errStr)
-			status.SetError(errStr, agentName, time.Now())
+			log.Error(errStr)
+			status.SetError(errStr, time.Now())
 			publishAppInstanceStatus(ctx, &status)
 			continue
 		}
@@ -100,67 +112,19 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 			if !ss.HasResolverRef || ss.Name != rs.Name || ss.DatastoreID != rs.DatastoreID {
 				continue
 			}
-			log.Infof("Updating SHA of storage status (%v) in app instance (%v)\n",
-				ss.ImageID, status.UUIDandVersion.UUID)
-			if len(rs.Error) != 0 {
-				errStr := fmt.Sprintf("Error occurred while resolving tags, updating app instance %s.\n",
-					status.Key())
-				log.Errorf(errStr)
-				status.SetError(rs.Error, rs.ErrorSource, rs.ErrorTime)
-				publishAppInstanceStatus(ctx, &status)
-				continue
-			}
-			if rs.ImageSha256 == "" {
-				errStr := fmt.Sprintf("Empty SHA in resolve status, updating app instance %s.\n",
-					status.Key())
-				log.Errorf(errStr)
-				status.SetError(errStr, agentName, time.Now())
-				publishAppInstanceStatus(ctx, &status)
-				continue
-			}
-			sc := lookupStorageConfig(config, *ss)
-			if sc == nil {
-				errStr := fmt.Sprintf("Storage config (%v) not found for app instance (%s) while resolving tags\n",
-					ss.ImageID, status.Key())
-				log.Errorf(errStr)
-				status.SetError(errStr, agentName, time.Now())
-				publishAppInstanceStatus(ctx, &status)
-				continue
-			}
-			if ss.ImageSha256 == "" {
-				log.Infof("Image SHA (%s) found while resolving status for storage status (%s)\n",
-					rs.ImageSha256, ss.ImageID)
-				ss.ImageSha256 = rs.ImageSha256
-			} else if ss.ImageSha256 != rs.ImageSha256 {
-				log.Infof("Image SHA changed from (%s) to (%s) while resolving status for storage status (%s)\n",
-					ss.ImageSha256, rs.ImageSha256, ss.ImageID)
-				MaybeRemoveStorageStatus(ctx, status.UUIDandVersion.UUID, ss)
-				deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-					ss.ImageID)
-				ss.UpdateFromStorageConfig(*sc)
-				ss.ImageSha256 = rs.ImageSha256
-			} else {
-				log.Infof("Image SHA (%s) not changed for storage status (%s)\n",
-					ss.ImageSha256, ss.ImageID)
-			}
-			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-				ss.ImageID, ss.ImageSha256)
-			rc := lookupResolveConfig(ctx, rs.Key())
-			if rc != nil {
-				unpublishResolveConfig(ctx, rc)
-			}
-			maybeLatchImageSha(ctx, *config, ss)
-			ss.HasResolverRef = false
-			publishAppInstanceStatus(ctx, &status)
+			update = true
 		}
+		if !update {
+			continue
+		}
+		log.Infof("Updating images SHA for app instance %v\n",
+			status.UUIDandVersion.UUID)
 		changed := doUpdate(ctx, *config, &status)
 		if changed {
 			log.Infof("AppInstance(Name:%s, UUID:%s): handleResolveStatusModify status change.",
 				config.DisplayName, config.UUIDandVersion.UUID)
 			publishAppInstanceStatus(ctx, &status)
 		}
-		log.Infof("Updating images SHA for app instance %v Done\n",
-			status.UUIDandVersion.UUID)
 	}
 	log.Infof("handleResolveStatusModify done for %s\n", key)
 }
