@@ -642,7 +642,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 }
 
 // Returns a port if it should be added to the list; some errors result in
-// adding an port to to DevicePortConfig with ErrorAndTime set.
+// adding a port to to DevicePortConfig with ErrorAndTime set.
 func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	sysAdapter *zconfig.SystemAdapter,
 	version types.DevicePortConfigVersion) *types.NetworkPortConfig {

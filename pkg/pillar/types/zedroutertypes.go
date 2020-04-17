@@ -168,6 +168,18 @@ func (portConfig *DevicePortConfig) GetPortByIfName(
 	return nil
 }
 
+// SetPortErrorByIfname - Sets Error info for Port with given ifname
+func (portConfig *DevicePortConfig) SetPortErrorByIfname(
+	ifname string, err error) {
+	portPtr := portConfig.GetPortByIfName(ifname)
+	if portPtr != nil {
+		portPtr.SetErrorNow(err.Error())
+	} else {
+		log.Errorf("portConfig.SetPortErrorByIfname - port %s not found, "+
+			"err: %s", ifname, err)
+	}
+}
+
 // When new fields and/or new semantics are added to DevicePortConfig a new
 // version value is added here.
 const (
