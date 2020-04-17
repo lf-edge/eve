@@ -186,10 +186,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
-		if u.ParseError != "" {
-			globalStatus.Ports[ix].Error = u.ParseError
-			globalStatus.Ports[ix].ErrorTime = u.ParseErrorTime
-		}
+		globalStatus.Ports[ix].ErrorAndTime = u.ErrorAndTime
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
 			errStr := fmt.Sprintf("Port %s does not exist - ignored",

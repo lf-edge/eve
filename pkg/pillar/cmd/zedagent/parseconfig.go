@@ -620,7 +620,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	portConfig.Ports = newPorts
 
 	// Any content change?
-	// Even if only ParseError or ParseErrorTime changed we publish so
+	// Even if only ErrorAndTime changed we publish so
 	// the change can be sent back to the controller using ctx.devicePortConfigList
 	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
 		getconfigCtx.devicePortConfig.Version == portConfig.Version {
@@ -642,7 +642,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 }
 
 // Returns a port if it should be added to the list; some errors result in
-// adding an port to to DevicePortConfig with ParseError set.
+// adding an port to to DevicePortConfig with ErrorAndTime set.
 func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	sysAdapter *zconfig.SystemAdapter,
 	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
@@ -669,8 +669,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
 		// Report error but set Dhcp, isMgmt, and isFree to sane values
-		port.ParseError = errStr
-		port.ParseErrorTime = time.Now()
+		port.SetErrorNow(errStr)
 		port.Logicallabel = port.Phylabel
 		port.IfName = sysAdapter.Name
 		isFree = true
@@ -727,8 +726,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				"sysAdapter.Addr %s - ignored",
 				sysAdapter.Name, sysAdapter.Addr)
 			log.Error(errStr)
-			port.ParseError = errStr
-			port.ParseErrorTime = time.Now()
+			port.SetErrorNow(errStr)
 			// IP will not be set below
 		}
 		// Note that ip is not used unless we have a network UUID
@@ -744,8 +742,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network with UUID %s not found: %s",
 				port.IfName, sysAdapter.NetworkUUID, err)
 			log.Error(errStr)
-			port.ParseError = errStr
-			port.ParseErrorTime = time.Now()
+			port.SetErrorNow(errStr)
 		} else {
 			net := networkXObject.(types.NetworkXObjectConfig)
 			port.NetworkUUID = net.UUID
@@ -753,8 +750,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			if network.HasError() {
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
 					port.IfName, network.Error)
-				port.ParseError = errStr
-				port.ParseErrorTime = network.ErrorTime
+				port.SetErrorNow(errStr)
 			}
 		}
 
@@ -778,8 +774,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s DT_STATIC but missing "+
 					"subnet address in %+v; ignored", port.IfName, port)
 				log.Error(errStr)
-				port.ParseError = errStr
-				port.ParseErrorTime = time.Now()
+				port.SetErrorNow(errStr)
 			}
 		case types.DT_CLIENT:
 			// Do nothing
@@ -788,15 +783,13 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: isMgmt with DT_NONE not supported",
 					port.IfName)
 				log.Error(errStr)
-				port.ParseError = errStr
-				port.ParseErrorTime = time.Now()
+				port.SetErrorNow(errStr)
 			}
 		default:
 			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: ignore unsupported dhcp type %v",
 				port.IfName, network.Dhcp)
 			log.Error(errStr)
-			port.ParseError = errStr
-			port.ParseErrorTime = time.Now()
+			port.SetErrorNow(errStr)
 		}
 		// XXX use DnsNameToIpList?
 		if network != nil && network.Proxy != nil {
@@ -806,8 +799,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s isMgmt without networkUUID not supported",
 			port.IfName)
 		log.Error(errStr)
-		port.ParseError = errStr
-		port.ParseErrorTime = time.Now()
+		port.SetErrorNow(errStr)
 	}
 	return port
 }
