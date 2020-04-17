@@ -239,12 +239,13 @@ github.com/lf-edge/eve/api/go/certs
 github.com/lf-edge/eve/api/go/flowlog
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/auth
+github.com/lf-edge/eve/api/go/common
 # github.com/opencontainers/go-digest v1.0.0-rc1
 github.com/opencontainers/go-digest
 # github.com/opencontainers/image-spec v1.0.1
 github.com/opencontainers/image-spec/specs-go/v1
-github.com/opencontainers/image-spec/identity
 github.com/opencontainers/image-spec/specs-go
+github.com/opencontainers/image-spec/identity
 # github.com/opencontainers/runc v0.1.1
 github.com/opencontainers/runc/libcontainer/user
 github.com/opencontainers/runc/libcontainer/system
@@ -279,8 +280,8 @@ github.com/robertkrimen/otto/token
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
 # github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
-github.com/shirou/gopsutil/disk
 github.com/shirou/gopsutil/host
+github.com/shirou/gopsutil/disk
 github.com/shirou/gopsutil/net
 github.com/shirou/gopsutil/cpu
 github.com/shirou/gopsutil/mem

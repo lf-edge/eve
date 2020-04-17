@@ -573,8 +573,7 @@ func gcVerifiedObjects(ctx *verifierContext) {
 func updateVerifyErrStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus, lastErr string) {
 
-	status.LastErr = lastErr
-	status.LastErrTime = time.Now()
+	status.SetErrorNow(lastErr)
 	status.PendingAdd = false
 	publishVerifyImageStatus(ctx, status)
 }
@@ -885,7 +884,10 @@ func markObjectAsVerifying(ctx *verifierContext,
 	}
 
 	if _, err := os.Stat(verifierFilename); err == nil {
-		log.Fatal(err)
+		log.Warn(verifierFilename + ": file exists")
+		if err := os.RemoveAll(verifierFilename); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if _, err := os.Stat(verifierDirname); err == nil {

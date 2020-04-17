@@ -112,8 +112,8 @@ type AppNetworkStatus struct {
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 func (status AppNetworkStatus) Key() string {
@@ -158,15 +158,14 @@ type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig Methord to Get Port structure by IfName
 func (portConfig *DevicePortConfig) GetPortByIfName(
-	ifname string) (NetworkPortConfig, error) {
-	var port NetworkPortConfig
-	for _, port = range portConfig.Ports {
-		if ifname == port.IfName {
-			return port, nil
+	ifname string) *NetworkPortConfig {
+	for indx := range portConfig.Ports {
+		portPtr := &portConfig.Ports[indx]
+		if ifname == portPtr.IfName {
+			return portPtr
 		}
 	}
-	err := fmt.Errorf("DevicePortConfig can't find port %s", ifname)
-	return port, err
+	return nil
 }
 
 // When new fields and/or new semantics are added to DevicePortConfig a new
@@ -431,8 +430,8 @@ type NetworkPortStatus struct {
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 type AddrInfo struct {
@@ -1036,6 +1035,7 @@ type OverlayNetworkConfig struct {
 	AppIPAddr     net.IP           // EIDv4 or EIDv6
 	Network       uuid.UUID        // Points to a NetworkInstance.
 
+	// XXX Shouldn't we use ErrorAndTime here
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
@@ -1079,6 +1079,7 @@ type UnderlayNetworkConfig struct {
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	IntfOrder  int32            // XXX need to get from API
 
+	// XXX Shouldn't we use ErrorAndTime here
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
@@ -1132,8 +1133,8 @@ type NetworkXObjectConfig struct {
 	Proxy           *ProxyConfig
 	WirelessCfg     WirelessConfig
 	// Any errrors from the parser
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 type IpRange struct {
@@ -1166,8 +1167,8 @@ type NetworkInstanceInfo struct {
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
 	// Any errrors from provisioning the network
-	Error     string
-	ErrorTime time.Time
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 
 	// Vif metric map. This should have a union of currently existing
 	// vifs and previously deleted vifs.
@@ -1510,13 +1511,6 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
 		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
 		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
 	}
-}
-
-func (status *NetworkInstanceStatus) SetError(err error) {
-	log.Errorln(err.Error())
-	status.Error = err.Error()
-	status.ErrorTime = time.Now()
-	return
 }
 
 // Returns true if found

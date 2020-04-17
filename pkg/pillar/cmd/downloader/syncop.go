@@ -279,7 +279,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 	log.Infof("handleSyncOpResponse(%s): successful <%s>\n",
 		config.Name, locFilename)
-	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// We do not clear any status.RetryCount, Error, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
 	status.ModTime = time.Now()
@@ -332,12 +332,13 @@ func getDatastoreCredential(ctx *downloaderContext,
 			dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
-			log.Infof("%s, datastore config cipherblock decryption unsuccessful: %v\n", dst.Key(), err)
+			log.Errorf("%s, datastore config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+				dst.Key(), err)
 			decBlock.DsAPIKey = dst.ApiKey
 			decBlock.DsPassword = dst.Password
 			return decBlock, nil
 		}
-		log.Infof("%s, cipherblock decryption successful\n", dst.Key())
+		log.Infof("%s, datastore config cipherblock decryption successful\n", dst.Key())
 		return decBlock, nil
 	}
 	log.Infof("%s, datastore config cipherblock not present\n", dst.Key())

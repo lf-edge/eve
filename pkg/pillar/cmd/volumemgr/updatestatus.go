@@ -6,7 +6,6 @@ package volumemgr
 import (
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -54,19 +53,16 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			log.Infof("lookupVerifyImageStatus %s Pending\n", status.VolumeID)
 			return changed, false
 		}
-		if vs.LastErr != "" {
+		if vs.HasError() {
 			log.Errorf("Received error from verifier for %s: %s\n",
-				status.VolumeID, vs.LastErr)
-			status.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-			status.LastErr = vs.LastErr
-			status.LastErrTime = vs.LastErrTime
+				status.VolumeID, vs.Error)
+			status.SetErrorWithSource(vs.Error, types.VerifyImageStatus{},
+				vs.ErrorTime)
 			changed = true
 			return changed, false
-		} else if status.ErrorSource == pubsub.TypeToName(types.VerifyImageStatus{}) {
-			log.Infof("Clearing verifier error %s\n", status.LastErr)
-			status.LastErr = ""
-			status.ErrorSource = ""
-			status.LastErrTime = time.Time{}
+		} else if status.IsErrorSource(types.VerifyImageStatus{}) {
+			log.Infof("Clearing verifier error %s\n", status.Error)
+			status.ClearErrorWithSource()
 			changed = true
 		}
 		switch vs.State {
@@ -81,9 +77,8 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			}
 			c, err := createVolume(ctx, status, vs.FileLocation)
 			if err != nil {
-				status.ErrorSource = pubsub.TypeToName(types.VolumeStatus{})
-				status.LastErr = err.Error()
-				status.LastErrTime = time.Now()
+				status.SetErrorWithSource(err.Error(),
+					types.VolumeStatus{}, time.Now())
 				changed = true
 				return changed, false
 			}
@@ -145,19 +140,17 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			status.VolumeID)
 		return changed, false
 	}
-	if ds.LastErr != "" {
+	if ds.HasError() {
 		log.Errorf("Received error from downloader for %s: %s\n",
-			status.VolumeID, ds.LastErr)
-		status.ErrorSource = pubsub.TypeToName(types.DownloaderStatus{})
-		status.LastErr = ds.LastErr
-		status.LastErrTime = ds.LastErrTime
+			status.VolumeID, ds.Error)
+		status.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
+			ds.ErrorTime)
 		changed = true
 		return changed, false
-	} else if status.ErrorSource == pubsub.TypeToName(types.DownloaderStatus{}) {
-		log.Infof("Clearing downloader error %s\n", status.LastErr)
-		status.LastErr = ""
-		status.ErrorSource = ""
-		status.LastErrTime = time.Time{}
+	}
+	if status.IsErrorSource(types.DownloaderStatus{}) {
+		log.Infof("Clearing downloader error %s\n", status.Error)
+		status.ClearErrorWithSource()
 		changed = true
 	}
 	switch ds.State {
@@ -185,24 +178,20 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts bool) bool {
 	changed := false
 	if !status.DownloadOrigin.HasVerifierRef {
-		ret, errInfo := MaybeAddVerifyImageConfig(ctx, *status, checkCerts)
-		if ret {
+		done, errorAndTime := MaybeAddVerifyImageConfig(ctx, *status, checkCerts)
+		if done {
 			status.DownloadOrigin.HasVerifierRef = true
 			changed = true
-		} else {
-			// if errors, set the certError flag
-			// otherwise, mark as waiting for certs
-			if errInfo.Error != "" {
-				status.ErrorSource = errInfo.ErrorSource
-				status.LastErr = errInfo.Error
-				status.LastErrTime = errInfo.ErrorTime
-				changed = true
-			} else {
-				if !status.WaitingForCerts {
-					changed = true
-					status.WaitingForCerts = true
-				}
-			}
+			return changed
+		}
+		// if errors, set the certError flag
+		// otherwise, mark as waiting for certs
+		if errorAndTime.HasError() {
+			status.SetError(errorAndTime.Error, errorAndTime.ErrorTime)
+			changed = true
+		} else if !status.WaitingForCerts {
+			status.WaitingForCerts = true
+			changed = true
 		}
 	}
 	return changed
@@ -301,9 +290,8 @@ func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 	if status.VolumeCreated {
 		_, err := destroyVolume(ctx, status)
 		if err != nil {
-			status.ErrorSource = pubsub.TypeToName(types.VolumeStatus{})
-			status.LastErr = err.Error()
-			status.LastErrTime = time.Now()
+			status.SetErrorWithSource(err.Error(), types.VolumeStatus{},
+				time.Now())
 			changed = true
 			return changed
 		}

@@ -6,7 +6,7 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "netcmn.proto";
+import "config/netcmn.proto";
 
 message MapServer {
   string NameOrIp   = 1;

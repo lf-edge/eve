@@ -12,6 +12,8 @@ PATH:=$(CURDIR)/build-tools/bin:$(PATH)
 export CGO_ENABLED GOOS GOARCH PATH
 
 # A set of tweakable knobs for our build needs (tweak at your risk!)
+# Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
+EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
 # The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=kvm'
@@ -22,6 +24,8 @@ MEDIA_SIZE=8192
 IMG_FORMAT=qcow2
 # Filesystem type for rootfs image
 ROOTFS_FORMAT=squash
+# Image type for installer image
+INSTALLER_IMG_FORMAT=raw
 # SSH port to use for running images live
 SSH_PORT=2222
 # Use QEMU H/W accelearation (any non-empty value will trigger using it)
@@ -44,7 +48,13 @@ ifeq ($(UNAME_S),Darwin)
 	GID          = 1001
 endif
 
+REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
+REPO_SHA=$(shell git describe --match v --abbrev=8 --always --dirty)
+REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
+
+ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)-$(shell date -u +"%Y-%m-%d.%H.%M"),$(REPO_TAG))
+
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
@@ -66,11 +76,15 @@ DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
 
 BIOS_IMG=$(DIST)/OVMF.fd
-LIVE_IMG=$(DIST)/live
+LIVE=$(DIST)/live
+LIVE_IMG=$(DIST)/live.$(IMG_FORMAT)
 TARGET_IMG=$(DIST)/target.img
 INSTALLER=$(DIST)/installer
+INSTALLER_IMG=$(INSTALLER).$(INSTALLER_IMG_FORMAT)
 
-ROOTFS_IMG=$(INSTALLER)/rootfs.img
+ROOTFS=$(INSTALLER)/rootfs
+ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
+ROOTFS_IMG=$(ROOTFS).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 EFI_PART=$(INSTALLER)/EFI
@@ -82,7 +96,21 @@ DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_PART=$(CURDIR)/../adam/run/config
 
-CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
+# FIXME: this is the only rpi specific stuff left - we'll get rid of it soon
+CONF_FILES_FILTER_kvm_rpi=| grep -v conf/eve.dts
+CONF_FILES_FILTER_rpi_kvm=$(CONF_FILES_FILTER_kvm_rpi)
+CONF_FILES=$(shell ls -d $(CONF_DIR)/* $(CONF_FILES_FILTER_$(subst -,_,$(HV))))
+
+PART_SPEC_$(subst -,_,$(HV))=efi conf imga
+PART_SPEC_kvm_rpi=boot conf imga
+PART_SPEC_rpi_kvm=$(PART_SPEC_kvm_rpi)
+PART_SPEC=$(PART_SPEC_$(subst -,_,$(HV)))
+
+# public cloud settings (only CGP is supported for now)
+CLOUD_IMG_NAME=live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+CLOUD_PROJECT=-project lf-edge-eve
+CLOUD_BUCKET=-bucket eve-live
+CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
 
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
@@ -93,14 +121,22 @@ QEMU_ACCEL_Y_Darwin=-M accel=hvf --cpu host
 QEMU_ACCEL_Y_Linux=-enable-kvm
 QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
 
+QEMU_OPTS_NET1=192.168.1.0/24
+QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
+QEMU_OPTS_NET2=192.168.2.0/24
+QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
+
+QEMU_OPTS_BIOS=-bios $(BIOS_IMG)
+# BIOS_IMG=$(DIST)/OVMF*
+# QEMU_OPTS_BIOS=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(DIST)/OVMF_VARS.fd
+
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
-# -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
-# [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
-QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
+QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none $(QEMU_OPTS_BIOS) \
+        -serial mon:stdio      \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
-        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device virtio-net-pci,netdev=eth1
+        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
+        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
 QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
@@ -136,7 +172,7 @@ RESCAN_DEPS=FORCE
 FORCE_BUILD=--force
 
 ifeq ($(LINUXKIT_PKG_TARGET),push)
-  EVE_REL:=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+  EVE_REL:=$(REPO_TAG)
   ifneq ($(EVE_REL),snapshot)
     EVE_HASH:=$(EVE_REL)
     EVE_REL:=$(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(EVE_HASH) ] && echo latest)
@@ -196,7 +232,7 @@ run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
 
 run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG).img,format=$(IMG_FORMAT)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG),format=$(IMG_FORMAT)
 
 run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
@@ -213,6 +249,17 @@ run-compose: images/docker-compose.yml images/version.yml
 	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
 	docker-compose -f $< up
 
+# alternatively (and if you want greater control) you can replace the first command with
+#    gcloud auth activate-service-account --key-file=-
+#    gcloud compute images create $(CLOUD_IMG_NAME) --project=lf-edge-eve
+#           --source-uri=https://storage.googleapis.com/eve-live/live.img.tar.gz
+#           --licenses="https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx"
+run-live-gcp: $(LINUXKIT) | $(LIVE).img.tar.gz
+	if gcloud compute images list $(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
+	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $|                          ;\
+	fi
+	$^ run gcp $(CLOUD_PROJECT) $(CLOUD_INSTANCE) $(CLOUD_IMG_NAME)
+
 # ensure the dist directory exists
 $(DIST) $(INSTALLER):
 	mkdir -p $@
@@ -221,40 +268,23 @@ $(DIST) $(INSTALLER):
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
-live: $(LIVE_IMG).img
-live.rpi: $(LIVE_IMG).rpi
-installer: $(INSTALLER).raw
-installer-iso: $(INSTALLER).iso
-rootfs-%: $(INSTALLER)/rootfs-%.img
-	@true
+rootfs-%: $(ROOTFS)-%.img ;
+live: $(LIVE_IMG)
+live-%: $(LIVE).% ;
+installer: $(INSTALLER_IMG)
+installer-%: $(INSTALLER).% ;
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ $(CONF_FILES)
 
-$(ROOTFS_IMG): $(INSTALLER)/rootfs-$(HV).img
+$(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 	@rm -f $@ && ln -s $(notdir $<) $@
 
-$(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
-	@rm -f $@ >/dev/null 2>&1 || :
-	ln -s $(notdir $<) $@
+$(ROOTFS_IMG): $(ROOTFS)-$(HV).img
+	@rm -f $@ && ln -s $(notdir $<) $@
 
-$(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
-	qemu-img convert -c -f raw -O qcow2 $< $@
-	rm $<
-
-# The following two rules are overrides of the generic ones specifically for supporting Raspberry Pi 4
-# $(LIVE_IMG).rpi can be generalized into can be generalized into a trampoline (readconfig vs. chainload)
-# style bootloader image and images/rootfs-rpi.yml will go away once we migrate to a NEW_KERNEL
-$(LIVE_IMG).rpi: CONF_FILES=$(shell ls -d $(CONF_DIR)/* | grep -v conf/eve.dts)
-$(LIVE_IMG).rpi: $(BOOT_PART) $(EFI_PART) $(CONFIG_IMG) rootfs-rpi | $(INSTALLER)
-	mv $(INSTALLER)/rootfs-rpi.img $(INSTALLER)/rootfs.img
-	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@ "rpi_boot conf imga imgb persist"
-	dd of=$@ bs=1 count=0 seek=$$((350 * 1024 * 1024)) # this truncates the image, but keeps the partitions
-images/rootfs-rpi.yml: images/rootfs-kvm.yml.in
-	@sed -e 's#KERNEL_TAG#NEW_KERNEL_TAG#' < $< | $(PARSE_PKGS) > $@
-
-$(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
-	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
+$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 
 $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
@@ -279,7 +309,7 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG).img rootfs-kvm
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG) rootfs-kvm
 	cp pkg/eve/* Makefile images/*.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
@@ -291,7 +321,7 @@ proto: $(addprefix api/go/,$(shell ls api/proto)) $(addprefix api/python/,$(shel
 
 api/%: $(GOBUILDER)
 	rm -rf api/$* ; mkdir api/$* # building $*
-	@$(DOCKER_GO) "protoc -I./proto/$(@F) --$(notdir $(@D))_out=paths=source_relative:./$* proto/$(@F)/*.proto" $(CURDIR)/api api
+	@$(DOCKER_GO) "protoc -I./proto --$(notdir $(@D))_out=paths=source_relative:./$(*D) proto/$(@F)/*.proto" $(CURDIR)/api api
 
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
@@ -336,6 +366,17 @@ endif
 #
 # Common, generalized rules
 #
+%.gcp: %.raw | $(DIST)
+	cp $< $@
+	dd of=$@ bs=1 seek=$$(($(MEDIA_SIZE) * 1024 * 1024)) count=0
+	rm -f $(dir $@)/disk.raw ; ln -s $(notdir $@) $(dir $@)/disk.raw
+	$(DOCKER_GO) "tar --mode=644 --owner=root --group=root -S -h -czvf $(notdir $*).img.tar.gz disk.raw" $(DIST) dist
+	rm -f $(dir $@)/disk.raw
+
+%.qcow2: %.raw | $(DIST)
+	qemu-img convert -c -f raw -O qcow2 $< $@
+	qemu-img resize $@ ${MEDIA_SIZE}M
+
 %.yml: %.yml.in build-tools $(RESCAN_DEPS)
 	@$(PARSE_PKGS) $< > $@
 
@@ -345,7 +386,12 @@ endif
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
 
-$(INSTALLER)/rootfs-%.img: images/rootfs-%.yml | $(INSTALLER)
+images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
+	@if [ -e $@.patch ]; then patch -p0 -o $@.sed < $@.patch ;else cp $< $@.sed ;fi
+	@sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
+	@rm $@.sed
+
+$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
@@ -363,6 +409,7 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
+.PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 
@@ -396,13 +443,14 @@ help:
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
 	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm, rpi)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
-	@echo "   live-rpi       builds a full disk image of EVE which can be used to run Raspberry Pi 4 board"
+	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp)"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose       runs all EVE microservices via docker-compose deployment"
 	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo "   run-live-gcp      runs a full fledged virtual device on Google Compute Platform (provide your account details)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-installer-iso runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"

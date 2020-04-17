@@ -6,7 +6,7 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "devmodel.proto"; // FIXME: this import is because of Adapter in common
+import "common/devmodelcommon.proto";
 
 message UUIDandVersion {
   string uuid = 1;

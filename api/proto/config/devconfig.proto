@@ -6,15 +6,15 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "acipherinfo.proto";
-import "appconfig.proto";
-import "baseosconfig.proto";
-import "devcommon.proto";
-import "devmodel.proto";
-import "mesh.proto";
-import "netconfig.proto";
-import "netinst.proto";
-import "storage.proto";
+import "config/acipherinfo.proto";
+import "config/appconfig.proto";
+import "config/baseosconfig.proto";
+import "config/devcommon.proto";
+import "config/devmodel.proto";
+import "config/mesh.proto";
+import "config/netconfig.proto";
+import "config/netinst.proto";
+import "config/storage.proto";
 
 // This is the response to a GET /api/v1/edgeDevice/config
 // The EdgeDevConfig message carries all of the device's configuration from

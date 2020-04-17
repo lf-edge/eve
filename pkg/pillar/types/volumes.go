@@ -182,11 +182,10 @@ type VolumeStatus struct {
 
 	WaitingForCerts bool
 
-	State       SwState // DOWNLOADED etc
-	Progress    uint    // In percent i.e., 0-100
-	ErrorSource string  // typename for Downloader, Verifier, etc
-	LastErr     string
-	LastErrTime time.Time
+	State    SwState // DOWNLOADED etc
+	Progress uint    // In percent i.e., 0-100
+	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
+	ErrorAndTimeWithSource
 
 	FileLocation string // Current location; should be info about file
 

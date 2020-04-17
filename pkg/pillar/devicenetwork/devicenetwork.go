@@ -7,6 +7,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"reflect"
+	"strings"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -15,12 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"net"
-	"os"
-	"reflect"
-	"strings"
-	"time"
 )
 
 const (
@@ -55,9 +56,9 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 		}
 		config.Ports[ix].IsMgmt = true
 		config.Ports[ix].Dhcp = types.DT_CLIENT
-		port, err := ctx.DevicePortConfig.GetPortByIfName(u)
-		if err == nil {
-			config.Ports[ix].WirelessCfg = port.WirelessCfg
+		portPtr := ctx.DevicePortConfig.GetPortByIfName(u)
+		if portPtr != nil {
+			config.Ports[ix].WirelessCfg = portPtr.WirelessCfg
 		}
 	}
 	return config
@@ -301,7 +302,8 @@ func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 	log.Infof("devPortInstallAPname: write file %s for name %v", filepath, wconfig.Cellular)
 }
 
-func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool {
+func devPortInstallWifiConfig(ctx *DeviceNetworkContext,
+	ifname string, wconfig types.WirelessConfig) bool {
 	if _, err := os.Stat(runwlanDir); os.IsNotExist(err) {
 		err = os.Mkdir(runwlanDir, 600)
 		if err != nil {
@@ -331,7 +333,7 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	} else {
 		tmpfile.WriteString("# Automatically generated\n")
 		for _, wifi := range wconfig.Wifi {
-			decBlock, err := getWifiCredential(wifi)
+			decBlock, err := getWifiCredential(ctx, wifi)
 			if err != nil {
 				continue
 			}
@@ -382,12 +384,15 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	return true
 }
 
-func getWifiCredential(wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
+func getWifiCredential(ctx *DeviceNetworkContext,
+	wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
 	if wifi.CipherBlockStatus.IsCipher {
-		_, decBlock, err := utils.GetCipherCredentials("devicenetwork",
+		status, decBlock, err := utils.GetCipherCredentials("devicenetwork",
 			wifi.CipherBlockStatus)
+		ctx.PubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
-			log.Infof("%s, wifi config cipherblock decryption unsuccessful: %v\n", wifi.SSID, err)
+			log.Errorf("%s, wifi config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+				wifi.SSID, err)
 			decBlock.WifiUserName = wifi.Identity
 			decBlock.WifiPassword = wifi.Password
 			return decBlock, nil

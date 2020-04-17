@@ -1,3 +1,10 @@
+From 617b08377dbaa9ea3876b5585fe0ba36286fbed6 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@apache.org>
+Date: Sat, 11 Apr 2020 05:47:55 +0000
+Subject: [PATCH] Merging CoreOS UEFI/GPT support
+
+A lot of this needs to be refactored once we move to GRUB 2.04
+
 diff --git a/.gitignore b/.gitignore
 index eca17bec9..5a9cce919 100644
 --- a/.gitignore

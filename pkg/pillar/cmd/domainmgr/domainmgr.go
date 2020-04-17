@@ -591,8 +591,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			if status.IsContainer {
-				status.LastErr = "container exited - please restart application instance"
-				status.LastErrTime = time.Now()
+				status.SetErrorNow("container exited - please restart application instance")
 			}
 		}
 		status.DomainId = 0
@@ -601,8 +600,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		if !status.Activated {
 			log.Warnf("verifyDomain(%s) domain came back alive; id  %d\n",
 				status.Key(), domainID)
-			status.LastErr = ""
-			status.LastErrTime = time.Time{}
+			status.ClearError()
 			status.DomainId = domainID
 			status.BootTime = time.Now()
 			log.Infof("Update domainId %d bootTime %s for %s",
@@ -624,12 +622,12 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		}
 		// check if qemu processes has crashed
 		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
-		if configActivate && status.Activated && hasQemu && !hyper.IsDeviceModelAlive(status.DomainId) {
+		if configActivate && status.Activated && hasQemu && !hyper.IsDomainPotentiallyShuttingDown(status.DomainName) &&
+			!hyper.IsDeviceModelAlive(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
-			status.LastErr = "qemu crashed - please restart application instance"
-			status.LastErrTime = time.Now()
+			status.SetErrorNow("qemu crashed - please restart application instance")
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
@@ -675,7 +673,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 
 	t := time.Now()
-	elapsed := t.Sub(status.LastErrTime)
+	elapsed := t.Sub(status.ErrorTime)
 	timeLimit := time.Duration(ctx.domainBootRetryTime) * time.Second
 	if elapsed < timeLimit {
 		log.Infof("maybeRetryBoot(%s) %d remaining\n",
@@ -684,10 +682,9 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	log.Infof("maybeRetryBoot(%s) after %s at %v\n",
-		status.Key(), status.LastErr, status.LastErrTime)
+		status.Key(), status.Error, status.ErrorTime)
 
-	status.LastErr = ""
-	status.LastErrTime = time.Time{}
+	status.ClearError()
 	status.TriedCount += 1
 
 	ctx.createSema.V(1)
@@ -697,8 +694,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		log.Errorf("maybeRetryBoot DomainCreate for %s: %s\n",
 			status.DomainName, err)
 		status.BootFailed = true
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
+		status.SetErrorNow(err.Error())
 		publishDomainStatus(ctx, status)
 		return
 	}
@@ -730,14 +726,13 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	log.Infof("maybeRetryAdapters(%s) after %s at %v\n",
-		status.Key(), status.LastErr, status.LastErrTime)
+		status.Key(), status.Error, status.ErrorTime)
 
 	if err := configAdapters(ctx, *config); err != nil {
 		log.Errorf("Failed to reserve adapters for %s: %s",
 			config.Key(), err)
 		status.PendingAdd = false
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
+		status.SetErrorNow(err.Error())
 		status.AdaptersFailed = true
 		publishDomainStatus(ctx, status)
 		cleanupAdapters(ctx, config.IoAdapterList,
@@ -745,8 +740,7 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	status.AdaptersFailed = false
-	status.LastErr = ""
-	status.LastErrTime = time.Time{}
+	status.ClearError()
 
 	// We now have reserved all of the IoAdapters
 	status.IoAdapterList = config.IoAdapterList
@@ -825,8 +819,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
 			config, err)
 		status.PendingAdd = false
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
+		status.SetErrorNow(err.Error())
 		publishDomainStatus(ctx, &status)
 		return
 	}
@@ -835,8 +828,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		log.Errorf("Failed to reserve adapters for %v: %s\n",
 			config, err)
 		status.PendingAdd = false
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
+		status.SetErrorNow(err.Error())
 		status.AdaptersFailed = true
 		publishDomainStatus(ctx, &status)
 		cleanupAdapters(ctx, config.IoAdapterList,
@@ -941,8 +933,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				}
 				hyper.PCIRelease(long)
 			}
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 			return
 		}
 	}
@@ -962,8 +953,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Errorf("Failed to reserve adapters for %v: %s\n",
 				config, err)
 			status.PendingAdd = false
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 			status.AdaptersFailed = true
 			publishDomainStatus(ctx, status)
 			cleanupAdapters(ctx, config.IoAdapterList,
@@ -974,6 +964,17 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.AdaptersFailed = false
 		// We now have reserved all of the IoAdapters
 		status.IoAdapterList = config.IoAdapterList
+	}
+
+	if status.IsContainer && (config.IsCipher || config.CloudInitUserData != nil) {
+		envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
+		if err != nil {
+			fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
+			log.Error(fetchError)
+			status.SetErrorNow(fetchError.Error())
+			return
+		}
+		status.EnvVariables = envList
 	}
 
 	// Assign any I/O devices
@@ -991,8 +992,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			len(status.DiskStatusList)); err != nil {
 
 			log.Errorf("Failed to create ctr bundle. Error %s", err)
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 			return
 		}
 	}
@@ -1005,9 +1005,9 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	defer file.Close()
 
 	if err := hyper.CreateDomConfig(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
-		log.Errorf("Failed to create DomainStatus from %v\n", config)
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
+		log.Errorf("Failed to create DomainStatus from %v: %s",
+			config, err)
+		status.SetErrorNow(err.Error())
 		return
 	}
 
@@ -1026,8 +1026,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		if status.TriedCount >= 3 {
 			log.Errorf("DomainCreate for %s: %s\n", status.DomainName, err)
 			status.BootFailed = true
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 			publishDomainStatus(ctx, status)
 			return
 		}
@@ -1045,7 +1044,6 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 
 	log.Infof("created domainID %d for %s\n", domainID, status.DomainName)
 	status.DomainId = domainID
-	status.Activated = true
 	status.BootTime = time.Now()
 	log.Infof("Set domainId %d bootTime %s for %s",
 		status.DomainId, status.BootTime.Format(time.RFC3339Nano),
@@ -1065,8 +1063,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	if err != nil {
 		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s\n", status.DomainName, err)
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
+		status.SetErrorNow(err.Error())
 		return
 	}
 	// The -emu interfaces were most likely created as result of the boot so we
@@ -1085,6 +1082,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 			status.Key())
 	}
+	status.Activated = true
 	log.Infof("doActivateTail(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
@@ -1202,9 +1200,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	if status.DomainId != 0 {
 		errStr := fmt.Sprintf("doInactivate(%s) failed to halt/destroy %d",
 			status.Key(), status.DomainId)
-		log.Errorln(errStr)
-		status.LastErr = errStr
-		status.LastErrTime = time.Now()
+		log.Error(errStr)
+		status.SetErrorNow(errStr)
 	} else {
 		status.Activated = false
 		status.State = types.HALTED
@@ -1267,8 +1264,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 	for _, long := range assignments {
 		err := hyper.PCIRelease(long)
 		if err != nil && !ignoreErrors {
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 		}
 	}
 	ctx.publishAssignableAdapters()
@@ -1315,13 +1311,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
-		if status.IsContainer {
-			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
-			if err != nil {
-				return err
-			}
-			status.EnvVariables = envList
-		} else {
+		if !status.IsContainer {
 			ds, err := createCloudInitISO(ctx, config)
 			if err != nil {
 				return err
@@ -1516,11 +1506,10 @@ func handleModify(ctx *domainContext, key string,
 
 		// This has the effect of trying a boot again for any
 		// handleModify after an error.
-		if status.LastErr != "" {
+		if status.HasError() {
 			log.Infof("handleModify(%v) ignoring existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
-			status.LastErr = ""
-			status.LastErrTime = time.Time{}
+			status.ClearError()
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status, false)
 		}
@@ -1529,8 +1518,7 @@ func handleModify(ctx *domainContext, key string,
 			log.Errorf("Failed to update DomainStatus from %v: %s\n",
 				config, err)
 			status.PendingModify = false
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 			publishDomainStatus(ctx, status)
 			return
 		}
@@ -1540,11 +1528,10 @@ func handleModify(ctx *domainContext, key string,
 	} else if !config.Activate {
 		log.Infof("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
-		if status.LastErr != "" {
+		if status.HasError() {
 			log.Infof("handleModify(%v) clearing existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
-			status.LastErr = ""
-			status.LastErrTime = time.Time{}
+			status.ClearError()
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status, false)
 			updateStatusFromConfig(status, *config)
@@ -1559,8 +1546,7 @@ func handleModify(ctx *domainContext, key string,
 			log.Errorf("Failed to update DomainStatus from %v: %s\n",
 				config, err)
 			status.PendingModify = false
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
+			status.SetErrorNow(err.Error())
 			publishDomainStatus(ctx, status)
 			return
 		}
@@ -1580,7 +1566,7 @@ func handleModify(ctx *domainContext, key string,
 		return
 	}
 
-	// XXX check if we have status.LastErr != "" and delete and retry
+	// XXX check if we have status.HasError() and delete and retry
 	// even if same version. XXX won't the above Activate/Activated checks
 	// result in redoing things? Could have failures during copy i.e.
 	// before activation.
@@ -1829,14 +1815,24 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 // getCloudInitUserData : returns decrypted cloud-init user data
 func getCloudInitUserData(ctx *domainContext,
-	config types.DomainConfig) (*string, error) {
-	status, clearTextData, err := utils.GetCipherData(agentName,
-		config.CipherBlockStatus, config.CloudInitUserData)
-	publishCipherBlockStatus(ctx, status)
-	if status.IsCipher && len(status.Error) == 0 {
-		log.Infof("%s, cipherblock decryption successful\n", config.Key())
+	dc types.DomainConfig) (zconfig.EncryptionBlock, error) {
+	if dc.CipherBlockStatus.IsCipher {
+		status, decBlock, err := utils.GetCipherCredentials(agentName,
+			dc.CipherBlockStatus)
+		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
+		if err != nil {
+			log.Errorf("%s, domain config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+				dc.Key(), err)
+			decBlock.ProtectedUserData = *dc.CloudInitUserData
+			return decBlock, nil
+		}
+		log.Infof("%s, domain config cipherblock decryption successful\n", dc.Key())
+		return decBlock, nil
 	}
-	return clearTextData, err
+	log.Infof("%s, domain config cipherblock not present\n", dc.Key())
+	decBlock := zconfig.EncryptionBlock{}
+	decBlock.ProtectedUserData = *dc.CloudInitUserData
+	return decBlock, nil
 }
 
 // Fetch the list of environment variables from the cloud init
@@ -1846,14 +1842,14 @@ func getCloudInitUserData(ctx *domainContext,
 // Key2:Val2 ...
 func fetchEnvVariablesFromCloudInit(ctx *domainContext,
 	config types.DomainConfig) (map[string]string, error) {
-	userData, err := getCloudInitUserData(ctx, config)
+	decBlock, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, cloud-init data get failed %s\n",
 			config.DisplayName, err)
 		return nil, errors.New(errStr)
 	}
 
-	ud, err := base64.StdEncoding.DecodeString(*userData)
+	ud, err := base64.StdEncoding.DecodeString(decBlock.ProtectedUserData)
 	if err != nil {
 		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s\n", err)
 		return nil, errors.New(errStr)
@@ -1902,11 +1898,11 @@ func createCloudInitISO(ctx *domainContext,
 		log.Fatalf("createCloudInitISO failed %s\n", err)
 	}
 
-	userData, err := getCloudInitUserData(ctx, config)
+	decBlock, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	ud, err := base64.StdEncoding.DecodeString(*userData)
+	ud, err := base64.StdEncoding.DecodeString(decBlock.ProtectedUserData)
 	if err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
 		return nil, errors.New(errStr)

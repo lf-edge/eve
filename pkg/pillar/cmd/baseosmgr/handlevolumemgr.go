@@ -13,6 +13,7 @@ import (
 
 // AddOrRefcountVolumeConfig makes sure we have a VolumeConfig with a non-zero
 // RefCount
+// We use the baseos object UUID as appInstID here
 func AddOrRefcountVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 	appInstID uuid.UUID, volumeID uuid.UUID, ss types.StorageStatus) {
 
@@ -65,6 +66,7 @@ func AddOrRefcountVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 
 // MaybeRemoveVolumeConfig decreases the RefCount and deletes the VolumeConfig
 // when the RefCount reaches zero
+// We use the baseos object UUID as appInstID here
 func MaybeRemoveVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 	appInstID uuid.UUID, volumeID uuid.UUID) {
 
@@ -104,6 +106,7 @@ func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.VolumeConfig {
 }
 
 // Note that this function returns the entry even if Pending* is set.
+// We use the baseos object UUID as appInstID here
 func lookupVolumeStatus(ctx *baseOsMgrContext, blobSha256 string,
 	appInstID uuid.UUID, volumeID uuid.UUID) *types.VolumeStatus {
 

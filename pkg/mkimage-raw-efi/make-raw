@@ -56,8 +56,10 @@ CONF_PART_SIZE=$((1024 * 1024))
 WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
 # installer system parition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
-# Raspbery Pi boot partition size
-RPI_BOOT_PART=$(( 20 * 1024 * 1024 ))
+# boot partition size
+BOOT_PART_SIZE=$(( 20 * 1024 * 1024 ))
+# sector where the first partition starts on a blank disk
+FIRST_PART_SEC=2048
 
 sgdisk() {
   # filter out annoying messages we can't get rid of:
@@ -130,11 +132,11 @@ do_efi() {
   do_system_vfat_part "$1" "$EFI_PART_SIZE"
 }
 
-do_rpi_boot() {
+do_boot() {
   mkefifs
   cp /trampoline.grub.cfg /efifs/EFI/BOOT/grub.cfg
   cp -r /parts/boot/* /efifs/
-  do_system_vfat_part "$1" "$RPI_BOOT_PART"
+  do_system_vfat_part "$1" "$BOOT_PART_SIZE"
 }
 
 do_installer() {
@@ -252,6 +254,42 @@ do_usb_conf() {
     eval "$1=$(( SEC_END + 1))"
 }
 
+# This function deploys GRUB stage1 into MBR (sector 0) and GRUB stage2 into the gap betwee
+# where GPT ends and first partition begins (sector 34 - sector FIRST_PART_SEC). It relies
+# on the knowlege of where GRUB implemenation stores the value for the 1st and 2nd sectors
+# of stage2 (see the seek offsets for dd below). Whenever GRUB version changes there's a chance
+# these offsets may change and will have to be adjusted accordingly as per:
+#   * grub-core/boot/i386/pc/boot.S kernel_sector
+#   * grub-core/boot/i386/pc/diskboot.S blocklist_default_start
+# NOTE: theoretically one can patch grub-install to do this, but it requires much more hoop jumping
+deploy_legacy_grub() {
+    # put GRUB stage1 loader into the MBR (don't overwrite MBR partition table -- hence size 446 not 512)
+    dd if=/usr/lib/grub/i386-pc/boot.img of="$IMGFILE" bs=446 count=1 conv=noerror,sync,notrunc
+    # embed GRUB stage2 into the gap between the end of GPT (sector 34) and start of the first partition (FIRST_PART_SEC)
+    dd if=/efifs/EFI/BOOT/BOOT.pc of="$IMGFILE" bs=512 seek=34 conv=noerror,sync,notrunc
+    # update locations where stage1 and stage2 store the value of the first (34 == \042)...
+    printf '\042' | dd of="$IMGFILE" bs=1 seek=92 count=1 conv=noerror,sync,notrunc
+    # ...and 2nd (35 == \043) sector of where stage2 is located on disk
+    printf '\043' | dd of="$IMGFILE" bs=1 seek=$((34 * 512 + 500)) count=1 conv=noerror,sync,notrunc
+}
+
+adjust_protective_mbr() {
+    # Since sgdisk by default puts protective partition first, we need to swap the
+    # order to make sone legacy BIOS implementations happy. Strictly speaking, this
+    # goes against good recommendations of how to build a protective MBR for the GPT
+    # but it doesn't seem to cause any troubles and it helps with compabitlity.
+    PROT_PART=$(busybox hexdump -s 446 -n 16 -v -e '"" 16/1 "\\%03o"' "$IMGFILE")
+    NULL_PART="\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+    # we need to replace 1st byte with \200 (bootable) and 4th byte with \014 (vfat filesystem type)
+    BOOT_PART=$(busybox hexdump -s $(( 446 + 17 )) -n 3 -v -e '"\\200" 3/1 "\\%03o" "\\014"' "$IMGFILE")
+    BOOT_PART="$BOOT_PART"$(busybox hexdump -s $(( 446 + 21 )) -n 11 -v -e '"" 11/1 "\\%03o"' "$IMGFILE")
+    # sadly, busybox doesn't support xxd -r -- so make do with printf that interprets \ooo escape sequences
+    #shellcheck disable=SC2059
+    printf "${BOOT_PART}${PROT_PART}${NULL_PART}${NULL_PART}" | dd of="$IMGFILE" bs=1 seek=446 conv=noerror,sync,notrunc
+}
+
+
+
 #
 # Extract partitions from stdin or look them up in /bits
 #
@@ -274,7 +312,7 @@ EFI_DIR=/parts/EFI
 # offset in the GTP partition table from which we can start our numbering
 PART_OFFSET=0
 # starting sector for our portion of the disk
-CUR_SEC=2048
+CUR_SEC="$FIRST_PART_SEC"
 
 # Lets see if GPT partition exists and it is one of the
 # kinds we recognize
@@ -306,23 +344,21 @@ for p in $PARTS ; do
   eval do_$p CUR_SEC 2>/dev/null
 done
 
-# we may potentially decide to always create a hybrid MBR and
-# even put a BIOS GRUB in there, for now -- just do it for RPi
-if echo "$PARTS" | grep -q rpi_boot; then
-  # creat a hybrid MBR partition table with only this partition visible
-  sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
-  PROT_PART=$(busybox hexdump -s 446 -n 16 -v -e '"" 16/1 "\\%03o"' "$IMGFILE")
-  NULL_PART="\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
-  # we need to replace 1st byte with \200 (bootable) and 4th byte with \014 (vfat filesystem type)
-  RPI_BOOT_PART=$(busybox hexdump -s $(( 446 + 17 )) -n 3 -v -e '"\\200" 3/1 "\\%03o" "\\014"' "$IMGFILE")
-  RPI_BOOT_PART="$RPI_BOOT_PART"$(busybox hexdump -s $(( 446 + 21 )) -n 11 -v -e '"" 11/1 "\\%03o"' "$IMGFILE")
-  # sadly, busybox doesn't support xxd -r -- so make do with printf that interprets \ooo escape sequences
-  #shellcheck disable=SC2059
-  printf "${RPI_BOOT_PART}${PROT_PART}${NULL_PART}${NULL_PART}" |\
-      dd of="$IMGFILE" bs=1 seek=446 conv=noerror,sync,notrunc
+# Create a hybrid MBR to allow booting on legacy BIOS PC systems and ARM boards that
+# look for bootloaders in the first entry of the MBR
+sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
+
+# if we happen to be building an x86 image - deploy legacy GRUB into the GPT gap
+if [ -e /efifs/EFI/BOOT/BOOTX64.EFI ]; then
+   deploy_legacy_grub
 fi
 
-# Update embedded boot partition with our own bootloader
+# Update embedded boot partition with our own bootloader - this only happens if
+# we noticed a recongnizable GPT structure and we are ADDING ourselves to it,
+# as opposed to replacing the entire GPT with our own structure (currently this
+# only happens for HiKey but the approach of using partitions to store firmware
+# blobs on flash is fairly common on ARM so we expect to see others as well)
+# On the other hand...
 GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
 if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IMG" ] ; then
   if mount $IMGFILE /mnt -o loop,offset=$(( EMBED_BOOT_START * 512  )),sizelimit=$(( EMBED_BOOT_SIZE * 512 )) ; then
@@ -334,6 +370,12 @@ if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IM
      fi
   fi
   umount /mnt || :
+else
+  # ...if we're NOT adding ourselves to an existing GPT - assume we own protective MBR
+  # as well and can adjust it accordingly to maximize our chances of booting on something
+  # like Raspbery Pi (which is pretty strict about how the first entry in the MBR partition
+  # table needs to look like)
+  adjust_protective_mbr
 fi
 
 # Validate the health of our creation

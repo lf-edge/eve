@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "common/devmodelcommon.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/info";
 
@@ -61,49 +62,15 @@ enum ZInfoTypes {
   ZiNetworkInstance = 6;
 }
 
-// XXX duplicate from devmodel.proto:
-// Needs to have a separate name than the one in devmodel.proto
-// XXX Remove this once we can import from config/devmodel.proto
-enum IPhyIoType {
-  IPhyIoNoop = 0;
-  IPhyIoNetEth = 1;
-  IPhyIoUSB = 2;
-  IPhyIoCOM = 3;
-  IPhyIoAudio = 4;
-  IPhyIoNetWLAN = 5;
-  IPhyIoNetWWAN = 6;
-  IPhyIoHDMI = 7;
-  IPhyIoOther = 255;
-}
-
-// XXX duplicate from devmodel.proto:
-// Needs to have a separate name than the one in devmodel.proto
-// XXX Remove this once we can import from config/devmodel.proto
-// InfoPhyIoMemberUsage - Indicates how each adaptor must be used by Eve.
-enum InfoPhyIoMemberUsage {
-  InfoPhyIoUsageNone      = 0;
-  // Used by both management and apps.
-  InfoPhyIoUsageMgmtAndApps = 1;
-  // Shared by multiple apps
-  InfoPhyIoUsageShared    = 2;
-  // used by only one app
-  InfoPhyIoUsageDedicated = 3;
-  // Adapter Blocked. Do not use the Adapter.
-  InfoPhyIoUsageDisabled   = 4;
-  // Used for Management traffic only. Cannot be used by Apps.
-  InfoPhyIoUsageMgmtOnly = 5;
-}
-
-
 // Information about assignable I/O adapter bundles
 message ZioBundle {
-  IPhyIoType type = 1;
+  PhyIoType type = 1;
   string name = 2;              // Short hand name such as "com"
   repeated string members = 3;  // E.g., "com1", "com2"
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
   repeated IoAddresses ioAddressList = 6; // One per member
-  InfoPhyIoMemberUsage usage = 7; // Usage of the IoBundle
+  PhyIoMemberUsage usage = 7; // Usage of the IoBundle
   ErrorInfo err = 8; // Any errors on the IoBundle
 }
 
@@ -336,7 +303,7 @@ message DevicePort {
   bool up = 26;      // operational up/down status.
   GeoLoc location = 27;
   ErrorInfo err = 29; // Any errors on the interface.
-  InfoPhyIoMemberUsage usage = 30; // Usage of the Device port
+  PhyIoMemberUsage usage = 30; // Usage of the Device port
   string networkUUID = 31; // Network UUID configured for the port.
 }
 

@@ -8,7 +8,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	"github.com/prometheus/procfs"
+	process "github.com/shirou/gopsutil/process"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -459,7 +459,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string, Virtualizati
 	os.MkdirAll(kvmStateDir+domainName, 0777)
 
 	pidFile := kvmStateDir + domainName + "/pid"
-	qmpFile := kvmStateDir + domainName + "/qmp"
+	qmpFile := getQmpFile(domainName)
 	consFile := kvmStateDir + domainName + "/cons"
 
 	dmArgs := ctx.dmArgs
@@ -500,7 +500,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string, Virtualizati
 }
 
 func (ctx kvmContext) Start(domainName string, domainID int) error {
-	qmpFile := kvmStateDir + domainName + "/qmp"
+	qmpFile := getQmpFile(domainName)
 
 	if err := execContinue(qmpFile); err != nil {
 		return logError("failed to start domain that is stopped %v", err)
@@ -514,14 +514,14 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 }
 
 func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
-	if err := execShutdown(kvmStateDir + domainName + "/qmp"); err != nil {
+	if err := execShutdown(getQmpFile(domainName)); err != nil {
 		return logError("failed to execute shutdown command %v", err)
 	}
 	return nil
 }
 
 func (ctx kvmContext) Delete(domainName string, domainID int) error {
-	if err := execQuit(kvmStateDir + domainName + "/qmp"); err != nil {
+	if err := execQuit(getQmpFile(domainName)); err != nil {
 		return logError("failed to execute quite command %v", err)
 	}
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
@@ -532,7 +532,7 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx kvmContext) Info(domainName string, domainID int) error {
-	res, err := execQueryCLIOptions(kvmStateDir + domainName + "/qmp")
+	res, err := execQueryCLIOptions(getQmpFile(domainName))
 	log.Infof("KVM Info for domain %s %d %s (%v)", domainName, domainID, res, err)
 	return err
 }
@@ -607,6 +607,16 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	return nil
 }
 
+//IsDomainPotentiallyShuttingDown: returns false if domain's status is healthy (i.e. 'running')
+func (ctx kvmContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
+	if status, err := getQemuStatus(getQmpFile(domainName)); err != nil || status != "running" {
+		log.Errorf("IsDomainPotentiallyShuttingDown: domain %s is not healthy. domainState: %s", domainName, status)
+		return true
+	}
+	log.Debugf("IsDomainPotentiallyShuttingDown: domain %s is healthy", domainName)
+	return false
+}
+
 func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
 	_, err := os.Stat(fmt.Sprintf("/proc/%d", domid))
 	return err == nil
@@ -616,32 +626,78 @@ func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
 
-func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
-	// for more precised measurements we should be using https://github.com/cha87de/kvmtop
-	res := map[string]types.DomainMetric{}
-
-	proc, err := procfs.NewFS("/proc")
+func readCPUUsage(pid int) (float64, error) {
+	ps, err := process.NewProcess(int32(pid))
 	if err != nil {
-		return res, logError("can't access /procfs %v", err)
+		return 0, err
 	}
 
+	cput, err := ps.Times()
+	if err != nil {
+		return 0, err
+	}
+
+	return cput.Total(), nil
+}
+
+func readMemUsage(pid int) (uint32, uint32, float64, error) {
+	ps, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	processMemory, err := ps.MemoryInfo()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	usedMem := uint32(roundFromBytesToMbytes(processMemory.RSS))
+	availMem := uint32(roundFromBytesToMbytes(processMemory.VMS))
+
+	usedMemPerc, err := ps.MemoryPercent()
+	if err != nil {
+		return usedMem, availMem, 0, err
+	}
+
+	return usedMem, availMem, float64(usedMemPerc), nil
+}
+
+func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	// for more precised measurements we should be using a tool like https://github.com/cha87de/kvmtop
+	res := map[string]types.DomainMetric{}
+
 	for dom, pid := range ctx.domains {
-		p, err := proc.Proc(pid)
-		if err != nil {
-			return res, logError("can't access stats for domain %s PID %d (%v)", dom, pid, err)
+		var usedMem, availMem uint32
+		var usedMemPerc float64
+		var cpuTotal uint64
+
+		ct, err := readCPUUsage(pid)
+		if err == nil {
+			cpuTotal = uint64(ct)
+		} else {
+			log.Errorf("readCPUUsage failed with error %v", err)
 		}
 
-		s, err := p.Stat()
-		if err != nil {
-			return res, logError("can't access stats for domain %s PID %d (%v)", dom, pid, err)
+		um, am, ump, err := readMemUsage(pid)
+		if err == nil {
+			usedMem = um
+			availMem = am
+			usedMemPerc = ump
+		} else {
+			log.Errorf("readMemUsage failed with error %v", err)
 		}
+
 		res[dom] = types.DomainMetric{
 			UUIDandVersion:    types.UUIDandVersion{},
-			CPUTotal:          0,
-			UsedMemory:        uint32(roundFromBytesToMbytes(uint64(s.ResidentMemory()))),
-			AvailableMemory:   uint32(roundFromBytesToMbytes(uint64(s.VirtualMemory()))),
-			UsedMemoryPercent: float64((float32(s.ResidentMemory()) / float32(s.VirtualMemory())) * 100),
+			CPUTotal:          cpuTotal,
+			UsedMemory:        usedMem,
+			AvailableMemory:   availMem,
+			UsedMemoryPercent: usedMemPerc,
 		}
 	}
 	return res, nil
+}
+
+func getQmpFile(domainName string) string {
+	return kvmStateDir + domainName + "/qmp"
 }

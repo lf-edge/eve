@@ -54,6 +54,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	if getconfigCtx.rebootFlag || ctx.deviceReboot {
 		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
 	} else {
+		parseCipherContext(getconfigCtx, config)
 		parseDatastoreConfig(config, getconfigCtx)
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
@@ -64,7 +65,6 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// on Physio configuration and Networks configuration. If either of
 		// Physio or Networks change, we should re-parse system adapters and
 		// publish updated configuration.
-		parseCipherContextConfig(getconfigCtx, config)
 		forceSystemAdaptersParse := physioChanged || networksChanged
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
@@ -541,9 +541,21 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.CloudInitUserData = &userData
 		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
+		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
+			cfgApp.GetCipherData())
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
+
+		// Pretend that the controller specified purgeCounter for the first
+		// disk. Then StorageStatus will start with that value below.
+		if len(appInstance.StorageConfigList) > 0 &&
+			appInstance.StorageConfigList[0].PurgeCounter != appInstance.PurgeCmd.Counter {
+			sc := &appInstance.StorageConfigList[0]
+			log.Infof("Setting purgeCounter to %d for %s",
+				appInstance.PurgeCmd.Counter, appInstance.Key())
+			sc.PurgeCounter = appInstance.PurgeCmd.Counter
+		}
 
 		// write to zedmanager config directory
 		uuidStr := cfgApp.Uuidandversion.Uuid
@@ -738,7 +750,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			net := networkXObject.(types.NetworkXObjectConfig)
 			port.NetworkUUID = net.UUID
 			network = &net
-			if network.Error != "" {
+			if network.HasError() {
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
 					port.IfName, network.Error)
 				port.ParseError = errStr
@@ -1071,8 +1083,8 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	if err != nil {
 		errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Malformed UUID ignored: %s",
 			err)
-		config.Error = errStr
-		config.ErrorTime = time.Now()
+		log.Error(errStr)
+		config.SetErrorNow(errStr)
 		return config
 	}
 	config.UUID = id
@@ -1132,8 +1144,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Missing ipspec for %s in %v",
 				config.Key(), netEnt)
 			log.Error(errStr)
-			config.Error = errStr
-			config.ErrorTime = time.Now()
+			config.SetErrorNow(errStr)
 			return config
 		}
 		err := parseIpspecNetworkXObject(ipspec, config)
@@ -1141,8 +1152,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec failed for %s: %s",
 				config.Key(), err)
 			log.Error(errStr)
-			config.Error = errStr
-			config.ErrorTime = time.Now()
+			config.SetErrorNow(errStr)
 			return config
 		}
 	case types.NT_NOOP:
@@ -1155,8 +1165,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec ignored for %s: %s",
 					config.Key(), err)
 				log.Error(errStr)
-				config.Error = errStr
-				config.ErrorTime = time.Now()
+				config.SetErrorNow(errStr)
 				return config
 			}
 		}
@@ -1165,8 +1174,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored",
 			config.Type, id.String(), netEnt)
 		log.Error(errStr)
-		config.Error = errStr
-		config.ErrorTime = time.Now()
+		config.SetErrorNow(errStr)
 		return config
 	}
 
@@ -1188,8 +1196,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: bad dnsEntry %s for %s",
 					strAddr, config.Key())
 				log.Error(errStr)
-				config.Error = errStr
-				config.ErrorTime = time.Now()
+				config.SetErrorNow(errStr)
 				return config
 			}
 		}

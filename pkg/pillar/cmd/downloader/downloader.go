@@ -292,11 +292,11 @@ func maybeRetryDownload(ctx *downloaderContext,
 
 	// object is either in download progress or,
 	// successfully downloaded, nothing to do
-	if status.LastErr == "" {
+	if !status.HasError() {
 		return
 	}
 	t := time.Now()
-	elapsed := t.Sub(status.LastErrTime)
+	elapsed := t.Sub(status.ErrorTime)
 	if elapsed < downloadRetryTime {
 		log.Infof("maybeRetryDownload(%s) %d remaining\n",
 			status.Key(),
@@ -304,7 +304,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 		return
 	}
 	log.Infof("maybeRetryDownload(%s) after %s at %v\n",
-		status.Key(), status.LastErr, status.LastErrTime)
+		status.Key(), status.Error, status.ErrorTime)
 
 	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
 	if config == nil {
@@ -313,9 +313,9 @@ func maybeRetryDownload(ctx *downloaderContext,
 		return
 	}
 
-	// reset ErrorInfo, to start download again
+	// reset Error, to start download again
 	status.RetryCount++
-	status.ClearErrorInfo()
+	status.ClearError()
 	publishDownloaderStatus(ctx, status)
 
 	doDownload(ctx, *config, status)

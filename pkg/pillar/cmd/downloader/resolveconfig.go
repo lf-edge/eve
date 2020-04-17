@@ -94,7 +94,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 			Counter:     rc.Counter,
 		}
 	}
-	rs.ClearErrorInfo()
+	rs.ClearError()
 
 	sha := maybeNameHasSha(rc.Name)
 	if sha != "" {
@@ -105,7 +105,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 
 	dst, errStr := lookupDatastoreConfig(ctx, rc.DatastoreID, rc.Name)
 	if errStr != "" {
-		rs.SetErrorInfo(agentName, errStr)
+		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -113,7 +113,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	dsCtx, err := constructDatastoreContext(ctx, rc.Name, false, *dst)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", rc.Name, err)
-		rs.SetErrorInfo(agentName, errStr)
+		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -132,8 +132,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		err = errors.New("No IP management port addresses for download")
 	}
 	if addrCount == 0 {
-		errStr = err.Error()
-		rs.SetErrorInfo(agentName, errStr)
+		rs.SetErrorNow(err.Error())
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -162,7 +161,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	// and return, but we will get to it later
 	if errStr != "" {
 		log.Errorf("Error preparing to download. All errors:%s\n", errStr)
-		rs.SetErrorInfo(agentName, errStr)
+		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -200,7 +199,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 
 	}
 	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)
-	rs.SetErrorInfo(agentName, errStr)
+	rs.SetErrorNow(errStr)
 	publishResolveStatus(ctx, rs)
 }
 

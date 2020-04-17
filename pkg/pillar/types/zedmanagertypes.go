@@ -128,9 +128,8 @@ type AppInstanceStatus struct {
 	State          SwState
 	MissingNetwork bool // If some Network UUID not found
 	// All error strings across all steps and all StorageStatus
-	ErrorSource string
-	Error       string
-	ErrorTime   time.Time
+	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
+	ErrorAndTimeWithSource
 }
 
 // Track more complicated workflows
@@ -185,22 +184,6 @@ func (status AppInstanceStatus) GetAppInterfaceList() []string {
 		}
 	}
 	return viflist
-}
-
-// SetError - Clears error state of Status
-func (statusPtr *AppInstanceStatus) SetError( //revive:disable-line
-	errStr string, source string,
-	errTime time.Time) {
-	statusPtr.Error = errStr
-	statusPtr.ErrorSource = source
-	statusPtr.ErrorTime = errTime
-}
-
-// ClearError - Clears error state of Status
-func (statusPtr *AppInstanceStatus) ClearError() { //revive:disable-line
-	statusPtr.Error = ""
-	statusPtr.ErrorSource = ""
-	statusPtr.ErrorTime = time.Time{}
 }
 
 // MaybeUpdateAppIPAddr - Check if the AI status has the underlay network with this Mac Address
@@ -264,13 +247,6 @@ func RoundupToKB(b uint64) uint64 {
 	return (b + 1023) / 1024
 }
 
-// ErrorInfo errorInfo holder structure
-type ErrorInfo struct {
-	Error       string
-	ErrorSource string
-	ErrorTime   time.Time
-}
-
 type StorageStatus struct {
 	// ImageID - UUID of the image
 	ImageID            uuid.UUID
@@ -296,7 +272,8 @@ type StorageStatus struct {
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
-	ErrorInfo
+	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
+	ErrorAndTimeWithSource
 }
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
@@ -323,30 +300,6 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	return
 }
 
-// GetErrorInfo sets the errorInfo for the Storage Object
-func (ss StorageStatus) GetErrorInfo() ErrorInfo {
-	errInfo := ErrorInfo{
-		Error:       ss.Error,
-		ErrorSource: ss.ErrorSource,
-		ErrorTime:   ss.ErrorTime,
-	}
-	return errInfo
-}
-
-// SetErrorInfo sets the errorInfo for the Storage Object
-func (ss *StorageStatus) SetErrorInfo(errInfo ErrorInfo) {
-	ss.Error = errInfo.Error
-	ss.ErrorTime = errInfo.ErrorTime
-	ss.ErrorSource = errInfo.ErrorSource
-}
-
-// ClearErrorInfo clears errorInfo for the Storage Object
-func (ss *StorageStatus) ClearErrorInfo() {
-	ss.Error = ""
-	ss.ErrorSource = ""
-	ss.ErrorTime = time.Time{}
-}
-
 // IsCertsAvailable checks certificate requirement/availability for a Volume object
 func (vs VolumeStatus) IsCertsAvailable(displaystr string) (bool, error) {
 	if !vs.needsCerts() {
@@ -361,16 +314,16 @@ func (vs VolumeStatus) IsCertsAvailable(displaystr string) (bool, error) {
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
 func (vs VolumeStatus) HandleCertStatus(displaystr string,
-	certObjStatus CertObjStatus) (bool, ErrorInfo) {
+	certObjStatus CertObjStatus) (bool, ErrorAndTime) {
 	if ret, errInfo := vs.checkCertsStatusForObject(certObjStatus); !ret {
 		log.Infof("%s, Certs are still not ready\n", displaystr)
 		return ret, errInfo
 	}
 	if ret := vs.checkCertsForObject(); !ret {
 		log.Infof("%s, Certs are still not installed\n", displaystr)
-		return ret, ErrorInfo{}
+		return ret, ErrorAndTime{}
 	}
-	return true, ErrorInfo{}
+	return true, ErrorAndTime{}
 }
 
 // needsCerts whether certificates are required for the Volume object
@@ -412,11 +365,11 @@ func (vs VolumeStatus) getCertCount(displaystr string) (int, error) {
 }
 
 // checkCertsStatusForObject checks certificates for installation status
-func (vs VolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorInfo) {
+func (vs VolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorAndTime) {
 
 	dos := vs.DownloadOrigin
 	if dos == nil {
-		return true, ErrorInfo{}
+		return true, ErrorAndTime{}
 	}
 	if dos.SignatureKey != "" {
 		found, installed, errInfo := certObjStatus.getCertStatus(dos.SignatureKey)
@@ -426,12 +379,12 @@ func (vs VolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (b
 	}
 
 	for _, certURL := range dos.CertificateChain {
-		found, installed, errInfo := certObjStatus.getCertStatus(certURL)
+		found, installed, errorAndTime := certObjStatus.getCertStatus(certURL)
 		if !found || !installed {
-			return false, errInfo
+			return false, errorAndTime
 		}
 	}
-	return true, ErrorInfo{}
+	return true, ErrorAndTime{}
 }
 
 // checkCertsForObject checks availability of Certs in Disk

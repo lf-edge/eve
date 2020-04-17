@@ -1,3 +1,8 @@
+From 617b08377dbaa9ea3876b5585fe0ba36286fbed6 Mon Sep 17 00:00:00 2001
+From: Gianluca Guida <glguida@gmail.com>
+Date: Sat, 11 Apr 2020 05:47:55 +0000
+Subject: [PATCH] This patch allows to probe a partition for it's GPT part UUID.
+
 This patch allows to probe a partition for it's GPT part UUID.
 
 It is GPT specific, and it's use to Zenbuild to allow grub

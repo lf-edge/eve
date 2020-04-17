@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -19,9 +18,10 @@ import (
 var nilUUID uuid.UUID
 
 func checkVolumeStatus(ctx *baseOsMgrContext,
-	uuidStr string, config []types.StorageConfig,
+	baseOsUUID uuid.UUID, config []types.StorageConfig,
 	status []types.StorageStatus) *types.RetStatus {
 
+	uuidStr := baseOsUUID.String()
 	ret := &types.RetStatus{}
 	log.Infof("checkVolumeStatus for %s\n", uuidStr)
 
@@ -48,14 +48,14 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 
 		if !ss.HasVolumemgrRef {
 			log.Infof("checkVolumeStatus %s, !HasVolumemgrRef\n", sc.ImageID)
-			// XXX This means using only the sha as key
+			// We use the baseos object UUID as appInstID here
 			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
-				nilUUID, ss.ImageID, *ss)
+				baseOsUUID, ss.ImageID, *ss)
 			ss.HasVolumemgrRef = true
 			ret.Changed = true
 		}
-		// XXX This means using only the sha as key
-		vs := lookupVolumeStatus(ctx, ss.ImageSha256, nilUUID, ss.ImageID)
+		// We use the baseos object UUID as appInstID here
+		vs := lookupVolumeStatus(ctx, ss.ImageSha256, baseOsUUID, ss.ImageID)
 		if vs == nil || vs.RefCount == 0 {
 			if vs == nil {
 				log.Infof("VolumeStatus not found. name: %s",
@@ -95,16 +95,12 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 				imageID)
 			continue
 		}
-		if vs.LastErr != "" {
+		if vs.HasError() {
 			log.Errorf("checkVolumeStatus %s, volumemgr error, %s\n",
-				uuidStr, vs.LastErr)
-			errInfo := types.ErrorInfo{
-				Error:       vs.LastErr,
-				ErrorTime:   vs.LastErrTime,
-				ErrorSource: pubsub.TypeToName(types.VolumeStatus{}),
-			}
-			ss.SetErrorInfo(errInfo)
-			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", vs.LastErr)
+				uuidStr, vs.Error)
+			ss.SetErrorWithSource(vs.Error, types.VolumeStatus{},
+				vs.ErrorTime)
+			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", vs.Error)
 			ret.ErrorTime = ss.ErrorTime
 			ret.Changed = true
 		}
@@ -187,12 +183,8 @@ func installDownloadedObject(imageID uuid.UUID,
 		ssPtr.State = types.INSTALLED
 		log.Infof("installDownloadedObject(%s) done", imageID)
 	} else {
-		errInfo := types.ErrorInfo{
-			Error:       fmt.Sprintf("installDownloadedObject: %s", ret),
-			ErrorTime:   time.Now(),
-			ErrorSource: pubsub.TypeToName(types.VolumeStatus{}),
-		}
-		ssPtr.SetErrorInfo(errInfo)
+		errStr := fmt.Sprintf("installDownloadedObject: %s", ret)
+		ssPtr.SetErrorWithSource(errStr, types.VolumeStatus{}, time.Now())
 	}
 	return ret
 }

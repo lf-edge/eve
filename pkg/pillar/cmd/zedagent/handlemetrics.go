@@ -18,6 +18,7 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/lf-edge/eve/api/go/common"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -46,7 +47,6 @@ var reportDiskPaths = []string{
 
 // Report directory usage for these paths
 var reportDirPaths = []string{
-	types.PersistDir,
 	types.PersistDir + "/downloads",
 	types.PersistDir + "/img",
 	types.PersistDir + "/tmp",
@@ -56,8 +56,6 @@ var reportDirPaths = []string{
 	types.PersistDir + "/status",
 	types.PersistDir + "/certs",
 	types.PersistDir + "/checkpoint",
-	types.PersistDir + "/IMGA",
-	types.PersistDir + "/IMGB",
 }
 
 // Application-related files live here; includes downloads and verifications in progress
@@ -132,6 +130,8 @@ func lookupDomainMetric(ctx *zedagentContext, uuidStr string) *types.DomainMetri
 func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	var ReportMetrics = &metrics.ZMetricMsg{}
+
+	startPubTime := time.Now()
 
 	ReportDeviceMetric := new(metrics.DeviceMetric)
 	ReportDeviceMetric.Memory = new(metrics.MemoryMetric)
@@ -217,7 +217,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
 			networkDetails)
 	}
-	log.Debugln("network metrics: ", ReportDeviceMetric.Network)
 
 	lm, _ := ctx.subLogMetrics.Get("global")
 	if lm != nil {
@@ -304,12 +303,19 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		// XXX do we have a mountpath? Combine with paths below if same?
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+
+	var persistUsage uint64
 	for _, path := range reportDiskPaths {
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
 			log.Errorf("disk.Usage: %s\n", err)
 			continue
+		}
+		// We can not run diskmetrics.SizeFromDir("/persist") below in reportDirPaths, get the usage
+		// data here for persistUsage
+		if path == types.PersistDir {
+			persistUsage = u.Used
 		}
 		log.Debugf("Path %s total %d used %d free %d\n",
 			path, u.Total, u.Used, u.Free)
@@ -320,6 +326,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+	log.Debugf("persistUsage %d, elapse sec %v\n", persistUsage, time.Since(startPubTime).Seconds())
+
 	for _, path := range reportDirPaths {
 		usage := diskmetrics.SizeFromDir(path)
 		log.Debugf("Path %s usage %d", path, usage)
@@ -328,13 +336,16 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+	log.Debugf("DirPaths in persist, elapse sec %v\n", time.Since(startPubTime).Seconds())
+
 	// Determine how much we use in /persist and how much of it is
 	// for the benefits of applications
-	persistUsage := diskmetrics.SizeFromDir(types.PersistDir)
 	var persistAppUsage uint64
 	for _, path := range appPersistPaths {
 		persistAppUsage += diskmetrics.SizeFromDir(path)
 	}
+	log.Debugf("persistAppUsage %d, elapse sec %v\n", persistAppUsage, time.Since(startPubTime).Seconds())
+
 	persistOverhead := persistUsage - persistAppUsage
 	// Convert to MB
 	runtimeStorageOverhead := types.RoundupToKB(types.RoundupToKB(persistOverhead))
@@ -518,6 +529,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	log.Debugf("PublishMetricsToZedCloud sending %s\n", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
+	log.Debugf("publishMetrics: after send, total elapse sec %v\n", time.Since(startPubTime).Seconds())
 }
 
 func getDiskInfo(diskfile string, appDiskDetails *metrics.AppDiskMetric) error {
@@ -856,11 +868,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		seenBundles = append(seenBundles, ib.AssignmentGroup)
 		reportAA := new(info.ZioBundle)
-		reportAA.Type = info.IPhyIoType(ib.Type)
+		reportAA.Type = common.PhyIoType(ib.Type)
 		reportAA.Name = ib.AssignmentGroup
 		// XXX - Cast is needed because PhyIoMemberUsage was replicated in info
 		//  When this is fixed, we can remove this case.
-		reportAA.Usage = info.InfoPhyIoMemberUsage(ib.Usage)
+		reportAA.Usage = common.PhyIoMemberUsage(ib.Usage)
 		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
 			if ib.AssignmentGroup != "" {
@@ -1244,7 +1256,7 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 
 	ibPtr := aa.LookupIoBundlePhylabel(npc.Phylabel)
 	if ibPtr != nil {
-		dp.Usage = info.InfoPhyIoMemberUsage(ibPtr.Usage)
+		dp.Usage = common.PhyIoMemberUsage(ibPtr.Usage)
 	}
 
 	dp.IsMgmt = npc.IsMgmt
@@ -1345,7 +1357,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 		for _, ia := range aiStatus.IoAdapterList {
 			reportAA := new(info.ZioBundle)
-			reportAA.Type = info.IPhyIoType(ia.Type)
+			reportAA.Type = common.PhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
 			list := aa.LookupIoBundleAny(ia.Name)

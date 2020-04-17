@@ -292,25 +292,25 @@ experience and they are described in greater details below.
 
 ## Runtime Lifecycle
 
-EVE boots as any traditional operating system that supports UEFI.
-EVE's boot process starts with UEFI firmware executing the GRUB trampoline
-that resides in GPT entry called ```EFI System```. This instance of GRUB is
-the only component that can *not* be changed after the initial installation
-of EVE on an Edge Node and as a result it is kept extremely simple. The only
-role that a GRUB trampoline [plays](../pkg/mkimage-raw-efi/efi-files/EFI/BOOT/grub.cfg)
-is selecting whether to chainload second stage GRUB from IMGA or IMGB partitions.
+EVE can be booted in a lot of different ways. The most common one is
+booting EVE in UEFI environment. However, booting with legacy PC BIOS
+and board specific firmware implementations (most commonly CoreBoot and
+u-boot) is also possible. In all of these scenarios, we rely on GRUB
+bootloader to figure out an active partition (either on IMGA or IMGB)
+and do all the necessary steps to boot EVE residing in an active partition.
 
-Second stage GRUB is expected to do all the [heavy lifting](../pkg/grub/rootfs.cfg)
-of actually booting an EVE instance and because it resides in IMGA or IMGB
-partitions it can easily be upgraded and patched. Behavior of this stage of
-boot process is controlled by a read-only grub.cfg under {IMGA,IMGB}/EFI/BOOT/
-but it can further be tweaked by the grub.cfg overrides on the CONFIG partition.
-Note that an override grub.cfg is expected to be a [complete override](../pkg/grub/rootfs.cfg#L132)
-and anyone constructing its content is expected to be familiar with the overall
-flow of read-only grub.cfg.
+Because of how heterogenous all these initial boot environments are,
+EVE uses a number of techniques to maintain a single image that can
+be booted in a variety of different scenarious. You can read about this
+in greater details in the [booting EVE](BOOTING.md) section of our docs.
 
-After second stage GRUB is done loading type-1 hypervisor and Control Domain
-kernel the rest of the runtime sequence relies solely on what happens with EVE
+Regardless of the initial boot environment, though, after GRUB is done
+loading ether:
+
+* type-1 hypervisor (Xen, ACRN) plus Control Domain kernel
+* Linux kernel (with type-2 KVM hypervisor support enabled)
+
+the rest of the runtime sequence relies solely on what happens with EVE
 microservices. All of these services are available under */containers/services*
 folder in IMGA or IMGB root filesystem. Their lifecycle is currently managed
 by [linuxkit init system](https://github.com/linuxkit/linuxkit/tree/master/pkg/init)

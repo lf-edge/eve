@@ -169,10 +169,8 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
+		log.Error(err)
+		status.SetErrorNow(err.Error())
 		publishBaseOsStatus(ctx, &status)
 		return
 	}
@@ -197,10 +195,8 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
+		log.Error(err)
+		status.SetErrorNow(err.Error())
 		publishBaseOsStatus(ctx, status)
 		return
 	}
