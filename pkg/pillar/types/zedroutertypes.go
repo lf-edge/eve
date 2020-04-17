@@ -237,7 +237,7 @@ func (portConfig *DevicePortConfig) CountMgmtPorts() int {
 }
 
 // Equal compares two DevicePortConfig but skips things that are
-// more of status such as the timestamps and the ParseError
+// more of status such as the timestamps and the ErrorAndTime
 // XXX Compare Version or not?
 // We compare the Ports in array order.
 func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
@@ -402,7 +402,7 @@ type WirelessConfig struct {
 	Wifi     []WifiConfig // Wifi Config params
 }
 
-// NetworkPortConfig has the configuration and some status like ParseErrors
+// NetworkPortConfig has the configuration and some status like ErrorAndTime
 // for one IfName.
 // Note that if fields are added the Equal function needs to be updated.
 type NetworkPortConfig struct {
@@ -416,9 +416,8 @@ type NetworkPortConfig struct {
 	DhcpConfig
 	ProxyConfig
 	WirelessCfg WirelessConfig
-	// Errrors from the parser go here and get reflects in NetworkPortStatus
-	ParseError     string
-	ParseErrorTime time.Time
+	// ErrorAndTime - Errors from parsing / testing etc
+	ErrorAndTime
 }
 
 type NetworkPortStatus struct {
