@@ -722,10 +722,10 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	if sysAdapter.Addr != "" {
 		ip = net.ParseIP(sysAdapter.Addr)
 		if ip == nil {
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s has Bad "+
-				"sysAdapter.Addr %s - ignored",
-				sysAdapter.Name, sysAdapter.Addr)
-			log.Error(errStr)
+			errStr := fmt.Sprintf("Device Config Error. Port %s has Bad "+
+				"SysAdapter.Addr %s. The IP address is ignored. Please fix the "+
+				"device configuration.", sysAdapter.Name, sysAdapter.Addr)
+			log.Errorf("parseSystemAdapterConfig: %s", errStr)
 			port.SetErrorNow(errStr)
 			// IP will not be set below
 		}
@@ -739,17 +739,21 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		networkXObject, err := getconfigCtx.pubNetworkXObjectConfig.Get(sysAdapter.NetworkUUID)
 		if err != nil {
 			// XXX when do we retry looking for the networkXObject?
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network with UUID %s not found: %s",
+			errStr := fmt.Sprintf("Device Config Error. Port %s configured with "+
+				"UNKNOWN Network UUID (%s). Err: %s. Please fix the "+
+				"device configuration.",
 				port.IfName, sysAdapter.NetworkUUID, err)
-			log.Error(errStr)
+			log.Errorf("parseSystemAdapterConfig: %s", errStr)
 			port.SetErrorNow(errStr)
 		} else {
 			net := networkXObject.(types.NetworkXObjectConfig)
 			port.NetworkUUID = net.UUID
 			network = &net
 			if network.HasError() {
-				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
-					port.IfName, network.Error)
+				errStr := fmt.Sprintf("Port %s configured with a network "+
+					"(UUID: %s) which has an error (%s).",
+					port.IfName, port.NetworkUUID, network.Error)
+				log.Errorf("parseSystemAdapterConfig: %s", errStr)
 				port.SetErrorNow(errStr)
 			}
 		}
@@ -771,24 +775,28 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		switch port.Dhcp {
 		case types.DT_STATIC:
 			if port.AddrSubnet == "" {
-				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s DT_STATIC but missing "+
-					"subnet address in %+v; ignored", port.IfName, port)
-				log.Error(errStr)
+				errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
+					"missing subnet address. SysAdapter - Name: %s, Addr:%s",
+					port.IfName, sysAdapter.Name, sysAdapter.Addr)
+				log.Errorf("parseSystemAdapterConfig: %s", errStr)
 				port.SetErrorNow(errStr)
 			}
 		case types.DT_CLIENT:
 			// Do nothing
 		case types.DT_NONE:
 			if isMgmt {
-				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: isMgmt with DT_NONE not supported",
-					port.IfName)
-				log.Error(errStr)
+				errStr := fmt.Sprintf("Port %s configured as Management port "+
+					"with an unsupported DHCP type %d. Client and static are "+
+					"the only allowed DHCP modes for management ports.",
+					port.IfName, types.DT_NONE)
+
+				log.Errorf("parseSystemAdapterConfig: %s", errStr)
 				port.SetErrorNow(errStr)
 			}
 		default:
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: ignore unsupported dhcp type %v",
+			errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
 				port.IfName, network.Dhcp)
-			log.Error(errStr)
+			log.Errorf("parseSystemAdapterConfig: %s", errStr)
 			port.SetErrorNow(errStr)
 		}
 		// XXX use DnsNameToIpList?
@@ -796,9 +804,10 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.ProxyConfig = *network.Proxy
 		}
 	} else if isMgmt {
-		errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s isMgmt without networkUUID not supported",
+		errStr := fmt.Sprintf("Port %s Configured as Management port without "+
+			"configuring a Network. Network is required for Management ports",
 			port.IfName)
-		log.Error(errStr)
+		log.Errorf("parseSystemAdapterConfig: %s", errStr)
 		port.SetErrorNow(errStr)
 	}
 	return port
