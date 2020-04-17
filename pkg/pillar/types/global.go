@@ -704,7 +704,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 0xFFFFFFFF)
 
 	// Add Bool Items
-	configItemSpecMap.AddBoolItem(UsbAccess, true)
+	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 
