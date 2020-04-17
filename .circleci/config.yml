@@ -44,7 +44,7 @@ jobs:
           path: images/rootfs-xen.yml
   yetus:
     docker:
-      - image: apache/yetus:0.11.0
+      - image: apache/yetus:0.12.0
     steps:
       - checkout
       # create a fake artifact so that Apache Yetus knows the URL

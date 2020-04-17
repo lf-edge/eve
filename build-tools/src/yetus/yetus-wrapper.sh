@@ -16,7 +16,7 @@
 # limitations under the License.
 
 EXTRACTDIR="${1:-/tmp/yetus}"
-YETUS_VERSION=${2:-0.11.1}
+YETUS_VERSION=${2:-0.12.0}
 KEYSURL="https://www.apache.org/dist/yetus/KEYS"
 if [ "${YETUS_VERSION}" != "latest" ]; then
   BASEURL="https://www.apache.org/dyn/closer.cgi?action=download&filename=yetus/${YETUS_VERSION}"
