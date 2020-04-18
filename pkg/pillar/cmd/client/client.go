@@ -91,6 +91,7 @@ func newClientContext() *clientContext {
 	ctx.agentBaseContext = agentbase.DefaultContext(agentName)
 	ctx.agentBaseContext.NeedWatchdog = false
 	ctx.agentBaseContext.AddAgentCLIFlagsFnPtr = addAgentSpecificCLIFlags
+	ctx.agentBaseContext.ProcessAgentCLIFlagsFnPtr = processAgentSpecificCLIFlags
 
 	ctx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.globalConfig = types.DefaultConfigItemValueMap()
@@ -107,9 +108,12 @@ func addAgentSpecificCLIFlags() {
 	flag.IntVar(&clientCtxPtr.maxRetries, "r", 0, "Max retries")
 }
 
+func processAgentSpecificCLIFlags()  {
+	clientCtxPtr.agentBaseContext.CheckAndCreatePidFile = !clientCtxPtr.noPidFlag
+}
+
 func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	clientCtxPtr = newClientContext()
-	clientCtxPtr.agentBaseContext.CheckAndCreatePidFile = !clientCtxPtr.noPidFlag
 
 	agentbase.Run(clientCtxPtr)
 
@@ -169,7 +173,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		ErrorTime:     errorTime,
 		Activate:      false,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Ctx:           &clientCtxPtr,
+		Ctx:           clientCtxPtr,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -185,7 +189,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		ErrorTime:     errorTime,
 		AgentName:     "nim",
 		TopicImpl:     types.DeviceNetworkStatus{},
-		Ctx:           &clientCtxPtr,
+		Ctx:           clientCtxPtr,
 	})
 	if err != nil {
 		log.Fatal(err)
