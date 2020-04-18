@@ -131,46 +131,49 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 }
 
-// PerInterfaceErrorMap - Used to return per-interface errors.
+// IntfStatusMap - Used to return per-interface errors.
 //  ifName is usually used as the key
 //  In most usecases, Includes entries for all interfaces that were tested.
 //  If an intf is success, ErrorAndTime.Error == "" Else - Set to appropriate Error
 //  ErrorAndTime.ErrorTime will always be set for the interface.
-type PerInterfaceErrorMap struct {
-	IntfErrorMap map[string]ErrorAndTime
+type IntfStatusMap struct {
+	// StatusMap -> Key: ifname, Value: ErrorAndTime
+	StatusMap map[string]ErrorAndTime
 }
 
-// AddError - Add an error into PerInterfaceErrorMap. If en entry already
+// SetOrUpdateIntfStatus - Add an error into IntfStatusMap. If en entry already
 //  exists for the interface, it is appended.
 // This is for the case of adding errors. To clear error on an interface, use
 //  ClearIntfError.
-func (intfMap *PerInterfaceErrorMap) AddError(ifName string, et ErrorAndTime) {
-	errAndtime, ok := intfMap.IntfErrorMap[ifName]
+func (intfMap *IntfStatusMap) SetOrUpdateIntfStatus(
+	ifName string, et ErrorAndTime) {
+	errAndtime, ok := intfMap.StatusMap[ifName]
 	if ok {
 		errAndtime.SetOrAppendError(et)
 	} else {
 		// No Existing Error. Set new one
 		errAndtime = et
 	}
-	intfMap.IntfErrorMap[ifName] = errAndtime
+	intfMap.StatusMap[ifName] = errAndtime
 }
 
-// ClearIntfError - Clears errors on the interface.
-func (intfMap *PerInterfaceErrorMap) ClearIntfError(ifName string) {
-	intfMap.IntfErrorMap[ifName] = NewErrorAndTimeNow("")
+// SetIntfSuccessNow - Clears status on the interface.
+func (intfMap *IntfStatusMap) SetIntfSuccessNow(ifName string) {
+	intfMap.StatusMap[ifName] = NewErrorAndTimeNow("")
 }
 
-// AddMap - Add all the entries from the given per-interface map
-func (intfMap *PerInterfaceErrorMap) AddMap(target PerInterfaceErrorMap) {
-	for intf, et := range target.IntfErrorMap {
-		intfMap.AddError(intf, et)
+// SetOrUpdateFromMap - Add all the entries from the given per-interface map
+func (intfMap *IntfStatusMap) SetOrUpdateFromMap(
+	target IntfStatusMap) {
+	for intf, et := range target.StatusMap {
+		intfMap.SetOrUpdateIntfStatus(intf, et)
 	}
 }
 
-// NewPerInterfaceErrorMap - Create a new instance of PerInterfaceErrorMap
-func NewPerInterfaceErrorMap() *PerInterfaceErrorMap {
-	intfErrMap := PerInterfaceErrorMap{}
-	intfErrMap.IntfErrorMap = make(map[string]ErrorAndTime)
+// NewIntfStatusMap - Create a new instance of IntfStatusMap
+func NewIntfStatusMap() *IntfStatusMap {
+	intfErrMap := IntfStatusMap{}
+	intfErrMap.StatusMap = make(map[string]ErrorAndTime)
 	return &intfErrMap
 }
 
@@ -369,16 +372,16 @@ func (portConfig DevicePortConfig) WasDPCWorking() bool {
 	return false
 }
 
-// SetPortErrorsFromIntfErrMap - Set Port Errors for ports in portConfig to
+// UpdatePortStatusFromIntfStatusMap - Set Port Errors for ports in portConfig to
 // those from intfErrMap. If a port is not found in intfErrMap, it means
 // the port was not tested. So retain the original error info for the port.
 // If the Interface succeeded, it would still be in intfErrMap and hence would
 // be reset by the new ErrorAndTime from the map.
-func (portConfig *DevicePortConfig) SetPortErrorsFromIntfErrMap(
-	intfErrMap PerInterfaceErrorMap) {
+func (portConfig *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
+	intfErrMap IntfStatusMap) {
 	for indx := range portConfig.Ports {
 		portPtr := &portConfig.Ports[indx]
-		et, ok := intfErrMap.IntfErrorMap[portPtr.IfName]
+		et, ok := intfErrMap.StatusMap[portPtr.IfName]
 		if ok {
 			portPtr.ErrorAndTime = et
 		}

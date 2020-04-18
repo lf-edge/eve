@@ -88,19 +88,19 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
-	retryCount int, timeout uint32) (bool, types.PerInterfaceErrorMap, error) {
+	retryCount int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
 	log.Debugf("VerifyDeviceNetworkStatus() %d\n", retryCount)
 
 	// Map of per-interface errors
-	intfErrMap := *types.NewPerInterfaceErrorMap()
+	intfStatusMap := *types.NewIntfStatusMap()
 
 	// Check if it is 1970 in which case we declare success since
 	// our certificates will not work until NTP has brought the time
 	// forward.
 	if time.Now().Year() == 1970 {
 		log.Infof("VerifyDeviceNetworkStatus skip due to 1970")
-		return false, intfErrMap, nil
+		return false, intfStatusMap, nil
 	}
 
 	server, err := ioutil.ReadFile(types.ServerFileName)
@@ -133,7 +133,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		if err != nil {
 			errStr := "Onboarding certificate cannot be found"
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return false, intfErrMap, errors.New(errStr)
+			return false, intfStatusMap, errors.New(errStr)
 		}
 		clientCert := &onboardingCert
 		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
@@ -141,7 +141,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		if err != nil {
 			errStr := fmt.Sprintf("TLS configuration for talking to Zedcloud cannot be found: %s", err)
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return false, intfErrMap, errors.New(errStr)
+			return false, intfStatusMap, errors.New(errStr)
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
@@ -152,14 +152,15 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			errStr := fmt.Sprintf("ifName: %s. Failed to get NetworkProxy. Err:%s",
 				ifName, err)
 			log.Errorf("VerifyDeviceNetworkStatus: %s", errStr)
-			intfErrMap.AddError(ifName, types.NewErrorAndTimeNow(errStr))
-			return false, intfErrMap, errors.New(errStr)
+			intfStatusMap.SetOrUpdateIntfStatus(ifName,
+				types.NewErrorAndTimeNow(errStr))
+			return false, intfStatusMap, errors.New(errStr)
 		}
 	}
-	cloudReachable, rtf, intfErrMaptemp, err := zedcloud.VerifyAllIntf(
+	cloudReachable, rtf, tempIntfStatusMap, err := zedcloud.VerifyAllIntf(
 		&zedcloudCtx, testURL, retryCount, 1)
-	intfErrMap.AddMap(intfErrMaptemp)
-	log.Debugf("VerifyDeviceNetworkStatus: intfErrMap - %+v", intfErrMap)
+	intfStatusMap.SetOrUpdateFromMap(tempIntfStatusMap)
+	log.Debugf("VerifyDeviceNetworkStatus: intfStatusMap - %+v", intfStatusMap)
 	if err != nil {
 		if rtf {
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf remoteTemporaryFailure %s",
@@ -168,17 +169,17 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s",
 				err)
 		}
-		return rtf, intfErrMap, err
+		return rtf, intfStatusMap, err
 	}
 
 	if cloudReachable {
 		log.Infof("Uplink test SUCCESS to URL: %s", testURL)
-		return false, intfErrMap, nil
+		return false, intfStatusMap, nil
 	}
 	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testURL)
-	log.Errorf("VerifyDeviceNetworkStatus: %s, intfErrMap: %+v",
-		errStr, intfErrMap)
-	return rtf, intfErrMap, err
+	log.Errorf("VerifyDeviceNetworkStatus: %s, intfStatusMap: %+v",
+		errStr, intfStatusMap)
+	return rtf, intfStatusMap, err
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus

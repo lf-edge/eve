@@ -254,8 +254,8 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	pending.PendDNS = pend2
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, intfErrMap, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
-	pending.PendDPC.SetPortErrorsFromIntfErrMap(intfErrMap)
+	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
+	pending.PendDPC.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 
 	if err == nil {
 		if checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
