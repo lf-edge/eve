@@ -39,12 +39,18 @@ func (etPtr *ErrorAndTime) SetOrAppendError(et ErrorAndTime) {
 
 // SetErrorNow uses the current time
 func (etPtr *ErrorAndTime) SetErrorNow(errStr string) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
 	etPtr.Error = errStr
 	etPtr.ErrorTime = time.Now()
 }
 
 // SetError is when time is specified
 func (etPtr *ErrorAndTime) SetError(errStr string, errorTime time.Time) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
 	etPtr.Error = errStr
 	etPtr.ErrorTime = errorTime
 }
@@ -81,6 +87,9 @@ type ErrorAndTimeWithSource struct {
 
 // SetError - Sets error state with no source type
 func (etsPtr *ErrorAndTimeWithSource) SetError(errStr string, errTime time.Time) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
 	etsPtr.Error = errStr
 	etsPtr.ErrorSourceType = nil
 	etsPtr.ErrorTime = errTime
@@ -92,6 +101,9 @@ func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 
 	if !allowedSourceType(source) {
 		log.Fatalf("Bad ErrorSourceType %T", source)
+	}
+	if errStr == "" {
+		log.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
 	etsPtr.ErrorSourceType = source
