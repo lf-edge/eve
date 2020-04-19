@@ -24,6 +24,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -987,7 +988,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 		// XXX apparently this is under the appInstID and not under
 		// the ImageID aka VolumeID
-		if err := ctrPrepareMount(config.UUIDandVersion.UUID,
+		if err := containerd.CtrPrepareMount(config.UUIDandVersion.UUID,
 			ds.FileLocation, status.EnvVariables,
 			len(status.DiskStatusList)); err != nil {
 
@@ -1365,87 +1366,6 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 			ibp.UsedByUUID = config.UUIDandVersion.UUID
 		}
 	}
-	return nil
-}
-
-func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]struct{}, execpath []string, workdir string, env []string, noOfDisks int) error {
-	mpFileName := containerPath + "/mountPoints"
-	cmdFileName := containerPath + "/cmdline"
-	envFileName := containerPath + "/environment"
-
-	mpFile, err := os.Create(mpFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
-	}
-	defer mpFile.Close()
-
-	cmdFile, err := os.Create(cmdFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
-	}
-	defer cmdFile.Close()
-
-	envFile, err := os.Create(envFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
-	}
-	defer envFile.Close()
-
-	//Ignoring container image in status.DiskStatusList
-	noOfDisks = noOfDisks - 1
-
-	//Validating if there are enough disks provided for the mount-points
-	switch {
-	case noOfDisks > len(mountpoints):
-		//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
-		log.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
-			"Excessive volumes will be ignored", noOfDisks, len(mountpoints))
-	case noOfDisks < len(mountpoints):
-		//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
-		// won't be enough disks to satisfy required mount-points.
-		return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
-			noOfDisks, len(mountpoints))
-	}
-
-	for path := range mountpoints {
-		if !strings.HasPrefix(path, "/") {
-			//Target path is expected to be absolute.
-			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
-			log.Errorf(err.Error())
-			return err
-		}
-		log.Infof("createMountPointExecEnvFiles: Processing mount point %s\n", path)
-		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", path)); err != nil {
-			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
-			log.Errorf(err.Error())
-			return err
-		}
-	}
-
-	// each item needs to be independently quoted for initrd
-	execpathQuoted := make([]string, 0)
-	for _, s := range execpath {
-		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
-	}
-	if _, err := cmdFile.WriteString(strings.Join(execpathQuoted, " ")); err != nil {
-		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
-		log.Errorf(err.Error())
-		return err
-	}
-
-	envContent := ""
-	if workdir != "" {
-		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
-	}
-	for _, e := range env {
-		envContent = envContent + fmt.Sprintf("export %s\n", e)
-	}
-	if _, err := envFile.WriteString(envContent); err != nil {
-		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
-		log.Errorf(err.Error())
-		return err
-	}
-
 	return nil
 }
 
