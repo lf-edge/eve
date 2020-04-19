@@ -4,7 +4,6 @@
 package tpmmgr
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
@@ -28,7 +27,6 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -796,96 +794,6 @@ func testEcdhAES() error {
 	}
 	fmt.Println(reflect.DeepEqual(msg, recoveredMsg))
 	return nil
-}
-
-// DecryptCipherBlock : Decryption API, for encrypted object information received from controller
-func DecryptCipherBlock(cipherBlock types.CipherBlockStatus) ([]byte, error) {
-	if len(cipherBlock.CipherData) == 0 {
-		return []byte{}, errors.New("Invalid Cipher Payload")
-	}
-	switch cipherBlock.KeyExchangeScheme {
-	case zconfig.KeyExchangeScheme_KEA_NONE:
-		return []byte{}, errors.New("No Key Exchange Scheme")
-
-	case zconfig.KeyExchangeScheme_KEA_ECDH:
-		clearData, err := decryptCipherBlockWithECDH(cipherBlock)
-		if err != nil {
-			return []byte{}, err
-		}
-		if ret := validateDataHash(clearData,
-			cipherBlock.ClearTextHash); !ret {
-			return []byte{}, errors.New("Data Validation Failed")
-		}
-		return clearData, nil
-	}
-	return []byte{}, errors.New("Unsupported Cipher Key Exchange Scheme")
-}
-
-func decryptCipherBlockWithECDH(cipherBlock types.CipherBlockStatus) ([]byte, error) {
-	if len(cipherBlock.ControllerCert) == 0 {
-		return []byte{}, errors.New("No Peer Public Certficate")
-	}
-	cert, err := getControllerCertEcdhKey(cipherBlock)
-	if err != nil {
-		log.Errorf("Could not extract ECDH Certificate Information")
-		return []byte{}, err
-	}
-
-	switch cipherBlock.EncryptionScheme {
-	case zconfig.EncryptionScheme_SA_NONE:
-		return []byte{}, errors.New("No Encryption")
-
-	case zconfig.EncryptionScheme_SA_AES_256_CFB:
-		if len(cipherBlock.InitialValue) == 0 {
-			return []byte{}, errors.New("Invalid Initial value")
-		}
-		clearData := make([]byte, len(cipherBlock.CipherData))
-		err = DecryptSecretWithEcdhKey(cert.X, cert.Y,
-			cipherBlock.InitialValue, cipherBlock.CipherData, clearData)
-		if err != nil {
-			log.Errorf("Decryption failed with error %v\n", err)
-			return []byte{}, err
-		}
-		return clearData, nil
-	}
-	return []byte{}, errors.New("Unsupported Encryption protocol")
-}
-
-func getControllerCertEcdhKey(cipherBlock types.CipherBlockStatus) (*ecdsa.PublicKey, error) {
-	var ecdhPubKey *ecdsa.PublicKey
-	block := cipherBlock.ControllerCert
-	certs := []*x509.Certificate{}
-	for b, rest := pem.Decode(block); b != nil; b, rest = pem.Decode(rest) {
-		if b.Type == "CERTIFICATE" {
-			c, e := x509.ParseCertificates(b.Bytes)
-			if e != nil {
-				continue
-			}
-			certs = append(certs, c...)
-		}
-	}
-	if len(certs) == 0 {
-		return nil, errors.New("No X509 Certificate")
-	}
-	// use the first valid certificate in the chain
-	switch certs[0].PublicKey.(type) {
-	case *ecdsa.PublicKey:
-		ecdhPubKey = certs[0].PublicKey.(*ecdsa.PublicKey)
-	default:
-		return ecdhPubKey, errors.New("Not ECDSA Key")
-	}
-	return ecdhPubKey, nil
-}
-
-// validateDataHash : returns true, on hash match
-func validateDataHash(data []byte, suppliedHash []byte) bool {
-	if len(data) == 0 || len(suppliedHash) == 0 {
-		return false
-	}
-	h := sha256.New()
-	h.Write(data)
-	computedHash := h.Sum(nil)
-	return bytes.Equal(suppliedHash, computedHash)
 }
 
 func getDevicePrivateKey() (*ecdsa.PrivateKey, error) {

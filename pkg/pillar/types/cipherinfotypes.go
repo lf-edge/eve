@@ -4,6 +4,8 @@
 package types
 
 import (
+	"encoding/hex"
+
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 )
@@ -18,8 +20,6 @@ type CipherContext struct {
 	EncryptionScheme   zconfig.EncryptionScheme
 	ControllerCertHash []byte
 	DeviceCertHash     []byte
-	ControllerCert     []byte // resolved through cert API
-	DeviceCert         []byte // local device certificate
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
@@ -29,18 +29,19 @@ func (status *CipherContext) Key() string {
 	return status.ContextID
 }
 
+// ControllerCertKey :
+func (status *CipherContext) ControllerCertKey() string {
+	return hex.EncodeToString(status.ControllerCertHash)
+}
+
 // CipherBlockStatus : Object specific encryption information
 type CipherBlockStatus struct {
-	CipherBlockID     string                    // constructed using individual reference
-	CipherContextID   string                    // cipher context id
-	KeyExchangeScheme zconfig.KeyExchangeScheme // from cipher context
-	EncryptionScheme  zconfig.EncryptionScheme  // from cipher context
-	ControllerCert    []byte                    // inherited from cipher context
-	DeviceCert        []byte                    // inherited from cipher context
-	InitialValue      []byte
-	CipherData        []byte
-	ClearTextHash     []byte
-	IsCipher          bool
+	CipherBlockID   string // constructed using individual reference
+	CipherContextID string // cipher context id
+	InitialValue    []byte
+	CipherData      []byte
+	ClearTextHash   []byte
+	IsCipher        bool
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }

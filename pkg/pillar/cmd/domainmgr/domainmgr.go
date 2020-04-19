@@ -24,6 +24,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -32,7 +33,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -65,6 +65,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 type domainContext struct {
 	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
+	cipher.DecryptCipherContext
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
@@ -234,6 +235,38 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.pubCipherBlockStatus = pubCipherBlockStatus
 	pubCipherBlockStatus.ClearRestarted()
 
+	// Look for controller certs which will be used for decryption
+	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		TopicImpl:   types.ControllerCert{},
+		Activate:    false,
+		Ctx:         &domainCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Persistent:  true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.SubControllerCert = subControllerCert
+	subControllerCert.Activate()
+
+	// Look for cipher context which will be used for decryption
+	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		TopicImpl:   types.CipherContext{},
+		Activate:    false,
+		Ctx:         &domainCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Persistent:  true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.SubCipherContext = subCipherContext
+	subCipherContext.Activate()
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
@@ -363,6 +396,12 @@ func Run(ps *pubsub.PubSub) {
 
 	for {
 		select {
+		case change := <-subControllerCert.MsgChan():
+			subControllerCert.ProcessChange(change)
+
+		case change := <-subCipherContext.MsgChan():
+			subCipherContext.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
@@ -1737,8 +1776,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func getCloudInitUserData(ctx *domainContext,
 	dc types.DomainConfig) (types.EncryptionBlock, error) {
 	if dc.CipherBlockStatus.IsCipher {
-		status, decBlock, err := utils.GetCipherCredentials(agentName,
-			dc.CipherBlockStatus)
+		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
+			agentName, dc.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, domain config cipherblock decryption unsuccessful, falling back to cleartext: %v",
