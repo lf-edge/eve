@@ -1,12 +1,13 @@
 // Copyright (c) 2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package volumemgr
+package containerd
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"io/ioutil"
 	"os"
 	"path"
@@ -51,13 +52,15 @@ const (
 )
 
 var (
-	ctrdCtx    context.Context
-	ctrdClient *containerd.Client
+	ctrdCtx context.Context
+	// CtrdClient is a handle to the current containerd client API
+	CtrdClient *containerd.Client
 )
 
-func initContainerdClient() error {
+// InitContainerdClient initializes CtrdClient and ctrdCtx
+func InitContainerdClient() error {
 	var err error
-	ctrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
+	CtrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
 	if err != nil {
 		log.Errorf("could not create containerd client. %v", err.Error())
 		return fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
@@ -66,15 +69,15 @@ func initContainerdClient() error {
 	return nil
 }
 
-// getContainerPath return the path to the root of the container. This is *not*
+// GetContainerPath return the path to the root of the container. This is *not*
 // necessarily the rootfs, which may be a layer below
-func getContainerPath(containerID string) string {
+func GetContainerPath(containerID string) string {
 	return path.Join(containersRoot, containerID)
 }
 
 // getContainerRootfs return the path to the root of the container filesystem
 func getContainerRootfs(containerID string) string {
-	return path.Join(getContainerPath(containerID), containerRootfsPath)
+	return path.Join(GetContainerPath(containerID), containerRootfsPath)
 }
 
 // containerdLoadImageTar load an image tar into the containerd content store
@@ -82,7 +85,7 @@ func containerdLoadImageTar(filename string) (map[string]images.Image, error) {
 	// load the content into the containerd content store
 	var err error
 
-	if ctrdClient == nil {
+	if CtrdClient == nil {
 		return nil, fmt.Errorf("containerdLoadImageTar: Container client is nil")
 	}
 
@@ -96,7 +99,7 @@ func containerdLoadImageTar(filename string) (map[string]images.Image, error) {
 		return nil, err
 	}
 
-	imgs, err := ctrdClient.Import(ctrdCtx, tarReader)
+	imgs, err := CtrdClient.Import(ctrdCtx, tarReader)
 	if err != nil {
 		log.Errorf("could not load image tar at %s into containerd: %+s", filename, err.Error())
 		return nil, err
@@ -109,8 +112,8 @@ func containerdLoadImageTar(filename string) (map[string]images.Image, error) {
 	return names, nil
 }
 
-// ctrRm remove an existing container. If silent is true, then operation failures are ignored and no error is returned
-func ctrRm(containerPath string, silent bool) error {
+// CtrRm remove an existing container. If silent is true, then operation failures are ignored and no error is returned
+func CtrRm(containerPath string, silent bool) error {
 	log.Infof("ctrRm %s\n", containerPath)
 
 	containerID := filepath.Base(containerPath)
@@ -151,7 +154,7 @@ func ctrCreate(containerID string, ctrdImage containerd.Image) error {
 		ociSpec       oci.Spec
 		err           error
 	)
-	if ctrdClient == nil {
+	if CtrdClient == nil {
 		return fmt.Errorf("ctrCreate: Container client is nil")
 	}
 
@@ -167,7 +170,7 @@ func ctrCreate(containerID string, ctrdImage containerd.Image) error {
 		containerd.WithNewSnapshot(containerSnapshot, ctrdImage),
 		containerd.WithRuntime("io.containerd.runc.v2", &options.Options{}),
 		containerd.WithSpec(&ociSpec, ociOpts...))
-	container, err := ctrdClient.NewContainer(
+	container, err := CtrdClient.NewContainer(
 		ctrdCtx,
 		containerID,
 		containerOpts...,
@@ -184,21 +187,21 @@ func ctrCreate(containerID string, ctrdImage containerd.Image) error {
 	}
 	err = createBundle(container, containerSnapshot, imageConfigJSON)
 	if err != nil {
-		ctrRm(containerID, true)
+		CtrRm(containerID, true)
 		log.Errorf("Could not build rootfs of container: %v. %v", containerID, err.Error())
 		return fmt.Errorf("ctrCreate: Could not build rootfs of container: %v. %v", containerID, err.Error())
 	}
 	return nil
 }
 
-// ctrPrepare prepare an existing container
-func ctrPrepare(containerPath string, ociFilename string) error {
+// CtrPrepare prepare an existing container
+func CtrPrepare(containerPath string, ociFilename string) error {
 	log.Infof("ctrPrepare(%s, %s)", containerPath, ociFilename)
 	containerID := filepath.Base(containerPath)
 	// On device restart, the existing bundle is not deleted, we need to delete the existing bundle of the container and recreate it.
 	if isBundleExists(containerID) {
 		log.Infof("ctrPrepare: a bundle with ID: %v already exists. Cleaning existing bundle and recreating it", containerID)
-		ctrRm(containerID, true)
+		CtrRm(containerID, true)
 	}
 
 	loadedImages, err := containerdLoadImageTar(ociFilename)
@@ -216,7 +219,7 @@ func ctrPrepare(containerPath string, ociFilename string) error {
 		image = imgObj
 	}
 	// doing this step as we need the image in containerd.Image structure for container create.
-	ctrdImage := containerd.NewImage(ctrdClient, image)
+	ctrdImage := containerd.NewImage(CtrdClient, image)
 	imageInfo, err := getImageInfo(ctrdCtx, ctrdImage)
 	mountpoints := imageInfo.Config.Volumes
 	execpath := imageInfo.Config.Entrypoint
@@ -246,7 +249,7 @@ func ctrPrepare(containerPath string, ociFilename string) error {
 }
 
 func loadContainer(containerID string) (containerd.Container, error) {
-	if ctrdClient == nil {
+	if CtrdClient == nil {
 		return nil, fmt.Errorf("loadContainer: Container client is nil")
 	}
 
@@ -254,7 +257,7 @@ func loadContainer(containerID string) (containerd.Container, error) {
 		return nil, fmt.Errorf("loadContainer: Container context is nil")
 	}
 
-	container, err := ctrdClient.LoadContainer(ctrdCtx, containerID)
+	container, err := CtrdClient.LoadContainer(ctrdCtx, containerID)
 	if err != nil && !isContainerNotFound(err) {
 		return nil, fmt.Errorf("loadContainer: Exception while loading container. %v", err)
 	}
@@ -297,7 +300,7 @@ func getContainerInfo(ctrdCtx context.Context, container containerd.Container) (
 
 //createBundle - assigns a UUID and creates a bundle for container's rootFs
 func createBundle(container containerd.Container, snapshotName, imageConfigJSON string) error {
-	appDir := getContainerPath(container.ID())
+	appDir := GetContainerPath(container.ID())
 	rootFsDir := path.Join(appDir, containerRootfsPath)
 	//rootFsDir := getContainerRootfs(container.ID())
 	if err := os.MkdirAll(rootFsDir, 0766); err != nil {
@@ -333,7 +336,7 @@ func createBundle(container containerd.Container, snapshotName, imageConfigJSON 
 }
 
 func getMountPointsFromSnapshot(mountKey string) ([]mount.Mount, error) {
-	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
+	snapshotter := CtrdClient.SnapshotService(defaultSnapshotter)
 	mounts, err := snapshotter.Mounts(ctrdCtx, mountKey)
 	if err != nil {
 		return nil, err
@@ -391,10 +394,10 @@ func deleteBundle(containerID string, silent bool) error {
 			return fmt.Errorf("deleteBundle: Exception while unmounting: %v. %v", getContainerRootfs(containerID), err.Error())
 		}
 	}
-	if err := os.RemoveAll(getContainerPath(containerID)); err != nil {
-		log.Errorf("deleteBundle: exception while deleting: %v. %v", getContainerPath(containerID), err.Error())
+	if err := os.RemoveAll(GetContainerPath(containerID)); err != nil {
+		log.Errorf("deleteBundle: exception while deleting: %v. %v", GetContainerPath(containerID), err.Error())
 		if !silent {
-			return fmt.Errorf("deleteBundle: Exception while deleting: %v. %v", getContainerPath(containerID), err.Error())
+			return fmt.Errorf("deleteBundle: Exception while deleting: %v. %v", GetContainerPath(containerID), err.Error())
 		}
 	}
 	return nil
@@ -405,7 +408,7 @@ func isContainerNotFound(e error) bool {
 }
 
 func isBundleExists(containerID string) bool {
-	if _, err := os.Stat(getContainerPath(containerID)); os.IsNotExist(err) {
+	if _, err := os.Stat(GetContainerPath(containerID)); os.IsNotExist(err) {
 		return false
 	}
 	return true
@@ -413,4 +416,183 @@ func isBundleExists(containerID string) bool {
 
 func getSnapshotName(containerID string) string {
 	return fmt.Sprintf("%s-snapshot", containerID)
+}
+
+// getContainerPath return the path to the root of the container. This is *not*
+// necessarily the rootfs, which may be a layer below
+func getContainerPath(containerID string) string {
+	return path.Join(containersRoot, containerID)
+}
+
+func getSavedImageInfo(containerID string) (v1.Image, error) {
+	var image v1.Image
+
+	appDir := getContainerPath(containerID)
+	data, err := ioutil.ReadFile(filepath.Join(appDir, imageConfigFilename))
+	if err != nil {
+		return image, err
+	}
+	if err := json.Unmarshal(data, &image); err != nil {
+		return image, err
+	}
+	return image, nil
+}
+
+// ctrRun eventually will run a container. For now, we do not actually run it via containerd,
+// but instead use containerd to set it up, and xl to run it, so this does not need to do anything.
+// If/when we invert it, and have containerd launch the container with a microvm wrapper,
+// *then* this will need to work.
+func ctrRun(domainName, xenCfgFilename, imageHash string, envList map[string]string) (int, string, error) {
+
+	log.Infof("ctrRun %s\n", domainName)
+	return 0, "", nil
+}
+
+// ctrStop eventually will stop a container. For now, we do not actually run it via containerd,
+// but instead use containerd to set it up, and xl to run it, so this does not need to do anything.
+// If/when we invert it, and have containerd launch the container with a microvm wrapper,
+// *then* this will need to work.
+func ctrStop(containerID string, force bool) error {
+	log.Infof("ctrStop %s %t\n", containerID, force)
+	log.Infof("ctr stop done\n")
+	return nil
+}
+
+// CtrPrepareMount creates special files for running container inside a VM
+func CtrPrepareMount(containerID uuid.UUID, containerPath string, envVars map[string]string, noOfDisks int) error {
+	log.Infof("ctrPrepareMount(%s, %s, %v, %d)", containerID, containerPath,
+		envVars, noOfDisks)
+	imageInfo, err := getSavedImageInfo(containerID.String())
+	if err != nil {
+		log.Errorf("ctrPrepareMount(%s, %s) getImageInfo failed: %s",
+			containerID, containerPath, err)
+		return err
+	}
+	// inject a few files of our own into the bundle
+	mountpoints, execpath, workdir, env, err := getContainerConfigs(imageInfo, envVars)
+	if err != nil {
+		log.Errorf("ctrPrepareMount(%s, %s) getContainerConfigs failed: %s",
+			containerID, containerPath, err)
+		return fmt.Errorf("ctrPrepare: unable to get container config: %v", err)
+	}
+
+	err = createMountPointExecEnvFiles(containerPath, mountpoints, execpath, workdir, env, noOfDisks)
+	if err != nil {
+		log.Errorf("ctrPrepareMount(%s, %s) createMountPointExecEnvFiles failed: %s",
+			containerID, containerPath, err)
+	}
+	return err
+}
+
+// getContainerConfigs get the container configs needed, specifically
+// - mount target paths
+// - exec path
+// - working directory
+// - env var key/value pairs
+// this can change based on the config format
+func getContainerConfigs(imageInfo v1.Image, userEnvVars map[string]string) (map[string]struct{}, []string, string, []string, error) {
+
+	mountpoints := imageInfo.Config.Volumes
+	execpath := imageInfo.Config.Entrypoint
+	execpath = append(execpath, imageInfo.Config.Cmd...)
+	workdir := imageInfo.Config.WorkingDir
+	unProcessedEnv := imageInfo.Config.Env
+	var env []string
+	for _, e := range unProcessedEnv {
+		keyAndValueSlice := strings.Split(e, "=")
+		if len(keyAndValueSlice) == 2 {
+			//handles Key=Value case
+			env = append(env, fmt.Sprintf("%s=\"%s\"", keyAndValueSlice[0], keyAndValueSlice[1]))
+		} else {
+			//handles Key= case
+			env = append(env, e)
+		}
+	}
+
+	for k, v := range userEnvVars {
+		env = append(env, fmt.Sprintf("%s=\"%s\"", k, v))
+	}
+	return mountpoints, execpath, workdir, env, nil
+}
+
+// FIXME: once we move to runX this function is going to go away
+func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]struct{}, execpath []string, workdir string, env []string, noOfDisks int) error {
+	mpFileName := containerPath + "/mountPoints"
+	cmdFileName := containerPath + "/cmdline"
+	envFileName := containerPath + "/environment"
+
+	mpFile, err := os.Create(mpFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
+	}
+	defer mpFile.Close()
+
+	cmdFile, err := os.Create(cmdFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
+	}
+	defer cmdFile.Close()
+
+	envFile, err := os.Create(envFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
+	}
+	defer envFile.Close()
+
+	//Ignoring container image in status.DiskStatusList
+	noOfDisks = noOfDisks - 1
+
+	//Validating if there are enough disks provided for the mount-points
+	switch {
+	case noOfDisks > len(mountpoints):
+		//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
+		log.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
+			"Excessive volumes will be ignored", noOfDisks, len(mountpoints))
+	case noOfDisks < len(mountpoints):
+		//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
+		// won't be enough disks to satisfy required mount-points.
+		return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
+			noOfDisks, len(mountpoints))
+	}
+
+	for path := range mountpoints {
+		if !strings.HasPrefix(path, "/") {
+			//Target path is expected to be absolute.
+			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
+			log.Errorf(err.Error())
+			return err
+		}
+		log.Infof("createMountPointExecEnvFiles: Processing mount point %s\n", path)
+		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", path)); err != nil {
+			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
+			log.Errorf(err.Error())
+			return err
+		}
+	}
+
+	// each item needs to be independently quoted for initrd
+	execpathQuoted := make([]string, 0)
+	for _, s := range execpath {
+		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
+	}
+	if _, err := cmdFile.WriteString(strings.Join(execpathQuoted, " ")); err != nil {
+		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
+		log.Errorf(err.Error())
+		return err
+	}
+
+	envContent := ""
+	if workdir != "" {
+		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
+	}
+	for _, e := range env {
+		envContent = envContent + fmt.Sprintf("export %s\n", e)
+	}
+	if _, err := envFile.WriteString(envContent); err != nil {
+		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
+		log.Errorf(err.Error())
+		return err
+	}
+
+	return nil
 }
