@@ -16,9 +16,9 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
@@ -400,8 +400,8 @@ func devPortInstallWifiConfig(ctx *DeviceNetworkContext,
 func getWifiCredential(ctx *DeviceNetworkContext,
 	wifi types.WifiConfig) (types.EncryptionBlock, error) {
 	if wifi.CipherBlockStatus.IsCipher {
-		status, decBlock, err := utils.GetCipherCredentials("devicenetwork",
-			wifi.CipherBlockStatus)
+		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
+			"devicenetwork", wifi.CipherBlockStatus)
 		ctx.PubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, wifi config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",

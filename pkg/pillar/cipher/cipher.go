@@ -4,7 +4,7 @@
 // Common routines for cipher information handling
 // across multiple agents
 
-package utils
+package cipher
 
 import (
 	"encoding/base64"
@@ -14,7 +14,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -31,8 +30,8 @@ func getEncryptionBlock(
 }
 
 // GetCipherCredentials : decrypt encryption block
-func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (types.CipherBlockStatus,
-	types.EncryptionBlock, error) {
+func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
+	status types.CipherBlockStatus) (types.CipherBlockStatus, types.EncryptionBlock, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
 	var decBlock types.EncryptionBlock
@@ -48,7 +47,7 @@ func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (typ
 		err := errors.New(errStr)
 		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
 	}
-	clearBytes, err := tpmmgr.DecryptCipherBlock(*cipherBlock)
+	clearBytes, err := DecryptCipherBlock(ctx, *cipherBlock)
 	if err != nil {
 		log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
@@ -68,7 +67,7 @@ func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (typ
 }
 
 // GetCipherData : decrypt plain text
-func GetCipherData(agentName string, status types.CipherBlockStatus,
+func GetCipherData(ctx *DecryptCipherContext, agentName string, status types.CipherBlockStatus,
 	data *string) (types.CipherBlockStatus, *string, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
@@ -84,7 +83,7 @@ func GetCipherData(agentName string, status types.CipherBlockStatus,
 		err := errors.New(errStr)
 		return handleCipherBlockError(agentName, cipherBlock, data, err)
 	}
-	clearBytes, err := tpmmgr.DecryptCipherBlock(*cipherBlock)
+	clearBytes, err := DecryptCipherBlock(ctx, *cipherBlock)
 	if err != nil {
 		log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
