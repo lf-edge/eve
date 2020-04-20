@@ -96,6 +96,7 @@ type zedagentContext struct {
 	subAppVifIPTrig           pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
+	subAttestCert             pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -545,6 +546,22 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
 
+	subAttestCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "tpmmgr",
+		TopicImpl:     types.AttestCert{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		ModifyHandler: handleAttestCertModify,
+		DeleteHandler: handleAttestCertDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subAttestCert = subAttestCert
+	subAttestCert.Activate()
+
 	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
 		TopicImpl:     types.VaultStatus{},
@@ -792,6 +809,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			subNodeAgentStatus.ProcessChange(change)
 
+		case change := <-subAttestCert.MsgChan():
+			subAttestCert.ProcessChange(change)
+
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
@@ -918,6 +938,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subDevicePortConfigList.MsgChan():
 			subDevicePortConfigList.ProcessChange(change)
+
+		case change := <-subAttestCert.MsgChan():
+			subAttestCert.ProcessChange(change)
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
@@ -1067,6 +1090,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppVifIPTrig.MsgChan():
 			subAppVifIPTrig.ProcessChange(change)
+
+		case change := <-subAttestCert.MsgChan():
+			subAttestCert.ProcessChange(change)
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
