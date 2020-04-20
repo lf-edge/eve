@@ -7,8 +7,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/cio"
+	"github.com/containerd/containerd/content"
+	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/snapshots"
+	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/identity"
 	uuid "github.com/satori/go.uuid"
+	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
 	"path"
@@ -42,6 +52,12 @@ const (
 	imageConfigFilename = "image-config.json"
 	// default snapshotter used by containerd
 	defaultSnapshotter = "overlayfs"
+	// default socket to connect tasks to memlogd
+	logWriteSocket = "/var/run/linuxkit-external-logging.sock"
+	// default socket to read from memlogd
+	logReadSocket = "/var/run/memlogdq.sock"
+	// default signal to kill tasks
+	defaultSignal = "SIGTERM"
 )
 
 var (
@@ -53,12 +69,12 @@ var (
 // InitContainerdClient initializes CtrdClient and ctrdCtx
 func InitContainerdClient() error {
 	var err error
+	ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
 	CtrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
 	if err != nil {
 		log.Errorf("could not create containerd client. %v", err.Error())
 		return fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
 	}
-	ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
 	return nil
 }
 
@@ -299,9 +315,13 @@ func isContainerNotFound(e error) bool {
 }
 
 // getContainerPath return the path to the root of the container. This is *not*
-// necessarily the rootfs, which may be a layer below
+// necessarily the rootfs, which may be a layer below.
 func getContainerPath(containerID string) string {
-	return path.Join(containersRoot, containerID)
+	if filepath.IsAbs(containerID) {
+		return containerID
+	} else {
+		return path.Join(containersRoot, containerID)
+	}
 }
 
 func getSavedImageInfo(containerID string) (v1.Image, error) {
@@ -318,24 +338,165 @@ func getSavedImageInfo(containerID string) (v1.Image, error) {
 	return image, nil
 }
 
-// ctrRun eventually will run a container. For now, we do not actually run it via containerd,
-// but instead use containerd to set it up, and xl to run it, so this does not need to do anything.
-// If/when we invert it, and have containerd launch the container with a microvm wrapper,
-// *then* this will need to work.
-func ctrRun(domainName, xenCfgFilename, imageHash string, envList map[string]string) (int, string, error) {
-
-	log.Infof("ctrRun %s\n", domainName)
-	return 0, "", nil
+// bind mount a namespace file
+func bindNS(ns string, path string, pid int) error {
+	if path == "" {
+		return nil
+	}
+	// the path and file need to exist for the bind to succeed, so try to create
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("Cannot create leading directories %s for bind mount destination: %v", dir, err)
+	}
+	fi, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("Cannot create a mount point for namespace bind at %s: %v", path, err)
+	}
+	if err := fi.Close(); err != nil {
+		return err
+	}
+	if err := unix.Mount(fmt.Sprintf("/proc/%d/ns/%s", pid, ns), path, "", unix.MS_BIND, ""); err != nil {
+		return fmt.Errorf("Failed to bind %s namespace at %s: %v", ns, path, err)
+	}
+	return nil
 }
 
-// ctrStop eventually will stop a container. For now, we do not actually run it via containerd,
-// but instead use containerd to set it up, and xl to run it, so this does not need to do anything.
-// If/when we invert it, and have containerd launch the container with a microvm wrapper,
-// *then* this will need to work.
-func ctrStop(containerID string, force bool) error {
-	log.Infof("ctrStop %s %t\n", containerID, force)
-	log.Infof("ctr stop done\n")
+// prepareProcess sets up anything that needs to be done after the container process is created,
+// but before it runs (for example networking)
+func prepareProcess(pid int, VifList []types.VifInfo) error {
+	for _, iface := range VifList {
+		if iface.Vif == "" {
+			return fmt.Errorf("Interface requires a name")
+		}
+
+		var link netlink.Link
+		var err error
+
+		link, err = netlink.LinkByName(iface.Vif)
+		if err != nil {
+			return fmt.Errorf("Cannot find interface %s: %v", iface.Vif, err)
+		}
+
+		if err := netlink.LinkSetNsPid(link, int(pid)); err != nil {
+			return fmt.Errorf("Cannot move interface %s into namespace: %v", iface.Vif, err)
+		}
+	}
+
+	binds := []struct {
+		ns   string
+		path string
+	}{
+		{"cgroup", ""},
+		{"ipc", ""},
+		{"mnt", ""},
+		{"net", ""},
+		{"pid", ""},
+		{"user", ""},
+		{"uts", ""},
+	}
+
+	for _, b := range binds {
+		if err := bindNS(b.ns, b.path, pid); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// CtrStart starts the default task in a pre-existing container and attaches its logging to memlogd
+func CtrStart(domainName string) (int, error) {
+	ctr, err := loadContainer(domainName)
+	if err != nil {
+		return 0, err
+	}
+
+	logger := GetLog()
+
+	// This is silly but necessary due to containerd bug
+	// https://github.com/containerd/containerd/issues/4019
+	// essentially, when you create a container and then remove it,
+	// containerd blows away everything in the parent dir of the first one it finds,
+	// in this case, "/dev/null", so it blows away everything in "/dev".
+	// This most certainly is a "bad thing".
+	//
+	// To fix it temporarily, we are creating a tmpdir and creating a null
+	// device there, so that it can blow away the tempdir
+	stdinDir := path.Join("/run", "containers-stdin", domainName)
+	if err := os.MkdirAll(stdinDir, 0700); err != nil {
+		return 0, err
+	}
+	stdinFile := path.Join(stdinDir, "null")
+	// make a dev null in stdinDir
+	if err := syscall.Mknod(stdinFile, uint32(os.FileMode(0660)|syscall.S_IFCHR), int(unix.Mkdev(1, 3))); err != nil {
+		return 0, err
+	}
+
+	io := func(id string) (cio.IO, error) {
+		stdoutFile := logger.Path(domainName + ".out")
+		stderrFile := logger.Path(domainName)
+		return &logio{
+			cio.Config{
+				Stdin:    stdinFile,
+				Stdout:   stdoutFile,
+				Stderr:   stderrFile,
+				Terminal: false,
+			},
+		}, nil
+	}
+	task, err := ctr.NewTask(ctrdCtx, io)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := prepareProcess(int(task.Pid()), nil); err != nil {
+		return 0, err
+	}
+
+	if err := task.Start(ctrdCtx); err != nil {
+		return 0, err
+	}
+
+	return int(task.Pid()), nil
+}
+
+// CtrStop stops (kills) the main task in the container
+func CtrStop(containerID string, force bool) error {
+	ctr, err := CtrdClient.LoadContainer(ctrdCtx, containerID)
+	if err != nil {
+		return fmt.Errorf("can't find cotainer %s (%v)", containerID, err)
+	}
+
+	signal, err := containerd.ParseSignal(defaultSignal)
+	if err != nil {
+		return err
+	}
+	if signal, err = containerd.GetStopSignal(ctrdCtx, ctr, signal); err != nil {
+		return err
+	}
+
+	task, err := ctr.Task(ctrdCtx, nil)
+	if err != nil {
+		return err
+	}
+
+	if force {
+		_, err = task.Delete(ctrdCtx, containerd.WithProcessKill)
+	} else {
+		_, err = task.Delete(ctrdCtx)
+	}
+
+	return err
+}
+
+// CtrDelete is a simple wrapper around container.Delete()
+func CtrDelete(containerID string) error {
+	ctr, err := loadContainer(containerID)
+	if err != nil || ctr == nil {
+		return err
+	}
+
+	return ctr.Delete(ctrdCtx)
 }
 
 // CtrPrepareMount creates special files for running container inside a VM
@@ -475,4 +636,43 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 	}
 
 	return nil
+}
+
+// LKTaskLaunch runs a task in a new containter created as per linuxkit runtime OCI spec
+// file and optional bundle of DomainConfig settings and command line options. Because
+// we're expecting a linuxkit produced filesystem layout we expect R/O portion of the
+// filesystem to be available under `dirname specFile`/lower and we will be mounting
+// it R/O into the container. On top of that
+func LKTaskLaunch(name, linuxkit string, domSettings *types.DomainConfig, args []string) (int, error) {
+	config := "/containers/services" + linuxkit + "/config.json"
+	rootfs := "/containers/services" + linuxkit + "/lower"
+
+	f, err := os.Open(config)
+	if err != nil {
+		return 0, fmt.Errorf("can't open spec file %s %v", config, err)
+	}
+
+	spec, err := NewOciSpec(name)
+	if err != nil {
+		return 0, err
+	}
+	if err = spec.Load(f); err != nil {
+		return 0, fmt.Errorf("can't load spec file from %s %v", config, err)
+	}
+
+	spec.Root.Path = rootfs
+	spec.Root.Readonly = true
+	if domSettings != nil {
+		spec.UpdateFromDomain(*domSettings)
+	}
+
+	if args != nil {
+		spec.Process.Args = args
+	}
+
+	if err = spec.CreateContainer(true); err == nil {
+		return CtrStart(name)
+	}
+
+	return 0, err
 }

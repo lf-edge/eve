@@ -42,10 +42,11 @@ type hypervisorDesc struct {
 }
 
 var knownHypervisors = map[string]hypervisorDesc{
-	"xen":  {constructor: newXen, dom0handle: "/proc/xen"},
-	"kvm":  {constructor: newKvm, dom0handle: "/dev/kvm"},
-	"acrn": {constructor: newAcrn, dom0handle: "/dev/acrn"},
-	"null": {constructor: newNull, dom0handle: ""},
+	"xen":        {constructor: newXen, dom0handle: "/proc/xen"},
+	"kvm":        {constructor: newKvm, dom0handle: "/dev/kvm"},
+	"acrn":       {constructor: newAcrn, dom0handle: "/dev/acrn"},
+	"containerd": {constructor: newContainerd, dom0handle: "/run/containerd/containerd.sock"},
+	"null":       {constructor: newNull, dom0handle: ""},
 }
 
 // GetHypervisor returns a particular hypervisor implementation

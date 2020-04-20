@@ -21,7 +21,7 @@ func TestGetHypervisor(t *testing.T) {
 
 func TestGetAvailableHypervisors(t *testing.T) {
 	all, enabled := GetAvailableHypervisors()
-	expected := []string{"acrn", "kvm", "null", "xen"}
+	expected := []string{"acrn", "containerd", "kvm", "null", "xen"}
 
 	sort.Strings(all)
 	if !reflect.DeepEqual(all, expected) {
