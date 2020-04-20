@@ -58,4 +58,7 @@ message AppInstanceConfig {
 
   // contains the encrypted userdata
   CipherBlock cipherData = 13;
+
+  // Volumes to be attached to the app-instance.
+  repeated string volumeRefs = 14;
 }
