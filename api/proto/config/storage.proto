@@ -136,8 +136,8 @@ message VolumeInstance {
 
   // root of the blob tree required to construct this Volume (can be null)
   string contentStoreId = 2;
-   
-  // describes the type of the Volume and thus how to construct it 
+
+  // describes the type of the Volume and thus how to construct it
   // out of the contentSoreID blobs
   DriveType voltype = 3;
 

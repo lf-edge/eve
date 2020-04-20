@@ -517,8 +517,8 @@ message UsageInfo {
 }
 
 message VolumeResources {
-  uint64 maxSizeBytes = 1;		// From config
-  uint64 curSizeBytes = 2;		// Current disk usage
+  uint64 maxSizeBytes = 1; // From config
+  uint64 curSizeBytes = 2; // Current disk usage
 }
 
 message ZInfoVolumeInstance {
@@ -533,14 +533,14 @@ message ZInfoVolumeInstance {
 }
 
 message ContentResources {
-  uint64 curSizeBytes = 1;		// Current disk usage
+  uint64 curSizeBytes = 1;  // Current disk usage
 }
 
 message ZInfoContentTree {
   string uuid = 1;
   string displayName = 2;
   ContentResources resources = 3;
-  UsageInfo usage = 4;		// Same info as for volumes
+  UsageInfo usage = 4;  // Same info as for volumes
   repeated string componentShaList = 5;
 }
 
