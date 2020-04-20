@@ -43,6 +43,7 @@ type tpmMgrContext struct {
 	subNodeAgentStatus pubsub.Subscription
 	subAttestNonce     pubsub.Subscription
 	pubAttestQuote     pubsub.Publication
+	pubAttestCert      pubsub.Publication
 	globalConfig       *types.ConfigItemValueMap
 	GCInitialized      bool // GlobalConfig initialized
 	DeviceReboot       bool //is the device rebooting?
@@ -999,6 +1000,63 @@ func createEcdhCert() error {
 	return nil
 }
 
+func publishAttestCert(ctx *tpmMgrContext, config types.AttestCert) {
+	key := config.Key()
+	log.Debugf("publishAttestCert %s\n", key)
+	pub := ctx.pubAttestCert
+	pub.Publish(key, config)
+	log.Debugf("publishAttestCert %s Done\n", key)
+}
+
+func getECDHCert(certPath string) ([]byte, error) {
+	certBytes, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		errStr := fmt.Sprintf("getECDHCert failed while reading ECDH certificate: %v",
+			err)
+		log.Error(errStr)
+		return []byte{}, errors.New(errStr)
+	}
+	return certBytes, nil
+}
+
+func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
+	certHash := sha256.Sum256(cert)
+	switch hashAlgo {
+	case types.CertHashTypeSha256First16:
+		return certHash[:16], nil
+	default:
+		return []byte{}, fmt.Errorf("Unsupported cert hash type")
+	}
+}
+
+func publishECDHCertToController(ctx *tpmMgrContext) {
+	log.Infof("publishECDHCertToController started\n")
+	if !etpm.FileExists(ecdhCertFile) {
+		log.Errorf("publishECDHCertToController failed: ECDH certificate not found\n")
+		return
+	}
+	certBytes, err := getECDHCert(ecdhCertFile)
+	if err != nil {
+		errStr := fmt.Sprintf("publishECDHCertToController failed: %v", err)
+		log.Error(errStr)
+		return
+	}
+	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
+	if err != nil {
+		errStr := fmt.Sprintf("publishECDHCertToController failed: %v", err)
+		log.Error(errStr)
+		return
+	}
+	attestCert := types.AttestCert{
+		HashAlgo: types.CertHashTypeSha256First16,
+		CertID:   certHash,
+		CertType: types.CertTypeEcdhXchange,
+		Cert:     certBytes,
+	}
+	publishAttestCert(ctx, attestCert)
+	log.Infof("publishECDHCertToController Done\n")
+}
+
 func Run(ps *pubsub.PubSub) {
 	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
@@ -1134,6 +1192,17 @@ func Run(ps *pubsub.PubSub) {
 		}
 		ctx.subAttestNonce = subAttestNonce
 		//subAttestNonce.Activate()
+
+		pubAttestCert, err := ps.NewPublication(
+			pubsub.PublicationOptions{
+				AgentName: agentName,
+				TopicType: types.AttestCert{},
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.pubAttestCert = pubAttestCert
+		publishECDHCertToController(&ctx)
 
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
