@@ -131,9 +131,9 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 }
 
-// IntfStatusMap - Used to return per-interface errors.
-//  ifName is usually used as the key
-//  In most usecases, Includes entries for all interfaces that were tested.
+// IntfStatusMap - Used to return per-interface status.
+//  Key: ifName
+//  Include entries for all interfaces that were tested.
 //  If an intf is success, ErrorAndTime.Error == "" Else - Set to appropriate Error
 //  ErrorAndTime.ErrorTime will always be set for the interface.
 type IntfStatusMap struct {
@@ -143,8 +143,8 @@ type IntfStatusMap struct {
 
 // SetOrUpdateIntfStatus - Add an error into IntfStatusMap. If en entry already
 //  exists for the interface, it is appended.
-// This is for the case of adding errors. To clear error on an interface, use
-//  ClearIntfError.
+// This is for the case of adding errors. If the interface verification
+// succeeded, use SetIntfSuccessNow to mark the interface status as Success
 func (intfMap *IntfStatusMap) SetOrUpdateIntfStatus(
 	ifName string, et ErrorAndTime) {
 	errAndtime, ok := intfMap.StatusMap[ifName]
@@ -157,7 +157,7 @@ func (intfMap *IntfStatusMap) SetOrUpdateIntfStatus(
 	intfMap.StatusMap[ifName] = errAndtime
 }
 
-// SetIntfSuccessNow - Clears status on the interface.
+// SetIntfSuccessNow - Sets interface Status to Success
 func (intfMap *IntfStatusMap) SetIntfSuccessNow(ifName string) {
 	intfMap.StatusMap[ifName] = NewErrorAndTimeNow("")
 }
@@ -172,9 +172,9 @@ func (intfMap *IntfStatusMap) SetOrUpdateFromMap(
 
 // NewIntfStatusMap - Create a new instance of IntfStatusMap
 func NewIntfStatusMap() *IntfStatusMap {
-	intfErrMap := IntfStatusMap{}
-	intfErrMap.StatusMap = make(map[string]ErrorAndTime)
-	return &intfErrMap
+	intfStatusMap := IntfStatusMap{}
+	intfStatusMap.StatusMap = make(map[string]ErrorAndTime)
+	return &intfStatusMap
 }
 
 // Array in timestamp aka priority order; first one is the most desired
@@ -372,16 +372,15 @@ func (portConfig DevicePortConfig) WasDPCWorking() bool {
 	return false
 }
 
-// UpdatePortStatusFromIntfStatusMap - Set Port Errors for ports in portConfig to
-// those from intfErrMap. If a port is not found in intfErrMap, it means
-// the port was not tested. So retain the original error info for the port.
-// If the Interface succeeded, it would still be in intfErrMap and hence would
-// be reset by the new ErrorAndTime from the map.
+// UpdatePortStatusFromIntfStatusMap - Set Port status (ErrorAndTime) for ports
+// in portConfig to those from intfStatusMap. If a port is not found in
+// intfStatusMap, it means the port was not tested. So retain the original
+// status (ErrorAndTime) for the port.
 func (portConfig *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
-	intfErrMap IntfStatusMap) {
+	intfStatusMap IntfStatusMap) {
 	for indx := range portConfig.Ports {
 		portPtr := &portConfig.Ports[indx]
-		et, ok := intfErrMap.StatusMap[portPtr.IfName]
+		et, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
 			portPtr.ErrorAndTime = et
 		}

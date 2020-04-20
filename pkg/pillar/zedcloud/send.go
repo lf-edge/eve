@@ -130,7 +130,7 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 }
 
 // VerifyAllIntf
-// We try with free interfaces in firstiteration.
+// We try with free interfaces in first iteration.
 //      We test interfaces in sequence and as soon as we find the first working
 //      interface, we stop. Other interfaces are not tested.
 // If we find enough free interfaces through
@@ -143,8 +143,7 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 //    If Failure,
 //       remoteTemporaryFailure - indicates if it is a remote failure
 //       error  - indicates details of Errors
-//    IntfStatusMap - This has per-interface errors seen during
-//      the verification.
+//    IntfStatusMap - This status for each interface verified.
 //      Includes entries for all interfaces that were tested.
 //      If an intf is success, Error == "" Else - Set to appropriate Error
 //      ErrorTime will always be set for the interface.
