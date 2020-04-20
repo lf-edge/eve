@@ -62,6 +62,9 @@ message EdgeDevConfig {
   // containing certificate and other details, to be
   // used for sensitive data decryption
   repeated CipherContext cipherContexts = 19;
+
+  repeated ContentTree contentInfo = 20;
+  repeated VolumeInstance volumes = 21;
 }
 
 message ConfigRequest {

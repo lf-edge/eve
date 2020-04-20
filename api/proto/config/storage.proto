@@ -106,3 +106,49 @@ message Drive {
   // A value of 0 will indicate that no resizing is required
   int64 maxsizebytes = 10;
 }
+
+
+message ContentTree {
+  UUIDandVersion uuidandversion = 1;
+  string dsId  = 2; // effectively pointer/key into dsConfigs
+
+  string URL = 3;
+  Format iformat = 4;
+
+  // the following is only used for individual blobs, if this message references a group of blobs
+  // e.g. in the case of OCI -- this information is expected to be provided by a top level blob
+  // that this message points to via its URL
+  string sha256 = 5;
+  uint64 sizeBytes = 6; // used for capping resource consumption eve for OCI & BLOB_TREE
+  SignatureInfo siginfo = 7;
+}
+
+enum VolumeAccessProtocols {
+  VAP_NONE = 0;
+  VAP_9P = 1;
+  VAP_NFS = 2;
+  VAP_SCSI = 3;
+  VAP_VIRTIO = 4;
+}
+
+message VolumeInstance {
+  UUIDandVersion uuidandversion = 1;
+
+  // root of the blob tree required to construct this Volume
+  //(can be null) 
+  string contentStoreId = 2;  
+   
+  // describes the type of the Volume and thus how to construct it 
+  // out of the contentSoreID blobs
+  DriveType voltype = 3;
+
+  // describes all the different ways how this Volume can
+  // be offered to Tasks (9p, nfs, scsi, ata, virtio, etc.)
+  repeated VolumeAccessProtocols protocols = 4;
+
+  int64 generationCount = 5;
+
+  // miscellaneous attributes of the Volume
+  int64 maxsizebytes = 6;
+  bool readonly = 7;
+}

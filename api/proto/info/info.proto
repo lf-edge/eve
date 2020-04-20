@@ -60,6 +60,8 @@ enum ZInfoTypes {
   // deprecated = 4;
   // deprecated = 5;
   ZiNetworkInstance = 6;
+  ZiVolume = 7;
+  ZiContentTree = 8;
 }
 
 // Information about assignable I/O adapter bundles
@@ -504,7 +506,42 @@ message ZInfoNetworkInstance {
     ZInfoVpn vinfo = 31;
     ZInfoLisp linfo = 32;
   }
+  UsageInfo usage = 33;
   repeated ErrorInfo networkErr = 40;
+}
+
+message UsageInfo {
+  google.protobuf.Timestamp createTime = 1;
+  uint32 refCount = 2;
+  google.protobuf.Timestamp lastUseTime = 3; // When refCount dropped to zero
+}
+
+message VolumeResources {
+  uint64 maxSizeBytes = 1;		// From config
+  uint64 curSizeBytes = 2;		// Current disk usage
+}
+
+message ZInfoVolumeInstance {
+  string uuid = 1;
+  string displayName = 2;
+  UsageInfo usage = 3;
+  VolumeResources resources = 4;
+  ZSwState state = 5;
+  uint32 downloadProgress = 6;
+
+  repeated ErrorInfo volumeErr = 7;
+}
+
+message ContentResources {
+  uint64 curSizeBytes = 1;		// Current disk usage
+}
+
+message ZInfoContentTree {
+  string uuid = 1;
+  string displayName = 2;
+  ContentResources resources = 3;
+  UsageInfo usage = 4;		// Same info as for volumes
+  repeated string componentShaList = 5;
 }
 
 
@@ -525,6 +562,8 @@ message ZInfoMsg {
     // deprecated = 10;
     // deprecated = 11;
     ZInfoNetworkInstance niinfo = 12;
+    ZInfoVolumeInstance vinfo = 13;
+    ZInfoContentTree cinfo = 14;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
