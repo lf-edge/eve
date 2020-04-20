@@ -188,6 +188,7 @@ func deriveVaultKey(cloudKeyOnlyMode bool) ([]byte, error) {
 		return nil, err
 	}
 	if cloudKeyOnlyMode {
+		log.Infof("Using cloud key")
 		return cloudKey, nil
 	}
 	tpmKey, err := retrieveTpmKey()
@@ -307,19 +308,20 @@ func setupVault(vaultPath string) error {
 	if _, _, err := execCmd(fscryptPath, args...); err != nil {
 		if !isDirEmpty(vaultPath) {
 			//Don't disturb existing installations
-			log.Debugf("Not disturbing non-empty %s", vaultPath)
+			log.Infof("Not disturbing non-empty %s", vaultPath)
 			return nil
 		}
 		return createVault(vaultPath)
 	}
 	//Already setup for encryption, go for unlocking
-	log.Debugf("Unlocking %s", vaultPath)
+	log.Infof("Unlocking %s", vaultPath)
 	if err := unlockVault(vaultPath, false); err != nil {
-		log.Debug("Unlocking using fallback mode")
+		log.Infof("Unlocking using fallback mode: %s", vaultPath)
 		if err := unlockVault(vaultPath, true); err != nil {
 			return err
 		}
-		//return changeProtector(vaultPath)
+		log.Infof("Migrating keys to TPM %s", vaultPath)
+		return changeProtector(vaultPath)
 	}
 	return nil
 }
