@@ -160,8 +160,8 @@ func TestCreateDomConfig(t *testing.T) {
 
 [smp-opts]
   cpus = "2"
-  sockets = "2"
-  cores = "1"
+  sockets = "1"
+  cores = "2"
   threads = "1"
 
 [chardev "charserial0"]
@@ -403,8 +403,8 @@ func TestCreateDomConfig(t *testing.T) {
 
 [smp-opts]
   cpus = "2"
-  sockets = "2"
-  cores = "1"
+  sockets = "1"
+  cores = "2"
   threads = "1"
 
 [chardev "charserial0"]
@@ -621,8 +621,8 @@ func TestCreateDomConfig(t *testing.T) {
 
 [smp-opts]
   cpus = "2"
-  sockets = "2"
-  cores = "1"
+  sockets = "1"
+  cores = "2"
   threads = "1"
 
 
@@ -863,8 +863,8 @@ func TestCreateDom(t *testing.T) {
 
 [smp-opts]
   cpus = "2"
-  sockets = "2"
-  cores = "1"
+  sockets = "1"
+  cores = "2"
   threads = "1"`), 0777)
 
 	if _, err := hyperKvm.Create("test", conf.Name(), types.HVM); err != nil {
