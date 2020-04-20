@@ -407,7 +407,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		}
 		logMsg := logEntry{
 			source:    logSource,
-			content:   timestamp.String() + ": " + logParts["content"].(string),
+			content:   logParts["content"].(string),
 			severity:  logInfo.Level,
 			timestamp: timestamp,
 			function:  logInfo.Function,
@@ -699,7 +699,7 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	// handle above 64k; we limit payload at 32k
 	strLen := len(event.content)
 	if strLen > logMaxBytes {
-		log.Errorf("handleLogEvent: dropping source %s %d bytes",
+		log.Errorf("handleAppLogEvent: dropping source %s %d bytes",
 			event.source, strLen)
 		return false
 	}
@@ -722,7 +722,7 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	appLogs.Log = append(appLogs.Log, logDetails)
 	newLen := int64(proto.Size(appLogs))
 	if newLen > logMaxBytes {
-		log.Warnf("handleLogEvent: source %s from %d to %d bytes",
+		log.Warnf("handleAppLogEvent: source %s from %d to %d bytes",
 			event.source, oldLen, newLen)
 	}
 	return true
