@@ -64,7 +64,7 @@ message EdgeDevConfig {
   repeated CipherContext cipherContexts = 19;
 
   repeated ContentTree contentInfo = 20;
-  repeated VolumeInstance volumes = 21;
+  repeated Volume volumes = 21;
 }
 
 message ConfigRequest {
