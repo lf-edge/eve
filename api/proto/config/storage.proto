@@ -134,9 +134,8 @@ enum VolumeAccessProtocols {
 message VolumeInstance {
   UUIDandVersion uuidandversion = 1;
 
-  // root of the blob tree required to construct this Volume
-  //(can be null) 
-  string contentStoreId = 2;  
+  // root of the blob tree required to construct this Volume (can be null)
+  string contentStoreId = 2;
    
   // describes the type of the Volume and thus how to construct it 
   // out of the contentSoreID blobs
