@@ -165,6 +165,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetworkTestTimeout,
 		NetworkSendTimeout,
 		Dom0MinDiskUsagePercent,
+		Dom0DiskUsageMaxBytes,
 		// Bool Items
 		UsbAccess,
 		AllowAppVnc,
