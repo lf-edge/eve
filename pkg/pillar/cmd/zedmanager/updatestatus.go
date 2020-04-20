@@ -168,6 +168,21 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	}
 }
 
+func dom0DiskReservedSize(ctxPtr *zedmanagerContext, deviceDiskSize uint64) uint64 {
+	dom0MinDiskUsagePercent := ctxPtr.globalConfig.GlobalValueInt(
+		types.Dom0MinDiskUsagePercent)
+	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
+		(float64(dom0MinDiskUsagePercent) * 0.01))
+	maxDom0DiskSize := uint64(ctxPtr.globalConfig.GlobalValueInt(
+		types.Dom0DiskUsageMaxBytes))
+	if diskReservedForDom0 > maxDom0DiskSize {
+		log.Debugf("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
+			"maxDom0DiskSize (%d)", maxDom0DiskSize)
+		diskReservedForDom0 = maxDom0DiskSize
+	}
+	return diskReservedForDom0
+}
+
 func checkDiskSize(ctxPtr *zedmanagerContext) error {
 
 	var totalAppDiskSize uint64
@@ -199,15 +214,21 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
-		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s",
-			err.Error())
-		log.Errorf("checkDiskSize: err:%s", err.Error())
+		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
+		log.Errorf("diskSizeReservedForDom0: err:%s", err)
 		return err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
-	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
-		(float64(ctxPtr.globalConfig.GlobalValueInt(types.Dom0MinDiskUsagePercent)) * 0.01))
-	allowedDeviceDiskSizeForApps := deviceDiskSize - diskReservedForDom0
+	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
+	var allowedDeviceDiskSizeForApps uint64
+	if deviceDiskSize > diskReservedForDom0 {
+		allowedDeviceDiskSizeForApps = deviceDiskSize - diskReservedForDom0
+	} else {
+		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
+			deviceDiskSize, diskReservedForDom0)
+		log.Errorf("***checkDiskSize: err: %s", err)
+		return err
+	}
 	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
 		err := fmt.Errorf("Disk space not available for app - "+
 			"Total Device Disk Size: %+v\n"+
