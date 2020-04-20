@@ -193,3 +193,21 @@ func unpublishControllerCert(ctx *getconfigContext, key string) {
 	log.Debugf("unpublishControllerCert %s Done\n", key)
 	pub.Unpublish(key)
 }
+
+func handleAttestCertModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX TBD
+	status := configArg.(types.AttestCert)
+	log.Infof("handleAttestCertModify for %s\n", status.Key())
+	return
+}
+
+func handleAttestCertDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX TBD
+	status := configArg.(types.AttestCert)
+	log.Infof("handleAttestCertDelete for %s\n", status.Key())
+	return
+}

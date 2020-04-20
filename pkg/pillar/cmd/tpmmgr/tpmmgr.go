@@ -1025,7 +1025,7 @@ func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 	case types.CertHashTypeSha256First16:
 		return certHash[:16], nil
 	default:
-		return []byte{}, fmt.Errorf("Unsupported cert hash type")
+		return []byte{}, fmt.Errorf("Unsupported cert hash type: %d\n", hashAlgo)
 	}
 }
 
