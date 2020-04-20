@@ -131,7 +131,7 @@ enum VolumeAccessProtocols {
   VAP_VIRTIO = 4;
 }
 
-message VolumeInstance {
+message Volume {
   UUIDandVersion uuidandversion = 1;
 
   // root of the blob tree required to construct this Volume (can be null)

@@ -338,7 +338,7 @@ message ZMetricNetworkInstance {
   ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
 }
 
-message ZMetricVolumeInstance {
+message ZMetricVolume {
   string uuid = 1;
   string displayName = 2;
   uint64 readBytes = 3;
@@ -370,5 +370,5 @@ message ZMetricMsg {
   // deprecated = 6;
   repeated ZMetricNetworkInstance nm = 7;
 
-  repeated ZMetricVolumeInstance vm = 8;
+  repeated ZMetricVolume vm = 8;
 }
