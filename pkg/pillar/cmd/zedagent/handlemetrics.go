@@ -69,8 +69,6 @@ func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
 		// No Success / Error to report
 		return nil
 	}
-	// Timestamp set. Even if the error is "" - the timestamp indicates the last
-	//  testing time. Worth sending it.
 	errInfo := new(info.ErrorInfo)
 	errInfo.Description = et.Error
 	protoTime, err := ptypes.TimestampProto(et.ErrorTime)
@@ -79,6 +77,29 @@ func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
 	} else {
 		log.Errorf("Failed to convert timestamp (%+v) for ErrorStr (%s) "+
 			"into TimestampProto. err: %s", et.ErrorTime, et.Error, err)
+	}
+	return errInfo
+}
+
+// We reuse the info.ErrorInfo to pass both failure and success. If success
+// the Description is left empty
+func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
+	errInfo := new(info.ErrorInfo)
+	var timestamp time.Time
+	if tr.HasError() {
+		timestamp = tr.LastFailed
+		errInfo.Description = tr.LastError
+	} else {
+		timestamp = tr.LastSucceeded
+	}
+	if !timestamp.IsZero() {
+		protoTime, err := ptypes.TimestampProto(timestamp)
+		if err == nil {
+			errInfo.Timestamp = protoTime
+		} else {
+			log.Errorf("Failed to convert timestamp (%+v) for ErrorStr (%s) "+
+				"into TimestampProto. err: %s", timestamp, tr.LastError, err)
+		}
 	}
 	return errInfo
 }
@@ -1190,10 +1211,8 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			networkInfo.Location = geo
 			break
 		}
-		// Any error?
-		if !port.ErrorTime.IsZero() {
-			networkInfo.NetworkErr = encodeErrorInfo(port.ErrorAndTime)
-		}
+		// Any error or test result?
+		networkInfo.NetworkErr = encodeTestResults(port.TestResults)
 		networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	}
 	return networkInfo
@@ -1286,7 +1305,8 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	// XXX  string dhcpRangeHigh = 18;
 
 	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
-	dp.Err = encodeErrorInfo(npc.ErrorAndTime)
+
+	dp.Err = encodeTestResults(npc.TestResults)
 
 	var nilUUID uuid.UUID
 	if npc.NetworkUUID != nilUUID {

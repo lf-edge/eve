@@ -189,14 +189,13 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 				log.Errorf("Zedcloud un-reachable via interface %s: %s",
 					intf, err)
 				errorList = append(errorList, err)
-				intfStatusMap.SetOrUpdateIntfStatus(intf,
-					types.NewErrorAndTimeNow(err.Error()))
+				intfStatusMap.RecordFailure(intf, err.Error())
 				continue
 			}
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
 				log.Debugf("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
-				intfStatusMap.SetIntfSuccessNow(intf)
+				intfStatusMap.RecordSuccess(intf)
 				intfSuccessCount += 1
 			default:
 				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
@@ -205,8 +204,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 				log.Errorln(errStr)
 				err = errors.New(errStr)
 				errorList = append(errorList, err)
-				intfStatusMap.SetOrUpdateIntfStatus(
-					intf, types.NewErrorAndTimeNow(err.Error()))
+				intfStatusMap.RecordFailure(intf, err.Error())
 				continue
 			}
 		}

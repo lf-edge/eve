@@ -152,8 +152,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			errStr := fmt.Sprintf("ifName: %s. Failed to get NetworkProxy. Err:%s",
 				ifName, err)
 			log.Errorf("VerifyDeviceNetworkStatus: %s", errStr)
-			intfStatusMap.SetOrUpdateIntfStatus(ifName,
-				types.NewErrorAndTimeNow(errStr))
+			intfStatusMap.RecordFailure(ifName, errStr)
 			return false, intfStatusMap, errors.New(errStr)
 		}
 	}
@@ -207,14 +206,13 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].NetworkXConfig.DomainName = u.DomainName
 		globalStatus.Ports[ix].NetworkXConfig.NtpServer = u.NtpServer
 		globalStatus.Ports[ix].NetworkXConfig.DnsServers = u.DnsServers
-		globalStatus.Ports[ix].ErrorAndTime = u.ErrorAndTime
+		globalStatus.Ports[ix].TestResults = u.TestResults
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
 			errStr := fmt.Sprintf("Port %s does not exist - ignored",
 				u.IfName)
 			log.Errorf("MakeDeviceNetworkStatus: %s\n", errStr)
-			globalStatus.Ports[ix].Error = errStr
-			globalStatus.Ports[ix].ErrorTime = time.Now()
+			globalStatus.Ports[ix].RecordFailure(errStr)
 			continue
 		}
 		addrs, err := GetIPAddrs(ifindex)
@@ -249,10 +247,11 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		err = CheckAndGetNetworkProxy(&globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {
-			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
-			// Clobbers ErrorAndTime from above
-			globalStatus.Ports[ix].Error = errStr
-			globalStatus.Ports[ix].ErrorTime = time.Now()
+			errStr := fmt.Sprintf("GetNetworkProxy failed for %s: %s",
+				u.IfName, err)
+			// XXX where can we return this failure?
+			// Already have TestResults set from above
+			log.Error(errStr)
 		}
 	}
 	// Preserve geo info for existing interface and IP address

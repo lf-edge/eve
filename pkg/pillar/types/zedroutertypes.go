@@ -131,49 +131,51 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 }
 
-// IntfStatusMap - Used to return per-interface status.
-//  Key: ifName
-//  Include entries for all interfaces that were tested.
-//  If an intf is success, ErrorAndTime.Error == "" Else - Set to appropriate Error
-//  ErrorAndTime.ErrorTime will always be set for the interface.
+// IntfStatusMap - Used to return per-interface test results (success and failures)
+//  ifName is used as the key
 type IntfStatusMap struct {
-	// StatusMap -> Key: ifname, Value: ErrorAndTime
-	StatusMap map[string]ErrorAndTime
+	// StatusMap -> Key: ifname, Value: TestResults
+	StatusMap map[string]TestResults
 }
 
-// SetOrUpdateIntfStatus - Add an error into IntfStatusMap. If en entry already
-//  exists for the interface, it is appended.
-// This is for the case of adding errors. If the interface verification
-// succeeded, use SetIntfSuccessNow to mark the interface status as Success
-func (intfMap *IntfStatusMap) SetOrUpdateIntfStatus(
-	ifName string, et ErrorAndTime) {
-	errAndtime, ok := intfMap.StatusMap[ifName]
-	if ok {
-		errAndtime.SetOrAppendError(et)
-	} else {
-		// No Existing Error. Set new one
-		errAndtime = et
+// RecordSuccess records a success for the ifName
+func (intfMap *IntfStatusMap) RecordSuccess(ifName string) {
+	tr, ok := intfMap.StatusMap[ifName]
+	if !ok {
+		tr = TestResults{}
 	}
-	intfMap.StatusMap[ifName] = errAndtime
+	tr.RecordSuccess()
+	intfMap.StatusMap[ifName] = tr
 }
 
-// SetIntfSuccessNow - Sets interface Status to Success
-func (intfMap *IntfStatusMap) SetIntfSuccessNow(ifName string) {
-	intfMap.StatusMap[ifName] = NewErrorAndTimeNow("")
+// RecordFailure records a failure for the ifName
+func (intfMap *IntfStatusMap) RecordFailure(ifName string, errStr string) {
+	tr, ok := intfMap.StatusMap[ifName]
+	if !ok {
+		tr = TestResults{}
+	}
+	tr.RecordFailure(errStr)
+	intfMap.StatusMap[ifName] = tr
 }
 
-// SetOrUpdateFromMap - Add all the entries from the given per-interface map
+// SetOrUpdateFromMap - Set all the entries from the given per-interface map
+// Entries which are not in the source are not modified
 func (intfMap *IntfStatusMap) SetOrUpdateFromMap(
-	target IntfStatusMap) {
-	for intf, et := range target.StatusMap {
-		intfMap.SetOrUpdateIntfStatus(intf, et)
+	source IntfStatusMap) {
+	for intf, src := range source.StatusMap {
+		tr, ok := intfMap.StatusMap[intf]
+		if !ok {
+			tr = TestResults{}
+		}
+		tr.Update(src)
+		intfMap.StatusMap[intf] = tr
 	}
 }
 
 // NewIntfStatusMap - Create a new instance of IntfStatusMap
 func NewIntfStatusMap() *IntfStatusMap {
 	intfStatusMap := IntfStatusMap{}
-	intfStatusMap.StatusMap = make(map[string]ErrorAndTime)
+	intfStatusMap.StatusMap = make(map[string]TestResults)
 	return &intfStatusMap
 }
 
@@ -191,19 +193,63 @@ type DevicePortConfig struct {
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
 
-	// Times when last ping test Failed/Succeeded.
-	// All zeros means never tested.
-	LastFailed    time.Time
-	LastSucceeded time.Time
-	LastError     string    // Set when LastFailed is updated
-	LastIPAndDNS  time.Time // Time when we got some IP addresses and DNS
+	TestResults
+	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
 
 	Ports []NetworkPortConfig
 }
 
+// TestResults is used to record when some test Failed or Succeeded.
+// All zeros timestamps means it was never tested.
+type TestResults struct {
+	LastFailed    time.Time
+	LastSucceeded time.Time
+	LastError     string // Set when LastFailed is updated
+}
+
+// RecordSuccess records a success
+// Keeps the LastError and LastFailed in place as history
+func (trPtr *TestResults) RecordSuccess() {
+	trPtr.LastSucceeded = time.Now()
+}
+
+// RecordFailure records a failure
+// Keeps the LastSucceeded in place as history
+func (trPtr *TestResults) RecordFailure(errStr string) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
+	trPtr.LastFailed = time.Now()
+	trPtr.LastError = errStr
+}
+
+// HasError returns true if there is an error
+// Returns false if it was never tested i.e., both timestamps zero
+func (trPtr *TestResults) HasError() bool {
+	return trPtr.LastFailed.After(trPtr.LastSucceeded)
+}
+
+// Update uses the src to add info to the results
+// If src has newer information for the 'other' part we update that as well.
+func (trPtr *TestResults) Update(src TestResults) {
+	if src.HasError() {
+		trPtr.LastFailed = src.LastFailed
+		trPtr.LastError = src.LastError
+		if src.LastSucceeded.After(trPtr.LastSucceeded) {
+			trPtr.LastSucceeded = src.LastSucceeded
+		}
+	} else {
+		trPtr.LastSucceeded = src.LastSucceeded
+		if src.LastFailed.After(trPtr.LastFailed) {
+			trPtr.LastFailed = src.LastFailed
+			trPtr.LastError = src.LastError
+		}
+	}
+}
+
 type DevicePortConfigVersion uint32
 
-// GetPortByIfName - DevicePortConfig Methord to Get Port structure by IfName
+// GetPortByIfName - DevicePortConfig method to get config pointer
 func (portConfig *DevicePortConfig) GetPortByIfName(
 	ifname string) *NetworkPortConfig {
 	for indx := range portConfig.Ports {
@@ -215,15 +261,25 @@ func (portConfig *DevicePortConfig) GetPortByIfName(
 	return nil
 }
 
-// SetPortErrorByIfname - Sets Error info for Port with given ifname
-func (portConfig *DevicePortConfig) SetPortErrorByIfname(
-	ifname string, err error) {
+// RecordPortSuccess - Record for given ifname in PortConfig
+func (portConfig *DevicePortConfig) RecordPortSuccess(ifname string) {
 	portPtr := portConfig.GetPortByIfName(ifname)
 	if portPtr != nil {
-		portPtr.SetErrorNow(err.Error())
+		portPtr.RecordSuccess()
 	} else {
-		log.Errorf("portConfig.SetPortErrorByIfname - port %s not found, "+
-			"err: %s", ifname, err)
+		log.Errorf("portConfig.RecordPortSuccess - port %s not found",
+			ifname)
+	}
+}
+
+// RecordPortFailure - Record for given ifname in PortConfig
+func (portConfig *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
+	portPtr := portConfig.GetPortByIfName(ifname)
+	if portPtr != nil {
+		portPtr.RecordFailure(errStr)
+	} else {
+		log.Errorf("portConfig.RecordPortFailure - port %s not found, "+
+			"err: %s", ifname, errStr)
 	}
 }
 
@@ -296,7 +352,7 @@ func (portConfig *DevicePortConfig) CountMgmtPorts() int {
 }
 
 // Equal compares two DevicePortConfig but skips things that are
-// more of status such as the timestamps and the ErrorAndTime
+// more of status such as the timestamps and the TestResults
 // XXX Compare Version or not?
 // We compare the Ports in array order.
 func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
@@ -372,19 +428,18 @@ func (portConfig DevicePortConfig) WasDPCWorking() bool {
 	return false
 }
 
-// UpdatePortStatusFromIntfStatusMap - Set Port status (ErrorAndTime) for ports
-// in portConfig to those from intfStatusMap. If a port is not found in
-// intfStatusMap, it means the port was not tested. So retain the original
-// status (ErrorAndTime) for the port.
+// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in portConfig to
+// those from intfStatusMap. If a port is not found in intfStatusMap, it means
+// the port was not tested, so we retain the original TestResults for the port.
 func (portConfig *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
 	intfStatusMap IntfStatusMap) {
 	for indx := range portConfig.Ports {
 		portPtr := &portConfig.Ports[indx]
-		et, ok := intfStatusMap.StatusMap[portPtr.IfName]
+		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
-			portPtr.ErrorAndTime = et
+			portPtr.TestResults.Update(tr)
 		}
-		// Else - Port not tested. Retain the ErrorAndTime on the port.
+		// Else - Port not tested hence no change
 	}
 }
 
@@ -477,8 +532,10 @@ type WirelessConfig struct {
 	Wifi     []WifiConfig // Wifi Config params
 }
 
-// NetworkPortConfig has the configuration and some status like ErrorAndTime
+// NetworkPortConfig has the configuration and some status like TestResults
 // for one IfName.
+// XXX odd to have ParseErrors and/or TestResults here but we don't have
+// a corresponding Status struct.
 // Note that if fields are added the Equal function needs to be updated.
 type NetworkPortConfig struct {
 	IfName       string
@@ -491,8 +548,8 @@ type NetworkPortConfig struct {
 	DhcpConfig
 	ProxyConfig
 	WirelessCfg WirelessConfig
-	// ErrorAndTime - Errors from parsing / testing etc
-	ErrorAndTime
+	// TestResults - Errors from parsing plus success/failure from testing
+	TestResults
 }
 
 type NetworkPortStatus struct {
@@ -504,8 +561,8 @@ type NetworkPortStatus struct {
 	NetworkXConfig NetworkXObjectConfig
 	AddrInfoList   []AddrInfo
 	ProxyConfig
-	// ErrorAndTime provides SetErrorNow() and ClearError()
-	ErrorAndTime
+	// TestResults provides recording of failure and success
+	TestResults
 }
 
 type AddrInfo struct {
@@ -945,6 +1002,21 @@ func ReportPhylabels(deviceNetworkStatus DeviceNetworkStatus) []string {
 		names = append(names, port.Phylabel)
 	}
 	return names
+}
+
+// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in DeviceNetworkStatus to
+// those from intfStatusMap. If a port is not found in intfStatusMap, it means
+// the port was not tested, so we retain the original TestResults for the port.
+func (status *DeviceNetworkStatus) UpdatePortStatusFromIntfStatusMap(
+	intfStatusMap IntfStatusMap) {
+	for indx := range status.Ports {
+		portPtr := &status.Ports[indx]
+		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
+		if ok {
+			portPtr.TestResults.Update(tr)
+		}
+		// Else - Port not tested hence no change
+	}
 }
 
 // PhylabelToIfName looks up a port Phylabel or IfName to find an existing IfName

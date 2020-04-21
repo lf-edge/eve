@@ -669,7 +669,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
 		// Report error but set Dhcp, isMgmt, and isFree to sane values
-		port.SetErrorNow(errStr)
+		port.RecordFailure(errStr)
 		port.Logicallabel = port.Phylabel
 		port.IfName = sysAdapter.Name
 		isFree = true
@@ -726,7 +726,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				"SysAdapter.Addr %s. The IP address is ignored. Please fix the "+
 				"device configuration.", sysAdapter.Name, sysAdapter.Addr)
 			log.Errorf("parseSystemAdapterConfig: %s", errStr)
-			port.SetErrorNow(errStr)
+			port.RecordFailure(errStr)
 			// IP will not be set below
 		}
 		// Note that ip is not used unless we have a network UUID
@@ -744,7 +744,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				"device configuration.",
 				port.IfName, sysAdapter.NetworkUUID, err)
 			log.Errorf("parseSystemAdapterConfig: %s", errStr)
-			port.SetErrorNow(errStr)
+			port.RecordFailure(errStr)
 		} else {
 			net := networkXObject.(types.NetworkXObjectConfig)
 			port.NetworkUUID = net.UUID
@@ -754,7 +754,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 					"(UUID: %s) which has an error (%s).",
 					port.IfName, port.NetworkUUID, network.Error)
 				log.Errorf("parseSystemAdapterConfig: %s", errStr)
-				port.SetErrorNow(errStr)
+				port.RecordFailure(errStr)
 			}
 		}
 
@@ -779,7 +779,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 					"missing subnet address. SysAdapter - Name: %s, Addr:%s",
 					port.IfName, sysAdapter.Name, sysAdapter.Addr)
 				log.Errorf("parseSystemAdapterConfig: %s", errStr)
-				port.SetErrorNow(errStr)
+				port.RecordFailure(errStr)
 			}
 		case types.DT_CLIENT:
 			// Do nothing
@@ -791,13 +791,13 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 					port.IfName, types.DT_NONE)
 
 				log.Errorf("parseSystemAdapterConfig: %s", errStr)
-				port.SetErrorNow(errStr)
+				port.RecordFailure(errStr)
 			}
 		default:
 			errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
 				port.IfName, network.Dhcp)
 			log.Errorf("parseSystemAdapterConfig: %s", errStr)
-			port.SetErrorNow(errStr)
+			port.RecordFailure(errStr)
 		}
 		// XXX use DnsNameToIpList?
 		if network != nil && network.Proxy != nil {
@@ -808,7 +808,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			"configuring a Network. Network is required for Management ports",
 			port.IfName)
 		log.Errorf("parseSystemAdapterConfig: %s", errStr)
-		port.SetErrorNow(errStr)
+		port.RecordFailure(errStr)
 	}
 	return port
 }
