@@ -34,8 +34,8 @@ func parseCipherContext(ctx *getconfigContext,
 	log.Infof("parseCipherContext: Applying updated config\n"+
 		"Last Sha: % x\n"+
 		"New  Sha: % x\n"+
-		"cfgCipherContextList: %v\n",
-		cipherCtxHash, newHash, cfgCipherContextList)
+		"Num of cfgCipherContext: %d\n",
+		cipherCtxHash, newHash, len(cfgCipherContextList))
 
 	cipherCtxHash = newHash
 
