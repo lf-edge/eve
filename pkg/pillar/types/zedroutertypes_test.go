@@ -160,33 +160,41 @@ func TestIsDPCUsable(t *testing.T) {
 	}{
 		"Management and DT_CLIENT": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: true,
 		},
 		"Mixture of usable and unusable ports": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         mixedPorts,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: mixedPorts,
 			},
 			expectedValue: true,
 		},
 		"Not management and DT_CLIENT": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         unusablePorts1,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: unusablePorts1,
 			},
 			expectedValue: false,
 		},
 		"Management and DT_NONE": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         unusablePorts2,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: unusablePorts2,
 			},
 			expectedValue: false,
 		},
@@ -206,41 +214,51 @@ func TestIsDPCTestable(t *testing.T) {
 	}{
 		"Difference is exactly 60 seconds": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n.Add(time.Second * 60),
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n.Add(time.Second * 60),
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
 		"Difference is 61 seconds": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n.Add(time.Second * 61),
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n.Add(time.Second * 61),
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
 		"Difference is 59 seconds": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n.Add(time.Second * 59),
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n.Add(time.Second * 59),
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
 		"LastFailed is 0": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: true,
 		},
 		"Last Succeded is after Last Failed": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n,
-				LastSucceeded: n.Add(time.Second * 61),
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n,
+					LastSucceeded: n.Add(time.Second * 61),
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: true,
 		},
@@ -260,25 +278,31 @@ func TestIsDPCUntested(t *testing.T) {
 	}{
 		"Last failed and Last Succesed are 0": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: time.Time{},
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: time.Time{},
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: true,
 		},
 		"Last Succesed is not 0": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
 		"Last failed is not 0": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    time.Time{},
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
@@ -298,25 +322,31 @@ func TestWasDPCWorking(t *testing.T) {
 	}{
 		"LastSucceeded is 0": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n,
-				LastSucceeded: time.Time{},
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n,
+					LastSucceeded: time.Time{},
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
 		"Last Succeded is after Last Failed": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n,
-				LastSucceeded: n.Add(time.Second * 60),
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n,
+					LastSucceeded: n.Add(time.Second * 60),
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: true,
 		},
 		"Last Failed is after Last Succeeded": {
 			devicePortConfig: DevicePortConfig{
-				LastFailed:    n.Add(time.Second * 60),
-				LastSucceeded: n,
-				Ports:         usablePorts,
+				TestResults: TestResults{
+					LastFailed:    n.Add(time.Second * 60),
+					LastSucceeded: n,
+				},
+				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},

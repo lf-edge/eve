@@ -78,32 +78,40 @@ var testMatrix = map[string]compressDPCLTestEntry{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
 				{ // Successful Zedagent Entry
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // Successful ZedAgent Entry
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 2, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 2, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // lastresort - NOT DELETED
 					Version:      1,
 					Key:          "lastresort",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // Unknown Key
 					Version:      1,
 					Key:          "hardware",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 			}, // PortConfigList
 		}, // dpcl
@@ -121,29 +129,37 @@ var testMatrix = map[string]compressDPCLTestEntry{
 					Version:      1,
 					Key:          "zedagent",
 					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
 					Version:      1,
 					Key:          "override",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
 					Version:      1,
 					Key:          "hardware",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 			}, // PortConfigList
 		}, // dpcl
@@ -167,32 +183,40 @@ var testMatrix = map[string]compressDPCLTestEntry{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
 				{
-					Version:       1,
-					Key:           "lastresort",
-					TimePriority:  time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "lastresort",
+					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
 					Version:      1,
 					Key:          "override",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
 					Version:      1,
 					Key:          "hardware",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 			}, // PortConfigList
 		}, // dpcl
@@ -209,29 +233,37 @@ var testMatrix = map[string]compressDPCLTestEntry{
 					Version:      1,
 					Key:          "zedagent",
 					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
 					Version:      1,
 					Key:          "override",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{
 					Version:      1,
 					Key:          "hardware",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 			}, // PortConfigList
 		}, // dpcl
@@ -245,39 +277,49 @@ var testMatrix = map[string]compressDPCLTestEntry{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
 				{
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // DELETED
-					Version:       2,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      2,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // DELETED
 					Version:      3,
 					Key:          "override",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // DELETED
 					Version:      4,
 					Key:          "hardware",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // Retained
-					Version:       5,
-					Key:           "lastresort",
-					TimePriority:  time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      5,
+					Key:          "lastresort",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 			}, // PortConfigList
 		}, // dpcl
@@ -291,32 +333,40 @@ var testMatrix = map[string]compressDPCLTestEntry{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
 				{
-					Version:       1,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // DELETED
-					Version:       2,
-					Key:           "zedagent",
-					TimePriority:  time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:         []types.NetworkPortConfig{},
+					Version:      2,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // DELETED
 					Version:      3,
 					Key:          "override",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 				{ // DELETED
 					Version:      4,
 					Key:          "hardware",
 					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
-					LastFailed:   time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
-					Ports:        []types.NetworkPortConfig{},
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
 				},
 			}, // PortConfigList
 		}, // dpcl

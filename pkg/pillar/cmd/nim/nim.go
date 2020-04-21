@@ -733,11 +733,33 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	rtf, intfStatusMap, err := devicenetwork.VerifyDeviceNetworkStatus(
 		*ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
 	ctx.DevicePortConfig.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	// Use TestResults to update the DevicePortConfigList and publish
+	// Note that the TestResults will at least have an updated timestamp
+	// for one of the ports.
+	if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
+		dpc := &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+		dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+		log.Infof("publishing DevicePortConfigList update: %+v",
+			*ctx.DevicePortConfigList)
+		ctx.PubDevicePortConfigList.Publish("global",
+			*ctx.DevicePortConfigList)
+	}
+
+	// Use TestResults to update the DeviceNetworkStatus and publish
+	ctx.DeviceNetworkStatus.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	log.Infof("PublishDeviceNetworkStatus updated: %+v\n",
+		*ctx.DeviceNetworkStatus)
+	ctx.PubDeviceNetworkStatus.Publish("global", *ctx.DeviceNetworkStatus)
+
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-			cur.LastSucceeded = time.Now()
+			cur.TestResults.RecordSuccess()
+			log.Infof("publishing DevicePortConfigList success: %+v",
+				*ctx.DevicePortConfigList)
+			ctx.PubDevicePortConfigList.Publish("global",
+				*ctx.DevicePortConfigList)
 		}
 
 		ctx.CloudConnectivityWorks = true
