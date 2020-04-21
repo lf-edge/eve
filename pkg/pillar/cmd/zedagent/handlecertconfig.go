@@ -44,8 +44,8 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 	log.Infof("parseControllerCerts: Applying updated config\n"+
 		"Last Sha: % x\n"+
 		"New  Sha: % x\n"+
-		"cfgCertList: %v\n",
-		certHash, newHash, cfgCerts)
+		"Num of cfgCert: %d\n",
+		certHash, newHash, len(cfgCerts))
 
 	certHash = newHash
 
