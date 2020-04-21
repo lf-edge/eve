@@ -315,6 +315,20 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Logicallabel = apiConfigEntry.Port.Name
+			foundPort := false
+			for _, portCfg := range ctx.devicePortConfig.Ports {
+				if niHasValidPort(networkInstanceConfig.Logicallabel, portCfg.Logicallabel) {
+					foundPort = true
+					break
+				}
+			}
+			// To prevent the NI physical port bound to an App-Direct type
+			if !foundPort {
+				log.Errorf("publishNetworkInstanceConfig: network instance port %s does not exist\n",
+					networkInstanceConfig.Logicallabel)
+				continue
+			}
+			log.Infof("publishNetworkInstanceConfig: network instance port %s check ok\n", networkInstanceConfig.Logicallabel)
 		}
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
@@ -2074,4 +2088,12 @@ func handleDeviceReboot(ctxPtr *zedagentContext) {
 	// shutdown the application instances
 	shutdownAppsGlobal(ctxPtr)
 	// nothing else to be done
+}
+
+func niHasValidPort(label, portLable string) bool {
+	if label == "" || strings.EqualFold(label, "uplink") ||
+		strings.EqualFold(label, "freeuplink") || label == portLable {
+		return true
+	}
+	return false
 }
