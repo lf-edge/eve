@@ -43,6 +43,12 @@ const (
 	errorTime              = 3 * time.Minute
 	warningTime            = 40 * time.Second
 	metricsPublishInterval = 300 * time.Second
+
+	// We want connectivity to zedcloud via atleast one Management port.
+	// Hard-coded at 1 for now; at least one interface needs to work
+	successCount uint = 1
+	// Timeout when we check whether deferred messages should be retried
+	sendTimeoutInSecs uint32 = 15
 )
 
 var (
@@ -55,6 +61,7 @@ var (
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
+	iteration             int // To try different interfaces over time
 	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
@@ -336,7 +343,8 @@ func Run(ps *pubsub.PubSub) {
 				warningTime, errorTime)
 
 		case change := <-deferredChan:
-			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			iteration++
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
 			if err != nil {
 				log.Errorf("logmanager(Run): log message processing still in "+
 					"deferred state. err: %s", err)
@@ -506,7 +514,8 @@ func processEvents(image string, logChan <-chan logEntry,
 					image)
 				continue
 			}
-			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			iteration++
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
 			if err != nil {
 				log.Warnf("processEvents:(%s) log message processing still"+
 					" in deferred state", image)
@@ -681,7 +690,6 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 }
 
 var msgIDCounter = 1
-var iteration = 0
 
 // returns false when app log event is dropped
 func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool {

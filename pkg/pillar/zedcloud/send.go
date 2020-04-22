@@ -148,9 +148,9 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 //      If an intf is success, Error == "" Else - Set to appropriate Error
 //      ErrorTime will always be set for the interface.
 func VerifyAllIntf(ctx *ZedCloudContext,
-	url string, successCount int,
+	url string, successCount uint,
 	iteration int) (bool, bool, types.IntfStatusMap, error) {
-	var intfSuccessCount int = 0
+	var intfSuccessCount uint
 	const allowProxy = true
 	var errorList []error
 
@@ -222,7 +222,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		log.Errorln(errStr)
 		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
 	}
-	log.Debugf("VerifyAllIntf: Verifiy done. intfStatusMap: %+v", intfStatusMap)
+	log.Debugf("VerifyAllIntf: Verify done. intfStatusMap: %+v", intfStatusMap)
 	return true, remoteTemporaryFailure, intfStatusMap, nil
 }
 
