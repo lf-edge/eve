@@ -456,6 +456,8 @@ func handleCreate(ctxArg interface{}, key string,
 		RestartCmd:          config.RestartCmd,
 		PurgeCmd:            config.PurgeCmd,
 	}
+	types.InitLogObject(&status.LogObject, types.AppInstanceLogType,
+		status.DisplayName, status.UUIDandVersion.UUID)
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	c, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum,

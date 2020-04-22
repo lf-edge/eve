@@ -827,7 +827,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 		}
 	}
-	log.Infof("doActivate done for %s", uuidStr)
+	log.Infof("doActivate done for %s\n", uuidStr)
+	if status.State == types.RUNNING && status.Activated == true {
+		status.LogState()
+	}
 	return changed
 }
 

@@ -123,6 +123,8 @@ type AppInstanceStatus struct {
 	// Container related state
 	IsContainer bool
 
+	LogObject
+
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State          SwState
@@ -130,6 +132,12 @@ type AppInstanceStatus struct {
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
+}
+
+// LogState : Log the current state of app instance
+func (status *AppInstanceStatus) LogState() {
+	status.AddField("sw_state", status.State)
+	status.Info("App instance status changed")
 }
 
 // Track more complicated workflows
