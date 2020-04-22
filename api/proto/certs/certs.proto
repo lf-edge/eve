@@ -3,6 +3,8 @@
 
 syntax = "proto3";
 
+import "common/common.proto";
+
 option go_package  = "github.com/lf-edge/eve/api/go/certs";
 option java_package = "com.zededa.cloud.uservice.proto";
 
@@ -14,17 +16,8 @@ message ZControllerCert {
   repeated ZCert certs = 1;  //list of certificates sent by controller
 }
 
-//This is same as hashAlgorithm in auth/auth.proto
-//Keep these two in sync
-//XXX: import auth/auth.proto and avoid this duplication
-enum certHashAlgorithm {
-  HASH_NONE = 0;
-  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
-  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
-}
-
 message ZCert {
-  certHashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
+  common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
   bytes certHash = 2;             //truncated hash of the cert, according to hashing scheme in hashAlgo
   ZCertType type = 3;             //what kind of certificate(to identify the target use case)
   bytes cert = 4;                 //X509 cert in .PEM format

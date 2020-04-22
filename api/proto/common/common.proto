@@ -1,0 +1,17 @@
+// Copyright(c) 2017-2020 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+package common;
+
+option go_package  = "github.com/lf-edge/eve/api/go/common";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+//This is same as certHashAlgorithm in certs/certs.proto
+//Keep these two definitions in sync
+enum hashAlgorithm {
+  HASH_NONE = 0;
+  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
+  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
+}

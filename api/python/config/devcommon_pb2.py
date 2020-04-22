@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x16\x63onfig/devcommon.proto\x1a\x1b\x63ommon/devmodelcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"(\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"1\n\x07\x41\x64\x61pter\x12\x18\n\x04type\x18\x01 \x01(\x0e\x32\n.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x16\x63onfig/devcommon.proto\x1a\x1b\x63ommon/devmodelcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"(\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"8\n\x07\x41\x64\x61pter\x12\x1f\n\x04type\x18\x01 \x01(\x0e\x32\x11.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[common_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
@@ -182,7 +182,7 @@ _ADAPTER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=218,
-  serialized_end=267,
+  serialized_end=274,
 )
 
 _ADAPTER.fields_by_name['type'].enum_type = common_dot_devmodelcommon__pb2._PHYIOTYPE

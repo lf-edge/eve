@@ -3,6 +3,8 @@
 
 syntax = "proto3";
 
+import "common/common.proto";
+
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
@@ -20,19 +22,13 @@ enum EncryptionScheme {
   SA_AES_256_CFB = 1;
 }
 
-enum cipherHashAlgorithm {
-  HASH_NONE = 0;
-  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
-  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
-}
-
 // Cipher information to decrypt Sensitive Data
 message CipherContext {
   // cipher context id, key to this structure
   string contextId = 1;
 
   // algorithm used to compute hash for certificates
-  cipherHashAlgorithm hashScheme = 2;
+  common.HashAlgorithm hashScheme = 2;
 
   // for key exchange scheme, like ECDH etc.
   KeyExchangeScheme keyExchangeScheme = 3;

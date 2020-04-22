@@ -20,6 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/auth'),
+<<<<<<< HEAD
   serialized_pb=_b('\n\x0f\x61uth/auth.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"\x90\x01\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x1c\n\x04\x61lgo\x18\x02 \x01(\x0e\x32\x0e.hashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c\x12\x12\n\nsenderCert\x18\x05 \x01(\x0c*P\n\rhashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
 )
 
@@ -48,6 +49,11 @@ _HASHALGORITHM = _descriptor.EnumDescriptor(
   serialized_end=275,
 )
 _sym_db.RegisterEnumDescriptor(_HASHALGORITHM)
+=======
+  serialized_pb=_b('\n\x0f\x61uth/auth.proto\x1a\x13\x63ommon/common.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"\x97\x01\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12#\n\x04\x61lgo\x18\x02 \x01(\x0e\x32\x15.common.HashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c\x12\x12\n\nsenderCert\x18\x05 \x01(\x0c\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
+  ,
+  dependencies=[common_dot_common__pb2.DESCRIPTOR,])
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 
 hashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_HASHALGORITHM)
 HASH_NONE = 0
@@ -141,8 +147,13 @@ _AUTHCONTAINER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
+<<<<<<< HEAD
   serialized_start=49,
   serialized_end=193,
+=======
+  serialized_start=70,
+  serialized_end=221,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
 _AUTHCONTAINER.fields_by_name['authPayload'].message_type = _AUTHBODY
