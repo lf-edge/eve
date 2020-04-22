@@ -18,18 +18,20 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	zauth "github.com/lf-edge/eve/api/go/auth"
-	zcert "github.com/lf-edge/eve/api/go/certs"
-	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"math/big"
 	"mime"
 	"net/http"
 	"os"
+
+	"github.com/golang/protobuf/proto"
+	zauth "github.com/lf-edge/eve/api/go/auth"
+	zcert "github.com/lf-edge/eve/api/go/certs"
+	zcommon "github.com/lf-edge/eve/api/go/common"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -66,14 +68,14 @@ func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]by
 		}
 
 		switch sm.Algo {
-		case zauth.HashAlgorithm_HASH_SHA256_32bytes:
+		case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
 			if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 32bytes does not match in authen")
 				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
 					len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()), ctx.serverSigningCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
-		case zauth.HashAlgorithm_HASH_SHA256_16bytes:
+		case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
 			if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash[:hashSha256Len16]) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 16bytes does not match in authen")
 				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
@@ -203,7 +205,7 @@ func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (
 		return nil, err
 	}
 	sm.SignatureHash = sig
-	sm.Algo = zauth.HashAlgorithm_HASH_SHA256_32bytes
+	sm.Algo = zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES
 
 	data2, err := proto.Marshal(&sm)
 	if err != nil {
