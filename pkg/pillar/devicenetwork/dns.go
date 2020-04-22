@@ -18,14 +18,14 @@ import (
 // GetDhcpInfo gets info from dhcpcd. Updates Gateway and Subnet
 // XXX set NtpServer once we know what name it has
 // XXX add IPv6 support?
-func GetDhcpInfo(us *types.NetworkPortStatus) error {
+func GetDhcpInfo(us *types.NetworkPortStatus) {
 
 	log.Infof("GetDhcpInfo(%s)\n", us.IfName)
 	if us.Dhcp != types.DT_CLIENT {
-		return nil
+		return
 	}
 	if strings.HasPrefix(us.IfName, "wwan") {
-		return nil
+		return
 	}
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
@@ -36,7 +36,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)
 		log.Errorln(errStr)
-		return nil
+		return
 	}
 	log.Debugf("dhcpcd -U got %v\n", string(stdoutStderr))
 	lines := strings.Split(string(stdoutStderr), "\n")
@@ -82,7 +82,6 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 		}
 	}
 	us.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
-	return nil
 }
 
 // GetDNSInfo gets DNS info from /run files. Updates DomainName and DnsServers

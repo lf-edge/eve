@@ -239,12 +239,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr
 		}
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
-		err = GetDhcpInfo(&globalStatus.Ports[ix])
-		if err != nil {
-			errStr := fmt.Sprintf("GetDhcpInfo failed %s", err)
-			globalStatus.Ports[ix].Error = errStr
-			globalStatus.Ports[ix].ErrorTime = time.Now()
-		}
+		GetDhcpInfo(&globalStatus.Ports[ix])
 		GetDNSInfo(&globalStatus.Ports[ix])
 
 		// Attempt to get a wpad.dat file if so configured
@@ -255,6 +250,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			&globalStatus.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
+			// Clobbers ErrorAndTime from above
 			globalStatus.Ports[ix].Error = errStr
 			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
