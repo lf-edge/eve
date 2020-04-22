@@ -28,7 +28,7 @@ func createDownloadDirs(objTypes []string) {
 		for _, dirType := range workingDirTypes {
 			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
-				log.Debugf("Create %s\n", dirName)
+				log.Debugf("Create %s", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
 					log.Fatal(err)
 				}

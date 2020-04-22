@@ -12,10 +12,10 @@ func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*downloaderContext)
 	config := configArg.(types.GlobalDownloadConfig)
 	if key != "global" {
-		log.Errorf("handleGlobalDownloadConfigModify: unexpected key %s\n", key)
+		log.Errorf("handleGlobalDownloadConfigModify: unexpected key %s", key)
 		return
 	}
-	log.Infof("handleGlobalDownloadConfigModify for %s\n", key)
+	log.Infof("handleGlobalDownloadConfigModify for %s", key)
 	ctx.globalConfig = config
-	log.Infof("handleGlobalDownloadConfigModify done for %s\n", key)
+	log.Infof("handleGlobalDownloadConfigModify done for %s", key)
 }

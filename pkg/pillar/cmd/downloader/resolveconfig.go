@@ -18,9 +18,9 @@ func handleAppImgResolveModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*downloaderContext)
 	config := configArg.(types.ResolveConfig)
-	log.Infof("handleAppImgResolveModify for %s\n", key)
+	log.Infof("handleAppImgResolveModify for %s", key)
 	resolveTagsToHash(ctx, config)
-	log.Infof("handleAppImgResolveModify for %s, done\n", key)
+	log.Infof("handleAppImgResolveModify for %s, done", key)
 }
 
 func handleAppImgResolveDelete(ctxArg interface{}, key string,
@@ -28,27 +28,27 @@ func handleAppImgResolveDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*downloaderContext)
 	config := configArg.(types.ResolveConfig)
 	ctx.pubAppImgResolveStatus.Unpublish(config.Key())
-	log.Infof("handleAppImgResolveDelete for %s\n", key)
+	log.Infof("handleAppImgResolveDelete for %s", key)
 }
 
 func publishResolveStatus(ctx *downloaderContext,
 	status *types.ResolveStatus) {
 
 	key := status.Key()
-	log.Debugf("publishResolveStatus(%s)\n", key)
+	log.Debugf("publishResolveStatus(%s)", key)
 	pub := ctx.pubAppImgResolveStatus
 	pub.Publish(key, *status)
-	log.Debugf("publishResolveStatus(%s) Done\n", key)
+	log.Debugf("publishResolveStatus(%s) Done", key)
 }
 
 func unpublishResolveStatus(ctx *downloaderContext,
 	status *types.ResolveStatus) {
 
 	key := status.Key()
-	log.Debugf("unpublishResolveStatus(%s)\n", key)
+	log.Debugf("unpublishResolveStatus(%s)", key)
 	pub := ctx.pubAppImgResolveStatus
 	pub.Unpublish(key)
-	log.Debugf("unpublishResolveStatus(%s) Done\n", key)
+	log.Debugf("unpublishResolveStatus(%s) Done", key)
 }
 
 func lookupResolveConfig(ctx *downloaderContext,
@@ -57,7 +57,7 @@ func lookupResolveConfig(ctx *downloaderContext,
 	sub := ctx.subAppImgResolveConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveConfig(%s) not found\n", key)
+		log.Infof("lookupResolveConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.ResolveConfig)
@@ -70,7 +70,7 @@ func lookupResolveStatus(ctx *downloaderContext,
 	pub := ctx.pubAppImgResolveStatus
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveStatus(%s) not found\n", key)
+		log.Infof("lookupResolveStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.ResolveStatus)
@@ -118,17 +118,17 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		return
 	}
 
-	log.Infof("Resolving config <%s> using %v allow non-free port\n",
+	log.Infof("Resolving config <%s> using %v allow non-free port",
 		rc.Name, rc.AllowNonFreePort)
 
 	var addrCount int
 	if !rc.AllowNonFreePort {
 		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Infof("Have %d free management port addresses\n", addrCount)
+		log.Infof("Have %d free management port addresses", addrCount)
 		err = errors.New("No free IP management port addresses for download")
 	} else {
 		addrCount = types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Infof("Have %d any management port addresses\n", addrCount)
+		log.Infof("Have %d any management port addresses", addrCount)
 		err = errors.New("No IP management port addresses for download")
 	}
 	if addrCount == 0 {
@@ -160,7 +160,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	// ideally in go we would have this as a check for error
 	// and return, but we will get to it later
 	if errStr != "" {
-		log.Errorf("Error preparing to download. All errors:%s\n", errStr)
+		log.Errorf("Error preparing to download. All errors:%s", errStr)
 		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
@@ -178,12 +178,12 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 				addrIndex, "")
 		}
 		if err != nil {
-			log.Errorf("GetLocalAddr failed: %s\n", err)
+			log.Errorf("GetLocalAddr failed: %s", err)
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
 		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
-		log.Infof("Using IP source %v if %s transport %v\n",
+		log.Infof("Using IP source %v if %s transport %v",
 			ipSrc, ifname, dsCtx.TransportMethod)
 
 		sha256, err := objectMetadata(ctx, trType, syncOp, serverURL, auth,
@@ -198,7 +198,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		return
 
 	}
-	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)
+	log.Errorf("All source IP addresses failed. All errors:%s", errStr)
 	rs.SetErrorNow(errStr)
 	publishResolveStatus(ctx, rs)
 }
