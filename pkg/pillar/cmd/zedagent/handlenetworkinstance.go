@@ -829,20 +829,20 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
 func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 
-	flowQ.PushBack(*protoflows)
+	flowQ.PushBack(protoflows)
 
 	for flowQ.Len() > 0 {
 		ent := flowQ.Front()
-		pflows := ent.Value.(flowlog.FlowMessage)
+		pflowsPtr := ent.Value.(*flowlog.FlowMessage)
 
-		data, err := proto.Marshal(&pflows)
+		data, err := proto.Marshal(pflowsPtr)
 		if err != nil {
 			log.Errorf("FlowStats: SendFlowProtobuf proto marshaling error %v", err) // XXX change to fatal
 		}
 
 		flowIteration++
 		buf := bytes.NewBuffer(data)
-		size := int64(proto.Size(&pflows))
+		size := int64(proto.Size(pflowsPtr))
 		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "flowlog")
 		const return400 = false
 		_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, flowlogURL,

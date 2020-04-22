@@ -1938,8 +1938,8 @@ func parseOpCmds(config *zconfig.EdgeDevConfig,
 	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
-func readRebootConfig() zconfig.DeviceOpsCmd {
-	rebootConfig := zconfig.DeviceOpsCmd{}
+func readRebootConfig() types.DeviceOpsCmd {
+	rebootConfig := types.DeviceOpsCmd{}
 
 	log.Debugf("readRebootConfigCounter - reading %s\n", rebootConfigFilename)
 
@@ -1960,7 +1960,7 @@ func readRebootConfig() zconfig.DeviceOpsCmd {
 	return rebootConfig
 }
 
-func saveRebootConfig(reboot zconfig.DeviceOpsCmd) {
+func saveRebootConfig(reboot types.DeviceOpsCmd) {
 	log.Infof("saveRebootConfig - reboot.Counter: %d", reboot.Counter)
 	bytes, err := json.Marshal(reboot)
 	if err != nil {
@@ -2003,7 +2003,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		log.Infof("scheduleReboot: old %d new %d\n",
 			rebootConfig.Counter, reboot.Counter)
 		// store current config, persistently
-		saveRebootConfig(*reboot)
+		rebootCmd := types.DeviceOpsCmd{
+			Counter:      reboot.Counter,
+			DesiredState: reboot.DesiredState,
+			OpsTime:      reboot.OpsTime,
+		}
+		saveRebootConfig(rebootCmd)
 		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
 
 		// if device reboot is set, ignore op-command

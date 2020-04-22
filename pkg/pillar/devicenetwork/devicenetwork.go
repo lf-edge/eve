@@ -16,7 +16,6 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -399,7 +398,7 @@ func devPortInstallWifiConfig(ctx *DeviceNetworkContext,
 }
 
 func getWifiCredential(ctx *DeviceNetworkContext,
-	wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
+	wifi types.WifiConfig) (types.EncryptionBlock, error) {
 	if wifi.CipherBlockStatus.IsCipher {
 		status, decBlock, err := utils.GetCipherCredentials("devicenetwork",
 			wifi.CipherBlockStatus)
@@ -415,7 +414,7 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 		return decBlock, nil
 	}
 	log.Infof("%s, wifi config cipherblock not present\n", wifi.SSID)
-	decBlock := zconfig.EncryptionBlock{}
+	decBlock := types.EncryptionBlock{}
 	decBlock.WifiUserName = wifi.Identity
 	decBlock.WifiPassword = wifi.Password
 	return decBlock, nil

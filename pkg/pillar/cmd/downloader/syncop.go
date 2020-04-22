@@ -326,7 +326,7 @@ func sourceFailureError(ip, ifname, url string, err error) {
 }
 
 func getDatastoreCredential(ctx *downloaderContext,
-	dst types.DatastoreConfig) (zconfig.EncryptionBlock, error) {
+	dst types.DatastoreConfig) (types.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
 		status, decBlock, err := utils.GetCipherCredentials(agentName,
 			dst.CipherBlockStatus)
@@ -342,7 +342,7 @@ func getDatastoreCredential(ctx *downloaderContext,
 		return decBlock, nil
 	}
 	log.Infof("%s, datastore config cipherblock not present", dst.Key())
-	decBlock := zconfig.EncryptionBlock{}
+	decBlock := types.EncryptionBlock{}
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password
 	return decBlock, nil
