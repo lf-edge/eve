@@ -22,8 +22,8 @@ require (
 	github.com/go-logfmt/logfmt v0.4.0 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/gogo/googleapis v1.3.2 // indirect
-	github.com/golang/protobuf v1.3.2
-	github.com/google/go-cmp v0.3.0
+	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
+	github.com/google/go-cmp v0.4.0
 	github.com/google/go-containerregistry v0.0.0-20200123184029-53ce695e4179
 	github.com/google/go-tpm v0.1.1
 	github.com/google/gopacket v1.1.17
@@ -40,7 +40,6 @@ require (
 	github.com/opencontainers/runtime-spec v1.0.1
 	github.com/packetcap/go-pcap v0.0.0-20200406093224-b4b47c1ea359
 	github.com/pkg/sftp v1.10.0
-	github.com/prometheus/procfs v0.0.5
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d // indirect
 	github.com/satori/go.uuid v1.2.0
@@ -55,6 +54,7 @@ require (
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
 	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d // indirect
+	google.golang.org/protobuf v1.21.0 // indirect
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
