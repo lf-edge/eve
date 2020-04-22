@@ -6,12 +6,12 @@ syntax = "proto3";
 package common;
 
 option go_package  = "github.com/lf-edge/eve/api/go/common";
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "com.zededa.cloud.uservice.proto.common";
+option java_multiple_files = true;
+option java_outer_classname = "Common";
 
-//This is same as certHashAlgorithm in certs/certs.proto
-//Keep these two definitions in sync
-enum hashAlgorithm {
-  HASH_NONE = 0;
-  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
-  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
+enum HashAlgorithm {
+  HASH_ALGORITHM_INVALID = 0;
+  HASH_ALGORITHM_SHA256_16BYTES = 1; // hash with sha256, the 1st 16 bytes of result
+  HASH_ALGORITHM_SHA256_32BYTES = 2; // hash with sha256, the whole 32 bytes of result
 }

@@ -4,6 +4,7 @@
 package types
 
 import (
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 )
 
@@ -12,7 +13,7 @@ import (
 // part of EdgeDevConfig block, received from controller
 type CipherContext struct {
 	ContextID          string
-	HashScheme         zconfig.CipherHashAlgorithm
+	HashScheme         zcommon.HashAlgorithm
 	KeyExchangeScheme  zconfig.KeyExchangeScheme
 	EncryptionScheme   zconfig.EncryptionScheme
 	ControllerCertHash []byte
