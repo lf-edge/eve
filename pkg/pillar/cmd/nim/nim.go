@@ -100,7 +100,7 @@ func Run(ps *pubsub.PubSub) {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s\n", agentName)
+	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -389,7 +389,7 @@ func Run(ps *pubsub.PubSub) {
 		case change, ok := <-addrChanges:
 			start := time.Now()
 			if !ok {
-				log.Errorf("addrChanges closed\n")
+				log.Errorf("addrChanges closed")
 				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
@@ -405,7 +405,7 @@ func Run(ps *pubsub.PubSub) {
 		case change, ok := <-linkChanges:
 			start := time.Now()
 			if !ok {
-				log.Errorf("linkChanges closed\n")
+				log.Errorf("linkChanges closed")
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
@@ -422,7 +422,7 @@ func Run(ps *pubsub.PubSub) {
 		case change, ok := <-routeChanges:
 			start := time.Now()
 			if !ok {
-				log.Errorf("routeChanges closed\n")
+				log.Errorf("routeChanges closed")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
 				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
@@ -530,7 +530,7 @@ func Run(ps *pubsub.PubSub) {
 		case change, ok := <-addrChanges:
 			start := time.Now()
 			if !ok {
-				log.Errorf("addrChanges closed\n")
+				log.Errorf("addrChanges closed")
 				addrChanges = devicenetwork.AddrChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
@@ -546,7 +546,7 @@ func Run(ps *pubsub.PubSub) {
 		case change, ok := <-linkChanges:
 			start := time.Now()
 			if !ok {
-				log.Errorf("linkChanges closed\n")
+				log.Errorf("linkChanges closed")
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
@@ -563,7 +563,7 @@ func Run(ps *pubsub.PubSub) {
 		case change, ok := <-routeChanges:
 			start := time.Now()
 			if !ok {
-				log.Errorf("routeChanges closed\n")
+				log.Errorf("routeChanges closed")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
 				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
@@ -650,14 +650,14 @@ func handleLinkChange(ctx *nimContext) {
 		}
 		changed = true
 		if !ok {
-			log.Infof("fallbackPortMap added %s %t\n", ifname, upFlag)
+			log.Infof("fallbackPortMap added %s %t", ifname, upFlag)
 		} else {
-			log.Infof("fallbackPortMap updated %s to %t\n", ifname, upFlag)
+			log.Infof("fallbackPortMap updated %s to %t", ifname, upFlag)
 		}
 		ctx.fallbackPortMap[ifname] = upFlag
 	}
 	if changed {
-		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
+		log.Infof("new fallbackPortmap: %+v", ctx.fallbackPortMap)
 		updateFilteredFallback(ctx)
 	}
 }
@@ -723,7 +723,7 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 
 func updateFilteredFallback(ctx *nimContext) {
 	ctx.filteredFallback = filterIfMap(ctx, ctx.fallbackPortMap)
-	log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
+	log.Infof("new filteredFallback: %+v", ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		updateFallbackAnyEth(ctx)
 	}
@@ -777,7 +777,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 }
 
 func publishDeviceNetworkStatus(ctx *nimContext) {
-	log.Infof("PublishDeviceNetworkStatus: %+v\n",
+	log.Infof("PublishDeviceNetworkStatus: %+v",
 		ctx.DeviceNetworkStatus)
 	devicenetwork.UpdateResolvConf(*ctx.DeviceNetworkStatus)
 	devicenetwork.UpdatePBR(*ctx.DeviceNetworkStatus)
@@ -791,10 +791,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*nimContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
@@ -844,7 +844,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		dnc.TestSendTimeout = ctx.globalConfig.GlobalValueInt(types.NetworkTestTimeout)
 	}
 	ctx.GCInitialized = true
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -852,21 +852,21 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*nimContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
 // In case there is no GlobalConfig.json this will move us forward
 func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*nimContext)
 
-	log.Infof("handleGlobalConfigSynchronized(%v)\n", done)
+	log.Infof("handleGlobalConfigSynchronized(%v)", done)
 	if done {
 		first := !ctx.GCInitialized
 		if first {
@@ -879,21 +879,21 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 // Handles both create and modify events
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	log.Infof("handleNetworkInstanceStatusModify(%s)\n", key)
+	log.Infof("handleNetworkInstanceStatusModify(%s)", key)
 	ctx := ctxArg.(*nimContext)
 	// Hard to check if any switch NI was added, deleted, or changed
 	updateFilteredFallback(ctx)
-	log.Infof("handleNetworkInstanceModify(%s) done\n", key)
+	log.Infof("handleNetworkInstanceModify(%s) done", key)
 }
 
 func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleNetworkInstanceDelete(%s)\n", key)
+	log.Infof("handleNetworkInstanceDelete(%s)", key)
 	ctx := ctxArg.(*nimContext)
 	// Hard to check if any switch NI was added, deleted, or changed
 	updateFilteredFallback(ctx)
-	log.Infof("handleNetworkInstanceDelete(%s) done\n", key)
+	log.Infof("handleNetworkInstanceDelete(%s) done", key)
 }
 
 func fileExists(filename string) bool {
@@ -902,7 +902,7 @@ func fileExists(filename string) bool {
 }
 
 func updateFallbackAnyEth(ctx *nimContext) {
-	log.Debugf("updateFallbackAnyEth: enable %v ifs %v\n",
+	log.Debugf("updateFallbackAnyEth: enable %v ifs %v",
 		ctx.networkFallbackAnyEth, ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		ports := mapToKeys(ctx.filteredFallback)
@@ -935,7 +935,7 @@ func mapToKeys(m map[string]bool) []string {
 // Exclude those in AssignableAdapters with usedByUUID!=0
 // Exclude those in NetworkInstanceStatus Type=switch
 func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
-	log.Debugf("filterIfMap: len %d\n", len(fallbackPortMap))
+	log.Debugf("filterIfMap: len %d", len(fallbackPortMap))
 
 	filteredFallback := make(map[string]bool, len(fallbackPortMap))
 	for ifname, upFlag := range fallbackPortMap {
@@ -956,13 +956,13 @@ var nilUUID uuid.UUID
 // Check in AssignableAdapters with usedByUUID!=0
 func isAssigned(ctx *nimContext, ifname string) bool {
 
-	log.Debugf("isAssigned(%s) have %d bundles\n",
+	log.Debugf("isAssigned(%s) have %d bundles",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
 	ib := ctx.AssignableAdapters.LookupIoBundleIfName(ifname)
 	if ib == nil {
 		return false
 	}
-	log.Debugf("isAssigned(%s): pciback %t used %s\n",
+	log.Debugf("isAssigned(%s): pciback %t used %s",
 		ifname, ib.IsPCIBack, ib.UsedByUUID.String())
 
 	if ib.UsedByUUID != nilUUID {
@@ -977,7 +977,7 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 
 	sub := ctx.subNetworkInstanceStatus
 	items := sub.GetAll()
-	log.Debugf("isSwitch(%s) have %d items\n", ifname, len(items))
+	log.Debugf("isSwitch(%s) have %d items", ifname, len(items))
 
 	foundExcl := false
 	for _, st := range items {
@@ -986,13 +986,13 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 		if !status.IsUsingIfName(ifname) {
 			continue
 		}
-		log.Debugf("isSwitch(%s) found use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found use in %s/%s",
 			ifname, status.DisplayName, status.Key())
 		if status.Type != types.NetworkInstanceTypeSwitch {
 			continue
 		}
 		foundExcl = true
-		log.Debugf("isSwitch(%s) found excl use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found excl use in %s/%s",
 			ifname, status.DisplayName, status.Key())
 	}
 	return foundExcl
