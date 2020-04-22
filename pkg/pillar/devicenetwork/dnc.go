@@ -61,6 +61,7 @@ type DeviceNetworkContext struct {
 	NetworkTestBetterTimer *time.Timer
 	NextDPCIndex           int
 	CloudConnectivityWorks bool
+	Iteration              int // Start with different interfaces each time
 
 	// Timers in seconds
 	DPCTestDuration           uint32 // Wait for DHCP address
@@ -252,7 +253,11 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	pending.PendDNS = pend2
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
+	// Hard-coded at 1 for now; at least one interface needs to work
+	const successCount uint = 1
+	ctx.Iteration++
+	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(pending.PendDNS,
+		successCount, ctx.Iteration, timeout)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.

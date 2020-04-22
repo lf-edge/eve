@@ -76,8 +76,8 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 }
 
 // VerifyDeviceNetworkStatus
-//  Check if device can talk to outside world via atleast one of the
-//  free uplinks
+//  Check if device can talk to outside world via atleast 'successCount' of the
+//  uplinks
 // Return Values:
 //  Success / Failure
 //  error - Overall Error
@@ -87,9 +87,10 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
-	retryCount int, timeout uint32) (bool, types.IntfStatusMap, error) {
+	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
-	log.Debugf("VerifyDeviceNetworkStatus() %d\n", retryCount)
+	log.Debugf("VerifyDeviceNetworkStatus() successCount %d, iteration %d",
+		successCount, iteration)
 
 	// Map of per-interface errors
 	intfStatusMap := *types.NewIntfStatusMap()
@@ -156,7 +157,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		}
 	}
 	cloudReachable, rtf, tempIntfStatusMap, err := zedcloud.VerifyAllIntf(
-		&zedcloudCtx, testURL, retryCount, 1)
+		&zedcloudCtx, testURL, successCount, iteration)
 	intfStatusMap.SetOrUpdateFromMap(tempIntfStatusMap)
 	log.Debugf("VerifyDeviceNetworkStatus: intfStatusMap - %+v", intfStatusMap)
 	if err != nil {

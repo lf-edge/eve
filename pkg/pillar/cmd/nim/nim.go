@@ -729,9 +729,18 @@ func updateFilteredFallback(ctx *nimContext) {
 	}
 }
 
+// Hard-coded at 1 for now; at least one interface needs to work
+const successCount uint = 1
+
+// Verify that at least one of the management interfaces work.
+// Start with a different one (based on Iteration) to make sure that we try
+// all over time.
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
+	// Start with a different port to cycle through them all over time
+	ctx.Iteration++
 	rtf, intfStatusMap, err := devicenetwork.VerifyDeviceNetworkStatus(
-		*ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
+		*ctx.DeviceNetworkStatus, successCount, ctx.Iteration,
+		ctx.TestSendTimeout)
 	ctx.DevicePortConfig.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	// Use TestResults to update the DevicePortConfigList and publish
 	// Note that the TestResults will at least have an updated timestamp
