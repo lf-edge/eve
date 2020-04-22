@@ -8,7 +8,6 @@ package types
 
 import (
 	zcommon "github.com/lf-edge/eve/api/go/common"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 )
 
 // PhysicalAddress - Structure that represents various attributes related
@@ -24,8 +23,20 @@ type PhysicalAddress struct {
 }
 
 // PhyIOUsagePolicy - Usage policy for the Adapter
+// This is constructed from api/proto/config/devmodel.proto PhyIOUsagePolicy
+// Keep the two structures consistent
 type PhyIOUsagePolicy struct {
 	FreeUplink bool
+	// FallBackPriority
+	//  0 is the highest priority.
+	//  Lower priority interfaces are used only when NONE of the higher
+	//  priority interfaces are up.
+	//  For example:
+	//      First use all interfaces with priority 0
+	//      if no priority 0 interfaces, use interfaces with priority 1
+	//      if no priority 1 interfaces, use interfaces with priority 2
+	//      and so on..
+	FallBackPriority uint32
 }
 
 // PhysicalIOAdapter - Object used to store Adapter configuration (L1)
@@ -37,7 +48,7 @@ type PhysicalIOAdapter struct {
 	Logicallabel string
 	Assigngrp    string
 	Usage        zcommon.PhyIoMemberUsage
-	UsagePolicy  zconfig.PhyIOUsagePolicy
+	UsagePolicy  PhyIOUsagePolicy
 	// FIXME: cbattr - This needs to be thought through to be made into
 	//  a structure OR may be even various attributes in PhysicalIO structure
 	// itself.

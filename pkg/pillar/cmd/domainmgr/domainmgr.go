@@ -1735,7 +1735,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 // getCloudInitUserData : returns decrypted cloud-init user data
 func getCloudInitUserData(ctx *domainContext,
-	dc types.DomainConfig) (zconfig.EncryptionBlock, error) {
+	dc types.DomainConfig) (types.EncryptionBlock, error) {
 	if dc.CipherBlockStatus.IsCipher {
 		status, decBlock, err := utils.GetCipherCredentials(agentName,
 			dc.CipherBlockStatus)
@@ -1750,7 +1750,7 @@ func getCloudInitUserData(ctx *domainContext,
 		return decBlock, nil
 	}
 	log.Infof("%s, domain config cipherblock not present", dc.Key())
-	decBlock := zconfig.EncryptionBlock{}
+	decBlock := types.EncryptionBlock{}
 	decBlock.ProtectedUserData = *dc.CloudInitUserData
 	return decBlock, nil
 }

@@ -280,3 +280,10 @@ type ZedAgentStatus struct {
 func (status ZedAgentStatus) Key() string {
 	return status.Name
 }
+
+// DeviceOpsCmd - copy of zconfig.DeviceOpsCmd
+type DeviceOpsCmd struct {
+	Counter      uint32
+	DesiredState bool
+	OpsTime      string
+}
