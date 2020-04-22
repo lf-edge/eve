@@ -20,6 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certs'),
+<<<<<<< HEAD
   serialized_pb=_b('\n\x11\x63\x65rts/certs.proto\"(\n\x0fZControllerCert\x12\x15\n\x05\x63\x65rts\x18\x01 \x03(\x0b\x32\x06.ZCert\"g\n\x05ZCert\x12$\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x12.certHashAlgorithm\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x18\n\x04type\x18\x03 \x01(\x0e\x32\n.ZCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c*T\n\x11\x63\x65rtHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02*\x9b\x01\n\tZCertType\x12\x1d\n\x19\x43\x45RT_TYPE_CONTROLLER_NONE\x10\x00\x12 \n\x1c\x43\x45RT_TYPE_CONTROLLER_SIGNING\x10\x01\x12%\n!CERT_TYPE_CONTROLLER_INTERMEDIATE\x10\x02\x12&\n\"CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x03\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
 )
 
@@ -48,6 +49,11 @@ _CERTHASHALGORITHM = _descriptor.EnumDescriptor(
   serialized_end=252,
 )
 _sym_db.RegisterEnumDescriptor(_CERTHASHALGORITHM)
+=======
+  serialized_pb=_b('\n\x11\x63\x65rts/certs.proto\x1a\x13\x63ommon/common.proto\"(\n\x0fZControllerCert\x12\x15\n\x05\x63\x65rts\x18\x01 \x03(\x0b\x32\x06.ZCert\"j\n\x05ZCert\x12\'\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x15.common.HashAlgorithm\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x18\n\x04type\x18\x03 \x01(\x0e\x32\n.ZCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c*\x9b\x01\n\tZCertType\x12\x1d\n\x19\x43\x45RT_TYPE_CONTROLLER_NONE\x10\x00\x12 \n\x1c\x43\x45RT_TYPE_CONTROLLER_SIGNING\x10\x01\x12%\n!CERT_TYPE_CONTROLLER_INTERMEDIATE\x10\x02\x12&\n\"CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x03\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
+  ,
+  dependencies=[common_dot_common__pb2.DESCRIPTOR,])
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 
 certHashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_CERTHASHALGORITHM)
 _ZCERTTYPE = _descriptor.EnumDescriptor(
@@ -75,8 +81,13 @@ _ZCERTTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
+<<<<<<< HEAD
   serialized_start=255,
   serialized_end=410,
+=======
+  serialized_start=193,
+  serialized_end=348,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_ZCERTTYPE)
 
@@ -169,8 +180,13 @@ _ZCERT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
+<<<<<<< HEAD
   serialized_start=63,
   serialized_end=166,
+=======
+  serialized_start=84,
+  serialized_end=190,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
 _ZCONTROLLERCERT.fields_by_name['certs'].message_type = _ZCERT

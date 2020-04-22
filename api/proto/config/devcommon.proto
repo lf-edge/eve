@@ -45,6 +45,6 @@ message ConfigItem {
 
 // Adapter bundles corresponding to a subset of what is in ZioBundle
 message Adapter {
-  PhyIoType type = 1;
+  common.PhyIoType type = 1;
   string name = 2;	// Short hand name such as "com" from bundle
 }

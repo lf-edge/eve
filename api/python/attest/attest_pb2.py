@@ -20,8 +20,14 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/attest'),
+<<<<<<< HEAD
   serialized_pb=_b('\n\x13\x61ttest/attest.proto\"f\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x18\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\t.ZEveCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode\"\x8f\x01\n\x08ZEveCert\x12#\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x11.ZEveCertHashType\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x1b\n\x04type\x18\x03 \x01(\x0e\x32\r.ZEveCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c\x12!\n\nattributes\x18\x05 \x01(\x0b\x32\r.ZEveCertAttr\"!\n\x0cZEveCertAttr\x12\x11\n\tisMutable\x18\x01 \x01(\x08*f\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03*p\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03*i\n\x13ZAttestResponseCode\x12\x18\n\x14\x41TTEST_RESPONSE_NONE\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x01\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x02*:\n\x10ZEveCertHashType\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01*\xbd\x01\n\x0cZEveCertType\x12\x19\n\x15\x43\x45RT_TYPE_DEVICE_NONE\x10\x00\x12\x1f\n\x1b\x43\x45RT_TYPE_DEVICE_ONBOARDING\x10\x01\x12\'\n#CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x02\x12$\n CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x03\x12\"\n\x1e\x43\x45RT_TYPE_DEVICE_ECDH_EXCHANGE\x10\x04\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
 )
+=======
+  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x1a\x13\x63ommon/common.proto\"f\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x18\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\t.ZEveCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode\"\x93\x01\n\x08ZEveCert\x12\'\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x15.common.HashAlgorithm\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x1b\n\x04type\x18\x03 \x01(\x0e\x32\r.ZEveCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c\x12!\n\nattributes\x18\x05 \x01(\x0b\x32\r.ZEveCertAttr\"!\n\x0cZEveCertAttr\x12\x11\n\tisMutable\x18\x01 \x01(\x08*f\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03*p\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03*i\n\x13ZAttestResponseCode\x12\x18\n\x14\x41TTEST_RESPONSE_NONE\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x01\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x02*\xbd\x01\n\x0cZEveCertType\x12\x19\n\x15\x43\x45RT_TYPE_DEVICE_NONE\x10\x00\x12\x1f\n\x1b\x43\x45RT_TYPE_DEVICE_ONBOARDING\x10\x01\x12\'\n#CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x02\x12$\n CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x03\x12\"\n\x1e\x43\x45RT_TYPE_DEVICE_ECDH_EXCHANGE\x10\x04\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
+  ,
+  dependencies=[common_dot_common__pb2.DESCRIPTOR,])
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 
 _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
   name='ZAttestReqType',
@@ -48,8 +54,13 @@ _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
+<<<<<<< HEAD
   serialized_start=585,
   serialized_end=687,
+=======
+  serialized_start=610,
+  serialized_end=712,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTREQTYPE)
 
@@ -79,8 +90,13 @@ _ZATTESTRESPTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
+<<<<<<< HEAD
   serialized_start=689,
   serialized_end=801,
+=======
+  serialized_start=714,
+  serialized_end=826,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPTYPE)
 
@@ -106,8 +122,13 @@ _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
+<<<<<<< HEAD
   serialized_start=803,
   serialized_end=908,
+=======
+  serialized_start=828,
+  serialized_end=933,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPONSECODE)
 
@@ -164,8 +185,13 @@ _ZEVECERTTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
+<<<<<<< HEAD
   serialized_start=971,
   serialized_end=1160,
+=======
+  serialized_start=936,
+  serialized_end=1125,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_ZEVECERTTYPE)
 
@@ -435,8 +461,13 @@ _ZEVECERT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
+<<<<<<< HEAD
   serialized_start=405,
   serialized_end=548,
+=======
+  serialized_start=426,
+  serialized_end=573,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
 
@@ -466,8 +497,13 @@ _ZEVECERTATTR = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
+<<<<<<< HEAD
   serialized_start=550,
   serialized_end=583,
+=======
+  serialized_start=575,
+  serialized_end=608,
+>>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
 _ZATTESTREQ.fields_by_name['reqType'].enum_type = _ZATTESTREQTYPE

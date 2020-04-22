@@ -3,6 +3,8 @@
 
 syntax = "proto3";
 
+import "common/common.proto";
+
 option go_package  = "github.com/lf-edge/eve/api/go/attest";
 option java_package = "com.zededa.cloud.uservice.proto";
 
@@ -56,13 +58,8 @@ message ZAttestQuoteResp {
   ZAttestResponseCode response = 1; //result of quote validation
 }
 
-enum ZEveCertHashType {
-  HASH_NONE = 0;
-  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
-}
-
 message ZEveCert {
-  ZEveCertHashType hashAlgo = 1; //hash method used to arrive at certHash
+  common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
   bytes certHash = 2;            //Hash of the cert, computed using hashAlgo
   ZEveCertType type = 3;         //what kind of certificate(to identify the target use case)
   bytes cert = 4;                //X509 cert in .PEM format

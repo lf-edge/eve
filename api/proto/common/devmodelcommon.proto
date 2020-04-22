@@ -3,6 +3,8 @@
 
 syntax = "proto3";
 
+package common;
+
 option go_package  = "github.com/lf-edge/eve/api/go/common";
 option java_package = "com.zededa.cloud.uservice.proto";
 
