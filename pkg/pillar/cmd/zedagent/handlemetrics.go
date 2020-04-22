@@ -1165,8 +1165,8 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 		networkInfo.Uplink = port.IsMgmt
 		// fill in ZInfoDNS
 		networkInfo.Dns = new(info.ZInfoDNS)
-		networkInfo.Dns.DNSdomain = port.DomainName
-		for _, server := range port.DnsServers {
+		networkInfo.Dns.DNSdomain = port.NetworkXConfig.DomainName
+		for _, server := range port.NetworkXConfig.DnsServers {
 			networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
 				server.String())
 		}

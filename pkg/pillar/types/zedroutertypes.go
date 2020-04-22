@@ -496,13 +496,13 @@ type NetworkPortConfig struct {
 }
 
 type NetworkPortStatus struct {
-	IfName       string
-	Phylabel     string // Physical name set by controller/model
-	Logicallabel string
-	IsMgmt       bool // Used to talk to controller
-	Free         bool
-	NetworkXObjectConfig
-	AddrInfoList []AddrInfo
+	IfName         string
+	Phylabel       string // Physical name set by controller/model
+	Logicallabel   string
+	IsMgmt         bool // Used to talk to controller
+	Free           bool
+	NetworkXConfig NetworkXObjectConfig
+	AddrInfoList   []AddrInfo
 	ProxyConfig
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -645,7 +645,7 @@ func CountDNSServers(globalStatus DeviceNetworkStatus, phylabelOrIfname string) 
 		if us.IfName != ifname && ifname != "" {
 			continue
 		}
-		count += len(us.DnsServers)
+		count += len(us.NetworkXConfig.DnsServers)
 	}
 	return count
 }
@@ -661,7 +661,7 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
-		for _, server := range us.DnsServers {
+		for _, server := range us.NetworkXConfig.DnsServers {
 			servers = append(servers, server)
 		}
 	}

@@ -198,15 +198,15 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
-		globalStatus.Ports[ix].Dhcp = u.Dhcp
+		globalStatus.Ports[ix].NetworkXConfig.Dhcp = u.Dhcp
 		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
 		if subnet != nil {
-			globalStatus.Ports[ix].Subnet = *subnet
+			globalStatus.Ports[ix].NetworkXConfig.Subnet = *subnet
 		}
-		globalStatus.Ports[ix].Gateway = u.Gateway
-		globalStatus.Ports[ix].DomainName = u.DomainName
-		globalStatus.Ports[ix].NtpServer = u.NtpServer
-		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		globalStatus.Ports[ix].NetworkXConfig.Gateway = u.Gateway
+		globalStatus.Ports[ix].NetworkXConfig.DomainName = u.DomainName
+		globalStatus.Ports[ix].NetworkXConfig.NtpServer = u.NtpServer
+		globalStatus.Ports[ix].NetworkXConfig.DnsServers = u.DnsServers
 		globalStatus.Ports[ix].ErrorAndTime = u.ErrorAndTime
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
