@@ -506,14 +506,13 @@ message ZInfoNetworkInstance {
     ZInfoVpn vinfo = 31;
     ZInfoLisp linfo = 32;
   }
-  UsageInfo usage = 33;
   repeated ErrorInfo networkErr = 40;
 }
 
 message UsageInfo {
   google.protobuf.Timestamp createTime = 1;
   uint32 refCount = 2;
-  google.protobuf.Timestamp lastUseTime = 3; // When refCount dropped to zero
+  google.protobuf.Timestamp lastRefcountChangeTime = 3; // Last time when refCount changed
 }
 
 message VolumeResources {

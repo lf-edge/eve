@@ -109,7 +109,7 @@ message Drive {
 
 
 message ContentTree {
-  UUIDandVersion uuidandversion = 1;
+  string uuid = 1;
   string dsId  = 2; // effectively pointer/key into dsConfigs
 
   string URL = 3;
@@ -119,26 +119,23 @@ message ContentTree {
   // e.g. in the case of OCI -- this information is expected to be provided by a top level blob
   // that this message points to via its URL
   string sha256 = 5;
-  uint64 sizeBytes = 6; // used for capping resource consumption eve for OCI & BLOB_TREE
+  uint64 maxSizeBytes = 6; // used for capping resource consumption eve for OCI & BLOB_TREE
   SignatureInfo siginfo = 7;
 }
 
 enum VolumeAccessProtocols {
   VAP_NONE = 0;
   VAP_9P = 1;
-  VAP_NFS = 2;
-  VAP_SCSI = 3;
-  VAP_VIRTIO = 4;
 }
 
 message Volume {
-  UUIDandVersion uuidandversion = 1;
+  string uuid = 1;
 
   // root of the blob tree required to construct this Volume (can be null)
-  string contentStoreId = 2;
+  string contentTreeId = 2;
 
   // describes the type of the Volume and thus how to construct it
-  // out of the contentSoreID blobs
+  // out of the contentTreeID blobs
   DriveType voltype = 3;
 
   // describes all the different ways how this Volume can
