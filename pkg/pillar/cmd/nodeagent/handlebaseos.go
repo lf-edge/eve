@@ -18,7 +18,7 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 	key string, zbootStatus types.ZbootStatus) {
 	zbootConfig := lookupZbootConfig(ctxPtr, key)
 	if zbootConfig == nil {
-		log.Errorf("Partition(%s) Config not found\n", key)
+		log.Errorf("Partition(%s) Config not found", key)
 		return
 	}
 	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.deviceReboot {
@@ -35,19 +35,19 @@ func initiateBaseOsZedCloudTestComplete(ctxPtr *nodeagentContext) {
 	if !ctxPtr.updateInprogress {
 		return
 	}
-	log.Infof("initiateBaseOsZedCloudTestComplete(%s)\n", ctxPtr.curPart)
+	log.Infof("initiateBaseOsZedCloudTestComplete(%s)", ctxPtr.curPart)
 	// get the current partition zboot config and status
 	zbootConfig := lookupZbootConfig(ctxPtr, ctxPtr.curPart)
 	zbootStatus := lookupZbootStatus(ctxPtr, ctxPtr.curPart)
 	if zbootStatus == nil || zbootConfig == nil {
-		log.Errorf("zboot(%s) status/config get fail\n", ctxPtr.curPart)
+		log.Errorf("zboot(%s) status/config get fail", ctxPtr.curPart)
 		return
 	}
 	if zbootConfig.TestComplete {
-		log.Errorf("zboot(%s) testComplete is already set\n", ctxPtr.curPart)
+		log.Errorf("zboot(%s) testComplete is already set", ctxPtr.curPart)
 		return
 	}
-	log.Infof("baseOs(%s) upgrade validation testComplete, in %s\n",
+	log.Infof("baseOs(%s) upgrade validation testComplete, in %s",
 		zbootStatus.ShortVersion, ctxPtr.curPart)
 	ctxPtr.testComplete = true
 	zbootConfig.TestComplete = true
@@ -65,14 +65,14 @@ func doZbootBaseOsTestValidationComplete(ctxPtr *nodeagentContext,
 	}
 	// nothing to be done
 	if !status.TestComplete {
-		log.Debugf("%s: not TestComplete\n", key)
+		log.Debugf("%s: not TestComplete", key)
 		return
 	}
 	config := lookupZbootConfig(ctxPtr, status.PartitionLabel)
 	if config == nil || ctxPtr.updateComplete {
 		return
 	}
-	log.Infof("baseOs(%s) upgrade validation is acknowledged, Partition %s\n",
+	log.Infof("baseOs(%s) upgrade validation is acknowledged, Partition %s",
 		status.ShortVersion, status.PartitionLabel)
 	config.TestComplete = false
 	ctxPtr.updateComplete = true
