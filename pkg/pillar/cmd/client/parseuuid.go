@@ -61,7 +61,7 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	uuidStr := strings.TrimSpace(config.GetId().Uuid)
 	devUUID, err = uuid.FromString(uuidStr)
 	if err != nil {
-		log.Errorf("uuid.FromString(%s): %s\n", uuidStr, err)
+		log.Errorf("uuid.FromString(%s): %s", uuidStr, err)
 		return devUUID, hardwaremodel, enterprise, name, err
 	}
 	enterprise = strings.TrimSpace(config.GetEnterprise())
