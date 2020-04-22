@@ -262,7 +262,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	log.Infof("Waiting until we have some management ports with usable addresses\n")
+	log.Infof("Waiting until we have some management ports with usable addresses")
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -285,7 +285,7 @@ func Run(ps *pubsub.PubSub) {
 			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
-	log.Infof("Have %d management ports with usable addresses\n",
+	log.Infof("Have %d management ports with usable addresses",
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
@@ -381,7 +381,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		}
 		level := parseLogLevel(logInfo.Level)
 		if dropEvent(logInfo.Source, level) {
-			log.Debugf("Dropping source %s level %v\n",
+			log.Debugf("Dropping source %s level %v",
 				logInfo.Source, level)
 			continue
 		}
@@ -422,12 +422,12 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSModify for %s", key)
 	if cmp.Equal(deviceNetworkStatus, status) {
-		log.Infof("handleDNSModify no change\n")
+		log.Infof("handleDNSModify no change")
 		return
 	}
 	*deviceNetworkStatus = status
@@ -447,23 +447,23 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
-	log.Infof("handleDNSModify done for %s; %d usable\n",
+	log.Infof("handleDNSModify done for %s; %d usable",
 		key, newAddrCount)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
-	log.Infof("handleDNSDelete for %s\n", key)
+	log.Infof("handleDNSDelete for %s", key)
 	ctx := ctxArg.(*DNSContext)
 
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		log.Infof("handleDNSDelete: ignoring %s", key)
 		return
 	}
 	*deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSDelete done for %s\n", key)
+	log.Infof("handleDNSDelete done for %s", key)
 }
 
 // This runs as a separate go routine sending out data
@@ -525,7 +525,7 @@ func processEvents(image string, logChan <-chan logEntry,
 			sent := false
 			is4xx := false
 			if !more {
-				log.Infof("processEvents(%s) end\n",
+				log.Infof("processEvents(%s) end",
 					image)
 				flushAllLogBundles(image, iteration, eveVersion,
 					reportLogs, appLogBundles, &logMetrics)
@@ -571,7 +571,7 @@ func processEvents(image string, logChan <-chan logEntry,
 				break
 			}
 
-			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
+			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d",
 				image, messageCount, byteCount)
 			if event.isAppLog {
 				sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
@@ -603,7 +603,7 @@ func processEvents(image string, logChan <-chan logEntry,
 			}
 
 		case <-flushTimer.C:
-			log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
+			log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d",
 				image, time.Now().String(),
 				dropped, messageCount,
 				proto.Size(reportLogs))
@@ -781,7 +781,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		log.Warnf("LogBundle: DevID %s, Image %s, EveVersion %s, %d log entries",
 			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion, len(reportLogs.Log))
 	} else {
-		log.Debugf("sendProtoStrForLogs %d bytes: %s\n",
+		log.Debugf("sendProtoStrForLogs %d bytes: %s",
 			size, reportLogs)
 		log.Debugf("LogBundle: DevID %s, Image %s, EveVersion %s",
 			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion)
@@ -794,7 +794,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	// For any 400 error we abandon
 	const return400 = true
 	if zedcloud.HasDeferred(image) {
-		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
+		log.Infof("SendProtoStrForLogs queued after existing for %s",
 			image)
 		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
 			return400)
@@ -808,13 +808,13 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	// XXX Should we inject a separate log entry to record that we dropped
 	// this one?
 	if resp != nil && resp.StatusCode == 400 {
-		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
+		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error",
 			size, image, logsURL)
 		reportLogs.Log = []*logs.LogEntry{}
 		return true
 	}
 	if err != nil {
-		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
+		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s",
 			size, image, err)
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
@@ -829,7 +829,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsURL)
+	log.Debugf("Sent %d bytes image %s to %s", size, image, logsURL)
 	reportLogs.Log = []*logs.LogEntry{}
 	return true
 }
@@ -873,7 +873,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// For any 400 error we abandon
 	const return400 = true
 	if zedcloud.HasDeferred(image) {
-		log.Infof("SendProtoStrForAppLogs queued after existing for %s\n",
+		log.Infof("SendProtoStrForAppLogs queued after existing for %s",
 			image)
 		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
 			return400)
@@ -891,14 +891,14 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	if resp != nil {
 		is4xx := isResp4xx(resp.StatusCode)
 		if is4xx {
-			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
+			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error",
 				size, image, appLogsURL, resp.StatusCode)
 			appLogs.Log = []*logs.LogEntry{}
 			return true, true
 		}
 	}
 	if err != nil {
-		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
+		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s",
 			size, image, err)
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
@@ -913,7 +913,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
 	}
-	log.Debugf("Sent %d bytes image %s to %s\n", size, image, appLogsURL)
+	log.Debugf("Sent %d bytes image %s to %s", size, image, appLogsURL)
 	appLogs.Log = []*logs.LogEntry{}
 	return true, false
 }
@@ -945,10 +945,10 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
 	})
-	log.Infof("sendCtxInit: Use V2 API %v\n", zedcloud.UseV2API())
+	log.Infof("sendCtxInit: Use V2 API %v", zedcloud.UseV2API())
 
 	dnsCtx.zedcloudCtx = &zedcloudCtx
-	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+	log.Infof("Log Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
 	// XXX need to redo this since the root certificates can change when DeviceNetworkStatus changes
@@ -977,7 +977,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	}
 	// wait for uuid of logs V2 URL string
 	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "logs")
-	log.Infof("Read UUID %s\n", devUUID)
+	log.Infof("Read UUID %s", devUUID)
 }
 
 // Handles both create and modify events
@@ -986,10 +986,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
@@ -1005,7 +1005,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		addRemoteMap("default", defaultRemoteLogLevel)
 	}
 	for agentName := range status.AgentSettings {
-		log.Debugf("Processing agentName %s\n", agentName)
+		log.Debugf("Processing agentName %s", agentName)
 		foundAgents[agentName] = true
 		remoteLogLevel := status.AgentSettingStringValue(agentName, types.RemoteLogLevel)
 		if remoteLogLevel != "" {
@@ -1014,7 +1014,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	// Any deletes?
 	delRemoteMapAgents(foundAgents)
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1022,15 +1022,15 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
 // Cache of loglevels per agent. Protected by mutex since accessed by
@@ -1039,41 +1039,41 @@ var remoteMapLock sync.Mutex
 var remoteMap map[string]log.Level = make(map[string]log.Level)
 
 func addRemoteMap(agentName string, logLevel string) {
-	log.Infof("addRemoteMap(%s, %s)\n", agentName, logLevel)
+	log.Infof("addRemoteMap(%s, %s)", agentName, logLevel)
 	level, err := log.ParseLevel(logLevel)
 	if err != nil {
-		log.Errorf("addRemoteMap: ParseLevel failed: %s\n", err)
+		log.Errorf("addRemoteMap: ParseLevel failed: %s", err)
 		return
 	}
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap[agentName] = level
-	log.Infof("addRemoteMap after %v\n", remoteMap)
+	log.Infof("addRemoteMap after %v", remoteMap)
 }
 
 // Delete everything not in foundAgents
 func delRemoteMapAgents(foundAgents map[string]bool) {
-	log.Infof("delRemoteMapAgents(%v)\n", foundAgents)
+	log.Infof("delRemoteMapAgents(%v)", foundAgents)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	for agentName := range remoteMap {
-		log.Debugf("delRemoteMapAgents: processing %s\n", agentName)
+		log.Debugf("delRemoteMapAgents: processing %s", agentName)
 		if _, ok := foundAgents[agentName]; !ok {
 			delete(remoteMap, agentName)
 		}
 	}
-	log.Infof("delRemoteMapAgents after %v\n", remoteMap)
+	log.Infof("delRemoteMapAgents after %v", remoteMap)
 }
 
 func delRemoteMap(agentName string) {
-	log.Infof("delRemoteMap(%s)\n", agentName)
+	log.Infof("delRemoteMap(%s)", agentName)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	delete(remoteMap, agentName)
 }
 
 func delRemoteMapAll() {
-	log.Infof("delRemoteMapAll()\n")
+	log.Infof("delRemoteMapAll()")
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap = make(map[string]log.Level)
@@ -1106,7 +1106,7 @@ func parseLogLevel(logLevel string) log.Level {
 		} else if logLevel == "notice" {
 			level = log.InfoLevel
 		} else {
-			log.Errorf("ParseLevel failed: %s, defaulting log level to Info\n", err)
+			log.Errorf("ParseLevel failed: %s, defaulting log level to Info", err)
 			level = log.InfoLevel
 		}
 	}
