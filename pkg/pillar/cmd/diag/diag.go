@@ -561,20 +561,20 @@ func printOutput(ctx *diagContext) {
 		}
 
 		fmt.Fprintf(outfile, "INFO: %s: DNS servers: ", ifname)
-		for _, ds := range port.DnsServers {
+		for _, ds := range port.NetworkXConfig.DnsServers {
 			fmt.Fprintf(outfile, "%s, ", ds.String())
 		}
 		fmt.Fprintf(outfile, "\n")
 		// If static print static config
-		if port.Dhcp == types.DT_STATIC {
+		if port.NetworkXConfig.Dhcp == types.DT_STATIC {
 			fmt.Fprintf(outfile, "INFO: %s: Static IP subnet: %s\n",
-				ifname, port.Subnet.String())
+				ifname, port.NetworkXConfig.Subnet.String())
 			fmt.Fprintf(outfile, "INFO: %s: Static IP router: %s\n",
-				ifname, port.Gateway.String())
+				ifname, port.NetworkXConfig.Gateway.String())
 			fmt.Fprintf(outfile, "INFO: %s: Static Domain Name: %s\n",
-				ifname, port.DomainName)
+				ifname, port.NetworkXConfig.DomainName)
 			fmt.Fprintf(outfile, "INFO: %s: Static NTP server: %s\n",
-				ifname, port.NtpServer.String())
+				ifname, port.NetworkXConfig.NtpServer.String())
 		}
 		printProxy(ctx, port, ifname)
 
@@ -655,7 +655,8 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 			ifname, port.ProxyConfig.Exceptions)
 	}
 	if port.HasError() {
-		fmt.Fprintf(outfile, "ERROR: %s: from WPAD? %s\n", ifname, port.Error)
+		fmt.Fprintf(outfile, "ERROR: %s: from WPAD? %s\n",
+			ifname, port.Error)
 	}
 	if port.ProxyConfig.NetworkProxyEnable {
 		if port.ProxyConfig.NetworkProxyURL == "" {
