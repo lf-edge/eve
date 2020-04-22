@@ -61,69 +61,69 @@ func Run(ps *pubsub.PubSub) {
 		}
 		if res == len(buf) {
 			// Likely truncated
-			log.Fatalf("Message likely truncated\n")
+			log.Fatalf("Message likely truncated")
 		}
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)
 		if count < 2 {
-			log.Errorf("Too short: %v\n", reply)
+			log.Errorf("Too short: %v", reply)
 			continue
 		}
 		msg := reply[0]
 		t := reply[1]
 
 		if t != topic {
-			log.Errorf("Mismatched topic %s vs. %s for %s\n",
+			log.Errorf("Mismatched topic %s vs. %s for %s",
 				t, topic, msg)
 			continue
 		}
 
 		switch msg {
 		case "hello", "restarted", "complete":
-			log.Infof("Got message %s type %s\n", msg, t)
+			log.Infof("Got message %s type %s", msg, t)
 
 		case "delete":
 			if count < 3 {
-				log.Errorf("Too short delete: %v\n", reply)
+				log.Errorf("Too short delete: %v", reply)
 				continue
 			}
 			recvKey := reply[2]
 
 			key, err := base64.StdEncoding.DecodeString(recvKey)
 			if err != nil {
-				log.Errorf("base64: %s\n", err)
+				log.Errorf("base64: %s", err)
 			}
-			log.Infof("delete type %s key %s\n", t, key)
+			log.Infof("delete type %s key %s", t, key)
 
 		case "update":
 			if count < 4 {
-				log.Errorf("Too short update: %v\n", reply)
+				log.Errorf("Too short update: %v", reply)
 				continue
 			}
 			if count > 4 {
-				log.Errorf("Too long update: %v\n", reply)
+				log.Errorf("Too long update: %v", reply)
 				continue
 			}
 			recvKey := reply[2]
 			key, err := base64.StdEncoding.DecodeString(recvKey)
 			if err != nil {
-				log.Errorf("base64: %s\n", err)
+				log.Errorf("base64: %s", err)
 			}
 			recvVal := reply[3]
 			val, err := base64.StdEncoding.DecodeString(recvVal)
 			if err != nil {
-				log.Errorf("base64: %s\n", err)
+				log.Errorf("base64: %s", err)
 			}
 
 			var output interface{}
 			if err := json.Unmarshal(val, &output); err != nil {
 				log.Fatal(err, "json Unmarshal")
 			}
-			log.Infof("update type %s key %s val %+v\n",
+			log.Infof("update type %s key %s val %+v",
 				t, key, output)
 
 		default:
-			log.Errorf("Unknown message: %s\n", msg)
+			log.Errorf("Unknown message: %s", msg)
 		}
 	}
 }
