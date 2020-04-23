@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
@@ -272,6 +273,21 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 	if addrCount == 0 {
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(intf, reqUrl, 0, 0, false)
+		}
+		// Determine a specific failure for intf
+		link, err := netlink.LinkByName(intf)
+		if err != nil {
+			errStr := fmt.Sprintf("Link not found to connect to %s using intf %s: %s",
+				reqUrl, intf, err)
+			log.Debugln(errStr)
+			return nil, nil, senderStatus, errors.New(errStr)
+		}
+		attrs := link.Attrs()
+		if attrs.OperState != netlink.OperUp {
+			errStr := fmt.Sprintf("Link not up to connect to %s using intf %s: %s",
+				reqUrl, intf, attrs.OperState.String())
+			log.Debugln(errStr)
+			return nil, nil, senderStatus, errors.New(errStr)
 		}
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			reqUrl, intf)
