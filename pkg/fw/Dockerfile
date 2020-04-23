@@ -1,4 +1,4 @@
-FROM alpine:3.8 as build
+FROM alpine:edge as build
 
 WORKDIR /
 RUN apk add --no-cache \
@@ -22,5 +22,6 @@ COPY --from=build /lib/firmware/mrvl /lib/firmware/mrvl
 COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
 COPY --from=build /lib/firmware/rtlwifi /lib/firmware/rtlwifi
 COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
+COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
 # FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
 COPY rpi /lib/firmware/
