@@ -13,6 +13,7 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
+from common import common_pb2 as common_dot_common__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
@@ -20,14 +21,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-<<<<<<< HEAD
-  serialized_pb=_b('\n\x18\x63onfig/acipherinfo.proto\"\xdc\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12(\n\nhashScheme\x18\x02 \x01(\x0e\x32\x14.cipherHashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*V\n\x13\x63ipherHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
-)
-=======
   serialized_pb=_b('\n\x18\x63onfig/acipherinfo.proto\x1a\x13\x63ommon/common.proto\"\xdd\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12)\n\nhashScheme\x18\x02 \x01(\x0e\x32\x15.common.HashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[common_dot_common__pb2.DESCRIPTOR,])
->>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   name='KeyExchangeScheme',
@@ -46,13 +42,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-<<<<<<< HEAD
-  serialized_start=486,
-  serialized_end=533,
-=======
   serialized_start=508,
   serialized_end=555,
->>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -74,51 +65,16 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-<<<<<<< HEAD
-  serialized_start=535,
-  serialized_end=586,
-=======
   serialized_start=557,
   serialized_end=608,
->>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
 EncryptionScheme = enum_type_wrapper.EnumTypeWrapper(_ENCRYPTIONSCHEME)
-_CIPHERHASHALGORITHM = _descriptor.EnumDescriptor(
-  name='cipherHashAlgorithm',
-  full_name='cipherHashAlgorithm',
-  filename=None,
-  file=DESCRIPTOR,
-  values=[
-    _descriptor.EnumValueDescriptor(
-      name='HASH_NONE', index=0, number=0,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='HASH_SHA256_16bytes', index=1, number=1,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='HASH_SHA256_32bytes', index=2, number=2,
-      serialized_options=None,
-      type=None),
-  ],
-  containing_type=None,
-  serialized_options=None,
-  serialized_start=588,
-  serialized_end=674,
-)
-_sym_db.RegisterEnumDescriptor(_CIPHERHASHALGORITHM)
-
-cipherHashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_CIPHERHASHALGORITHM)
 KEA_NONE = 0
 KEA_ECDH = 1
 SA_NONE = 0
 SA_AES_256_CFB = 1
-HASH_NONE = 0
-HASH_SHA256_16bytes = 1
-HASH_SHA256_32bytes = 2
 
 
 
@@ -183,13 +139,8 @@ _CIPHERCONTEXT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-<<<<<<< HEAD
-  serialized_start=29,
-  serialized_end=249,
-=======
   serialized_start=50,
   serialized_end=271,
->>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
 
@@ -240,13 +191,8 @@ _CIPHERBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-<<<<<<< HEAD
-  serialized_start=251,
-  serialized_end=356,
-=======
   serialized_start=273,
   serialized_end=378,
->>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
 
@@ -304,16 +250,11 @@ _ENCRYPTIONBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-<<<<<<< HEAD
-  serialized_start=358,
-  serialized_end=484,
-=======
   serialized_start=380,
   serialized_end=506,
->>>>>>> 47bb3b73... fixup! Removed DupliCate enum definitions and moved common nes to proto/common/common.go
 )
 
-_CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = _CIPHERHASHALGORITHM
+_CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = common_dot_common__pb2._HASHALGORITHM
 _CIPHERCONTEXT.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEME
 _CIPHERCONTEXT.fields_by_name['encryptionScheme'].enum_type = _ENCRYPTIONSCHEME
 DESCRIPTOR.message_types_by_name['CipherContext'] = _CIPHERCONTEXT
@@ -321,7 +262,6 @@ DESCRIPTOR.message_types_by_name['CipherBlock'] = _CIPHERBLOCK
 DESCRIPTOR.message_types_by_name['EncryptionBlock'] = _ENCRYPTIONBLOCK
 DESCRIPTOR.enum_types_by_name['KeyExchangeScheme'] = _KEYEXCHANGESCHEME
 DESCRIPTOR.enum_types_by_name['EncryptionScheme'] = _ENCRYPTIONSCHEME
-DESCRIPTOR.enum_types_by_name['cipherHashAlgorithm'] = _CIPHERHASHALGORITHM
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 CipherContext = _reflection.GeneratedProtocolMessageType('CipherContext', (_message.Message,), dict(

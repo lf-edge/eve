@@ -19,8 +19,8 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='common/common.proto',
   package='common',
   syntax='proto3',
-  serialized_options=_b('\n&com.zededa.cloud.uservice.proto.commonB\006CommonP\001Z$github.com/lf-edge/eve/api/go/common'),
-  serialized_pb=_b('\n\x13\x63ommon/common.proto\x12\x06\x63ommon*q\n\rHashAlgorithm\x12\x1a\n\x16HASH_ALGORITHM_INVALID\x10\x00\x12!\n\x1dHASH_ALGORITHM_SHA256_16BYTES\x10\x01\x12!\n\x1dHASH_ALGORITHM_SHA256_32BYTES\x10\x02\x42X\n&com.zededa.cloud.uservice.proto.commonB\x06\x43ommonP\x01Z$github.com/lf-edge/eve/api/go/commonb\x06proto3')
+  serialized_options=_b('\n&com.zededa.cloud.uservice.proto.commonB\013CommonProtoP\001Z$github.com/lf-edge/eve/api/go/common'),
+  serialized_pb=_b('\n\x13\x63ommon/common.proto\x12\x06\x63ommon*q\n\rHashAlgorithm\x12\x1a\n\x16HASH_ALGORITHM_INVALID\x10\x00\x12!\n\x1dHASH_ALGORITHM_SHA256_16BYTES\x10\x01\x12!\n\x1dHASH_ALGORITHM_SHA256_32BYTES\x10\x02\x42]\n&com.zededa.cloud.uservice.proto.commonB\x0b\x43ommonProtoP\x01Z$github.com/lf-edge/eve/api/go/commonb\x06proto3')
 )
 
 _HASHALGORITHM = _descriptor.EnumDescriptor(
