@@ -7,13 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/cio"
-	"github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/images"
-	"github.com/containerd/containerd/mount"
-	"github.com/containerd/containerd/namespaces"
-	"github.com/containerd/containerd/snapshots"
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/identity"
@@ -28,6 +21,7 @@ import (
 	"time"
 
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/namespaces"
@@ -364,6 +358,7 @@ func bindNS(ns string, path string, pid int) error {
 // prepareProcess sets up anything that needs to be done after the container process is created,
 // but before it runs (for example networking)
 func prepareProcess(pid int, VifList []types.VifInfo) error {
+	log.Infof("prepareProcess(%d, %v)", pid, VifList)
 	for _, iface := range VifList {
 		if iface.Vif == "" {
 			return fmt.Errorf("Interface requires a name")
@@ -492,6 +487,11 @@ func CtrStop(containerID string, force bool) error {
 	if err != nil {
 		return err
 	}
+
+	// it is unclear whether we have to wait after this or proceed
+	// straight away. It is also unclear whether paying any attention
+	// to the err returned is worth anything at this point
+	_ = task.Kill(ctrdCtx, signal, containerd.WithKillAll)
 
 	if force {
 		_, err = task.Delete(ctrdCtx, containerd.WithProcessKill)
@@ -658,7 +658,8 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 // file and optional bundle of DomainConfig settings and command line options. Because
 // we're expecting a linuxkit produced filesystem layout we expect R/O portion of the
 // filesystem to be available under `dirname specFile`/lower and we will be mounting
-// it R/O into the container. On top of that
+// it R/O into the container. On top of that we expect the usual suspects of /run,
+// /persist and /config to be taken care of by the OCI config that lk produced.
 func LKTaskLaunch(name, linuxkit string, domSettings *types.DomainConfig, args []string) (int, error) {
 	config := "/containers/services" + linuxkit + "/config.json"
 	rootfs := "/containers/services" + linuxkit + "/lower"
