@@ -128,23 +128,32 @@ enum VolumeAccessProtocols {
   VAP_9P = 1;
 }
 
+enum VolumeContentOriginType {
+  VCOT_UNKNOWN = 0;
+  VCOT_BLANK = 1;
+  VCOT_DOWNLOAD = 2;
+}
+
+message VolumeContentOrigin {
+  volumeContentOriginType type = 1;
+  repeated string downloadContentTreeID = 2;
+}
+
 message Volume {
   string uuid = 1;
 
-  // root of the blob tree required to construct this Volume (can be null)
-  string contentTreeId = 2;
-
-  // describes the type of the Volume and thus how to construct it
-  // out of the contentTreeID blobs
-  DriveType voltype = 3;
+  // origin of the volume content.
+  VolumeContentOrigin origin = 2;
 
   // describes all the different ways how this Volume can
   // be offered to Tasks (9p, nfs, scsi, ata, virtio, etc.)
-  repeated VolumeAccessProtocols protocols = 4;
+  repeated VolumeAccessProtocols protocols = 3;
 
-  int64 generationCount = 5;
+  // change in generationCount indicates that the mutated volume needs to be purged and
+  // built from scratch.
+  int64 generationCount = 4;
 
   // miscellaneous attributes of the Volume
-  int64 maxsizebytes = 6;
-  bool readonly = 7;
+  int64 maxsizebytes = 5;
+  bool readonly = 6;
 }

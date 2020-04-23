@@ -528,7 +528,7 @@ message ZInfoVolume {
   ZSwState state = 5;
   uint32 downloadProgress = 6;
 
-  repeated ErrorInfo volumeErr = 7;
+  ErrorInfo volumeErr = 7;
 }
 
 message ContentResources {
