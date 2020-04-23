@@ -298,7 +298,7 @@ pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/fscrypt eve-pillar
+pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar
 	@true
 pkg/xen-tools: pkg/uefi eve-xen-tools
 	@true
