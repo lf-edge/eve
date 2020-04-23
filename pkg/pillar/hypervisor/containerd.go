@@ -9,12 +9,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 )
 
 type ctrdContext struct {
-	doms       map[string]*domState
 	domCounter int
 	PCI        map[string]bool
 }
@@ -25,7 +25,6 @@ func newContainerd() Hypervisor {
 		return nil
 	}
 	return ctrdContext{
-		doms:       map[string]*domState{},
 		domCounter: 0,
 		PCI:        map[string]bool{},
 	}
@@ -55,56 +54,85 @@ func (ctx ctrdContext) CreateDomConfig(domainName string, config types.DomainCon
 
 func (ctx ctrdContext) Create(domainName string, cfgFilename string, VirtualizationMode types.VmMode) (int, error) {
 	spec, err := containerd.NewOciSpec(domainName)
-	if err == nil {
+	if err != nil {
+		return 0, logError("containerd create failed to initialize OCI spec %s %v", domainName, err)
+	}
+
+	specf, err := os.Open(cfgFilename)
+	if err != nil {
+		return 0, logError("containerd create failed to open OCI spec file %s %v", cfgFilename, err)
+	}
+
+	if err = spec.Load(specf); err == nil {
 		err = spec.CreateContainer(true)
 	}
 
 	if err == nil {
-		// calls to Create are serialized in the consumer: no need to worry about locking
-		ctx.domCounter++
-		ctx.doms[domainName] = &domState{id: ctx.domCounter, config: cfgFilename, state: "stopped"}
+		ctx.domCounter--
+		log.Infof("containerd create finished creating domain %s %d", domainName, ctx.domCounter)
 		return ctx.domCounter, nil
 	}
-	return 0, err
+	return 0, logError("containerd create failed to create domain %s %v", domainName, err)
 }
 
 func (ctx ctrdContext) Start(domainName string, domainID int) error {
 	id, err := containerd.CtrStart(domainName)
 	if err != nil {
-		return err
+		return logError("containerd failed to start domain %s %v", domainName, err)
 	}
-	log.Infof("container %s running with PID %d", domainName, id)
-	// ctx.doms[domainName].id = id
-	ctx.doms[domainName].state = "running"
-
+	log.Infof("containerd launched domain %s with PID %d", domainName, id)
 	return nil
 }
 
 func (ctx ctrdContext) Stop(domainName string, domainID int, force bool) error {
-	ctx.doms[domainName].state = "stopped"
-	return containerd.CtrStop(domainName, force)
+	err := containerd.CtrStop(domainName, force)
+	if err == nil {
+		log.Infof("containerd stopped domain %s with PID %d (forced %v)", domainName, domainID, force)
+	} else {
+		log.Errorf("containerd failed to stop domain %s with PID %d (forced %v) %v", domainName, domainID, force, err)
+	}
+	return err
 }
 
 func (ctx ctrdContext) Delete(domainName string, domainID int) error {
-	delete(ctx.doms, domainName)
-	return containerd.CtrDelete(domainName)
+	err := containerd.CtrDelete(domainName)
+	if err == nil {
+		log.Infof("containerd deleted domain %s with PID %d", domainName, domainID)
+	} else {
+		return logError("containerd failed to delete domain %s with PID %d %v", domainName, domainID, err)
+	}
+	return err
 }
 
 func (ctx ctrdContext) Info(domainName string, domainID int) error {
-	if dom, found := ctx.doms[domainName]; found {
-		log.Infof("Container Domain %s is %s and has the following config %s\n", domainName, dom.state, dom.config)
-		return nil
+	pid, status, err := containerd.CtrInfo(domainName)
+	if err == nil {
+		if pid == domainID {
+			log.Infof("containerd domain %s with PID %d is %s\n", domainName, domainID, status)
+			return nil
+		} else {
+			log.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
+				domainName, pid, domainID, status)
+			return nil
+		}
 	} else {
-		log.Errorf("Container Domain %s doesn't exist", domainName)
-		return fmt.Errorf("container domain %s doesn't exist", domainName)
+		return logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
 	}
 }
 
 func (ctx ctrdContext) LookupByName(domainName string, domainID int) (int, error) {
-	if dom, found := ctx.doms[domainName]; found {
-		return dom.id, nil
+	pid, status, err := containerd.CtrInfo(domainName)
+	if err == nil {
+		if pid == domainID {
+			log.Infof("containerd domain %s with PID %d is %s\n", domainName, domainID, status)
+		} else {
+			log.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
+				domainName, pid, domainID, status)
+		}
+		return pid, nil
 	} else {
-		return 0, fmt.Errorf("container domain %s %d doesn't exist", domainName, domainID)
+		return 0, logError("containerd looking up domain by name %s with PID %d resulted in %v",
+			domainName, domainID, err)
 	}
 }
 
@@ -131,11 +159,13 @@ func (ctx ctrdContext) PCIRelease(long string) error {
 }
 
 func (ctx ctrdContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
-	return false
+	_, status, err := containerd.CtrInfo(domainName)
+	return err == nil && status == "pausing"
 }
 
-func (ctx ctrdContext) IsDeviceModelAlive(int) bool {
-	return true
+func (ctx ctrdContext) IsDeviceModelAlive(id int) bool {
+	_, err := os.Stat("/proc/" + strconv.Itoa(id))
+	return err == nil
 }
 
 func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
