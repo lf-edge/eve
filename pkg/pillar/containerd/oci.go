@@ -22,6 +22,7 @@ import (
 	"os"
 )
 
+//revive:disable
 type ociSpec struct {
 	specs.Spec
 	name         string
@@ -32,7 +33,6 @@ type ociSpec struct {
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
-//revive:disable
 func NewOciSpec(name string) (*ociSpec, error) {
 	s := &ociSpec{name: name}
 	// we need a dummy container object to trick containerd
@@ -48,6 +48,7 @@ func NewOciSpec(name string) (*ociSpec, error) {
 	s.Root.Path = "/"
 	return s, nil
 }
+
 //revive:enable
 
 // Save stores json representation of the oci spec in a file

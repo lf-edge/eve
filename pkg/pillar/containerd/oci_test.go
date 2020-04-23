@@ -1,11 +1,6 @@
 // Copyright (c) 2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Manage Xen guest domains based on the subscribed collection of DomainConfig
-// and publish the result in a collection of DomainStatus structs.
-// We run a separate go routine for each domU to be able to boot and halt
-// them concurrently and also pick up their state periodically.
-
 package containerd
 
 import (
