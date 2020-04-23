@@ -32,7 +32,7 @@ type ociSpec struct {
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
-//revive:disable:unexported-return
+//revive:disable
 func NewOciSpec(name string) (*ociSpec, error) {
 	s := &ociSpec{name: name}
 	// we need a dummy container object to trick containerd
@@ -48,6 +48,7 @@ func NewOciSpec(name string) (*ociSpec, error) {
 	s.Root.Path = "/"
 	return s, nil
 }
+//revive:enable
 
 // Save stores json representation of the oci spec in a file
 func (s *ociSpec) Save(file *os.File) error {
@@ -74,20 +75,12 @@ func (s *ociSpec) Load(file *os.File) error {
 
 // CreateContainer starts an OCI container based on the spec
 func (s *ociSpec) CreateContainer(removeExisting bool) error {
-	c, err := CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
+	_, err := CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
 	// if container exists, is stopped and we are asked to remove existing - try that
 	if err != nil && removeExisting {
-		var t containerd.Task
-		var stat containerd.Status
-		if c, err = CtrdClient.LoadContainer(ctrdCtx, s.name); err == nil {
-			if t, err = c.Task(ctrdCtx, nil); err == nil {
-				if stat, err = t.Status(ctrdCtx); err == nil && stat.Status != containerd.Running && stat.Status != containerd.Pausing {
-					err = c.Delete(ctrdCtx)
-				}
-			}
-		}
-		if err == nil {
-			// one last attempt to create a container
+		_, status, err := CtrInfo(s.name)
+		if err == nil && status != "running" && status != "pausing" {
+			_ = CtrDelete(s.name)
 			_, err = CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
 		}
 	}

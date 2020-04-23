@@ -404,6 +404,19 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 	return nil
 }
 
+// CtrInfo looks up
+func CtrInfo(name string) (int, string, error) {
+	c, err := loadContainer(name)
+	if err == nil {
+		if t, err := c.Task(ctrdCtx, nil); err == nil {
+			if stat, err := t.Status(ctrdCtx); err == nil {
+				return int(t.Pid()), string(stat.Status), nil
+			}
+		}
+	}
+	return 0, "", err
+}
+
 // CtrStart starts the default task in a pre-existing container and attaches its logging to memlogd
 func CtrStart(domainName string) (int, error) {
 	ctr, err := loadContainer(domainName)
@@ -492,9 +505,12 @@ func CtrStop(containerID string, force bool) error {
 // CtrDelete is a simple wrapper around container.Delete()
 func CtrDelete(containerID string) error {
 	ctr, err := loadContainer(containerID)
-	if err != nil || ctr == nil {
+	if err != nil {
 		return err
 	}
+
+	// do this just in case
+	_ = CtrStop(containerID, true)
 
 	return ctr.Delete(ctrdCtx)
 }
