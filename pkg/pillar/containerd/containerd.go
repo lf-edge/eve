@@ -20,7 +20,6 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
-	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/snapshots"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -40,11 +39,7 @@ const (
 	// relative path to rootfs for an individual container
 	containerRootfsPath = "rootfs/"
 	// container config file name
-	containerConfigFilename = "config.json"
-	// container config file name
 	imageConfigFilename = "image-config.json"
-	// container pid file name
-	pidFilename = "pid"
 	// default snapshotter used by containerd
 	defaultSnapshotter = "overlayfs"
 )
@@ -71,11 +66,6 @@ func InitContainerdClient() error {
 // necessarily the rootfs, which may be a layer below
 func GetContainerPath(containerID string) string {
 	return path.Join(containersRoot, containerID)
-}
-
-// getContainerRootfs return the path to the root of the container filesystem
-func getContainerRootfs(containerID string) string {
-	return path.Join(GetContainerPath(containerID), containerRootfsPath)
 }
 
 // containerdLoadImageTar load an image tar into the containerd content store
@@ -111,23 +101,31 @@ func containerdLoadImageTar(filename string) (map[string]images.Image, error) {
 }
 
 // SnapshotRm removes existing snapshot. If silent is true, then operation failures are ignored and no error is returned
-func SnapshotRm(containerPath string, silent bool) error {
-	log.Infof("snapshotRm %s\n", containerPath)
+func SnapshotRm(rootPath string, silent bool) error {
+	log.Infof("snapshotRm %s\n", rootPath)
 
-	containerID := filepath.Base(containerPath)
+	snapshotID := filepath.Base(rootPath)
 
-	if err := deleteBundle(containerID, silent); err != nil {
-		err = fmt.Errorf("snapshotRm: unable to delete bundle: %v. %v", containerID, err.Error())
-		log.Error(err)
+	if err := syscall.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
+		err = fmt.Errorf("snapshotRm: exception while unmounting: %v/%v. %v", rootPath, containerRootfsPath, err)
+		log.Error(err.Error())
+		if !silent {
+			return err
+		}
+	}
+
+	if err := os.RemoveAll(rootPath); err != nil {
+		err = fmt.Errorf("snapshotRm: exception while deleting: %v. %v", rootPath, err)
+		log.Error(err.Error())
 		if !silent {
 			return err
 		}
 	}
 
 	snapshotter := CtrdClient.SnapshotService(defaultSnapshotter)
-	if err := snapshotter.Remove(ctrdCtx, getSnapshotName(containerID)); err != nil {
-		err = fmt.Errorf("snapshotRm: unable to remove snapshot: %v. %v", containerID, err)
-		log.Error(err)
+	if err := snapshotter.Remove(ctrdCtx, snapshotID); err != nil {
+		err = fmt.Errorf("snapshotRm: unable to remove snapshot: %v. %v", snapshotID, err)
+		log.Error(err.Error())
 		if !silent {
 			return err
 		}
@@ -139,14 +137,17 @@ func SnapshotRm(containerPath string, silent bool) error {
 // We always do it from scratch all the way, ignoring any existing state
 // that may have accumulated (like existing snapshots being avilable, etc.)
 // This effectively voids any kind of caching, but on the flip side frees us
-// from cache invalidation
-func SnapshotPrepare(containerPath string, ociFilename string) error {
-	log.Infof("snapshotPrepare(%s, %s)", containerPath, ociFilename)
-	containerID := filepath.Base(containerPath)
+// from cache invalidation. Additionally we deposit an OCI config json file
+// next to the rootfs so that the effective structure becomes:
+//    rootPath/rootfs, rootPath/image-config.json
+// We also expect rootPath to end in a basename that becomes containerd's
+// snapshotID
+func SnapshotPrepare(rootPath string, ociFilename string) error {
+	log.Infof("snapshotPrepare(%s, %s)", rootPath, ociFilename)
 	// On device restart, the existing bundle is not deleted, we need to delete the
 	// existing bundle of the container and recreate it. This is safe to run even
 	// when bundle doesn't exist
-	if SnapshotRm(containerID, true) != nil {
+	if SnapshotRm(rootPath, true) != nil {
 		log.Infof("snapshotPrepare: tried to clean up any existing state, hopefully it worked")
 	}
 
@@ -198,26 +199,38 @@ func SnapshotPrepare(containerPath string, ociFilename string) error {
 
 	snapshotter := CtrdClient.SnapshotService(defaultSnapshotter)
 	parent := identity.ChainID(diffIDs).String()
-	snapshot := getSnapshotName(containerID)
+	snapshotID := filepath.Base(rootPath)
 	labels := map[string]string{"containerd.io/gc.root": time.Now().UTC().Format(time.RFC3339)}
-	if mounts, err := snapshotter.Prepare(ctrdCtx, snapshot, parent, snapshots.WithLabels(labels)); err != nil {
+	mounts, err := snapshotter.Prepare(ctrdCtx, snapshotID, parent, snapshots.WithLabels(labels))
+	if err != nil {
 		log.Errorf("Could not create a snapshot from: %s. %v", parent, err)
 		return fmt.Errorf("snapshotPrepare: Could not create a snapshot from: %s. %v", parent, err)
 	} else {
-		log.Infof("snapshotPrepare: preared a snapshot for %v with the following mounts: %v", snapshot, mounts)
+		if len(mounts) > 1 {
+			return fmt.Errorf("More than 1 mount-point for snapshot %v %v", rootPath, mounts)
+		} else {
+			log.Infof("snapshotPrepare: preared a snapshot for %v with the following mounts: %v", snapshotID, mounts)
+		}
 	}
 
-	// retrieve image metadata to be passed into createBundle
+	// final step is to mount the snapshot into rootPath/containerRootfsPath and unpack
+	// image config OCI json into rootPath/imageConfigFilename
+	rootFsDir := path.Join(rootPath, containerRootfsPath)
+	if err := os.MkdirAll(rootFsDir, 0766); err != nil {
+		return fmt.Errorf("createBundle: Exception while creating rootFS dir. %v", err)
+	}
+	if err = mounts[0].Mount(rootFsDir); err != nil {
+		return fmt.Errorf("Exception while mounting rootfs %v via %v. Error: %v", rootFsDir, mounts, err)
+	}
+
+	// final step is to deposit OCI image config json
 	imageConfigJSON, err := getImageInfoJSON(ctrdCtx, ctrdImage)
 	if err != nil {
 		log.Errorf("Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
 		return fmt.Errorf("snapshotPrepare: Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
 	}
-
-	err = createBundle(containerID, getSnapshotName(containerID), imageConfigJSON)
-	if err != nil {
-		log.Errorf("Could not build rootfs of container: %v. %v", containerID, err.Error())
-		return fmt.Errorf("snapshotPrepare: Could not build rootfs of container: %v. %v", containerID, err.Error())
+	if err := ioutil.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(imageConfigJSON), 0666); err != nil {
+		return fmt.Errorf("createBundle: Exception while writing image info to %v/%v. %v", rootPath, imageConfigFilename, err)
 	}
 
 	return nil
@@ -237,44 +250,6 @@ func loadContainer(containerID string) (containerd.Container, error) {
 		err = fmt.Errorf("loadContainer: Exception while loading container: %v", err)
 	}
 	return container, err
-}
-
-//createBundle - assigns a UUID and creates a bundle for container's rootFs
-func createBundle(bundleID string, snapshotName, imageConfigJSON string) error {
-	appDir := GetContainerPath(bundleID)
-	rootFsDir := path.Join(appDir, containerRootfsPath)
-	//rootFsDir := getContainerRootfs(container.ID())
-	if err := os.MkdirAll(rootFsDir, 0766); err != nil {
-		return fmt.Errorf("createBundle: Exception while creating rootFS dir. %v", err)
-	}
-
-	if err := ioutil.WriteFile(filepath.Join(appDir, imageConfigFilename), []byte(imageConfigJSON), 0666); err != nil {
-		return fmt.Errorf("createBundle: Exception while writing image info to %v/%v. %v", appDir, imageConfigFilename, err)
-	}
-
-	if err := ioutil.WriteFile(filepath.Join(appDir, pidFilename), []byte(bundleID), 0666); err != nil {
-		return fmt.Errorf("createBundle: Exception while writing container pid to %v/%v. %v", appDir, pidFilename, err)
-	}
-	snapshotMountPoints, err := getMountPointsFromSnapshot(snapshotName)
-	if err != nil {
-		return fmt.Errorf("Exception while preparing snapshot: %v mount-points. %v", snapshotName, err)
-	}
-	if len(snapshotMountPoints) > 1 {
-		return fmt.Errorf("More than 1 mount-point for snapshot %v.", snapshotName)
-	}
-	if err = snapshotMountPoints[0].Mount(rootFsDir); err != nil {
-		return fmt.Errorf("Exception while mounting rootfs. Error: %v", err)
-	}
-	return nil
-}
-
-func getMountPointsFromSnapshot(mountKey string) ([]mount.Mount, error) {
-	snapshotter := CtrdClient.SnapshotService(defaultSnapshotter)
-	mounts, err := snapshotter.Mounts(ctrdCtx, mountKey)
-	if err != nil {
-		return nil, err
-	}
-	return mounts, nil
 }
 
 func getImageInfo(ctrdCtx context.Context, image containerd.Image) (v1.Image, error) {
@@ -319,29 +294,8 @@ func getJSON(x interface{}) (string, error) {
 	return fmt.Sprint(string(b)), nil
 }
 
-// deleteBundle remove an existing container bundle. If silent is true, then operation failures are ignored and no error is returned
-func deleteBundle(containerID string, silent bool) error {
-	if err := syscall.Unmount(getContainerRootfs(containerID), 0); err != nil {
-		log.Errorf("deleteBundle: exception while unmounting: %v. %v", getContainerRootfs(containerID), err.Error())
-		if !silent {
-			return fmt.Errorf("deleteBundle: Exception while unmounting: %v. %v", getContainerRootfs(containerID), err.Error())
-		}
-	}
-	if err := os.RemoveAll(GetContainerPath(containerID)); err != nil {
-		log.Errorf("deleteBundle: exception while deleting: %v. %v", GetContainerPath(containerID), err.Error())
-		if !silent {
-			return fmt.Errorf("deleteBundle: Exception while deleting: %v. %v", GetContainerPath(containerID), err.Error())
-		}
-	}
-	return nil
-}
-
 func isContainerNotFound(e error) bool {
 	return strings.HasSuffix(e.Error(), ": not found")
-}
-
-func getSnapshotName(containerID string) string {
-	return fmt.Sprintf("%s-snapshot", containerID)
 }
 
 // getContainerPath return the path to the root of the container. This is *not*
