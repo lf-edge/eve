@@ -141,6 +141,7 @@ type DownloadOriginConfig struct {
 	DatastoreID      uuid.UUID
 	Name             string // XXX Do depend on URL for clobber avoidance?
 	NameIsURL        bool   // If not we form URL based on datastore info
+	ImageSha256      string
 	IsContainer      bool
 	AllowNonFreePort bool
 	MaxSizeBytes     uint64 // Upper limit

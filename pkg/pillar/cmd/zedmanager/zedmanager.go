@@ -543,7 +543,7 @@ func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	ssPtr *types.StorageStatus) {
 
 	imageSha := lookupAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-		ssPtr.ImageID)
+		ssPtr.ImageID, ssPtr.PurgeCounter)
 	if imageSha == "" {
 		if ssPtr.IsContainer && ssPtr.ImageSha256 == "" {
 			log.Infof("Container app/image %s %s/%s has not (yet) latched sha",

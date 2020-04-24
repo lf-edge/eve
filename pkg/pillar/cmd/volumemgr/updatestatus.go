@@ -108,7 +108,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 	}
 	// Check if we have a DownloadStatus if not put a DownloadConfig
 	// in place
-	ds := lookupDownloaderStatus(ctx, status.ObjType, status.VolumeID)
+	ds := lookupDownloaderStatus(ctx, status.ObjType, status.BlobSha256)
 	if ds == nil || ds.Expired || ds.RefCount == 0 {
 		if ds == nil {
 			log.Infof("downloadStatus not found. name: %s", status.VolumeID)
@@ -203,7 +203,7 @@ func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts 
 // Also returns changed=true if the VolumeStatus is changed
 func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.VerifyImageStatus, bool) {
 	changed := false
-	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.VolumeID)
+	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.BlobSha256)
 	if vs == nil {
 		ps := lookupPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
 		if ps == nil || ps.Expired {
@@ -242,8 +242,8 @@ func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.
 	return vs, changed
 }
 
-// Find all the VolumeStatus which refer to this VolumeID
-func updateVolumeStatus(ctx *volumemgrContext, objType string, volumeID uuid.UUID) {
+// Find all the VolumeStatus which refer to this BlobSha256
+func updateVolumeStatus(ctx *volumemgrContext, objType, blobSha256 string, volumeID uuid.UUID) {
 
 	log.Infof("updateVolumeStatus(%s) objType %s", volumeID, objType)
 	found := false
@@ -251,7 +251,7 @@ func updateVolumeStatus(ctx *volumemgrContext, objType string, volumeID uuid.UUI
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.VolumeStatus)
-		if status.VolumeID == volumeID {
+		if status.BlobSha256 == blobSha256 {
 			log.Infof("Found VolumeStatus %s", status.Key())
 			found = true
 			changed, _ := doUpdate(ctx, &status)
@@ -275,13 +275,13 @@ func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 	if status.Origin == types.OriginTypeDownload {
 		if status.DownloadOrigin.HasDownloaderRef {
 			MaybeRemoveDownloaderConfig(ctx, status.ObjType,
-				status.VolumeID) // XXX volumeID?
+				status.BlobSha256)
 			status.DownloadOrigin.HasDownloaderRef = false
 			changed = true
 		}
 		if status.DownloadOrigin.HasVerifierRef {
 			MaybeRemoveVerifyImageConfig(ctx, status.ObjType,
-				status.VolumeID) // XXX volumeID?
+				status.BlobSha256)
 			status.DownloadOrigin.HasVerifierRef = false
 			changed = true
 		}

@@ -13,48 +13,54 @@ import (
 )
 
 // Add or update
-func addAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID, imageID uuid.UUID, hash string) {
-	log.Infof("addAppAndImageHash(%s, %s, %s)", appUUID, imageID, hash)
+func addAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID, imageID uuid.UUID,
+	hash string, purgeCounter uint32) {
+
+	log.Infof("addAppAndImageHash(%s, %s, %s, %d)", appUUID, imageID, hash, purgeCounter)
 	if hash == "" {
-		log.Errorf("addAppAndImageHash(%s, %s) empty hash",
-			appUUID, imageID)
+		log.Errorf("addAppAndImageHash(%s, %s, %d) empty hash",
+			appUUID, imageID, purgeCounter)
 		return
 	}
 	aih := types.AppAndImageToHash{
-		AppUUID: appUUID,
-		ImageID: imageID,
-		Hash:    hash,
+		AppUUID:      appUUID,
+		ImageID:      imageID,
+		Hash:         hash,
+		PurgeCounter: purgeCounter,
 	}
 	item, _ := ctx.pubAppAndImageToHash.Get(aih.Key())
 	if item != nil {
 		old := item.(types.AppAndImageToHash)
 		if old.Hash == aih.Hash {
-			log.Warnf("addAppAndImageHash(%s, %s) no change %s",
-				appUUID, imageID, old.Hash)
+			log.Warnf("addAppAndImageHash(%s, %s, %d) no change %s",
+				appUUID, imageID, purgeCounter, old.Hash)
 			return
 		}
-		log.Warnf("addAppAndImageHash(%s, %s) change from %s to %s",
-			appUUID, imageID, old.Hash, aih.Hash)
+		log.Warnf("addAppAndImageHash(%s, %s, %d) change from %s to %s",
+			appUUID, imageID, purgeCounter, old.Hash, aih.Hash)
 	}
 	ctx.pubAppAndImageToHash.Publish(aih.Key(), aih)
-	log.Infof("addAppAndImageHash(%s, %s, %s) done", appUUID, imageID, hash)
+	log.Infof("addAppAndImageHash(%s, %s, %s, %d) done", appUUID, imageID, hash, purgeCounter)
 }
 
 // Delete for a specific image
-func deleteAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID, imageID uuid.UUID) {
-	log.Infof("deleteAppAndImageHash(%s, %s)", appUUID, imageID)
+func deleteAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID,
+	imageID uuid.UUID, purgeCounter uint32) {
+
+	log.Infof("deleteAppAndImageHash(%s, %s, %d)", appUUID, imageID, purgeCounter)
 	aih := types.AppAndImageToHash{
-		AppUUID: appUUID,
-		ImageID: imageID,
+		AppUUID:      appUUID,
+		ImageID:      imageID,
+		PurgeCounter: purgeCounter,
 	}
 	item, _ := ctx.pubAppAndImageToHash.Get(aih.Key())
 	if item == nil {
-		log.Errorf("deleteAppAndImageHash(%s, %s) not found",
-			appUUID, imageID)
+		log.Errorf("deleteAppAndImageHash(%s, %s, %d) not found",
+			appUUID, imageID, purgeCounter)
 		return
 	}
 	ctx.pubAppAndImageToHash.Unpublish(aih.Key())
-	log.Infof("deleteAppAndImageHash(%s, %s) done", appUUID, imageID)
+	log.Infof("deleteAppAndImageHash(%s, %s, %d) done", appUUID, imageID, purgeCounter)
 }
 
 // Purge all for appUUID
@@ -74,20 +80,23 @@ func purgeAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID) {
 }
 
 // Returns "" string if not found
-func lookupAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID, imageID uuid.UUID) string {
-	log.Infof("lookupAppAndImageHash(%s, %s)", appUUID, imageID)
+func lookupAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID,
+	imageID uuid.UUID, purgeCounter uint32) string {
+
+	log.Infof("lookupAppAndImageHash(%s, %s, %d)", appUUID, imageID, purgeCounter)
 	temp := types.AppAndImageToHash{
-		AppUUID: appUUID,
-		ImageID: imageID,
+		AppUUID:      appUUID,
+		ImageID:      imageID,
+		PurgeCounter: purgeCounter,
 	}
 	item, _ := ctx.pubAppAndImageToHash.Get(temp.Key())
 	if item == nil {
-		log.Infof("lookupAppAndImageHash(%s, %s) not found",
-			appUUID, imageID)
+		log.Infof("lookupAppAndImageHash(%s, %s, %d) not found",
+			appUUID, imageID, purgeCounter)
 		return ""
 	}
 	aih := item.(types.AppAndImageToHash)
-	log.Infof("lookupAppAndImageHash(%s, %s) found %s",
-		appUUID, imageID, aih.Hash)
+	log.Infof("lookupAppAndImageHash(%s, %s, %d) found %s",
+		appUUID, imageID, purgeCounter, aih.Hash)
 	return aih.Hash
 }
