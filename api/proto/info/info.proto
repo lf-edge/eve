@@ -538,9 +538,10 @@ message ContentResources {
 message ZInfoContentTree {
   string uuid = 1;
   string displayName = 2;
-  ContentResources resources = 3;
-  UsageInfo usage = 4;  // Same info as for volumes
-  repeated string componentShaList = 5;
+  string sha256 = 3;
+  ContentResources resources = 4;
+  UsageInfo usage = 5;  // Same info as for volumes
+  repeated string componentShaList = 6;
 }
 
 
