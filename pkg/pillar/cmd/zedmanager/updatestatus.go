@@ -365,7 +365,7 @@ func doInstall(ctx *zedmanagerContext,
 				removed = true
 			}
 			deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-				ss.ImageID)
+				ss.ImageID, ss.PurgeCounter)
 		}
 		log.Infof("purge inactive (%s) storageStatus from %d to %d\n",
 			config.Key(), len(status.StorageStatusList), len(newSs))
@@ -405,7 +405,10 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 
 		if !ss.HasVolumemgrRef {
-			if ss.IsContainer && !ss.ResolveDone {
+			if ss.IsContainer {
+				maybeLatchImageSha(ctx, config, ss)
+			}
+			if ss.IsContainer && ss.ImageSha256 == "" {
 				rs := lookupResolveStatus(ctx, ss.ResolveKey())
 				if rs == nil {
 					log.Infof("Resolve status not found for %s\n", ss.ImageID)
@@ -440,9 +443,8 @@ func doInstall(ctx *zedmanagerContext,
 					rs.ImageSha256, ss.ImageID)
 				ss.ImageSha256 = rs.ImageSha256
 				ss.HasResolverRef = false
-				ss.ResolveDone = true
 				addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-					ss.ImageID, ss.ImageSha256)
+					ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 				maybeLatchImageSha(ctx, config, ss)
 				deleteResolveConfig(ctx, rs.Key())
 				changed = true
@@ -924,7 +926,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			changed = true
 		}
 		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-			ss.ImageID)
+			ss.ImageID, ss.PurgeCounter)
 	}
 	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d\n",
 		config.Key(), len(status.StorageStatusList), len(newSs))
@@ -1154,7 +1156,7 @@ func doUninstall(ctx *zedmanagerContext, appInstID uuid.UUID,
 			changed = true
 		}
 		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-			ss.ImageID)
+			ss.ImageID, ss.PurgeCounter)
 	}
 	log.Debugf("Done with all volumemgr removes for %s",
 		appInstID)

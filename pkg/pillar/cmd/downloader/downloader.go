@@ -337,6 +337,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 			ImageID:          config.ImageID,
 			DatastoreID:      config.DatastoreID,
 			Name:             config.Name,
+			ImageSha256:      config.ImageSha256,
 			ObjType:          objType,
 			IsContainer:      config.IsContainer,
 			RefCount:         config.RefCount,
@@ -350,6 +351,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		// should trigger a fresh download of the object
 		status.ImageID = config.ImageID
 		status.DatastoreID = config.DatastoreID
+		status.ImageSha256 = config.ImageSha256
 		status.IsContainer = config.IsContainer
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()

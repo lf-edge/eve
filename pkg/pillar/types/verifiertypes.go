@@ -23,12 +23,11 @@ import (
 // for the file to be verified.
 
 // VerifyImageConfig captures the verifications which have been requested.
-// The key/index to this is the ImageID which is allocated by the controller.
-// The ImageSha256 may not be known when the VerifyImageConfig is created
+// The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type VerifyImageConfig struct {
-	ImageID uuid.UUID // UUID of the image
 	VerifyConfig
-	IsContainer bool // Is this image for a Container?
+	ImageID     uuid.UUID // Used for logging
+	IsContainer bool      // Is this image for a Container?
 	RefCount    uint
 }
 
@@ -43,7 +42,7 @@ type VerifyConfig struct {
 
 // Key returns the pubsub Key
 func (config VerifyImageConfig) Key() string {
-	return config.ImageID.String()
+	return config.ImageSha256
 }
 
 func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
@@ -73,11 +72,10 @@ func (config PersistImageConfig) Key() string {
 }
 
 // VerifyImageStatus captures the verifications which have been requested.
-// The key/index to this is the ImageID if known otherwise the ImageSha256
-// The sha can come from the verified filename
+// The key/index to this is the ImageSha256
 type VerifyImageStatus struct {
-	ImageID uuid.UUID // UUID of the image if known
 	VerifyStatus
+	ImageID       uuid.UUID // Used for logging
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool
@@ -99,7 +97,7 @@ type VerifyStatus struct {
 
 // Key returns the pubsub Key
 func (status VerifyImageStatus) Key() string {
-	return status.ImageID.String()
+	return status.ImageSha256
 }
 
 func (status VerifyImageStatus) VerifyFilename(fileName string) bool {

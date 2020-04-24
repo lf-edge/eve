@@ -5,18 +5,17 @@ package volumemgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-func lookupVerifyImageConfig(ctx *volumemgrContext, objType string,
-	imageID uuid.UUID) *types.VerifyImageConfig {
+func lookupVerifyImageConfig(ctx *volumemgrContext, objType,
+	key string) *types.VerifyImageConfig {
 
 	pub := ctx.publication(types.VerifyImageConfig{}, objType)
-	c, _ := pub.Get(imageID.String())
+	c, _ := pub.Get(key)
 	if c == nil {
 		log.Infof("lookupVerifyImageConfig(%s) not found for %s",
-			imageID, objType)
+			key, objType)
 		return nil
 	}
 	config := c.(types.VerifyImageConfig)
@@ -42,7 +41,7 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 	status types.VolumeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v",
-		status.VolumeID, checkCerts)
+		status.BlobSha256, checkCerts)
 
 	// check the certificate files, if not present,
 	// we can not start verification
@@ -60,11 +59,11 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		}
 	}
 
-	m := lookupVerifyImageConfig(ctx, status.ObjType, status.VolumeID)
+	m := lookupVerifyImageConfig(ctx, status.ObjType, status.BlobSha256)
 	if m != nil {
 		m.RefCount += 1
 		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s\n",
-			m.RefCount, status.VolumeID)
+			m.RefCount, status.BlobSha256)
 		// XXX this doesn't appear to happen
 		if m.IsContainer != status.DownloadOrigin.IsContainer {
 			log.Infof("MaybeAddVerifyImageConfig: change IsContainer to %t for %s",
@@ -79,7 +78,7 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		publishVerifyImageConfig(ctx, status.ObjType, m)
 	} else {
 		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
-			status.VolumeID, status.DownloadOrigin.IsContainer)
+			status.BlobSha256, status.DownloadOrigin.IsContainer)
 		n := types.VerifyImageConfig{
 			ImageID: status.VolumeID,
 			VerifyConfig: types.VerifyConfig{
@@ -95,20 +94,20 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		publishVerifyImageConfig(ctx, status.ObjType, &n)
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
 	}
-	log.Infof("MaybeAddVerifyImageConfig done for %s\n", status.VolumeID)
+	log.Infof("MaybeAddVerifyImageConfig done for %s\n", status.BlobSha256)
 	return true, types.ErrorAndTime{}
 }
 
 // MaybeRemoveVerifyImageConfig decreases the refcount and if it
 // reaches zero the verifier might start a GC using the Expired exchange
-func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType string, imageID uuid.UUID) {
+func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha string) {
 
-	log.Infof("MaybeRemoveVerifyImageConfig(%s) for %s\n", imageID, objType)
+	log.Infof("MaybeRemoveVerifyImageConfig(%s) for %s\n", imageSha, objType)
 
-	m := lookupVerifyImageConfig(ctx, objType, imageID)
+	m := lookupVerifyImageConfig(ctx, objType, imageSha)
 	if m == nil {
 		log.Infof("MaybeRemoveVerifyImageConfig: config missing for %s\n",
-			imageID)
+			imageSha)
 		return
 	}
 	if m.RefCount == 0 {
@@ -119,13 +118,13 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType string, imageID
 	}
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s\n",
-		m.RefCount, imageID)
+		m.RefCount, imageSha)
 	if m.RefCount == 0 {
 		unpublishVerifyImageConfig(ctx, objType, m.Key())
 	} else {
 		publishVerifyImageConfig(ctx, objType, m)
 	}
-	log.Infof("MaybeRemoveVerifyImageConfig done for %s\n", imageID)
+	log.Infof("MaybeRemoveVerifyImageConfig done for %s\n", imageSha)
 }
 
 func publishVerifyImageConfig(ctx *volumemgrContext, objType string,
@@ -175,12 +174,12 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleVerifyImageStatusModify for ImageID: %s, "+
-		" RefCount %d\n", status.ImageID, status.RefCount)
+	log.Infof("handleVerifyImageStatusModify for ImageSha256: %s, "+
+		" RefCount %d\n", status.ImageSha256, status.RefCount)
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
 		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for"+
-			" ImageID: %s", status.ImageID)
+			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
 	// Make sure the PersistImageConfig has the sum of the refcounts
@@ -188,8 +187,8 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	if status.ImageSha256 != "" {
 		updatePersistImageConfig(ctx, status.ObjType, status.ImageSha256)
 	}
-	updateVolumeStatus(ctx, status.ObjType, status.ImageID)
-	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageID)
+	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }
 
 // Make sure the PersistImageConfig has the sum of the refcounts
@@ -259,14 +258,14 @@ func sumVerifyImageRefCount(ctx *volumemgrContext, objType string, imageSha stri
 }
 
 // Note that this function returns the entry even if Pending* is set.
-func lookupVerifyImageStatus(ctx *volumemgrContext, objType string,
-	imageID uuid.UUID) *types.VerifyImageStatus {
+func lookupVerifyImageStatus(ctx *volumemgrContext, objType,
+	key string) *types.VerifyImageStatus {
 
 	sub := ctx.subscription(types.VerifyImageStatus{}, objType)
-	s, _ := sub.Get(imageID.String())
+	s, _ := sub.Get(key)
 	if s == nil {
 		log.Infof("lookupVerifyImageStatus(%s) not found for %s",
-			imageID, objType)
+			key, objType)
 		return nil
 	}
 	status := s.(types.VerifyImageStatus)
@@ -279,9 +278,9 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s\n", key)
 	ctx := ctxArg.(*volumemgrContext)
-	updateVolumeStatus(ctx, status.ObjType, status.ImageID)
+	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageID)
+	config := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",
 			key)

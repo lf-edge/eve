@@ -11,9 +11,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// The key/index to this is the ImageID which is allocated by the controller.
+// The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type DownloaderConfig struct {
-	ImageID          uuid.UUID
+	ImageSha256      string
+	ImageID          uuid.UUID // Used for logging
 	DatastoreID      uuid.UUID
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
@@ -25,7 +26,7 @@ type DownloaderConfig struct {
 }
 
 func (config DownloaderConfig) Key() string {
-	return config.ImageID.String()
+	return config.ImageSha256
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
@@ -45,9 +46,10 @@ type CertConfig struct {
 	CertChain  []DownloaderConfig
 }
 
-// The key/index to this is the ImageID which comes from DownloaderConfig.
+// The key/index to this is the ImageSha256 which comes from DownloaderConfig.
 type DownloaderStatus struct {
-	ImageID          uuid.UUID
+	ImageSha256      string
+	ImageID          uuid.UUID // Used for logging
 	DatastoreID      uuid.UUID
 	Name             string
 	ObjType          string
@@ -72,7 +74,7 @@ type DownloaderStatus struct {
 }
 
 func (status DownloaderStatus) Key() string {
-	return status.ImageID.String()
+	return status.ImageSha256
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {

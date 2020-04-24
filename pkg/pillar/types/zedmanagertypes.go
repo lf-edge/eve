@@ -269,7 +269,6 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasVolumemgrRef    bool    // Reference against volumemgr to clean up
 	HasResolverRef     bool    // Reference against resolver for resolving tags
-	ResolveDone        bool    // Is container image tag resolved or not
 	IsContainer        bool    // Is the image a Container??
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
@@ -304,7 +303,6 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.State = 0
 	ss.Progress = 0
 	ss.HasVolumemgrRef = false
-	ss.ResolveDone = false
 	ss.HasResolverRef = false
 	if ss.Format == zconfig.Format_CONTAINER {
 		ss.IsContainer = true
@@ -445,12 +443,13 @@ type SignatureInfo struct {
 // Key for OCI images which can be specified with a tag and we need to be
 // able to latch the sha and choose when to update/refresh from the tag.
 type AppAndImageToHash struct {
-	AppUUID uuid.UUID
-	ImageID uuid.UUID
-	Hash    string
+	AppUUID      uuid.UUID
+	ImageID      uuid.UUID
+	Hash         string
+	PurgeCounter uint32
 }
 
 // Key is used for pubsub
 func (aih AppAndImageToHash) Key() string {
-	return fmt.Sprintf("%s.%s", aih.AppUUID.String(), aih.ImageID.String())
+	return fmt.Sprintf("%s.%s.%d", aih.AppUUID.String(), aih.ImageID.String(), aih.PurgeCounter)
 }
