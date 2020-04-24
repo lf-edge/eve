@@ -135,8 +135,8 @@ enum VolumeContentOriginType {
 }
 
 message VolumeContentOrigin {
-  volumeContentOriginType type = 1;
-  repeated string downloadContentTreeID = 2;
+  VolumeContentOriginType type = 1;
+  string downloadContentTreeID = 2; // applicable when the type is VCOT_DOWNLOAD
 }
 
 message Volume {
