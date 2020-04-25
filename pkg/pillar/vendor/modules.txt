@@ -81,16 +81,17 @@ github.com/aws/aws-sdk-go/internal/sdkuri
 github.com/aws/aws-sdk-go/private/protocol/json/jsonutil
 github.com/aws/aws-sdk-go/private/protocol/query/queryutil
 # github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
+github.com/containerd/cgroups
 github.com/containerd/cgroups/stats/v1
-# github.com/containerd/containerd v1.3.0
+# github.com/containerd/containerd v1.3.4
 github.com/containerd/containerd
+github.com/containerd/containerd/cio
 github.com/containerd/containerd/containers
 github.com/containerd/containerd/content
 github.com/containerd/containerd/images
-github.com/containerd/containerd/mount
 github.com/containerd/containerd/namespaces
 github.com/containerd/containerd/oci
-github.com/containerd/containerd/runtime/v2/runc/options
+github.com/containerd/containerd/snapshots
 github.com/containerd/containerd/api/services/containers/v1
 github.com/containerd/containerd/api/services/content/v1
 github.com/containerd/containerd/api/services/diff/v1
@@ -106,7 +107,6 @@ github.com/containerd/containerd/api/types
 github.com/containerd/containerd/api/types/task
 github.com/containerd/containerd/archive
 github.com/containerd/containerd/archive/compression
-github.com/containerd/containerd/cio
 github.com/containerd/containerd/content/proxy
 github.com/containerd/containerd/defaults
 github.com/containerd/containerd/diff
@@ -116,6 +116,7 @@ github.com/containerd/containerd/images/archive
 github.com/containerd/containerd/leases
 github.com/containerd/containerd/leases/proxy
 github.com/containerd/containerd/log
+github.com/containerd/containerd/mount
 github.com/containerd/containerd/pkg/dialer
 github.com/containerd/containerd/platforms
 github.com/containerd/containerd/plugin
@@ -124,7 +125,7 @@ github.com/containerd/containerd/remotes/docker
 github.com/containerd/containerd/remotes/docker/schema1
 github.com/containerd/containerd/rootfs
 github.com/containerd/containerd/runtime/linux/runctypes
-github.com/containerd/containerd/snapshots
+github.com/containerd/containerd/runtime/v2/runc/options
 github.com/containerd/containerd/snapshots/proxy
 github.com/containerd/containerd/sys
 github.com/containerd/containerd/reference
@@ -143,6 +144,8 @@ github.com/containerd/fifo
 github.com/containerd/ttrpc
 # github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737
 github.com/containerd/typeurl
+# github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
+github.com/coreos/go-systemd/dbus
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
@@ -169,6 +172,8 @@ github.com/docker/docker-credential-helpers/client
 github.com/docker/docker-credential-helpers/credentials
 # github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c
 github.com/docker/go-events
+# github.com/docker/go-units v0.4.0
+github.com/docker/go-units
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
 # github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
@@ -178,6 +183,8 @@ github.com/fsnotify/fsnotify
 # github.com/go-ole/go-ole v1.2.4
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
+# github.com/godbus/dbus v0.0.0-20190422162347-ade71ed3457e
+github.com/godbus/dbus
 # github.com/gogo/googleapis v1.3.2
 github.com/gogo/googleapis/google/rpc
 # github.com/gogo/protobuf v1.3.1
@@ -244,13 +251,13 @@ github.com/lf-edge/eve/api/go/auth
 # github.com/opencontainers/go-digest v1.0.0-rc1
 github.com/opencontainers/go-digest
 # github.com/opencontainers/image-spec v1.0.1
-github.com/opencontainers/image-spec/specs-go/v1
 github.com/opencontainers/image-spec/identity
+github.com/opencontainers/image-spec/specs-go/v1
 github.com/opencontainers/image-spec/specs-go
 # github.com/opencontainers/runc v0.1.1
 github.com/opencontainers/runc/libcontainer/user
 github.com/opencontainers/runc/libcontainer/system
-# github.com/opencontainers/runtime-spec v1.0.1
+# github.com/opencontainers/runtime-spec v1.0.2
 github.com/opencontainers/runtime-spec/specs-go
 # github.com/packetcap/go-pcap v0.0.0-20200406093224-b4b47c1ea359
 github.com/packetcap/go-pcap
