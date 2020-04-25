@@ -7,11 +7,12 @@ require (
 	github.com/Microsoft/hcsshim v0.8.7 // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/aws/aws-sdk-go v1.27.1
-	github.com/containerd/containerd v1.3.0
+	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
+	github.com/containerd/containerd v1.3.4
 	github.com/containerd/continuity v0.0.0-20200228182428-0f16d7a0959c // indirect
 	github.com/containerd/fifo v0.0.0-20191213151349-ff969a566b00 // indirect
 	github.com/containerd/ttrpc v0.0.0-20200121165050-0be804eadb15 // indirect
-	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737
+	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737 // indirect
 	github.com/coreos/ioprogress v0.0.0-20151023204047-4637e494fd9b // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
@@ -37,7 +38,7 @@ require (
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runc v0.1.1 // indirect
-	github.com/opencontainers/runtime-spec v1.0.1
+	github.com/opencontainers/runtime-spec v1.0.2
 	github.com/packetcap/go-pcap v0.0.0-20200406093224-b4b47c1ea359
 	github.com/pkg/sftp v1.10.0
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
@@ -53,7 +54,7 @@ require (
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
-	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d // indirect
+	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
 	google.golang.org/protobuf v1.21.0 // indirect
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
