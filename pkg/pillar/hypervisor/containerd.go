@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"github.com/containerd/cgroups"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -174,5 +175,38 @@ func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 }
 
 func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
-	return nil, nil
+	// for more precised measurements we should be using a tool like https://github.com/cha87de/kvmtop
+	res := map[string]types.DomainMetric{}
+	ids, err := containerd.CtrList()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, id := range ids {
+		var usedMem, availMem uint32
+		var usedMemPerc float64
+		var cpuTotal uint64
+
+		if cg, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/eve-user-apps/"+id)); err == nil {
+			if s, err := cg.Stat(); err == nil {
+				usedMem = uint32(roundFromBytesToMbytes(s.Memory.Usage.Usage))
+				availMem = uint32(roundFromBytesToMbytes(s.Memory.Usage.Max))
+				usedMemPerc = float64(100 * float32(usedMem) / float32(availMem))
+				cpuTotal = s.CPU.Usage.Total
+			} else {
+				log.Errorf("GetDomsCPUMem failed with error %v", err)
+			}
+		} else {
+			log.Errorf("GetDomsCPUMem failed with error %v", err)
+		}
+
+		res[id] = types.DomainMetric{
+			UUIDandVersion:    types.UUIDandVersion{},
+			CPUTotal:          cpuTotal,
+			UsedMemory:        usedMem,
+			AvailableMemory:   availMem,
+			UsedMemoryPercent: usedMemPerc,
+		}
+	}
+	return res, nil
 }

@@ -399,6 +399,19 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 	return nil
 }
 
+// CtrList looks up
+func CtrList() ([]string, error) {
+	res := []string{}
+	ctrs, err := CtrdClient.Containers(ctrdCtx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range ctrs {
+		res = append(res, v.ID())
+	}
+	return res, nil
+}
+
 // CtrInfo looks up
 func CtrInfo(name string) (int, string, error) {
 	c, err := loadContainer(name)
