@@ -8,6 +8,7 @@
 package zedmanager
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -483,6 +484,7 @@ func handleCreate(ctxArg interface{}, key string,
 			true, "purgeCmdCounter")
 	}
 
+	var totalDiskUsage uint64
 	status.StorageStatusList = make([]types.StorageStatus,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
@@ -493,16 +495,21 @@ func handleCreate(ctxArg interface{}, key string,
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
 		}
+		if ss.Size == 0 {
+			log.Warnf("handleCreate(%s) zero size for %s",
+				config.Key(), ss.Name)
+		}
+		totalDiskUsage += ss.Size
 	}
 
 	status.EIDList = make([]types.EIDStatusDetails,
 		len(config.OverlayNetworkList))
 
+	allErrors := ""
 	if len(config.Errors) > 0 {
 		// Combine all errors from Config parsing state and send them in Status
-		status.Error = ""
 		for i, errStr := range config.Errors {
-			status.Error += errStr
+			allErrors += errStr
 			log.Errorf("App Instance %s-%s: Error(%d): %s",
 				config.DisplayName, config.UUIDandVersion.UUID, i, errStr)
 		}
@@ -510,22 +517,41 @@ func handleCreate(ctxArg interface{}, key string,
 			config.DisplayName, config.UUIDandVersion.UUID)
 	}
 
+	if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
+		// Check disk usage
+		remaining, appDiskSizeList, err := getRemainingAppDiskSpace(ctx)
+		if err != nil {
+			errStr := fmt.Sprintf("getRemainingAppDiskSpace failed: %s\n",
+				err)
+			allErrors += errStr
+		} else if remaining < totalDiskUsage {
+			errStr := fmt.Sprintf("Remaining disk space %d app needs %d\n",
+				remaining, totalDiskUsage)
+			allErrors += errStr
+			errStr = fmt.Sprintf("Current app disk size list:\n%s\n",
+				appDiskSizeList)
+			allErrors += errStr
+		}
+	}
+
 	// Do some basic sanity checks.
 	if config.FixedResources.Memory == 0 {
 		errStr := "Invalid Memory Size - 0\n"
-		status.Error += errStr
+		allErrors += errStr
 	}
 	if config.FixedResources.VCpus == 0 {
 		errStr := "Invalid Cpu count - 0\n"
-		status.Error += errStr
+		allErrors += errStr
 	}
-	publishAppInstanceStatus(ctx, &status)
 
 	// if some error, return
-	if status.HasError() {
+	if allErrors != "" {
 		log.Errorf("AppInstance(Name:%s, UUID:%s): Errors in App Instance "+
 			"Create. Error: %s",
-			config.DisplayName, config.UUIDandVersion.UUID, status.Error)
+			config.DisplayName, config.UUIDandVersion.UUID, allErrors)
+		status.SetErrorWithSource(allErrors, types.AppInstanceStatus{},
+			time.Now())
+		publishAppInstanceStatus(ctx, &status)
 		return
 	}
 
@@ -641,6 +667,20 @@ func handleModify(ctxArg interface{}, key string,
 			config.UUIDandVersion, config.DisplayName,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
+		if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
+			err := checkPurgeDiskSizeFit(ctx, config, *status)
+			if err != nil {
+				log.Error(err)
+				status.SetErrorWithSource(err.Error(),
+					types.AppInstanceStatus{}, time.Now())
+				publishAppInstanceStatus(ctx, status)
+				return
+			}
+		}
+		if status.IsErrorSource(types.AppInstanceStatus{}) {
+			log.Infof("Removing error %s\n", status.Error)
+			status.ClearErrorWithSource()
+		}
 		status.PurgeCmd.Counter = config.PurgeCmd.Counter
 		status.PurgeInprogress = types.RecreateVolumes
 		status.State = types.PURGING
@@ -667,6 +707,47 @@ func handleModify(ctxArg interface{}, key string,
 	status.IoAdapterList = config.IoAdapterList
 	publishAppInstanceStatus(ctx, status)
 	log.Infof("handleModify done for %s\n", config.DisplayName)
+}
+
+// checkPurgeDiskSizeFit sees if a purge might exceed the remaining space
+// Check for change in disk usage for StorageConfig and if increase see if
+// sufficient space is available.
+// If app instance is Activated then both old and new have to fit since we
+// delete old volume after restarting app to minimize outage for application.
+func checkPurgeDiskSizeFit(ctxPtr *zedmanagerContext, config types.AppInstanceConfig,
+	status types.AppInstanceStatus) error {
+
+	remaining, appDiskSizeList, err := getRemainingAppDiskSpace(ctxPtr)
+	if err != nil {
+		return fmt.Errorf("getRemainingAppDiskSpace failed: %s", err)
+	}
+	var oldDisk0Size, newDisk0Size uint64
+	if len(config.StorageConfigList) > 0 {
+		newDisk0Size = config.StorageConfigList[0].Size
+	}
+	if len(status.StorageStatusList) > 0 {
+		oldDisk0Size = status.StorageStatusList[0].Size
+	}
+	if !status.Activated {
+		if newDisk0Size > oldDisk0Size &&
+			newDisk0Size-oldDisk0Size > remaining {
+			errStr := fmt.Sprintf("Remaining disk space %d app needs %d to purge\n",
+				remaining, newDisk0Size-oldDisk0Size)
+			errStr += fmt.Sprintf("Current app disk size list:\n%s\n",
+				appDiskSizeList)
+			return errors.New(errStr)
+		}
+	} else {
+		// The oldDisk0Size is already accounted for in remaining
+		if newDisk0Size > remaining {
+			errStr := fmt.Sprintf("Remaining disk space %d app needs %d to purge while Activated; deactivate then purge\n",
+				remaining, newDisk0Size)
+			errStr += fmt.Sprintf("Current app disk size list:\n%s\n",
+				appDiskSizeList)
+			return errors.New(errStr)
+		}
+	}
+	return nil
 }
 
 func handleDelete(ctx *zedmanagerContext, key string,

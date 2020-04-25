@@ -183,16 +183,14 @@ func dom0DiskReservedSize(ctxPtr *zedmanagerContext, deviceDiskSize uint64) uint
 	return diskReservedForDom0
 }
 
-func checkDiskSize(ctxPtr *zedmanagerContext) error {
+// getRemainingAppDiskSpace returns how many bytes remain for app usage
+// plus a string for printing the current app disk usage (latter used
+// if there isn't enough)
+func getRemainingAppDiskSpace(ctxPtr *zedmanagerContext) (uint64, string, error) {
 
 	var totalAppDiskSize uint64
+	appDiskSizeList := "" // In case caller wants to print an error
 
-	if ctxPtr.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
-		log.Debugf("Ignoring diskchecks for Apps")
-		return nil
-	}
-
-	appDiskSizeList := ""
 	pub := ctxPtr.pubAppInstanceStatus
 	items := pub.GetAll()
 	for _, iterStatusJSON := range items {
@@ -204,9 +202,8 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 		}
 		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
-			log.Errorf("checkDiskSize: err: %s", err.Error())
-			// Assume application is going down and its disks
-			// are going away.
+			log.Errorf("getRemainingAppDiskSpace: err: %s", err.Error())
+			return 0, appDiskSizeList, err
 		}
 		totalAppDiskSize += appDiskSize
 		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d)\n%s\n",
@@ -216,32 +213,23 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 	if err != nil {
 		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
 		log.Errorf("diskSizeReservedForDom0: err:%s", err)
-		return err
+		return 0, appDiskSizeList, err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
 	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
 	var allowedDeviceDiskSizeForApps uint64
-	if deviceDiskSize > diskReservedForDom0 {
-		allowedDeviceDiskSizeForApps = deviceDiskSize - diskReservedForDom0
-	} else {
+	if deviceDiskSize < diskReservedForDom0 {
 		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
 			deviceDiskSize, diskReservedForDom0)
-		log.Errorf("***checkDiskSize: err: %s", err)
-		return err
+		log.Errorf("***getRemainingAppDiskSpace: err: %s", err)
+		return ^uint64(0), appDiskSizeList, err
 	}
+	allowedDeviceDiskSizeForApps = deviceDiskSize - diskReservedForDom0
 	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
-		err := fmt.Errorf("Disk space not available for app - "+
-			"Total Device Disk Size: %+v\n"+
-			"Disk Size Reserved For Dom0: %+v\n"+
-			"Allowed Disk Size For Apps: %+v\n"+
-			"Total Disk Size Used By Apps: %+v\n"+
-			"App Disk Size List:\n%s",
-			deviceDiskSize, diskReservedForDom0, allowedDeviceDiskSizeForApps,
-			totalAppDiskSize, appDiskSizeList)
-		log.Errorf("checkDiskSize: err:%s", err.Error())
-		return err
+		return 0, appDiskSizeList, nil
+	} else {
+		return allowedDeviceDiskSizeForApps - totalAppDiskSize, appDiskSizeList, nil
 	}
-	return nil
 }
 
 func doUpdate(ctx *zedmanagerContext,
@@ -300,14 +288,6 @@ func doUpdate(ctx *zedmanagerContext,
 		return changed
 	}
 	log.Infof("Have config.Activate for %s\n", uuidStr)
-	// doActive/checkDiskSize does a GetAll to look at all app instances
-	// so we have to publish here
-	if changed {
-		log.Infof("doupdate status change for %s\n",
-			uuidStr)
-		publishAppInstanceStatus(ctx, status)
-		changed = false
-	}
 	c = doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
 	log.Infof("doUpdate done for %s\n", uuidStr)
@@ -340,7 +320,7 @@ func doInstall(ctx *zedmanagerContext,
 	}
 
 	// If we are purging and we failed to activate due some images
-	// which are not removed from StorageConfigList we remove them
+	// which are now removed from StorageConfigList we remove them
 	if status.PurgeInprogress == types.RecreateVolumes && !status.Activated {
 		removed := false
 		newSs := []types.StorageStatus{}
@@ -651,15 +631,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Track that we have cleanup work in case something fails
 	status.ActivateInprogress = true
 
-	// Check
-	err := checkDiskSize(ctx)
-	if err != nil {
-		errStr := fmt.Sprintf("checkDiskSize failed: %s", err)
-		log.Errorf("doActivate: %s", errStr)
-		status.SetError(errStr, time.Now())
-		return true
-	}
-
 	// Make sure we have an AppNetworkConfig
 	MaybeAddAppNetworkConfig(ctx, config, status)
 
@@ -694,7 +665,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
 	// Make sure we have a DomainConfig
-	err = MaybeAddDomainConfig(ctx, config, *status, ns)
+	err := MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
