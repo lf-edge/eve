@@ -37,11 +37,12 @@ var (
 	debug              = false
 	debugOverride      bool                               // From command line arg
 	downloadGCTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
-	downloadRetryTime  = time.Duration(600) * time.Second // Unless from GlobalConfig
+	retryTime          = time.Duration(600) * time.Second // Unless from GlobalConfig
 	downloaderObjTypes = []string{types.AppImgObj, types.BaseOsObj, types.CertObj}
 	Version            = "No version specified" // Set from Makefile
 	nilUUID            uuid.UUID                // should be a const, just the default nil value of uuid.UUID
 	dHandler           = makeDownloadHandler()
+	resHandler         = makeResolveHandler()
 )
 
 func Run(ps *pubsub.PubSub) {
@@ -242,7 +243,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 
 	log.Infof("runHandler starting")
 
-	max := float64(downloadRetryTime)
+	max := float64(retryTime)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
@@ -297,10 +298,10 @@ func maybeRetryDownload(ctx *downloaderContext,
 	}
 	t := time.Now()
 	elapsed := t.Sub(status.ErrorTime)
-	if elapsed < downloadRetryTime {
+	if elapsed < retryTime {
 		log.Infof("maybeRetryDownload(%s) %d remaining",
 			status.Key(),
-			(downloadRetryTime-elapsed)/time.Second)
+			(retryTime-elapsed)/time.Second)
 		return
 	}
 	log.Infof("maybeRetryDownload(%s) after %s at %v",

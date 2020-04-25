@@ -5,30 +5,84 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	log "github.com/sirupsen/logrus"
 )
 
-// Handles both create and modify events
-func handleAppImgResolveModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+func runResolveHandler(ctx *downloaderContext, key string,
+	c <-chan Notify) {
 
-	ctx := ctxArg.(*downloaderContext)
-	config := configArg.(types.ResolveConfig)
-	log.Infof("handleAppImgResolveModify for %s", key)
-	resolveTagsToHash(ctx, config)
-	log.Infof("handleAppImgResolveModify for %s, done", key)
+	log.Infof("runResolveHandler starting")
+
+	max := float64(retryTime)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	closed := false
+	for !closed {
+		select {
+		case _, ok := <-c:
+			if ok {
+				rc := lookupResolveConfig(ctx, key)
+				resolveTagsToHash(ctx, *rc)
+				// XXX if err start timer
+			} else {
+				// Closed
+				rs := lookupResolveStatus(ctx, key)
+				if rs != nil {
+					unpublishResolveStatus(ctx, rs)
+				}
+				closed = true
+				// XXX stop timer
+			}
+		case <-ticker.C:
+			log.Debugf("runResolveHandler(%s) timer", key)
+			rs := lookupResolveStatus(ctx, key)
+			if rs != nil {
+				maybeRetryResolve(ctx, rs)
+			}
+		}
+	}
+	log.Infof("runResolveHandler(%s) DONE", key)
 }
 
-func handleAppImgResolveDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	ctx := ctxArg.(*downloaderContext)
-	config := configArg.(types.ResolveConfig)
-	ctx.pubAppImgResolveStatus.Unpublish(config.Key())
-	log.Infof("handleAppImgResolveDelete for %s", key)
+func maybeRetryResolve(ctx *downloaderContext,
+	status *types.ResolveStatus) {
+
+	// object is either in download progress or,
+	// successfully downloaded, nothing to do
+	if !status.HasError() {
+		return
+	}
+	t := time.Now()
+	elapsed := t.Sub(status.ErrorTime)
+	if elapsed < retryTime {
+		log.Infof("maybeRetryResolve(%s) %d remaining",
+			status.Key(),
+			(retryTime-elapsed)/time.Second)
+		return
+	}
+	log.Infof("maybeRetryResolve(%s) after %s at %v",
+		status.Key(), status.Error, status.ErrorTime)
+
+	config := lookupResolveConfig(ctx, status.Key())
+	if config == nil {
+		log.Infof("maybeRetryResolve(%s) no config",
+			status.Key())
+		return
+	}
+
+	// reset Error, to start download again
+	status.RetryCount++
+	status.ClearError()
+	publishResolveStatus(ctx, status)
+
+	resolveTagsToHash(ctx, *config)
 }
 
 func publishResolveStatus(ctx *downloaderContext,

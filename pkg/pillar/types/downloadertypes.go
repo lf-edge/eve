@@ -195,6 +195,7 @@ type ResolveStatus struct {
 	Name        string
 	ImageSha256 string
 	Counter     uint32
+	RetryCount  int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
