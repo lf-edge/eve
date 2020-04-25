@@ -44,10 +44,11 @@ func (ctx ctrdContext) CreateDomConfig(domainName string, config types.DomainCon
 		return logError("requesting default OCI spec for domain %s failed %v", domainName, err)
 	}
 
-	spec.UpdateFromDomain(config)
 	if err := spec.UpdateFromVolume(diskStatusList[0].FileLocation); err != nil {
 		return logError("failed to update OCI spec from volume %s (%v)", diskStatusList[0].FileLocation, err)
 	}
+
+	spec.UpdateFromDomain(config)
 
 	return spec.Save(file)
 }

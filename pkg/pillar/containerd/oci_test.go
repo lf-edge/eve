@@ -82,7 +82,13 @@ func TestOciSpec(t *testing.T) {
 		t.Errorf("failed to write to temp file %s", tmpdir+"/image-config.json")
 	}
 
-	spec.UpdateFromDomain(types.DomainConfig{VmConfig: types.VmConfig{Memory: 1234, VCpus: 4}})
+	spec.UpdateFromDomain(types.DomainConfig{
+		VmConfig: types.VmConfig{Memory: 1234, VCpus: 4},
+		VifList: []types.VifInfo{
+			{Vif: "vif0", Bridge: "br0", Mac: "52:54:00:12:34:56", VifUsed: "vif0-ctr"},
+			{Vif: "vif1", Bridge: "br0", Mac: "52:54:00:12:34:57", VifUsed: "vif1-ctr"},
+		},
+	})
 	spec.UpdateFromVolume(tmpdir)
 
 	if err := spec.Save(tmpfile); err != nil {
@@ -94,14 +100,16 @@ func TestOciSpec(t *testing.T) {
 		t.Errorf("failed to load OCI spec file from file %s %v", tmpfile.Name(), err)
 	}
 
-	assert.Equal(t, *spec.Linux.Resources.Memory.Limit, int64(1234*1024),
-		"Got incorrect memory limit")
-	assert.Equal(t, float64(*spec.Linux.Resources.CPU.Quota)/float64(*spec.Linux.Resources.CPU.Period), float64(4),
-		"Got incorrect CPU limit")
-	assert.Equal(t, spec.Root.Path, "/var"+tmpdir+"/rootfs",
-		"Got incorrect rootfs")
-	assert.Equal(t, spec.Process.Env, []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
-		"Got incorrect ENV")
-	assert.Equal(t, spec.Process.Args, []string{"/bin/sh", "-c", "/runme.sh"},
-		"Got incorrect cmd")
+	assert.Equal(t, int64(1234*1024), *spec.Linux.Resources.Memory.Limit)
+	assert.Equal(t, float64(4), float64(*spec.Linux.Resources.CPU.Quota)/float64(*spec.Linux.Resources.CPU.Period))
+	assert.Equal(t, "/var"+tmpdir+"/rootfs", spec.Root.Path)
+	assert.Equal(t, []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, spec.Process.Env)
+	assert.Equal(t, []string{"/bin/sh", "-c", "/runme.sh"}, spec.Process.Args)
+	assert.Equal(t, []string{"VIF_NAME=vif0", "VIF_BRIDGE=br0", "VIF_MAC=52:54:00:12:34:56"}, spec.Hooks.Prestart[0].Env)
+	assert.Equal(t, []string{"VIF_NAME=vif1", "VIF_BRIDGE=br0", "VIF_MAC=52:54:00:12:34:57"}, spec.Hooks.Prestart[1].Env)
+	assert.Equal(t, []string{"VIF_NAME=vif0", "VIF_BRIDGE=br0", "VIF_MAC=52:54:00:12:34:56"}, spec.Hooks.Poststop[0].Env)
+	assert.Equal(t, "/bin/eve", spec.Hooks.Poststop[1].Path)
+	assert.Equal(t, []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh", "up", "vif0", "br0", "52:54:00:12:34:56"}, spec.Hooks.Prestart[0].Args)
+	assert.Equal(t, []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh", "down", "vif1"}, spec.Hooks.Poststop[1].Args)
+	assert.Equal(t, 60, *spec.Hooks.Poststop[1].Timeout)
 }
