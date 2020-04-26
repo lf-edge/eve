@@ -12,6 +12,7 @@ try() {
 VIF_NS=$(jq '.pid')
 case $1 in
    down) ip link del "$2"
+         exit $?
          ;;
      up) VIF_NAME="$2"
          VIF_CTR="$2".1
