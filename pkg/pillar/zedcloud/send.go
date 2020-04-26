@@ -211,15 +211,15 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		}
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v,"+
-			" intfStatusMap: %+v", url, errorList, intfStatusMap)
+		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v",
+			url, errorList)
 		log.Errorln(errStr)
 		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
 	}
 	if intfSuccessCount < successCount {
 		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
-			" to reach Zedcloud; last failed with %v. intfStatusMap: %+v",
-			intfSuccessCount, successCount, errorList, intfStatusMap)
+			" to reach Zedcloud; last failed with %v",
+			intfSuccessCount, successCount, errorList)
 		log.Errorln(errStr)
 		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
 	}
