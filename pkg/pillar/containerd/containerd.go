@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/typeurl"
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/identity"
@@ -20,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	v1stat "github.com/containerd/cgroups/stats/v1"
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/content"
@@ -399,7 +401,7 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 	return nil
 }
 
-// CtrList looks up
+// CtrList returns a list of all known container IDs
 func CtrList() ([]string, error) {
 	res := []string{}
 	ctrs, err := CtrdClient.Containers(ctrdCtx)
@@ -410,6 +412,36 @@ func CtrList() ([]string, error) {
 		res = append(res, v.ID())
 	}
 	return res, nil
+}
+
+// GetMetrics returns all runtime metrics associated with a container ID
+func GetMetrics(ctrID string) (*v1stat.Metrics, error) {
+	c, err := CtrdClient.LoadContainer(ctrdCtx, ctrID)
+	if err != nil {
+		return nil, err
+	}
+
+	t, err := c.Task(ctrdCtx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	m, err := t.Metrics(ctrdCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := typeurl.UnmarshalAny(m.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	switch v := data.(type) {
+	case *v1stat.Metrics:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("can't parse task metric %v", data)
+	}
 }
 
 // CtrInfo looks up
