@@ -4,8 +4,8 @@
 package types
 
 import (
-	zcommon "github.com/lf-edge/eve/api/go/common"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 )
 
 // CipherContext : a pair of device and controller certificate

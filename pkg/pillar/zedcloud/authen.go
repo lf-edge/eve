@@ -27,7 +27,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	zauth "github.com/lf-edge/eve/api/go/auth"
 	zcert "github.com/lf-edge/eve/api/go/certs"
-	zcommon "github.com/lf-edge/eve/api/go/common"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
