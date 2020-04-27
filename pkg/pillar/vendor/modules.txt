@@ -244,7 +244,7 @@ github.com/lf-edge/eve/api/go/register
 github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/certs
-github.com/lf-edge/eve/api/go/common
+github.com/lf-edge/eve/api/go/evecommon
 github.com/lf-edge/eve/api/go/flowlog
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/auth
