@@ -15,7 +15,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zcert "github.com/lf-edge/eve/api/go/certs"
-	zcommon "github.com/lf-edge/eve/api/go/common"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )

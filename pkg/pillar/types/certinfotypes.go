@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 
 	zcert "github.com/lf-edge/eve/api/go/certs"
-	zcommon "github.com/lf-edge/eve/api/go/common"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 )
 
 // ControllerCert : controller certicate
