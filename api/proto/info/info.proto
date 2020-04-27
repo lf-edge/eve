@@ -4,11 +4,11 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-import "common/devmodelcommon.proto";
+import "evecommon/devmodelcommon.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/info";
 
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "org.lfedge.eve.info";
 
 
 // Remove Me
@@ -66,13 +66,13 @@ enum ZInfoTypes {
 
 // Information about assignable I/O adapter bundles
 message ZioBundle {
-  common.PhyIoType type = 1;
+  org.lfedge.eve.common.PhyIoType type = 1;
   string name = 2;              // Short hand name such as "com"
   repeated string members = 3;  // E.g., "com1", "com2"
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
   repeated IoAddresses ioAddressList = 6; // One per member
-  common.PhyIoMemberUsage usage = 7; // Usage of the IoBundle
+  org.lfedge.eve.common.PhyIoMemberUsage usage = 7; // Usage of the IoBundle
   ErrorInfo err = 8; // Any errors on the IoBundle
 }
 
@@ -305,7 +305,7 @@ message DevicePort {
   bool up = 26;      // operational up/down status.
   GeoLoc location = 27;
   ErrorInfo err = 29; // Any errors on the interface.
-  common.PhyIoMemberUsage usage = 30; // Usage of the Device port
+  org.lfedge.eve.common.PhyIoMemberUsage usage = 30; // Usage of the Device port
   string networkUUID = 31; // Network UUID configured for the port.
 }
 
