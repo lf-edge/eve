@@ -4,9 +4,9 @@
 syntax = "proto3";
 
 option go_package  = "github.com/lf-edge/eve/api/go/config";
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "org.lfedge.eve.config";
 
-import "common/devmodelcommon.proto";
+import "evecommon/devmodelcommon.proto";
 
 message UUIDandVersion {
   string uuid = 1;
@@ -45,6 +45,6 @@ message ConfigItem {
 
 // Adapter bundles corresponding to a subset of what is in ZioBundle
 message Adapter {
-  common.PhyIoType type = 1;
+  org.lfedge.eve.common.PhyIoType type = 1;
   string name = 2;	// Short hand name such as "com" from bundle
 }

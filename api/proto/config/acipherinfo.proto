@@ -3,10 +3,10 @@
 
 syntax = "proto3";
 
-import "common/common.proto";
+import "evecommon/evecommon.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/config";
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "org.lfedge.eve.config";
 
 // Cipher information for sensitive data.
 
@@ -28,7 +28,7 @@ message CipherContext {
   string contextId = 1;
 
   // algorithm used to compute hash for certificates
-  common.HashAlgorithm hashScheme = 2;
+  org.lfedge.eve.common.HashAlgorithm hashScheme = 2;
 
   // for key exchange scheme, like ECDH etc.
   KeyExchangeScheme keyExchangeScheme = 3;

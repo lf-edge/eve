@@ -4,9 +4,9 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-option go_package  = "github.com/lf-edge/eve/api/go/metrics";
 
-option java_package = "com.zededa.cloud.uservice.proto";
+option go_package  = "github.com/lf-edge/eve/api/go/metrics";
+option java_package = "org.lfedge.eve.metrics";
 
 // Metrics from devices and applications
 
