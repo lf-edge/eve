@@ -12,17 +12,17 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from common import common_pb2 as common_dot_common__pb2
+from evecommon import evecommon_pb2 as evecommon_dot_evecommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='auth/auth.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/auth'),
-  serialized_pb=_b('\n\x0f\x61uth/auth.proto\x1a\x13\x63ommon/common.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"\x97\x01\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12#\n\x04\x61lgo\x18\x02 \x01(\x0e\x32\x15.common.HashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c\x12\x12\n\nsenderCert\x18\x05 \x01(\x0c\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
+  serialized_options=_b('\n\023org.lfedge.eve.authZ\"github.com/lf-edge/eve/api/go/auth'),
+  serialized_pb=_b('\n\x0f\x61uth/auth.proto\x1a\x19\x65vecommon/evecommon.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"\xa6\x01\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x32\n\x04\x61lgo\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c\x12\x12\n\nsenderCert\x18\x05 \x01(\x0c\x42\x39\n\x13org.lfedge.eve.authZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
   ,
-  dependencies=[common_dot_common__pb2.DESCRIPTOR,])
+  dependencies=[evecommon_dot_evecommon__pb2.DESCRIPTOR,])
 
 
 
@@ -53,8 +53,8 @@ _AUTHBODY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=40,
-  serialized_end=67,
+  serialized_start=46,
+  serialized_end=73,
 )
 
 
@@ -112,12 +112,12 @@ _AUTHCONTAINER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=70,
-  serialized_end=221,
+  serialized_start=76,
+  serialized_end=242,
 )
 
 _AUTHCONTAINER.fields_by_name['authPayload'].message_type = _AUTHBODY
-_AUTHCONTAINER.fields_by_name['algo'].enum_type = common_dot_common__pb2._HASHALGORITHM
+_AUTHCONTAINER.fields_by_name['algo'].enum_type = evecommon_dot_evecommon__pb2._HASHALGORITHM
 DESCRIPTOR.message_types_by_name['AuthBody'] = _AUTHBODY
 DESCRIPTOR.message_types_by_name['AuthContainer'] = _AUTHCONTAINER
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)

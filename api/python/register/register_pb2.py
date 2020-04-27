@@ -19,8 +19,8 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='register/register.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('Z&github.com/lf-edge/eve/api/go/register'),
-  serialized_pb=_b('\n\x17register/register.proto\"W\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x12\n\nsoftSerial\x18\x04 \x01(\t\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42(Z&github.com/lf-edge/eve/api/go/registerb\x06proto3')
+  serialized_options=_b('\n\027org.lfedge.eve.registerZ&github.com/lf-edge/eve/api/go/register'),
+  serialized_pb=_b('\n\x17register/register.proto\"W\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x12\n\nsoftSerial\x18\x04 \x01(\t\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42\x41\n\x17org.lfedge.eve.registerZ&github.com/lf-edge/eve/api/go/registerb\x06proto3')
 )
 
 _ZREGISTERRESULT = _descriptor.EnumDescriptor(

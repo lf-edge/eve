@@ -13,17 +13,17 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from common import common_pb2 as common_dot_common__pb2
+from evecommon import evecommon_pb2 as evecommon_dot_evecommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='certs/certs.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certs'),
-  serialized_pb=_b('\n\x11\x63\x65rts/certs.proto\x1a\x13\x63ommon/common.proto\"(\n\x0fZControllerCert\x12\x15\n\x05\x63\x65rts\x18\x01 \x03(\x0b\x32\x06.ZCert\"j\n\x05ZCert\x12\'\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x15.common.HashAlgorithm\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x18\n\x04type\x18\x03 \x01(\x0e\x32\n.ZCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c*\x9b\x01\n\tZCertType\x12\x1d\n\x19\x43\x45RT_TYPE_CONTROLLER_NONE\x10\x00\x12 \n\x1c\x43\x45RT_TYPE_CONTROLLER_SIGNING\x10\x01\x12%\n!CERT_TYPE_CONTROLLER_INTERMEDIATE\x10\x02\x12&\n\"CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x03\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
+  serialized_options=_b('\n\024org.lfedge.eve.certsZ#github.com/lf-edge/eve/api/go/certs'),
+  serialized_pb=_b('\n\x11\x63\x65rts/certs.proto\x1a\x19\x65vecommon/evecommon.proto\"(\n\x0fZControllerCert\x12\x15\n\x05\x63\x65rts\x18\x01 \x03(\x0b\x32\x06.ZCert\"y\n\x05ZCert\x12\x36\n\x08hashAlgo\x18\x01 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x18\n\x04type\x18\x03 \x01(\x0e\x32\n.ZCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c*\x9b\x01\n\tZCertType\x12\x1d\n\x19\x43\x45RT_TYPE_CONTROLLER_NONE\x10\x00\x12 \n\x1c\x43\x45RT_TYPE_CONTROLLER_SIGNING\x10\x01\x12%\n!CERT_TYPE_CONTROLLER_INTERMEDIATE\x10\x02\x12&\n\"CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x03\x42;\n\x14org.lfedge.eve.certsZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
   ,
-  dependencies=[common_dot_common__pb2.DESCRIPTOR,])
+  dependencies=[evecommon_dot_evecommon__pb2.DESCRIPTOR,])
 
 _ZCERTTYPE = _descriptor.EnumDescriptor(
   name='ZCertType',
@@ -50,8 +50,8 @@ _ZCERTTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=193,
-  serialized_end=348,
+  serialized_start=214,
+  serialized_end=369,
 )
 _sym_db.RegisterEnumDescriptor(_ZCERTTYPE)
 
@@ -89,8 +89,8 @@ _ZCONTROLLERCERT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=42,
-  serialized_end=82,
+  serialized_start=48,
+  serialized_end=88,
 )
 
 
@@ -141,12 +141,12 @@ _ZCERT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=84,
-  serialized_end=190,
+  serialized_start=90,
+  serialized_end=211,
 )
 
 _ZCONTROLLERCERT.fields_by_name['certs'].message_type = _ZCERT
-_ZCERT.fields_by_name['hashAlgo'].enum_type = common_dot_common__pb2._HASHALGORITHM
+_ZCERT.fields_by_name['hashAlgo'].enum_type = evecommon_dot_evecommon__pb2._HASHALGORITHM
 _ZCERT.fields_by_name['type'].enum_type = _ZCERTTYPE
 DESCRIPTOR.message_types_by_name['ZControllerCert'] = _ZCONTROLLERCERT
 DESCRIPTOR.message_types_by_name['ZCert'] = _ZCERT
