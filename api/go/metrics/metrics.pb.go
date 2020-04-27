@@ -2643,6 +2643,117 @@ func (*ZMetricNetworkInstance_Lispm) isZMetricNetworkInstance_InstanceContent() 
 
 func (*ZMetricNetworkInstance_Nonem) isZMetricNetworkInstance_InstanceContent() {}
 
+type ZMetricVolume struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Uuid        string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	DisplayName string `protobuf:"bytes,2,opt,name=displayName,proto3" json:"displayName,omitempty"`
+	ReadBytes   uint64 `protobuf:"varint,3,opt,name=readBytes,proto3" json:"readBytes,omitempty"`
+	WriteBytes  uint64 `protobuf:"varint,4,opt,name=writeBytes,proto3" json:"writeBytes,omitempty"`
+	ReadCount   uint64 `protobuf:"varint,5,opt,name=readCount,proto3" json:"readCount,omitempty"`
+	WriteCount  uint64 `protobuf:"varint,6,opt,name=writeCount,proto3" json:"writeCount,omitempty"`
+	TotalBytes  uint64 `protobuf:"varint,7,opt,name=totalBytes,proto3" json:"totalBytes,omitempty"`
+	UsedBytes   uint64 `protobuf:"varint,8,opt,name=usedBytes,proto3" json:"usedBytes,omitempty"`
+	FreeBytes   uint64 `protobuf:"varint,9,opt,name=freeBytes,proto3" json:"freeBytes,omitempty"`
+}
+
+func (x *ZMetricVolume) Reset() {
+	*x = ZMetricVolume{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_metrics_metrics_proto_msgTypes[26]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ZMetricVolume) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ZMetricVolume) ProtoMessage() {}
+
+func (x *ZMetricVolume) ProtoReflect() protoreflect.Message {
+	mi := &file_metrics_metrics_proto_msgTypes[26]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ZMetricVolume.ProtoReflect.Descriptor instead.
+func (*ZMetricVolume) Descriptor() ([]byte, []int) {
+	return file_metrics_metrics_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ZMetricVolume) GetUuid() string {
+	if x != nil {
+		return x.Uuid
+	}
+	return ""
+}
+
+func (x *ZMetricVolume) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *ZMetricVolume) GetReadBytes() uint64 {
+	if x != nil {
+		return x.ReadBytes
+	}
+	return 0
+}
+
+func (x *ZMetricVolume) GetWriteBytes() uint64 {
+	if x != nil {
+		return x.WriteBytes
+	}
+	return 0
+}
+
+func (x *ZMetricVolume) GetReadCount() uint64 {
+	if x != nil {
+		return x.ReadCount
+	}
+	return 0
+}
+
+func (x *ZMetricVolume) GetWriteCount() uint64 {
+	if x != nil {
+		return x.WriteCount
+	}
+	return 0
+}
+
+func (x *ZMetricVolume) GetTotalBytes() uint64 {
+	if x != nil {
+		return x.TotalBytes
+	}
+	return 0
+}
+
+func (x *ZMetricVolume) GetUsedBytes() uint64 {
+	if x != nil {
+		return x.UsedBytes
+	}
+	return 0
+}
+
+func (x *ZMetricVolume) GetFreeBytes() uint64 {
+	if x != nil {
+		return x.FreeBytes
+	}
+	return 0
+}
+
 // This is the request payload for POST /api/v1/edgeDevice/metrics
 // ZMetricMsg carries periodic metrics; typically one message is sent for
 // all of the objects on a device (the device itself plus all of the app instances
@@ -2665,12 +2776,13 @@ type ZMetricMsg struct {
 	Am            []*AppMetric               `protobuf:"bytes,5,rep,name=am,proto3" json:"am,omitempty"`
 	// deprecated = 6;
 	Nm []*ZMetricNetworkInstance `protobuf:"bytes,7,rep,name=nm,proto3" json:"nm,omitempty"`
+	Vm []*ZMetricVolume          `protobuf:"bytes,8,rep,name=vm,proto3" json:"vm,omitempty"`
 }
 
 func (x *ZMetricMsg) Reset() {
 	*x = ZMetricMsg{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_metrics_metrics_proto_msgTypes[26]
+		mi := &file_metrics_metrics_proto_msgTypes[27]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2683,7 +2795,7 @@ func (x *ZMetricMsg) String() string {
 func (*ZMetricMsg) ProtoMessage() {}
 
 func (x *ZMetricMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_metrics_proto_msgTypes[26]
+	mi := &file_metrics_metrics_proto_msgTypes[27]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2696,7 +2808,7 @@ func (x *ZMetricMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ZMetricMsg.ProtoReflect.Descriptor instead.
 func (*ZMetricMsg) Descriptor() ([]byte, []int) {
-	return file_metrics_metrics_proto_rawDescGZIP(), []int{26}
+	return file_metrics_metrics_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ZMetricMsg) GetDevID() string {
@@ -2741,6 +2853,13 @@ func (x *ZMetricMsg) GetNm() []*ZMetricNetworkInstance {
 	return nil
 }
 
+func (x *ZMetricMsg) GetVm() []*ZMetricVolume {
+	if x != nil {
+		return x.Vm
+	}
+	return nil
+}
+
 type isZMetricMsg_MetricContent interface {
 	isZMetricMsg_MetricContent()
 }
@@ -2770,7 +2889,7 @@ type ZProbeNIMetrics_ZProbeIntfMetric struct {
 func (x *ZProbeNIMetrics_ZProbeIntfMetric) Reset() {
 	*x = ZProbeNIMetrics_ZProbeIntfMetric{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_metrics_metrics_proto_msgTypes[27]
+		mi := &file_metrics_metrics_proto_msgTypes[28]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2783,7 +2902,7 @@ func (x *ZProbeNIMetrics_ZProbeIntfMetric) String() string {
 func (*ZProbeNIMetrics_ZProbeIntfMetric) ProtoMessage() {}
 
 func (x *ZProbeNIMetrics_ZProbeIntfMetric) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_metrics_proto_msgTypes[27]
+	mi := &file_metrics_metrics_proto_msgTypes[28]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3324,7 +3443,25 @@ var file_metrics_metrics_proto_rawDesc = []byte{
 	0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x5a, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4e, 0x65, 0x74,
 	0x77, 0x6f, 0x72, 0x6b, 0x53, 0x74, 0x61, 0x74, 0x73, 0x52, 0x0c, 0x6e, 0x65, 0x74, 0x77, 0x6f,
 	0x72, 0x6b, 0x53, 0x74, 0x61, 0x74, 0x73, 0x42, 0x11, 0x0a, 0x0f, 0x49, 0x6e, 0x73, 0x74, 0x61,
-	0x6e, 0x63, 0x65, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x22, 0xd7, 0x01, 0x0a, 0x0a, 0x5a,
+	0x6e, 0x63, 0x65, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x22, 0x9d, 0x02, 0x0a, 0x0d, 0x5a,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x56, 0x6f, 0x6c, 0x75, 0x6d, 0x65, 0x12, 0x12, 0x0a, 0x04,
+	0x75, 0x75, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x75, 0x75, 0x69, 0x64,
+	0x12, 0x20, 0x0a, 0x0b, 0x64, 0x69, 0x73, 0x70, 0x6c, 0x61, 0x79, 0x4e, 0x61, 0x6d, 0x65, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x64, 0x69, 0x73, 0x70, 0x6c, 0x61, 0x79, 0x4e, 0x61,
+	0x6d, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x72, 0x65, 0x61, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18,
+	0x03, 0x20, 0x01, 0x28, 0x04, 0x52, 0x09, 0x72, 0x65, 0x61, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73,
+	0x12, 0x1e, 0x0a, 0x0a, 0x77, 0x72, 0x69, 0x74, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18, 0x04,
+	0x20, 0x01, 0x28, 0x04, 0x52, 0x0a, 0x77, 0x72, 0x69, 0x74, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73,
+	0x12, 0x1c, 0x0a, 0x09, 0x72, 0x65, 0x61, 0x64, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x05, 0x20,
+	0x01, 0x28, 0x04, 0x52, 0x09, 0x72, 0x65, 0x61, 0x64, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x1e,
+	0x0a, 0x0a, 0x77, 0x72, 0x69, 0x74, 0x65, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x06, 0x20, 0x01,
+	0x28, 0x04, 0x52, 0x0a, 0x77, 0x72, 0x69, 0x74, 0x65, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x1e,
+	0x0a, 0x0a, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18, 0x07, 0x20, 0x01,
+	0x28, 0x04, 0x52, 0x0a, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x1c,
+	0x0a, 0x09, 0x75, 0x73, 0x65, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18, 0x08, 0x20, 0x01, 0x28,
+	0x04, 0x52, 0x09, 0x75, 0x73, 0x65, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x1c, 0x0a, 0x09,
+	0x66, 0x72, 0x65, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18, 0x09, 0x20, 0x01, 0x28, 0x04, 0x52,
+	0x09, 0x66, 0x72, 0x65, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x22, 0xf7, 0x01, 0x0a, 0x0a, 0x5a,
 	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4d, 0x73, 0x67, 0x12, 0x14, 0x0a, 0x05, 0x64, 0x65, 0x76,
 	0x49, 0x44, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x64, 0x65, 0x76, 0x49, 0x44, 0x12,
 	0x3c, 0x0a, 0x0b, 0x61, 0x74, 0x54, 0x69, 0x6d, 0x65, 0x53, 0x74, 0x61, 0x6d, 0x70, 0x18, 0x03,
@@ -3337,7 +3474,9 @@ var file_metrics_metrics_proto_rawDesc = []byte{
 	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x52, 0x02, 0x61, 0x6d, 0x12, 0x27, 0x0a, 0x02, 0x6e, 0x6d,
 	0x18, 0x07, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x5a, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63,
 	0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52,
-	0x02, 0x6e, 0x6d, 0x42, 0x0f, 0x0a, 0x0d, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x43, 0x6f, 0x6e,
+	0x02, 0x6e, 0x6d, 0x12, 0x1e, 0x0a, 0x02, 0x76, 0x6d, 0x18, 0x08, 0x20, 0x03, 0x28, 0x0b, 0x32,
+	0x0e, 0x2e, 0x5a, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x56, 0x6f, 0x6c, 0x75, 0x6d, 0x65, 0x52,
+	0x02, 0x76, 0x6d, 0x42, 0x0f, 0x0a, 0x0d, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x43, 0x6f, 0x6e,
 	0x74, 0x65, 0x6e, 0x74, 0x2a, 0x32, 0x0a, 0x0c, 0x5a, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x54,
 	0x79, 0x70, 0x65, 0x73, 0x12, 0x09, 0x0a, 0x05, 0x5a, 0x6d, 0x4e, 0x6f, 0x70, 0x10, 0x00, 0x12,
 	0x0c, 0x0a, 0x08, 0x5a, 0x6d, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x10, 0x01, 0x12, 0x09, 0x0a,
@@ -3348,12 +3487,11 @@ var file_metrics_metrics_proto_rawDesc = []byte{
 	0x67, 0x65, 0x10, 0x01, 0x12, 0x15, 0x0a, 0x11, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74,
 	0x65, 0x6d, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x65, 0x72, 0x10, 0x02, 0x12, 0x13, 0x0a, 0x0f, 0x4d,
 	0x65, 0x74, 0x72, 0x69, 0x63, 0x49, 0x74, 0x65, 0x6d, 0x53, 0x74, 0x61, 0x74, 0x65, 0x10, 0x03,
-	0x42, 0x48, 0x0a, 0x1f, 0x63, 0x6f, 0x6d, 0x2e, 0x7a, 0x65, 0x64, 0x65, 0x64, 0x61, 0x2e, 0x63,
-	0x6c, 0x6f, 0x75, 0x64, 0x2e, 0x75, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f,
-	0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x2f,
-	0x67, 0x6f, 0x2f, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x33,
+	0x42, 0x3f, 0x0a, 0x16, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65,
+	0x76, 0x65, 0x2e, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68,
+	0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65,
+	0x76, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63,
+	0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -3369,7 +3507,7 @@ func file_metrics_metrics_proto_rawDescGZIP() []byte {
 }
 
 var file_metrics_metrics_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_metrics_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_metrics_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_metrics_metrics_proto_goTypes = []interface{}{
 	(ZmetricTypes)(0),                        // 0: ZmetricTypes
 	(MetricItemType)(0),                      // 1: MetricItemType
@@ -3399,15 +3537,16 @@ var file_metrics_metrics_proto_goTypes = []interface{}{
 	(*ZMetricNetworkStats)(nil),              // 25: ZMetricNetworkStats
 	(*ZProbeNIMetrics)(nil),                  // 26: ZProbeNIMetrics
 	(*ZMetricNetworkInstance)(nil),           // 27: ZMetricNetworkInstance
-	(*ZMetricMsg)(nil),                       // 28: ZMetricMsg
-	(*ZProbeNIMetrics_ZProbeIntfMetric)(nil), // 29: ZProbeNIMetrics.ZProbeIntfMetric
-	(*timestamp.Timestamp)(nil),              // 30: google.protobuf.Timestamp
+	(*ZMetricVolume)(nil),                    // 28: ZMetricVolume
+	(*ZMetricMsg)(nil),                       // 29: ZMetricMsg
+	(*ZProbeNIMetrics_ZProbeIntfMetric)(nil), // 30: ZProbeNIMetrics.ZProbeIntfMetric
+	(*timestamp.Timestamp)(nil),              // 31: google.protobuf.Timestamp
 }
 var file_metrics_metrics_proto_depIdxs = []int32{
-	30, // 0: zedcloudMetric.lastFailure:type_name -> google.protobuf.Timestamp
-	30, // 1: zedcloudMetric.lastSuccess:type_name -> google.protobuf.Timestamp
+	31, // 0: zedcloudMetric.lastFailure:type_name -> google.protobuf.Timestamp
+	31, // 1: zedcloudMetric.lastSuccess:type_name -> google.protobuf.Timestamp
 	5,  // 2: zedcloudMetric.urlMetrics:type_name -> urlcloudMetric
-	30, // 3: appCpuMetric.upTime:type_name -> google.protobuf.Timestamp
+	31, // 3: appCpuMetric.upTime:type_name -> google.protobuf.Timestamp
 	2,  // 4: deviceMetric.memory:type_name -> memoryMetric
 	3,  // 5: deviceMetric.network:type_name -> networkMetric
 	4,  // 6: deviceMetric.zedcloud:type_name -> zedcloudMetric
@@ -3421,9 +3560,9 @@ var file_metrics_metrics_proto_depIdxs = []int32{
 	2,  // 14: appMetric.memory:type_name -> memoryMetric
 	3,  // 15: appMetric.network:type_name -> networkMetric
 	10, // 16: appMetric.disk:type_name -> appDiskMetric
-	30, // 17: logMetric.lastDeviceBundleSendTime:type_name -> google.protobuf.Timestamp
-	30, // 18: logMetric.lastAppBundleSendTime:type_name -> google.protobuf.Timestamp
-	30, // 19: logMetric.lastLogDeferTime:type_name -> google.protobuf.Timestamp
+	31, // 17: logMetric.lastDeviceBundleSendTime:type_name -> google.protobuf.Timestamp
+	31, // 18: logMetric.lastAppBundleSendTime:type_name -> google.protobuf.Timestamp
+	31, // 19: logMetric.lastLogDeferTime:type_name -> google.protobuf.Timestamp
 	13, // 20: RlocStats.Stats:type_name -> PktStat
 	14, // 21: EidStats.RlocStatsEntries:type_name -> RlocStats
 	15, // 22: ZMetricLisp.EidStatsEntries:type_name -> EidStats
@@ -3463,7 +3602,7 @@ var file_metrics_metrics_proto_depIdxs = []int32{
 	13, // 56: ZMetricLispGlobal.DecryptError:type_name -> PktStat
 	24, // 57: ZMetricNetworkStats.rx:type_name -> NetworkStats
 	24, // 58: ZMetricNetworkStats.tx:type_name -> NetworkStats
-	29, // 59: ZProbeNIMetrics.intfMetric:type_name -> ZProbeNIMetrics.ZProbeIntfMetric
+	30, // 59: ZProbeNIMetrics.intfMetric:type_name -> ZProbeNIMetrics.ZProbeIntfMetric
 	3,  // 60: ZMetricNetworkInstance.network:type_name -> networkMetric
 	26, // 61: ZMetricNetworkInstance.probeMetric:type_name -> ZProbeNIMetrics
 	18, // 62: ZMetricNetworkInstance.vpnm:type_name -> ZMetricVpn
@@ -3472,15 +3611,16 @@ var file_metrics_metrics_proto_depIdxs = []int32{
 	22, // 65: ZMetricNetworkInstance.flowStats:type_name -> ZMetricFlow
 	23, // 66: ZMetricNetworkInstance.lispGlobalStats:type_name -> ZMetricLispGlobal
 	25, // 67: ZMetricNetworkInstance.networkStats:type_name -> ZMetricNetworkStats
-	30, // 68: ZMetricMsg.atTimeStamp:type_name -> google.protobuf.Timestamp
+	31, // 68: ZMetricMsg.atTimeStamp:type_name -> google.protobuf.Timestamp
 	7,  // 69: ZMetricMsg.dm:type_name -> deviceMetric
 	11, // 70: ZMetricMsg.am:type_name -> appMetric
 	27, // 71: ZMetricMsg.nm:type_name -> ZMetricNetworkInstance
-	72, // [72:72] is the sub-list for method output_type
-	72, // [72:72] is the sub-list for method input_type
-	72, // [72:72] is the sub-list for extension type_name
-	72, // [72:72] is the sub-list for extension extendee
-	0,  // [0:72] is the sub-list for field type_name
+	28, // 72: ZMetricMsg.vm:type_name -> ZMetricVolume
+	73, // [73:73] is the sub-list for method output_type
+	73, // [73:73] is the sub-list for method input_type
+	73, // [73:73] is the sub-list for extension type_name
+	73, // [73:73] is the sub-list for extension extendee
+	0,  // [0:73] is the sub-list for field type_name
 }
 
 func init() { file_metrics_metrics_proto_init() }
@@ -3802,7 +3942,7 @@ func file_metrics_metrics_proto_init() {
 			}
 		}
 		file_metrics_metrics_proto_msgTypes[26].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ZMetricMsg); i {
+			switch v := v.(*ZMetricVolume); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3814,6 +3954,18 @@ func file_metrics_metrics_proto_init() {
 			}
 		}
 		file_metrics_metrics_proto_msgTypes[27].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ZMetricMsg); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_metrics_metrics_proto_msgTypes[28].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ZProbeNIMetrics_ZProbeIntfMetric); i {
 			case 0:
 				return &v.state
@@ -3846,7 +3998,7 @@ func file_metrics_metrics_proto_init() {
 		(*ZMetricNetworkInstance_Lispm)(nil),
 		(*ZMetricNetworkInstance_Nonem)(nil),
 	}
-	file_metrics_metrics_proto_msgTypes[26].OneofWrappers = []interface{}{
+	file_metrics_metrics_proto_msgTypes[27].OneofWrappers = []interface{}{
 		(*ZMetricMsg_Dm)(nil),
 	}
 	type x struct{}
@@ -3855,7 +4007,7 @@ func file_metrics_metrics_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_metrics_metrics_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

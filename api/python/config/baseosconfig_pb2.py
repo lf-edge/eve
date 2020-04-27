@@ -20,8 +20,8 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/baseosconfig.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\"1\n\tOSKeyTags\x12\x10\n\x08OSVerKey\x18\x01 \x01(\t\x12\x12\n\nOSVerValue\x18\x02 \x01(\t\"0\n\x0cOSVerDetails\x12 \n\x0c\x62\x61seOSParams\x18\x0c \x03(\x0b\x32\n.OSKeyTags\"\x9e\x01\n\x0c\x42\x61seOSConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x16\n\x06\x64rives\x18\x03 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x04 \x01(\x08\x12\x15\n\rbaseOSVersion\x18\n \x01(\t\x12$\n\rbaseOSDetails\x18\x0b \x01(\x0b\x32\r.OSVerDetailsBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
+  serialized_pb=_b('\n\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\"1\n\tOSKeyTags\x12\x10\n\x08OSVerKey\x18\x01 \x01(\t\x12\x12\n\nOSVerValue\x18\x02 \x01(\t\"0\n\x0cOSVerDetails\x12 \n\x0c\x62\x61seOSParams\x18\x0c \x03(\x0b\x32\n.OSKeyTags\"\x9e\x01\n\x0c\x42\x61seOSConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x16\n\x06\x64rives\x18\x03 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x04 \x01(\x08\x12\x15\n\rbaseOSVersion\x18\n \x01(\t\x12$\n\rbaseOSDetails\x18\x0b \x01(\x0b\x32\r.OSVerDetailsB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_devcommon__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,])
 
