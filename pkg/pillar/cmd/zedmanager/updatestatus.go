@@ -168,6 +168,21 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	}
 }
 
+func dom0DiskReservedSize(ctxPtr *zedmanagerContext, deviceDiskSize uint64) uint64 {
+	dom0MinDiskUsagePercent := ctxPtr.globalConfig.GlobalValueInt(
+		types.Dom0MinDiskUsagePercent)
+	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
+		(float64(dom0MinDiskUsagePercent) * 0.01))
+	maxDom0DiskSize := uint64(ctxPtr.globalConfig.GlobalValueInt(
+		types.Dom0DiskUsageMaxBytes))
+	if diskReservedForDom0 > maxDom0DiskSize {
+		log.Debugf("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
+			"maxDom0DiskSize (%d)", maxDom0DiskSize)
+		diskReservedForDom0 = maxDom0DiskSize
+	}
+	return diskReservedForDom0
+}
+
 func checkDiskSize(ctxPtr *zedmanagerContext) error {
 
 	var totalAppDiskSize uint64
@@ -199,15 +214,21 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
-		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s",
-			err.Error())
-		log.Errorf("checkDiskSize: err:%s", err.Error())
+		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
+		log.Errorf("diskSizeReservedForDom0: err:%s", err)
 		return err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
-	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
-		(float64(ctxPtr.globalConfig.GlobalValueInt(types.Dom0MinDiskUsagePercent)) * 0.01))
-	allowedDeviceDiskSizeForApps := deviceDiskSize - diskReservedForDom0
+	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
+	var allowedDeviceDiskSizeForApps uint64
+	if deviceDiskSize > diskReservedForDom0 {
+		allowedDeviceDiskSizeForApps = deviceDiskSize - diskReservedForDom0
+	} else {
+		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
+			deviceDiskSize, diskReservedForDom0)
+		log.Errorf("***checkDiskSize: err: %s", err)
+		return err
+	}
 	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
 		err := fmt.Errorf("Disk space not available for app - "+
 			"Total Device Disk Size: %+v\n"+
@@ -344,7 +365,7 @@ func doInstall(ctx *zedmanagerContext,
 				removed = true
 			}
 			deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-				ss.ImageID)
+				ss.ImageID, ss.PurgeCounter)
 		}
 		log.Infof("purge inactive (%s) storageStatus from %d to %d\n",
 			config.Key(), len(status.StorageStatusList), len(newSs))
@@ -374,7 +395,6 @@ func doInstall(ctx *zedmanagerContext,
 		newSs := types.StorageStatus{}
 		newSs.UpdateFromStorageConfig(sc)
 		log.Infof("Adding new StorageStatus %v\n", newSs)
-		maybeLatchImageSha(ctx, config, &newSs)
 		status.StorageStatusList = append(status.StorageStatusList, newSs)
 		changed = true
 	}
@@ -385,6 +405,50 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 
 		if !ss.HasVolumemgrRef {
+			if ss.IsContainer {
+				maybeLatchImageSha(ctx, config, ss)
+			}
+			if ss.IsContainer && ss.ImageSha256 == "" {
+				rs := lookupResolveStatus(ctx, ss.ResolveKey())
+				if rs == nil {
+					log.Infof("Resolve status not found for %s\n", ss.ImageID)
+					ss.HasResolverRef = true
+					MaybeAddResolveConfig(ctx, ss)
+					// XXX state name could be "waiting for tag resolutions(s)" but
+					// painful to introduce a new state end to end
+					minState = types.INITIAL
+					ss.State = types.INITIAL
+					changed = true
+					continue
+				}
+				log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%v)\n",
+					ss.ImageID, status.UUIDandVersion.UUID)
+				if rs.HasError() || rs.ImageSha256 == "" {
+					errStr := fmt.Sprintf("Received error or empty SHA from resolver for %s, SHA (%s): %s\n",
+						status.Key(), rs.ImageSha256, rs.Error)
+					log.Error(errStr)
+					ss.SetErrorWithSource(errStr, types.ResolveStatus{}, rs.ErrorTime)
+					errorSource = ss.ErrorSourceType
+					errorTime = ss.ErrorTime
+					allErrors = appendError(allErrors, "resolver",
+						errStr)
+					changed = true
+					continue
+				} else if ss.IsErrorSource(types.ResolveStatus{}) {
+					log.Infof("Clearing resolver error %s", ss.Error)
+					ss.ClearErrorWithSource()
+					changed = true
+				}
+				log.Infof("Added Image SHA (%s) for storage status (%s)\n",
+					rs.ImageSha256, ss.ImageID)
+				ss.ImageSha256 = rs.ImageSha256
+				ss.HasResolverRef = false
+				addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+					ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
+				maybeLatchImageSha(ctx, config, ss)
+				deleteResolveConfig(ctx, rs.Key())
+				changed = true
+			}
 			log.Infof("doInstall !HasVolumemgrRef for %s",
 				ss.Name)
 			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
@@ -416,16 +480,6 @@ func doInstall(ctx *zedmanagerContext,
 			changed = true
 			log.Infof("From VolumeStatus set ActiveFileLocation to %s for %s",
 				vs.FileLocation, ss.Name)
-		}
-		// XXX should really be done as separate ResolveConfig/Status
-		// XXX might mess up containers
-		if false && ss.ImageSha256 != vs.BlobSha256 {
-			log.Infof("updating image sha from %s to %s",
-				ss.ImageSha256, vs.BlobSha256)
-			ss.ImageSha256 = vs.BlobSha256
-			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-				ss.ImageID, ss.ImageSha256)
-			changed = true
 		}
 		if minState > vs.State {
 			minState = vs.State
@@ -872,7 +926,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			changed = true
 		}
 		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-			ss.ImageID)
+			ss.ImageID, ss.PurgeCounter)
 	}
 	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d\n",
 		config.Key(), len(status.StorageStatusList), len(newSs))
@@ -1102,7 +1156,7 @@ func doUninstall(ctx *zedmanagerContext, appInstID uuid.UUID,
 			changed = true
 		}
 		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-			ss.ImageID)
+			ss.ImageID, ss.PurgeCounter)
 	}
 	log.Debugf("Done with all volumemgr removes for %s",
 		appInstID)

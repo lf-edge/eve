@@ -3,8 +3,12 @@
 
 syntax = "proto3";
 
+package common;
+
 option go_package  = "github.com/lf-edge/eve/api/go/common";
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "com.zededa.cloud.uservice.proto.common";
+option java_multiple_files = true;
+option java_outer_classname = "DevModelCommon";
 
 enum PhyIoType {
   PhyIoNoop = 0;

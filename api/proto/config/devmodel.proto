@@ -119,7 +119,7 @@ message PhyIOUsagePolicy {
 //    it can be further configured to either provide IP connectivity or
 //    directly be given to workloads
 message PhysicalIO {
-  PhyIoType ptype           = 1;
+  common.PhyIoType ptype           = 1;
 
   // physical label typically printed on box.
   // Example Eth0, Eth1, Wifi0, ComA, ComB
@@ -160,7 +160,7 @@ message PhysicalIO {
 
   // usage - indicates the role of adapter ( mgmt / blocked / app-direct
   //    etc. )
-  PhyIoMemberUsage usage    = 6;
+  common.PhyIoMemberUsage usage    = 6;
 
   // usagePolicy - Policy Object used to further refine the usage.
   // For example, specify if this should be only used as fallback?

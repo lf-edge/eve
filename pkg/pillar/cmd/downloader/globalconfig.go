@@ -14,10 +14,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*downloaderContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
@@ -26,11 +26,11 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
 		}
 		if gcp.GlobalValueInt(types.DownloadRetryTime) != 0 {
-			downloadRetryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
+			retryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
 		}
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -38,11 +38,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*downloaderContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

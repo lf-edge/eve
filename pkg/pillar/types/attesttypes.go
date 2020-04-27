@@ -66,13 +66,13 @@ const (
 
 //AttestCert contains attest signing certificate published by tpmmgr
 type AttestCert struct {
-	hashAlgo CertHashType //hash method used to arrive at certHash
-	certID   []byte       //Hash of the cert, computed using hashAlgo
-	certType CertType     //type of the certificate
-	cert     []byte       //PEM encoded
+	HashAlgo CertHashType //hash method used to arrive at certHash
+	CertID   []byte       //Hash of the cert, computed using hashAlgo
+	CertType CertType     //type of the certificate
+	Cert     []byte       //PEM encoded
 }
 
 //Key uniquely identifies an AttestCert object
 func (cert AttestCert) Key() string {
-	return hex.EncodeToString(cert.certID)
+	return hex.EncodeToString(cert.CertID)
 }

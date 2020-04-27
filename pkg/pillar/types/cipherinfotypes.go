@@ -4,6 +4,7 @@
 package types
 
 import (
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 )
 
@@ -12,7 +13,7 @@ import (
 // part of EdgeDevConfig block, received from controller
 type CipherContext struct {
 	ContextID          string
-	HashScheme         zconfig.CipherHashAlgorithm
+	HashScheme         zcommon.HashAlgorithm
 	KeyExchangeScheme  zconfig.KeyExchangeScheme
 	EncryptionScheme   zconfig.EncryptionScheme
 	ControllerCertHash []byte
@@ -47,4 +48,15 @@ type CipherBlockStatus struct {
 // Key :
 func (status *CipherBlockStatus) Key() string {
 	return status.CipherBlockID
+}
+
+// EncryptionBlock - This is a Mirror of
+// api/proto/config/acipherinfo.proto - EncryptionBlock
+// Always need to keep these two consistent.
+type EncryptionBlock struct {
+	DsAPIKey          string
+	DsPassword        string
+	WifiUserName      string // If the authentication type is EAP
+	WifiPassword      string
+	ProtectedUserData string
 }

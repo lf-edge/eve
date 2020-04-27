@@ -47,7 +47,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 		proxyConfig.Pacfile = pac
 		return nil
 	}
-	dn := status.DomainName
+	dn := status.NetworkXConfig.DomainName
 	if dn == "" {
 		errStr := fmt.Sprintf("NetworkProxyEnable for %s but neither a NetworkProxyURL nor a DomainName",
 			ifname)

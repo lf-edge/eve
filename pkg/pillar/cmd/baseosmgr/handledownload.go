@@ -23,7 +23,7 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 
 	uuidStr := baseOsUUID.String()
 	ret := &types.RetStatus{}
-	log.Infof("checkVolumeStatus for %s\n", uuidStr)
+	log.Infof("checkVolumeStatus for %s", uuidStr)
 
 	ret.Changed = false
 	ret.AllErrors = ""
@@ -35,19 +35,19 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 
 		imageID := sc.ImageID
 
-		log.Infof("checkVolumeStatus %s, image status %v\n",
+		log.Infof("checkVolumeStatus %s, image status %v",
 			imageID, ss.State)
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State
 			ss.Progress = 100
 			ret.Changed = true
-			log.Infof("checkVolumeStatus %s is already installed\n",
+			log.Infof("checkVolumeStatus %s is already installed",
 				imageID)
 			continue
 		}
 
 		if !ss.HasVolumemgrRef {
-			log.Infof("checkVolumeStatus %s, !HasVolumemgrRef\n", sc.ImageID)
+			log.Infof("checkVolumeStatus %s, !HasVolumemgrRef", sc.ImageID)
 			// We use the baseos object UUID as appInstID here
 			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
 				baseOsUUID, ss.ImageID, *ss)
@@ -80,7 +80,7 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 			ret.MinState = vs.State
 		}
 		if vs.State != ss.State {
-			log.Infof("checkVolumeStatus(%s) from ds set ss.State %d\n",
+			log.Infof("checkVolumeStatus(%s) from ds set ss.State %d",
 				imageID, vs.State)
 			ss.State = vs.State
 			ret.Changed = true
@@ -91,12 +91,12 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 			ret.Changed = true
 		}
 		if vs.Pending() {
-			log.Infof("checkVolumeStatus(%s) Pending\n",
+			log.Infof("checkVolumeStatus(%s) Pending",
 				imageID)
 			continue
 		}
 		if vs.HasError() {
-			log.Errorf("checkVolumeStatus %s, volumemgr error, %s\n",
+			log.Errorf("checkVolumeStatus %s, volumemgr error, %s",
 				uuidStr, vs.Error)
 			ss.SetErrorWithSource(vs.Error, types.VolumeStatus{},
 				vs.ErrorTime)
@@ -120,7 +120,7 @@ func installDownloadedObjects(uuidStr string,
 	status *[]types.StorageStatus) bool {
 
 	ret := true
-	log.Infof("installDownloadedObjects(%s)\n", uuidStr)
+	log.Infof("installDownloadedObjects(%s)", uuidStr)
 
 	for i := range *status {
 		ssPtr := &(*status)[i]
@@ -137,7 +137,7 @@ func installDownloadedObjects(uuidStr string,
 		}
 	}
 
-	log.Infof("installDownloadedObjects(%s) done %v\n", uuidStr, ret)
+	log.Infof("installDownloadedObjects(%s) done %v", uuidStr, ret)
 	return ret
 }
 
@@ -148,7 +148,7 @@ func installDownloadedObject(imageID uuid.UUID,
 	var ret error
 	var srcFilename string
 
-	log.Infof("installDownloadedObject(%s, %v)\n",
+	log.Infof("installDownloadedObject(%s, %v)",
 		imageID, ssPtr.State)
 
 	if ssPtr.State != types.DELIVERED {

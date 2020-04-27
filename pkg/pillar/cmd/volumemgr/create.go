@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -79,7 +80,7 @@ func createVdiskVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLoc
 func createContainerVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLocation string) (bool, error) {
 
 	changed := false
-	filelocation := getContainerPath(status.AppInstID.String())
+	filelocation := containerd.GetContainerPath(status.AppInstID.String())
 	status.FileLocation = filelocation
 	changed = true
 
@@ -91,7 +92,7 @@ func createContainerVolume(ctx *volumemgrContext, status *types.VolumeStatus, sr
 		return changed, errors.New(errStr)
 	}
 	log.Infof("ociFilename %s sha %s", ociFilename, status.ContainerSha256)
-	if err := ctrPrepare(filelocation, ociFilename); err != nil {
+	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return changed, err
 	}
@@ -154,7 +155,7 @@ func destroyContainerVolume(ctx *volumemgrContext, status *types.VolumeStatus) (
 
 	changed := false
 	log.Infof("Removing container volume %s", status.FileLocation)
-	if err := ctrRm(status.FileLocation, false); err != nil {
+	if err := containerd.SnapshotRm(status.FileLocation, false); err != nil {
 		return changed, err
 	}
 	status.FileLocation = ""

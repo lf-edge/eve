@@ -15,7 +15,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zcert "github.com/lf-edge/eve/api/go/certs"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zcommon "github.com/lf-edge/eve/api/go/common"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -44,8 +44,8 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 	log.Infof("parseControllerCerts: Applying updated config\n"+
 		"Last Sha: % x\n"+
 		"New  Sha: % x\n"+
-		"cfgCertList: %v\n",
-		certHash, newHash, cfgCerts)
+		"Num of cfgCert: %d\n",
+		certHash, newHash, len(cfgCerts))
 
 	certHash = newHash
 
@@ -126,7 +126,7 @@ func getControllerCert(ctx *getconfigContext,
 }
 
 // for device cert
-func getDeviceCert(hashScheme zconfig.CipherHashAlgorithm,
+func getDeviceCert(hashScheme zcommon.HashAlgorithm,
 	suppliedHash []byte) ([]byte, error) {
 
 	hexStr := hex.EncodeToString(suppliedHash)
@@ -150,19 +150,19 @@ func getDeviceCert(hashScheme zconfig.CipherHashAlgorithm,
 
 // hash function
 func computeAndMatchHash(cert []byte, suppliedHash []byte,
-	hashScheme zconfig.CipherHashAlgorithm) bool {
+	hashScheme zcommon.HashAlgorithm) bool {
 
 	switch hashScheme {
-	case zconfig.CipherHashAlgorithm_HASH_NONE:
+	case zcommon.HashAlgorithm_HASH_ALGORITHM_INVALID:
 		return false
 
-	case zconfig.CipherHashAlgorithm_HASH_SHA256_16bytes:
+	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
 		h := sha256.New()
 		h.Write(cert)
 		computedHash := h.Sum(nil)
 		return bytes.Equal(suppliedHash, computedHash[:16])
 
-	case zconfig.CipherHashAlgorithm_HASH_SHA256_32bytes:
+	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
 		h := sha256.New()
 		h.Write(cert)
 		computedHash := h.Sum(nil)
@@ -192,4 +192,22 @@ func unpublishControllerCert(ctx *getconfigContext, key string) {
 	}
 	log.Debugf("unpublishControllerCert %s Done\n", key)
 	pub.Unpublish(key)
+}
+
+func handleAttestCertModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX TBD
+	status := configArg.(types.AttestCert)
+	log.Infof("handleAttestCertModify for %s\n", status.Key())
+	return
+}
+
+func handleAttestCertDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX TBD
+	status := configArg.(types.AttestCert)
+	log.Infof("handleAttestCertDelete for %s\n", status.Key())
+	return
 }

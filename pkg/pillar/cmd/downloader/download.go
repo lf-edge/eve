@@ -33,7 +33,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		err = fmt.Errorf("unknown transfer type: %s", trType)
 	}
 	if err != nil {
-		log.Errorf("NewSyncerDest failed: %s\n", err)
+		log.Errorf("NewSyncerDest failed: %s", err)
 		return err
 	}
 	// check for proxies on the selected management port interface
@@ -117,7 +117,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		err = fmt.Errorf("Not supported transport type: %s", trType)
 	}
 	if err != nil {
-		log.Errorf("NewSyncerDest failed: %s\n", err)
+		log.Errorf("NewSyncerDest failed: %s", err)
 		return sha256, err
 	}
 	// check for proxies on the selected management port interface
@@ -150,6 +150,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 		if syncOp == zedUpload.SyncOpGetObjectMetaData {
 			sha256 = resp.GetSha256()
+			err = resp.GetDnStatus()
 		} else {
 			_, err = resp.GetUpStatus()
 		}

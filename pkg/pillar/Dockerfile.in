@@ -1,6 +1,23 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 ARG GOVER=1.12.4
+FROM lfedge/eve-alpine:ac1dc159510afa61334222cedf085c7730e4583c as fscrypt-build
+
+RUN apk add --no-cache git=2.20.2-r0 gcc=8.3.0-r0 linux-headers=4.18.13-r1 \
+                       libc-dev=0.7.1-r0 make=4.2.1-r2 linux-pam-dev=1.3.0-r0 \
+                       m4=1.4.18-r1 findutils=4.6.0-r1 go=1.11.5-r0
+
+RUN mkdir -p /go/src/github.com/google
+WORKDIR /go/src/github.com/google
+RUN git clone https://github.com/google/fscrypt
+WORKDIR /go/src/github.com/google/fscrypt
+RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec
+COPY fscrypt/* ./
+RUN patch -p1 < patch01-no-pam.diff && \
+    patch -p1 < patch02-rotate-raw-key.diff && \
+    make && make install
+
+ARG GOVER=1.12.4
 FROM golang:${GOVER}-alpine as build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux make
@@ -30,8 +47,6 @@ FROM DNSMASQ_TAG as dnsmasq
 FROM STRONGSWAN_TAG as strongswan
 # hadolint ignore=DL3006
 FROM GPTTOOLS_TAG as gpttools
-# hadolint ignore=DL3006
-FROM FSCRYPT_TAG as fscrypt-build
 
 FROM alpine:3.8
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -50,6 +65,7 @@ ADD scripts/device-steps.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
     scripts/handlezedserverconfig.sh \
+    scripts/veth.sh \
   /opt/zededa/bin/
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
@@ -63,7 +79,7 @@ COPY --from=build /dist /opt/zededa/bin
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
-COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
+COPY --from=fscrypt-build /usr/local/bin/fscrypt /opt/zededa/bin/fscrypt
 
 # And now a few local tweaks
 COPY rootfs/ /

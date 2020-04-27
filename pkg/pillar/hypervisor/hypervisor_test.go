@@ -5,7 +5,6 @@ package hypervisor
 
 import (
 	"reflect"
-	"sort"
 	"testing"
 )
 
@@ -21,9 +20,8 @@ func TestGetHypervisor(t *testing.T) {
 
 func TestGetAvailableHypervisors(t *testing.T) {
 	all, enabled := GetAvailableHypervisors()
-	expected := []string{"acrn", "kvm", "null", "xen"}
+	expected := []string{"xen", "kvm", "acrn", "containerd", "null"}
 
-	sort.Strings(all)
 	if !reflect.DeepEqual(all, expected) {
 		t.Errorf("wrong list of available hypervisors: %+q vs. %+q", all, expected)
 	}

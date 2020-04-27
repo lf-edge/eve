@@ -5,13 +5,15 @@ package types
 
 import (
 	"encoding/hex"
+
 	zcert "github.com/lf-edge/eve/api/go/certs"
+	zcommon "github.com/lf-edge/eve/api/go/common"
 )
 
 // ControllerCert : controller certicate
 // config received from controller
 type ControllerCert struct {
-	HashAlgo zcert.CertHashAlgorithm
+	HashAlgo zcommon.HashAlgorithm
 	Type     zcert.ZCertType
 	Cert     []byte
 	CertHash []byte

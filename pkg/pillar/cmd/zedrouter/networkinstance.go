@@ -91,7 +91,7 @@ func checkPortAvailable(
 
 	if allowSharedPort(status) {
 		// Make sure it is configured for IP or will be
-		if portStatus.Dhcp == types.DT_NONE {
+		if portStatus.NetworkXConfig.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
 				status.CurrentUplinkIntf, status.UUID, status.DisplayName)
@@ -117,10 +117,10 @@ func checkPortAvailable(
 		}
 	} else {
 		// Make sure it will not be configured for IP
-		if portStatus.Dhcp != types.DT_NONE {
+		if portStatus.NetworkXConfig.Dhcp != types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s configured for shared use with DHCP type %d. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.CurrentUplinkIntf, portStatus.Dhcp, status.UUID, status.DisplayName)
+				status.CurrentUplinkIntf, portStatus.NetworkXConfig.Dhcp, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by any other NetworkInstance
@@ -565,6 +565,12 @@ func doNetworkInstanceSanityCheck(
 	log.Infof("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d\n",
 		status.DisplayName, status.UUID, status.Type, status.IpType)
 
+	err := checkNIphysicalPort(ctx, status)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
 	//  Check NetworkInstanceType
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
@@ -711,6 +717,13 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 		status.SetErrorNow(err.Error())
 	}
 
+	err := checkNIphysicalPort(ctx, status)
+	if err != nil {
+		log.Error(err)
+		status.SetErrorNow(err.Error())
+		return
+	}
+
 	if config.Logicallabel != status.Logicallabel {
 		err := fmt.Errorf("Changing Logicallabel in NetworkInstance is not yet supported: from %s to %s",
 			status.Logicallabel, config.Logicallabel)
@@ -733,6 +746,21 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 		doNetworkInstanceInactivate(ctx, status)
 		status.Activated = false
 	}
+}
+
+func checkNIphysicalPort(ctx *zedrouterContext, status *types.NetworkInstanceStatus) error {
+	// check the NI have the valid physical port binding to
+	label := status.Logicallabel
+	if label != "" && !strings.EqualFold(label, "uplink") &&
+		!strings.EqualFold(label, "freeuplink") {
+		ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, label)
+		devPort := ctx.deviceNetworkStatus.GetPortByIfName(ifname)
+		if devPort == nil {
+			err := fmt.Sprintf("Network Instance port %s does not exist", label)
+			return errors.New(err)
+		}
+	}
+	return nil
 }
 
 // getSwitchNetworkInstanceUsingIfname

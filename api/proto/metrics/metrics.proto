@@ -338,6 +338,18 @@ message ZMetricNetworkInstance {
   ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
 }
 
+message ZMetricVolume {
+  string uuid = 1;
+  string displayName = 2;
+  uint64 readBytes = 3;
+  uint64 writeBytes = 4;
+  uint64 readCount = 5;
+  uint64 writeCount = 6;
+  uint64 totalBytes = 7;
+  uint64 usedBytes = 8;
+  uint64 freeBytes = 9;
+}
+
 // This is the request payload for POST /api/v1/edgeDevice/metrics
 // ZMetricMsg carries periodic metrics; typically one message is sent for
 // all of the objects on a device (the device itself plus all of the app instances
@@ -357,4 +369,6 @@ message ZMetricMsg {
   repeated appMetric am = 5;
   // deprecated = 6;
   repeated ZMetricNetworkInstance nm = 7;
+
+  repeated ZMetricVolume vm = 8;
 }

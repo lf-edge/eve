@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lf-edge/eve/api/go/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -165,6 +164,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetworkTestTimeout,
 		NetworkSendTimeout,
 		Dom0MinDiskUsagePercent,
+		Dom0DiskUsageMaxBytes,
 		// Bool Items
 		UsbAccess,
 		AllowAppVnc,
@@ -207,8 +207,13 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 
 }
 
+type configItemStruct struct {
+	key   string
+	value string
+}
+
 type parseItemTestEntry struct {
-	item          config.ConfigItem
+	item          configItemStruct
 	itemType      ConfigItemType
 	expectError   bool
 	expectedValue string
@@ -224,7 +229,7 @@ func (testPtr *parseItemTestEntry) configItemValue(
 		}
 	}
 	val := ConfigItemValue{
-		Key:      testPtr.item.Key,
+		Key:      testPtr.item.key,
 		ItemType: testPtr.itemType,
 	}
 
@@ -233,7 +238,7 @@ func (testPtr *parseItemTestEntry) configItemValue(
 		valueStr = testPtr.oldValue
 	} else if testPtr.expectedValue == "" {
 		// Expected Value not specified. Use Configured Value
-		valueStr = testPtr.item.Value
+		valueStr = testPtr.item.value
 	} else {
 		valueStr = testPtr.expectedValue
 	}
@@ -261,7 +266,7 @@ func (testPtr *parseItemTestEntry) verifyEntry(t *testing.T, testname string,
 	newGlobalConfig *ConfigItemValueMap, val ConfigItemValue) {
 	// Verify Expected value is same as Actual value - both returned
 	//  value as well as one in newGlobalConfig
-	gsKey := GlobalSettingKey(testPtr.item.Key)
+	gsKey := GlobalSettingKey(testPtr.item.key)
 	expectedItemVal := testPtr.configItemValue(false)
 	msg := fmt.Sprintf("ExpectedValue (%+v) != Actual Value (%+v)",
 		expectedItemVal, val)
@@ -279,44 +284,44 @@ func TestParseGlobalItem(t *testing.T) {
 	specMap := NewConfigItemSpecMap()
 	testMatrix := map[string]parseItemTestEntry{
 		"Global String Setting": {
-			item: config.ConfigItem{
-				Key:   string(DefaultLogLevel),
-				Value: "warn",
+			item: configItemStruct{
+				key:   string(DefaultLogLevel),
+				value: "warn",
 			},
 			itemType: ConfigItemTypeString,
 		},
 		"Global Int Setting": {
-			item: config.ConfigItem{
-				Key:   string(ConfigInterval),
-				Value: "10",
+			item: configItemStruct{
+				key:   string(ConfigInterval),
+				value: "10",
 			},
 			itemType: ConfigItemTypeInt,
 		},
 		"Global Bool Setting": {
-			item: config.ConfigItem{
-				Key:   string(UsbAccess),
-				Value: "false",
+			item: configItemStruct{
+				key:   string(UsbAccess),
+				value: "false",
 			},
 			itemType: ConfigItemTypeBool,
 		},
 		"Global Tristate Setting": {
-			item: config.ConfigItem{
-				Key:   string(NetworkFallbackAnyEth),
-				Value: "none",
+			item: configItemStruct{
+				key:   string(NetworkFallbackAnyEth),
+				value: "none",
 			},
 			itemType: ConfigItemTypeTriState,
 		},
 		"Global Setting - Unknown Key": {
-			item: config.ConfigItem{
-				Key:   "UnknownKey",
-				Value: "10",
+			item: configItemStruct{
+				key:   "UnknownKey",
+				value: "10",
 			},
 			expectError: true,
 		},
 		"Global Setting - Invalid int Value - Retain Old Value": {
-			item: config.ConfigItem{
-				Key:   string(ConfigInterval),
-				Value: "0",
+			item: configItemStruct{
+				key:   string(ConfigInterval),
+				value: "0",
 			},
 			itemType:      ConfigItemTypeInt,
 			expectError:   true,
@@ -324,9 +329,9 @@ func TestParseGlobalItem(t *testing.T) {
 			oldValue:      "10",
 		},
 		"Global Setting - Invalid int Value Parse Error - Retain Old Value": {
-			item: config.ConfigItem{
-				Key:   string(ConfigInterval),
-				Value: "0abc",
+			item: configItemStruct{
+				key:   string(ConfigInterval),
+				value: "0abc",
 			},
 			itemType:      ConfigItemTypeInt,
 			expectError:   true,
@@ -340,11 +345,11 @@ func TestParseGlobalItem(t *testing.T) {
 		oldGlobalConfig := DefaultConfigItemValueMap()
 		if test.oldValue != "" {
 			// Set old value in globalConfig
-			oldGlobalConfig.GlobalSettings[GlobalSettingKey(test.item.Key)] =
+			oldGlobalConfig.GlobalSettings[GlobalSettingKey(test.item.key)] =
 				test.configItemValue(true)
 		}
 		val, err := specMap.ParseItem(newGlobalConfig, oldGlobalConfig,
-			test.item.Key, test.item.Value)
+			test.item.key, test.item.value)
 		if test.expectError {
 			msg := fmt.Sprintf("Expecting Error, Didn't get one. "+
 				"testname: %s, test: %+v", testname, test)
@@ -370,48 +375,48 @@ func TestParseAgentItem(t *testing.T) {
 
 	testMatrix := map[string]parseItemTestEntry{
 		"Agent Setting LogLevel New": {
-			item: config.ConfigItem{
-				Key:   "agent.zedagent.debug.loglevel",
-				Value: "fatal",
+			item: configItemStruct{
+				key:   "agent.zedagent.debug.loglevel",
+				value: "fatal",
 			},
 		},
 		"Agent Setting Legacy LogLevel": {
-			item: config.ConfigItem{
-				Key:   "debug.zedrouter.loglevel",
-				Value: "panic",
+			item: configItemStruct{
+				key:   "debug.zedrouter.loglevel",
+				value: "panic",
 			},
 		},
 		"Agent Setting Remote Loglevel": {
-			item: config.ConfigItem{
-				Key:   "agent.nim.debug.remote.loglevel",
-				Value: "error",
+			item: configItemStruct{
+				key:   "agent.nim.debug.remote.loglevel",
+				value: "error",
 			},
 		},
 		"Agent Setting Legacy Remote LogLevel": {
-			item: config.ConfigItem{
-				Key:   "debug.domainmgr.remote.loglevel",
-				Value: "warn",
+			item: configItemStruct{
+				key:   "debug.domainmgr.remote.loglevel",
+				value: "warn",
 			},
 		},
 		// Error Cases for Agent Settings
 		"Agent Setting Legacy - UnknownOldSetting": {
-			item: config.ConfigItem{
-				Key:   "debug.nodeagent.UnknownOldSetting",
-				Value: "none",
+			item: configItemStruct{
+				key:   "debug.nodeagent.UnknownOldSetting",
+				value: "none",
 			},
 			expectError: true,
 		},
 		"Agent Setting - UnknownSetting": {
-			item: config.ConfigItem{
-				Key:   "agent.ledmanager.UnknownOldSetting",
-				Value: "none",
+			item: configItemStruct{
+				key:   "agent.ledmanager.UnknownOldSetting",
+				value: "none",
 			},
 			expectError: true,
 		},
 		"Agent Setting - Invalid Value - Old Value should be retained": {
-			item: config.ConfigItem{
-				Key:   "agent.downloader.debug.loglevel",
-				Value: "BadValue",
+			item: configItemStruct{
+				key:   "agent.downloader.debug.loglevel",
+				value: "BadValue",
 			},
 			expectError:   true,
 			expectedValue: "panic",
@@ -419,33 +424,33 @@ func TestParseAgentItem(t *testing.T) {
 		},
 	}
 	for testname, test := range testMatrix {
-		t.Logf("Running test case %s - key:%s, Value: %s",
-			testname, test.item.Key, test.item.Value)
+		t.Logf("Running test case %s - key:%s, value: %s",
+			testname, test.item.key, test.item.value)
 		// oldGlobalConfig is used as the Current Setting. In case of
 		// invalid values, values from this ar retained.
 		oldGlobalConfig := DefaultConfigItemValueMap()
 		if test.oldValue != "" {
-			agentName, asKey, err := parseAgentSettingKey(test.item.Key)
+			agentName, asKey, err := parseAgentSettingKey(test.item.key)
 			if err != nil {
 				log.Fatalf("Invalid Agent Key. Key: %s, err: %s",
-					test.item.Key, err)
+					test.item.key, err)
 			}
 			// Set old value in globalConfig
 			itemVal := ConfigItemValue{
-				Key:      test.item.Key,
+				Key:      test.item.key,
 				ItemType: ConfigItemTypeString,
 				StrValue: test.oldValue,
 			}
 			oldGlobalConfig.setAgentSettingValue(agentName, asKey, itemVal)
 		}
-		agentName, asKey, err := parseAgentSettingKey(test.item.Key)
+		agentName, asKey, err := parseAgentSettingKey(test.item.key)
 		if err != nil {
 			log.Fatalf("Unexpected Error in parsing key(%s). err: %s",
-				test.item.Key, err)
+				test.item.key, err)
 		}
 		newGlobalConfig := DefaultConfigItemValueMap()
 		itemVal, err := specMap.ParseItem(newGlobalConfig, oldGlobalConfig,
-			test.item.Key, test.item.Value)
+			test.item.key, test.item.value)
 		if test.expectError {
 			// Verify Error Cases
 			if err == nil {
@@ -469,7 +474,7 @@ func TestParseAgentItem(t *testing.T) {
 				// Verify Returned value is the expected Value
 				expectedVal := test.expectedValue
 				if expectedVal == "" {
-					expectedVal = test.item.Value
+					expectedVal = test.item.value
 				}
 				assert.Equal(t, expectedVal, itemVal.StringValue())
 				// Verify the value has been set in newGlobalConfig
@@ -477,8 +482,8 @@ func TestParseAgentItem(t *testing.T) {
 					newGlobalConfig.AgentSettingStringValue(agentName, asKey))
 			} else {
 				t.Fatalf("TEST FAILED: %s - Unexpected Error from parseItem. "+
-					"Key: %s, Value: %s, Err: %s",
-					testname, test.item.Key, test.item.Value, err)
+					"Key: %s, value: %s, Err: %s",
+					testname, test.item.key, test.item.value, err)
 
 			}
 		}

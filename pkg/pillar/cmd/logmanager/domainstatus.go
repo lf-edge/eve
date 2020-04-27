@@ -28,13 +28,13 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*logmanagerContext)
 	ctx.Lock()
 	defer ctx.Unlock()
-	log.Infof("handleDomainStatusModify for %s\n", key)
+	log.Infof("handleDomainStatusModify for %s", key)
 	status := statusArg.(types.DomainStatus)
 	// Record the domainName even if Pending* is set
-	log.Infof("handleDomainStatusModify add %s to %s\n",
+	log.Infof("handleDomainStatusModify add %s to %s",
 		status.DomainName, status.UUIDandVersion.UUID.String())
 	domainUuid[status.DomainName] = status.UUIDandVersion.UUID.String()
-	log.Infof("handleDomainStatusModify done for %s\n", key)
+	log.Infof("handleDomainStatusModify done for %s", key)
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, key string,
@@ -43,15 +43,15 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*logmanagerContext)
 	ctx.Lock()
 	defer ctx.Unlock()
-	log.Infof("handleDomainStatusDelete for %s\n", key)
+	log.Infof("handleDomainStatusDelete for %s", key)
 	status := statusArg.(types.DomainStatus)
 	if _, ok := domainUuid[status.DomainName]; !ok {
-		log.Errorf("handleDomainStatusDelete UUID %s not in map\n",
+		log.Errorf("handleDomainStatusDelete UUID %s not in map",
 			status.UUIDandVersion.UUID.String())
 		return
 	}
-	log.Infof("handleDomainStatusDomain remove %s\n",
+	log.Infof("handleDomainStatusDomain remove %s",
 		status.DomainName)
 	delete(domainUuid, status.DomainName)
-	log.Infof("handleDomainStatusDelete done for %s\n", key)
+	log.Infof("handleDomainStatusDelete done for %s", key)
 }

@@ -18,14 +18,14 @@ import (
 // GetDhcpInfo gets info from dhcpcd. Updates Gateway and Subnet
 // XXX set NtpServer once we know what name it has
 // XXX add IPv6 support?
-func GetDhcpInfo(us *types.NetworkPortStatus) error {
+func GetDhcpInfo(us *types.NetworkPortStatus) {
 
 	log.Infof("GetDhcpInfo(%s)\n", us.IfName)
-	if us.Dhcp != types.DT_CLIENT {
-		return nil
+	if us.NetworkXConfig.Dhcp != types.DT_CLIENT {
+		return
 	}
 	if strings.HasPrefix(us.IfName, "wwan") {
-		return nil
+		return
 	}
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
@@ -36,7 +36,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)
 		log.Errorln(errStr)
-		return nil
+		return
 	}
 	log.Debugf("dhcpcd -U got %v\n", string(stdoutStderr))
 	lines := strings.Split(string(stdoutStderr), "\n")
@@ -59,7 +59,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 				log.Errorf("Failed to parse %s\n", routers)
 				continue
 			}
-			us.Gateway = ip
+			us.NetworkXConfig.Gateway = ip
 		case "network_number":
 			network := trimQuotes(items[1])
 			log.Infof("GetDhcpInfo(%s) network_number %s\n", us.IfName,
@@ -81,15 +81,14 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 			}
 		}
 	}
-	us.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
-	return nil
+	us.NetworkXConfig.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
 }
 
 // GetDNSInfo gets DNS info from /run files. Updates DomainName and DnsServers
 func GetDNSInfo(us *types.NetworkPortStatus) {
 
 	log.Infof("GetDNSInfo(%s)\n", us.IfName)
-	if us.Dhcp != types.DT_CLIENT {
+	if us.NetworkXConfig.Dhcp != types.DT_CLIENT {
 		return
 	}
 	filename := IfnameToResolvConf(us.IfName)
@@ -107,11 +106,11 @@ func GetDNSInfo(us *types.NetworkPortStatus) {
 			log.Errorf("Failed to parse %s\n", server)
 			continue
 		}
-		us.DnsServers = append(us.DnsServers, ip)
+		us.NetworkXConfig.DnsServers = append(us.NetworkXConfig.DnsServers, ip)
 	}
 	// XXX just pick first since have one DomainName slot
 	for _, dn := range dc.Search {
-		us.DomainName = dn
+		us.NetworkXConfig.DomainName = dn
 		break
 	}
 }

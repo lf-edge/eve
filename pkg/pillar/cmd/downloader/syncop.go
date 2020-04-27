@@ -30,7 +30,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	)
 
 	if status.ObjType == "" {
-		log.Fatalf("handleSyncOp: No ObjType for %s\n",
+		log.Fatalf("handleSyncOp: No ObjType for %s",
 			status.ImageID)
 	}
 
@@ -56,7 +56,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	publishDownloaderStatus(ctx, status)
 
 	if _, err := os.Stat(locFilename); err != nil {
-		log.Debugf("Create %s\n", locFilename)
+		log.Debugf("Create %s", locFilename)
 		if err = os.MkdirAll(locFilename, 0755); err != nil {
 			log.Fatal(err)
 		}
@@ -66,17 +66,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	filename := path.Base(config.Name)
 	locFilename = locFilename + "/" + filename
 
-	log.Infof("Downloading <%s> to <%s> using %v allow non-free port\n",
+	log.Infof("Downloading <%s> to <%s> using %v allow non-free port",
 		config.Name, locFilename, config.AllowNonFreePort)
 
 	var addrCount int
 	if !config.AllowNonFreePort {
 		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Infof("Have %d free management port addresses\n", addrCount)
+		log.Infof("Have %d free management port addresses", addrCount)
 		err = errors.New("No free IP management port addresses for download")
 	} else {
 		addrCount = types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Infof("Have %d any management port addresses\n", addrCount)
+		log.Infof("Have %d any management port addresses", addrCount)
 		err = errors.New("No IP management port addresses for download")
 	}
 	if addrCount == 0 {
@@ -162,7 +162,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// ideally in go we would have this as a check for error
 	// and return, but we will get to it later
 	if errStr != "" {
-		log.Errorf("Error preparing to download. All errors:%s\n", errStr)
+		log.Errorf("Error preparing to download. All errors:%s", errStr)
 		handleSyncOpResponse(ctx, config, status, locFilename,
 			key, errStr)
 		return
@@ -180,12 +180,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				addrIndex, "")
 		}
 		if err != nil {
-			log.Errorf("GetLocalAddr failed: %s\n", err)
+			log.Errorf("GetLocalAddr failed: %s", err)
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
 		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
-		log.Infof("Using IP source %v if %s transport %v\n",
+		log.Infof("Using IP source %v if %s transport %v",
 			ipSrc, ifname, dsCtx.TransportMethod)
 
 		// do the download
@@ -216,7 +216,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		return
 
 	}
-	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)
+	log.Errorf("All source IP addresses failed. All errors:%s", errStr)
 	handleSyncOpResponse(ctx, config, status, locFilename,
 		key, errStr)
 }
@@ -225,7 +225,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 func getServerUrl(dsCtx *types.DatastoreContext) (string, error) {
 	u, err := url.Parse(dsCtx.DownloadURL)
 	if err != nil {
-		log.Errorf("URL Parsing failed: %s\n", err)
+		log.Errorf("URL Parsing failed: %s", err)
 		return "", err
 	}
 	return u.Scheme + "://" + u.Host, nil
@@ -240,7 +240,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// management also
 
 	if status.ObjType == "" {
-		log.Fatalf("handleSyncOpResponse: No ObjType for %s\n",
+		log.Fatalf("handleSyncOpResponse: No ObjType for %s",
 			status.ImageID)
 	}
 
@@ -253,7 +253,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleSyncOpResponse(%s): failed with %s\n",
+		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)
 		return
 	}
@@ -268,7 +268,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleSyncOpResponse(%s): failed with %s\n",
+		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)
 		return
 	}
@@ -277,7 +277,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// and convert it to used space
 	allocateSpace(ctx, status, size)
 
-	log.Infof("handleSyncOpResponse(%s): successful <%s>\n",
+	log.Infof("handleSyncOpResponse(%s): successful <%s>",
 		config.Name, locFilename)
 	// We do not clear any status.RetryCount, Error, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
@@ -321,28 +321,28 @@ func constructDatastoreContext(ctx *downloaderContext, configName string, NameIs
 }
 
 func sourceFailureError(ip, ifname, url string, err error) {
-	log.Errorf("Source IP %s failed: %s\n", ip, err)
+	log.Errorf("Source IP %s failed: %s", ip, err)
 	zedcloud.ZedCloudFailure(ifname, url, 1024, 0, false)
 }
 
 func getDatastoreCredential(ctx *downloaderContext,
-	dst types.DatastoreConfig) (zconfig.EncryptionBlock, error) {
+	dst types.DatastoreConfig) (types.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
 		status, decBlock, err := utils.GetCipherCredentials(agentName,
 			dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
-			log.Errorf("%s, datastore config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
+			log.Errorf("%s, datastore config cipherblock decryption unsuccessful, falling back to cleartext: %v",
 				dst.Key(), err)
 			decBlock.DsAPIKey = dst.ApiKey
 			decBlock.DsPassword = dst.Password
 			return decBlock, nil
 		}
-		log.Infof("%s, datastore config cipherblock decryption successful\n", dst.Key())
+		log.Infof("%s, datastore config cipherblock decryption successful", dst.Key())
 		return decBlock, nil
 	}
-	log.Infof("%s, datastore config cipherblock not present\n", dst.Key())
-	decBlock := zconfig.EncryptionBlock{}
+	log.Infof("%s, datastore config cipherblock not present", dst.Key())
+	decBlock := types.EncryptionBlock{}
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password
 	return decBlock, nil

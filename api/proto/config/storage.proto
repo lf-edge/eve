@@ -106,3 +106,54 @@ message Drive {
   // A value of 0 will indicate that no resizing is required
   int64 maxsizebytes = 10;
 }
+
+
+message ContentTree {
+  string uuid = 1;
+  string dsId  = 2; // effectively pointer/key into dsConfigs
+
+  string URL = 3;
+  Format iformat = 4;
+
+  // the following is only used for individual blobs, if this message references a group of blobs
+  // e.g. in the case of OCI -- this information is expected to be provided by a top level blob
+  // that this message points to via its URL
+  string sha256 = 5;
+  uint64 maxSizeBytes = 6; // used for capping resource consumption eve for OCI & BLOB_TREE
+  SignatureInfo siginfo = 7;
+}
+
+enum VolumeAccessProtocols {
+  VAP_NONE = 0;
+  VAP_9P = 1;
+}
+
+enum VolumeContentOriginType {
+  VCOT_UNKNOWN = 0;
+  VCOT_BLANK = 1;
+  VCOT_DOWNLOAD = 2;
+}
+
+message VolumeContentOrigin {
+  VolumeContentOriginType type = 1;
+  string downloadContentTreeID = 2; // applicable when the type is VCOT_DOWNLOAD
+}
+
+message Volume {
+  string uuid = 1;
+
+  // origin of the volume content.
+  VolumeContentOrigin origin = 2;
+
+  // describes all the different ways how this Volume can
+  // be offered to Tasks (9p, nfs, scsi, ata, virtio, etc.)
+  repeated VolumeAccessProtocols protocols = 3;
+
+  // change in generationCount indicates that the mutated volume needs to be purged and
+  // built from scratch.
+  int64 generationCount = 4;
+
+  // miscellaneous attributes of the Volume
+  int64 maxsizebytes = 5;
+  bool readonly = 6;
+}

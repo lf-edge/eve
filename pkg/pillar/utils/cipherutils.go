@@ -19,12 +19,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func getEncryptionBlock(
+	zconfigDecBlockPtr *zconfig.EncryptionBlock) types.EncryptionBlock {
+	var decBlock types.EncryptionBlock
+	decBlock.DsAPIKey = zconfigDecBlockPtr.DsAPIKey
+	decBlock.DsPassword = zconfigDecBlockPtr.DsPassword
+	decBlock.WifiUserName = zconfigDecBlockPtr.WifiUserName
+	decBlock.WifiPassword = zconfigDecBlockPtr.WifiPassword
+	decBlock.ProtectedUserData = zconfigDecBlockPtr.ProtectedUserData
+	return decBlock
+}
+
 // GetCipherCredentials : decrypt encryption block
 func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (types.CipherBlockStatus,
-	zconfig.EncryptionBlock, error) {
+	types.EncryptionBlock, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
-	var decBlock zconfig.EncryptionBlock
+	var decBlock types.EncryptionBlock
 	if !cipherBlock.IsCipher {
 		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, nil)
 	}
@@ -43,15 +54,16 @@ func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (typ
 			cipherBlock.Key(), err)
 		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
 	}
-	if err := proto.Unmarshal(clearBytes, &decBlock); err != nil {
+
+	var zconfigDecBlock zconfig.EncryptionBlock
+	err = proto.Unmarshal(clearBytes, &zconfigDecBlock)
+	if err != nil {
 		log.Errorf("%s, encryption block unmarshall failed, %v\n",
 			cipherBlock.Key(), err)
 		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
 	}
-	if err == nil {
-		log.Infof("%s, cipherblock decryption successful\n",
-			cipherBlock.Key())
-	}
+	log.Infof("%s, cipherblock decryption successful", cipherBlock.Key())
+	decBlock = getEncryptionBlock(&zconfigDecBlock)
 	return *cipherBlock, decBlock, err
 }
 
@@ -86,12 +98,12 @@ func GetCipherData(agentName string, status types.CipherBlockStatus,
 // try to return valid plain-text data for further processing
 // for encryption block
 func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatus,
-	decBlock zconfig.EncryptionBlock, err error) (types.CipherBlockStatus, zconfig.EncryptionBlock, error) {
+	decBlock types.EncryptionBlock, err error) (types.CipherBlockStatus, types.EncryptionBlock, error) {
 	if err != nil {
 		status.SetErrorNow(err.Error())
 		// we have already captured the error info above
 		// for valid encryption block info, reset the error to proceed
-		if !reflect.DeepEqual(decBlock, zconfig.EncryptionBlock{}) {
+		if !reflect.DeepEqual(decBlock, types.EncryptionBlock{}) {
 			err = nil
 		}
 	}

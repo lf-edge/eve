@@ -21,6 +21,9 @@ message AppInstanceConfig {
   UUIDandVersion uuidandversion = 1;
   string displayname = 2;
   VmConfig fixedresources = 3;
+
+  // VolumeRefs, if supported by EVE, will supercede drives. Drives still exist for backward compatibility.
+  // drives will be deprecated in the future.
   repeated Drive drives = 4;
   bool activate = 5;
 
@@ -58,4 +61,7 @@ message AppInstanceConfig {
 
   // contains the encrypted userdata
   CipherBlock cipherData = 13;
+
+  // UUID of volumes to be attached to the app-instance.
+  repeated string volumeRefs = 14;
 }

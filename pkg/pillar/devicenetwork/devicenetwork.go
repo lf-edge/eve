@@ -16,7 +16,6 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -76,17 +75,32 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	return false
 }
 
-// Check if device can talk to outside world via atleast one of the free uplinks
+// VerifyDeviceNetworkStatus
+//  Check if device can talk to outside world via atleast 'successCount' of the
+//  uplinks
+// Return Values:
+//  Success / Failure
+//  error - Overall Error
+//  PerInterfaceErrorMap - Key: ifname
+//    Includes entries for all interfaces that were tested.
+//    For each interface verified
+//      set Error ( If success, set to "")
+//      set ErrorTime to time of testing ( Even if verify Successful )
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
-	retryCount int, timeout uint32) (bool, error) {
+	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
-	log.Debugf("VerifyDeviceNetworkStatus() %d\n", retryCount)
+	log.Debugf("VerifyDeviceNetworkStatus() successCount %d, iteration %d",
+		successCount, iteration)
+
+	// Map of per-interface errors
+	intfStatusMap := *types.NewIntfStatusMap()
+
 	// Check if it is 1970 in which case we declare success since
 	// our certificates will not work until NTP has brought the time
 	// forward.
 	if time.Now().Year() == 1970 {
 		log.Infof("VerifyDeviceNetworkStatus skip due to 1970")
-		return false, nil
+		return false, intfStatusMap, nil
 	}
 
 	server, err := ioutil.ReadFile(types.ServerFileName)
@@ -119,28 +133,33 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		if err != nil {
 			errStr := "Onboarding certificate cannot be found"
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return false, errors.New(errStr)
+			return false, intfStatusMap, errors.New(errStr)
 		}
 		clientCert := &onboardingCert
 		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
 			serverName, clientCert, &zedcloudCtx)
 		if err != nil {
 			errStr := fmt.Sprintf("TLS configuration for talking to Zedcloud cannot be found: %s", err)
-
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return false, errors.New(errStr)
+			return false, intfStatusMap, errors.New(errStr)
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range status.Ports {
 		err = CheckAndGetNetworkProxy(&status, &status.Ports[ix])
 		if err != nil {
-			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
-			log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return false, errors.New(errStr)
+			ifName := status.Ports[ix].IfName
+			errStr := fmt.Sprintf("ifName: %s. Failed to get NetworkProxy. Err:%s",
+				ifName, err)
+			log.Errorf("VerifyDeviceNetworkStatus: %s", errStr)
+			intfStatusMap.RecordFailure(ifName, errStr)
+			return false, intfStatusMap, errors.New(errStr)
 		}
 	}
-	cloudReachable, rtf, err := zedcloud.VerifyAllIntf(&zedcloudCtx, testURL, retryCount, 1)
+	cloudReachable, rtf, tempIntfStatusMap, err := zedcloud.VerifyAllIntf(
+		&zedcloudCtx, testURL, successCount, iteration)
+	intfStatusMap.SetOrUpdateFromMap(tempIntfStatusMap)
+	log.Debugf("VerifyDeviceNetworkStatus: intfStatusMap - %+v", intfStatusMap)
 	if err != nil {
 		if rtf {
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf remoteTemporaryFailure %s",
@@ -149,16 +168,17 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s",
 				err)
 		}
-		return rtf, err
+		return rtf, intfStatusMap, err
 	}
 
 	if cloudReachable {
 		log.Infof("Uplink test SUCCESS to URL: %s", testURL)
-		return false, nil
+		return false, intfStatusMap, nil
 	}
 	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testURL)
-	log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
-	return rtf, errors.New(errStr)
+	log.Errorf("VerifyDeviceNetworkStatus: %s, intfStatusMap: %+v",
+		errStr, intfStatusMap)
+	return rtf, intfStatusMap, err
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
@@ -177,26 +197,22 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
-		globalStatus.Ports[ix].Dhcp = u.Dhcp
+		globalStatus.Ports[ix].NetworkXConfig.Dhcp = u.Dhcp
 		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
 		if subnet != nil {
-			globalStatus.Ports[ix].Subnet = *subnet
+			globalStatus.Ports[ix].NetworkXConfig.Subnet = *subnet
 		}
-		globalStatus.Ports[ix].Gateway = u.Gateway
-		globalStatus.Ports[ix].DomainName = u.DomainName
-		globalStatus.Ports[ix].NtpServer = u.NtpServer
-		globalStatus.Ports[ix].DnsServers = u.DnsServers
-		if u.ParseError != "" {
-			globalStatus.Ports[ix].Error = u.ParseError
-			globalStatus.Ports[ix].ErrorTime = u.ParseErrorTime
-		}
+		globalStatus.Ports[ix].NetworkXConfig.Gateway = u.Gateway
+		globalStatus.Ports[ix].NetworkXConfig.DomainName = u.DomainName
+		globalStatus.Ports[ix].NetworkXConfig.NtpServer = u.NtpServer
+		globalStatus.Ports[ix].NetworkXConfig.DnsServers = u.DnsServers
+		globalStatus.Ports[ix].TestResults = u.TestResults
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
 			errStr := fmt.Sprintf("Port %s does not exist - ignored",
 				u.IfName)
 			log.Errorf("MakeDeviceNetworkStatus: %s\n", errStr)
-			globalStatus.Ports[ix].Error = errStr
-			globalStatus.Ports[ix].ErrorTime = time.Now()
+			globalStatus.Ports[ix].RecordFailure(errStr)
 			continue
 		}
 		addrs, err := GetIPAddrs(ifindex)
@@ -221,12 +237,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr
 		}
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
-		err = GetDhcpInfo(&globalStatus.Ports[ix])
-		if err != nil {
-			errStr := fmt.Sprintf("GetDhcpInfo failed %s", err)
-			globalStatus.Ports[ix].Error = errStr
-			globalStatus.Ports[ix].ErrorTime = time.Now()
-		}
+		GetDhcpInfo(&globalStatus.Ports[ix])
 		GetDNSInfo(&globalStatus.Ports[ix])
 
 		// Attempt to get a wpad.dat file if so configured
@@ -236,9 +247,11 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		err = CheckAndGetNetworkProxy(&globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {
-			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
-			globalStatus.Ports[ix].Error = errStr
-			globalStatus.Ports[ix].ErrorTime = time.Now()
+			errStr := fmt.Sprintf("GetNetworkProxy failed for %s: %s",
+				u.IfName, err)
+			// XXX where can we return this failure?
+			// Already have TestResults set from above
+			log.Error(errStr)
 		}
 	}
 	// Preserve geo info for existing interface and IP address
@@ -385,7 +398,7 @@ func devPortInstallWifiConfig(ctx *DeviceNetworkContext,
 }
 
 func getWifiCredential(ctx *DeviceNetworkContext,
-	wifi types.WifiConfig) (zconfig.EncryptionBlock, error) {
+	wifi types.WifiConfig) (types.EncryptionBlock, error) {
 	if wifi.CipherBlockStatus.IsCipher {
 		status, decBlock, err := utils.GetCipherCredentials("devicenetwork",
 			wifi.CipherBlockStatus)
@@ -401,7 +414,7 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 		return decBlock, nil
 	}
 	log.Infof("%s, wifi config cipherblock not present\n", wifi.SSID)
-	decBlock := zconfig.EncryptionBlock{}
+	decBlock := types.EncryptionBlock{}
 	decBlock.WifiUserName = wifi.Identity
 	decBlock.WifiPassword = wifi.Password
 	return decBlock, nil

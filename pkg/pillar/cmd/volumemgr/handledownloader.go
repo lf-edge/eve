@@ -5,15 +5,14 @@ package volumemgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeStatus) {
 
-	log.Infof("AddOrRefcountDownloaderConfig for %s\n", status.VolumeID)
+	log.Infof("AddOrRefcountDownloaderConfig for %s\n", status.BlobSha256)
 
-	m := lookupDownloaderConfig(ctx, status.ObjType, status.VolumeID)
+	m := lookupDownloaderConfig(ctx, status.ObjType, status.BlobSha256)
 	if m != nil {
 		m.RefCount += 1
 		if m.IsContainer != status.DownloadOrigin.IsContainer {
@@ -25,13 +24,14 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 		publishDownloaderConfig(ctx, status.ObjType, m)
 	} else {
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
-			status.VolumeID)
+			status.BlobSha256)
 		n := types.DownloaderConfig{
 			ImageID:     status.VolumeID,
 			DatastoreID: status.DownloadOrigin.DatastoreID,
 			// XXX StorageConfig.Name is what?
 			Name:        status.DownloadOrigin.Name, // XXX URL? DisplayName?
 			NameIsURL:   status.DownloadOrigin.NameIsURL,
+			ImageSha256: status.DownloadOrigin.ImageSha256,
 			IsContainer: status.DownloadOrigin.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
@@ -42,27 +42,27 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 	}
 	log.Infof("AddOrRefcountDownloaderConfig done for %s\n",
-		status.VolumeID)
+		status.BlobSha256)
 }
 
-func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageID uuid.UUID) {
-	log.Infof("MaybeRemoveDownloaderConfig(%s) for %s\n", imageID, objType)
+func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha string) {
+	log.Infof("MaybeRemoveDownloaderConfig(%s) for %s\n", imageSha, objType)
 
-	m := lookupDownloaderConfig(ctx, objType, imageID)
+	m := lookupDownloaderConfig(ctx, objType, imageSha)
 	if m == nil {
 		log.Infof("MaybeRemoveDownloaderConfig: config missing for %s\n",
-			imageID)
+			imageSha)
 		return
 	}
 	if m.RefCount == 0 {
 		log.Fatalf("MaybeRemoveDownloaderConfig: Attempting to reduce "+
-			"0 RefCount. Image Details - Name: %s, ImageID: %s, "+
+			"0 RefCount. Image Details - Name: %s, ImageSha: %s, "+
 			"IsContainer: %t\n",
-			m.Name, m.ImageID, m.IsContainer)
+			m.Name, m.ImageSha256, m.IsContainer)
 	}
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
-		m.RefCount, imageID)
+		m.RefCount, imageSha)
 	publishDownloaderConfig(ctx, objType, m)
 }
 
@@ -95,7 +95,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*volumemgrContext)
 	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d"+
 		"status.Expired: %+v\n",
-		status.ImageID, status.RefCount, status.Expired)
+		status.ImageSha256, status.RefCount, status.Expired)
 
 	// Handling even if Pending is set to process Progress updates
 
@@ -106,7 +106,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	// 2. downloader set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID)
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
 			key)
@@ -115,6 +115,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 			DatastoreID: status.DatastoreID,
 			Name:        status.Name,
 			NameIsURL:   status.NameIsURL,
+			ImageSha256: status.ImageSha256,
 			// IsContainer might not be known by downloader
 			IsContainer: status.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
@@ -133,17 +134,17 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update case
-	updateVolumeStatus(ctx, status.ObjType, status.ImageID)
-	log.Infof("handleDownloaderStatusModify done for %s\n", status.ImageID)
+	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	log.Infof("handleDownloaderStatusModify done for %s\n", status.ImageSha256)
 }
 
-func lookupDownloaderConfig(ctx *volumemgrContext, objType string,
-	imageID uuid.UUID) *types.DownloaderConfig {
+func lookupDownloaderConfig(ctx *volumemgrContext, objType,
+	key string) *types.DownloaderConfig {
 
 	pub := ctx.publication(types.DownloaderConfig{}, objType)
-	c, _ := pub.Get(imageID.String())
+	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupDownloaderConfig(%s) not found\n", imageID)
+		log.Infof("lookupDownloaderConfig(%s) not found\n", key)
 		return nil
 	}
 	config := c.(types.DownloaderConfig)
@@ -151,13 +152,13 @@ func lookupDownloaderConfig(ctx *volumemgrContext, objType string,
 }
 
 // Note that this function returns the entry even if Pending* is set.
-func lookupDownloaderStatus(ctx *volumemgrContext, objType string,
-	imageID uuid.UUID) *types.DownloaderStatus {
+func lookupDownloaderStatus(ctx *volumemgrContext, objType,
+	key string) *types.DownloaderStatus {
 
 	sub := ctx.subscription(types.DownloaderStatus{}, objType)
-	c, _ := sub.Get(imageID.String())
+	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupDownloaderStatus(%s) not found\n", imageID)
+		log.Infof("lookupDownloaderStatus(%s) not found\n", key)
 		return nil
 	}
 	status := c.(types.DownloaderStatus)
@@ -170,9 +171,9 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloaderStatusDelete for %s\n", key)
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.DownloaderStatus)
-	updateVolumeStatus(ctx, status.ObjType, status.ImageID)
+	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID)
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleDownloaderStatusDelete delete config for %s\n",
 			key)

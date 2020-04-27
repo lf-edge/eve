@@ -620,7 +620,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	portConfig.Ports = newPorts
 
 	// Any content change?
-	// Even if only ParseError or ParseErrorTime changed we publish so
+	// Even if only ErrorAndTime changed we publish so
 	// the change can be sent back to the controller using ctx.devicePortConfigList
 	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
 		getconfigCtx.devicePortConfig.Version == portConfig.Version {
@@ -642,7 +642,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 }
 
 // Returns a port if it should be added to the list; some errors result in
-// adding an port to to DevicePortConfig with ParseError set.
+// adding a port to to DevicePortConfig with ErrorAndTime set.
 func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	sysAdapter *zconfig.SystemAdapter,
 	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
@@ -669,8 +669,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
 		// Report error but set Dhcp, isMgmt, and isFree to sane values
-		port.ParseError = errStr
-		port.ParseErrorTime = time.Now()
+		port.RecordFailure(errStr)
 		port.Logicallabel = port.Phylabel
 		port.IfName = sysAdapter.Name
 		isFree = true
@@ -723,12 +722,11 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	if sysAdapter.Addr != "" {
 		ip = net.ParseIP(sysAdapter.Addr)
 		if ip == nil {
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s has Bad "+
-				"sysAdapter.Addr %s - ignored",
-				sysAdapter.Name, sysAdapter.Addr)
-			log.Error(errStr)
-			port.ParseError = errStr
-			port.ParseErrorTime = time.Now()
+			errStr := fmt.Sprintf("Device Config Error. Port %s has Bad "+
+				"SysAdapter.Addr %s. The IP address is ignored. Please fix the "+
+				"device configuration.", sysAdapter.Name, sysAdapter.Addr)
+			log.Errorf("parseSystemAdapterConfig: %s", errStr)
+			port.RecordFailure(errStr)
 			// IP will not be set below
 		}
 		// Note that ip is not used unless we have a network UUID
@@ -741,20 +739,22 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		networkXObject, err := getconfigCtx.pubNetworkXObjectConfig.Get(sysAdapter.NetworkUUID)
 		if err != nil {
 			// XXX when do we retry looking for the networkXObject?
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network with UUID %s not found: %s",
+			errStr := fmt.Sprintf("Device Config Error. Port %s configured with "+
+				"UNKNOWN Network UUID (%s). Err: %s. Please fix the "+
+				"device configuration.",
 				port.IfName, sysAdapter.NetworkUUID, err)
-			log.Error(errStr)
-			port.ParseError = errStr
-			port.ParseErrorTime = time.Now()
+			log.Errorf("parseSystemAdapterConfig: %s", errStr)
+			port.RecordFailure(errStr)
 		} else {
 			net := networkXObject.(types.NetworkXObjectConfig)
 			port.NetworkUUID = net.UUID
 			network = &net
 			if network.HasError() {
-				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
-					port.IfName, network.Error)
-				port.ParseError = errStr
-				port.ParseErrorTime = network.ErrorTime
+				errStr := fmt.Sprintf("Port %s configured with a network "+
+					"(UUID: %s) which has an error (%s).",
+					port.IfName, port.NetworkUUID, network.Error)
+				log.Errorf("parseSystemAdapterConfig: %s", errStr)
+				port.RecordFailure(errStr)
 			}
 		}
 
@@ -775,39 +775,40 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		switch port.Dhcp {
 		case types.DT_STATIC:
 			if port.AddrSubnet == "" {
-				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s DT_STATIC but missing "+
-					"subnet address in %+v; ignored", port.IfName, port)
-				log.Error(errStr)
-				port.ParseError = errStr
-				port.ParseErrorTime = time.Now()
+				errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
+					"missing subnet address. SysAdapter - Name: %s, Addr:%s",
+					port.IfName, sysAdapter.Name, sysAdapter.Addr)
+				log.Errorf("parseSystemAdapterConfig: %s", errStr)
+				port.RecordFailure(errStr)
 			}
 		case types.DT_CLIENT:
 			// Do nothing
 		case types.DT_NONE:
 			if isMgmt {
-				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: isMgmt with DT_NONE not supported",
-					port.IfName)
-				log.Error(errStr)
-				port.ParseError = errStr
-				port.ParseErrorTime = time.Now()
+				errStr := fmt.Sprintf("Port %s configured as Management port "+
+					"with an unsupported DHCP type %d. Client and static are "+
+					"the only allowed DHCP modes for management ports.",
+					port.IfName, types.DT_NONE)
+
+				log.Errorf("parseSystemAdapterConfig: %s", errStr)
+				port.RecordFailure(errStr)
 			}
 		default:
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: ignore unsupported dhcp type %v",
+			errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
 				port.IfName, network.Dhcp)
-			log.Error(errStr)
-			port.ParseError = errStr
-			port.ParseErrorTime = time.Now()
+			log.Errorf("parseSystemAdapterConfig: %s", errStr)
+			port.RecordFailure(errStr)
 		}
 		// XXX use DnsNameToIpList?
 		if network != nil && network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
 		}
 	} else if isMgmt {
-		errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s isMgmt without networkUUID not supported",
+		errStr := fmt.Sprintf("Port %s Configured as Management port without "+
+			"configuring a Network. Network is required for Management ports",
 			port.IfName)
-		log.Error(errStr)
-		port.ParseError = errStr
-		port.ParseErrorTime = time.Now()
+		log.Errorf("parseSystemAdapterConfig: %s", errStr)
+		port.RecordFailure(errStr)
 	}
 	return port
 }
@@ -1727,6 +1728,14 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	//  value or retain the previous value.
 	gcPtr := &ctx.zedagentCtx.globalConfig
 	newGlobalConfig := types.DefaultConfigItemValueMap()
+	// Note: UsbAccess is special in that it has two defaults.
+	// When the device first boots the default is "true" as specified
+	// in the DefaultConfigItemValueMap. But when connecting to the
+	// controller, if the controller does not include the item, it
+	// should default to "false".
+	// That way bringup of new hardware models can be done using an
+	// attached keyboard.
+	newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
 	newGlobalStatus := types.NewGlobalStatus()
 
 	for _, item := range items {
@@ -1929,8 +1938,8 @@ func parseOpCmds(config *zconfig.EdgeDevConfig,
 	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
-func readRebootConfig() zconfig.DeviceOpsCmd {
-	rebootConfig := zconfig.DeviceOpsCmd{}
+func readRebootConfig() types.DeviceOpsCmd {
+	rebootConfig := types.DeviceOpsCmd{}
 
 	log.Debugf("readRebootConfigCounter - reading %s\n", rebootConfigFilename)
 
@@ -1951,7 +1960,7 @@ func readRebootConfig() zconfig.DeviceOpsCmd {
 	return rebootConfig
 }
 
-func saveRebootConfig(reboot zconfig.DeviceOpsCmd) {
+func saveRebootConfig(reboot types.DeviceOpsCmd) {
 	log.Infof("saveRebootConfig - reboot.Counter: %d", reboot.Counter)
 	bytes, err := json.Marshal(reboot)
 	if err != nil {
@@ -1994,7 +2003,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		log.Infof("scheduleReboot: old %d new %d\n",
 			rebootConfig.Counter, reboot.Counter)
 		// store current config, persistently
-		saveRebootConfig(*reboot)
+		rebootCmd := types.DeviceOpsCmd{
+			Counter:      reboot.Counter,
+			DesiredState: reboot.DesiredState,
+			OpsTime:      reboot.OpsTime,
+		}
+		saveRebootConfig(rebootCmd)
 		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
 
 		// if device reboot is set, ignore op-command

@@ -12,10 +12,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -25,6 +21,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 // XXX should we add some Init() function to create this?
@@ -128,21 +130,38 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 	return nil, nil, remoteTemporaryFailure, errors.New(errStr)
 }
 
-// We try with free interfaces first. If we find enough free interfaces through
+// VerifyAllIntf
+// We try with free interfaces in first iteration.
+//      We test interfaces in sequence and as soon as we find the first working
+//      interface, we stop. Other interfaces are not tested.
+// If we find enough free interfaces through
 // which cloud connectivity can be achieved, we won't test non-free interfaces.
 // Otherwise we test non-free interfaces also.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
+// Return Values:
+//    success/Failure, remoteTemporaryFailure, error, intfStatusMap
+//    If Failure,
+//       remoteTemporaryFailure - indicates if it is a remote failure
+//       error  - indicates details of Errors
+//    IntfStatusMap - This status for each interface verified.
+//      Includes entries for all interfaces that were tested.
+//      If an intf is success, Error == "" Else - Set to appropriate Error
+//      ErrorTime will always be set for the interface.
 func VerifyAllIntf(ctx *ZedCloudContext,
-	url string, successCount int, iteration int) (bool, bool, error) {
-	var intfSuccessCount int = 0
+	url string, successCount uint,
+	iteration int) (bool, bool, types.IntfStatusMap, error) {
+	var intfSuccessCount uint
 	const allowProxy = true
 	var errorList []error
+
 	remoteTemporaryFailure := false
+	// Map of per-interface errors
+	intfStatusMap := *types.NewIntfStatusMap()
 
 	if successCount <= 0 {
 		// No need to test. Just return true.
-		return true, remoteTemporaryFailure, nil
+		return true, remoteTemporaryFailure, intfStatusMap, nil
 	}
 
 	for try := 0; try < 2; try += 1 {
@@ -171,11 +190,13 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 				log.Errorf("Zedcloud un-reachable via interface %s: %s",
 					intf, err)
 				errorList = append(errorList, err)
+				intfStatusMap.RecordFailure(intf, err.Error())
 				continue
 			}
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
 				log.Debugf("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
+				intfStatusMap.RecordSuccess(intf)
 				intfSuccessCount += 1
 			default:
 				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
@@ -184,23 +205,26 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 				log.Errorln(errStr)
 				err = errors.New(errStr)
 				errorList = append(errorList, err)
+				intfStatusMap.RecordFailure(intf, err.Error())
 				continue
 			}
 		}
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v",
-			url, errorList)
+		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v,"+
+			" intfStatusMap: %+v", url, errorList, intfStatusMap)
 		log.Errorln(errStr)
-		return false, remoteTemporaryFailure, errors.New(errStr)
+		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
 	}
 	if intfSuccessCount < successCount {
-		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d to reach Zedcloud; last failed with %v",
-			intfSuccessCount, successCount, errorList)
+		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
+			" to reach Zedcloud; last failed with %v. intfStatusMap: %+v",
+			intfSuccessCount, successCount, errorList, intfStatusMap)
 		log.Errorln(errStr)
-		return false, remoteTemporaryFailure, errors.New(errStr)
+		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
 	}
-	return true, remoteTemporaryFailure, nil
+	log.Debugf("VerifyAllIntf: Verify done. intfStatusMap: %+v", intfStatusMap)
+	return true, remoteTemporaryFailure, intfStatusMap, nil
 }
 
 // Tries all source addresses on interface until one succeeds.
@@ -247,6 +271,21 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 	if addrCount == 0 {
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(intf, reqUrl, 0, 0, false)
+		}
+		// Determine a specific failure for intf
+		link, err := netlink.LinkByName(intf)
+		if err != nil {
+			errStr := fmt.Sprintf("Link not found to connect to %s using intf %s: %s",
+				reqUrl, intf, err)
+			log.Debugln(errStr)
+			return nil, nil, senderStatus, errors.New(errStr)
+		}
+		attrs := link.Attrs()
+		if attrs.OperState != netlink.OperUp {
+			errStr := fmt.Sprintf("Link not up to connect to %s using intf %s: %s",
+				reqUrl, intf, attrs.OperState.String())
+			log.Debugln(errStr)
+			return nil, nil, senderStatus, errors.New(errStr)
 		}
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			reqUrl, intf)

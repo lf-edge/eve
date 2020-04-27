@@ -35,21 +35,23 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	subAppInstanceConfig pubsub.Subscription
-	pubAppInstanceStatus pubsub.Publication
-	pubVolumeConfig      pubsub.Publication
-	subVolumeStatus      pubsub.Subscription
-	pubAppNetworkConfig  pubsub.Publication
-	subAppNetworkStatus  pubsub.Subscription
-	pubDomainConfig      pubsub.Publication
-	subDomainStatus      pubsub.Subscription
-	pubEIDConfig         pubsub.Publication
-	subEIDStatus         pubsub.Subscription
-	subGlobalConfig      pubsub.Subscription
-	globalConfig         *types.ConfigItemValueMap
-	pubUuidToNum         pubsub.Publication
-	pubAppAndImageToHash pubsub.Publication
-	GCInitialized        bool
+	subAppInstanceConfig   pubsub.Subscription
+	pubAppInstanceStatus   pubsub.Publication
+	pubVolumeConfig        pubsub.Publication
+	subVolumeStatus        pubsub.Subscription
+	pubAppNetworkConfig    pubsub.Publication
+	subAppNetworkStatus    pubsub.Subscription
+	pubDomainConfig        pubsub.Publication
+	subDomainStatus        pubsub.Subscription
+	pubAppImgResolveConfig pubsub.Publication
+	subAppImgResolveStatus pubsub.Subscription
+	pubEIDConfig           pubsub.Publication
+	subEIDStatus           pubsub.Subscription
+	subGlobalConfig        pubsub.Subscription
+	globalConfig           *types.ConfigItemValueMap
+	pubUuidToNum           pubsub.Publication
+	pubAppAndImageToHash   pubsub.Publication
+	GCInitialized          bool
 }
 
 var debug = false
@@ -156,6 +158,17 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubAppAndImageToHash = pubAppAndImageToHash
+
+	pubAppImgResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.ResolveConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppImgResolveConfig.ClearRestarted()
+	ctx.pubAppImgResolveConfig = pubAppImgResolveConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -269,6 +282,24 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
+	// Look for AppImgResolveStatus from downloader
+	subAppImgResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "downloader",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ResolveStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleResolveStatusModify,
+		ModifyHandler: handleResolveStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppImgResolveStatus = subAppImgResolveStatus
+	subAppImgResolveStatus.Activate()
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -299,6 +330,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
+
+		case change := <-subAppImgResolveStatus.MsgChan():
+			subAppImgResolveStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -459,8 +493,6 @@ func handleCreate(ctxArg interface{}, key string,
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
 		}
-		// XXX before latching we should ResolveConfig to get the sha
-		maybeLatchImageSha(ctx, config, ss)
 	}
 
 	status.EIDList = make([]types.EIDStatusDetails,
@@ -511,7 +543,7 @@ func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	ssPtr *types.StorageStatus) {
 
 	imageSha := lookupAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-		ssPtr.ImageID)
+		ssPtr.ImageID, ssPtr.PurgeCounter)
 	if imageSha == "" {
 		if ssPtr.IsContainer && ssPtr.ImageSha256 == "" {
 			log.Infof("Container app/image %s %s/%s has not (yet) latched sha",
@@ -560,6 +592,7 @@ func maybeInsertSha(name string, sha string) string {
 
 func handleModify(ctxArg interface{}, key string,
 	configArg interface{}) {
+
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
 	status := lookupAppInstanceStatus(ctx, key)

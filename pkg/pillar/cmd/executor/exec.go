@@ -73,7 +73,7 @@ func Run(ps *pubsub.PubSub) {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s\n", agentName)
+	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -338,17 +338,17 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	execCtx := ctxArg.(*executorContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	execCtx.debug, gcp = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
 		execCtx.debugOverride)
 	if gcp != nil {
 		execCtx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -356,11 +356,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	execCtx := ctxArg.(*executorContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	execCtx.debug, _ = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
 		execCtx.debugOverride)
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

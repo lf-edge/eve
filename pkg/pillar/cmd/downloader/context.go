@@ -247,7 +247,7 @@ func (ctx *downloaderContext) subscription(objType string) pubsub.Subscription {
 	case types.CertObj:
 		sub = ctx.subCertObjConfig
 	default:
-		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
+		log.Fatalf("downloaderSubscription: Unknown ObjType %s",
 			objType)
 	}
 	return sub
@@ -263,7 +263,7 @@ func (ctx *downloaderContext) publication(objType string) pubsub.Publication {
 	case types.CertObj:
 		pub = ctx.pubCertObjStatus
 	default:
-		log.Fatalf("downloaderPublication: Unknown ObjType %s\n",
+		log.Fatalf("downloaderPublication: Unknown ObjType %s",
 			objType)
 	}
 	return pub

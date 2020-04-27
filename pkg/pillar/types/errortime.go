@@ -20,12 +20,18 @@ type ErrorAndTime struct {
 
 // SetErrorNow uses the current time
 func (etPtr *ErrorAndTime) SetErrorNow(errStr string) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
 	etPtr.Error = errStr
 	etPtr.ErrorTime = time.Now()
 }
 
 // SetError is when time is specified
 func (etPtr *ErrorAndTime) SetError(errStr string, errorTime time.Time) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
 	etPtr.Error = errStr
 	etPtr.ErrorTime = errorTime
 }
@@ -41,6 +47,16 @@ func (etPtr *ErrorAndTime) HasError() bool {
 	return etPtr.Error != ""
 }
 
+// NewErrorAndTime returns instance of ErrorAndTime with the specified values
+func NewErrorAndTime(errStr string, errTime time.Time) ErrorAndTime {
+	return ErrorAndTime{Error: errStr, ErrorTime: errTime}
+}
+
+// NewErrorAndTimeNow returns instance of ErrorAndTime with the specified values
+func NewErrorAndTimeNow(errStr string) ErrorAndTime {
+	return ErrorAndTime{Error: errStr, ErrorTime: time.Now()}
+}
+
 // ErrorAndTimeWithSource has an additional field "ErrorSourceType"
 // which is used to selectively clear errors by calling IsErrorSource before
 // calling ClearErrorWithSource. See zedmanager and volumemgr for example use.
@@ -52,6 +68,9 @@ type ErrorAndTimeWithSource struct {
 
 // SetError - Sets error state with no source type
 func (etsPtr *ErrorAndTimeWithSource) SetError(errStr string, errTime time.Time) {
+	if errStr == "" {
+		log.Fatal("Missing error string")
+	}
 	etsPtr.Error = errStr
 	etsPtr.ErrorSourceType = nil
 	etsPtr.ErrorTime = errTime
@@ -63,6 +82,9 @@ func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 
 	if !allowedSourceType(source) {
 		log.Fatalf("Bad ErrorSourceType %T", source)
+	}
+	if errStr == "" {
+		log.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
 	etsPtr.ErrorSourceType = source
@@ -90,6 +112,12 @@ func (etsPtr *ErrorAndTimeWithSource) ClearErrorWithSource() {
 // HasError returns true if there is an error
 func (etsPtr *ErrorAndTimeWithSource) HasError() bool {
 	return etsPtr.Error != ""
+}
+
+// ErrorAndTime returns instance of ErrorAndTime corresponding to
+//  Error and ErrorTime in the instance of ErrorAndTimeWithSource
+func (etsPtr *ErrorAndTimeWithSource) ErrorAndTime() ErrorAndTime {
+	return NewErrorAndTime(etsPtr.Error, etsPtr.ErrorTime)
 }
 
 // Disallow leaf types and pointers, since pointers

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -465,10 +466,10 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	if err := initContainerdClient(); err != nil {
+	if err := containerd.InitContainerdClient(); err != nil {
 		log.Fatal(err)
 	}
-	defer ctrdClient.Close()
+	defer containerd.CtrdClient.Close()
 
 	// First we process the verifierStatus to avoid triggering a download
 	// of an image we already have in place.

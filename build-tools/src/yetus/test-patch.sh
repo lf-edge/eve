@@ -63,6 +63,7 @@ fi
       --console-report-file="${YETUS_OUT_DIR}"/console.txt \
       --brief-report-file="${YETUS_OUT_DIR}"/brief.txt \
       --junit-report-xml="${YETUS_OUT_DIR}"/results.xml \
+      --prototool-basedir=api/proto \
       --excludes=.yetus-excludes \
       --revive-config=.revive.toml \
       --linecomments='' \

@@ -29,7 +29,7 @@ func tryReserveSpace(ctx *downloaderContext, status *types.DownloaderStatus,
 	kb uint64) (bool, string) {
 	errStr := ""
 	if status.ReservedSpace != 0 {
-		log.Errorf("%s, space is already reserved\n", status.Name)
+		log.Errorf("%s, space is already reserved", status.Name)
 		return true, errStr
 	}
 
@@ -51,7 +51,7 @@ func tryReserveSpace(ctx *downloaderContext, status *types.DownloaderStatus,
 
 func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
 	if status.ReservedSpace == 0 {
-		log.Errorf("%s, reserved space is already freed\n", status.Name)
+		log.Errorf("%s, reserved space is already freed", status.Name)
 		return
 	}
 	ctx.globalStatusLock.Lock()
@@ -67,7 +67,7 @@ func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
 func allocateSpace(ctx *downloaderContext, status *types.DownloaderStatus,
 	size uint64) {
 	if status.Size != 0 {
-		log.Errorf("%s, request for duplicate storage allocation\n", status.Name)
+		log.Errorf("%s, request for duplicate storage allocation", status.Name)
 		return
 	}
 	kb := types.RoundupToKB(size)
@@ -83,7 +83,7 @@ func allocateSpace(ctx *downloaderContext, status *types.DownloaderStatus,
 
 func deleteSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
 	if status.Size == 0 {
-		log.Errorf("%s, storage is already freed\n", status.Name)
+		log.Errorf("%s, storage is already freed", status.Name)
 		return
 	}
 	kb := types.RoundupToKB(status.Size)
@@ -101,7 +101,7 @@ func updateRemainingSpace(ctx *downloaderContext) {
 	ctx.globalStatus.RemainingSpace = ctx.globalConfig.MaxSpace -
 		ctx.globalStatus.UsedSpace - ctx.globalStatus.ReservedSpace
 
-	log.Infof("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+	log.Infof("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d",
 		ctx.globalStatus.RemainingSpace, ctx.globalConfig.MaxSpace,
 		ctx.globalStatus.UsedSpace, ctx.globalStatus.ReservedSpace)
 }

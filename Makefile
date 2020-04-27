@@ -298,7 +298,7 @@ pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/fscrypt eve-pillar
+pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar
 	@true
 pkg/xen-tools: pkg/uefi eve-xen-tools
 	@true
@@ -316,12 +316,13 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOT
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
-proto: $(addprefix api/go/,$(shell ls api/proto)) $(addprefix api/python/,$(shell ls api/proto))
+proto: $(GOBUILDER) api/go api/python
 	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
 
 api/%: $(GOBUILDER)
-	rm -rf api/$* ; mkdir api/$* # building $*
-	@$(DOCKER_GO) "protoc -I./proto --$(notdir $(@D))_out=paths=source_relative:./$(*D) proto/$(@F)/*.proto" $(CURDIR)/api api
+	rm -rf $@; mkdir $@ # building $@
+	@$(DOCKER_GO) "protoc -I./proto --$(@F)_out=paths=source_relative:./$(@F) \
+		proto/*/*.proto" $(CURDIR)/api api
 
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\

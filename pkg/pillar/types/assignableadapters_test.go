@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	zcommon "github.com/lf-edge/eve/api/go/common"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -154,7 +153,7 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 			Serial:  "/dev/ttyS0",
 		},
 		Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
-		UsagePolicy: zconfig.PhyIOUsagePolicy{
+		UsagePolicy: PhyIOUsagePolicy{
 			FreeUplink: true,
 		},
 	}

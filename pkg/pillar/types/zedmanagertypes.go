@@ -268,6 +268,7 @@ type StorageStatus struct {
 	State              SwState // DOWNLOADED etc
 	Progress           uint    // In percent i.e., 0-100
 	HasVolumemgrRef    bool    // Reference against volumemgr to clean up
+	HasResolverRef     bool    // Reference against resolver for resolving tags
 	IsContainer        bool    // Is the image a Container??
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
@@ -276,27 +277,40 @@ type StorageStatus struct {
 	ErrorAndTimeWithSource
 }
 
+// ResolveKey will return the key of resolver config/status
+func (ss *StorageStatus) ResolveKey() string {
+	return fmt.Sprintf("%s+%s+%v", ss.DatastoreID.String(), ss.Name, ss.PurgeCounter)
+}
+
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
 func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.ImageID = sc.ImageID
 	ss.DatastoreID = sc.DatastoreID
 	ss.PurgeCounter = sc.PurgeCounter
 	ss.Name = sc.Name
-	ss.NameIsURL = sc.NameIsURL
-	ss.ImageID = sc.ImageID
 	ss.ImageSha256 = sc.ImageSha256
+	ss.NameIsURL = sc.NameIsURL
 	ss.Size = sc.Size
 	ss.CertificateChain = sc.CertificateChain
 	ss.ImageSignature = sc.ImageSignature
 	ss.SignatureKey = sc.SignatureKey
 	ss.ReadOnly = sc.ReadOnly
 	ss.Preserve = sc.Preserve
-	ss.Format = sc.Format
 	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Format = sc.Format
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
+	ss.State = 0
+	ss.Progress = 0
+	ss.HasVolumemgrRef = false
+	ss.HasResolverRef = false
 	if ss.Format == zconfig.Format_CONTAINER {
 		ss.IsContainer = true
 	}
+	ss.Vdev = ""
+	ss.ActiveFileLocation = ""
+	ss.FinalObjDir = ""
+	ss.ErrorAndTimeWithSource = ErrorAndTimeWithSource{}
 	return
 }
 
@@ -429,12 +443,13 @@ type SignatureInfo struct {
 // Key for OCI images which can be specified with a tag and we need to be
 // able to latch the sha and choose when to update/refresh from the tag.
 type AppAndImageToHash struct {
-	AppUUID uuid.UUID
-	ImageID uuid.UUID
-	Hash    string
+	AppUUID      uuid.UUID
+	ImageID      uuid.UUID
+	Hash         string
+	PurgeCounter uint32
 }
 
 // Key is used for pubsub
 func (aih AppAndImageToHash) Key() string {
-	return fmt.Sprintf("%s.%s", aih.AppUUID.String(), aih.ImageID.String())
+	return fmt.Sprintf("%s.%s.%d", aih.AppUUID.String(), aih.ImageID.String(), aih.PurgeCounter)
 }
