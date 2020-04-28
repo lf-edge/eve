@@ -22,17 +22,29 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
 	dst *types.DatastoreConfig) {
 	var (
-		err                                        error
-		errStr, locFilename, remoteName, serverURL string
-		syncOp                                     zedUpload.SyncOpType = zedUpload.SyncOpDownload
-		trType                                     zedUpload.SyncTransportType
-		auth                                       *zedUpload.AuthInput
+		err                                                              error
+		errStr, locFilename, locDirname, filename, remoteName, serverURL string
+		syncOp                                                           zedUpload.SyncOpType = zedUpload.SyncOpDownload
+		trType                                                           zedUpload.SyncTransportType
+		auth                                                             *zedUpload.AuthInput
 	)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s",
 			status.ImageID)
 	}
+
+	// the target filename, where to place the download, is provided in config.
+	// downloader has two options:
+	//  * download the file part by part, filling up the `Target` until it is complete, and then sending status
+	//  * create a separate cache directory elsewhere under sole downloader control, download the file part by part there,
+	//    and when complete, do a single atomic copy to `Target` and send status
+	// `config.Target` is where it is expected to place the final downloaded file; how it gets there
+	// is up to downloader.
+	// As of this writing, the file is downloaded directly to `config.Target`
+	locFilename = config.Target
+	locDirname = path.Dir(locFilename)
+	filename = path.Base(locFilename)
 
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
@@ -45,26 +57,21 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsUrl := dsCtx.DownloadURL
 
-	locDirname := types.DownloadDirname + "/" + status.ObjType
-	locFilename = locDirname + "/pending"
-	// XXX common routines to determine pathnames?
-	locFilename = locFilename + "/" + config.ImageID.String()
-
 	// update status to DOWNLOAD STARTED
-	status.FileLocation = locFilename
 	status.State = types.DOWNLOAD_STARTED
+	// save the name of the Target filename to our status. In theory, this can be
+	// derived, but it is good for the status to say where it *is*, as opposed to
+	// config, which says where it *should be*
+	status.Target = locFilename
 	publishDownloaderStatus(ctx, status)
 
-	if _, err := os.Stat(locFilename); err != nil {
-		log.Debugf("Create %s", locFilename)
-		if err = os.MkdirAll(locFilename, 0755); err != nil {
+	// make sure the directory exists - just a safety check
+	if _, err := os.Stat(locDirname); err != nil {
+		log.Debugf("Create %s", locDirname)
+		if err = os.MkdirAll(locDirname, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
-
-	// Handle names which are paths
-	filename := path.Base(config.Name)
-	locFilename = locFilename + "/" + filename
 
 	log.Infof("Downloading <%s> to <%s> using %v allow non-free port",
 		config.Name, locFilename, config.AllowNonFreePort)
@@ -244,12 +251,9 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 			status.ImageID)
 	}
 
-	locDirname := types.DownloadDirname + "/" + status.ObjType
 	if errStr != "" {
 		// Delete file, and update the storage
-		doDelete(ctx, key, locDirname, status)
-		// free the reserved storage
-		unreserveSpace(ctx, status)
+		doDelete(ctx, key, locFilename, status)
 		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
@@ -258,12 +262,11 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		return
 	}
 
-	info, err := os.Stat(locFilename)
+	// make sure the file exists
+	_, err := os.Stat(locFilename)
 	if err != nil {
-		// Delete file, and update the storage
-		doDelete(ctx, key, locDirname, status)
-		// free the reserved storage
-		unreserveSpace(ctx, status)
+		// error, so delete the file
+		doDelete(ctx, key, locFilename, status)
 		errStr := fmt.Sprintf("%v", err)
 		status.RetryCount++
 		status.HandleDownloadFail(errStr)
@@ -272,10 +275,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 			status.Name, errStr)
 		return
 	}
-	size := uint64(info.Size())
-	// we need to release the reserved space
-	// and convert it to used space
-	allocateSpace(ctx, status, size)
 
 	log.Infof("handleSyncOpResponse(%s): successful <%s>",
 		config.Name, locFilename)

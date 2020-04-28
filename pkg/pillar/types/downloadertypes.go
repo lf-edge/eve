@@ -17,7 +17,8 @@ type DownloaderConfig struct {
 	ImageID          uuid.UUID // Used for logging
 	DatastoreID      uuid.UUID
 	Name             string
-	NameIsURL        bool // If not we form URL based on datastore info
+	Target           string // file path where to download the file
+	NameIsURL        bool   // If not we form URL based on datastore info
 	IsContainer      bool
 	AllowNonFreePort bool
 	Size             uint64 // In bytes
@@ -51,9 +52,9 @@ type DownloaderStatus struct {
 	ImageSha256      string
 	ImageID          uuid.UUID // Used for logging
 	DatastoreID      uuid.UUID
+	Target           string // file path where we download the file
 	Name             string
 	ObjType          string
-	FileLocation     string // Filename where downloaded; replace with file info
 	IsContainer      bool
 	PendingAdd       bool
 	PendingModify    bool

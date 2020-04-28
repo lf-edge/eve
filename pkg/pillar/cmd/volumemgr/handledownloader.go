@@ -4,6 +4,9 @@
 package volumemgr
 
 import (
+	"os"
+	"path"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -21,17 +24,37 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 	} else {
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s",
 			status.BlobSha256)
+
+		name := status.DownloadOrigin.Name
+
+		// where should the final downloaded file be?
+		locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.VolumeID.String(), path.Base(name))
+		// try to reserve storage, must be released on error
+		size := status.DownloadOrigin.MaxSizeBytes // XXX should this be MaxSize
+		kb := types.RoundupToKB(size)
+		if ret, errStr := tryReserveSpace(ctx, &status, kb, name); !ret {
+			// *** THIS NEEDS TO BE FIXED
+			// it is still the old one from downloader
+			// instead, we need our own retry loop here on space
+			status.RetryCount++
+			publishVolumeStatus(ctx, &status)
+			// *** END NEEDS TO BE FIXED
+			log.Errorf("AddOrRefcountDownloaderConfig(%s): deferred with %s", name, errStr)
+			return
+		}
+
 		n := types.DownloaderConfig{
 			ImageID:     status.VolumeID,
 			DatastoreID: status.DownloadOrigin.DatastoreID,
 			// XXX StorageConfig.Name is what?
-			Name:        status.DownloadOrigin.Name, // XXX URL? DisplayName?
+			Name:        name, // XXX URL? DisplayName?
 			NameIsURL:   status.DownloadOrigin.NameIsURL,
 			ImageSha256: status.DownloadOrigin.ImageSha256,
 			IsContainer: status.DownloadOrigin.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
-			Size:     status.DownloadOrigin.MaxSizeBytes, // XXX should this be MaxSize
+			Size:     size,
+			Target:   locFilename,
 			RefCount: 1,
 		}
 		log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
@@ -85,6 +108,13 @@ func unpublishDownloaderConfig(ctx *volumemgrContext, objType string,
 	pub.Unpublish(key)
 }
 
+func unpublishClearSpace(ctx *volumemgrContext, status *types.VolumeStatus, name string) {
+	deleteSpace(ctx, status, name)
+
+	// clear up used space
+	unreserveSpace(ctx, status, name)
+}
+
 func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.DownloaderStatus)
@@ -106,6 +136,10 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	if config == nil && status.RefCount == 0 {
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s",
 			key)
+
+		// where should the final downloaded file be?
+		locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.ImageID.String(), path.Base(status.Name))
+
 		n := types.DownloaderConfig{
 			ImageID:     status.ImageID,
 			DatastoreID: status.DatastoreID,
@@ -118,6 +152,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 				types.AppImgObj),
 			Size:     status.Size,
 			RefCount: 0,
+			Target:   locFilename,
 		}
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return
@@ -126,7 +161,33 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 		log.Infof("handleDownloaderStatusModify expired - deleting config %s",
 			key)
 		unpublishDownloaderConfig(ctx, status.ObjType, config)
+		if volStatus := lookupVolumeStatus(ctx, status.ObjType, config.Key()); volStatus != nil {
+			unpublishClearSpace(ctx, volStatus, config.Name)
+		}
+
 		return
+	}
+	if status.HasError() {
+		// free the reserved storage
+		if volStatus := lookupVolumeStatus(ctx, status.ObjType, config.Key()); volStatus != nil {
+			unpublishClearSpace(ctx, volStatus, config.Name)
+		}
+	}
+	// completion of download
+	if !status.HasError() && status.State == types.DOWNLOADED {
+		locFilename := config.Target
+		info, err := os.Stat(locFilename)
+		if err != nil {
+			log.Errorf("handleDownloaderStatusModify(%s): failed to read returned file %s",
+				config.Name, err)
+			return
+		}
+		size := uint64(info.Size())
+		// we need to release the reserved space
+		// and convert it to used space
+		if volStatus := lookupVolumeStatus(ctx, status.ObjType, config.Key()); volStatus != nil {
+			allocateSpace(ctx, volStatus, size, config.Name)
+		}
 	}
 
 	// Normal update case
@@ -174,6 +235,9 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 		log.Infof("handleDownloaderStatusDelete delete config for %s",
 			key)
 		unpublishDownloaderConfig(ctx, status.ObjType, config)
+		if volStatus := lookupVolumeStatus(ctx, status.ObjType, config.Key()); volStatus != nil {
+			unpublishClearSpace(ctx, volStatus, config.Name)
+		}
 	}
 	log.Infof("handleDownloaderStatusDelete done for %s", key)
 }
