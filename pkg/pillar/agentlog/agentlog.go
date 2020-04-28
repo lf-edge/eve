@@ -24,6 +24,7 @@ const (
 	reasonFile  = "reboot-reason"
 	stackFile   = "reboot-stack"
 	rebootImage = "reboot-image"
+	panicOutput = "panic-output"
 )
 
 var savedAgentName = "unknown" // Keep for signal and exit handlers
@@ -178,6 +179,13 @@ func GetCommonRebootReason() (string, time.Time, string) {
 	return reason, ts, stack
 }
 
+// GetPanicTrace : Get any traces that services might have left before the last reboot
+func GetPanicTrace() (string, time.Time) {
+	panicFileName := fmt.Sprintf("%s/%s", types.PersistDir, panicOutput)
+	panicTrace, ts := statAndRead(panicFileName)
+	return panicTrace, ts
+}
+
 // GetRebootImage : Image from which the reboot happened
 func GetRebootImage() string {
 	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
@@ -226,7 +234,7 @@ func DiscardOtherRebootReason() {
 		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 	}
 	_, err := os.Stat(stackFilename)
-	if err != nil {
+	if err == nil {
 		if err := os.Remove(stackFilename); err != nil {
 			log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 		}
@@ -240,9 +248,20 @@ func DiscardCommonRebootReason() {
 		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 	}
 	_, err := os.Stat(stackFilename)
-	if err != nil {
+	if err == nil {
 		if err := os.Remove(stackFilename); err != nil {
 			log.Errorf("DiscardCommonRebootReason failed %s\n", err)
+		}
+	}
+}
+
+// DiscardPanicTrace : Discard after reading any panic traces
+func DiscardPanicTrace() {
+	panicFilename := fmt.Sprintf("%s/%s", types.PersistDir, panicOutput)
+	_, err := os.Stat(panicFilename)
+	if err == nil {
+		if err := os.Remove(panicFilename); err != nil {
+			log.Errorf("DiscardPanicTrace failed %s\n", err)
 		}
 	}
 }
@@ -317,10 +336,38 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
+// Send application stdout/stderr to this panic file
+func spoofStdFDs(panicFileName string) *os.File {
+	filename := fmt.Sprintf("%s/%s", types.PersistDir, panicFileName)
+	panicOut, _ := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
+	fd2, err := syscall.Dup(int(os.Stdout.Fd()))
+	if err != nil {
+		log.Fatalf("Error duplicating Stdout: %s", err)
+	}
+	originalStdout, err := os.OpenFile(fmt.Sprintf("/dev/fd/%d", fd2),
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
+	if err != nil {
+		log.Fatalf("Error opening duplicate stdout with fd: %v", fd2)
+	}
+	// replace stdout
+	err = syscall.Dup2(int(panicOut.Fd()), 1)
+	if err != nil {
+		log.Fatalf("Error replacing stdout with panic file %s: %s",
+			filename, err)
+	}
+	err = syscall.Dup2(int(panicOut.Fd()), 2)
+	if err != nil {
+		log.Fatalf("Error replacing stderr with panic file %s: %s",
+			filename, err)
+	}
+	return originalStdout
+}
+
 func Init(agentName string) {
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	log.SetOutput(os.Stdout)
+	originalStdout := spoofStdFDs(panicOutput)
+	log.SetOutput(originalStdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
 	hook2 := new(SourceHook)
