@@ -134,10 +134,14 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 }
 
-// LogState : Log the current state of app instance
-func (status *AppInstanceStatus) LogState() {
-	status.AddField("sw_state", status.State)
-	status.Info("App instance status changed")
+// GetValue : Return the value corresponding to given key
+func (status *AppInstanceStatus) GetValue(key string) interface{} {
+	switch key {
+	case "state":
+		return status.State
+	default:
+		return nil
+	}
 }
 
 // Track more complicated workflows

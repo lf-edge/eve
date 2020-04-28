@@ -64,6 +64,9 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		log.Infof("updateAIStatusUUID status change %d for %s",
 			status.State, uuidStr)
 		publishAppInstanceStatus(ctx, status)
+		if status.State == types.RUNNING && status.Activated == true {
+			status.Infof("XXXXX App Instance status")
+		}
 	}
 }
 
@@ -828,9 +831,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	log.Infof("doActivate done for %s\n", uuidStr)
-	if status.State == types.RUNNING && status.Activated == true {
-		status.LogState()
-	}
 	return changed
 }
 
