@@ -23,6 +23,7 @@ type SubscriptionImpl struct {
 	SynchronizedHandler SubRestartHandler
 	MaxProcessTimeWarn  time.Duration // If set generate warning if ProcessChange
 	MaxProcessTimeError time.Duration // If set generate warning if ProcessChange
+	Persistent          bool
 
 	// Private fields
 	agentName    string
@@ -43,7 +44,42 @@ func (sub *SubscriptionImpl) MsgChan() <-chan Change {
 
 // Activate start the subscription
 func (sub *SubscriptionImpl) Activate() error {
+	if sub.Persistent {
+		sub.populate()
+	}
 	return sub.driver.Start()
+}
+
+// populate is used when activating a persistent subscription to read
+// from the json files. This ensures that even if the publisher hasn't started
+// yet, the subscriber will be notified with the initial content.
+// This sets restarted if the restarted file was found.
+// Note that this directly calls handleModify thus unlike subsequent
+// changes the agent's handler will be called without going through
+// a select on the MsgChan and ProcessChange call.
+// Subsequent information from the publisher will be compared in handleModify
+// to avoid spurious notifications to the agent.
+// XXX can we miss a handleDelete call if the file is deleted after we load?
+// Need for a mark and then sweep when handleSynchronized is called?
+func (sub *SubscriptionImpl) populate() {
+	name := sub.nameString()
+
+	log.Infof("populate(%s)", name)
+
+	pairs, restarted, err := sub.driver.Load()
+	if err != nil {
+		// Could be a truncated or empty file
+		log.Error(err)
+		return
+	}
+	for key, itemB := range pairs {
+		log.Infof("populate(%s) key %s", name, key)
+		handleModify(sub, key, itemB)
+	}
+	if restarted {
+		handleRestart(sub, true)
+	}
+	log.Infof("populate(%s) done", name)
 }
 
 // ProcessChange process a single change and its parameters. It
