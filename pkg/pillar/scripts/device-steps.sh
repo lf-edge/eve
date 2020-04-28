@@ -427,6 +427,14 @@ echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 # Remove zedclient.pid from watchdog (get back to ledmanager and nim)
 rm "$WATCHDOG_PID/zedclient.pid"
 
+#If logmanager is already running we don't have to start it.
+if ! pgrep logmanager >/dev/null; then
+    echo "$(date -Ins -u) Starting logmanager"
+    $BINDIR/logmanager &
+    wait_for_touch logmanager
+    touch "$WATCHDOG_PID/logmanager.pid" "$WATCHDOG_FILE/logmanager.touch"
+fi
+
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
     $BINDIR/"$AGENT" &
@@ -444,14 +452,6 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] ; then
     $BINDIR/tpmmgr runAsService &
     wait_for_touch tpmmgr
     touch "$WATCHDOG_PID/tpmmgr.pid" "$WATCHDOG_FILE/tpmmgr.touch"
-fi
-
-#If logmanager is already running we don't have to start it.
-if ! pgrep logmanager >/dev/null; then
-    echo "$(date -Ins -u) Starting logmanager"
-    $BINDIR/logmanager &
-    wait_for_touch logmanager
-    touch "$WATCHDOG_PID/logmanager.pid" "$WATCHDOG_FILE/logmanager.touch"
 fi
 
 # Now run watchdog for all agents

@@ -5,6 +5,8 @@ package types
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -15,6 +17,7 @@ type LogObjectType string
 // The following is NOT an extensive list.
 // Intent is to create a reference list for engineers to get an idea of its usage.
 const (
+	UnknownLogType         LogObjectType = ""
 	LogType                LogObjectType = "log"
 	RelationLogType        LogObjectType = "relation"
 	ImageLogType           LogObjectType = "image"
@@ -24,30 +27,86 @@ const (
 
 // LogObject : Holds all key value pairs to be logged later.
 type LogObject struct {
-	Fields map[string]interface{}
+	Initialized bool
+	Keys        []string
+	Fields      map[string]interface{}
+	GetterKey   interface{}
 }
+
+// LoggableObject :
+type LoggableObject interface {
+	GetValue(key string) interface{}
+}
+
+// GetterFunc :
+type GetterFunc func(ctx interface{}, key interface{}) LoggableObject
+
+type getterParams struct {
+	function GetterFunc
+	ctx      interface{}
+}
+
+var getters = make(map[interface{}]getterParams)
 
 // NewLogObject :
 // objType -> log, action, relation, app_instance, image etc
 // objName -> App instance name, name of file being downloaded etc
 // objUUID -> UUID of the object if present (App instance UUID) or UUID of parent object
-func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID) *LogObject {
+// keys -> Keys on which GetValue is called to get values
+// objType and objName are mandatory parameters
+func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, keys []string,
+	getterCtx interface{}, getterKey interface{}, getter GetterFunc) *LogObject {
+	if objType == UnknownLogType || len(objName) == 0 {
+		return nil
+	}
 	fields := make(map[string]interface{})
 	fields["obj_type"] = objType
 	fields["obj_name"] = objName
 	fields["obj_uuid"] = objUUID.String()
 
-	return &LogObject{Fields: fields}
+	getters[getterKey] = getterParams{
+		function: getter,
+		ctx:      getterCtx,
+	}
+
+	return &LogObject{Initialized: true, Fields: fields, Keys: keys,
+		GetterKey: getterKey}
 }
 
 // InitLogObject : Initialize an already allocated LogObject
 func InitLogObject(object *LogObject, objType LogObjectType,
-	objName string, objUUID uuid.UUID) {
+	objName string, objUUID uuid.UUID, keys []string,
+	getterCtx interface{}, getterKey interface{}, getter GetterFunc) error {
+	if objType == UnknownLogType || len(objName) == 0 {
+		errStr := fmt.Sprintf("Invalid objType: %v or objName: %v", objType, objName)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
 	fields := make(map[string]interface{})
 	fields["obj_type"] = objType
 	fields["obj_name"] = objName
 	fields["obj_uuid"] = objUUID.String()
+	object.Initialized = true
 	object.Fields = fields
+	object.Keys = keys
+
+	getters[getterKey] = getterParams{
+		function: getter,
+		ctx:      getterCtx,
+	}
+	object.GetterKey = getterKey
+
+	return nil
+}
+
+// AddKey : Add a key to be queried later for logging
+func (object *LogObject) AddKey(key string) {
+	object.Keys = append(object.Keys, key)
+}
+
+// ResetKeys : Clear the key list
+func (object *LogObject) ResetKeys() {
+	object.Keys = []string{}
 }
 
 // AddField : Add a key value pair to be logged
@@ -166,8 +225,29 @@ func (object *LogObject) Debugf(format string, args ...interface{}) {
 	log.WithFields(object.Fields).Debugf(format, args...)
 }
 
+func (object *LogObject) getAndFillValues() {
+	getter, ok := getters[object.GetterKey]
+	if !ok {
+		return
+	}
+	loggable := getter.function(getter.ctx, object.GetterKey)
+	if loggable == nil {
+		return
+	}
+
+	for _, key := range object.Keys {
+		value := loggable.GetValue(key)
+		object.Fields[key] = value
+	}
+}
+
 // Infof :
 func (object *LogObject) Infof(format string, args ...interface{}) {
+	if !object.Initialized {
+		log.Errorf("LogObject used without initialization")
+		return
+	}
+	object.getAndFillValues()
 	log.WithFields(object.Fields).Infof(format, args...)
 }
 
