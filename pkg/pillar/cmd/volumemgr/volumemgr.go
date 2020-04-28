@@ -10,10 +10,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -61,7 +63,9 @@ type volumemgrContext struct {
 	pubBaseOsPersistConfig  pubsub.Publication
 	subBaseOsPersistStatus  pubsub.Subscription
 
-	worker *worker.Worker // For background work
+	worker                  *worker.Worker // For background work
+	pubGlobalDownloadStatus pubsub.Publication
+	subGlobalDownloadConfig pubsub.Subscription
 
 	verifierRestarted bool
 	usingConfig       bool // From zedagent
@@ -70,6 +74,10 @@ type volumemgrContext struct {
 	globalConfig  *types.ConfigItemValueMap
 	GCInitialized bool
 	vdiskGCTime   uint32 // In seconds
+
+	globalDownloadConfig     types.GlobalDownloadConfig
+	globalDownloadStatusLock sync.Mutex
+	globalDownloadStatus     types.GlobalDownloadStatus
 }
 
 var debug = false
@@ -245,6 +253,17 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubCertObjDownloadConfig.ClearRestarted()
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
+
+	// this used to be published from downloader, moved to volumemgr
+	// TODO: eventually either get rid of it, or change it to be AgentName: "volumemgr "
+	pubGlobalDownloadStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: "downloader",
+		TopicType: types.GlobalDownloadStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Publish existing volumes with RefCount zero in the "unknown"
 	// agentScope
@@ -459,6 +478,21 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.subBaseOsVolumeConfig = subBaseOsVolumeConfig
 	subBaseOsVolumeConfig.Activate()
+
+	// Look for global download config, because volumemgr manages it
+	subGlobalDownloadConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleGlobalDownloadConfigModify,
+		ModifyHandler: handleGlobalDownloadConfigModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
+	subGlobalDownloadConfig.Activate()
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
@@ -779,4 +813,34 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
+}
+
+// Handles both create and modify events
+func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	ctx := ctxArg.(*volumemgrContext)
+	config := configArg.(types.GlobalDownloadConfig)
+	if key != "global" {
+		log.Errorf("handleGlobalDownloadConfigModify: unexpected key %s", key)
+		return
+	}
+	log.Infof("handleGlobalDownloadConfigModify for %s", key)
+	ctx.globalDownloadConfig = config
+	log.Infof("handleGlobalDownloadConfigModify done for %s", key)
+}
+
+func downloaderInit(ctx *volumemgrContext) {
+
+	log.Infof("MaxSpace %d", ctx.globalDownloadConfig.MaxSpace)
+
+	// XXX how do we find out when verifier cleans up duplicates etc?
+	// XXX run this periodically... What about downloads inprogress
+	// when we run it?
+	// XXX look at verifier and downloader status which have Size
+	// We read types.DownloadDirname/* and determine how much space
+	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
+	totalUsed := diskmetrics.SizeFromDir(types.DownloadDirname)
+	kb := types.RoundupToKB(totalUsed)
+	initSpace(ctx, kb)
 }

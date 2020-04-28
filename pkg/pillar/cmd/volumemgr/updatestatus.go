@@ -4,8 +4,10 @@
 package volumemgr
 
 import (
+	"path"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -130,11 +132,12 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		changed = true
 		return changed, false
 	}
-	if ds.FileLocation != "" && status.FileLocation == "" {
-		status.FileLocation = ds.FileLocation
+	if ds.Target != "" && status.FileLocation == "" {
+		locDirname := path.Dir(ds.Target)
+		status.FileLocation = locDirname
 		changed = true
 		log.Infof("From ds set FileLocation to %s for %s",
-			ds.FileLocation, status.VolumeID)
+			locDirname, status.VolumeID)
 	}
 	if status.State != ds.State {
 		status.State = ds.State
