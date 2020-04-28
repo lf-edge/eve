@@ -27,6 +27,14 @@ type DriverSubscriber interface {
 	// background, it is the responsibility of the driver to run it as a separate
 	// goroutine.
 	Start() error
+
+	// Load initial status from persistence. Usually called only on first start.
+	// The implementation is responsible for determining if the load is necessary
+	// or already has been performed. If it has been already, it should not change
+	// anything. The caller has no knowledge of where the persistent state was
+	// stored: disk, databases, or vellum. All it cares about is that it gets
+	// a key-value list.
+	Load() (map[string][]byte, bool, error)
 }
 
 // DriverPublisher interface that a driver for publishing must implement

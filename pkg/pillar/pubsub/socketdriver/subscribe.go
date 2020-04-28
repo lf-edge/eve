@@ -29,6 +29,50 @@ type Subscriber struct {
 	C                chan<- pubsub.Change
 }
 
+// Load load entire persisted data set into a map
+func (s *Subscriber) Load() (map[string][]byte, bool, error) {
+	dirName := s.dirName
+	foundRestarted := false
+	items := make(map[string][]byte)
+
+	log.Debugf("Load(%s)\n", s.name)
+
+	files, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		// Drive on?
+		log.Error(err)
+		return items, foundRestarted, err
+	}
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".json") {
+			if file.Name() == "restarted" {
+				foundRestarted = true
+			}
+			continue
+		}
+		// Remove .json from name */
+		key := strings.Split(file.Name(), ".json")[0]
+
+		statusFile := dirName + "/" + file.Name()
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Errorf("populate: File disappeared <%s>\n",
+				statusFile)
+			continue
+		}
+
+		log.Debugf("Load found key %s file %s\n", key, statusFile)
+
+		sb, err := ioutil.ReadFile(statusFile)
+		if err != nil {
+			log.Errorf("Load: %s for %s\n", err, statusFile)
+			continue
+		}
+		items[key] = sb
+	}
+	return items, foundRestarted, err
+}
+
 // Start start the subscriber listening on the given name and topic
 // internally, will watch for changes on either the socket or the file, and then
 // send the change summary to s.C

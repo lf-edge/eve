@@ -58,6 +58,12 @@ func (e *EmptyDriverSubscriber) Start() error {
 	return nil
 }
 
+// Load load entire persisted data set into a map
+func (e *EmptyDriverSubscriber) Load() (map[string][]byte, bool, error) {
+	res := make(map[string][]byte)
+	return res, false, nil
+}
+
 func TestHandleModify(t *testing.T) {
 	ps := New(&EmptyDriver{})
 	sub, err := ps.NewSubscription(SubscriptionOptions{
