@@ -66,7 +66,9 @@ func getSftpClient(host, user, pass string) (*sftp.Client, error) {
 	return session, nil
 }
 
-func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify NotifChan) UpdateStats {
+func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
+	objSize int64, prgNotify NotifChan) UpdateStats {
+
 	var list []string
 	stats := UpdateStats{}
 	client, err := getSftpClient(host, user, pass)
@@ -102,13 +104,6 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 				remoteFile, err)
 			return stats
 		}
-		fi, err := fr.Stat()
-		if err != nil {
-			stats.Error = err
-			return stats
-		}
-		defer fr.Close()
-
 		tempLocalFile := localFile
 		index := strings.LastIndex(tempLocalFile, "/")
 		dir_err := os.MkdirAll(tempLocalFile[:index+1], 0755)
@@ -126,7 +121,7 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 
 		chunkSize := SingleMB
 		var written, copiedSize int64
-		stats.Size = fi.Size()
+		stats.Size = objSize
 		for {
 			if written, err = io.CopyN(fl, fr, chunkSize); err != nil && err != io.EOF {
 				stats.Error = err

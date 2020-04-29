@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"sync/atomic"
 	"time"
@@ -162,13 +161,10 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 	return result.Location, nil
 }
 
-func (s *S3ctx) DownloadFile(fname, bname, bkey string, prgNotify NotifChan) error {
-	if err := os.MkdirAll(filepath.Dir(fname), 0775); err != nil {
-		return err
-	}
+func (s *S3ctx) DownloadFile(fname, bname, bkey string,
+	bsize int64, prgNotify NotifChan) error {
 
-	err, bsize := s.GetObjectSize(bname, bkey)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(fname), 0775); err != nil {
 		return err
 	}
 
@@ -239,61 +235,6 @@ func (s *S3ctx) GetObjectMetaData(bname, bkey string) (int64, string, error) {
 		return 0, "", err
 	}
 	return bsize, md5, nil
-}
-
-func (s *S3ctx) UploadDir(localPath, bname, bkey string, compression bool, prgNotify NotifChan) error {
-	walker := make(fileWalk)
-	go func() {
-		// Gather the files to upload by walking the path recursively.
-		if err := filepath.Walk(localPath, walker.Walk); err != nil {
-		}
-		close(walker)
-	}()
-
-	// For each file found walking upload it to S3.
-	for path := range walker {
-		rel, err := filepath.Rel(localPath, path)
-		if err != nil {
-		}
-		s.UploadFile(rel, bname, bkey, compression, prgNotify)
-	}
-
-	return nil
-}
-
-type fileWalk chan string
-
-func (f fileWalk) Walk(path string, info os.FileInfo, err error) error {
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		f <- path
-	}
-	return nil
-}
-
-func (s *S3ctx) DownloadDir(localpath, bname, prefix string, prgNotify NotifChan) error {
-	d := downloader{s, bname, localpath, prgNotify}
-
-	client := s3.New(nil)
-	err := client.ListObjectsPages(&s3.ListObjectsInput{Bucket: aws.String(bname), Prefix: aws.String(prefix)}, d.eachPage)
-
-	return err
-}
-
-type downloader struct {
-	*S3ctx
-	bucket, dir string
-	prgNotify   NotifChan
-}
-
-func (d *downloader) eachPage(page *s3.ListObjectsOutput, more bool) bool {
-	for _, obj := range page.Contents {
-		d.DownloadFile(path.Join(d.dir, *obj.Key), d.bucket, *obj.Key, d.prgNotify)
-	}
-
-	return true
 }
 
 // UploadPart is used to upload the given chunk of data into the Multipart file
