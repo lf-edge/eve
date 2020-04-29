@@ -3,21 +3,14 @@ package ociutil
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"runtime"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	v1tarball "github.com/google/go-containerregistry/pkg/v1/tarball"
 	log "github.com/sirupsen/logrus"
 )
-
-// computeSizeOfFile is taking the file size and rounding off it to
-// the nearest 512 bytes and adding up 512 bytes for the tar header
-func computeSizeOfFile(x int64) int64 {
-	return int64(math.Ceil(float64(x)/float64(512))*float64(512)) + 512
-}
 
 func manifestsDescImg(image string, options []remote.Option) (name.Reference, *remote.Descriptor, v1.Image, []byte, []byte, int64, error) {
 	var (
@@ -74,13 +67,9 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting resolved manifest object: %v", err)
 	}
 
-	cfgName := manifest.Config.Digest
-	layerFiles := make([]string, 0)
-	var manifestFile v1tarball.Manifest
-
 	// size starts at the default of 0
 	// add the size of the config
-	size += computeSizeOfFile(manifest.Config.Size)
+	size += v1tarball.CalculateTarFileSize(manifest.Config.Size)
 
 	// next the layers and their sizes, along with filenames for the manifest
 	imgLayers, err := img.Layers()
@@ -92,25 +81,21 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		if err != nil {
 			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting size of layers: %v", err)
 		}
-		size += computeSizeOfFile(layerSize)
-		d, err := layer.Digest()
-		if err != nil {
-			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting digest of layers: %v", err)
-		}
-		layerFiles = append(layerFiles, fmt.Sprintf("%s.tar.gz", d.Hex))
+		size += v1tarball.CalculateTarFileSize(layerSize)
 	}
 
 	// get our manifestFile that will be added, convert to bytes, get size
-	manifestFile = append(manifestFile, v1tarball.Descriptor{
-		Config:   cfgName.String(),
-		RepoTags: []string{image},
-		Layers:   layerFiles,
+	manifestFile, err := v1tarball.ComputeManifest(map[name.Reference]v1.Image{
+		ref: img,
 	})
+	if err != nil {
+		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting tar manifest file: %v", err)
+	}
 	manifestFileBytes, err := json.Marshal(manifestFile)
 	if err != nil {
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error converting tar manifest file to json: %v", err)
 	}
-	size += computeSizeOfFile(int64(len(manifestFileBytes)))
+	size += v1tarball.CalculateTarFileSize(int64(len(manifestFileBytes)))
 
 	return ref, desc, img, manifestDirect, manifestResolved, size, nil
 }
