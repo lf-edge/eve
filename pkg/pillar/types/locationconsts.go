@@ -17,6 +17,8 @@ const (
 	DownloadDirname = PersistDir + "/downloads"
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
+	// PersistPanicDir - Location for service panic traces
+	PersistPanicDir = PersistDir + "/panic"
 	// AppImgDirname - location of downloaded app images. Read-only images
 	// named based on sha256 hash each in its own directory
 	AppImgDirname = DownloadDirname + "/" + AppImgObj

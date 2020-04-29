@@ -6,6 +6,7 @@ package logmanager
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -474,6 +475,114 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
+// PanicMsg :
+type PanicMsg struct {
+	Level     string    `json:"level"`
+	Timestamp time.Time `json:"time"`
+	Source    string    `json:"source"`
+	Msg       string    `json:"msg"`
+}
+
+// SendPanicTraceEntryToCloud :
+// Even if the current panic trace is partially not sent, we retry the entire panic trace next time.
+// Having a duplicate of the same message is better than having partial/no message
+func SendPanicTraceEntryToCloud(panicEntry *agentlog.PanicTraceEntry) bool {
+	bundle := new(logs.LogBundle)
+	pathSplits := strings.Split(panicEntry.FileName, "/")
+	source := pathSplits[len(pathSplits)-1]
+
+	eveVersion := agentlog.EveVersion()
+	image := agentlog.EveCurrentPartition()
+
+	for _, trace := range panicEntry.Traces {
+		logEntry := new(logs.LogEntry)
+
+		msgID := msgIDCounter
+		msgIDCounter++
+
+		logEntry.Severity = "panic"
+		logEntry.Timestamp, _ = ptypes.TimestampProto(panicEntry.TimeStamp)
+		logEntry.Source = source
+		logEntry.Filename = ""
+		logEntry.Function = ""
+		panicMsg := PanicMsg{
+			Msg:       trace,
+			Level:     "panic",
+			Source:    source,
+			Timestamp: panicEntry.TimeStamp,
+		}
+		contentBytes, err := json.Marshal(panicMsg)
+		if err != nil {
+			continue
+		}
+		logEntry.Content = string(contentBytes)
+		logEntry.Msgid = uint64(msgID)
+		// Have to discard if too large since service doesn't
+		// handle above 64k; we limit payload at 32k
+		strLen := len(logEntry.Content)
+		if strLen > logMaxBytes {
+			log.Errorf("SendPanicTraceEntryToCloud: dropping panic source %s %d bytes",
+				logEntry.Source, strLen)
+			continue
+		}
+		bundle.Log = append(bundle.Log, logEntry)
+
+		messageCount := len(bundle.Log)
+		byteCount := proto.Size(bundle)
+
+		if messageCount > logMaxMessages || byteCount > logMaxBytes {
+			sent := sendProtoStrForLogs(bundle, image, iteration, eveVersion)
+			iteration++
+			if !sent {
+				return false
+			}
+		}
+	}
+	if len(bundle.Log) > 0 {
+		sent := sendProtoStrForLogs(bundle, image, iteration, eveVersion)
+		iteration++
+		if !sent {
+			return false
+		}
+	}
+
+	return true
+}
+
+// SendPanicTraceEntriesToCloud :
+// Each PanicTraceEntry corresponds to a file(one EVE service) in /persist/panic/ directory.
+// Each panic trace entry can have multiple goroutine traces.
+// We consider it done only if all goroutine traces inside a PanicTraceEntry are sent to cloud successfully.
+// And we do not start processing other logs till we send all panic trace entries (from all services) to cloud
+// successfully.
+func SendPanicTraceEntriesToCloud(panicEntries []*agentlog.PanicTraceEntry) ([]*agentlog.PanicTraceEntry, bool) {
+	for {
+		if len(panicEntries) <= 0 {
+			return panicEntries, false
+		}
+
+		// Process the first entry in list every time we loop
+		panicEntry := panicEntries[0]
+		curPanicFileName := panicEntry.FileName
+		done := SendPanicTraceEntryToCloud(panicEntry)
+		if done {
+			// We are completely done with the current entry at head (index 0).
+			// Move to the next entry if there are more to be processed.
+			panicEntries = panicEntries[1:]
+			// Discard the panic file corresponding to this entry
+			agentlog.DiscardPanicTraceFile(curPanicFileName)
+		} else {
+			// There could have been issues while processing the current head entry.
+			// And the current head could have been partially processed.
+			// Update the head and return. We can pick up from where we left during the next run.
+
+			// XXX NOTE: If logmanager dies with a partially process entry, we will end up
+			// sending duplicates for the current entry next time we read corresponding trace file.
+			return panicEntries, true
+		}
+	}
+}
+
 // This runs as a separate go routine sending out data
 // Compares and drops events which have already been sent to the cloud
 func processEvents(image string, logChan <-chan logEntry,
@@ -500,6 +609,9 @@ func processEvents(image string, logChan <-chan logEntry,
 	dropped := 0
 	deferInprogress := false
 	appUUID := ""
+
+	panicTraceEntries := agentlog.GetPanicTraces()
+
 	var appLogBundle *logs.AppInstanceLogBundle
 	var logMetrics types.LogMetrics
 	for {
@@ -527,6 +639,19 @@ func processEvents(image string, logChan <-chan logEntry,
 			logMetrics.IsLogProcessingDeferred = false
 			// Publish LogMetrics
 			publishLogMetrics(ctx, &logMetrics)
+		}
+
+		if len(panicTraceEntries) > 0 {
+			deferProcessing := false
+			panicTraceEntries, deferProcessing = SendPanicTraceEntriesToCloud(panicTraceEntries)
+			if deferProcessing {
+				deferInprogress = true
+				logMetrics.IsLogProcessingDeferred = true
+				logMetrics.NumTimesDeferred++
+				logMetrics.LastLogDeferTime = time.Now()
+				// Publish LogMetrics
+				publishLogMetrics(ctx, &logMetrics)
+			}
 		}
 
 		select {

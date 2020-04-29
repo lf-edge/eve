@@ -95,8 +95,6 @@ type nodeagentContext struct {
 	rebootImage            string    // Image from which the last reboot happened
 	rebootStack            string    // From last reboot
 	rebootTime             time.Time // From last reboot
-	panicTrace             string    // Last panic trace if present
-	panicTime              time.Time // Time when the last panic happened
 	restartCounter         uint32
 
 	// Some contants.. Declared here as variables to enable unit tests
@@ -546,11 +544,6 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		log.Warnf("Current partition RebootReason: %s",
 			ctx.rebootReason)
 		agentlog.DiscardCommonRebootReason()
-	}
-	ctx.panicTrace, ctx.panicTime = agentlog.GetPanicTrace()
-	if ctx.panicTrace != "" {
-		log.Errorf("shutdown at %s:\n %s", ctx.panicTime.String(), ctx.panicTrace)
-		agentlog.DiscardPanicTrace()
 	}
 	// XXX We'll retain this block of code for some time to support having older
 	// versions of code in the other partition.

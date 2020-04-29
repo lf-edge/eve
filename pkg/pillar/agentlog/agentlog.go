@@ -21,15 +21,41 @@ import (
 )
 
 const (
-	reasonFile  = "reboot-reason"
-	stackFile   = "reboot-stack"
-	rebootImage = "reboot-image"
-	panicOutput = "panic-output"
+	reasonFile      = "reboot-reason"
+	stackFile       = "reboot-stack"
+	rebootImage     = "reboot-image"
+	panicSplitToken = "goroutine"
 )
 
 var savedAgentName = "unknown" // Keep for signal and exit handlers
 var savedRebootReason = "unknown"
 var savedPid = 0
+
+// PanicTraceEntry : Each of these contains panic trace entries from one service/process
+type PanicTraceEntry struct {
+	TimeStamp time.Time
+	FileName  string
+	Traces    []string
+}
+
+// GetPanicTraces : Read all non-empty panic traces from files in /persist/panic
+func GetPanicTraces() []*PanicTraceEntry {
+	panicEntries := []*PanicTraceEntry{}
+
+	files, err := ioutil.ReadDir(types.PersistPanicDir)
+	if err != nil || len(files) == 0 {
+		return nil
+	}
+
+	for _, file := range files {
+		panicEntry := GetPanicTraceEntry(file.Name())
+		if panicEntry == nil {
+			continue
+		}
+		panicEntries = append(panicEntries, panicEntry)
+	}
+	return panicEntries
+}
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
 type FatalHook struct {
@@ -179,11 +205,20 @@ func GetCommonRebootReason() (string, time.Time, string) {
 	return reason, ts, stack
 }
 
-// GetPanicTrace : Get any traces that services might have left before the last reboot
-func GetPanicTrace() (string, time.Time) {
-	panicFileName := fmt.Sprintf("%s/%s", types.PersistDir, panicOutput)
-	panicTrace, ts := statAndRead(panicFileName)
-	return panicTrace, ts
+// GetPanicTraceEntry : Get any traces that services might have left before the last reboot
+func GetPanicTraceEntry(name string) *PanicTraceEntry {
+	fileName := fmt.Sprintf("%s/%s", types.PersistPanicDir, name)
+	content, timeStamp := statAndRead(fileName)
+	if content == "" {
+		return nil
+	}
+	traces := strings.Split(content, panicSplitToken)
+	panicEntry := &PanicTraceEntry{
+		TimeStamp: timeStamp,
+		FileName:  fileName,
+		Traces:    traces,
+	}
+	return panicEntry
 }
 
 // GetRebootImage : Image from which the reboot happened
@@ -255,13 +290,12 @@ func DiscardCommonRebootReason() {
 	}
 }
 
-// DiscardPanicTrace : Discard after reading any panic traces
-func DiscardPanicTrace() {
-	panicFilename := fmt.Sprintf("%s/%s", types.PersistDir, panicOutput)
-	_, err := os.Stat(panicFilename)
+// DiscardPanicTraceFile : Discard after reading any panic traces
+func DiscardPanicTraceFile(fileName string) {
+	_, err := os.Stat(fileName)
 	if err == nil {
-		if err := os.Remove(panicFilename); err != nil {
-			log.Errorf("DiscardPanicTrace failed %s\n", err)
+		if err := os.Remove(fileName); err != nil {
+			log.Errorf("DiscardPanicTraceFile failed %s\n", err)
 		}
 	}
 }
@@ -338,7 +372,7 @@ func roundToMb(b uint64) uint64 {
 
 // Send application stdout/stderr to this panic file
 func spoofStdFDs(panicFileName string) *os.File {
-	filename := fmt.Sprintf("%s/%s", types.PersistDir, panicFileName)
+	filename := fmt.Sprintf("%s/%s", types.PersistPanicDir, panicFileName)
 	panicOut, _ := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
 	fd2, err := syscall.Dup(int(os.Stdout.Fd()))
 	if err != nil {
@@ -366,7 +400,7 @@ func spoofStdFDs(panicFileName string) *os.File {
 func Init(agentName string) {
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	originalStdout := spoofStdFDs(panicOutput)
+	originalStdout := spoofStdFDs(agentName)
 	log.SetOutput(originalStdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
