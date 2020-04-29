@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -79,9 +80,18 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		// DO NOT log Values. They may contain sensitive information.
 		log.Debugf("Publish(%s/%s) replacing due to diff\n",
 			name, key)
+
+		loggable, ok := newItem.(base.LoggableObject)
+		if ok {
+			loggable.LogModify(m)
+		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
 		log.Debugf("Publish(%s/%s) adding Item", name, key)
+		loggable, ok := newItem.(base.LoggableObject)
+		if ok {
+			loggable.LogCreate()
+		}
 	}
 	pub.km.key.Store(key, newItem)
 
@@ -101,9 +111,13 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 // Unpublish delete a key from the key-value map
 func (pub *PublicationImpl) Unpublish(key string) error {
 	name := pub.nameString()
-	if _, ok := pub.km.key.Load(key); ok {
+	if m, ok := pub.km.key.Load(key); ok {
 		// DO NOT log Values. They may contain sensitive information.
 		log.Debugf("Unpublish(%s/%s) removing Item", name, key)
+		loggable, ok := m.(base.LoggableObject)
+		if ok {
+			loggable.LogDelete()
+		}
 	} else {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): key does not exist",
 			name, key)

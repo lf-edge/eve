@@ -11,6 +11,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -123,8 +124,6 @@ type AppInstanceStatus struct {
 	// Container related state
 	IsContainer bool
 
-	LogObject
-
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State          SwState
@@ -134,14 +133,46 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 }
 
-// GetValue : Return the value corresponding to given key
-func (status *AppInstanceStatus) GetValue(key string) interface{} {
-	switch key {
-	case "state":
-		return status.State
-	default:
-		return nil
+// LogCreate :
+func (status AppInstanceStatus) LogCreate() {
+	logObject := base.NewLogObject(base.AppInstanceLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.Key())
+	if logObject == nil {
+		return
 	}
+	logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
+		AddField("purge-in-progress", status.PurgeInprogress).Infof("App instance status create")
+}
+
+// LogModify :
+func (status AppInstanceStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.AppInstanceLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.Key())
+
+	oldStatus, ok := old.(AppInstanceStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of AppInstanceStatus type")
+	}
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime()
+		logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
+			AddField("purge-in-progress", status.PurgeInprogress).AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).Errorf("App instance status modify")
+		return
+	}
+	if oldStatus.State != status.State ||
+		oldStatus.RestartInprogress != status.RestartInprogress ||
+		oldStatus.PurgeInprogress != status.PurgeInprogress {
+
+		logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
+			AddField("purge-in-progress", status.PurgeInprogress).Infof("App instance status modify")
+	}
+
+}
+
+// LogDelete :
+func (status AppInstanceStatus) LogDelete() {
+	base.DeleteLogObject(status.Key())
 }
 
 // Track more complicated workflows

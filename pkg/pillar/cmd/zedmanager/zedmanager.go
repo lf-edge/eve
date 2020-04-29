@@ -438,15 +438,6 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &config
 }
 
-// AISGetter :
-func AISGetter(ctxArg interface{}, key interface{}) types.LoggableObject {
-	ctx := ctxArg.(*zedmanagerContext)
-	keyStr := key.(string)
-
-	status := lookupAppInstanceStatus(ctx, keyStr)
-	return status
-}
-
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
@@ -465,8 +456,6 @@ func handleCreate(ctxArg interface{}, key string,
 		RestartCmd:          config.RestartCmd,
 		PurgeCmd:            config.PurgeCmd,
 	}
-	types.InitLogObject(&status.LogObject, types.AppInstanceLogType,
-		status.DisplayName, status.UUIDandVersion.UUID, []string{"state"}, ctxArg, key, AISGetter)
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	c, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum,
