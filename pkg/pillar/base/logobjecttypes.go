@@ -1,12 +1,10 @@
 // Copyright (c) 2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package types
+package base
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -19,8 +17,8 @@ type LogObjectType string
 const (
 	UnknownLogType         LogObjectType = ""
 	LogType                LogObjectType = "log"
-	RelationLogType        LogObjectType = "relation"
 	ImageLogType           LogObjectType = "image"
+	RelationLogType        LogObjectType = "relation"
 	AppInstanceLogType     LogObjectType = "app_instance"
 	NetworkInstanceLogType LogObjectType = "network_instance"
 )
@@ -28,59 +26,49 @@ const (
 // LogObject : Holds all key value pairs to be logged later.
 type LogObject struct {
 	Initialized bool
-	Keys        []string
 	Fields      map[string]interface{}
-	GetterKey   interface{}
 }
+
+var logObjectMap = make(map[string]*LogObject)
 
 // LoggableObject :
 type LoggableObject interface {
-	GetValue(key string) interface{}
+	Key() string
+	LogCreate()
+	LogModify(old interface{})
+	LogDelete()
 }
-
-// GetterFunc :
-type GetterFunc func(ctx interface{}, key interface{}) LoggableObject
-
-type getterParams struct {
-	function GetterFunc
-	ctx      interface{}
-}
-
-var getters = make(map[interface{}]getterParams)
 
 // NewLogObject :
-// objType -> log, action, relation, app_instance, image etc
+// objType -> [MANDATORY] log, action, relation, app_instance, image etc
 // objName -> App instance name, name of file being downloaded etc
 // objUUID -> UUID of the object if present (App instance UUID) or UUID of parent object
-// keys -> Keys on which GetValue is called to get values
+// key     -> [MANDATORY] Key used for storing internal data. This should be the same Key your LoggableObject.Key()
+// would return. LogObject craeted here and the corresponding LoggableObject are linked using this key.
 // objType and objName are mandatory parameters
-func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, keys []string,
-	getterCtx interface{}, getterKey interface{}, getter GetterFunc) *LogObject {
-	if objType == UnknownLogType || len(objName) == 0 {
-		return nil
+func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
+	if objType == UnknownLogType || len(key) == 0 {
+		log.Fatal("NewLogObject: objType and key parameters mandatory")
 	}
-	fields := make(map[string]interface{})
-	fields["obj_type"] = objType
-	fields["obj_name"] = objName
-	fields["obj_uuid"] = objUUID.String()
-
-	getters[getterKey] = getterParams{
-		function: getter,
-		ctx:      getterCtx,
+	// Check if we already have an object with the given key
+	object, ok := logObjectMap[key]
+	if ok {
+		return object
 	}
 
-	return &LogObject{Initialized: true, Fields: fields, Keys: keys,
-		GetterKey: getterKey}
+	object = new(LogObject)
+	InitLogObject(object, objType, objName, objUUID, key)
+
+	return object
 }
 
 // InitLogObject : Initialize an already allocated LogObject
-func InitLogObject(object *LogObject, objType LogObjectType,
-	objName string, objUUID uuid.UUID, keys []string,
-	getterCtx interface{}, getterKey interface{}, getter GetterFunc) error {
-	if objType == UnknownLogType || len(objName) == 0 {
-		errStr := fmt.Sprintf("Invalid objType: %v or objName: %v", objType, objName)
-		log.Errorf(errStr)
-		return errors.New(errStr)
+func InitLogObject(object *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) {
+	if objType == UnknownLogType || len(key) == 0 {
+		log.Fatal("InitLogObject: objType and key parameters mandatory")
+	}
+	if object == nil {
+		log.Fatal("InitLogObject: LogObject cannot be nil")
 	}
 	fields := make(map[string]interface{})
 	fields["obj_type"] = objType
@@ -88,52 +76,64 @@ func InitLogObject(object *LogObject, objType LogObjectType,
 	fields["obj_uuid"] = objUUID.String()
 	object.Initialized = true
 	object.Fields = fields
-	object.Keys = keys
+	logObjectMap[key] = object
+}
 
-	getters[getterKey] = getterParams{
-		function: getter,
-		ctx:      getterCtx,
+// LookupLogObject :
+func LookupLogObject(key string) *LogObject {
+	object, ok := logObjectMap[key]
+	if ok {
+		return object
 	}
-	object.GetterKey = getterKey
-
 	return nil
 }
 
-// AddKey : Add a key to be queried later for logging
-func (object *LogObject) AddKey(key string) {
-	object.Keys = append(object.Keys, key)
+// EnsureLogObject : Look for log object with given key or create new if we do not already have one.
+func EnsureLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
+	logObject := LookupLogObject(key)
+	if logObject == nil {
+		logObject = NewLogObject(objType, objName, objUUID, key)
+	}
+	return logObject
 }
 
-// ResetKeys : Clear the key list
-func (object *LogObject) ResetKeys() {
-	object.Keys = []string{}
+// DeleteLogObject :
+func DeleteLogObject(key string) {
+	_, ok := logObjectMap[key]
+	if !ok {
+		log.Errorf("DeleteLogObject: LogObject with key %s not found in internal map", key)
+		return
+	}
+	delete(logObjectMap, key)
 }
 
 // AddField : Add a key value pair to be logged
-func (object *LogObject) AddField(key string, value interface{}) {
+func (object *LogObject) AddField(key string, value interface{}) *LogObject {
 	object.Fields[key] = value
+	return object
 }
 
 // AddCompositeField : Add a structure/map to be logged
-func (object *LogObject) AddCompositeField(key string, value interface{}) error {
+func (object *LogObject) AddCompositeField(key string, value interface{}) (*LogObject, error) {
 	b, err := json.Marshal(value)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	itemMap := make(map[string]interface{})
 	err = json.Unmarshal(b, &itemMap)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	object.AddFields(itemMap)
-	return nil
+	return object, nil
 }
 
 // AddFields : Values of exiting keys in the object will be overwritten with new values passed
-func (object *LogObject) AddFields(fields map[string]interface{}) {
+func (object *LogObject) AddFields(fields map[string]interface{}) *LogObject {
 	for key, value := range fields {
 		object.Fields[key] = value
 	}
+	return object
 }
 
 // Merge :
@@ -154,6 +154,7 @@ func (object *LogObject) Clone() *LogObject {
 	for key, value := range object.Fields {
 		newLogObject.Fields[key] = value
 	}
+	newLogObject.Initialized = true
 	return newLogObject
 }
 
@@ -225,29 +226,12 @@ func (object *LogObject) Debugf(format string, args ...interface{}) {
 	log.WithFields(object.Fields).Debugf(format, args...)
 }
 
-func (object *LogObject) getAndFillValues() {
-	getter, ok := getters[object.GetterKey]
-	if !ok {
-		return
-	}
-	loggable := getter.function(getter.ctx, object.GetterKey)
-	if loggable == nil {
-		return
-	}
-
-	for _, key := range object.Keys {
-		value := loggable.GetValue(key)
-		object.Fields[key] = value
-	}
-}
-
 // Infof :
 func (object *LogObject) Infof(format string, args ...interface{}) {
 	if !object.Initialized {
 		log.Errorf("LogObject used without initialization")
 		return
 	}
-	object.getAndFillValues()
 	log.WithFields(object.Fields).Infof(format, args...)
 }
 
