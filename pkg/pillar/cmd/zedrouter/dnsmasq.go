@@ -368,12 +368,50 @@ func startDnsmasq(bridgeName string) {
 	}
 }
 
-//    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
+//    kill -9 (-0) pid of dnsmasq on bridge
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
-	cfgFilename := dnsmasqConfigFile(bridgeName)
-	pkillUserArgs("root", cfgFilename, printOnError)
+	pidfile := fmt.Sprintf("/var/run/dnsmasq.%s.pid", bridgeName)
+	pid, err := ioutil.ReadFile(pidfile)
+	if err != nil {
+		log.Errorf("stopDnsmasq: pid file read error %v\n", err)
+		return
+	}
+	pidStr := string(pid)
+	pidStr = strings.TrimSuffix(pidStr, "\n")
+
+	cmd := exec.Command("kill", "-9", pidStr)
+	err = cmd.Run()
+	if err != nil {
+		log.Errorf("stopDnsmasq: Run kill -9 pid %s, err %v\n", pidStr, err)
+	} else {
+		log.Infof("startDnsmasq: Run kill -9 pid %s\n", pidStr)
+	}
+
+	startCheckTime := time.Now()
+	// check and wait until the process is gone or maximum of 60 seconds is reached
+	for {
+		log.Infof("stopDnsmasq: kill -0 try\n")
+		cmd := exec.Command("kill", "-0", pidStr)
+		err = cmd.Run()
+		if err == nil {
+			log.Infof("stopDnsmasq: wait for finish\n") // XXX change to debug later
+			time.Sleep(1 * time.Second)
+			if time.Since(startCheckTime).Seconds() > 60 {
+				log.Errorf("stopDnsmasq: kill dnsmasq on %s not finish in 60 seconds\n", bridgeName)
+				break
+			}
+		} else {
+			log.Infof("stopDnsmasq: kill dnsmasq process %s job done, %v\n", pidStr, err)
+			break
+		}
+	}
+
+	err = os.Remove(pidfile)
+	if err != nil && printOnError {
+		log.Errorf("stopDnsmasq: remove pidfile %s error %v", pidfile, err)
+	}
 
 	if delConfiglet {
 		deleteDnsmasqConfiglet(bridgeName)
