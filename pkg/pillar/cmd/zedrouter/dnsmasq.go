@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -368,42 +369,47 @@ func startDnsmasq(bridgeName string) {
 	}
 }
 
-//    kill -9 (-0) pid of dnsmasq on bridge
+//    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	pidfile := fmt.Sprintf("/var/run/dnsmasq.%s.pid", bridgeName)
-	pid, err := ioutil.ReadFile(pidfile)
+	pidByte, err := ioutil.ReadFile(pidfile)
 	if err != nil {
 		log.Errorf("stopDnsmasq: pid file read error %v\n", err)
 		return
 	}
-	pidStr := string(pid)
+	pidStr := string(pidByte)
 	pidStr = strings.TrimSuffix(pidStr, "\n")
-
-	cmd := exec.Command("kill", "-9", pidStr)
-	err = cmd.Run()
+	pidStr = strings.TrimSpace(pidStr)
+	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
-		log.Errorf("stopDnsmasq: Run kill -9 pid %s, err %v\n", pidStr, err)
-	} else {
-		log.Infof("startDnsmasq: Run kill -9 pid %s\n", pidStr)
+		log.Errorf("stopDnsmasq: pid convert error %v\n", err)
+		return
 	}
+
+	cfgFilename := dnsmasqConfigFile(bridgeName)
+	pkillUserArgs("root", cfgFilename, printOnError)
 
 	startCheckTime := time.Now()
 	// check and wait until the process is gone or maximum of 60 seconds is reached
 	for {
-		log.Infof("stopDnsmasq: kill -0 try\n")
-		cmd := exec.Command("kill", "-0", pidStr)
-		err = cmd.Run()
+		p, err := os.FindProcess(pid)
 		if err == nil {
-			log.Infof("stopDnsmasq: wait for finish\n") // XXX change to debug later
-			time.Sleep(1 * time.Second)
+			err = p.Signal(syscall.Signal(0))
+			if err != nil {
+				log.Infof("stopDnsmasq: kill process done for %d\n", pid)
+				break
+			} else {
+				log.Infof("stopDnsmasq: wait for %d to finish\n", pid)
+			}
 			if time.Since(startCheckTime).Seconds() > 60 {
-				log.Errorf("stopDnsmasq: kill dnsmasq on %s not finish in 60 seconds\n", bridgeName)
+				log.Errorf("stopDnsmasq: kill dnsmasq on %s pid %d not finish in 60 seconds\n", bridgeName, pid)
 				break
 			}
+			time.Sleep(1 * time.Second)
 		} else {
-			log.Infof("stopDnsmasq: kill dnsmasq process %s job done, %v\n", pidStr, err)
+			log.Infof("stopDnsmasq: find dnsmasq process %s error %v\n", pidStr, err)
 			break
 		}
 	}
