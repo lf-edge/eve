@@ -61,7 +61,9 @@ func getHref(token html.Token) (ok bool, href string) {
 
 // ExecCmd performs various commands such as "ls", "get", etc.
 // Note that "host" needs to contain the URL in the case of a get
-func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, client *http.Client) UpdateStats {
+func ExecCmd(cmd, host, remoteFile, localFile string, objSize int64,
+	prgNotify NotifChan, client *http.Client) UpdateStats {
+
 	var imgList []string
 	stats := UpdateStats{}
 	if client == nil {
@@ -149,7 +151,7 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 		chunkSize := SingleMB
 		var written, copiedSize int64
 		var copyErr error
-		stats.Size = int64(resp.ContentLength)
+		stats.Size = objSize
 		for {
 			if written, copyErr = io.CopyN(local, resp.Body, chunkSize); copyErr != nil && copyErr != io.EOF {
 				stats.Error = copyErr

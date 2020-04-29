@@ -53,10 +53,8 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
 		locFilename)
 	// create Request
-	// Round up from bytes to Mbytes
-	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
-		int64(maxMB), true, respChan)
+		int64(maxsize), true, respChan)
 	if req == nil {
 		return errors.New("NewRequest failed")
 	}
@@ -71,8 +69,8 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			// showing it has downloaded, more than it is supposed to
 			// aborting download, marking it as an error
 			if asize > osize {
-				errStr := fmt.Sprintf("%s, downloaded more than 100%% (%v / %v). Which is impossible. Aborting the download",
-					resp.GetLocalName(), asize, osize)
+				errStr := fmt.Sprintf("Size '%v' provided in image config of '%s' is incorrect.\nDownload status (%v / %v). Aborting the download",
+					osize, resp.GetLocalName(), asize, osize)
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}

@@ -121,7 +121,7 @@ func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 			}
 		}(req, prgChan)
 	}
-	err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, ep.hClient, prgChan)
+	err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, prgChan)
 	if err != nil {
 		return err
 	}
