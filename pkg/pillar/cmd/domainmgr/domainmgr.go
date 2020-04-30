@@ -65,7 +65,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 type domainContext struct {
 	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
-	cipher.DecryptCipherContext
+	decryptCipherContext   cipher.DecryptCipherContext
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
@@ -248,7 +248,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.SubControllerCert = subControllerCert
+	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
 	// Look for cipher context which will be used for decryption
@@ -264,7 +264,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.SubCipherContext = subCipherContext
+	domainCtx.decryptCipherContext.SubCipherContext = subCipherContext
 	subCipherContext.Activate()
 
 	// Look for global config such as log levels
@@ -1776,7 +1776,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func getCloudInitUserData(ctx *domainContext,
 	dc types.DomainConfig) (types.EncryptionBlock, error) {
 	if dc.CipherBlockStatus.IsCipher {
-		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
+		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
 			agentName, dc.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {

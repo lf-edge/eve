@@ -328,7 +328,7 @@ func sourceFailureError(ip, ifname, url string, err error) {
 func getDatastoreCredential(ctx *downloaderContext,
 	dst types.DatastoreConfig) (types.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
-		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
+		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
 			agentName, dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {

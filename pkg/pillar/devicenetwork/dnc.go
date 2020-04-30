@@ -40,7 +40,7 @@ type DPCPending struct {
 }
 
 type DeviceNetworkContext struct {
-	cipher.DecryptCipherContext
+	DecryptCipherContext    cipher.DecryptCipherContext
 	UsableAddressCount      int
 	DevicePortConfig        *types.DevicePortConfig // Currently in use
 	DevicePortConfigList    *types.DevicePortConfigList
