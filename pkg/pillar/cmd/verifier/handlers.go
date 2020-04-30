@@ -34,7 +34,7 @@ func (v *verifyHandler) modify(ctxArg interface{}, objType string,
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)
-	log.Infof("verifyHandler.modify(%s)\n", handlerKey)
+	log.Infof("verifyHandler.modify(%s)", handlerKey)
 	h, ok := v.handlers[handlerKey]
 	if !ok {
 		log.Fatalf("verifyHandler.modify called on config that does not exist")
@@ -46,7 +46,7 @@ func (v *verifyHandler) modify(ctxArg interface{}, objType string,
 		// handler is slow
 		log.Warnf("verifyHandler.modify(%s) NOT sent notify. Slow handler?", handlerKey)
 	}
-	log.Infof("verifyHandler.modify(%s) done\n", handlerKey)
+	log.Infof("verifyHandler.modify(%s) done", handlerKey)
 }
 
 func (v *verifyHandler) create(ctxArg interface{}, objType string,
@@ -54,7 +54,7 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)
-	log.Infof("verifyHandler.create(%s)\n", handlerKey)
+	log.Infof("verifyHandler.create(%s)", handlerKey)
 	ctx := ctxArg.(*verifierContext)
 	h, ok := v.handlers[handlerKey]
 	if ok {
@@ -78,7 +78,7 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 		// Shouldn't happen since we just created channel
 		log.Fatalf("verifyHandler.create(%s) NOT sent notify", handlerKey)
 	}
-	log.Infof("verifyHandler.create(%s) done\n", handlerKey)
+	log.Infof("verifyHandler.create(%s) done", handlerKey)
 }
 
 func (v *verifyHandler) delete(ctxArg interface{}, key string,
@@ -86,16 +86,16 @@ func (v *verifyHandler) delete(ctxArg interface{}, key string,
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)
-	log.Infof("verifyHandler.delete(%s)\n", handlerKey)
+	log.Infof("verifyHandler.delete(%s)", handlerKey)
 	// Do we have a channel/goroutine?
 	h, ok := v.handlers[handlerKey]
 	if ok {
-		log.Debugf("Closing channel\n")
+		log.Debugf("Closing channel")
 		close(h)
 		delete(v.handlers, handlerKey)
 	} else {
-		log.Debugf("verifyHandler.delete: unknown %s\n", handlerKey)
+		log.Debugf("verifyHandler.delete: unknown %s", handlerKey)
 		return
 	}
-	log.Infof("verifyHandler.delete(%s) done\n", handlerKey)
+	log.Infof("verifyHandler.delete(%s) done", handlerKey)
 }
