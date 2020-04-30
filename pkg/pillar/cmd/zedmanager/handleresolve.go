@@ -31,66 +31,66 @@ func publishResolveConfig(ctx *zedmanagerContext,
 	config *types.ResolveConfig) {
 
 	key := config.Key()
-	log.Debugf("publishResolveConfig(%s)\n", key)
+	log.Debugf("publishResolveConfig(%s)", key)
 	pub := ctx.pubAppImgResolveConfig
 	pub.Publish(key, *config)
-	log.Debugf("publishResolveConfig(%s) Done\n", key)
+	log.Debugf("publishResolveConfig(%s) Done", key)
 }
 
 func unpublishResolveConfig(ctx *zedmanagerContext,
 	config *types.ResolveConfig) {
 
 	key := config.Key()
-	log.Debugf("unpublishResolveConfig(%s)\n", key)
+	log.Debugf("unpublishResolveConfig(%s)", key)
 	pub := ctx.pubAppImgResolveConfig
 	pub.Unpublish(key)
-	log.Debugf("unpublishResolveConfig(%s) Done\n", key)
+	log.Debugf("unpublishResolveConfig(%s) Done", key)
 }
 
 func lookupResolveConfig(ctx *zedmanagerContext,
 	key string) *types.ResolveConfig {
 
-	log.Infof("lookupResolveConfig(%s)\n", key)
+	log.Infof("lookupResolveConfig(%s)", key)
 	pub := ctx.pubAppImgResolveConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveConfig(%s) not found\n", key)
+		log.Infof("lookupResolveConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.ResolveConfig)
-	log.Infof("lookupResolveConfig(%s) Done\n", key)
+	log.Infof("lookupResolveConfig(%s) Done", key)
 	return &config
 }
 
 func lookupResolveStatus(ctx *zedmanagerContext,
 	key string) *types.ResolveStatus {
 
-	log.Infof("lookupResolveStatus(%s)\n", key)
+	log.Infof("lookupResolveStatus(%s)", key)
 	sub := ctx.subAppImgResolveStatus
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveStatus(%s) not found\n", key)
+		log.Infof("lookupResolveStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.ResolveStatus)
-	log.Infof("lookupResolveStatus(%s) Done\n", key)
+	log.Infof("lookupResolveStatus(%s) Done", key)
 	return &status
 }
 
 func deleteResolveConfig(ctx *zedmanagerContext, key string) {
-	log.Infof("deleteResolveConfig for %s\n", key)
+	log.Infof("deleteResolveConfig for %s", key)
 	rc := lookupResolveConfig(ctx, key)
 	if rc != nil {
-		log.Infof("deleteResolveConfig for %s found\n", key)
+		log.Infof("deleteResolveConfig for %s found", key)
 		unpublishResolveConfig(ctx, rc)
 	}
-	log.Infof("deleteResolveConfig for %s Done\n", key)
+	log.Infof("deleteResolveConfig for %s Done", key)
 }
 
 func handleResolveStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleResolveStatusModify for %s\n", key)
+	log.Infof("handleResolveStatusModify for %s", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	rs := statusArg.(types.ResolveStatus)
 	pub := ctx.pubAppInstanceStatus
@@ -117,7 +117,7 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 		if !update {
 			continue
 		}
-		log.Infof("Updating images SHA for app instance %v\n",
+		log.Infof("Updating images SHA for app instance %v",
 			status.UUIDandVersion.UUID)
 		changed := doUpdate(ctx, *config, &status)
 		if changed {
@@ -126,5 +126,5 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 			publishAppInstanceStatus(ctx, &status)
 		}
 	}
-	log.Infof("handleResolveStatusModify done for %s\n", key)
+	log.Infof("handleResolveStatusModify done for %s", key)
 }

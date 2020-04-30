@@ -14,15 +14,15 @@ func MaybeAddEIDConfig(ctx *zedmanagerContext,
 	displayName string, ec *types.EIDOverlayConfig) {
 
 	key := types.EidKey(UUIDandVersion, ec.IID)
-	log.Infof("MaybeAddEIDConfig for %s displayName %s\n", key,
+	log.Infof("MaybeAddEIDConfig for %s displayName %s", key,
 		displayName)
 
 	m := lookupEIDConfig(ctx, key)
 	if m != nil {
-		log.Infof("EID config already exists for %s\n", key)
+		log.Infof("EID config already exists for %s", key)
 		// XXX check displayName and EIDConfigDetails didn't change?
 	} else {
-		log.Debugf("EID config add for %s\n", key)
+		log.Debugf("EID config add for %s", key)
 		config := types.EIDConfig{
 			UUIDandVersion:   UUIDandVersion,
 			DisplayName:      displayName,
@@ -30,7 +30,7 @@ func MaybeAddEIDConfig(ctx *zedmanagerContext,
 		}
 		publishEIDConfig(ctx, &config)
 	}
-	log.Infof("MaybeAddEIDConfig done for %s\n", key)
+	log.Infof("MaybeAddEIDConfig done for %s", key)
 }
 
 func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
@@ -38,7 +38,7 @@ func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 	pub := ctx.pubEIDConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupEIDConfig(%s) not found\n", key)
+		log.Infof("lookupEIDConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.EIDConfig)
@@ -50,7 +50,7 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 	sub := ctx.subEIDStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupEIDStatus(%s) not found\n", key)
+		log.Infof("lookupEIDStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.EIDStatus)
@@ -61,7 +61,7 @@ func publishEIDConfig(ctx *zedmanagerContext,
 	status *types.EIDConfig) {
 
 	key := status.Key()
-	log.Debugf("publishEIDConfig(%s)\n", key)
+	log.Debugf("publishEIDConfig(%s)", key)
 	pub := ctx.pubEIDConfig
 	pub.Publish(key, *status)
 }
@@ -70,11 +70,11 @@ func unpublishEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion
 	es *types.EIDStatusDetails) {
 
 	key := types.EidKey(uuidAndVers, es.IID)
-	log.Debugf("unpublishEIDConfig(%s)\n", key)
+	log.Debugf("unpublishEIDConfig(%s)", key)
 	pub := ctx.pubEIDConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishEIDConfig(%s) not found\n", key)
+		log.Errorf("unpublishEIDConfig(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -85,22 +85,22 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 	status := statusArg.(types.EIDStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	key := status.Key()
-	log.Infof("handleEIDStatusModify for %s\n", key)
+	log.Infof("handleEIDStatusModify for %s", key)
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		log.Infof("handleEIDStatusModify skipping due to Pending* for %s\n",
+		log.Infof("handleEIDStatusModify skipping due to Pending* for %s",
 			key)
 		return
 	}
 	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
-	log.Infof("handleEIDStatusModify done for %s\n", key)
+	log.Infof("handleEIDStatusModify done for %s", key)
 }
 
 func handleEIDStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleEIDStatusDelete for %s\n", key)
+	log.Infof("handleEIDStatusDelete for %s", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	updateAIStatusUUID(ctx, key)
-	log.Infof("handleEIDStatusDelete done for %s\n", key)
+	log.Infof("handleEIDStatusDelete done for %s", key)
 }
