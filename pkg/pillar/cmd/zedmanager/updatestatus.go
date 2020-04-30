@@ -379,6 +379,7 @@ func doInstall(ctx *zedmanagerContext,
 		changed = true
 	}
 
+	waitingForVolumes := false
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s, purgeCounter %d",
@@ -438,6 +439,13 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Progress = vs.Progress
 			changed = true
 		}
+		// Would like to have an additional state between DELIVERED
+		// and INSTALLED to capture whether volumes were created.
+		if !vs.VolumeCreated {
+			log.Infof("lookupVolumeStatus %s !VolumeCreated",
+				ss.Name)
+			waitingForVolumes = true
+		}
 		if vs.Pending() {
 			log.Infof("lookupVolumeStatus %s Pending",
 				ss.Name)
@@ -483,7 +491,7 @@ func doInstall(ctx *zedmanagerContext,
 		return changed, false
 	}
 
-	if minState < types.DELIVERED {
+	if minState < types.DELIVERED || waitingForVolumes {
 		log.Infof("Waiting for all volumes for %s", uuidStr)
 		return changed, false
 	}

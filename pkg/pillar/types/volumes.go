@@ -171,7 +171,7 @@ type VolumeStatus struct {
 	PendingModify bool
 	PendingDelete bool
 
-	VolumeCreated bool // There is something to destroy on delete
+	VolumeCreated bool // Done aka Activated
 
 	// Information about the source/origin of the volume
 	Origin         OriginType
