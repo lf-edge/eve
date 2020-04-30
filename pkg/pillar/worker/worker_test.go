@@ -156,6 +156,7 @@ func TestLength(t *testing.T) {
 		secs := sleep1.sleepTime + sleep2.sleepTime
 		minDuration := time.Duration(secs)*time.Second + submit1time + submit2time
 		maxDuration := minDuration + 100*time.Millisecond
+		minDuration -= 100*time.Millisecond
 		took := time.Since(timestamp)
 		assert.GreaterOrEqual(t, int64(took), int64(minDuration))
 		assert.Less(t, int64(took), int64(maxDuration))
