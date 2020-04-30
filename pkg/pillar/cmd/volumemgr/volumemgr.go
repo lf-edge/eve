@@ -96,7 +96,7 @@ func Run(ps *pubsub.PubSub) {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s\n", agentName)
+	log.Infof("Starting %s", agentName)
 
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
@@ -489,7 +489,7 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
+				log.Infof("Verifier reported restarted")
 			}
 
 		case change := <-subAppImgPersistStatus.MsgChan():
@@ -502,7 +502,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("Handling all inputs\n")
+	log.Infof("Handling all inputs")
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -577,7 +577,7 @@ func Run(ps *pubsub.PubSub) {
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*volumemgrContext)
 
-	log.Infof("handleVerifierRestarted(%v)\n", done)
+	log.Infof("handleVerifierRestarted(%v)", done)
 	if done {
 		ctx.verifierRestarted = true
 	}
@@ -588,10 +588,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*volumemgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
@@ -602,7 +602,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -610,14 +610,14 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*volumemgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
 func handleZedAgentStatusModify(ctxArg interface{}, key string,
@@ -635,7 +635,7 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleAppImgModify(%s)\n", key)
+	log.Infof("handleAppImgModify(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	vcModify(ctx, types.AppImgObj, key, config)
@@ -644,7 +644,7 @@ func handleAppImgModify(ctxArg interface{}, key string,
 func handleAppImgCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleAppImgCreate(%s)\n", key)
+	log.Infof("handleAppImgCreate(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	vcCreate(ctx, types.AppImgObj, key, config)
@@ -652,7 +652,7 @@ func handleAppImgCreate(ctxArg interface{}, key string,
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Infof("handleAppImageDelete(%s)\n", key)
+	log.Infof("handleAppImageDelete(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	vcDelete(ctx, types.AppImgObj, key, config)
@@ -661,7 +661,7 @@ func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleBaseOsModify(%s)\n", key)
+	log.Infof("handleBaseOsModify(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	vcModify(ctx, types.BaseOsObj, key, config)
@@ -670,7 +670,7 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleBaseOsCreate(%s)\n", key)
+	log.Infof("handleBaseOsCreate(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	vcCreate(ctx, types.BaseOsObj, key, config)
@@ -678,7 +678,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Infof("handleAppImageDelete(%s)\n", key)
+	log.Infof("handleAppImageDelete(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	vcDelete(ctx, types.BaseOsObj, key, config)
@@ -687,15 +687,15 @@ func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
 func handleCertObjConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleCertObjConfigDelete(%s)\n", key)
+	log.Infof("handleCertObjConfigDelete(%s)", key)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupCertObjStatus(ctx, key)
 	if status == nil {
-		log.Infof("handleCertObjConfigDelete: unknown %s\n", key)
+		log.Infof("handleCertObjConfigDelete: unknown %s", key)
 		return
 	}
 	handleCertObjDelete(ctx, key, status)
-	log.Infof("handleCertObjConfigDelete(%s) done\n", key)
+	log.Infof("handleCertObjConfigDelete(%s) done", key)
 }
 
 // certificate config/status event handlers
@@ -703,7 +703,7 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
 func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*volumemgrContext)
 	config := configArg.(types.CertObjConfig)
-	log.Infof("handleCertObjCreate for %s\n", key)
+	log.Infof("handleCertObjCreate for %s", key)
 
 	status := types.CertObjStatus{
 		UUIDandVersion: config.UUIDandVersion,
@@ -731,10 +731,10 @@ func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) 
 	config := configArg.(types.CertObjConfig)
 	status := lookupCertObjStatus(ctx, key)
 	uuidStr := config.Key()
-	log.Infof("handleCertObjModify for %s\n", uuidStr)
+	log.Infof("handleCertObjModify for %s", uuidStr)
 
 	if config.UUIDandVersion.Version != status.UUIDandVersion.Version {
-		log.Infof("handleCertObjModify(%s), New config version %v\n", key,
+		log.Infof("handleCertObjModify(%s), New config version %v", key,
 			config.UUIDandVersion.Version)
 		status.UUIDandVersion = config.UUIDandVersion
 		publishCertObjStatus(ctx, status)
@@ -753,7 +753,7 @@ func handleCertObjDelete(ctx *volumemgrContext, key string,
 	status *types.CertObjStatus) {
 
 	uuidStr := status.Key()
-	log.Infof("handleCertObjDelete for %s\n", uuidStr)
+	log.Infof("handleCertObjDelete for %s", uuidStr)
 	removeCertObjConfig(ctx, uuidStr)
 }
 
@@ -764,7 +764,7 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 
 	status := statusArg.(types.DownloaderStatus)
 	// XXX ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleDownloadStatusModify for %s\n",
+	log.Infof("handleDownloadStatusModify for %s",
 		status.ImageID)
 	// XXX updateDownloaderStatus(ctx, &status)
 	// XXX do we need to walk all certObj to find imageID, and call:
@@ -776,7 +776,7 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.DownloaderStatus)
-	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
+	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
 }
