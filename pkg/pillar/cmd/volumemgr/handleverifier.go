@@ -62,7 +62,7 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 	m := lookupVerifyImageConfig(ctx, status.ObjType, status.BlobSha256)
 	if m != nil {
 		m.RefCount += 1
-		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s\n",
+		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s",
 			m.RefCount, status.BlobSha256)
 		publishVerifyImageConfig(ctx, status.ObjType, m)
 	} else {
@@ -81,9 +81,9 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 			RefCount:    1,
 		}
 		publishVerifyImageConfig(ctx, status.ObjType, &n)
-		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
+		log.Debugf("MaybeAddVerifyImageConfig - config: %+v", n)
 	}
-	log.Infof("MaybeAddVerifyImageConfig done for %s\n", status.BlobSha256)
+	log.Infof("MaybeAddVerifyImageConfig done for %s", status.BlobSha256)
 	return true, types.ErrorAndTime{}
 }
 
@@ -91,11 +91,11 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 // reaches zero the verifier might start a GC using the Expired exchange
 func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha string) {
 
-	log.Infof("MaybeRemoveVerifyImageConfig(%s) for %s\n", imageSha, objType)
+	log.Infof("MaybeRemoveVerifyImageConfig(%s) for %s", imageSha, objType)
 
 	m := lookupVerifyImageConfig(ctx, objType, imageSha)
 	if m == nil {
-		log.Infof("MaybeRemoveVerifyImageConfig: config missing for %s\n",
+		log.Infof("MaybeRemoveVerifyImageConfig: config missing for %s",
 			imageSha)
 		return
 	}
@@ -106,14 +106,14 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha strin
 			m.Name, m.ImageID, m.ImageSha256, m.IsContainer)
 	}
 	m.RefCount -= 1
-	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s\n",
+	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s",
 		m.RefCount, imageSha)
 	if m.RefCount == 0 {
 		unpublishVerifyImageConfig(ctx, objType, m.Key())
 	} else {
 		publishVerifyImageConfig(ctx, objType, m)
 	}
-	log.Infof("MaybeRemoveVerifyImageConfig done for %s\n", imageSha)
+	log.Infof("MaybeRemoveVerifyImageConfig done for %s", imageSha)
 }
 
 func publishVerifyImageConfig(ctx *volumemgrContext, objType string,
@@ -127,7 +127,7 @@ func publishVerifyImageConfig(ctx *volumemgrContext, objType string,
 
 func unpublishVerifyImageConfig(ctx *volumemgrContext, objType string, key string) {
 
-	log.Debugf("unpublishVerifyImageConfig(%s)\n", key)
+	log.Debugf("unpublishVerifyImageConfig(%s)", key)
 	pub := ctx.publication(types.VerifyImageConfig{}, objType)
 	c, _ := pub.Get(key)
 	if c == nil {
@@ -141,14 +141,14 @@ func publishPersistImageConfig(ctx *volumemgrContext, objType string,
 	config *types.PersistImageConfig) {
 
 	key := config.Key()
-	log.Debugf("publishPersistImageConfig(%s)\n", key)
+	log.Debugf("publishPersistImageConfig(%s)", key)
 	pub := ctx.publication(*config, objType)
 	pub.Publish(key, *config)
 }
 
 func unpublishPersistImageConfig(ctx *volumemgrContext, objType string, key string) {
 
-	log.Debugf("unpublishPersistImageConfig(%s)\n", key)
+	log.Debugf("unpublishPersistImageConfig(%s)", key)
 	pub := ctx.publication(types.PersistImageConfig{}, objType)
 	c, _ := pub.Get(key)
 	if c == nil {
@@ -164,7 +164,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*volumemgrContext)
 	log.Infof("handleVerifyImageStatusModify for ImageSha256: %s, "+
-		" RefCount %d\n", status.ImageSha256, status.RefCount)
+		" RefCount %d", status.ImageSha256, status.RefCount)
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
 		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for"+
@@ -265,13 +265,13 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVerifyImageStatusDelete for %s\n", key)
+	log.Infof("handleVerifyImageStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {
-		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",
+		log.Infof("handleVerifyImageStatusDelete delete config for %s",
 			key)
 		unpublishVerifyImageConfig(ctx, status.ObjType, config.Key())
 	}
@@ -280,7 +280,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	if status.ImageSha256 != "" {
 		updatePersistImageConfig(ctx, status.ObjType, status.ImageSha256)
 	}
-	log.Infof("handleVerifyImageStatusDelete done for %s\n", key)
+	log.Infof("handleVerifyImageStatusDelete done for %s", key)
 }
 
 func lookupPersistImageStatus(ctx *volumemgrContext, objType string,
@@ -317,7 +317,7 @@ func handlePersistImageStatusModify(ctxArg interface{}, key string,
 
 	config := lookupPersistImageConfig(ctx, status.ObjType, status.ImageSha256)
 	if config == nil && status.RefCount == 0 {
-		log.Infof("handlePersistImageStatusModify adding RefCount=0 config %s\n",
+		log.Infof("handlePersistImageStatusModify adding RefCount=0 config %s",
 			key)
 		n := types.PersistImageConfig{
 			VerifyConfig: types.VerifyConfig{
@@ -329,20 +329,20 @@ func handlePersistImageStatusModify(ctxArg interface{}, key string,
 		publishPersistImageConfig(ctx, status.ObjType, &n)
 	} else if config != nil && config.RefCount == 0 && status.Expired &&
 		sumVerifyImageRefCount(ctx, status.ObjType, status.ImageSha256) == 0 {
-		log.Infof("handlePersistImageStatusModify expired - deleting config %s\n",
+		log.Infof("handlePersistImageStatusModify expired - deleting config %s",
 			key)
 		unpublishPersistImageConfig(ctx, status.ObjType, config.Key())
 	}
-	log.Infof("handlePersistImageStatusModify done %s\n", key)
+	log.Infof("handlePersistImageStatusModify done %s", key)
 }
 
 func handlePersistImageStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.PersistImageStatus)
-	log.Infof("handlePersistImageStatusDelete for %s refcount %d expired %t\n",
+	log.Infof("handlePersistImageStatusDelete for %s refcount %d expired %t",
 		key, status.RefCount, status.Expired)
 	ctx := ctxArg.(*volumemgrContext)
 	unpublishPersistImageConfig(ctx, status.ObjType, key)
-	log.Infof("handlePersistImageStatusDelete done %s\n", key)
+	log.Infof("handlePersistImageStatusDelete done %s", key)
 }

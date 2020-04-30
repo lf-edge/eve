@@ -34,18 +34,18 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			changed = true
 		}
 		if vs.Pending() {
-			log.Infof("lookupVerifyImageStatus %s Pending\n", status.VolumeID)
+			log.Infof("lookupVerifyImageStatus %s Pending", status.VolumeID)
 			return changed, false
 		}
 		if vs.HasError() {
-			log.Errorf("Received error from verifier for %s: %s\n",
+			log.Errorf("Received error from verifier for %s: %s",
 				status.VolumeID, vs.Error)
 			status.SetErrorWithSource(vs.Error, types.VerifyImageStatus{},
 				vs.ErrorTime)
 			changed = true
 			return changed, false
 		} else if status.IsErrorSource(types.VerifyImageStatus{}) {
-			log.Infof("Clearing verifier error %s\n", status.Error)
+			log.Infof("Clearing verifier error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
@@ -55,7 +55,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		case types.DELIVERED:
 			if status.FileLocation != vs.FileLocation {
 				status.FileLocation = vs.FileLocation
-				log.Infof("Update FileLocation for %s: %s\n",
+				log.Infof("Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}
@@ -97,7 +97,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		default:
 			if status.FileLocation != vs.FileLocation {
 				status.FileLocation = vs.FileLocation
-				log.Infof("Update FileLocation for %s: %s\n",
+				log.Infof("Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}
@@ -145,12 +145,12 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		changed = true
 	}
 	if ds.Pending() {
-		log.Infof("lookupDownloaderStatus %s Pending\n",
+		log.Infof("lookupDownloaderStatus %s Pending",
 			status.VolumeID)
 		return changed, false
 	}
 	if ds.HasError() {
-		log.Errorf("Received error from downloader for %s: %s\n",
+		log.Errorf("Received error from downloader for %s: %s",
 			status.VolumeID, ds.Error)
 		status.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
 			ds.ErrorTime)
@@ -158,7 +158,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		return changed, false
 	}
 	if status.IsErrorSource(types.DownloaderStatus{}) {
-		log.Infof("Clearing downloader error %s\n", status.Error)
+		log.Infof("Clearing downloader error %s", status.Error)
 		status.ClearErrorWithSource()
 		changed = true
 	}
@@ -175,10 +175,10 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		}
 	}
 	if status.WaitingForCerts {
-		log.Infof("Waiting for certs for %s\n", status.Key())
+		log.Infof("Waiting for certs for %s", status.Key())
 		return changed, false
 	}
-	log.Infof("Waiting for download for %s\n", status.Key())
+	log.Infof("Waiting for download for %s", status.Key())
 	return changed, false
 }
 

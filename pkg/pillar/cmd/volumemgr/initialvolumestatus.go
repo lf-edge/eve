@@ -75,7 +75,7 @@ func parseAppRwVolumeName(image string) (string, string, string, uint32) {
 // to recreate the status files
 func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
-	log.Infof("populateInitialVolumeStatus(%s)\n", dirName)
+	log.Infof("populateInitialVolumeStatus(%s)", dirName)
 
 	// Record host boot time for comparisons
 	hinfo, err := host.Info()
@@ -92,7 +92,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 	for _, location := range locations {
 		filelocation := dirName + "/" + location.Name()
 		if location.IsDir() {
-			log.Debugf("populateInitialVolumeStatus: directory %s ignored\n", filelocation)
+			log.Debugf("populateInitialVolumeStatus: directory %s ignored", filelocation)
 			continue
 		}
 
@@ -194,21 +194,21 @@ func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType 
 // Others have their delete handler.
 func gcObjects(ctx *volumemgrContext, dirName string) {
 
-	log.Debugf("gcObjects()\n")
+	log.Debugf("gcObjects()")
 
 	pub := ctx.publication(types.VolumeStatus{}, types.UnknownObj)
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.VolumeStatus)
 		if status.RefCount != 0 {
-			log.Debugf("gcObjects: skipping RefCount %d: %s\n",
+			log.Debugf("gcObjects: skipping RefCount %d: %s",
 				status.RefCount, status.Key())
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
 		timeLimit := time.Duration(ctx.vdiskGCTime) * time.Second
 		if timePassed < timeLimit {
-			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
+			log.Debugf("gcObjects: skipping recently used %s remains %d seconds",
 				status.Key(), (timePassed-timeLimit)/time.Second)
 			continue
 		}
@@ -216,7 +216,7 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 		if filelocation == "" {
 			log.Errorf("No filelocation to remove for %s", status.Key())
 		} else {
-			log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
+			log.Infof("gcObjects: removing %s LastUse %v now %v: %s",
 				filelocation, status.LastUse, time.Now(), status.Key())
 			if err := os.Remove(filelocation); err != nil {
 				log.Errorln(err)
@@ -229,14 +229,14 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 // gc timer just started, reset the LastUse timestamp
 func gcResetObjectsLastUse(ctx *volumemgrContext, dirName string) {
 
-	log.Debugf("gcResetObjectsLastUse()\n")
+	log.Debugf("gcResetObjectsLastUse()")
 
 	pub := ctx.publication(types.VolumeStatus{}, types.UnknownObj)
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.VolumeStatus)
 		if status.RefCount == 0 {
-			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", status.Key())
+			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now", status.Key())
 			status.LastUse = time.Now()
 			publishVolumeStatus(ctx, &status)
 		}

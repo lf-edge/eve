@@ -58,7 +58,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLoca
 		log.Error(errStr)
 		return created, srcLocation, errors.New(errStr)
 	}
-	log.Infof("Copy from %s to %s\n", srcLocation, filelocation)
+	log.Infof("Copy from %s to %s", srcLocation, filelocation)
 	created = true // So we will delete later even if partial failure
 	if err := cp(filelocation, srcLocation); err != nil {
 		errStr := fmt.Sprintf("Copy failed from %s to %s: %s\n",
@@ -72,7 +72,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLoca
 		log.Error(err)
 		return created, filelocation, err
 	}
-	log.Infof("Copy DONE from %s to %s\n", srcLocation, status.FileLocation)
+	log.Infof("Copy DONE from %s to %s", srcLocation, status.FileLocation)
 	log.Infof("createVdiskVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
@@ -140,7 +140,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
-	log.Infof("Delete copy at %s\n", filelocation)
+	log.Infof("Delete copy at %s", filelocation)
 	if err := os.Remove(filelocation); err != nil {
 		log.Error(err)
 		filelocation = ""
