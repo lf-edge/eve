@@ -58,7 +58,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
-		log.Errorf("handleLookupParam: missing lispInfo\n")
+		log.Errorf("handleLookupParam: missing lispInfo")
 		return
 	}
 	configHash := computeConfigSha(lispInfo)
@@ -69,7 +69,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		// We normally don't hit this since the order in
 		// the DnsNameToIPList from the proto.Encode is random.
 		// Hence we check again after sorting.
-		log.Debugf("handleLookupParam: lispInfo sha is unchanged\n")
+		log.Debugf("handleLookupParam: lispInfo sha is unchanged")
 		return
 	}
 	// Note that there are no secrets in lispInfo. XXX true?
@@ -121,12 +121,12 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 				lispConfig.DnsNameToIPList[j].HostName
 		})
 	if reflect.DeepEqual(prevLispConfig, lispConfig) {
-		log.Debugf("handleLookupParam: sorted lispInfo is unchanged\n")
+		log.Debugf("handleLookupParam: sorted lispInfo is unchanged")
 		return
 	}
 	prevLispConfig = lispConfig
 
-	log.Infof("handleLookupParam: updated lispInfo %v\n", lispInfo)
+	log.Infof("handleLookupParam: updated lispInfo %v", lispInfo)
 
 	deviceCert, err := zedcloud.GetClientCert()
 	if err != nil {
@@ -135,7 +135,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
-		log.Debugf("Setting ACLPromisc\n")
+		log.Debugf("Setting ACLPromisc")
 		ACLPromisc = true
 	}
 
@@ -157,7 +157,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	// If we got a StatusNotFound the EID will be zero
 	if lispConfig.EID == nil {
-		log.Errorf("Did not receive an EID\n")
+		log.Errorf("Did not receive an EID")
 		os.Remove(zedserverConfigFileName)
 		return
 	}
@@ -167,13 +167,13 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	// RFC 5952. The iid is printed as an integer.
 	sigdata := fmt.Sprintf("[%d]%s",
 		lispConfig.LispInstance, lispConfig.EID.String())
-	log.Debugf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+	log.Debugf("sigdata (len %d) %s", len(sigdata), sigdata)
 
 	hasher := sha256.New()
 	hasher.Write([]byte(sigdata))
 	hash := hasher.Sum(nil)
-	log.Debugf("hash (len %d) % x\n", len(hash), hash)
-	log.Debugf("base64 hash %s\n",
+	log.Debugf("hash (len %d) % x", len(hash), hash)
+	log.Debugf("base64 hash %s",
 		base64.StdEncoding.EncodeToString(hash))
 	var signature string
 	switch key := deviceCert.PrivateKey.(type) {
@@ -184,12 +184,12 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		if err != nil {
 			log.Fatal("zedcloud.Sign: ", err)
 		}
-		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+		log.Debugf("r.bytes %d s.bytes %d", len(r.Bytes()),
 			len(s.Bytes()))
 		sigres := r.Bytes()
 		sigres = append(sigres, s.Bytes()...)
 		signature = base64.StdEncoding.EncodeToString(sigres)
-		log.Debugf("sigres (len %d): % x\n",
+		log.Debugf("sigres (len %d): % x",
 			len(sigres), sigres)
 		log.Debugln("signature:", signature)
 	case *ecdsa.PrivateKey:
@@ -197,18 +197,18 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		if err != nil {
 			log.Fatal("ecdsa.Sign: ", err)
 		}
-		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+		log.Debugf("r.bytes %d s.bytes %d", len(r.Bytes()),
 			len(s.Bytes()))
 		sigres := r.Bytes()
 		sigres = append(sigres, s.Bytes()...)
 		signature = base64.StdEncoding.EncodeToString(sigres)
-		log.Debugf("sigres (len %d): % x\n",
+		log.Debugf("sigres (len %d): % x",
 			len(sigres), sigres)
 		log.Debugln("signature:", signature)
 	}
-	log.Debugf("MapServers %+v\n", lispConfig.MapServers)
-	log.Debugf("Lisp IID %d\n", lispConfig.LispInstance)
-	log.Debugf("EID %s\n", lispConfig.EID)
+	log.Debugf("MapServers %+v", lispConfig.MapServers)
+	log.Debugf("Lisp IID %d", lispConfig.LispInstance)
+	log.Debugf("EID %s", lispConfig.EID)
 
 	// write zedserverconfig file with hostname to EID mappings
 	f, err := os.Create(zedserverConfigFileName)
@@ -230,11 +230,11 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	// Determine whether NAT is in use
 	if publicIP, err := addrStringToIP(lispConfig.ClientAddr); err != nil {
-		log.Errorf("Failed to convert %s, error %s\n",
+		log.Errorf("Failed to convert %s, error %s",
 			lispConfig.ClientAddr, err)
 	} else {
 		nat := !IsMyAddress(publicIP)
-		log.Infof("NAT %v, publicIP %v\n", nat, publicIP)
+		log.Infof("NAT %v, publicIP %v", nat, publicIP)
 	}
 
 	// Write an AppNetworkConfig for the ZedManager application
@@ -280,25 +280,25 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	if err != nil {
 		log.Errorln(err.Error())
 	}
-	log.Debugf("handlezedserverconfig output %s\n", stdout)
+	log.Debugf("handlezedserverconfig output %s", stdout)
 }
 
 func publishAppNetworkConfig(getconfigCtx *getconfigContext,
 	config types.AppNetworkConfig) {
 
 	key := config.Key()
-	log.Debugf("publishAppNetworkConfig %s\n", key)
+	log.Debugf("publishAppNetworkConfig %s", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	pub.Publish(key, config)
 }
 
 func unpublishAppNetworkConfig(getconfigCtx *getconfigContext, key string) {
 
-	log.Debugf("unpublishAppNetworkConfig %s\n", key)
+	log.Debugf("unpublishAppNetworkConfig %s", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishAppNetworkConfig(%s) not found\n", key)
+		log.Errorf("unpublishAppNetworkConfig(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)

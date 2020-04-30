@@ -17,7 +17,7 @@ func verifierSubscription(ctx *zedagentContext, objType string) pubsub.Subscript
 	case types.AppImgObj:
 		sub = ctx.subAppImgVerifierStatus
 	default:
-		log.Fatalf("verifierSubscription: Unknown ObjType %s\n",
+		log.Fatalf("verifierSubscription: Unknown ObjType %s",
 			objType)
 	}
 	return sub
