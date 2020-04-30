@@ -430,12 +430,13 @@ func VerifySigningCertChain(ctx *ZedCloudContext, content []byte) ([]byte, error
 }
 
 // UseV2API - check the controller cert file and use V2 api if it exist
+// by default it is running V2, unless /config/Force-API-V1 file exists
 func UseV2API() bool {
-	_, err := os.Stat(types.APIV2FileName)
+	_, err := os.Stat(types.APIV1FileName)
 	if err == nil {
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
 // URLPathString - generate url for either v1 or v1 API path
