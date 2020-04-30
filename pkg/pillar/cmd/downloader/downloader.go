@@ -142,11 +142,11 @@ func Run(ps *pubsub.PubSub) {
 
 	for {
 		select {
-		case change := <-ctx.SubControllerCert.MsgChan():
-			ctx.SubControllerCert.ProcessChange(change)
+		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
+			ctx.decryptCipherContext.SubControllerCert.ProcessChange(change)
 
-		case change := <-ctx.SubCipherContext.MsgChan():
-			ctx.SubCipherContext.ProcessChange(change)
+		case change := <-ctx.decryptCipherContext.SubCipherContext.MsgChan():
+			ctx.decryptCipherContext.SubCipherContext.ProcessChange(change)
 
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
