@@ -19,15 +19,15 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
-	log.Infof("MaybeAddDomainConfig for %s displayName %s\n", key,
+	log.Infof("MaybeAddDomainConfig for %s displayName %s", key,
 		displayName)
 
 	m := lookupDomainConfig(ctx, key)
 	if m != nil {
 		// Always update to pick up new disks, vifs, Activate etc
-		log.Infof("Domain config already exists for %s\n", key)
+		log.Infof("Domain config already exists for %s", key)
 	} else {
-		log.Infof("Domain config add for %s\n", key)
+		log.Infof("Domain config add for %s", key)
 	}
 	AppNum := 0
 	if ns != nil {
@@ -52,7 +52,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		if sc.Target == "" || sc.Target == "disk" || sc.Target == "tgtunknown" {
 			numDisks++
 		} else {
-			log.Infof("Not allocating disk for Target %s\n",
+			log.Infof("Not allocating disk for Target %s",
 				sc.Target)
 		}
 	}
@@ -87,19 +87,19 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			dc.DiskConfigList = append(dc.DiskConfigList, disk)
 		case "kernel":
 			if dc.Kernel != "" {
-				log.Infof("Overriding kernel %s with location %s\n",
+				log.Infof("Overriding kernel %s with location %s",
 					dc.Kernel, location)
 			}
 			dc.Kernel = location
 		case "ramdisk":
 			if dc.Ramdisk != "" {
-				log.Infof("Overriding ramdisk %s with location %s\n",
+				log.Infof("Overriding ramdisk %s with location %s",
 					dc.Ramdisk, location)
 			}
 			dc.Ramdisk = location
 		case "device_tree":
 			if dc.DeviceTree != "" {
-				log.Infof("Overriding device_tree %s with location %s\n",
+				log.Infof("Overriding device_tree %s with location %s",
 					dc.DeviceTree, location)
 			}
 			dc.DeviceTree = location
@@ -125,7 +125,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	publishDomainConfig(ctx, &dc)
 
-	log.Infof("MaybeAddDomainConfig done for %s\n", key)
+	log.Infof("MaybeAddDomainConfig done for %s", key)
 	return nil
 }
 
@@ -134,7 +134,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 	pub := ctx.pubDomainConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupDomainConfig(%s) not found\n", key)
+		log.Infof("lookupDomainConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.DomainConfig)
@@ -146,7 +146,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 	sub := ctx.subDomainStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupDomainStatus(%s) not found\n", key)
+		log.Infof("lookupDomainStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.DomainStatus)
@@ -157,7 +157,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 	status *types.DomainConfig) {
 
 	key := status.Key()
-	log.Debugf("publishDomainConfig(%s)\n", key)
+	log.Debugf("publishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *status)
 }
@@ -165,11 +165,11 @@ func publishDomainConfig(ctx *zedmanagerContext,
 func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 
 	key := uuidStr
-	log.Debugf("unpublishDomainConfig(%s)\n", key)
+	log.Debugf("unpublishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishDomainConfig(%s) not found\n", key)
+		log.Errorf("unpublishDomainConfig(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -180,18 +180,18 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 
 	status := statusArg.(types.DomainStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleDomainStatusModify for %s\n", key)
+	log.Infof("handleDomainStatusModify for %s", key)
 	// Record DomainStatus.State even if Pending() to capture HALTING
 
 	updateAIStatusUUID(ctx, status.Key())
-	log.Infof("handleDomainStatusModify done for %s\n", key)
+	log.Infof("handleDomainStatusModify done for %s", key)
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDomainStatusDelete for %s\n", key)
+	log.Infof("handleDomainStatusDelete for %s", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
-	log.Infof("handleDomainStatusDelete done for %s\n", key)
+	log.Infof("handleDomainStatusDelete done for %s", key)
 }
