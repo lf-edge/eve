@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/worker"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -59,6 +60,8 @@ type volumemgrContext struct {
 	subBaseOsVerifierStatus pubsub.Subscription
 	pubBaseOsPersistConfig  pubsub.Publication
 	subBaseOsPersistStatus  pubsub.Subscription
+
+	worker *worker.Worker // For background work
 
 	verifierRestarted bool
 	usingConfig       bool // From zedagent
@@ -122,6 +125,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+
+	// Create the background worker
+	ctx.worker = InitHandleWork(&ctx)
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -489,6 +495,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subAppImgPersistStatus.MsgChan():
 			subAppImgPersistStatus.ProcessChange(change)
 
+		case res := <-ctx.worker.MsgChan():
+			HandleWorkResult(&ctx, ctx.worker.Process(res))
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -555,6 +564,9 @@ func Run(ps *pubsub.PubSub) {
 			gcObjects(&ctx, rwImgDirname)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
+
+		case res := <-ctx.worker.MsgChan():
+			HandleWorkResult(&ctx, ctx.worker.Process(res))
 
 		case <-stillRunning.C:
 		}

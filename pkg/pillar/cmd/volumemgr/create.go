@@ -18,9 +18,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Returns changed if VolumeStatus changed
-func createVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLocation string) (bool, error) {
+// createVolume does not update status but returns
+// new values for VolumeCreated, FileLocation, and error
+func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
+	srcLocation := status.FileLocation
 	log.Infof("createVolume(%s) from %s", status.Key(), srcLocation)
 	switch status.Origin {
 	case types.OriginTypeDownload:
@@ -32,17 +34,18 @@ func createVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLocation
 	default:
 		log.Fatalf("XXX unsupported origin %v", status.Origin)
 	}
-	return false, nil
+	return false, "", nil
 }
 
-func createVdiskVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLocation string) (bool, error) {
+// createVdiskVolume does not update status but returns
+// new values for VolumeCreated, FileLocation, and error
+func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLocation string) (bool, string, error) {
 
-	changed := false
+	created := false
 	if status.ReadOnly {
 		log.Infof("createVolume(%s) ReadOnly", status.Key())
-		status.FileLocation = srcLocation
-		changed = true
-		return changed, nil
+		created = true // To make doUpdate proceed
+		return created, srcLocation, nil
 	}
 
 	filelocation := appRwVolumeName(status.BlobSha256, status.AppInstID.String(),
@@ -53,73 +56,69 @@ func createVdiskVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLoc
 		errStr := fmt.Sprintf("Can not create %s for %s: exists",
 			filelocation, status.Key())
 		log.Error(errStr)
-		return false, errors.New(errStr)
+		return created, srcLocation, errors.New(errStr)
 	}
 	log.Infof("Copy from %s to %s\n", srcLocation, filelocation)
-	status.VolumeCreated = true
-	changed = true
+	created = true // So we will delete later even if partial failure
 	if err := cp(filelocation, srcLocation); err != nil {
 		errStr := fmt.Sprintf("Copy failed from %s to %s: %s\n",
 			srcLocation, filelocation, err)
 		log.Error(errStr)
-		return changed, errors.New(errStr)
+		return created, filelocation, errors.New(errStr)
 	}
-	status.FileLocation = filelocation
-
 	// Do we need to expand disk?
-	err := maybeResizeDisk(status.FileLocation, status.TargetSizeBytes)
+	err := maybeResizeDisk(filelocation, status.TargetSizeBytes)
 	if err != nil {
 		log.Error(err)
-		return changed, err
+		return created, filelocation, err
 	}
 	log.Infof("Copy DONE from %s to %s\n", srcLocation, status.FileLocation)
 	log.Infof("createVdiskVolume(%s) DONE", status.Key())
-	return changed, nil
+	return created, filelocation, nil
 }
 
-func createContainerVolume(ctx *volumemgrContext, status *types.VolumeStatus, srcLocation string) (bool, error) {
+// createContainerVolume does not update status but returns
+// new values for VolumeCreated, FileLocation, and error
+func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLocation string) (bool, string, error) {
 
-	changed := false
+	created := false
 	filelocation := containerd.GetContainerPath(status.AppInstID.String())
-	status.FileLocation = filelocation
-	changed = true
 
 	ociFilename, err := utils.VerifiedImageFileLocation(status.ContainerSha256)
 	if err != nil {
 		errStr := fmt.Sprintf("failed to get Image File Location. err: %+s",
 			err)
 		log.Error(errStr)
-		return changed, errors.New(errStr)
+		return created, filelocation, errors.New(errStr)
 	}
 	log.Infof("ociFilename %s sha %s", ociFilename, status.ContainerSha256)
+	created = true
 	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
-		return changed, err
+		return created, filelocation, err
 	}
 	log.Infof("createContainerVolume(%s) DONE", status.Key())
-	return changed, nil
+	return created, filelocation, nil
 }
 
-// Returns changed if VolumeStatus changed
-func destroyVolume(ctx *volumemgrContext, status *types.VolumeStatus) (bool, error) {
-	changed := false
+// destroyVolume does not update status but returns
+// new values for VolumeCreated, FileLocation, and error
+func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	log.Infof("destroyVolume(%s)", status.Key())
 	if !status.VolumeCreated {
 		log.Infof("destroyVolume(%s) nothing was created", status.Key())
-		return changed, nil
+		return false, status.FileLocation, nil
 	}
 
 	if status.ReadOnly {
 		log.Infof("destroyVolume(%s) ReadOnly", status.Key())
-		status.FileLocation = ""
-		changed = true
-		return changed, nil
+		return false, "", nil
 	}
 
 	if status.FileLocation == "" {
 		log.Errorf("destroyVolume(%s) no FileLocation", status.Key())
-		return changed, nil
+		return false, "", nil
 	}
 
 	switch status.Origin {
@@ -132,36 +131,41 @@ func destroyVolume(ctx *volumemgrContext, status *types.VolumeStatus) (bool, err
 	default:
 		log.Fatalf("XXX unsupported origin %v", status.Origin)
 	}
-	return false, nil
+	return false, "", nil
 }
 
-func destroyVdiskVolume(ctx *volumemgrContext, status *types.VolumeStatus) (bool, error) {
+// destroyVdiskVolume does not update status but returns
+// new values for VolumeCreated, FileLocation, and error
+func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
-	changed := false
-	log.Infof("Delete copy at %s\n", status.FileLocation)
-	if err := os.Remove(status.FileLocation); err != nil {
+	created := status.VolumeCreated
+	filelocation := status.FileLocation
+	log.Infof("Delete copy at %s\n", filelocation)
+	if err := os.Remove(filelocation); err != nil {
 		log.Error(err)
-		status.FileLocation = ""
-		changed = true
-		return changed, err
+		filelocation = ""
+		return created, filelocation, err
 	}
-	status.FileLocation = ""
-	changed = true
+	filelocation = ""
+	created = false
 	log.Infof("destroyVdiskVolume(%s) DONE", status.Key())
-	return changed, nil
+	return created, filelocation, nil
 }
 
-func destroyContainerVolume(ctx *volumemgrContext, status *types.VolumeStatus) (bool, error) {
+// destroyContainerVolume does not update status but returns
+// new values for VolumeCreated, FileLocation, and error
+func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
-	changed := false
-	log.Infof("Removing container volume %s", status.FileLocation)
-	if err := containerd.SnapshotRm(status.FileLocation, false); err != nil {
-		return changed, err
+	created := status.VolumeCreated
+	filelocation := status.FileLocation
+	log.Infof("Removing container volume %s", filelocation)
+	if err := containerd.SnapshotRm(filelocation, false); err != nil {
+		return created, filelocation, err
 	}
-	status.FileLocation = ""
-	changed = true
+	filelocation = ""
+	created = false
 	log.Infof("destroyContainerVolume(%s) DONE", status.Key())
-	return changed, nil
+	return created, filelocation, nil
 }
 
 func cp(dst, src string) error {
