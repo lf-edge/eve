@@ -94,8 +94,6 @@ DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
-CONF_PART=$(CURDIR)/../adam/run/config
-
 # FIXME: this is the only rpi specific stuff left - we'll get rid of it soon
 CONF_FILES_FILTER_kvm_rpi=| grep -v conf/eve.dts
 CONF_FILES_FILTER_rpi_kvm=$(CONF_FILES_FILTER_kvm_rpi)
@@ -137,7 +135,7 @@ QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none $(
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
         -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
-QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
+QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
 GOOS=linux
