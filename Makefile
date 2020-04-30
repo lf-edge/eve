@@ -28,6 +28,10 @@ ROOTFS_FORMAT=squash
 INSTALLER_IMG_FORMAT=raw
 # SSH port to use for running images live
 SSH_PORT=2222
+# ports to proxy into a running EVE instance (in ssh notation with -L)
+SSH_PROXY=-L6000:localhost:6000
+# ssh key to be used for getting into an EVE instance
+SSH_KEY=$(CONF_DIR)/ssh.key
 # Use QEMU H/W accelearation (any non-empty value will trigger using it)
 ACCEL=
 # Location of the EVE configuration folder to be used in builds
@@ -194,6 +198,10 @@ test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
+itest: $(GOBUILDER) run-proxy | $(DIST)
+	@echo Running integration tests
+	@cd tests/integration ; CGO_ENABLED=0 GOOS= go test -v -run "$(ITESTS)" .
+
 clean:
 	rm -rf $(DIST) images/*.yml pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile pkg/xen-tools/Dockerfile
 
@@ -252,6 +260,9 @@ run-compose: images/docker-compose.yml images/version.yml
 	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
 	docker-compose -f $< up
 
+run-proxy:
+	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &
+
 # alternatively (and if you want greater control) you can replace the first command with
 #    gcloud auth activate-service-account --key-file=-
 #    gcloud compute images create $(CLOUD_IMG_NAME) --project=lf-edge-eve
@@ -270,12 +281,18 @@ $(DIST) $(INSTALLER):
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
+ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_IMG)
 rootfs-%: $(ROOTFS)-%.img ;
 live: $(LIVE_IMG)
 live-%: $(LIVE).% ;
 installer: $(INSTALLER_IMG)
 installer-%: $(INSTALLER).% ;
+
+$(SSH_KEY):
+	rm -f $@*
+	ssh-keygen -P "" -f $@
+	mv $@.pub $(CONF_DIR)/authorized_keys
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ $(CONF_FILES)
@@ -404,6 +421,9 @@ images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
 	@sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
 	@rm $@.sed
 
+$(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
+$(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml $(SSH_KEY) | $(INSTALLER)
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
