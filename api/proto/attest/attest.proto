@@ -3,10 +3,10 @@
 
 syntax = "proto3";
 
-import "common/common.proto";
+import "evecommon/evecommon.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/attest";
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "org.lfedge.eve.attest";
 
 // This is the request payload for POST /api/v2/edgeDevice/id/<uuid>/attest
 // The message is assumed to be protected by signing envelope
@@ -59,7 +59,7 @@ message ZAttestQuoteResp {
 }
 
 message ZEveCert {
-  common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
+  org.lfedge.eve.common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
   bytes certHash = 2;            //Hash of the cert, computed using hashAlgo
   ZEveCertType type = 3;         //what kind of certificate(to identify the target use case)
   bytes cert = 4;                //X509 cert in .PEM format

@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 option go_package  = "github.com/lf-edge/eve/api/go/register";
+option java_package = "org.lfedge.eve.register";
 
 // This is the request payload for POST /api/v1/edgeDevice/register
 // ZRegisterMsg carries the pem-encoded device certificate plus additional

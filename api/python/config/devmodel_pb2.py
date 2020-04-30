@@ -13,17 +13,17 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from common import devmodelcommon_pb2 as common_dot_devmodelcommon__pb2
+from evecommon import devmodelcommon_pb2 as evecommon_dot_devmodelcommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/devmodel.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x15\x63onfig/devmodel.proto\x1a\x1b\x63ommon/devmodelcommon.proto\"n\n\x0fsWAdapterParams\x12\x1d\n\x05\x61Type\x18\x01 \x01(\x0e\x32\x0e.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x8b\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\xf0\x02\n\nPhysicalIO\x12 \n\x05ptype\x18\x01 \x01(\x0e\x32\x11.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12+\n\x08phyaddrs\x18\x03 \x03(\x0b\x32\x19.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\'\n\x05usage\x18\x06 \x01(\x0e\x32\x18.common.PhyIoMemberUsage\x12&\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\x11.PhyIOUsagePolicy\x12\'\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32\x17.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
+  serialized_pb=_b('\n\x15\x63onfig/devmodel.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"n\n\x0fsWAdapterParams\x12\x1d\n\x05\x61Type\x18\x01 \x01(\x0e\x32\x0e.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x8b\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\x8e\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12+\n\x08phyaddrs\x18\x03 \x03(\x0b\x32\x19.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12&\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\x11.PhyIOUsagePolicy\x12\'\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32\x17.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
-  dependencies=[common_dot_devmodelcommon__pb2.DESCRIPTOR,])
+  dependencies=[evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
 _SWADAPTERTYPE = _descriptor.EnumDescriptor(
   name='sWAdapterType',
@@ -46,8 +46,8 @@ _SWADAPTERTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=745,
-  serialized_end=792,
+  serialized_start=778,
+  serialized_end=825,
 )
 _sym_db.RegisterEnumDescriptor(_SWADAPTERTYPE)
 
@@ -105,8 +105,8 @@ _SWADAPTERPARAMS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=54,
-  serialized_end=164,
+  serialized_start=57,
+  serialized_end=167,
 )
 
 
@@ -178,8 +178,8 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=167,
-  serialized_end=306,
+  serialized_start=170,
+  serialized_end=309,
 )
 
 
@@ -216,8 +216,8 @@ _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=308,
-  serialized_end=372,
+  serialized_start=311,
+  serialized_end=375,
 )
 
 
@@ -254,8 +254,8 @@ _PHYSICALIO_PHYADDRSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=649,
-  serialized_end=696,
+  serialized_start=682,
+  serialized_end=729,
 )
 
 _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
@@ -291,8 +291,8 @@ _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=698,
-  serialized_end=743,
+  serialized_start=731,
+  serialized_end=776,
 )
 
 _PHYSICALIO = _descriptor.Descriptor(
@@ -370,16 +370,16 @@ _PHYSICALIO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=375,
-  serialized_end=743,
+  serialized_start=378,
+  serialized_end=776,
 )
 
 _SWADAPTERPARAMS.fields_by_name['aType'].enum_type = _SWADAPTERTYPE
 _PHYSICALIO_PHYADDRSENTRY.containing_type = _PHYSICALIO
 _PHYSICALIO_CBATTRENTRY.containing_type = _PHYSICALIO
-_PHYSICALIO.fields_by_name['ptype'].enum_type = common_dot_devmodelcommon__pb2._PHYIOTYPE
+_PHYSICALIO.fields_by_name['ptype'].enum_type = evecommon_dot_devmodelcommon__pb2._PHYIOTYPE
 _PHYSICALIO.fields_by_name['phyaddrs'].message_type = _PHYSICALIO_PHYADDRSENTRY
-_PHYSICALIO.fields_by_name['usage'].enum_type = common_dot_devmodelcommon__pb2._PHYIOMEMBERUSAGE
+_PHYSICALIO.fields_by_name['usage'].enum_type = evecommon_dot_devmodelcommon__pb2._PHYIOMEMBERUSAGE
 _PHYSICALIO.fields_by_name['usagePolicy'].message_type = _PHYIOUSAGEPOLICY
 _PHYSICALIO.fields_by_name['cbattr'].message_type = _PHYSICALIO_CBATTRENTRY
 DESCRIPTOR.message_types_by_name['sWAdapterParams'] = _SWADAPTERPARAMS

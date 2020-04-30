@@ -13,17 +13,17 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from common import common_pb2 as common_dot_common__pb2
+from evecommon import evecommon_pb2 as evecommon_dot_evecommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/acipherinfo.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x18\x63onfig/acipherinfo.proto\x1a\x13\x63ommon/common.proto\"\xdd\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12)\n\nhashScheme\x18\x02 \x01(\x0e\x32\x15.common.HashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
+  serialized_pb=_b('\n\x18\x63onfig/acipherinfo.proto\x1a\x19\x65vecommon/evecommon.proto\"\xec\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12\x38\n\nhashScheme\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
-  dependencies=[common_dot_common__pb2.DESCRIPTOR,])
+  dependencies=[evecommon_dot_evecommon__pb2.DESCRIPTOR,])
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   name='KeyExchangeScheme',
@@ -42,8 +42,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=508,
-  serialized_end=555,
+  serialized_start=529,
+  serialized_end=576,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -65,8 +65,8 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=557,
-  serialized_end=608,
+  serialized_start=578,
+  serialized_end=629,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
@@ -139,8 +139,8 @@ _CIPHERCONTEXT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=50,
-  serialized_end=271,
+  serialized_start=56,
+  serialized_end=292,
 )
 
 
@@ -191,8 +191,8 @@ _CIPHERBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=273,
-  serialized_end=378,
+  serialized_start=294,
+  serialized_end=399,
 )
 
 
@@ -250,11 +250,11 @@ _ENCRYPTIONBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=380,
-  serialized_end=506,
+  serialized_start=401,
+  serialized_end=527,
 )
 
-_CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = common_dot_common__pb2._HASHALGORITHM
+_CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = evecommon_dot_evecommon__pb2._HASHALGORITHM
 _CIPHERCONTEXT.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEME
 _CIPHERCONTEXT.fields_by_name['encryptionScheme'].enum_type = _ENCRYPTIONSCHEME
 DESCRIPTOR.message_types_by_name['CipherContext'] = _CIPHERCONTEXT

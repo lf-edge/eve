@@ -9,13 +9,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"fmt"
-	"io/ioutil"
 
 	"github.com/golang/protobuf/proto"
 	zcert "github.com/lf-edge/eve/api/go/certs"
-	zcommon "github.com/lf-edge/eve/api/go/common"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -98,77 +94,6 @@ func lookupControllerCert(ctx *getconfigContext,
 	status := item.(types.ControllerCert)
 	log.Infof("lookupControllerCert(%s) Done\n", key)
 	return &status
-}
-
-// fetch controller cert
-func getControllerCert(ctx *getconfigContext,
-	suppliedHash []byte) ([]byte, error) {
-
-	hexStr := hex.EncodeToString(suppliedHash)
-	log.Infof("%v, get controller cert\n", hexStr)
-	items := ctx.pubControllerCert.GetAll()
-	for _, item := range items {
-		status := item.(types.ControllerCert)
-		if bytes.Equal(status.CertHash, suppliedHash) {
-			if status.HasError() {
-				log.Errorf("get controller cert failed because cert has following error: %v",
-					status.Error)
-				return status.Cert, errors.New(status.Error)
-			}
-			log.Infof("%v, controller certificate found\n", hexStr)
-			return status.Cert, nil
-		}
-	}
-	// TBD:XXX, schedule a cert API Get Call for
-	// the suppliedHash
-	errStr := fmt.Sprintf("%s, controller certificate not found", hexStr)
-	return []byte{}, errors.New(errStr)
-}
-
-// for device cert
-func getDeviceCert(hashScheme zcommon.HashAlgorithm,
-	suppliedHash []byte) ([]byte, error) {
-
-	hexStr := hex.EncodeToString(suppliedHash)
-	log.Infof("%v, get device cert\n", hexStr)
-
-	// TBD:XXX as of now, only one
-	certBytes, err := ioutil.ReadFile(types.DeviceCertName)
-	if err != nil {
-		errStr := fmt.Sprintf("get device cert failed while reading device certificate: %v",
-			err)
-		log.Errorf(errStr)
-		return []byte{}, errors.New(errStr)
-	}
-	if computeAndMatchHash(certBytes, suppliedHash, hashScheme) {
-		log.Infof("%v, device cert found", hexStr)
-		return certBytes, nil
-	}
-	errStr := fmt.Sprintf("%s, device certificate not found", hexStr)
-	return []byte{}, errors.New(errStr)
-}
-
-// hash function
-func computeAndMatchHash(cert []byte, suppliedHash []byte,
-	hashScheme zcommon.HashAlgorithm) bool {
-
-	switch hashScheme {
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_INVALID:
-		return false
-
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash[:16])
-
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash)
-	}
-	return false
 }
 
 // pubsub functions

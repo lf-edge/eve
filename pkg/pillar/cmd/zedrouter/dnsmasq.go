@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -372,8 +373,51 @@ func startDnsmasq(bridgeName string) {
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
+	pidfile := fmt.Sprintf("/var/run/dnsmasq.%s.pid", bridgeName)
+	pidByte, err := ioutil.ReadFile(pidfile)
+	if err != nil {
+		log.Errorf("stopDnsmasq: pid file read error %v\n", err)
+		return
+	}
+	pidStr := string(pidByte)
+	pidStr = strings.TrimSuffix(pidStr, "\n")
+	pidStr = strings.TrimSpace(pidStr)
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		log.Errorf("stopDnsmasq: pid convert error %v\n", err)
+		return
+	}
+
 	cfgFilename := dnsmasqConfigFile(bridgeName)
 	pkillUserArgs("root", cfgFilename, printOnError)
+
+	startCheckTime := time.Now()
+	// check and wait until the process is gone or maximum of 60 seconds is reached
+	for {
+		p, err := os.FindProcess(pid)
+		if err == nil {
+			err = p.Signal(syscall.Signal(0))
+			if err != nil {
+				log.Infof("stopDnsmasq: kill process done for %d\n", pid)
+				break
+			} else {
+				log.Infof("stopDnsmasq: wait for %d to finish\n", pid)
+			}
+			if time.Since(startCheckTime).Seconds() > 60 {
+				log.Errorf("stopDnsmasq: kill dnsmasq on %s pid %d not finish in 60 seconds\n", bridgeName, pid)
+				break
+			}
+			time.Sleep(1 * time.Second)
+		} else {
+			log.Infof("stopDnsmasq: find dnsmasq process %s error %v\n", pidStr, err)
+			break
+		}
+	}
+
+	err = os.Remove(pidfile)
+	if err != nil && printOnError {
+		log.Errorf("stopDnsmasq: remove pidfile %s error %v", pidfile, err)
+	}
 
 	if delConfiglet {
 		deleteDnsmasqConfiglet(bridgeName)

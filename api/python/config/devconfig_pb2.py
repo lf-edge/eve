@@ -27,8 +27,8 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/devconfig.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x16\x63onfig/devconfig.proto\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/appconfig.proto\x1a\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x15\x63onfig/devmodel.proto\x1a\x11\x63onfig/mesh.proto\x1a\x16\x63onfig/netconfig.proto\x1a\x14\x63onfig/netinst.proto\x1a\x14\x63onfig/storage.proto\"\xae\x04\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfig\x12\x1d\n\x06reboot\x18\t \x01(\x0b\x32\r.DeviceOpsCmd\x12\x1d\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32\r.DeviceOpsCmd\x12 \n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32\x0b.ConfigItem\x12)\n\x11systemAdapterList\x18\x0c \x03(\x0b\x32\x0e.SystemAdapter\x12!\n\x0c\x64\x65viceIoList\x18\r \x03(\x0b\x32\x0b.PhysicalIO\x12\x14\n\x0cmanufacturer\x18\x0e \x01(\t\x12\x13\n\x0bproductName\x18\x0f \x01(\t\x12\x30\n\x10networkInstances\x18\x10 \x03(\x0b\x32\x16.NetworkInstanceConfig\x12\x12\n\nenterprise\x18\x11 \x01(\t\x12\x0c\n\x04name\x18\x12 \x01(\t\x12&\n\x0e\x63ipherContexts\x18\x13 \x03(\x0b\x32\x0e.CipherContext\"#\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\"D\n\x0e\x43onfigResponse\x12\x1e\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x0e.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
+  serialized_pb=_b('\n\x16\x63onfig/devconfig.proto\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/appconfig.proto\x1a\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x15\x63onfig/devmodel.proto\x1a\x11\x63onfig/mesh.proto\x1a\x16\x63onfig/netconfig.proto\x1a\x14\x63onfig/netinst.proto\x1a\x14\x63onfig/storage.proto\"\xeb\x04\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfig\x12\x1d\n\x06reboot\x18\t \x01(\x0b\x32\r.DeviceOpsCmd\x12\x1d\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32\r.DeviceOpsCmd\x12 \n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32\x0b.ConfigItem\x12)\n\x11systemAdapterList\x18\x0c \x03(\x0b\x32\x0e.SystemAdapter\x12!\n\x0c\x64\x65viceIoList\x18\r \x03(\x0b\x32\x0b.PhysicalIO\x12\x14\n\x0cmanufacturer\x18\x0e \x01(\t\x12\x13\n\x0bproductName\x18\x0f \x01(\t\x12\x30\n\x10networkInstances\x18\x10 \x03(\x0b\x32\x16.NetworkInstanceConfig\x12\x12\n\nenterprise\x18\x11 \x01(\t\x12\x0c\n\x04name\x18\x12 \x01(\t\x12&\n\x0e\x63ipherContexts\x18\x13 \x03(\x0b\x32\x0e.CipherContext\x12!\n\x0b\x63ontentInfo\x18\x14 \x03(\x0b\x32\x0c.ContentTree\x12\x18\n\x07volumes\x18\x15 \x03(\x0b\x32\x07.Volume\"#\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\"D\n\x0e\x43onfigResponse\x12\x1e\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x0e.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_appconfig__pb2.DESCRIPTOR,config_dot_baseosconfig__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_devmodel__pb2.DESCRIPTOR,config_dot_mesh__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,config_dot_netinst__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,])
 
@@ -161,6 +161,20 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='contentInfo', full_name='EdgeDevConfig.contentInfo', index=17,
+      number=20, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='volumes', full_name='EdgeDevConfig.volumes', index=18,
+      number=21, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -174,7 +188,7 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=238,
-  serialized_end=796,
+  serialized_end=857,
 )
 
 
@@ -204,8 +218,8 @@ _CONFIGREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=798,
-  serialized_end=833,
+  serialized_start=859,
+  serialized_end=894,
 )
 
 
@@ -242,8 +256,8 @@ _CONFIGRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=835,
-  serialized_end=903,
+  serialized_start=896,
+  serialized_end=964,
 )
 
 _EDGEDEVCONFIG.fields_by_name['id'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION
@@ -259,6 +273,8 @@ _EDGEDEVCONFIG.fields_by_name['systemAdapterList'].message_type = config_dot_dev
 _EDGEDEVCONFIG.fields_by_name['deviceIoList'].message_type = config_dot_devmodel__pb2._PHYSICALIO
 _EDGEDEVCONFIG.fields_by_name['networkInstances'].message_type = config_dot_netinst__pb2._NETWORKINSTANCECONFIG
 _EDGEDEVCONFIG.fields_by_name['cipherContexts'].message_type = config_dot_acipherinfo__pb2._CIPHERCONTEXT
+_EDGEDEVCONFIG.fields_by_name['contentInfo'].message_type = config_dot_storage__pb2._CONTENTTREE
+_EDGEDEVCONFIG.fields_by_name['volumes'].message_type = config_dot_storage__pb2._VOLUME
 _CONFIGRESPONSE.fields_by_name['config'].message_type = _EDGEDEVCONFIG
 DESCRIPTOR.message_types_by_name['EdgeDevConfig'] = _EDGEDEVCONFIG
 DESCRIPTOR.message_types_by_name['ConfigRequest'] = _CONFIGREQUEST

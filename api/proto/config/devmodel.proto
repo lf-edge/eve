@@ -3,10 +3,10 @@
 
 syntax = "proto3";
 
-import "common/devmodelcommon.proto";
+import "evecommon/devmodelcommon.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/config";
-option java_package = "com.zededa.cloud.uservice.proto";
+option java_package = "org.lfedge.eve.config";
 
 //  PhysicalIO
 //     Constitutes set of parameters that define the physical devices.
@@ -119,7 +119,7 @@ message PhyIOUsagePolicy {
 //    it can be further configured to either provide IP connectivity or
 //    directly be given to workloads
 message PhysicalIO {
-  common.PhyIoType ptype           = 1;
+  org.lfedge.eve.common.PhyIoType ptype           = 1;
 
   // physical label typically printed on box.
   // Example Eth0, Eth1, Wifi0, ComA, ComB
@@ -160,7 +160,7 @@ message PhysicalIO {
 
   // usage - indicates the role of adapter ( mgmt / blocked / app-direct
   //    etc. )
-  common.PhyIoMemberUsage usage    = 6;
+  org.lfedge.eve.common.PhyIoMemberUsage usage    = 6;
 
   // usagePolicy - Policy Object used to further refine the usage.
   // For example, specify if this should be only used as fallback?

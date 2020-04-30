@@ -3,12 +3,12 @@
 
 syntax = "proto3";
 
-package common;
+package org.lfedge.eve.common;
 
-option go_package  = "github.com/lf-edge/eve/api/go/common";
-option java_package = "com.zededa.cloud.uservice.proto.common";
+option go_package  = "github.com/lf-edge/eve/api/go/evecommon";
+option java_package = "org.lfedge.eve.common";
 option java_multiple_files = true;
-option java_outer_classname = "Common";
+option java_outer_classname = "Evecommon";
 
 enum HashAlgorithm {
   HASH_ALGORITHM_INVALID = 0;

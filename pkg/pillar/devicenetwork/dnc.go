@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
@@ -39,6 +40,7 @@ type DPCPending struct {
 }
 
 type DeviceNetworkContext struct {
+	cipher.DecryptCipherContext
 	UsableAddressCount      int
 	DevicePortConfig        *types.DevicePortConfig // Currently in use
 	DevicePortConfigList    *types.DevicePortConfigList

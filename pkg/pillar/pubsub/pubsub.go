@@ -105,6 +105,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 		SynchronizedHandler: options.SyncHandler,
 		MaxProcessTimeWarn:  options.WarningTime,
 		MaxProcessTimeError: options.ErrorTime,
+		Persistent:          options.Persistent,
 	}
 	name := sub.nameString()
 	global := options.AgentName == ""

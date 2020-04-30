@@ -349,7 +349,7 @@ done
 sgdisk -h$(( PART_OFFSET + 1 )) "$IMGFILE"
 
 # if we happen to be building an x86 image - deploy legacy GRUB into the GPT gap
-if [ -e /efifs/EFI/BOOT/BOOTX64.EFI ]; then
+if [ -e /efifs/EFI/BOOT/BOOT.pc ]; then
    deploy_legacy_grub
 fi
 

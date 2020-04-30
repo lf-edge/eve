@@ -6,7 +6,7 @@ package types
 import (
 	"testing"
 
-	zcommon "github.com/lf-edge/eve/api/go/common"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/stretchr/testify/assert"
 )
 

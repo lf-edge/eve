@@ -3,6 +3,7 @@ package downloader
 import (
 	"sync"
 
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
@@ -10,6 +11,7 @@ import (
 )
 
 type downloaderContext struct {
+	cipher.DecryptCipherContext
 	dCtx                    *zedUpload.DronaCtx
 	subDeviceNetworkStatus  pubsub.Subscription
 	subAppImgConfig         pubsub.Subscription
@@ -33,6 +35,38 @@ type downloaderContext struct {
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
+	// Look for controller certs which will be used for decryption
+	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		TopicImpl:   types.ControllerCert{},
+		Activate:    false,
+		Ctx:         ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Persistent:  true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.SubControllerCert = subControllerCert
+	subControllerCert.Activate()
+
+	// Look for cipher context which will be used for decryption
+	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		TopicImpl:   types.CipherContext{},
+		Activate:    false,
+		Ctx:         ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Persistent:  true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.SubCipherContext = subCipherContext
+	subCipherContext.Activate()
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleGlobalConfigModify,

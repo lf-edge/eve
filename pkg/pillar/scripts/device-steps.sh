@@ -472,7 +472,7 @@ if [ $MEASURE = 1 ]; then
     echo "$(date -Ins -u) Measurement done"
 fi
 
-echo "$(date -Ins -u) Done starting EVE version: $(cat $BINDIR/versioninfo)"
+echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
 
 # If there is a USB stick inserted and debug.enable.usb is set, we periodically
 # check for any usb.json with DevicePortConfig, deposit our identity,

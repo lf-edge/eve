@@ -12,17 +12,17 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from common import devmodelcommon_pb2 as common_dot_devmodelcommon__pb2
+from evecommon import devmodelcommon_pb2 as evecommon_dot_devmodelcommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/devcommon.proto',
   package='',
   syntax='proto3',
-  serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x16\x63onfig/devcommon.proto\x1a\x1b\x63ommon/devmodelcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"(\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"8\n\x07\x41\x64\x61pter\x12\x1f\n\x04type\x18\x01 \x01(\x0e\x32\x11.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
+  serialized_pb=_b('\n\x16\x63onfig/devcommon.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"(\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"G\n\x07\x41\x64\x61pter\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
-  dependencies=[common_dot_devmodelcommon__pb2.DESCRIPTOR,])
+  dependencies=[evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
 
 
@@ -60,8 +60,8 @@ _UUIDANDVERSION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=55,
-  serialized_end=102,
+  serialized_start=58,
+  serialized_end=105,
 )
 
 
@@ -105,8 +105,8 @@ _DEVICEOPSCMD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=104,
-  serialized_end=174,
+  serialized_start=107,
+  serialized_end=177,
 )
 
 
@@ -143,8 +143,8 @@ _CONFIGITEM = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=176,
-  serialized_end=216,
+  serialized_start=179,
+  serialized_end=219,
 )
 
 
@@ -181,11 +181,11 @@ _ADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=218,
-  serialized_end=274,
+  serialized_start=221,
+  serialized_end=292,
 )
 
-_ADAPTER.fields_by_name['type'].enum_type = common_dot_devmodelcommon__pb2._PHYIOTYPE
+_ADAPTER.fields_by_name['type'].enum_type = evecommon_dot_devmodelcommon__pb2._PHYIOTYPE
 DESCRIPTOR.message_types_by_name['UUIDandVersion'] = _UUIDANDVERSION
 DESCRIPTOR.message_types_by_name['DeviceOpsCmd'] = _DEVICEOPSCMD
 DESCRIPTOR.message_types_by_name['ConfigItem'] = _CONFIGITEM

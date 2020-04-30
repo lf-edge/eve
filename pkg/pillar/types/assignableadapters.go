@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
-	zcommon "github.com/lf-edge/eve/api/go/common"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )

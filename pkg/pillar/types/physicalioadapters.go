@@ -7,7 +7,7 @@ package types
 //  These are translated to AssignableAdapters
 
 import (
-	zcommon "github.com/lf-edge/eve/api/go/common"
+	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 )
 
 // PhysicalAddress - Structure that represents various attributes related

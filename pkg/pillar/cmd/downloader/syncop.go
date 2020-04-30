@@ -10,8 +10,8 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -328,8 +328,8 @@ func sourceFailureError(ip, ifname, url string, err error) {
 func getDatastoreCredential(ctx *downloaderContext,
 	dst types.DatastoreConfig) (types.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
-		status, decBlock, err := utils.GetCipherCredentials(agentName,
-			dst.CipherBlockStatus)
+		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
+			agentName, dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, datastore config cipherblock decryption unsuccessful, falling back to cleartext: %v",
