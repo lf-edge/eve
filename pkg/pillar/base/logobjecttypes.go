@@ -15,12 +15,13 @@ type LogObjectType string
 // The following is NOT an extensive list.
 // Intent is to create a reference list for engineers to get an idea of its usage.
 const (
-	UnknownLogType         LogObjectType = ""
-	LogType                LogObjectType = "log"
-	ImageLogType           LogObjectType = "image"
-	RelationLogType        LogObjectType = "relation"
-	AppInstanceLogType     LogObjectType = "app_instance"
-	NetworkInstanceLogType LogObjectType = "network_instance"
+	UnknownLogType           LogObjectType = ""
+	LogType                  LogObjectType = "log"
+	ImageLogType             LogObjectType = "image"
+	RelationLogType          LogObjectType = "relation"
+	NetworkInstanceLogType   LogObjectType = "network_instance"
+	AppInstanceStatusLogType LogObjectType = "app_instance_status"
+	AppInstanceConfigLogType LogObjectType = "app_instance_config"
 )
 
 // LogObject : Holds all key value pairs to be logged later.
@@ -33,7 +34,7 @@ var logObjectMap = make(map[string]*LogObject)
 
 // LoggableObject :
 type LoggableObject interface {
-	Key() string
+	LogKey() string
 	LogCreate()
 	LogModify(old interface{})
 	LogDelete()
