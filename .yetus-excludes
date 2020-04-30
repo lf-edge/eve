@@ -1,3 +1,4 @@
+^tests/integration/config.yml
 ^pkg/mkimage-raw-efi/initramfs-init
 ^pkg/mkimage-raw-efi/nlplug-findfs.c
 ^pkg/fw/
