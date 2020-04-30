@@ -66,11 +66,13 @@ func TestWork(t *testing.T) {
 				assert.GreaterOrEqual(t, int64(took), int64(minDuration))
 				assert.Less(t, int64(took), int64(maxDuration))
 			}
-
 			if d.generateError {
 				assert.NotEqual(t, nil, res.Error)
 				assert.Equal(t, timestamp, res.ErrorTime)
 			}
+			dout := res.Description.(dummyDescription)
+			assert.Equal(t, d.generateOutput, dout.generateOutput)
+			assert.Equal(t, true, dout.done)
 		})
 	}
 	assert.Equal(t, 0, worker.NumPending())
@@ -186,6 +188,7 @@ type dummyDescription struct {
 	sleepTime      int
 	generateOutput string
 	generateError  bool
+	done           bool
 }
 
 func dummyWorker(ctxPtr interface{}, w Work) WorkResult {
@@ -206,5 +209,7 @@ func dummyWorker(ctxPtr interface{}, w Work) WorkResult {
 		result.Error = errors.New("generated error")
 		result.ErrorTime = timestamp
 	}
+	d.done = true
+	result.Description = d
 	return result
 }

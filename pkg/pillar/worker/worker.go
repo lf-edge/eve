@@ -32,19 +32,21 @@ type Work struct {
 // WorkResult is output from doing Work
 // The Key matches the key in the Work so that the user can match them
 type WorkResult struct {
-	Key       string
-	Error     error
-	ErrorTime time.Time
-	Output    string
+	Key         string
+	Error       error
+	ErrorTime   time.Time
+	Output      string
+	Description interface{}
 }
 
 // Private to ensure that callers use the Process function and count the
 // number of pending
 type privateResult struct {
-	key       string
-	error     error
-	errorTime time.Time
-	output    string
+	key         string
+	error       error
+	errorTime   time.Time
+	output      string
+	description interface{}
 }
 
 // WorkFunction is the user's function to do the actual work
@@ -76,10 +78,11 @@ func (workerPtr *Worker) processWork(ctx interface{}, fn WorkFunction, requestCh
 	for w := range requestChan {
 		result := fn(ctx, w)
 		priv := privateResult{
-			key:       result.Key,
-			error:     result.Error,
-			errorTime: result.ErrorTime,
-			output:    result.Output,
+			key:         result.Key,
+			error:       result.Error,
+			errorTime:   result.ErrorTime,
+			output:      result.Output,
+			description: result.Description,
 		}
 		resultChan <- priv
 	}
@@ -98,10 +101,11 @@ func (workerPtr *Worker) MsgChan() <-chan privateResult { //revive:disable
 func (workerPtr *Worker) Process(priv privateResult) WorkResult {
 	workerPtr.resultCount++
 	result := WorkResult{
-		Key:       priv.key,
-		Error:     priv.error,
-		ErrorTime: priv.errorTime,
-		Output:    priv.output,
+		Key:         priv.key,
+		Error:       priv.error,
+		ErrorTime:   priv.errorTime,
+		Output:      priv.output,
+		Description: priv.description,
 	}
 	return result
 }
