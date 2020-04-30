@@ -12,7 +12,7 @@ require (
 	github.com/containerd/continuity v0.0.0-20200228182428-0f16d7a0959c // indirect
 	github.com/containerd/fifo v0.0.0-20191213151349-ff969a566b00 // indirect
 	github.com/containerd/ttrpc v0.0.0-20200121165050-0be804eadb15 // indirect
-	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737 // indirect
+	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737
 	github.com/coreos/ioprogress v0.0.0-20151023204047-4637e494fd9b // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
