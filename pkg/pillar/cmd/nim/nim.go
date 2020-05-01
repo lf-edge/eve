@@ -179,7 +179,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	nimCtx.SubCipherContext = subCipherContext
-	subCipherContext.Activate()
+	// move subCipherContext.Activate() to later and wait for zedagent publish that
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -539,7 +539,8 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("AA initialized")
 
 	subControllerCert.Activate()
-	log.Infof("nim: done activate ControllerCert sub\n")
+	subCipherContext.Activate()
+	log.Infof("nim: done activate ControllerCert and CipherContext sub\n")
 
 	for {
 		select {
