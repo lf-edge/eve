@@ -17,3 +17,9 @@ shift
 
 : > "$IMAGE"
 (tar -chf - "$@") | docker run -i -e ZARCH -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img
+
+if [ ! -s "$IMAGE" ]; then
+   echo "$IMAGE was not written."
+   rm "$IMAGE"
+   exit 1
+fi
