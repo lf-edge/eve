@@ -12,7 +12,6 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub/dummydriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 )
@@ -187,7 +186,7 @@ func TestHandleWorkDestroy(t *testing.T) {
 
 func initVolumeCtx(t *testing.T) volumemgrContext {
 	ctx := volumemgrContext{}
-	ps := pubsub.New(&dummydriver.DummyDriver{})
+	ps := pubsub.New(&pubsub.EmptyDriver{})
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
