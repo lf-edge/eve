@@ -163,7 +163,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	nimCtx.SubControllerCert = subControllerCert
-	// move subControllerCert.Activate() to later and wait for zedagent publish that
+	subControllerCert.Activate()
 
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -179,7 +179,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	nimCtx.SubCipherContext = subCipherContext
-	// move subCipherContext.Activate() to later and wait for zedagent publish that
+	subCipherContext.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -537,10 +537,6 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("AA initialized")
-
-	subControllerCert.Activate()
-	subCipherContext.Activate()
-	log.Infof("nim: done activate ControllerCert and CipherContext sub\n")
 
 	for {
 		select {
