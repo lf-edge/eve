@@ -9,19 +9,45 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// LogObjectType : Predefined log object types
-type LogObjectType string
+// ObjectType : Predefined object types
+type ObjectType string
 
 // The following is NOT an extensive list.
 // Intent is to create a reference list for engineers to get an idea of its usage.
 const (
+	UnknownType  ObjectType = ""
+	LogType      ObjectType = "log"
+	RelationType ObjectType = "relation"
+)
+
+// LogObjectType :
+type LogObjectType string
+
+const (
+	// UnknownLogType : Invalid log type
 	UnknownLogType           LogObjectType = ""
-	LogType                  LogObjectType = "log"
+	// ImageLogType :
 	ImageLogType             LogObjectType = "image"
-	RelationLogType          LogObjectType = "relation"
+	// NetworkInstanceLogType :
 	NetworkInstanceLogType   LogObjectType = "network_instance"
+	// AppInstanceStatusLogType :
 	AppInstanceStatusLogType LogObjectType = "app_instance_status"
+	// AppInstanceConfigLogType :
 	AppInstanceConfigLogType LogObjectType = "app_instance_config"
+	// VolumeLogType :
+	VolumeLogType            LogObjectType = "volume_type"
+)
+
+// RelationObjectType :
+type RelationObjectType string
+
+const (
+	// UnknownRelationType : Invalid relation type
+	UnknownRelationType RelationObjectType = ""
+	// AddRelationType :
+	AddRelationType     RelationObjectType = "add_relation"
+	// DeleteRelationType :
+	DeleteRelationType  RelationObjectType = "delete_relation"
 )
 
 // LogObject : Holds all key value pairs to be logged later.
@@ -72,12 +98,44 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 		log.Fatal("InitLogObject: LogObject cannot be nil")
 	}
 	fields := make(map[string]interface{})
+	fields["main_type"] = LogType
 	fields["obj_type"] = objType
 	fields["obj_name"] = objName
 	fields["obj_uuid"] = objUUID.String()
 	object.Initialized = true
 	object.Fields = fields
 	logObjectMap[key] = object
+}
+
+// NewRelationObject : Creates a relation object.
+// Supposed to be ephemeral and not retained for long.
+// Create a new object everytime a new relation needs to be expressed.
+// relationObjectType -> add a relation or delete an existing relation
+// fromObjType        -> Type of the source point of relation
+// fromObjName        -> Name of the source point of relation
+// toObjType          -> Type of the destination point of relation
+// toObjName          -> Name of the destination point of relation
+func NewRelationObject(relationObjectType RelationObjectType,
+	fromObjType LogObjectType, fromObjNameOrKey string,
+	toObjType LogObjectType, toObjNameOrKey string) *LogObject {
+
+	object := new(LogObject)
+	if object == nil {
+		log.Fatal("Relation object allocation failed")
+	}
+
+	fields := make(map[string]interface{})
+	fields["main_type"] = RelationType
+	fields["relation_type"] = relationObjectType
+	fields["from_obj_type"] = fromObjType
+	fields["from_obj_name_or_key"] = fromObjNameOrKey
+	fields["to_obj_type"] = toObjType
+	fields["to_obj_name_or_key"] = toObjNameOrKey
+
+	object.Initialized = true
+	object.Fields = fields
+
+	return object
 }
 
 // LookupLogObject :
