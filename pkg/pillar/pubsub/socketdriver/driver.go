@@ -159,7 +159,9 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		subFromDir = true
 		dirName = s.pubDirName(name)
 	} else if persistent {
-		subFromDir = true
+		// We do the initial Load from the directory if it
+		// exists, but subsequent updates come over IPC
+		subFromDir = false
 		dirName = s.persistentDirName(name)
 	} else {
 		subFromDir = subscribeFromDir
