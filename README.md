@@ -133,8 +133,21 @@ make run
 
 > **_NOTE:_**  The default QEMU configuration needs 4GB of memory available.
 > If you get an error message about being unable to allocate memory, try freeing up some RAM.
-> If you can't free up 4GB, you can reduce the memory allocation in the `Makefile` from 4096 (4GB) to 2048 (2GB).
-> Running QEMU with less than 2GB of memory is not recommended.
+> If you can't free up 4GB, you can reduce the memory allocation to qemu from 4096 (4GB) to 2048 (2GB).
+> Running QEMU with less than 2GB of memory is not recommended. To run with a different amount of
+> memory, provide the desired amount in KB as:
+
+```console
+make run QEMU_MEMORY=2048
+```
+
+> **_NOTE:_** `make run` launches qemu with the `-bios` option. On some systems, this does not work,
+> and you need to run it with the `-pflash` argument (or its equivalent properly configured `-drive`
+> instead). To enable pflash, run:
+
+```console
+make run PFLASH=true
+```
 
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
