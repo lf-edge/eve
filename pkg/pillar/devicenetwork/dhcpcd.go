@@ -7,6 +7,7 @@
 package devicenetwork
 
 import (
+	"errors"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -19,6 +20,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+)
+
+const (
+	dhcpcdWaitTimeInSecs = 60
 )
 
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
@@ -223,9 +228,19 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientInactivate: release failed for %s\n",
 				nuc.IfName)
 		}
+		waitTime := 0
 		for dhcpcdExists(nuc.IfName) {
-			log.Warnf("dhcpcd %s still running", nuc.IfName)
-			time.Sleep(10 * time.Second)
+			if waitTime >= dhcpcdWaitTimeInSecs {
+				killed := dhcpcdKill(nuc.IfName)
+				if !killed {
+					log.Errorf("doDhcpClientInactivate: dhcpcd(%s) could not be killed - bailing", nuc.IfName)
+				}
+				break
+			} else {
+				log.Warnf("dhcpcd %s still running", nuc.IfName)
+				time.Sleep(10 * time.Second)
+				waitTime += 10
+			}
 		}
 		log.Infof("dhcpcd %s gone", nuc.IfName)
 	default:
@@ -259,6 +274,43 @@ func dhcpcdCmd(op string, extras []string, ifname string, background bool) bool 
 			log.Errorln(errStr)
 			return false
 		}
+	}
+	return true
+}
+
+func getDhcpcdPID(ifname string) (int, error) {
+	// XXX should we use dhcpcd -P <ifname> to get name of pidfile? Hardcoded path here
+	pidfileName := fmt.Sprintf("/run/dhcpcd-%s.pid", ifname)
+	val, _ := statAndRead(pidfileName)
+	if val == "" {
+		errStr := fmt.Sprintf("getDhcpcd(%s) pid file(%s) does not exist", ifname, pidfileName)
+		return 0, errors.New(errStr)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(val))
+	if err != nil {
+		log.Errorf("Atoi of %s failed %s; ignored\n", val, err)
+		return 0, err
+	}
+	return pid, nil
+}
+
+func dhcpcdKill(ifname string) bool {
+	pid, err := getDhcpcdPID(ifname)
+	if err != nil {
+		log.Errorf("dhcpcdKill: Could not find pid of dhcpcd process for port %s: %s", ifname, err)
+		return false
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		log.Errorf("dhcpcdKill(%s) pid %d not found: %s", ifname, pid, err)
+		return false
+	}
+	// Note: p.Kill() does not wait for the process to exit/terminate
+	err = p.Kill()
+	if err != nil {
+		log.Errorf("dhcpcdKill(%s) os.Kill failed on pid %d with error: %s",
+			ifname, pid, err)
+		return false
 	}
 	return true
 }
