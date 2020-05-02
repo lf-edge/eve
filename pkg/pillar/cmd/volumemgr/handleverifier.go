@@ -64,17 +64,6 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		m.RefCount += 1
 		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s\n",
 			m.RefCount, status.BlobSha256)
-		// XXX this doesn't appear to happen
-		if m.IsContainer != status.DownloadOrigin.IsContainer {
-			log.Infof("MaybeAddVerifyImageConfig: change IsContainer to %t for %s",
-				status.DownloadOrigin.IsContainer, status.VolumeID)
-		}
-		m.IsContainer = status.DownloadOrigin.IsContainer
-		if m.ImageSha256 != status.BlobSha256 {
-			log.Infof("MaybeAddVerifyImageConfig: change ImageSha256 to %s for %s",
-				status.BlobSha256, status.VolumeID)
-			m.ImageSha256 = status.BlobSha256
-		}
 		publishVerifyImageConfig(ctx, status.ObjType, m)
 	} else {
 		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",

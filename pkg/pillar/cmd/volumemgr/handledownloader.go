@@ -15,10 +15,6 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 	m := lookupDownloaderConfig(ctx, status.ObjType, status.BlobSha256)
 	if m != nil {
 		m.RefCount += 1
-		if m.IsContainer != status.DownloadOrigin.IsContainer {
-			log.Infof("change IsContainer to %t for %s",
-				status.DownloadOrigin.IsContainer, status.VolumeID)
-		}
 		log.Infof("downloader config exists for %s to refcount %d\n",
 			status.VolumeID, m.RefCount)
 		publishDownloaderConfig(ctx, status.ObjType, m)

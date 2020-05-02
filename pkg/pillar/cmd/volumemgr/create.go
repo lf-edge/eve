@@ -84,14 +84,14 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus, src
 	created := false
 	filelocation := containerd.GetContainerPath(status.AppInstID.String())
 
-	ociFilename, err := utils.VerifiedImageFileLocation(status.ContainerSha256)
+	ociFilename, err := utils.VerifiedImageFileLocation(status.BlobSha256)
 	if err != nil {
 		errStr := fmt.Sprintf("failed to get Image File Location. err: %+s",
 			err)
 		log.Error(errStr)
 		return created, filelocation, errors.New(errStr)
 	}
-	log.Infof("ociFilename %s sha %s", ociFilename, status.ContainerSha256)
+	log.Infof("ociFilename %s sha %s", ociFilename, status.BlobSha256)
 	created = true
 	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)

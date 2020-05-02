@@ -162,9 +162,6 @@ type VolumeStatus struct {
 	VolumeID     uuid.UUID
 	PurgeCounter uint32
 
-	// XXX temporary hack for containers until we get a ResolveConfig
-	ContainerSha256 string
-
 	DisplayName string // User-friendly name for logging
 	ObjType     string
 

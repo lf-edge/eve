@@ -29,20 +29,6 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		log.Infof("Found %s based on VolumeID %s sha %s",
 			status.DisplayName, status.VolumeID, status.BlobSha256)
 
-		// XXX should not happen once ResolveConfig in place
-		// XXX messes up container since end up with different object
-		// XXX temporary container field HACK
-		// XXX create logic...
-		if status.ContainerSha256 != status.BlobSha256 {
-			status.ContainerSha256 = status.BlobSha256
-		}
-		// XXX compare logic ...
-		if status.ContainerSha256 != vs.ImageSha256 {
-			log.Infof("updating image sha from %s to %s",
-				status.ContainerSha256, vs.ImageSha256)
-			status.ContainerSha256 = vs.ImageSha256
-			changed = true
-		}
 		if status.State != vs.State {
 			status.State = vs.State
 			changed = true
