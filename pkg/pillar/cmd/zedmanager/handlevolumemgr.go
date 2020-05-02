@@ -62,7 +62,7 @@ func AddOrRefcountVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 		publishVolumeConfig(ctx, &n)
 	}
 	base.NewRelationObject(base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.VolumeLogType, key).Infof("App instance to volume relation ADD")
+		base.VolumeConfigLogType, key).Infof("App instance to volume relation.")
 	log.Infof("AddOrRefcountVolumeConfig done for %s", key)
 }
 
@@ -92,7 +92,7 @@ func MaybeRemoveVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 		publishVolumeConfig(ctx, m)
 	}
 	base.NewRelationObject(base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.VolumeLogType, key).Infof("App instance to volume relation DELETE")
+		base.VolumeConfigLogType, key).Infof("App instance to volume relation.")
 }
 
 func lookupVolumeConfig(ctx *zedmanagerContext, key string) *types.VolumeConfig {

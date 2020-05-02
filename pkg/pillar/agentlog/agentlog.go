@@ -226,7 +226,7 @@ func DiscardOtherRebootReason() {
 		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 	}
 	_, err := os.Stat(stackFilename)
-	if err != nil {
+	if err == nil {
 		if err := os.Remove(stackFilename); err != nil {
 			log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 		}
@@ -240,7 +240,7 @@ func DiscardCommonRebootReason() {
 		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 	}
 	_, err := os.Stat(stackFilename)
-	if err != nil {
+	if err == nil {
 		if err := os.Remove(stackFilename); err != nil {
 			log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 		}

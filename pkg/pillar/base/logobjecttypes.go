@@ -9,20 +9,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ObjectType : Predefined object types
-type ObjectType string
+// LogEventType : Predefined object types
+type LogEventType string
 
-// The following is NOT an extensive list.
-// Intent is to create a reference list for engineers to get an idea of its usage.
 const (
-	UnknownType  ObjectType = ""
-	LogType      ObjectType = "log"
-	RelationType ObjectType = "relation"
+	// UnknownType : Invalid event typ
+	UnknownType LogEventType = ""
+	// LogObjectEventType : Used for logging object state when a change happens
+	LogObjectEventType LogEventType = "log"
+	// LogRelationEventType : Used for logging the relations between created objects
+	LogRelationEventType LogEventType = "relation"
 )
 
 // LogObjectType :
 type LogObjectType string
 
+// The following is NOT an extensive list.
+// Intent is to create a reference list for engineers to get an idea of its usage.
 const (
 	// UnknownLogType : Invalid log type
 	UnknownLogType LogObjectType = ""
@@ -34,8 +37,8 @@ const (
 	AppInstanceStatusLogType LogObjectType = "app_instance_status"
 	// AppInstanceConfigLogType :
 	AppInstanceConfigLogType LogObjectType = "app_instance_config"
-	// VolumeLogType :
-	VolumeLogType LogObjectType = "volume_type"
+	// VolumeConfigLogType :
+	VolumeConfigLogType LogObjectType = "volume_config"
 )
 
 // RelationObjectType :
@@ -67,9 +70,9 @@ type LoggableObject interface {
 }
 
 // NewLogObject :
-// objType -> [MANDATORY] log, action, relation, app_instance, image etc
+// objType -> [MANDATORY] volume configuration, app configuration, app status, image etc
 // objName -> App instance name, name of file being downloaded etc
-// objUUID -> UUID of the object if present (App instance UUID) or UUID of parent object
+// objUUID -> UUID of the object if present (App instance UUID) or Zero/uninitialized UUID if not present
 // key     -> [MANDATORY] Key used for storing internal data. This should be the same Key your LoggableObject.Key()
 // would return. LogObject craeted here and the corresponding LoggableObject are linked using this key.
 // objType and objName are mandatory parameters
@@ -98,10 +101,12 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 		log.Fatal("InitLogObject: LogObject cannot be nil")
 	}
 	fields := make(map[string]interface{})
-	fields["main_type"] = LogType
+	fields["log_event_type"] = LogObjectEventType
 	fields["obj_type"] = objType
 	fields["obj_name"] = objName
-	fields["obj_uuid"] = objUUID.String()
+	if !uuid.Equal(objUUID, uuid.UUID{}) {
+		fields["obj_uuid"] = objUUID.String()
+	}
 	object.Initialized = true
 	object.Fields = fields
 	logObjectMap[key] = object
@@ -125,7 +130,7 @@ func NewRelationObject(relationObjectType RelationObjectType,
 	}
 
 	fields := make(map[string]interface{})
-	fields["main_type"] = RelationType
+	fields["log_event_type"] = LogRelationEventType
 	fields["relation_type"] = relationObjectType
 	fields["from_obj_type"] = fromObjType
 	fields["from_obj_name_or_key"] = fromObjNameOrKey
@@ -242,202 +247,4 @@ func (object *LogObject) CloneAndMerge(source *LogObject) *LogObject {
 	newLogObject := object.Clone()
 	newLogObject.Merge(source)
 	return newLogObject
-}
-
-// Debug :
-func (object *LogObject) Debug(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Debug(args...)
-}
-
-// Print :
-func (object *LogObject) Print(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Print(args...)
-}
-
-// Info :
-func (object *LogObject) Info(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Info(args...)
-}
-
-// Warn :
-func (object *LogObject) Warn(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Warn(args...)
-}
-
-// Warning :
-func (object *LogObject) Warning(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Warning(args...)
-}
-
-// Panic :
-func (object *LogObject) Panic(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Panic(args...)
-}
-
-// Fatal :
-func (object *LogObject) Fatal(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Fatal(args...)
-}
-
-// Debugf :
-func (object *LogObject) Debugf(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Debugf(format, args...)
-}
-
-// Infof :
-func (object *LogObject) Infof(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Infof(format, args...)
-}
-
-// Warnf :
-func (object *LogObject) Warnf(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Warnf(format, args...)
-}
-
-// Warningf :
-func (object *LogObject) Warningf(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Warningf(format, args...)
-}
-
-// Panicf :
-func (object *LogObject) Panicf(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Panicf(format, args...)
-}
-
-// Fatalf :
-func (object *LogObject) Fatalf(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Fatalf(format, args...)
-}
-
-// Errorf :
-func (object *LogObject) Errorf(format string, args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Errorf(format, args...)
-}
-
-// Debugln :
-func (object *LogObject) Debugln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Debugln(args...)
-}
-
-// Println :
-func (object *LogObject) Println(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Println(args...)
-}
-
-// Infoln :
-func (object *LogObject) Infoln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Infoln(args...)
-}
-
-// Warnln :
-func (object *LogObject) Warnln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Warnln(args...)
-}
-
-// Warningln :
-func (object *LogObject) Warningln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Warningln(args...)
-}
-
-// Errorln :
-func (object *LogObject) Errorln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Errorln(args...)
-}
-
-// Panicln :
-func (object *LogObject) Panicln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Panicln(args...)
-}
-
-// Fatalln :
-func (object *LogObject) Fatalln(args ...interface{}) {
-	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
-		return
-	}
-	log.WithFields(object.Fields).Fatalln(args...)
 }

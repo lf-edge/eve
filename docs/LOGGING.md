@@ -74,7 +74,7 @@ transitions that the object goes through while traversing between different EVE 
 
 Reference implementation can be seen for AppInstanceConfig, AppInstanceStatus objects present in ```pkg/pillar/types/zedmanagertypes.go```.
 
-Similarly relations between objects can be represented/logged using realtion type objects with this infrastructure.
+Similarly relations between objects can be represented/logged using relation type objects with this infrastructure.
 Same relation implementation between AppInstanceConfig and VolumeConfig can be found in functions AddOrRefcountVolumeConfig, MaybeRemoveVolumeConfig.
 
 # Helpful debug commands
