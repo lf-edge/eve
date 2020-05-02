@@ -937,10 +937,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	imageHash := fmt.Sprintf("%x", imageHashB)
 	configuredHash := strings.ToLower(config.ImageSha256)
-	if configuredHash == "" {
-		log.Infof("no image hash provided, skipping root validation. Setting to %s for %s", imageHash, config.ImageID)
-		status.ImageSha256 = strings.ToUpper(imageHash)
-	} else if imageHash != configuredHash {
+	if imageHash != configuredHash {
 		log.Errorf("computed   %s", imageHash)
 		log.Errorf("configured %s", configuredHash)
 		cerr := fmt.Sprintf("computed %s configured %s",
@@ -1193,19 +1190,6 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s",
 			status.ImageID)
-	}
-
-	if config.IsContainer != status.IsContainer {
-		log.Infof("handleModify: Setting IsContainer to %t for %s",
-			config.IsContainer, status.ImageID)
-		status.IsContainer = config.IsContainer
-		changed = true
-	}
-	if status.ImageSha256 == "" && config.ImageSha256 != "" {
-		log.Infof("handleModify: Setting ImageSha256 to %s for %s",
-			config.ImageSha256, status.ImageID)
-		status.ImageSha256 = config.ImageSha256
-		changed = true
 	}
 
 	// Always update RefCount
