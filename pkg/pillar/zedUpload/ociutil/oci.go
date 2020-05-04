@@ -124,7 +124,7 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	c := make(chan v1.Update, 200)
 	go func(c chan v1.Update, n NotifChan, stats UpdateStats) {
 		for update := range c {
-			atomic.AddInt64(&stats.Asize, update.Complete)
+			atomic.StoreInt64(&stats.Asize, update.Complete)
 			sendStats(n, stats)
 			if update.Error != nil {
 				return
