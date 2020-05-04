@@ -3,6 +3,7 @@ package ociutil
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -122,24 +123,30 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 
 	// get updates on downloads, convert and pass them to sendStats
 	c := make(chan v1.Update, 200)
-	go func(c chan v1.Update, n NotifChan, stats UpdateStats) {
-		for update := range c {
-			atomic.StoreInt64(&stats.Asize, update.Complete)
-			sendStats(n, stats)
-			if update.Error != nil {
-				return
-			}
-		}
-	}(c, prgchan, stats)
+	defer close(c)
 
 	// create a local file to write the output
 	// this uses the v1/tarball to write it, which is fully compatible with docker save.
 	// However, it is missing the "repositories" file, so we add it.
 	// Eventially, we may want to move to an entire cache of the registry in the
 	// OCI layout format.
-	if err := tarball.Write(ref, img, w, tarball.WithProgress(c)); err != nil {
-		return manifestDirect, manifestResolved, size, fmt.Errorf("error saving to %s: %v", localFile, err)
+	go func() {
+		// we do not need to catch the return error, because tarball.WithProgress sends error updates on channels
+		_ = tarball.Write(ref, img, w, tarball.WithProgress(c))
+	}()
+
+	for update := range c {
+		atomic.StoreInt64(&stats.Asize, update.Complete)
+		sendStats(prgchan, stats)
+		// EOF means we are at the end
+		if update.Error != nil && update.Error == io.EOF {
+			break
+		}
+		if update.Error != nil {
+			return manifestDirect, manifestResolved, size, fmt.Errorf("error saving to %s: %v", localFile, update.Error)
+		}
 	}
+
 	return manifestDirect, manifestResolved, size, nil
 }
 
