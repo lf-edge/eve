@@ -368,6 +368,7 @@ func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
 		if p1.IfName != p2.IfName ||
 			p1.Phylabel != p2.Phylabel ||
 			p1.Logicallabel != p2.Logicallabel ||
+			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
 			p1.Free != p2.Free {
 			return false
@@ -540,7 +541,8 @@ type WirelessConfig struct {
 type NetworkPortConfig struct {
 	IfName       string
 	Phylabel     string // Physical name set by controller/model
-	Logicallabel string
+	Logicallabel string // SystemAdapter's name which is logical label in phyio
+	Alias        string // From SystemAdapter's alias
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
 	IsMgmt      bool // Used to talk to controller
@@ -556,7 +558,8 @@ type NetworkPortStatus struct {
 	IfName         string
 	Phylabel       string // Physical name set by controller/model
 	Logicallabel   string
-	IsMgmt         bool // Used to talk to controller
+	Alias          string // From SystemAdapter's alias
+	IsMgmt         bool   // Used to talk to controller
 	Free           bool
 	NetworkXConfig NetworkXObjectConfig
 	AddrInfoList   []AddrInfo
@@ -584,6 +587,18 @@ func (status *DeviceNetworkStatus) GetPortByIfName(
 	for _, portStatus := range status.Ports {
 		if portStatus.IfName == ifname {
 			log.Infof("Found NetworkPortStatus for %s", ifname)
+			return &portStatus
+		}
+	}
+	return nil
+}
+
+// GetPortByLogicallabel - Get Port Status for port with given label
+func (status *DeviceNetworkStatus) GetPortByLogicallabel(
+	label string) *NetworkPortStatus {
+	for _, portStatus := range status.Ports {
+		if portStatus.Logicallabel == label {
+			log.Infof("Found NetworkPortStatus for %s", label)
 			return &portStatus
 		}
 	}
@@ -835,6 +850,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, phylabelOr
 			IfName:       us.IfName,
 			Phylabel:     us.Phylabel,
 			Logicallabel: us.Logicallabel,
+			Alias:        us.Alias,
 			IsMgmt:       us.IsMgmt,
 			Free:         us.Free,
 		}
@@ -994,12 +1010,12 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 	}
 }
 
-// ReportPhylabels returns a list of Phylabels we will report in info and metrics
-func ReportPhylabels(deviceNetworkStatus DeviceNetworkStatus) []string {
+// ReportLogicallabels returns a list of Logicallabels we will report in info and metrics
+func ReportLogicallabels(deviceNetworkStatus DeviceNetworkStatus) []string {
 
 	var names []string
 	for _, port := range deviceNetworkStatus.Ports {
-		names = append(names, port.Phylabel)
+		names = append(names, port.Logicallabel)
 	}
 	return names
 }
@@ -1048,12 +1064,9 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.Logicallabel == logicallabel {
-			log.Infof("XXX LogicallabelToIfName: found %s for %s\n",
-				p.IfName, logicallabel)
 			return p.IfName
 		}
 	}
-	log.Infof("XXX LogicallabelToIfName: no match for %s\n", logicallabel)
 	return logicallabel
 }
 

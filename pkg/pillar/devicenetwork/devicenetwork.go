@@ -193,6 +193,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].IfName = u.IfName
 		globalStatus.Ports[ix].Phylabel = u.Phylabel
 		globalStatus.Ports[ix].Logicallabel = u.Logicallabel
+		globalStatus.Ports[ix].Alias = u.Alias
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig

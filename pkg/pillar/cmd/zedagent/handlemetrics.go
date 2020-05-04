@@ -225,12 +225,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the ports in DeviceNetworkStatus
-	phylabelList := types.ReportPhylabels(*deviceNetworkStatus)
-	for _, phylabel := range phylabelList {
+	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
+	for _, label := range labelList {
 		var metric *types.NetworkMetric
-		ifname := types.PhylabelToIfName(deviceNetworkStatus, phylabel)
+		p := deviceNetworkStatus.GetPortByLogicallabel(label)
+		if p == nil {
+			continue
+		}
 		for _, m := range networkMetrics.MetricList {
-			if ifname == m.IfName {
+			if p.IfName == m.IfName {
 				metric = &m
 				break
 			}
@@ -240,8 +243,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 		networkDetails := new(metrics.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
-		networkDetails.IName = phylabel
-
+		networkDetails.IName = label
+		networkDetails.Alias = p.Alias
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
 		networkDetails.TxBytes = metric.TxBytes
@@ -855,15 +858,20 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Read interface name from library and match it with port name from
 	// global status. Only report the ports in DeviceNetworkStatus
 	interfaces, _ := psutilnet.Interfaces()
-	phylabelList := types.ReportPhylabels(*deviceNetworkStatus)
-	for _, phylabel := range phylabelList {
-		ifname := types.PhylabelToIfName(deviceNetworkStatus, phylabel)
+	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
+	for _, label := range labelList {
+		p := deviceNetworkStatus.GetPortByLogicallabel(label)
+		if p == nil {
+			continue
+		}
 		for _, interfaceDetail := range interfaces {
-			if ifname != interfaceDetail.Name {
+			if p.IfName != interfaceDetail.Name {
 				continue
 			}
 			ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
-			ReportDeviceNetworkInfo.DevName = *proto.String(phylabel)
+			// XXX rename DevName to Logicallabel in proto file
+			ReportDeviceNetworkInfo.DevName = *proto.String(label)
+			ReportDeviceNetworkInfo.Alias = *proto.String(p.Alias)
 			ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 				ReportDeviceNetworkInfo)
 		}
@@ -1275,8 +1283,10 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 
 	dp := new(info.DevicePort)
 	dp.Ifname = npc.IfName
-	// XXX rename the protobuf field Name to Phylabel and add Logicallabel?
-	dp.Name = npc.Phylabel
+	// XXX rename the protobuf field Name to Logicallabel and add Phylabel?
+	dp.Name = npc.Logicallabel
+	// XXX Add Alias in proto file?
+	// dp.Alias = npc.Alias
 
 	ibPtr := aa.LookupIoBundlePhylabel(npc.Phylabel)
 	if ibPtr != nil {
