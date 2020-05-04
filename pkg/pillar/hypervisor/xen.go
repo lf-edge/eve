@@ -603,8 +603,15 @@ func (ctx xenContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
 		log.Errorln("IsDomainPotentiallyShuttingDown: xl list output ", string(stdoutStderr))
 		return true
 	}
+
+	//stdoutStderr should have 2 rows separated by '\n'. Where 1st row will be column names and 2nd row will be domain details
+	cmdResponse := strings.Split(string(stdoutStderr), "\n")
+	if len(cmdResponse) < 2 {
+		log.Errorln("IsDomainPotentiallyShuttingDown: domain not present in xl list output ", string(stdoutStderr))
+		return true
+	}
 	//Removing all extra space between column result and split the result as array.
-	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(strings.Split(string(stdoutStderr), "\n")[1], " ")
+	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(cmdResponse[1], " ")
 	//Domain's status is 5th column in xl list <domain> result
 	domainState = strings.Split(xlDomainResult, " ")[4]
 	//Removing all unset state bits represented by "-"
