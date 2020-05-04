@@ -51,6 +51,8 @@ const (
 	// ServerSigningCertFileName - filename for server signing leaf certificate
 	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
 
+	// ShareCertDirname - directory to place private proxy server certificates
+	ShareCertDirname = "/usr/local/share/ca-certificates"
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"
 	// BaseOsObj - name of base image obj dir

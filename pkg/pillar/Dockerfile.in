@@ -56,7 +56,7 @@ RUN apk add --no-cache \
     coreutils dmidecode libbz2 libuuid ipset       \
     curl radvd ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso qemu-img \
-    jq e2fsprogs-extra keyutils
+    jq e2fsprogs-extra keyutils ca-certificates
 
 # We have to make sure configs survive in some location, but they don't pollute
 # the default /config (since that is expected to be an empty mount point)

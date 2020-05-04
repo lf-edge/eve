@@ -202,6 +202,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
+		AgentName:        agentName,
 	})
 
 	clientCtx.zedcloudCtx = &zedcloudCtx
@@ -719,6 +720,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	cloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.zedcloudCtx.DeviceNetworkStatus,
 		TLSConfig:        devtlsConfig,
+		AgentName:        agentName,
 	})
 	cloudCtx.PrevCertPEM = ctx.zedcloudCtx.PrevCertPEM
 	updated := zedcloud.UpdateTLSProxyCerts(&cloudCtx)

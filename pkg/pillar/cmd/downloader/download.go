@@ -37,11 +37,11 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return err
 	}
 	// check for proxies on the selected management port interface
-	proxyUrl, err := zedcloud.LookupProxy(
-		&ctx.deviceNetworkStatus, ifname, downloadURL)
-	if err == nil && proxyUrl != nil {
-		log.Infof("%s: Using proxy %s", trType, proxyUrl.String())
-		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyUrl)
+	proxyLookupURL := zedcloud.IntfLookupProxyCfg(&ctx.deviceNetworkStatus, ifname, downloadURL)
+	proxyURL, err := zedcloud.LookupProxy(&ctx.deviceNetworkStatus, ifname, proxyLookupURL)
+	if err == nil && proxyURL != nil {
+		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
+		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
 	} else {
 		dEndPoint.WithSrcIPSelection(ipSrc)
 	}
@@ -91,6 +91,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		status.Progress(100)
 		return nil
 	}
+	log.Infof("download: failed here\n")
 	// if we got here, channel was closed
 	// range ends on a closed channel, which is the equivalent of "!ok"
 	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
@@ -119,8 +120,9 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return sha256, err
 	}
 	// check for proxies on the selected management port interface
-	proxyURL, err := zedcloud.LookupProxy(
-		&ctx.deviceNetworkStatus, ifname, downloadURL)
+	proxyLookupURL := zedcloud.IntfLookupProxyCfg(&ctx.deviceNetworkStatus, ifname, downloadURL)
+
+	proxyURL, err := zedcloud.LookupProxy(&ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
 		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
 		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)

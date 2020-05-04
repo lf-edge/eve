@@ -153,6 +153,7 @@ func Run(ps *pubsub.PubSub) {
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
+		AgentName:        agentName,
 	})
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
