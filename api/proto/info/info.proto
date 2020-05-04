@@ -99,7 +99,7 @@ message ZInfoNetwork {
   // deprecated = 2;
   string macAddr = 3;
 
-  // devName - Must be set to SystemAdapter.Name
+  // devName - Must be set to SystemAdapter.Name which is the Logicallabel
   string devName = 4;
   // alias - Must be set to SystemAdapter.alias
   string alias = 40;
@@ -281,7 +281,7 @@ message DevicePortStatus {
 
 message DevicePort {
   string ifname = 1;
-  string name = 2;	// Logical name set by controller
+  string name = 2;   // Logical name set by controller; same as logicallabel
   bool isMgmt = 3;
   bool free = 4;
   // DhcpConfig
