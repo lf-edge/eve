@@ -42,6 +42,7 @@ type ZedCloudContext struct {
 	DevSoftSerial       string
 	NetworkSendTimeout  uint32 // In seconds
 	V2API               bool   // XXX Needed?
+	AgentName           string // the agent process name
 	// V2 related items
 	PrevCertPEM           [][]byte // cached proxy certs for later comparison
 	onBoardCert           *tls.Certificate
@@ -61,6 +62,7 @@ type ContextOptions struct {
 	Timeout          uint32
 	Serial           string
 	SoftSerial       string
+	AgentName        string
 }
 
 var sendCounter uint32
@@ -653,6 +655,7 @@ func NewContext(opt ContextOptions) ZedCloudContext {
 		V2API:               UseV2API(),
 		DevSerial:           opt.Serial,
 		DevSoftSerial:       opt.SoftSerial,
+		AgentName:           opt.AgentName,
 	}
 	if opt.NeedStatsFunc {
 		ctx.FailureFunc = ZedCloudFailure

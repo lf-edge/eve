@@ -93,6 +93,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 var ctx = zedcloud.NewContext(zedcloud.ContextOptions{
 	Timeout:       15,
 	NeedStatsFunc: true,
+	AgentName:     "wpad",
 })
 
 func getPacFile(status *types.DeviceNetworkStatus, url string,

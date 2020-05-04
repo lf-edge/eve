@@ -952,6 +952,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
+		AgentName:        agentName,
 	})
 	log.Infof("sendCtxInit: Use V2 API %v", zedcloud.UseV2API())
 
