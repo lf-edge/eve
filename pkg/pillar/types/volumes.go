@@ -192,11 +192,6 @@ type VolumeStatus struct {
 	RefCount  uint
 	LastUse   time.Time // When RefCount dropped to zero
 	PreReboot bool      // Was volume last use prior to device reboot?
-
-	ReservedSpace uint64 // Contribution to global ReservedSpace
-	Size          uint64 // Once DOWNLOADED; in bytes
-
-	RetryCount int
 }
 
 // Key is for pubsub; unique per object.
