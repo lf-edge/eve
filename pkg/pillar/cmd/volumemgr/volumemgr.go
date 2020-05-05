@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	agentName    = "volumemgr"
-	runDirname   = "/var/run/" + agentName
-	ciDirname    = runDirname + "/cloudinit" // For cloud-init volumes XXX change?
-	rwImgDirname = types.PersistDir + "/img" // We store volumes here
+	agentName        = "volumemgr"
+	runDirname       = "/var/run/" + agentName
+	ciDirname        = runDirname + "/cloudinit" // For cloud-init volumes XXX change?
+	rwImgDirname     = types.RWImgDirname        // We store volumes here
+	roContImgDirname = types.ROContImgDirname    // We store container bootable disks here
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -251,6 +252,7 @@ func Run(ps *pubsub.PubSub) {
 	// Note that nobody subscribes to this. Used internally
 	// to look up a Volume.
 	populateInitialVolumeStatus(&ctx, rwImgDirname)
+	populateInitialVolumeStatus(&ctx, roContImgDirname)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -526,6 +528,7 @@ func Run(ps *pubsub.PubSub) {
 				gc = time.NewTicker(duration * time.Second)
 				// Update the LastUse here to be now
 				gcResetObjectsLastUse(&ctx, rwImgDirname)
+				gcResetObjectsLastUse(&ctx, roContImgDirname)
 				ctx.gcRunning = true
 			}
 
@@ -562,6 +565,7 @@ func Run(ps *pubsub.PubSub) {
 		case <-gc.C:
 			start := time.Now()
 			gcObjects(&ctx, rwImgDirname)
+			gcObjects(&ctx, roContImgDirname)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 

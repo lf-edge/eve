@@ -7,9 +7,13 @@
 package volumemgr
 
 import (
+	"fmt"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -61,6 +65,25 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		log.Infof("vcCreate promote status from init for %s", config.Key())
 		// We are moving this from unknown to this objType
 		unpublishVolumeStatus(ctx, initStatus)
+
+		// XXX After device reboot, somehow files created by containerd snapshot prepare
+		// is getting deleted from persist/runx/pods/prepared/<container-dir-name>/rootfs/
+		// So, doing a hack here for containers by calling containerd snapshot prepare again
+		if config.Format == zconfig.Format_CONTAINER {
+			ociFilename, err := utils.VerifiedImageFileLocation(config.BlobSha256)
+			if err != nil {
+				errStr := fmt.Sprintf("failed to get Image File Location. err: %+s",
+					err)
+				log.Error(errStr)
+				initStatus.SetError(errStr, time.Now())
+			} else {
+				if err := containerd.SnapshotPrepare(initStatus.FileLocation, ociFilename); err != nil {
+					errStr := fmt.Sprintf("Failed to create ctr bundle. Error %s", err)
+					log.Error(errStr)
+					initStatus.SetError(errStr, time.Now())
+				}
+			}
+		}
 
 		// XXX where do we put this conversion code?
 		initStatus.BlobSha256 = config.BlobSha256
