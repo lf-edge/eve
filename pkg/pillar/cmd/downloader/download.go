@@ -91,7 +91,6 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		status.Progress(100)
 		return nil
 	}
-	log.Infof("download: failed here\n")
 	// if we got here, channel was closed
 	// range ends on a closed channel, which is the equivalent of "!ok"
 	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
