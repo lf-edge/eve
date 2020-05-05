@@ -261,7 +261,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 		}
 	}
 
-	// updating the /etc/ssl/certs for proxy certs
+	// May updating the /etc/ssl/certs for proxy certs in /usr/local/share/ca-certificates directory
 	updateEtcSSLforProxyCerts(ctx, devNS)
 
 	log.Infof("UpdateTLSProxyCerts: root CA updated")
@@ -306,8 +306,9 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 }
 
 func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkStatus) {
+	// Only zedagent is to update the host ca-certificates
 	if !ctx.V2API || ctx.AgentName != "zedagent" {
-		log.Infof("updateEtcSSLforProxyCerts: skip agent %s\n", ctx.AgentName)
+		log.Infof("updateEtcSSLforProxyCerts: skip agent %s", ctx.AgentName)
 		return
 	}
 
@@ -321,7 +322,7 @@ func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkSta
 			return filepath.SkipDir
 		}
 		if strings.HasPrefix(path, proxyCertDirFile) {
-			log.Infof("updateEtcSSLforProxyCerts: remove file %s\n", path)
+			log.Infof("updateEtcSSLforProxyCerts: remove file %s", path)
 			os.Remove(path)
 		}
 		return err
@@ -337,12 +338,12 @@ func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkSta
 		if err != nil {
 			log.Errorf("updateEtcSSLforProxyCerts: file %s save err %v", proxyFilename, err)
 		}
-		log.Infof("updateEtcSSLforProxyCerts: file saved to %s\n", proxyFilename)
+		log.Infof("updateEtcSSLforProxyCerts: file saved to %s", proxyFilename)
 	}
 
 	cmdName := "/usr/sbin/update-ca-certificates"
 	cmd := exec.Command(cmdName)
-	log.Infof("updateEtcSSLforProxyCerts: Calling command %s\n", cmdName)
+	log.Infof("updateEtcSSLforProxyCerts: Calling command %s", cmdName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Errorf("updateEtcSSLforProxyCerts: update-ca-certificates, certs num %d, (%s)", len(newCerts), err)

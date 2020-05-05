@@ -124,53 +124,31 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 
 // IntfLookupProxyCfg - check if the intf has proxy configured
 func IntfLookupProxyCfg(status *types.DeviceNetworkStatus, ifname, downloadURL string) string {
-	var mayChange bool
 	// if proxy is not on the intf, then don't change anything
 	// if download URL has "http://" or "https://" then no change here regardless of proxy
-	// if there is proxy on this intf, treeat empty url scheme as for https,
-	// treat passed in download url schem docker://" and maybe sftp://just as https
-	if strings.Contains(downloadURL, "http") {
-		return downloadURL
-	} else if strings.Contains(downloadURL, "docker:") {
-		mayChange = true
-	}
-
-	var scheme string
-	for _, port := range status.Ports {
-		if ifname != port.IfName {
-			continue
-		}
-		var hasHTTP, hasHTTPS bool
-		for _, proxy := range port.ProxyConfig.Proxies {
-			switch proxy.Type {
-			case types.NPT_HTTP:
-				hasHTTP = true
-			case types.NPT_HTTPS:
-				hasHTTPS = true
-			}
-		}
-		if hasHTTPS {
-			scheme = "https://"
-		} else if hasHTTP {
-			scheme = "http://"
-		}
-		break
-	}
-
-	if !mayChange { // empty url scheme in downloadURL
-		return scheme + downloadURL
-	} else if scheme == "" { // if don't have proxy on intf, return original, no change
-		return downloadURL
-	}
-
-	// intf has proxy, may need to replace scheme for https with proxy cert case
+	// if there is proxy on this intf, treat empty url scheme as for https or http but prefer https,
+	// replace the passed-in download-url scheme "docker://" and maybe "sftp://" later, to https
 	passURL, err := url.Parse(downloadURL)
 	if err != nil {
 		return downloadURL
 	}
-	downloadURL = passURL.Host
-	if passURL.Path != "" {
-		downloadURL += ("/" + passURL.Path)
+
+	switch passURL.Scheme {
+	case "http://", "https://":
+		return downloadURL
 	}
-	return scheme + downloadURL
+
+	tmpURL := passURL
+	tmpURL.Scheme = "https://"
+	proxyURL, err := LookupProxy(status, ifname, tmpURL.String())
+	if err == nil && proxyURL != nil {
+		return tmpURL.String()
+	}
+	tmpURL.Scheme = "http://"
+	proxyURL, err = LookupProxy(status, ifname, tmpURL.String())
+	if err == nil && proxyURL != nil {
+		return tmpURL.String()
+	}
+
+	return downloadURL
 }
