@@ -17,6 +17,10 @@ const (
 	DownloadDirname = PersistDir + "/downloads"
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
+	// RWImgDirname - Location of read/write images used by app instances
+	RWImgDirname = PersistDir + "/img"
+	// ROContImgDirname - Location of read only images used by containerd
+	ROContImgDirname = PersistDir + "/runx/pods/prepared"
 	// AppImgDirname - location of downloaded app images. Read-only images
 	// named based on sha256 hash each in its own directory
 	AppImgDirname = DownloadDirname + "/" + AppImgObj
