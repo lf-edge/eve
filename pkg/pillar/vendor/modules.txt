@@ -84,13 +84,14 @@ github.com/aws/aws-sdk-go/private/protocol/query/queryutil
 github.com/containerd/cgroups/stats/v1
 # github.com/containerd/containerd v1.3.4
 github.com/containerd/containerd
-github.com/containerd/containerd/cio
-github.com/containerd/containerd/containers
 github.com/containerd/containerd/content
 github.com/containerd/containerd/images
+github.com/containerd/containerd/leases
 github.com/containerd/containerd/namespaces
-github.com/containerd/containerd/oci
 github.com/containerd/containerd/snapshots
+github.com/containerd/containerd/cio
+github.com/containerd/containerd/containers
+github.com/containerd/containerd/oci
 github.com/containerd/containerd/api/services/containers/v1
 github.com/containerd/containerd/api/services/content/v1
 github.com/containerd/containerd/api/services/diff/v1
@@ -112,7 +113,6 @@ github.com/containerd/containerd/diff
 github.com/containerd/containerd/errdefs
 github.com/containerd/containerd/events
 github.com/containerd/containerd/images/archive
-github.com/containerd/containerd/leases
 github.com/containerd/containerd/leases/proxy
 github.com/containerd/containerd/log
 github.com/containerd/containerd/mount
@@ -181,11 +181,11 @@ github.com/go-ole/go-ole/oleutil
 # github.com/gogo/googleapis v1.3.2
 github.com/gogo/googleapis/google/rpc
 # github.com/gogo/protobuf v1.3.1
-github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/types
-github.com/gogo/protobuf/protoc-gen-gogo/descriptor
+github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/sortkeys
+github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 # github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
@@ -233,13 +233,14 @@ github.com/konsorten/go-windows-terminal-sequences
 github.com/kr/fs
 # github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000 => ../../api/go
 github.com/lf-edge/eve/api/go/config
+github.com/lf-edge/eve/api/go/evecommon
 github.com/lf-edge/eve/api/go/register
 github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/certs
-github.com/lf-edge/eve/api/go/evecommon
 github.com/lf-edge/eve/api/go/flowlog
 github.com/lf-edge/eve/api/go/metrics
+github.com/lf-edge/eve/api/go/auth
 # github.com/opencontainers/go-digest v1.0.0-rc1
 github.com/opencontainers/go-digest
 # github.com/opencontainers/image-spec v1.0.1
@@ -321,10 +322,10 @@ golang.org/x/net/icmp
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/html/atom
-golang.org/x/net/internal/iana
-golang.org/x/net/internal/socket
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/trace
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
 golang.org/x/net/internal/timeseries
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack

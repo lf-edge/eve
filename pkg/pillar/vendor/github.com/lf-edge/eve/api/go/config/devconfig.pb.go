@@ -67,8 +67,11 @@ type EdgeDevConfig struct {
 	// containing certificate and other details, to be
 	// used for sensitive data decryption
 	CipherContexts []*CipherContext `protobuf:"bytes,19,rep,name=cipherContexts,proto3" json:"cipherContexts,omitempty"`
-	ContentInfo    []*ContentTree   `protobuf:"bytes,20,rep,name=contentInfo,proto3" json:"contentInfo,omitempty"`
-	Volumes        []*Volume        `protobuf:"bytes,21,rep,name=volumes,proto3" json:"volumes,omitempty"`
+	// These images aka ContentTrees and Volumes should be created by EVE
+	// independently of any application usage.
+	// Application instances will refer to the volumes.
+	ContentInfo []*ContentTree `protobuf:"bytes,20,rep,name=contentInfo,proto3" json:"contentInfo,omitempty"`
+	Volumes     []*Volume      `protobuf:"bytes,21,rep,name=volumes,proto3" json:"volumes,omitempty"`
 }
 
 func (x *EdgeDevConfig) Reset() {
