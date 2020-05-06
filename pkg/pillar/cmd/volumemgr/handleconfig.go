@@ -99,9 +99,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		initStatus.TargetSizeBytes = config.TargetSizeBytes // XXX change?
 		initStatus.ReadOnly = config.ReadOnly
 
-		// XXX Add state enum for volume created?
-		// XXX api and zmsg enum?
-		initStatus.State = types.DELIVERED
+		initStatus.State = types.CREATED_VOLUME
 		initStatus.Progress = 100
 
 		// FileLocation unchanged
@@ -126,6 +124,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		TargetSizeBytes: config.TargetSizeBytes,
 		ReadOnly:        config.ReadOnly,
 		Format:          config.Format,
+		State:           types.INITIAL,
 		// XXX if these are not needed in Status they are not needed in Config
 		//	DevType: config.DevType,
 		//	Target: config.Target,

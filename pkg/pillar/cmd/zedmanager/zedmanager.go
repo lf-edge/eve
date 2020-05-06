@@ -455,6 +455,7 @@ func handleCreate(ctxArg interface{}, key string,
 		IoAdapterList:       config.IoAdapterList,
 		RestartCmd:          config.RestartCmd,
 		PurgeCmd:            config.PurgeCmd,
+		State:               types.INITIAL,
 	}
 
 	// Do we have a PurgeCmd counter from before the reboot?

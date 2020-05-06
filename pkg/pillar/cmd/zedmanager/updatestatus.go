@@ -195,11 +195,13 @@ func getRemainingAppDiskSpace(ctxPtr *zedmanagerContext) (uint64, string, error)
 	items := pub.GetAll()
 	for _, iterStatusJSON := range items {
 		iterStatus := iterStatusJSON.(types.AppInstanceStatus)
-		if iterStatus.State < types.INSTALLED {
-			log.Debugf("App %s State %d < INSTALLED",
+		if iterStatus.State < types.CREATED_VOLUME {
+			// XXX look at MaxSizeBytes? Need to skip caller?
+			log.Debugf("App %s State %d < CREATED_VOLUME",
 				iterStatus.UUIDandVersion, iterStatus.State)
 			continue
 		}
+		// XXX does this work for a container??
 		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
 			log.Errorf("getRemainingAppDiskSpace: err: %s", err.Error())
@@ -301,14 +303,13 @@ func doInstall(ctx *zedmanagerContext,
 	uuidStr := status.Key()
 
 	log.Infof("doInstall: UUID: %s", uuidStr)
-	minState := types.MAXSTATE
 	allErrors := ""
 	var errorSource interface{}
 	var errorTime time.Time
 	changed := false
 
 	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n",
+		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d",
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
 		if status.PurgeInprogress == types.NotInprogress {
@@ -379,132 +380,30 @@ func doInstall(ctx *zedmanagerContext,
 		changed = true
 	}
 
-	waitingForVolumes := false
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s, purgeCounter %d",
-			ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
-
-		if !ss.HasVolumemgrRef {
-			if ss.IsContainer {
-				maybeLatchImageSha(ctx, config, ss)
-			}
-			if ss.IsContainer && ss.ImageSha256 == "" {
-				rs := lookupResolveStatus(ctx, ss.ResolveKey())
-				if rs == nil {
-					log.Infof("Resolve status not found for %s", ss.ImageID)
-					ss.HasResolverRef = true
-					MaybeAddResolveConfig(ctx, ss)
-					// XXX state name could be "waiting for tag resolutions(s)" but
-					// painful to introduce a new state end to end
-					minState = types.INITIAL
-					ss.State = types.INITIAL
-					changed = true
-					continue
-				}
-				log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%v)",
-					ss.ImageID, status.UUIDandVersion.UUID)
-				if rs.HasError() || rs.ImageSha256 == "" {
-					errStr := fmt.Sprintf("Received error or empty SHA from resolver for %s, SHA (%s): %s\n",
-						status.Key(), rs.ImageSha256, rs.Error)
-					log.Error(errStr)
-					ss.SetErrorWithSource(errStr, types.ResolveStatus{}, rs.ErrorTime)
-					errorSource = ss.ErrorSourceType
-					errorTime = ss.ErrorTime
-					allErrors = appendError(allErrors, "resolver",
-						errStr)
-					changed = true
-					continue
-				} else if ss.IsErrorSource(types.ResolveStatus{}) {
-					log.Infof("Clearing resolver error %s", ss.Error)
-					ss.ClearErrorWithSource()
-					changed = true
-				}
-				log.Infof("Added Image SHA (%s) for storage status (%s)",
-					rs.ImageSha256, ss.ImageID)
-				ss.ImageSha256 = rs.ImageSha256
-				ss.HasResolverRef = false
-				addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-					ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
-				maybeLatchImageSha(ctx, config, ss)
-				deleteResolveConfig(ctx, rs.Key())
+	// Do we have some Volume work?
+	if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress {
+		for i := range status.StorageStatusList {
+			ss := &status.StorageStatusList[i]
+			c := doInstallStorageStatus(ctx, config, ss)
+			if c {
 				changed = true
 			}
-			log.Infof("doInstall !HasVolumemgrRef for %s",
-				ss.Name)
-			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
-				config.UUIDandVersion.UUID, ss.ImageID,
-				ss.PurgeCounter, *ss)
-			ss.HasVolumemgrRef = true
-			changed = true
-		}
-		vs := lookupVolumeStatus(ctx, ss.ImageSha256,
-			config.UUIDandVersion.UUID, ss.ImageID, ss.PurgeCounter)
-		if vs == nil || vs.RefCount == 0 {
-			if vs == nil {
-				log.Infof("VolumeStatus not found. name: %s",
-					ss.Name)
-			} else {
-				log.Infof("VolumeStatus RefCount zero. name: %s",
-					ss.Name)
-			}
-			// XXX state name could be "waiting for volumes(s)" but
-			// painful to introduce a new state end to end
-			// Downloader/verifier will fill in more specific state
-			minState = types.INITIAL
-			ss.State = types.INITIAL
-			changed = true
-			continue
-		}
-		if vs.FileLocation != ss.ActiveFileLocation {
-			ss.ActiveFileLocation = vs.FileLocation
-			changed = true
-			log.Infof("From VolumeStatus set ActiveFileLocation to %s for %s",
-				vs.FileLocation, ss.Name)
-		}
-		if minState > vs.State {
-			minState = vs.State
-		}
-		if vs.State != ss.State {
-			ss.State = vs.State
-			changed = true
-		}
-		if vs.Progress != ss.Progress {
-			ss.Progress = vs.Progress
-			changed = true
-		}
-		// Would like to have an additional state between DELIVERED
-		// and INSTALLED to capture whether volumes were created.
-		if !vs.VolumeCreated {
-			log.Infof("lookupVolumeStatus %s !VolumeCreated",
-				ss.Name)
-			waitingForVolumes = true
-		}
-		if vs.Pending() {
-			log.Infof("lookupVolumeStatus %s Pending",
-				ss.Name)
-			continue
-		}
-		if vs.HasError() {
-			log.Errorf("Received error from volumemgr for %s: %s",
-				ss.Name, vs.Error)
-			ss.SetErrorWithSource(vs.Error,
-				types.VolumeStatus{}, vs.ErrorTime)
-			errorSource = ss.ErrorSourceType
-			errorTime = ss.ErrorTime
-			allErrors = appendError(allErrors, "volumemgr",
-				vs.Error)
-			changed = true
-			continue
-		} else if ss.IsErrorSource(types.VolumeStatus{}) {
-			log.Infof("Clearing volumemgr error %s", ss.Error)
-			ss.ClearErrorWithSource()
-			changed = true
 		}
 	}
-
+	// Determine minimum state and errors across all of StorageStatus
+	minState := types.MAXSTATE
+	for _, ss := range status.StorageStatusList {
+		if ss.State < minState {
+			minState = ss.State
+		}
+		if ss.HasError() {
+			errorSource = ss.ErrorSourceType
+			errorTime = ss.ErrorTime
+			allErrors = appendError(allErrors, ss.Error)
+		}
+	}
 	if minState == types.MAXSTATE {
-		// Odd; no StorageConfig in list
+		// No StorageStatus
 		minState = types.INITIAL
 	}
 	if status.State >= types.BOOTING {
@@ -513,6 +412,7 @@ func doInstall(ctx *zedmanagerContext,
 		status.State = minState
 		changed = true
 	}
+
 	if allErrors == "" {
 		status.ClearErrorWithSource()
 	} else if errorSource == nil {
@@ -525,13 +425,132 @@ func doInstall(ctx *zedmanagerContext,
 		return changed, false
 	}
 
-	if minState < types.DELIVERED || waitingForVolumes {
+	if minState < types.CREATED_VOLUME {
 		log.Infof("Waiting for all volumes for %s", uuidStr)
 		return changed, false
 	}
 	log.Infof("Done with volumes for %s", uuidStr)
 	log.Infof("doInstall done for %s", uuidStr)
 	return changed, true
+}
+
+// If StorageStatus was updated we return true
+func doInstallStorageStatus(ctx *zedmanagerContext,
+	config types.AppInstanceConfig, ss *types.StorageStatus) bool {
+
+	changed := false
+	log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s, purgeCounter %d",
+		ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
+
+	if !ss.HasVolumemgrRef {
+		if ss.IsContainer {
+			maybeLatchImageSha(ctx, config, ss)
+		}
+		if ss.IsContainer && ss.ImageSha256 == "" {
+			rs := lookupResolveStatus(ctx, ss.ResolveKey())
+			if rs == nil {
+				log.Infof("Resolve status not found for %s",
+					ss.ImageID)
+				ss.HasResolverRef = true
+				MaybeAddResolveConfig(ctx, ss)
+				ss.State = types.RESOLVING_TAG
+				changed = true
+				return changed
+			}
+			log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%s)",
+				ss.ImageID, config.Key())
+			ss.State = types.RESOLVED_TAG
+			changed = true
+			if rs.HasError() {
+				errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
+					ss.ResolveKey(), rs.ImageSha256, rs.Error)
+				log.Error(errStr)
+				ss.SetErrorWithSource(errStr, types.ResolveStatus{},
+					rs.ErrorTime)
+				changed = true
+				return changed
+			} else if rs.ImageSha256 == "" {
+				errStr := fmt.Sprintf("Received empty SHA from resolver for %s, SHA (%s): %s",
+					ss.ResolveKey(), rs.ImageSha256, rs.Error)
+				log.Error(errStr)
+				ss.SetErrorWithSource(errStr, types.ResolveStatus{},
+					rs.ErrorTime)
+				changed = true
+				return changed
+			} else if ss.IsErrorSource(types.ResolveStatus{}) {
+				log.Infof("Clearing resolver error %s", ss.Error)
+				ss.ClearErrorWithSource()
+				changed = true
+			}
+			log.Infof("Added Image SHA (%s) for storage status (%s)",
+				rs.ImageSha256, ss.ImageID)
+			ss.ImageSha256 = rs.ImageSha256
+			ss.HasResolverRef = false
+			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+				ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
+			maybeLatchImageSha(ctx, config, ss)
+			deleteResolveConfig(ctx, rs.Key())
+			changed = true
+		}
+		log.Infof("doInstall !HasVolumemgrRef for %s", ss.Name)
+		// XXX note that we use the ImageID for the VolumeID
+		// argument since we do not have a VolumeID
+		AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
+			config.UUIDandVersion.UUID, ss.ImageID,
+			ss.PurgeCounter, *ss)
+		ss.HasVolumemgrRef = true
+		changed = true
+	}
+	vs := lookupVolumeStatus(ctx, ss.ImageSha256,
+		config.UUIDandVersion.UUID, ss.ImageID, ss.PurgeCounter)
+	if vs == nil || vs.RefCount == 0 {
+		if vs == nil {
+			log.Infof("VolumeStatus not found. name: %s",
+				ss.Name)
+		} else {
+			log.Infof("VolumeStatus RefCount zero. name: %s",
+				ss.Name)
+		}
+		// Downloader/verifier will fill in more specific state
+		// once we get a VolumeStatus from the volumemgr.
+		// To avoid jumping to CREATING_VOLUME to DOWNLOADING,
+		// DOWNLOADED, VERIFYING, VERIFIED, and then back to
+		// CREATING_VOLUME we don't set CREATING_VOLUME for all
+		// types
+		// XXX but we only do types.OriginTypeDownload from
+		// zedmanager so no change to ss.State
+		return changed
+	}
+	if vs.FileLocation != ss.ActiveFileLocation {
+		ss.ActiveFileLocation = vs.FileLocation
+		changed = true
+		log.Infof("From VolumeStatus set ActiveFileLocation to %s for %s",
+			vs.FileLocation, ss.Name)
+	}
+	if vs.State != ss.State {
+		ss.State = vs.State
+		changed = true
+	}
+	if vs.Progress != ss.Progress {
+		ss.Progress = vs.Progress
+		changed = true
+	}
+	if vs.Pending() {
+		log.Infof("lookupVolumeStatus %s Pending", ss.Name)
+		return changed
+	}
+	if vs.HasError() {
+		log.Errorf("Received error from volumemgr for %s: %s",
+			ss.Name, vs.Error)
+		ss.SetErrorWithSource(vs.Error,
+			types.VolumeStatus{}, vs.ErrorTime)
+		changed = true
+	} else if ss.IsErrorSource(types.VolumeStatus{}) {
+		log.Infof("Clearing volumemgr error %s", ss.Error)
+		ss.ClearErrorWithSource()
+		changed = true
+	}
+	return changed
 }
 
 func doPrepare(ctx *zedmanagerContext,
@@ -542,7 +561,7 @@ func doPrepare(ctx *zedmanagerContext,
 	changed := false
 
 	if len(config.OverlayNetworkList) != len(status.EIDList) {
-		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
+		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d",
 			len(config.OverlayNetworkList),
 			len(status.EIDList))
 		log.Error(errString)
@@ -581,7 +600,7 @@ func doPrepare(ctx *zedmanagerContext,
 		log.Infof("Waiting for all EID allocations for %s", uuidStr)
 		return changed, false
 	}
-	// Automatically move from DELIVERED to INSTALLED
+	// Automatically move from VERIFIED to INSTALLED
 	if status.State >= types.BOOTING {
 		// Leave unchanged
 	} else {
@@ -827,7 +846,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 		}
 	}
-	log.Infof("doActivate done for %s\n", uuidStr)
+	log.Infof("doActivate done for %s", uuidStr)
 	return changed
 }
 
@@ -898,8 +917,8 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			newSs = append(newSs, *ss)
 			continue
 		}
-		log.Debugf("purgeCmdDone(%s) unused SS %s %s",
-			config.Key(), ss.Name, ss.ImageID)
+		log.Infof("purgeCmdDone(%s) unused SS %s %s purgeCounter %d",
+			config.Key(), ss.Name, ss.ImageID, ss.PurgeCounter)
 		c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
 		if c {
 			changed = true
@@ -1256,6 +1275,6 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	return changed
 }
 
-func appendError(allErrors string, prefix string, lasterr string) string {
-	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
+func appendError(allErrors string, lasterr string) string {
+	return fmt.Sprintf("%s%s\n\n", allErrors, lasterr)
 }

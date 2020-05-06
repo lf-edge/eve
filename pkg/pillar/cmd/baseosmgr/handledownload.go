@@ -64,8 +64,8 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 				log.Infof("VolumeStatus RefCount zero. name: %s",
 					ss.Name)
 			}
-			ret.MinState = types.DOWNLOAD_STARTED
-			ss.State = types.DOWNLOAD_STARTED
+			ret.MinState = types.DOWNLOADING
+			ss.State = types.DOWNLOADING
 			ret.Changed = true
 			continue
 		}
@@ -125,7 +125,7 @@ func installDownloadedObjects(uuidStr string,
 	for i := range *status {
 		ssPtr := &(*status)[i]
 
-		if ssPtr.State == types.DELIVERED {
+		if ssPtr.State == types.VERIFIED {
 			err := installDownloadedObject(ssPtr.ImageID, ssPtr)
 			if err != nil {
 				log.Error(err)
@@ -151,15 +151,15 @@ func installDownloadedObject(imageID uuid.UUID,
 	log.Infof("installDownloadedObject(%s, %v)",
 		imageID, ssPtr.State)
 
-	if ssPtr.State != types.DELIVERED {
+	if ssPtr.State != types.CREATED_VOLUME {
 		return nil
 	}
 	srcFilename = ssPtr.ActiveFileLocation
 	if srcFilename == "" {
-		log.Fatalf("XXX no ActiveFileLocation for DELIVERED %s",
+		log.Fatalf("XXX no ActiveFileLocation for CREATED_VOLUME %s",
 			imageID)
 	}
-	log.Infof("For %s ActiveFileLocation for DELIVERED: %s",
+	log.Infof("For %s ActiveFileLocation for CREATED_VOLUME: %s",
 		imageID, srcFilename)
 
 	// ensure the file is present

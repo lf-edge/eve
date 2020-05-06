@@ -9,29 +9,116 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-// Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
-// The ones starting with BOOTING are in addition to OMA and represent
-// operational/activated states.
+// SwState started with enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
+// but now has many additions.
+// They are in order of progression (except for the RESTARTING and PURGING ones)
+// We map this to info.ZSwState
 type SwState uint8
 
 const (
-	INITIAL          SwState = iota + 1
-	DOWNLOAD_STARTED         // Really download in progress
+	// INITIAL is 100 to be able to tell any confusion with ZSwState
+	INITIAL       SwState = iota + 100 // Initial value
+	RESOLVING_TAG                      // Resolving an image tag
+	RESOLVED_TAG                       // Tag has been resolved or resolution failed
+	DOWNLOADING
 	DOWNLOADED
-	DELIVERED // Package integrity verified
-	INSTALLED // Available to be activated
+	VERIFYING
+	VERIFIED
+	CREATING_VOLUME // Volume create in progress
+	CREATED_VOLUME  // Volume create done or failed
+	INSTALLED       // Available to be activated
 	BOOTING
 	RUNNING
 	HALTING // being halted
 	HALTED
 	RESTARTING // Restarting due to config change or zcli
 	PURGING    // Purging due to config change
-	MAXSTATE   //
+	MAXSTATE
 )
+
+// String returns the string name
+func (state SwState) String() string {
+	switch state {
+	case INITIAL:
+		return "INITIAL"
+	case RESOLVING_TAG:
+		return "RESOLVING_TAG"
+	case RESOLVED_TAG:
+		return "RESOLVED_TAG"
+	case DOWNLOADING:
+		return "DOWNLOAD_STARTED"
+	case DOWNLOADED, VERIFYING:
+		return "DOWNLOADED"
+	case VERIFIED:
+		return "DELIVERED"
+	case CREATING_VOLUME:
+		return "CREATING_VOLUME"
+	case CREATED_VOLUME:
+		return "CREATED_VOLUME"
+	case INSTALLED:
+		return "INSTALLED"
+	case BOOTING:
+		return "BOOTING"
+	case RUNNING:
+		return "RUNNING"
+	case HALTING:
+		return "HALTING"
+	case HALTED:
+		return "HALTED"
+	case RESTARTING:
+		return "RESTARTING"
+	case PURGING:
+		return "PURGING"
+	default:
+		return fmt.Sprintf("Unknown state %d", state)
+	}
+}
+
+// ZSwState returns different numbers and in some cases mapped many to one
+func (state SwState) ZSwState() info.ZSwState {
+	switch state {
+	case 0:
+		return 0
+	case INITIAL:
+		return info.ZSwState_INITIAL
+	case RESOLVING_TAG:
+		return info.ZSwState_RESOLVING_TAG
+	case RESOLVED_TAG:
+		return info.ZSwState_RESOLVED_TAG
+	case DOWNLOADING:
+		return info.ZSwState_DOWNLOAD_STARTED
+	case DOWNLOADED, VERIFYING:
+		return info.ZSwState_DOWNLOADED
+	case VERIFIED:
+		return info.ZSwState_DELIVERED
+	case CREATING_VOLUME:
+		return info.ZSwState_CREATING_VOLUME
+	case CREATED_VOLUME:
+		return info.ZSwState_CREATED_VOLUME
+	case INSTALLED:
+		return info.ZSwState_INSTALLED
+	case BOOTING:
+		return info.ZSwState_BOOTING
+	case RUNNING:
+		return info.ZSwState_RUNNING
+	case HALTING:
+		return info.ZSwState_HALTING
+	case HALTED:
+		return info.ZSwState_HALTED
+	case RESTARTING:
+		return info.ZSwState_RESTARTING
+	case PURGING:
+		return info.ZSwState_PURGING
+	default:
+		log.Fatalf("Unknown state %d", state)
+	}
+	return info.ZSwState_INITIAL
+}
 
 // NoHash should XXX deprecate?
 const (

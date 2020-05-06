@@ -57,8 +57,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsUrl := dsCtx.DownloadURL
 
-	// update status to DOWNLOAD STARTED
-	status.State = types.DOWNLOAD_STARTED
+	// update status to DOWNLOADING
+	status.State = types.DOWNLOADING
 	// save the name of the Target filename to our status. In theory, this can be
 	// derived, but it is good for the status to say where it *is*, as opposed to
 	// config, which says where it *should be*

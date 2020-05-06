@@ -148,6 +148,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			PurgeCounter: purgeCounter,
 			DisplayName:  "Found in /persist/img",
 			FileLocation: filelocation,
+			State:        types.CREATED_VOLUME,
 			// XXX Is this the correct size? vs. qcow2 size?
 			TargetSizeBytes: uint64(size),
 			ObjType:         types.UnknownObj,
