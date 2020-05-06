@@ -6,11 +6,21 @@ RUN apk add --no-cache \
     linux-firmware-ath10k \
     linux-firmware-mrvl \
     linux-firmware-rtlwifi \
+    linux-firmware-rsi \
     linux-firmware-other
 
 FROM scratch
 ENTRYPOINT []
 WORKDIR /
+COPY --from=build /lib/firmware/mrvl /lib/firmware/mrvl
+COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
+COPY --from=build /lib/firmware/rtlwifi /lib/firmware/rtlwifi
+COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
+COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
+# Dell Edge Gateway 300x firmware
+COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
+# FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
+COPY rpi /lib/firmware/
 # FIXME: we're currently using ath10k firmware supplied
 # by Advantech. This is getting upstreamed and when it
 # does we should switch back to linux-firmware-ath10k from Alpine
@@ -18,10 +28,3 @@ WORKDIR /
 COPY ath10k /lib/firmware/ath10k
 # FIXME: this is binary block firmware for HiKey
 COPY ti-connectivity /lib/firmware/ti-connectivity
-COPY --from=build /lib/firmware/mrvl /lib/firmware/mrvl
-COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
-COPY --from=build /lib/firmware/rtlwifi /lib/firmware/rtlwifi
-COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
-COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
-# FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
-COPY rpi /lib/firmware/
