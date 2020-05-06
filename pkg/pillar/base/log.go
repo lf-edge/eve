@@ -10,7 +10,7 @@ import (
 // Debug :
 func (object *LogObject) Debug(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Debug(args...)
@@ -19,7 +19,7 @@ func (object *LogObject) Debug(args ...interface{}) {
 // Print :
 func (object *LogObject) Print(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Print(args...)
@@ -28,7 +28,7 @@ func (object *LogObject) Print(args ...interface{}) {
 // Info :
 func (object *LogObject) Info(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Info(args...)
@@ -37,7 +37,7 @@ func (object *LogObject) Info(args ...interface{}) {
 // Warn :
 func (object *LogObject) Warn(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Warn(args...)
@@ -46,7 +46,7 @@ func (object *LogObject) Warn(args ...interface{}) {
 // Warning :
 func (object *LogObject) Warning(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Warning(args...)
@@ -55,7 +55,7 @@ func (object *LogObject) Warning(args ...interface{}) {
 // Panic :
 func (object *LogObject) Panic(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Panic(args...)
@@ -64,7 +64,7 @@ func (object *LogObject) Panic(args ...interface{}) {
 // Fatal :
 func (object *LogObject) Fatal(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Fatal(args...)
@@ -73,7 +73,7 @@ func (object *LogObject) Fatal(args ...interface{}) {
 // Debugf :
 func (object *LogObject) Debugf(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Debugf(format, args...)
@@ -82,7 +82,7 @@ func (object *LogObject) Debugf(format string, args ...interface{}) {
 // Infof :
 func (object *LogObject) Infof(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Infof(format, args...)
@@ -91,7 +91,7 @@ func (object *LogObject) Infof(format string, args ...interface{}) {
 // Warnf :
 func (object *LogObject) Warnf(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Warnf(format, args...)
@@ -100,7 +100,7 @@ func (object *LogObject) Warnf(format string, args ...interface{}) {
 // Warningf :
 func (object *LogObject) Warningf(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Warningf(format, args...)
@@ -109,7 +109,7 @@ func (object *LogObject) Warningf(format string, args ...interface{}) {
 // Panicf :
 func (object *LogObject) Panicf(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Panicf(format, args...)
@@ -118,7 +118,7 @@ func (object *LogObject) Panicf(format string, args ...interface{}) {
 // Fatalf :
 func (object *LogObject) Fatalf(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Fatalf(format, args...)
@@ -127,7 +127,7 @@ func (object *LogObject) Fatalf(format string, args ...interface{}) {
 // Errorf :
 func (object *LogObject) Errorf(format string, args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Errorf(format, args...)
@@ -136,7 +136,7 @@ func (object *LogObject) Errorf(format string, args ...interface{}) {
 // Debugln :
 func (object *LogObject) Debugln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Debugln(args...)
@@ -145,7 +145,7 @@ func (object *LogObject) Debugln(args ...interface{}) {
 // Println :
 func (object *LogObject) Println(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Println(args...)
@@ -154,7 +154,7 @@ func (object *LogObject) Println(args ...interface{}) {
 // Infoln :
 func (object *LogObject) Infoln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Infoln(args...)
@@ -163,7 +163,7 @@ func (object *LogObject) Infoln(args ...interface{}) {
 // Warnln :
 func (object *LogObject) Warnln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Warnln(args...)
@@ -172,7 +172,7 @@ func (object *LogObject) Warnln(args ...interface{}) {
 // Warningln :
 func (object *LogObject) Warningln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Warningln(args...)
@@ -181,7 +181,7 @@ func (object *LogObject) Warningln(args ...interface{}) {
 // Errorln :
 func (object *LogObject) Errorln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Errorln(args...)
@@ -190,7 +190,7 @@ func (object *LogObject) Errorln(args ...interface{}) {
 // Panicln :
 func (object *LogObject) Panicln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Panicln(args...)
@@ -199,7 +199,7 @@ func (object *LogObject) Panicln(args ...interface{}) {
 // Fatalln :
 func (object *LogObject) Fatalln(args ...interface{}) {
 	if !object.Initialized {
-		log.Errorf("LogObject used without initialization")
+		log.Fatal("LogObject used without initialization")
 		return
 	}
 	log.WithFields(object.Fields).Fatalln(args...)

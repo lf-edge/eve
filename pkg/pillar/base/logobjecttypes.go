@@ -103,7 +103,10 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 	fields := make(map[string]interface{})
 	fields["log_event_type"] = LogObjectEventType
 	fields["obj_type"] = objType
-	fields["obj_name"] = objName
+	if len(objName) != 0 {
+		fields["obj_name"] = objName
+	}
+	fields["obj_key"] = key
 	if !uuid.Equal(objUUID, uuid.UUID{}) {
 		fields["obj_uuid"] = objUUID.String()
 	}
