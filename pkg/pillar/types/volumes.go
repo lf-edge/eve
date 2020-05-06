@@ -260,7 +260,7 @@ func (status VolumeStatus) LogCreate() {
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("state", status.State).
+	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("volume-created", status.VolumeCreated).
 		Infof("Volume status create")
 }
@@ -277,16 +277,16 @@ func (status VolumeStatus) LogModify(old interface{}) {
 	if oldStatus.State != status.State ||
 		oldStatus.VolumeCreated != status.VolumeCreated {
 
-		logObject.CloneAndAddField("state", status.State).
+		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("volume-created", status.VolumeCreated).
-			AddField("old-state", oldStatus.VolumeCreated).
+			AddField("old-state", oldStatus.State.String()).
 			AddField("old-volume-created", oldStatus.VolumeCreated).
 			Infof("Volume status modify")
 	}
 
 	if status.HasError() {
 		errAndTime := status.ErrorAndTime()
-		logObject.CloneAndAddField("state", status.State).
+		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("volume-created", status.VolumeCreated).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
@@ -298,7 +298,7 @@ func (status VolumeStatus) LogModify(old interface{}) {
 func (status VolumeStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
-	logObject.CloneAndAddField("state", status.State).
+	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("volume-created", status.VolumeCreated).
 		Infof("Volume status delete")
 
