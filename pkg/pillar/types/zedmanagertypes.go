@@ -92,7 +92,8 @@ func (config AppInstanceConfig) LogCreate() {
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("activate", config.Activate).AddField("remote-console", config.RemoteConsole).
+	logObject.CloneAndAddField("activate", config.Activate).
+		AddField("remote-console", config.RemoteConsole).
 		Infof("App instance config create")
 }
 
@@ -108,7 +109,10 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 	if oldConfig.Activate != config.Activate ||
 		oldConfig.RemoteConsole != config.RemoteConsole {
 
-		logObject.CloneAndAddField("activate", config.Activate).AddField("remote-console", config.RemoteConsole).
+		logObject.CloneAndAddField("activate", config.Activate).
+			AddField("remote-console", config.RemoteConsole).
+			AddField("old-activate", oldConfig.Activate).
+			AddField("old-remote-console", oldConfig.RemoteConsole).
 			Infof("App instance config modify")
 	}
 
@@ -116,6 +120,12 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config AppInstanceConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.AppInstanceConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+	logObject.CloneAndAddField("activate", config.Activate).
+		AddField("remote-console", config.RemoteConsole).
+		Infof("App instance config delete")
+
 	base.DeleteLogObject(config.LogKey())
 }
 
@@ -179,8 +189,10 @@ func (status AppInstanceStatus) LogCreate() {
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
-		AddField("purge-in-progress", status.PurgeInprogress).Infof("App instance status create")
+	logObject.CloneAndAddField("state", status.State).
+		AddField("restart-in-progress", status.RestartInprogress).
+		AddField("purge-in-progress", status.PurgeInprogress).
+		Infof("App instance status create")
 }
 
 // LogModify :
@@ -192,25 +204,38 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 	if !ok {
 		log.Errorf("LogModify: Old object interface passed is not of AppInstanceStatus type")
 	}
-	if status.HasError() {
-		errAndTime := status.ErrorAndTime()
-		logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
-			AddField("purge-in-progress", status.PurgeInprogress).AddField("error", errAndTime.Error).
-			AddField("error-time", errAndTime.ErrorTime).Errorf("App instance status modify")
-		return
-	}
 	if oldStatus.State != status.State ||
 		oldStatus.RestartInprogress != status.RestartInprogress ||
 		oldStatus.PurgeInprogress != status.PurgeInprogress {
 
-		logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
-			AddField("purge-in-progress", status.PurgeInprogress).Infof("App instance status modify")
+		logObject.CloneAndAddField("state", status.State).
+			AddField("restart-in-progress", status.RestartInprogress).
+			AddField("purge-in-progress", status.PurgeInprogress).
+			AddField("old-state", oldStatus.State).
+			AddField("old-restart-in-progress", oldStatus.RestartInprogress).
+			AddField("old-purge-in-progress", oldStatus.PurgeInprogress).
+			Infof("App instance status modify")
 	}
 
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime()
+		logObject.CloneAndAddField("state", status.State).
+			AddField("restart-in-progress", status.RestartInprogress).
+			AddField("purge-in-progress", status.PurgeInprogress).AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).
+			Errorf("App instance status modify")
+	}
 }
 
 // LogDelete :
 func (status AppInstanceStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.AppInstanceStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+	logObject.CloneAndAddField("state", status.State).
+		AddField("restart-in-progress", status.RestartInprogress).
+		AddField("purge-in-progress", status.PurgeInprogress).
+		Infof("App instance status delete")
+
 	base.DeleteLogObject(status.LogKey())
 }
 
