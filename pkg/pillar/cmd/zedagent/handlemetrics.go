@@ -784,7 +784,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.PartitionLabel = bos.PartitionLabel
 			swInfo.PartitionDevice = bos.PartitionDevice
 			swInfo.PartitionState = bos.PartitionState
-			swInfo.Status = info.ZSwState(bos.State)
+			swInfo.Status = bos.State.ZSwState()
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
 			if len(bos.StorageStatusList) > 0 {
@@ -798,7 +798,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime)
 			}
 			if swInfo.ShortVersion == "" {
-				swInfo.Status = info.ZSwState(types.INITIAL)
+				swInfo.Status = info.ZSwState_INITIAL
 				swInfo.DownloadProgress = 0
 			}
 		} else {
@@ -812,11 +812,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.LongVersion = partStatus.LongVersion
 			}
 			if swInfo.ShortVersion != "" {
-				// Must be factory install i.e. INSTALLED
-				swInfo.Status = info.ZSwState(types.INSTALLED)
+				swInfo.Status = info.ZSwState_INSTALLED
 				swInfo.DownloadProgress = 100
 			} else {
-				swInfo.Status = info.ZSwState(types.INITIAL)
+				swInfo.Status = info.ZSwState_INITIAL
 				swInfo.DownloadProgress = 0
 			}
 		}
@@ -838,7 +837,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		log.Debugf("reportMetrics sending unattached bos for %s",
 			bos.BaseOsVersion)
 		swInfo := new(info.ZInfoDevSW)
-		swInfo.Status = info.ZSwState(bos.State)
+		swInfo.Status = bos.State.ZSwState()
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
 		if len(bos.StorageStatusList) > 0 {
@@ -1344,10 +1343,10 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
-	ReportAppInfo.State = info.ZSwState(types.HALTED)
+	ReportAppInfo.State = info.ZSwState_HALTED
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
-		ReportAppInfo.State = info.ZSwState(aiStatus.State)
+		ReportAppInfo.State = aiStatus.State.ZSwState()
 
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
@@ -1365,7 +1364,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
 				ReportSoftwareInfo.ImageName = ss.Name
 				ReportSoftwareInfo.SwHash = ss.ImageSha256
-				ReportSoftwareInfo.State = info.ZSwState(ss.State)
+				ReportSoftwareInfo.State = ss.State.ZSwState()
 				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
 
 				ReportSoftwareInfo.Target = ss.Target
