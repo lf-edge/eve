@@ -323,12 +323,21 @@ api/%: $(GOBUILDER)
 	rm -rf api/$* ; mkdir api/$* # building $*
 	@$(DOCKER_GO) "protoc -I./proto --$(notdir $(@D))_out=paths=source_relative:./$(*D) proto/$(@F)/*.proto" $(CURDIR)/api api
 
+patch:
+	@if ! echo $(REPO_BRANCH) | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi
+	@if ! echo $(EVE_TREE_TAG) | grep -Eq '^$(REPO_BRANCH).[0-9]+-'; then echo "ERROR: can't find previous release's tag X.Y.Z"; exit 1; fi
+	@TAG=$(REPO_BRANCH).$$((`echo $(EVE_TREE_TAG) | sed -e 's#-.*$$##' | cut -f3 -d.` + 1))  &&\
+	 git tag -a -m"Release $$TAG" $$TAG                                                      &&\
+	 echo "Done tagging $$TAG patch release. Check the branch with git log and then run"     &&\
+	 echo "  git push origin $(REPO_BRANCH) $$TAG"
+
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
 	 X=`echo $(VERSION) | cut -s -d. -f1` ; Y=`echo $(VERSION) | cut -s -d. -f2` ; Z=`echo $(VERSION) | cut -s -d. -f3` ;\
 	 [ -z "$$X" -o -z "$$Y" -o -z "$$Z" ] && bail "VERSION missing (or incorrect). Re-run as: make VERSION=x.y.z $@" ;\
 	 (git fetch && [ `git diff origin/master..master | wc -l` -eq 0 ]) || bail "origin/master is different from master" ;\
 	 if git checkout $$X.$$Y 2>/dev/null ; then \
+	    echo "WARNING: branch $$X.$$Y already exists: you may want to run make patch instead" ;\
 	    git merge origin/master ;\
 	 else \
 	    git checkout master -b $$X.$$Y && echo zedcloud.zededa.net > conf/server &&\
@@ -430,6 +439,7 @@ help:
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
+	@echo "   patch          make a patch release on a current branch (must be a release branch)"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
