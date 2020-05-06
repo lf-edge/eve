@@ -189,7 +189,7 @@ func (status AppInstanceStatus) LogCreate() {
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("state", status.State).
+	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
 		Infof("App instance status create")
@@ -208,10 +208,10 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 		oldStatus.RestartInprogress != status.RestartInprogress ||
 		oldStatus.PurgeInprogress != status.PurgeInprogress {
 
-		logObject.CloneAndAddField("state", status.State).
+		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("restart-in-progress", status.RestartInprogress).
 			AddField("purge-in-progress", status.PurgeInprogress).
-			AddField("old-state", oldStatus.State).
+			AddField("old-state", oldStatus.State.String()).
 			AddField("old-restart-in-progress", oldStatus.RestartInprogress).
 			AddField("old-purge-in-progress", oldStatus.PurgeInprogress).
 			Infof("App instance status modify")
@@ -219,7 +219,7 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 
 	if status.HasError() {
 		errAndTime := status.ErrorAndTime()
-		logObject.CloneAndAddField("state", status.State).
+		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("restart-in-progress", status.RestartInprogress).
 			AddField("purge-in-progress", status.PurgeInprogress).AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
@@ -231,7 +231,7 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 func (status AppInstanceStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.AppInstanceStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
-	logObject.CloneAndAddField("state", status.State).
+	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
 		Infof("App instance status delete")
