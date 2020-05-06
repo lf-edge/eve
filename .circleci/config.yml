@@ -38,10 +38,12 @@ jobs:
           name: EVE
           command: >
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push EVE_SNAPSHOT_VERSION=0.0.0-snapshot} eve
+      - run:
+          name: Preserve artifacts
+          command: >
+            mkdir circle ; cp dist/amd64/installer/*.squash circle
       - store_artifacts:
-          path: dist/amd64/installer/rootfs.img
-      - store_artifacts:
-          path: images/rootfs-xen.yml
+          path: circle
   yetus:
     docker:
       - image: apache/yetus:0.12.0
