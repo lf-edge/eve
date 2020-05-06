@@ -10,6 +10,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -122,6 +123,53 @@ func (config VolumeConfig) Key() string {
 		config.VolumeID, config.PurgeCounter)
 }
 
+// LogCreate :
+func (config VolumeConfig) LogCreate() {
+	logObject := base.NewLogObject(base.VolumeConfigLogType, config.DisplayName,
+		config.VolumeID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("origin", config.Origin).
+		AddField("target-size-bytes", config.TargetSizeBytes).
+		Infof("Volume config create")
+}
+
+// LogModify :
+func (config VolumeConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
+		config.VolumeID, config.LogKey())
+
+	oldConfig, ok := old.(VolumeConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of VolumeConfig type")
+	}
+	// why would we get modified?
+	if oldConfig.Origin != config.Origin ||
+		oldConfig.TargetSizeBytes != config.TargetSizeBytes {
+
+		logObject.CloneAndAddField("origin", config.Origin).
+			AddField("target-size-bytes", config.TargetSizeBytes).
+			AddField("old-origin", oldConfig.TargetSizeBytes).
+			AddField("old-target-size-bytes", oldConfig.TargetSizeBytes).
+			Infof("Volume config modify")
+	}
+}
+
+// LogDelete :
+func (config VolumeConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
+		config.VolumeID, config.LogKey())
+	logObject.Infof("Volume config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config VolumeConfig) LogKey() string {
+	return string(base.VolumeConfigLogType) + "-" + config.Key()
+}
+
 // OriginType - types of origin
 type OriginType uint8
 
@@ -203,6 +251,63 @@ func (status VolumeStatus) Key() string {
 // Pending returns if any of the pending flags are set
 func (status VolumeStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
+}
+
+// LogCreate :
+func (status VolumeStatus) LogCreate() {
+	logObject := base.NewLogObject(base.VolumeStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("state", status.State).
+		AddField("volume-created", status.VolumeCreated).
+		Infof("Volume status create")
+}
+
+// LogModify :
+func (status VolumeStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+
+	oldStatus, ok := old.(VolumeStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of VolumeStatus type")
+	}
+	if oldStatus.State != status.State ||
+		oldStatus.VolumeCreated != status.VolumeCreated {
+
+		logObject.CloneAndAddField("state", status.State).
+			AddField("volume-created", status.VolumeCreated).
+			AddField("old-state", oldStatus.VolumeCreated).
+			AddField("old-volume-created", oldStatus.VolumeCreated).
+			Infof("Volume status modify")
+	}
+
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime()
+		logObject.CloneAndAddField("state", status.State).
+			AddField("volume-created", status.VolumeCreated).
+			AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).
+			Errorf("Volume status modify")
+	}
+}
+
+// LogDelete :
+func (status VolumeStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+	logObject.CloneAndAddField("state", status.State).
+		AddField("volume-created", status.VolumeCreated).
+		Infof("Volume status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status VolumeStatus) LogKey() string {
+	return string(base.VolumeStatusLogType) + "-" + status.Key()
 }
 
 // DownloadOriginStatus is status when the OriginType is download

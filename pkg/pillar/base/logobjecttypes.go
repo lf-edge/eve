@@ -39,6 +39,8 @@ const (
 	AppInstanceConfigLogType LogObjectType = "app_instance_config"
 	// VolumeConfigLogType :
 	VolumeConfigLogType LogObjectType = "volume_config"
+	// VolumeStatusLogType :
+	VolumeStatusLogType LogObjectType = "volume_status"
 )
 
 // RelationObjectType :
