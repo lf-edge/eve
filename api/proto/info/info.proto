@@ -1,5 +1,5 @@
-// Copyright(c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// Copyright(c) 2017-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
@@ -87,8 +87,8 @@ message ZInfoManufacturer {
   string productName = 2;
   string version = 3;
   string serialNumber = 4;
-  string UUID = 5;		// From BIOS; different than device UUID
-  string compatible = 6;	// From /proc/device-tree/compatible on ARM
+  string UUID = 5;             // From BIOS; different than device UUID
+  string compatible = 6;       // From /proc/device-tree/compatible on ARM
   string biosVendor = 7;
   string biosVersion = 8;
   string biosReleaseDate = 9;
@@ -143,29 +143,37 @@ message ZInfoDNS {
 }
 
 // Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
+// plus additions starting at BOOTING
 enum ZSwState {
-  INVALID		= 0;
-  INITIAL		= 1;	// Config received
-  DOWNLOAD_STARTED	= 2;	// Download in-progress
-  DOWNLOADED		= 3;	// Download completed, verification in-progress
-  DELIVERED		= 4;	// Verification completed
-  INSTALLED		= 5;	// Installed, ready for activation
+  INVALID               = 0;
+  INITIAL               = 1;    // Config received
+  DOWNLOAD_STARTED      = 2;    // Download in-progress
+  DOWNLOADED            = 3;    // Download completed, verification in-progress
+  DELIVERED             = 4;    // Verification completed
+  INSTALLED             = 5;    // Installed, ready for activation
   BOOTING               = 6;    // booting. Booting and above means that App is activated.
   RUNNING               = 7;    // running
   HALTING               = 8;    // being halted
   HALTED                = 9;    // Halted
-  RESTARTING            = 10;   // Restarting due to config change
-  PURGING               = 11;   // Purging due to config change
+  RESTARTING            = 10;   // Restarting due to restart command
+  PURGING               = 11;   // Purging due to purge command
+  // Prior to DOWNLOAD_STARTED we go through these:
+  RESOLVING_TAG         = 12;   // Resolving an image tag
+  RESOLVED_TAG          = 13;   // Tag has been resolved/failed
+  // Prior to INSTALLED we go through these:
+  CREATING_VOLUME       = 14;   // Volume create in progress
+  CREATED_VOLUME        = 15;   // Volume create done/failed
 }
 
-//SW Info for Apps
+// SW Info for Apps
+// XXX to be deprecated once we've completely moved to volumes
 message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
-  ZSwState state = 4;		// State of Software Image download/install
-  string target = 6;		// E.g., "disk", "kernel", "device-tree"
-  string vdev = 7;		// E.g., "xvda"
-  uint32 downloadProgress = 8;	// Download progress; 0-100 percent
+  ZSwState state = 4;           // State of Software Image download/install
+  string target = 6;            // E.g., "disk", "kernel", "device-tree"
+  string vdev = 7;              // E.g., "xvda"
+  uint32 downloadProgress = 8;  // Download progress; 0-100 percent
   string imageName = 9;         // Name of the disk image
 }
 
@@ -226,8 +234,8 @@ message ZInfoDevice {
   string cpuArch = 5;
   string platform = 6;
   uint32 ncpu = 7;
-  uint64 memory = 8;	// in Mbytes
-  uint64 storage = 9;	// in MBytes for the currently active image filesystem
+  uint64 memory = 8;   // in Mbytes
+  uint64 storage = 9;  // in MBytes for the currently active image filesystem
 
   ZInfoManufacturer minfo = 11;
 
@@ -235,6 +243,7 @@ message ZInfoDevice {
   // Newer versions will not fill in this information. Controller Needs
   // to check check if this is empty - if yes, use the DevicePortStatus instead.
   repeated ZInfoNetwork network = 13;
+
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
@@ -368,9 +377,9 @@ enum BaseOsSubStatus {
 
 // Per filesystem/partition information
 message ZInfoStorage {
-  string device = 1;	// E.g., "sda3"
-  string mountPath = 2;	// E.g., "/", or "/config"
-  uint64 total = 3;	// in MBytes
+  string device = 1;        // E.g., "sda3"
+  string mountPath = 2;     // E.g., "/", or "/config"
+  uint64 total = 3;         // in MBytes
   bool storageLocation = 4; // Storage location for app disks, images etc.
 }
 
@@ -380,7 +389,7 @@ message ZInfoApp {
 
   bool systemApp = 6;
   string AppName = 7;
-  repeated ZInfoSW softwareList = 8;
+  repeated ZInfoSW softwareList = 8; // XXX to be deprecated in favor of volumeRefs
   // deprecated = 9;
   // deprecated = 11;
 
@@ -388,16 +397,17 @@ message ZInfoApp {
   repeated ZioBundle assignedAdapters = 13;
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
-  repeated ZInfoNetwork network = 16;	    // up/down; allocated IP
+  repeated ZInfoNetwork network = 16;       // up/down; allocated IP
+  repeated string volumeRefs = 17;          // volume UUIDs
 }
 
 // ipSec state information
 enum ZInfoVpnState {
   VPN_INVALID     = 0;
-  VPN_INITIAL     = 1;	// Config received
-  VPN_CONNECTING  = 2;	// Connection is in-progress
-  VPN_ESTABLISHED = 3;	// Connection established
-  VPN_INSTALLED   = 4;	// SAs/Routes Installed
+  VPN_INITIAL     = 1;  // Config received
+  VPN_CONNECTING  = 2;  // Connection is in-progress
+  VPN_ESTABLISHED = 3;  // Connection established
+  VPN_INSTALLED   = 4;  // SAs/Routes Installed
   VPN_REKEYED     = 5;  // SAs Rekeyed
   VPN_DELETED     = 10; // Connection deleted
 }
@@ -481,14 +491,14 @@ message ZInfoLisp {
 
 // Network Instance information
 message ZInfoNetworkInstance {
-  string networkID = 2;		// UUID
-  string networkVersion = 3;
+  string networkID = 2;        // UUID
+  string networkVersion = 3;   // From Network Instance config
 
-  uint32 instType = 5;		// ZNetworkInstType
-  string displayname = 6;	// From NetworkInstance config
-  bool activated = 7;		// Forwarding enabled
+  uint32 instType = 5;         // ZNetworkInstType
+  string displayname = 6;      // From NetworkInstance config
+  bool activated = 7;          // Forwarding enabled
   google.protobuf.Timestamp upTimeStamp = 8;
-  ZInfoSW softwareList = 9; 	// E.g., VPN version
+  ZInfoSW softwareList = 9;    // E.g., VPN version; XXX to be deprecated?
 
   string CurrentUplinkIntf = 10;  // current uplink interface in use by this NI
   string CurrentUplinkAlias = 11; // user defined namestring alias to this CurrentUplinkIntf, for future
@@ -520,13 +530,14 @@ message VolumeResources {
   uint64 curSizeBytes = 2; // Current disk usage
 }
 
+// Information about a particular volume based on the Volume config
 message ZInfoVolume {
   string uuid = 1;
   string displayName = 2;
   UsageInfo usage = 3;
   VolumeResources resources = 4;
   ZSwState state = 5;
-  uint32 downloadProgress = 6;
+  uint32 progressPercentage = 6; // 0-100% Use depends on state i.e., download vs. verification vs. volume creation
 
   ErrorInfo volumeErr = 7;
 }
@@ -535,15 +546,36 @@ message ContentResources {
   uint64 curSizeBytes = 1;  // Current disk usage
 }
 
+// ZInfoContentTree is used to describe the top of a tree, which has
+// a UUID (and displayName) from the config ContentTree message.
+// The components (or blobs) used by that are referenced by the compoentShaList
+// and in a separate ZInfoBlobList info message
 message ZInfoContentTree {
   string uuid = 1;
   string displayName = 2;
   string sha256 = 3;
   ContentResources resources = 4;
-  UsageInfo usage = 5;  // Same info as for volumes
-  repeated string componentShaList = 6;
+  UsageInfo usage = 5;
+  ZSwState state = 6;   // INITIAL, DOWNLOAD_STARTED, DOWNLOADED, DELIVERED
+  uint32 progressPercentage = 7; // 0-100% Depending on state if it is download or verification
+
+  ErrorInfo err = 8;
+  repeated string componentShaList = 9; // sha's for the referenced blobs
 }
 
+message ZInfoBlob {
+  string sha256 = 1;
+  ContentResources resources = 2;
+  UsageInfo usage = 3;
+  ZSwState state = 4;   // INITIAL, DOWNLOAD_STARTED, DOWNLOADED, DELIVERED
+  uint32 progressPercentage = 5; // 0-100% Depending on state if it is download or verification
+  ErrorInfo err = 6;
+}
+
+// For efficiency EVE can send many/all the blobs in one info message
+message ZInfoBlobList {
+  repeated ZInfoBlob blob = 1;
+}
 
 // This is the request payload for POST /api/v1/edgeDevice/info
 // ZInfoMsg carries event-triggered state changes for one object (a device,
@@ -551,8 +583,6 @@ message ZInfoContentTree {
 // until they make it to the controller, however subsequent state change to the
 // object will replace any attempts to (re)transmit the previous message for
 // that object.
-// The message is assumed to be protected by a TLS session bound to the
-// device certificate.
 message ZInfoMsg {
   ZInfoTypes ztype = 1;
   string devId = 2;
@@ -564,6 +594,7 @@ message ZInfoMsg {
     ZInfoNetworkInstance niinfo = 12;
     ZInfoVolume vinfo = 13;
     ZInfoContentTree cinfo = 14;
+    ZInfoBlobList binfo = 15;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }

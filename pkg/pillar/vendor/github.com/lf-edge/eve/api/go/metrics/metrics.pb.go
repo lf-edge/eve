@@ -206,7 +206,7 @@ type NetworkMetric struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// iName - Set to SystemAdapter.Name
+	// iName - Set to SystemAdapter.Name which is the Logicallabel in phyio
 	IName string `protobuf:"bytes,1,opt,name=iName,proto3" json:"iName,omitempty"` // name from config; displayName for network instance
 	// alias - Set to SystemAdapter.alias
 	Alias   string `protobuf:"bytes,20,opt,name=alias,proto3" json:"alias,omitempty"`

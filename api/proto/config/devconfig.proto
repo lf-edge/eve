@@ -63,6 +63,9 @@ message EdgeDevConfig {
   // used for sensitive data decryption
   repeated CipherContext cipherContexts = 19;
 
+  // These images aka ContentTrees and Volumes should be created by EVE
+  // independently of any application usage.
+  // Application instances will refer to the volumes.
   repeated ContentTree contentInfo = 20;
   repeated Volume volumes = 21;
 }

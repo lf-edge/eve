@@ -37,6 +37,7 @@ require (
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472 // indirect
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
+	github.com/opencontainers/go-digest v1.0.0-rc1
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.0.2
