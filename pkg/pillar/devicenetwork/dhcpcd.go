@@ -8,8 +8,6 @@ package devicenetwork
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"os"
@@ -19,29 +17,41 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	log "github.com/sirupsen/logrus"
 )
 
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
 // Returns an ifname and error if an interface does not yet exist
-func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) (string, error) {
+func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) types.IntfStatusMap {
 
 	// Look for adds or changes
 	log.Infof("updateDhcpClient: new %v old %v\n",
 		newConfig, oldConfig)
 	// Dry-run to see if we need to ask for retry. Don't change anything
+	intfStatusMap := *types.NewIntfStatusMap()
 	for _, newU := range newConfig.Ports {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
 		if oldU == nil || oldU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: new %s dryrun", newU.IfName)
 			err := doDhcpClientActivate(newU, true)
 			if err != nil {
-				return newU.IfName, err
+				log.Errorf("UpdateDhcpClient: Failed to activate Dhcp Client "+
+					"on %s. err: %s", newU.IfName, err)
+				intfStatusMap.RecordFailure(newU.IfName, err.Error())
 			}
 		}
 	}
 
 	for _, newU := range newConfig.Ports {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
+		// Skip interfaces that already have errors
+		if intfStatusMap.IntfHasError(newU.IfName) {
+			log.Debugf("updateDhcpClient: intf %s already has error. "+
+				"Skipping it", newU.IfName)
+			continue
+		}
 		if oldU == nil || oldU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
@@ -69,7 +79,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) (string, erro
 				newU)
 		}
 	}
-	return "", nil
+	return intfStatusMap
 }
 
 // doDhcpClientActivate can return an error when dryrun is set.

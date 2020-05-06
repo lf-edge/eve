@@ -172,6 +172,36 @@ func (intfMap *IntfStatusMap) SetOrUpdateFromMap(
 	}
 }
 
+// IntfHasError returns if the given interface has any error
+func (intfMap *IntfStatusMap) IntfHasError(ifname string) bool {
+	tr, ok := intfMap.StatusMap[ifname]
+	if ok {
+		return tr.HasError()
+	}
+	return false
+}
+
+// HasSuccessfulIntf returns if there is atleast one Successful interface
+func (intfMap *IntfStatusMap) HasSuccessfulIntf() bool {
+	for _, tr := range intfMap.StatusMap {
+		if tr.IsSuccess() {
+			return true
+		}
+	}
+	return false
+}
+
+// AllErrorStr returns if there is atleast one Successful interface
+func (intfMap *IntfStatusMap) AllErrorStr() string {
+	errStr := ""
+	for _, tr := range intfMap.StatusMap {
+		if tr.HasError() {
+			errStr += tr.LastError + "\n"
+		}
+	}
+	return errStr
+}
+
 // NewIntfStatusMap - Create a new instance of IntfStatusMap
 func NewIntfStatusMap() *IntfStatusMap {
 	intfStatusMap := IntfStatusMap{}
@@ -227,6 +257,13 @@ func (trPtr *TestResults) RecordFailure(errStr string) {
 // Returns false if it was never tested i.e., both timestamps zero
 func (trPtr *TestResults) HasError() bool {
 	return trPtr.LastFailed.After(trPtr.LastSucceeded)
+}
+
+// IsSuccess returns true if the test result is a success. Returns false
+// if no success was recorded.
+func (trPtr *TestResults) IsSuccess() bool {
+	return !trPtr.LastSucceeded.IsZero() &&
+		trPtr.LastSucceeded.After(trPtr.LastFailed)
 }
 
 // Update uses the src to add info to the results

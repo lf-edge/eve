@@ -232,20 +232,20 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		ifname, err := UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
-		if err != nil {
+		intfStatusMap := UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		pending.PendDPC.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+		if !intfStatusMap.HasSuccessfulIntf() {
 			// Still waiting for a network interface
 			if pending.TestCount < MaxDPCRetestCount {
-				log.Warnf("VerifyPending: update DhcpClient: retry due to ifname %s at count %d: %s",
-					ifname, pending.TestCount, err)
+				log.Warnf("VerifyPending: update DhcpClient: No successful "+
+					"intf at count %d", pending.TestCount)
 				pending.TestCount++
 				return DPC_WAIT
 			} else {
-				log.Warnf("VerifyPending: update DhcpClient: failed due to ifname %s: %s",
-					ifname, err)
-				pending.PendDPC.RecordPortFailure(ifname,
-					err.Error())
-				pending.PendDPC.RecordFailure(err.Error())
+				errStr := intfStatusMap.AllErrorStr()
+				log.Warnf("VerifyPending: update DhcpClient: No successful "+
+					"Intf. Err: %s", errStr)
+				pending.PendDPC.RecordFailure(errStr)
 				return DPC_FAIL
 			}
 		}
