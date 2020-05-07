@@ -340,7 +340,7 @@ proto: $(GOBUILDER) api/go api/python
 	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
 
 api/%: $(GOBUILDER)
-	rm -rf $@; mkdir $@ # building $@
+	rm -rf $@/*/; mkdir -p $@ # building $@
 	@$(DOCKER_GO) "protoc -I./proto --$(@F)_out=paths=source_relative:./$(@F) \
 		proto/*/*.proto" $(CURDIR)/api api
 
