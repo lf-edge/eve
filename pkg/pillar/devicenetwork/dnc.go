@@ -65,6 +65,11 @@ type DeviceNetworkContext struct {
 	CloudConnectivityWorks bool
 	Iteration              int // Start with different interfaces each time
 
+	// dhcpErrorMap - Map of interfaces with DHCP errors ifname->true.
+	//  This is used to retry DHCP. This is updated only by
+	// doDhcpClientActivate
+	dhcpErrorMap map[string]bool
+
 	// Timers in seconds
 	DPCTestDuration           uint32 // Wait for DHCP address
 	NetworkTestInterval       uint32 // Test interval in minutes.
@@ -232,16 +237,25 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		intfStatusMap := UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
-		pending.PendDPC.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
-		if !intfStatusMap.HasSuccessfulIntf() {
-			// Still waiting for a network interface
+		intfStatusMap := UpdateDhcpClient(pending.PendDPC, pending.OldDPC,
+			ctx.dhcpErrorMap)
+		if intfStatusMap.HasErrorIntf() {
+			// One of the interfaces still has errors - Still waiting for a
+			// network interface
 			if pending.TestCount < MaxDPCRetestCount {
-				log.Warnf("VerifyPending: update DhcpClient: No successful "+
-					"intf at count %d", pending.TestCount)
+				log.Warnf("VerifyPending: update DhcpClient: Has Errors at "+
+					"retry count %d", pending.TestCount)
 				pending.TestCount++
 				return DPC_WAIT
-			} else {
+			}
+			// MaxDPCRetestCount reached.
+			// Check if there is atleast one successful port. If not, return FAIL.
+			// Update DPC with only port errors. Don't record success from
+			// IntfStatusMap because DPC port is successful only when Cloud
+			// connectivity is verified.
+			pending.PendDPC.UpdatePortStatusFromIntfStatusMap(intfStatusMap,
+				true)
+			if !intfStatusMap.HasSuccessfulIntf() {
 				errStr := intfStatusMap.AllErrorStr()
 				log.Warnf("VerifyPending: update DhcpClient: No successful "+
 					"Intf. Err: %s", errStr)
@@ -263,7 +277,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
-	pending.PendDPC.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	pending.PendDPC.UpdatePortStatusFromIntfStatusMap(intfStatusMap, false)
 	pending.PendDNS.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	if err == nil {
 		if checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {

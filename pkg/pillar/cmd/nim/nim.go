@@ -779,13 +779,13 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	rtf, intfStatusMap, err := devicenetwork.VerifyDeviceNetworkStatus(
 		*ctx.DeviceNetworkStatus, successCount, ctx.Iteration,
 		ctx.TestSendTimeout)
-	ctx.DevicePortConfig.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	ctx.DevicePortConfig.UpdatePortStatusFromIntfStatusMap(intfStatusMap, false)
 	// Use TestResults to update the DevicePortConfigList and publish
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
 	if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 		dpc := &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-		dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+		dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap, false)
 		log.Infof("publishing DevicePortConfigList update: %+v",
 			*ctx.DevicePortConfigList)
 		ctx.PubDevicePortConfigList.Publish("global",

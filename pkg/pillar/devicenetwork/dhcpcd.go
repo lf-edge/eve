@@ -24,48 +24,65 @@ import (
 
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
 // Returns an ifname and error if an interface does not yet exist
-func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) types.IntfStatusMap {
+func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig,
+	dhcpIntfErrMap map[string]bool) types.IntfStatusMap {
 
 	// Look for adds or changes
 	log.Infof("updateDhcpClient: new %v old %v\n",
 		newConfig, oldConfig)
 	// Dry-run to see if we need to ask for retry. Don't change anything
-	intfStatusMap := *types.NewIntfStatusMap()
+	// XXX - Why do we have dry run ? DryRun only checks to see if the kernel
+	//  interface exists. This is better done by the calling code separately.
+	//  Kernel interface existing should be a Requirement for calling this
+	//  method.
+	intfStatusMapPtr := types.NewIntfStatusMap()
 	for _, newU := range newConfig.Ports {
+		_, intfInDhcpErrMap := dhcpIntfErrMap[newU.IfName]
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
-		if oldU == nil || oldU.Dhcp == types.DT_NONE {
+		if intfInDhcpErrMap || oldU == nil || oldU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: new %s dryrun", newU.IfName)
 			err := doDhcpClientActivate(newU, true)
 			if err != nil {
 				log.Errorf("UpdateDhcpClient: Failed to activate Dhcp Client "+
 					"on %s. err: %s", newU.IfName, err)
-				intfStatusMap.RecordFailure(newU.IfName, err.Error())
+				intfStatusMapPtr.RecordFailure(newU.IfName, err.Error())
+				dhcpIntfErrMap[newU.IfName] = true
 			}
 		}
 	}
 
 	for _, newU := range newConfig.Ports {
-		oldU := lookupOnIfname(oldConfig, newU.IfName)
-		// Skip interfaces that already have errors
-		if intfStatusMap.IntfHasError(newU.IfName) {
+		// Skip interfaces that failed in dry run
+		if intfStatusMapPtr.IntfHasError(newU.IfName) {
 			log.Debugf("updateDhcpClient: intf %s already has error. "+
 				"Skipping it", newU.IfName)
 			continue
 		}
-		if oldU == nil || oldU.Dhcp == types.DT_NONE {
+		_, intfInDhcpErrMap := dhcpIntfErrMap[newU.IfName]
+		oldU := lookupOnIfname(oldConfig, newU.IfName)
+		if intfInDhcpErrMap || oldU == nil || oldU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
+			// XXX - Is this comment still valid? In the previous iteration,
+			//  we could have started DHCPClient for this config. So either
+			//  skip for successful interfaces or do inactivate
+			// XXX - Why are we ignoring the return value of
+			// doDhcpClientActivate??
 			doDhcpClientActivate(newU, false)
+			delete(dhcpIntfErrMap, newU.IfName)
 		} else {
 			log.Infof("updateDhcpClient: found old %v\n",
 				oldU)
 			if !reflect.DeepEqual(newU.DhcpConfig, oldU.DhcpConfig) {
 				log.Infof("updateDhcpClient: changed %s\n",
 					newU.IfName)
+				// XXX - Why are we ignoring the return values of these
+				// functions??
 				doDhcpClientInactivate(*oldU)
 				doDhcpClientActivate(newU, false)
 			}
 		}
+		intfStatusMapPtr.RecordSuccess(newU.IfName)
 	}
 	// Look for deletes from oldConfig to newConfig
 	for _, oldU := range oldConfig.Ports {
@@ -79,7 +96,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) types.IntfSta
 				newU)
 		}
 	}
-	return intfStatusMap
+	return *intfStatusMapPtr
 }
 
 // doDhcpClientActivate can return an error when dryrun is set.

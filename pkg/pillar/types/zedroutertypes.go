@@ -191,7 +191,17 @@ func (intfMap *IntfStatusMap) HasSuccessfulIntf() bool {
 	return false
 }
 
-// AllErrorStr returns if there is atleast one Successful interface
+// HasErrorIntf returns if there is atleast 1 interface with error
+func (intfMap *IntfStatusMap) HasErrorIntf() bool {
+	for _, tr := range intfMap.StatusMap {
+		if tr.HasError() {
+			return true
+		}
+	}
+	return false
+}
+
+// AllErrorStr returns concatenated string of all errors
 func (intfMap *IntfStatusMap) AllErrorStr() string {
 	errStr := ""
 	for _, tr := range intfMap.StatusMap {
@@ -470,12 +480,14 @@ func (portConfig DevicePortConfig) WasDPCWorking() bool {
 // those from intfStatusMap. If a port is not found in intfStatusMap, it means
 // the port was not tested, so we retain the original TestResults for the port.
 func (portConfig *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
-	intfStatusMap IntfStatusMap) {
+	intfStatusMap IntfStatusMap, errorsOnly bool) {
 	for indx := range portConfig.Ports {
 		portPtr := &portConfig.Ports[indx]
 		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
-			portPtr.TestResults.Update(tr)
+			if !errorsOnly || tr.HasError() {
+				portPtr.TestResults.Update(tr)
+			}
 		}
 		// Else - Port not tested hence no change
 	}
