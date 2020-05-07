@@ -5,18 +5,18 @@ package hypervisor
 
 import (
 	"fmt"
+	v1stat "github.com/containerd/cgroups/stats/v1"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/shirou/gopsutil/process"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"text/template"
+	"time"
 )
 
 // We build device model around PCIe topology according to best practices
@@ -272,6 +272,30 @@ func logError(format string, a ...interface{}) error {
 	return fmt.Errorf(format, a...)
 }
 
+//KvmContainerIntf wraps containerd methods. This helps
+//in unit-testing, by mocking this interface with stubs
+//to focus on kvm.go unit-testing
+type KvmContainerIntf interface {
+	InitContainerdClient() error
+	GetMetrics(ctrID string) (*v1stat.Metrics, error)
+}
+
+//KvmContainerImpl implements KvmContainerIntf for containerd
+type KvmContainerImpl struct{}
+
+//InitContainerdClient implements InitContainerdClient interface of KvmContainerIntf
+func (k *KvmContainerImpl) InitContainerdClient() error {
+	return containerd.InitContainerdClient()
+}
+
+//GetMetrics implements GetMetrics interface of KvmContainerIntf
+func (k *KvmContainerImpl) GetMetrics(ctrID string) (*v1stat.Metrics, error) {
+	return containerd.GetMetrics(ctrID)
+}
+
+//Instantiate an object to call KvmContainerImpl methods
+var kvmContainerImpl KvmContainerIntf = &KvmContainerImpl{}
+
 // KVM domains map 1-1 to anchor device model UNIX processes (qemu or firecracker)
 // For every anchor process we maintain the following entry points in the
 // /var/run/hypervisor/kvm/DOMAIN_NAME:
@@ -296,6 +320,10 @@ func newKvm() Hypervisor {
 	// for now -- lets just pick a static device model based on the host architecture
 	// "-cpu host",
 	// -cpu IvyBridge-IBRS,ss=on,vmx=on,movbe=on,hypervisor=on,arat=on,tsc_adjust=on,mpx=on,rdseed=on,smap=on,clflushopt=on,sha-ni=on,umip=on,md-clear=on,arch-capabilities=on,xsaveopt=on,xsavec=on,xgetbv1=on,xsaves=on,pdpe1gb=on,3dnowprefetch=on,avx=off,f16c=off,hv_time,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff
+	if err := kvmContainerImpl.InitContainerdClient(); err != nil {
+		log.Errorf("InitContainerdClient failed: %v", err)
+		return nil
+	}
 	switch runtime.GOARCH {
 	case "arm64":
 		return kvmContext{
@@ -310,8 +338,8 @@ func newKvm() Hypervisor {
 		return kvmContext{
 			domains:      map[string]int{},
 			devicemodel:  "pc-q35-3.1",
-			dmExec:       "qemu-system-x86_64",
-			dmArgs:       []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-no-hpet"},
+			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
+			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-no-hpet", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on"},
 			dmCPUArgs:    []string{},
 			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
 		}
@@ -464,51 +492,88 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	return nil
 }
 
-func (ctx kvmContext) Create(domainName string, cfgFilename string, VirtualizationMode types.VmMode) (int, error) {
-	log.Infof("starting KVM domain %s with config %s\n", domainName, cfgFilename)
+func waitForQmp(domainName string) error {
+	maxDelay := time.Second * 10
+	delay := time.Second
+	var waited time.Duration
+	for {
+		log.Infof("waitForQmp for %s: waiting for %v", domainName, delay)
+		if delay != 0 {
+			time.Sleep(delay)
+			waited += delay
+		}
+		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); err == nil {
+			log.Infof("waitForQmp for %s, found file", domainName)
+			return nil
+		} else {
+			if waited > maxDelay {
+				// Give up
+				log.Warnf("waitForQmp for %s: giving up", domainName)
+				return logError("Qmp not found")
+			}
+			delay = 2 * delay
+			if delay > time.Minute {
+				delay = time.Minute
+			}
+		}
+	}
+}
+
+func (ctx kvmContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
+	log.Infof("starting KVM domain %s with config %s", domainName, cfgFilename)
+	if config == nil {
+		return 0, logError("Empty config supplied for %s, %s", domainName, cfgFilename)
+	}
 
 	os.MkdirAll(kvmStateDir+domainName, 0777)
 
 	pidFile := kvmStateDir + domainName + "/pid"
-	qmpFile := getQmpExecutorSocket(domainName)
+	//qmpFile := getQmpExecutorSocket(domainName)
 	consFile := kvmStateDir + domainName + "/cons"
 
 	dmArgs := ctx.dmArgs
-	if VirtualizationMode == types.FML {
+	if config.VirtualizationMode == types.FML {
 		dmArgs = append(dmArgs, ctx.dmFmlCPUArgs...)
 	} else {
 		dmArgs = append(dmArgs, ctx.dmCPUArgs...)
 	}
-	stdoutStderr, err := wrap.Command(ctx.dmExec, append(dmArgs,
-		"-name", domainName, "-readconfig", cfgFilename, "-pidfile", pidFile)...).CombinedOutput()
+
+	args := []string{ctx.dmExec}
+	args = append(args, dmArgs...)
+	args = append(args, "-name", domainName,
+		"-readconfig", cfgFilename,
+		"-pidfile", pidFile)
+
+	domainID, err := containerd.LKTaskLaunch(domainName,
+		"xen-tools", config, args)
 	if err != nil {
-		return 0, logError("starting qemu failed %s (%v)", string(stdoutStderr), err)
+		return 0, logError("starting LKTaskLaunch failed for %s, (%v)", domainName, err)
+	}
+	pid, status, err := containerd.CtrInfo(domainName)
+	if err != nil {
+		log.Errorf("Error getting status for container %s: %v", domainName, err)
+		return 0, err
+	}
+	if domainID != pid || status != "running" {
+		log.Errorf("domainID(%d) is not matching pid(%d), or status(%s) is not running",
+			domainID, pid, status)
 	}
 	log.Infof("done launching qemu device model")
+	if err := waitForQmp(domainName); err != nil {
+		log.Errorf("Error waiting for Qmp for domain %s: %v", domainName, err)
+		return 0, err
+	}
+	consolePty, err := getConsolePty(getQmpExecutorSocket(domainName))
+	if err != nil {
+		//don't bail, log an error and proceed
+		log.Errorf("Error fetching charserial10 pty for domain %s: %v", domainName, err)
+	} else {
+		os.Symlink(consolePty, consFile)
+	}
+
 	log.Debugf("starting qmpEventHandler")
 	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
 
-	// lets capture console device; don't mind if it fails
-	match := regexp.MustCompile(`char device redirected to ([^ ]*) \(label charserial0\)`).FindStringSubmatch(string(stdoutStderr))
-	if len(match) == 2 {
-		os.Symlink(match[1], consFile)
-	}
-	pidStr, err := ioutil.ReadFile(pidFile)
-	if err != nil {
-		return 0, logError("failed to retrieve qemu PID file %s (%v)", pidFile, err)
-	}
-
-	domainID, err := strconv.Atoi(strings.TrimSpace(string(pidStr)))
-	if err != nil {
-		return 0, logError("Can't extract domainID from %s (%v)\n", string(pidStr), err)
-	}
-
-	if status, err := getQemuStatus(qmpFile); err != nil || status != "prelaunch" {
-		log.Errorf("Can't extract domainID from %s: %s\n", string(pidStr), err)
-		return 0, fmt.Errorf("Can't extract domainID from %s: %s\n", string(pidStr), err)
-	}
-
-	ctx.domains[domainName] = domainID
 	return domainID, nil
 }
 
@@ -521,7 +586,7 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 	if status, err := getQemuStatus(qmpFile); err != nil || status != "running" {
 		return logError("domain status is not running but %s after cont command returned %v", status, err)
 	}
-
+	ctx.domains[domainName] = domainID
 	return nil
 }
 
@@ -529,6 +594,7 @@ func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
 	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
+	delete(ctx.domains, domainName)
 	return nil
 }
 
@@ -541,6 +607,10 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
 	if err := os.RemoveAll(kvmStateDir + domainName); err != nil {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
+	}
+	if err := containerd.CtrDelete(domainName); err != nil {
+		return logError("failed to delete container task for domain %s, %v",
+			domainName, err)
 	}
 	return nil
 }
@@ -689,25 +759,22 @@ func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	// for more precised measurements we should be using a tool like https://github.com/cha87de/kvmtop
 	res := map[string]types.DomainMetric{}
 
-	for dom, pid := range ctx.domains {
+	for dom := range ctx.domains {
 		var usedMem, availMem uint32
 		var usedMemPerc float64
 		var cpuTotal uint64
 
-		ct, err := readCPUUsage(pid)
-		if err == nil {
-			cpuTotal = uint64(ct)
+		if metric, err := kvmContainerImpl.GetMetrics(dom); err == nil {
+			usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
+			availMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
+			if availMem != 0 {
+				usedMemPerc = float64(100 * float32(usedMem) / float32(availMem))
+			} else {
+				usedMemPerc = 0
+			}
+			cpuTotal = metric.CPU.Usage.Total / 1000000000
 		} else {
-			log.Errorf("readCPUUsage failed with error %v", err)
-		}
-
-		um, am, ump, err := readMemUsage(pid)
-		if err == nil {
-			usedMem = um
-			availMem = am
-			usedMemPerc = ump
-		} else {
-			log.Errorf("readMemUsage failed with error %v", err)
+			log.Errorf("GetDomsCPUMem failed with error %v", err)
 		}
 
 		res[dom] = types.DomainMetric{
