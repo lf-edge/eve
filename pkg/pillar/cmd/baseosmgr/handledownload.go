@@ -49,6 +49,8 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 		if !ss.HasVolumemgrRef {
 			log.Infof("checkVolumeStatus %s, !HasVolumemgrRef", sc.ImageID)
 			// We use the baseos object UUID as appInstID here
+			// XXX note that we use the ImageID for the VolumeID
+			// argument since we do not have a VolumeID
 			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
 				baseOsUUID, ss.ImageID, *ss)
 			ss.HasVolumemgrRef = true
