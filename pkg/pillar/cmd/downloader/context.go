@@ -11,27 +11,28 @@ import (
 )
 
 type downloaderContext struct {
-	decryptCipherContext    cipher.DecryptCipherContext
-	dCtx                    *zedUpload.DronaCtx
-	subDeviceNetworkStatus  pubsub.Subscription
-	subAppImgConfig         pubsub.Subscription
-	pubAppImgStatus         pubsub.Publication
-	subBaseOsConfig         pubsub.Subscription
-	pubBaseOsStatus         pubsub.Publication
-	subCertObjConfig        pubsub.Subscription
-	pubCertObjStatus        pubsub.Publication
-	subAppImgResolveConfig  pubsub.Subscription
-	pubAppImgResolveStatus  pubsub.Publication
-	subGlobalDownloadConfig pubsub.Subscription
-	pubGlobalDownloadStatus pubsub.Publication
-	pubCipherBlockStatus    pubsub.Publication
-	subDatastoreConfig      pubsub.Subscription
-	deviceNetworkStatus     types.DeviceNetworkStatus
-	globalConfig            types.GlobalDownloadConfig
-	globalStatusLock        sync.Mutex
-	globalStatus            types.GlobalDownloadStatus
-	subGlobalConfig         pubsub.Subscription
-	GCInitialized           bool
+	decryptCipherContext        cipher.DecryptCipherContext
+	dCtx                        *zedUpload.DronaCtx
+	subDeviceNetworkStatus      pubsub.Subscription
+	subAppImgConfig             pubsub.Subscription
+	pubAppImgStatus             pubsub.Publication
+	subBaseOsConfig             pubsub.Subscription
+	pubBaseOsStatus             pubsub.Publication
+	subCertObjConfig            pubsub.Subscription
+	pubCertObjStatus            pubsub.Publication
+	subContentTreeResolveConfig pubsub.Subscription
+	pubContentTreeResolveStatus pubsub.Publication
+	subAppImgResolveConfig      pubsub.Subscription
+	subGlobalDownloadConfig     pubsub.Subscription
+	pubGlobalDownloadStatus     pubsub.Publication
+	pubCipherBlockStatus        pubsub.Publication
+	subDatastoreConfig          pubsub.Subscription
+	deviceNetworkStatus         types.DeviceNetworkStatus
+	globalConfig                types.GlobalDownloadConfig
+	globalStatusLock            sync.Mutex
+	globalStatus                types.GlobalDownloadStatus
+	subGlobalConfig             pubsub.Subscription
+	GCInitialized               bool
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
@@ -184,7 +185,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.pubCertObjStatus = pubCertObjStatus
 	pubCertObjStatus.ClearRestarted()
 
-	pubAppImgResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubContentTreeResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
 		TopicType:  types.ResolveStatus{},
@@ -192,8 +193,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.pubAppImgResolveStatus = pubAppImgResolveStatus
-	pubAppImgResolveStatus.ClearRestarted()
+	ctx.pubContentTreeResolveStatus = pubContentTreeResolveStatus
+	pubContentTreeResolveStatus.ClearRestarted()
 
 	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleAppImgCreate,
@@ -246,6 +247,23 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
+	subContentTreeResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleContentTreeResolveModify,
+		ModifyHandler: handleContentTreeResolveModify,
+		DeleteHandler: handleContentTreeResolveDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "volumemgr",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ResolveConfig{},
+		Ctx:           ctx,
+	})
+	if err != nil {
+		return err
+	}
+	ctx.subContentTreeResolveConfig = subContentTreeResolveConfig
+	subContentTreeResolveConfig.Activate()
+
 	subAppImgResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleAppImgResolveModify,
 		ModifyHandler: handleAppImgResolveModify,
@@ -266,7 +284,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 	pubCertObjStatus.SignalRestarted()
-	pubAppImgResolveStatus.SignalRestarted()
+	pubContentTreeResolveStatus.SignalRestarted()
 
 	return nil
 }

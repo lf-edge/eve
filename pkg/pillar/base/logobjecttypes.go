@@ -69,6 +69,10 @@ const (
 	PersistImageConfigLogType LogObjectType = "persistimage_config"
 	// PersistImageStatusLogType :
 	PersistImageStatusLogType LogObjectType = "persistimage_status"
+	// ContentTreeConfigLogType :
+	ContentTreeConfigLogType LogObjectType = "contenttree_config"
+	// ContentTreeStatusLogType :
+	ContentTreeStatusLogType LogObjectType = "contenttree_status"
 )
 
 // RelationObjectType :

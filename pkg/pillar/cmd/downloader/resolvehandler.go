@@ -23,15 +23,15 @@ func makeResolveHandler() *resolveHandler {
 // Wrappers around modifyObject, and deleteObject
 
 func (r *resolveHandler) modify(ctxArg interface{},
-	key string, configArg interface{}) {
+	key string, configArg interface{}, isContentTree bool) {
 
-	log.Infof("resolveHandler.modify(%s)", key)
+	log.Infof("resolveHandler.modify(%s) and isContentTree(%v)", key, isContentTree)
 	ctx := ctxArg.(*downloaderContext)
 	h, ok := r.handlers[key]
 	if !ok {
 		h1 := make(chan Notify, 1)
 		r.handlers[key] = h1
-		go runResolveHandler(ctx, key, h1)
+		go runResolveHandler(ctx, key, isContentTree, h1)
 		h = h1
 	}
 	select {
@@ -43,10 +43,10 @@ func (r *resolveHandler) modify(ctxArg interface{},
 	}
 }
 
-func (r *resolveHandler) delete(ctxArg interface{}, key string,
-	configArg interface{}) {
+func (r *resolveHandler) delete(ctxArg interface{},
+	key string, configArg interface{}, isContentTree bool) {
 
-	log.Infof("resolveHandler.delete(%s)", key)
+	log.Infof("resolveHandler.delete(%s) and isContentTree(%v)", key, isContentTree)
 	// Do we have a channel/goroutine?
 	h, ok := r.handlers[key]
 	if ok {
