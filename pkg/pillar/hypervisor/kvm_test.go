@@ -155,6 +155,16 @@ func TestCreateDomConfig(t *testing.T) {
   chardev = "charmonitor"
   mode = "control"
 
+[chardev "charlistener"]
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  server = "on"
+  wait = "off"
+
+[mon "listener"]
+  chardev = "charlistener"
+  mode = "control"
+
 [memory]
   size = "10240"
 
@@ -398,6 +408,16 @@ func TestCreateDomConfig(t *testing.T) {
   chardev = "charmonitor"
   mode = "control"
 
+[chardev "charlistener"]
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  server = "on"
+  wait = "off"
+
+[mon "listener"]
+  chardev = "charlistener"
+  mode = "control"
+
 [memory]
   size = "10240"
 
@@ -614,6 +634,16 @@ func TestCreateDomConfig(t *testing.T) {
 
 [mon "monitor"]
   chardev = "charmonitor"
+  mode = "control"
+
+[chardev "charlistener"]
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  server = "on"
+  wait = "off"
+
+[mon "listener"]
+  chardev = "charlistener"
   mode = "control"
 
 [memory]
@@ -853,6 +883,16 @@ func TestCreateDom(t *testing.T) {
   path = "/var/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
+
+[chardev "charlistener"]
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  server = "on"
+  wait = "off"
+
+[mon "listener"]
+  chardev = "charlistener"
+  mode = "control"
 
 [mon "monitor"]
   chardev = "charmonitor"
