@@ -63,6 +63,12 @@ type volumemgrContext struct {
 	pubBaseOsPersistStatus  pubsub.Publication
 	subBaseOsPersistStatus  pubsub.Subscription
 
+	subContentTreeResolveStatus pubsub.Subscription
+	pubContentTreeResolveConfig pubsub.Publication
+	subContentTreeConfig        pubsub.Subscription
+	pubContentTreeStatus        pubsub.Publication
+	pubAppAndImageToHash        pubsub.Publication
+
 	gc *time.Ticker
 
 	worker *worker.Worker // For background work
@@ -176,6 +182,37 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
+
+	pubContentTreeResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.ResolveConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubContentTreeResolveConfig.ClearRestarted()
+	ctx.pubContentTreeResolveConfig = pubContentTreeResolveConfig
+
+	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.ContentTreeStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubContentTreeStatus = pubContentTreeStatus
+
+	pubAppAndImageToHash, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.AppAndImageToHash{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppAndImageToHash = pubAppAndImageToHash
 
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -431,6 +468,40 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
+	// Look for ContentTreeResolveStatus from downloader
+	subContentTreeResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "downloader",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ResolveStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleResolveStatusModify,
+		ModifyHandler: handleResolveStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subContentTreeResolveStatus = subContentTreeResolveStatus
+	subContentTreeResolveStatus.Activate()
+
+	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleContentTreeCreate,
+		ModifyHandler: handleContentTreeModify,
+		DeleteHandler: handleContentTreeDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zedagent",
+		TopicImpl:     types.ContentTreeConfig{},
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subContentTreeConfig = subContentTreeConfig
+	subContentTreeConfig.Activate()
+
 	subAppVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleAppImgCreate,
 		ModifyHandler: handleAppImgModify,
@@ -554,6 +625,12 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-ctx.subCertObjDownloadStatus.MsgChan():
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
+
+		case change := <-subContentTreeResolveStatus.MsgChan():
+			ctx.subContentTreeResolveStatus.ProcessChange(change)
+
+		case change := <-ctx.subContentTreeConfig.MsgChan():
+			ctx.subContentTreeConfig.ProcessChange(change)
 
 		case change := <-ctx.subAppVolumeConfig.MsgChan():
 			ctx.subAppVolumeConfig.ProcessChange(change)

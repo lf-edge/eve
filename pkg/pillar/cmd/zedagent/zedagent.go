@@ -379,6 +379,18 @@ func Run(ps *pubsub.PubSub) {
 	pubCipherContext.ClearRestarted()
 	getconfigCtx.pubCipherContext = pubCipherContext
 
+	// for ContentTree config Publisher
+	pubContentTreeConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ContentTreeConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubContentTreeConfig.ClearRestarted()
+	getconfigCtx.pubContentTreeConfig = pubContentTreeConfig
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",

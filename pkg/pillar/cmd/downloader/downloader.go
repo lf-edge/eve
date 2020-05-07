@@ -158,6 +158,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subAppImgConfig.MsgChan():
 			ctx.subAppImgConfig.ProcessChange(change)
 
+		case change := <-ctx.subContentTreeResolveConfig.MsgChan():
+			ctx.subContentTreeResolveConfig.ProcessChange(change)
+
 		case change := <-ctx.subAppImgResolveConfig.MsgChan():
 			ctx.subAppImgResolveConfig.ProcessChange(change)
 
