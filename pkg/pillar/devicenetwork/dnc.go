@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	MaxDPCRetestCount = 5
+	MaxDPCRetestCount  = 5
+	MaxDPCCheckIfCount = 2
 )
 
 type PendDNSStatus uint32
@@ -227,28 +228,30 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
 
+	ifname, err := checkInterfacesExists(pending.PendDPC)
+	if err != nil {
+		// Still waiting for a network interface to appear
+		if pending.TestCount < MaxDPCCheckIfCount {
+			log.Warnf("VerifyPending: interface check: retry due to ifname %s at count %d: %s",
+				ifname, pending.TestCount, err)
+			pending.TestCount++
+			return DPC_WAIT
+		}
+		log.Warnf("VerifyPending: interface check: failed due to ifname %s: %s",
+			ifname, err)
+		pending.PendDPC.RecordPortFailure(ifname, err.Error())
+		pending.PendDPC.RecordFailure(err.Error())
+		return DPC_FAIL
+	}
+	log.Infof("VerifyPending: No required ports missing. " +
+		"parsing device port config list")
+
 	if !pending.PendDPC.Equal(&pending.OldDPC) {
 		log.Infof("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
 		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		ifname, err := UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
-		if err != nil {
-			// Still waiting for a network interface
-			if pending.TestCount < MaxDPCRetestCount {
-				log.Warnf("VerifyPending: update DhcpClient: retry due to ifname %s at count %d: %s",
-					ifname, pending.TestCount, err)
-				pending.TestCount++
-				return DPC_WAIT
-			} else {
-				log.Warnf("VerifyPending: update DhcpClient: failed due to ifname %s: %s",
-					ifname, err)
-				pending.PendDPC.RecordPortFailure(ifname,
-					err.Error())
-				pending.PendDPC.RecordFailure(err.Error())
-				return DPC_FAIL
-			}
-		}
+		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
 		pending.OldDPC = pending.PendDPC
 	}
 	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
@@ -300,6 +303,20 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	pending.PendDPC.RecordFailure(errStr)
 	pending.PendDPC.LastIPAndDNS = time.Now()
 	return DPC_FAIL
+}
+
+// Check if all interfaces exist in the kernel
+// Returns the ifname for the first missing if there is an error
+func checkInterfacesExists(dpc types.DevicePortConfig) (string, error) {
+
+	for _, nuc := range dpc.Ports {
+		// Check the ifname exists
+		_, err := IfnameToIndex(nuc.IfName)
+		if err != nil {
+			return nuc.IfName, err
+		}
+	}
+	return "", nil
 }
 
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
