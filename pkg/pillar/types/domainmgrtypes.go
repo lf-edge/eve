@@ -7,6 +7,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -59,6 +60,55 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	default:
 		return PV
 	}
+}
+
+// LogCreate :
+func (config DomainConfig) LogCreate() {
+	logObject := base.NewLogObject(base.DomainConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("activate", config.Activate).
+		AddField("enable-vnc", config.EnableVnc).
+		Infof("domain config create")
+}
+
+// LogModify :
+func (config DomainConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DomainConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+
+	oldConfig, ok := old.(DomainConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DomainConfig type")
+	}
+	if oldConfig.Activate != config.Activate ||
+		oldConfig.EnableVnc != config.EnableVnc {
+
+		logObject.CloneAndAddField("activate", config.Activate).
+			AddField("enable-vnc", config.EnableVnc).
+			AddField("old-activate", oldConfig.Activate).
+			AddField("old-enable-vnc", oldConfig.EnableVnc).
+			Infof("domain config modify")
+	}
+
+}
+
+// LogDelete :
+func (config DomainConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.DomainConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+	logObject.CloneAndAddField("activate", config.Activate).
+		AddField("enable-vnc", config.EnableVnc).
+		Infof("domain config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config DomainConfig) LogKey() string {
+	return string(base.DomainConfigLogType) + "-" + config.Key()
 }
 
 // Some of these items can be overridden by matching Targets in
@@ -167,6 +217,63 @@ func (status DomainStatus) VifInfoByVif(vif string) *VifInfo {
 		}
 	}
 	return nil
+}
+
+// LogCreate :
+func (status DomainStatus) LogCreate() {
+	logObject := base.NewLogObject(base.DomainStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("state", status.State.String()).
+		AddField("activated", status.Activated).
+		Infof("domain status create")
+}
+
+// LogModify :
+func (status DomainStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DomainStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+
+	oldStatus, ok := old.(DomainStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DomainStatus type")
+	}
+	if oldStatus.State != status.State ||
+		oldStatus.Activated != status.Activated {
+
+		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("activated", status.Activated).
+			AddField("old-state", oldStatus.State.String()).
+			AddField("old-activated", oldStatus.Activated).
+			Infof("domain status modify")
+	}
+
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime
+		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("activated", status.Activated).
+			AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).
+			Errorf("domain status modify")
+	}
+}
+
+// LogDelete :
+func (status DomainStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.DomainStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+	logObject.CloneAndAddField("state", status.State.String()).
+		AddField("activated", status.Activated).
+		Infof("domain status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status DomainStatus) LogKey() string {
+	return string(base.DomainStatusLogType) + "-" + status.Key()
 }
 
 type VifInfo struct {
