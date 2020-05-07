@@ -2,9 +2,11 @@ package hypervisor
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/digitalocean/go-qemu/qmp"
 	log "github.com/sirupsen/logrus"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -64,6 +66,37 @@ func getQemuStatus(socket string) (string, error) {
 		}
 		err = json.Unmarshal(raw, &result)
 		return result.Return.Status, err
+	} else {
+		return "", err
+	}
+}
+
+func getConsolePty(socket string) (string, error) {
+	if raw, err := execRawCmd(socket, `{ "execute": "query-chardev" }`); err == nil {
+		type CharDev struct {
+			FrontEndRunning bool   `json:"frontend-open"`
+			Filename        string `json:"filename"`
+			Label           string `json:"label"`
+		}
+		var result struct {
+			ID       string    `json:"id"`
+			CharDevs []CharDev `json:"return"`
+		}
+		err = json.Unmarshal(raw, &result)
+		if err != nil {
+			return "", err
+		}
+		for _, chardev := range result.CharDevs {
+			if chardev.Label == "charserial0" {
+				//"pty:/dev/pts/x"
+				res := strings.Split(chardev.Filename, ":")
+				if len(res) > 1 {
+					//"/dev/pts/x"
+					return res[1], nil
+				}
+			}
+		}
+		return "", fmt.Errorf("charserial10 not found in chardevs")
 	} else {
 		return "", err
 	}

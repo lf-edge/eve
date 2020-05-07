@@ -36,7 +36,7 @@ func (ctx ctrdContext) Name() string {
 
 func (ctx ctrdContext) CreateDomConfig(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 	if len(diskStatusList) != 1 || diskStatusList[0].Format != zconfig.Format_CONTAINER {
-		return logError("failed to create container for %s containerd only supports ECOs with a single drive in an image format for now", domainName)
+		return logError("failed to create container for %s, %d containerd only supports ECOs with a single drive in an image format for now", domainName, len(diskStatusList))
 	}
 
 	spec, err := containerd.NewOciSpec(domainName)
@@ -48,12 +48,12 @@ func (ctx ctrdContext) CreateDomConfig(domainName string, config types.DomainCon
 		return logError("failed to update OCI spec from volume %s (%v)", diskStatusList[0].FileLocation, err)
 	}
 
-	spec.UpdateFromDomain(config)
+	spec.UpdateFromDomain(config, true)
 
 	return spec.Save(file)
 }
 
-func (ctx ctrdContext) Create(domainName string, cfgFilename string, VirtualizationMode types.VmMode) (int, error) {
+func (ctx ctrdContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
 	spec, err := containerd.NewOciSpec(domainName)
 	if err != nil {
 		return 0, logError("containerd create failed to initialize OCI spec %s %v", domainName, err)

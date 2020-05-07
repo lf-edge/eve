@@ -17,7 +17,7 @@ type Hypervisor interface {
 
 	CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error
 
-	Create(string, string, types.VmMode) (int, error)
+	Create(string, string, *types.DomainConfig) (int, error)
 
 	Start(string, int) error
 	Tune(string, int, int) error
