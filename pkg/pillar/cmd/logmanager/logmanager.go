@@ -665,6 +665,9 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 			appUUID, len(appLogBundle.Log))
 		messageCount := len(appLogBundle.Log)
 		byteCount := proto.Size(appLogBundle)
+		if len(appLogBundle.Log) == 0 {
+			continue
+		}
 		sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
 
 		// Take care of metrics
@@ -866,7 +869,13 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	}
 
 	// api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs
-	appLogURL := fmt.Sprintf("apps/instances/id/%s/logs", appUUID)
+	// api/v2/edgeDevice/apps/instanceid/<app-instance-uuid>/logs
+	var appLogURL string
+	if zedcloudCtx.V2API {
+		appLogURL = fmt.Sprintf("apps/instanceid/%s/logs", appUUID)
+	} else {
+		appLogURL = fmt.Sprintf("apps/instances/id/%s/logs", appUUID)
+	}
 	//get server name
 	serverBytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
@@ -876,7 +885,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(serverBytes))
 	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false,
-		nilUUID, appLogURL)
+		devUUID, appLogURL)
 
 	// For any 400 error we abandon
 	const return400 = true
