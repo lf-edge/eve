@@ -166,7 +166,7 @@ do_rootfs() {
     # Calculate partition size and add a partition
     sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
            --typecode="$NUM_PART:$PARTITION_TYPE_USR_X86_64" \
-           --change-name="$NUM_PART:$LABEL" "$EXTRA_ATTR" "$IMGFILE"
+           --change-name="$NUM_PART:$LABEL" $EXTRA_ATTR "$IMGFILE"
 
     # Copy rootfs to image A
     dd if=$IMG of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
