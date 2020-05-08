@@ -46,6 +46,10 @@ IMGFILE=$1
 shift
 PARTS=${*:-"efi imga imgb conf persist"}
 
+# This is the only partition type that PARTITION_TYPE_USR_X86_64
+# grub-core/commands/gptprio.c code will pay attention to
+PARTITION_TYPE_USR_X86_64=5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6
+
 # EFI partition size in bytes 
 EFI_PART_SIZE=$((1536 * 1024))
 # rootfs partition size in bytes
@@ -160,9 +164,9 @@ do_rootfs() {
     esac
 
     # Calculate partition size and add a partition
-    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
-           --typecode=$NUM_PART:5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6 \
-           --change-name=$NUM_PART:$LABEL $EXTRA_ATTR $IMGFILE
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PARTITION_TYPE_USR_X86_64" \
+           --change-name="$NUM_PART:$LABEL" "$EXTRA_ATTR" "$IMGFILE"
 
     # Copy rootfs to image A
     dd if=$IMG of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
