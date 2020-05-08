@@ -131,6 +131,13 @@ message ContentTree {
   uint64 maxSizeBytes = 6;
   SignatureInfo siginfo = 7;
   string displayName = 8; // Optional friendly name echo'ed in info
+
+  // For container ContentTree, sha256 won't be available in config
+  // So, sha256 needs to be resolved corresponding to the tag
+  // change in generationCount indicates that the resolution of tag is needed
+  // generationCount needs to be updated when a new instance will
+  // deployed or purge required by an existing instance
+  repeated int64 generationCount = 9;
 }
 
 // The protocol that the task will use to access the Volume
