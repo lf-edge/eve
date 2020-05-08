@@ -541,6 +541,7 @@ message ZInfoVolume {
   uint32 progressPercentage = 6; // 0-100% Use depends on state i.e., download vs. verification vs. volume creation
 
   ErrorInfo volumeErr = 7;
+  int64 generation_count = 8; // version of volume
 }
 
 message ContentResources {
@@ -562,6 +563,7 @@ message ZInfoContentTree {
 
   ErrorInfo err = 8;
   repeated string componentShaList = 9; // sha's for the referenced blobs
+  int64 generation_count = 10; // version of content tree
 }
 
 message ZInfoBlob {
