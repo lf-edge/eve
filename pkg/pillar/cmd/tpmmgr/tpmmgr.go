@@ -693,7 +693,7 @@ func aesEncrypt(ciphertext, plaintext, key, iv []byte) error {
 func aesDecrypt(plaintext, ciphertext, key, iv []byte) error {
 	aesBlockDecrypter, err := aes.NewCipher([]byte(key))
 	if err != nil {
-		log.Errorf("creating aes new cipher failed: %v\n", err)
+		log.Errorf("creating aes new cipher failed: %v", err)
 		return err
 	}
 	aesDecrypter := cipher.NewCFBDecrypter(aesBlockDecrypter, iv)
@@ -712,7 +712,7 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
 	decryptKey, err := getDecryptKey(X, Y)
 	if err != nil {
-		log.Errorf("getDecryptKey failed: %v\n", err)
+		log.Errorf("getDecryptKey failed: %v", err)
 		return err
 	}
 	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
@@ -724,7 +724,7 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	if !etpm.IsTpmEnabled() {
 		privateKey, err := getDevicePrivateKey()
 		if err != nil {
-			log.Errorf("getDevicePrivateKey failed: %v\n", err)
+			log.Errorf("getDevicePrivateKey failed: %v", err)
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
@@ -733,7 +733,7 @@ func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
 	}
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
-		log.Errorf("TPM open failed: %v\n", err)
+		log.Errorf("TPM open failed: %v", err)
 		return [32]byte{}, err
 	}
 	defer rw.Close()
@@ -910,10 +910,10 @@ func createEcdhCert() error {
 
 func publishAttestCert(ctx *tpmMgrContext, config types.AttestCert) {
 	key := config.Key()
-	log.Debugf("publishAttestCert %s\n", key)
+	log.Debugf("publishAttestCert %s", key)
 	pub := ctx.pubAttestCert
 	pub.Publish(key, config)
-	log.Debugf("publishAttestCert %s Done\n", key)
+	log.Debugf("publishAttestCert %s Done", key)
 }
 
 func getECDHCert(certPath string) ([]byte, error) {
@@ -938,9 +938,9 @@ func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 }
 
 func publishECDHCertToController(ctx *tpmMgrContext) {
-	log.Infof("publishECDHCertToController started\n")
+	log.Infof("publishECDHCertToController started")
 	if !etpm.FileExists(ecdhCertFile) {
-		log.Errorf("publishECDHCertToController failed: ECDH certificate not found\n")
+		log.Errorf("publishECDHCertToController failed: ECDH certificate not found")
 		return
 	}
 	certBytes, err := getECDHCert(ecdhCertFile)
@@ -962,7 +962,7 @@ func publishECDHCertToController(ctx *tpmMgrContext) {
 		Cert:     certBytes,
 	}
 	publishAttestCert(ctx, attestCert)
-	log.Infof("publishECDHCertToController Done\n")
+	log.Infof("publishECDHCertToController Done")
 }
 
 func Run(ps *pubsub.PubSub) {
@@ -1038,7 +1038,7 @@ func Run(ps *pubsub.PubSub) {
 			os.Exit(1)
 		}
 	case "runAsService":
-		log.Infof("Starting %s\n", agentName)
+		log.Infof("Starting %s", agentName)
 
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)
@@ -1190,17 +1190,17 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1208,13 +1208,13 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
 // Handles both create and modify events
@@ -1222,25 +1222,25 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string, statusArg inter
 	status := statusArg.(types.NodeAgentStatus)
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "nodeagent" {
-		log.Infof("handleNodeAgentStatusModify: ignoring %s\n", key)
+		log.Infof("handleNodeAgentStatusModify: ignoring %s", key)
 		return
 	}
 	ctx.DeviceReboot = status.DeviceReboot
-	log.Infof("handleNodeAgentStatusModify done for %s: %v\n", key, ctx.DeviceReboot)
+	log.Infof("handleNodeAgentStatusModify done for %s: %v", key, ctx.DeviceReboot)
 }
 
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleNodeAgentStatusDelete for %s\n", key)
+	log.Infof("handleNodeAgentStatusDelete for %s", key)
 	ctx := ctxArg.(*tpmMgrContext)
 
 	if key != "nodeagent" {
-		log.Infof("handleNodeAgentStatusDelete: ignoring %s\n", key)
+		log.Infof("handleNodeAgentStatusDelete: ignoring %s", key)
 		return
 	}
 	ctx.DeviceReboot = false
-	log.Infof("handleNodeAgentStatusDelete done for %s: %v\n", key, ctx.DeviceReboot)
+	log.Infof("handleNodeAgentStatusDelete done for %s: %v", key, ctx.DeviceReboot)
 }
 
 func readNodeAgentStatus(ctx *tpmMgrContext) (bool, error) {

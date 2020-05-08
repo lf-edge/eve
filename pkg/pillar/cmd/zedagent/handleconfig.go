@@ -88,6 +88,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
+		AgentName:        agentName,
 	})
 
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v\n", zedcloudCtx.DevSerial,

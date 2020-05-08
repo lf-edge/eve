@@ -26,12 +26,12 @@ func updateAIStatusWithStorageImageID(ctx *zedmanagerContext, imageID uuid.UUID)
 	for _, st := range items {
 		status := st.(types.AppInstanceStatus)
 		log.Debugf("updateAIStatusWithStorageImageID Processing "+
-			"AppInstanceConfig for UUID %s\n",
+			"AppInstanceConfig for UUID %s",
 			status.UUIDandVersion.UUID)
 		for ssIndx := range status.StorageStatusList {
 			ssPtr := &status.StorageStatusList[ssIndx]
 			if uuid.Equal((*ssPtr).ImageID, imageID) {
-				log.Infof("Found StorageStatus URL %s imageID %s\n",
+				log.Infof("Found StorageStatus URL %s imageID %s",
 					ssPtr.Name, imageID)
 				updateAIStatusUUID(ctx, status.Key())
 				found = true
@@ -39,7 +39,7 @@ func updateAIStatusWithStorageImageID(ctx *zedmanagerContext, imageID uuid.UUID)
 		}
 	}
 	if !found {
-		log.Warnf("updateAIStatusWithStorageImageID for %s not found\n", imageID)
+		log.Warnf("updateAIStatusWithStorageImageID for %s not found", imageID)
 	}
 }
 
@@ -47,10 +47,10 @@ func updateAIStatusWithStorageImageID(ctx *zedmanagerContext, imageID uuid.UUID)
 // the microservices
 func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 
-	log.Infof("updateAIStatusUUID(%s)\n", uuidStr)
+	log.Infof("updateAIStatusUUID(%s)", uuidStr)
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
-		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
+		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceStatus",
 			uuidStr)
 		return
 	}
@@ -61,7 +61,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	}
 	changed := doUpdate(ctx, *config, status)
 	if changed {
-		log.Infof("updateAIStatusUUID status change %d for %s\n",
+		log.Infof("updateAIStatusUUID status change %d for %s",
 			status.State, uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
@@ -71,10 +71,10 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 // the microservices
 func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 
-	log.Infof("removeAIStatusUUID(%s)\n", uuidStr)
+	log.Infof("removeAIStatusUUID(%s)", uuidStr)
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
-		log.Infof("removeAIStatusUUID for %s: Missing AppInstanceStatus\n",
+		log.Infof("removeAIStatusUUID for %s: Missing AppInstanceStatus",
 			uuidStr)
 		return
 	}
@@ -86,28 +86,28 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uninstall := (status.PurgeInprogress != types.BringDown)
 	changed, done := doRemove(ctx, status, uninstall)
 	if changed {
-		log.Infof("removeAIStatus status change for %s\n",
+		log.Infof("removeAIStatus status change for %s",
 			uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
 	if !done {
 		if uninstall {
-			log.Infof("removeAIStatus(%s) waiting for removal\n",
+			log.Infof("removeAIStatus(%s) waiting for removal",
 				status.Key())
 		} else {
-			log.Infof("removeAIStatus(%s): PurgeInprogress waiting for removal\n",
+			log.Infof("removeAIStatus(%s): PurgeInprogress waiting for removal",
 				status.Key())
 		}
 		return
 	}
 
 	if uninstall {
-		log.Infof("removeAIStatus(%s) remove done\n", uuidStr)
+		log.Infof("removeAIStatus(%s) remove done", uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
 		unpublishAppInstanceStatus(ctx, status)
 		return
 	}
-	log.Infof("removeAIStatus(%s): PurgeInprogress bringing it up\n",
+	log.Infof("removeAIStatus(%s): PurgeInprogress bringing it up",
 		status.Key())
 	status.PurgeInprogress = types.BringUp
 	publishAppInstanceStatus(ctx, status)
@@ -118,7 +118,7 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 			publishAppInstanceStatus(ctx, status)
 		}
 	} else {
-		log.Errorf("removeAIStatus(%s): PurgeInprogress no config!\n",
+		log.Errorf("removeAIStatus(%s): PurgeInprogress no config!",
 			status.Key())
 	}
 }
@@ -126,17 +126,17 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 // Find all the Status which refer to this imageID
 func removeAIStatusImageID(ctx *zedmanagerContext, imageID uuid.UUID) {
 
-	log.Infof("removeAIStatusImageID for %s\n", imageID)
+	log.Infof("removeAIStatusImageID for %s", imageID)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
 	for _, st := range items {
 		status := st.(types.AppInstanceStatus)
-		log.Debugf("Processing AppInstanceStatus for UUID %s\n",
+		log.Debugf("Processing AppInstanceStatus for UUID %s",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
 			if uuid.Equal(ss.ImageID, imageID) {
-				log.Debugf("Found StorageStatus URL %s imageID %s\n",
+				log.Debugf("Found StorageStatus URL %s imageID %s",
 					ss.Name, ss.ImageID)
 				updateOrRemove(ctx, status)
 				found = true
@@ -144,7 +144,7 @@ func removeAIStatusImageID(ctx *zedmanagerContext, imageID uuid.UUID) {
 		}
 	}
 	if !found {
-		log.Warnf("removeAIStatusImageID for %s not found\n", imageID)
+		log.Warnf("removeAIStatusImageID for %s not found", imageID)
 	}
 }
 
@@ -152,16 +152,16 @@ func removeAIStatusImageID(ctx *zedmanagerContext, imageID uuid.UUID) {
 // Otherwise we proceeed with remove.
 func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	uuidStr := status.Key()
-	log.Infof("updateOrRemove(%s)\n", uuidStr)
+	log.Infof("updateOrRemove(%s)", uuidStr)
 	config := lookupAppInstanceConfig(ctx, uuidStr)
 	if config == nil || (status.PurgeInprogress == types.BringDown) {
-		log.Infof("updateOrRemove: remove for %s\n", uuidStr)
+		log.Infof("updateOrRemove: remove for %s", uuidStr)
 		removeAIStatus(ctx, &status)
 	} else {
-		log.Infof("updateOrRemove: update for %s\n", uuidStr)
+		log.Infof("updateOrRemove: update for %s", uuidStr)
 		changed := doUpdate(ctx, *config, &status)
 		if changed {
-			log.Infof("updateOrRemove status change for %s\n",
+			log.Infof("updateOrRemove status change for %s",
 				uuidStr)
 			publishAppInstanceStatus(ctx, &status)
 		}
@@ -249,18 +249,18 @@ func doUpdate(ctx *zedmanagerContext,
 
 	// Are we doing a purge?
 	if status.PurgeInprogress == types.RecreateVolumes {
-		log.Infof("PurgeInprogress(%s) volumemgr done\n",
+		log.Infof("PurgeInprogress(%s) volumemgr done",
 			status.Key())
 		status.PurgeInprogress = types.BringDown
 		changed = true
 		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
 		if !done {
-			log.Infof("PurgeInprogress(%s) waiting for removal\n",
+			log.Infof("PurgeInprogress(%s) waiting for removal",
 				status.Key())
 			return changed
 		}
-		log.Infof("PurgeInprogress(%s) bringing it up\n",
+		log.Infof("PurgeInprogress(%s) bringing it up",
 			status.Key())
 	}
 	c, done := doPrepare(ctx, config, status)
@@ -284,13 +284,13 @@ func doUpdate(ctx *zedmanagerContext,
 				changed = true
 			}
 		}
-		log.Infof("Waiting for config.Activate for %s\n", uuidStr)
+		log.Infof("Waiting for config.Activate for %s", uuidStr)
 		return changed
 	}
-	log.Infof("Have config.Activate for %s\n", uuidStr)
+	log.Infof("Have config.Activate for %s", uuidStr)
 	c = doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
-	log.Infof("doUpdate done for %s\n", uuidStr)
+	log.Infof("doUpdate done for %s", uuidStr)
 	return changed
 }
 
@@ -300,7 +300,7 @@ func doInstall(ctx *zedmanagerContext,
 
 	uuidStr := status.Key()
 
-	log.Infof("doInstall: UUID: %s\n", uuidStr)
+	log.Infof("doInstall: UUID: %s", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
 	var errorSource interface{}
@@ -331,10 +331,10 @@ func doInstall(ctx *zedmanagerContext,
 				newSs = append(newSs, *ss)
 				continue
 			}
-			log.Infof("Removing potentially bad StorageStatus %v\n",
+			log.Infof("Removing potentially bad StorageStatus %v",
 				ss)
 			if status.IsErrorSource(ss.ErrorSourceType) {
-				log.Infof("Removing error %s\n", status.Error)
+				log.Infof("Removing error %s", status.Error)
 				status.ClearErrorWithSource()
 			}
 			c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
@@ -347,7 +347,7 @@ func doInstall(ctx *zedmanagerContext,
 			deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
 				ss.ImageID, ss.PurgeCounter)
 		}
-		log.Infof("purge inactive (%s) storageStatus from %d to %d\n",
+		log.Infof("purge inactive (%s) storageStatus from %d to %d",
 			config.Key(), len(status.StorageStatusList), len(newSs))
 		status.StorageStatusList = newSs
 		if removed {
@@ -374,11 +374,12 @@ func doInstall(ctx *zedmanagerContext,
 		}
 		newSs := types.StorageStatus{}
 		newSs.UpdateFromStorageConfig(sc)
-		log.Infof("Adding new StorageStatus %v\n", newSs)
+		log.Infof("Adding new StorageStatus %v", newSs)
 		status.StorageStatusList = append(status.StorageStatusList, newSs)
 		changed = true
 	}
 
+	waitingForVolumes := false
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s, purgeCounter %d",
@@ -391,7 +392,7 @@ func doInstall(ctx *zedmanagerContext,
 			if ss.IsContainer && ss.ImageSha256 == "" {
 				rs := lookupResolveStatus(ctx, ss.ResolveKey())
 				if rs == nil {
-					log.Infof("Resolve status not found for %s\n", ss.ImageID)
+					log.Infof("Resolve status not found for %s", ss.ImageID)
 					ss.HasResolverRef = true
 					MaybeAddResolveConfig(ctx, ss)
 					// XXX state name could be "waiting for tag resolutions(s)" but
@@ -401,7 +402,7 @@ func doInstall(ctx *zedmanagerContext,
 					changed = true
 					continue
 				}
-				log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%v)\n",
+				log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%v)",
 					ss.ImageID, status.UUIDandVersion.UUID)
 				if rs.HasError() || rs.ImageSha256 == "" {
 					errStr := fmt.Sprintf("Received error or empty SHA from resolver for %s, SHA (%s): %s\n",
@@ -419,7 +420,7 @@ func doInstall(ctx *zedmanagerContext,
 					ss.ClearErrorWithSource()
 					changed = true
 				}
-				log.Infof("Added Image SHA (%s) for storage status (%s)\n",
+				log.Infof("Added Image SHA (%s) for storage status (%s)",
 					rs.ImageSha256, ss.ImageID)
 				ss.ImageSha256 = rs.ImageSha256
 				ss.HasResolverRef = false
@@ -472,6 +473,13 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Progress = vs.Progress
 			changed = true
 		}
+		// Would like to have an additional state between DELIVERED
+		// and INSTALLED to capture whether volumes were created.
+		if !vs.VolumeCreated {
+			log.Infof("lookupVolumeStatus %s !VolumeCreated",
+				ss.Name)
+			waitingForVolumes = true
+		}
 		if vs.Pending() {
 			log.Infof("lookupVolumeStatus %s Pending",
 				ss.Name)
@@ -517,12 +525,12 @@ func doInstall(ctx *zedmanagerContext,
 		return changed, false
 	}
 
-	if minState < types.DELIVERED {
+	if minState < types.DELIVERED || waitingForVolumes {
 		log.Infof("Waiting for all volumes for %s", uuidStr)
 		return changed, false
 	}
-	log.Infof("Done with volumes for %s\n", uuidStr)
-	log.Infof("doInstall done for %s\n", uuidStr)
+	log.Infof("Done with volumes for %s", uuidStr)
+	log.Infof("doInstall done for %s", uuidStr)
 	return changed, true
 }
 
@@ -530,7 +538,7 @@ func doPrepare(ctx *zedmanagerContext,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
 
 	uuidStr := status.Key()
-	log.Infof("doPrepare for %s\n", uuidStr)
+	log.Infof("doPrepare for %s", uuidStr)
 	changed := false
 
 	if len(config.OverlayNetworkList) != len(status.EIDList) {
@@ -554,23 +562,23 @@ func doPrepare(ctx *zedmanagerContext,
 		key := types.EidKey(config.UUIDandVersion, ec.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es == nil || es.Pending() {
-			log.Infof("lookupEIDStatus %s failed\n",
+			log.Infof("lookupEIDStatus %s failed",
 				key)
 			eidsAllocated = false
 			continue
 		}
 		status.EIDList[i] = es.EIDStatusDetails
 		if status.EIDList[i].EID == nil {
-			log.Infof("Missing EID for %s\n", key)
+			log.Infof("Missing EID for %s", key)
 			eidsAllocated = false
 		} else {
-			log.Infof("Found EID %v for %s\n",
+			log.Infof("Found EID %v for %s",
 				status.EIDList[i].EID, key)
 			changed = true
 		}
 	}
 	if !eidsAllocated {
-		log.Infof("Waiting for all EID allocations for %s\n", uuidStr)
+		log.Infof("Waiting for all EID allocations for %s", uuidStr)
 		return changed, false
 	}
 	// Automatically move from DELIVERED to INSTALLED
@@ -581,8 +589,8 @@ func doPrepare(ctx *zedmanagerContext,
 		changed = true
 	}
 	changed = true
-	log.Infof("Done with EID allocations for %s\n", uuidStr)
-	log.Infof("doPrepare done for %s\n", uuidStr)
+	log.Infof("Done with EID allocations for %s", uuidStr)
+	log.Infof("doPrepare done for %s", uuidStr)
 	return changed, true
 }
 
@@ -594,7 +602,7 @@ var nilUUID uuid.UUID
 func doActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Infof("doActivate for %s\n", uuidStr)
+	log.Infof("doActivate for %s", uuidStr)
 	changed := false
 
 	// Are we doing a restart and it came down?
@@ -620,7 +628,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 			}
 			if !ds.Activated && !ds.HasError() {
-				log.Infof("RestartInprogress(%s) came down - set bring up\n",
+				log.Infof("RestartInprogress(%s) came down - set bring up",
 					status.Key())
 				status.RestartInprogress = types.BringUp
 				changed = true
@@ -637,15 +645,15 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns == nil {
-		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus for %s", uuidStr)
 		return changed
 	}
 	if ns.Pending() {
-		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
 		return changed
 	}
 	if ns.HasError() {
-		log.Errorf("Received error from zedrouter for %s: %s\n",
+		log.Errorf("Received error from zedrouter for %s: %s",
 			uuidStr, ns.Error)
 		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
 			ns.ErrorTime)
@@ -654,25 +662,25 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	updateAppNetworkStatus(status, ns)
 	if !ns.Activated {
-		log.Infof("Waiting for AppNetworkStatus Activated for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus Activated for %s", uuidStr)
 		return changed
 	}
 	if status.IsErrorSource(types.AppNetworkStatus{}) {
-		log.Infof("Clearing zedrouter error %s\n", status.Error)
+		log.Infof("Clearing zedrouter error %s", status.Error)
 		status.ClearErrorWithSource()
 		changed = true
 	}
-	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
+	log.Debugf("Done with AppNetworkStatus for %s", uuidStr)
 
 	// Make sure we have a DomainConfig
 	err := MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
-		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
+		log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 			uuidStr, err)
 		status.SetErrorWithSource(err.Error(), types.DomainStatus{},
 			time.Now())
 		changed = true
-		log.Infof("Waiting for DomainStatus Activated for %s\n",
+		log.Infof("Waiting for DomainStatus Activated for %s",
 			uuidStr)
 		return changed
 	}
@@ -680,7 +688,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds == nil {
-		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus for %s", uuidStr)
 		return changed
 	}
 	if status.DomainName != ds.DomainName {
@@ -701,45 +709,45 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if status.RestartInprogress == types.BringDown {
 		dc := lookupDomainConfig(ctx, config.Key())
 		if dc == nil {
-			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
+			log.Errorf("RestartInprogress(%s) No DomainConfig",
 				status.Key())
 		} else if dc.Activate {
-			log.Infof("RestartInprogress(%s) Clear Activate\n",
+			log.Infof("RestartInprogress(%s) Clear Activate",
 				status.Key())
 			dc.Activate = false
 			publishDomainConfig(ctx, dc)
 		} else if !ds.Activated {
-			log.Infof("RestartInprogress(%s) Set Activate\n",
+			log.Infof("RestartInprogress(%s) Set Activate",
 				status.Key())
 			status.RestartInprogress = types.BringUp
 			changed = true
 			dc.Activate = true
 			publishDomainConfig(ctx, dc)
 		} else {
-			log.Infof("RestartInprogress(%s) waiting for domain down\n",
+			log.Infof("RestartInprogress(%s) waiting for domain down",
 				status.Key())
 		}
 	}
 	// Look for xen errors. Ignore if we are going down
 	if status.RestartInprogress != types.BringDown {
 		if ds.HasError() {
-			log.Errorf("Received error from domainmgr for %s: %s\n",
+			log.Errorf("Received error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
 			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
 				ds.ErrorTime)
 			changed = true
 		} else if status.IsErrorSource(types.DomainStatus{}) {
-			log.Infof("Clearing domainmgr error %s\n", status.Error)
+			log.Infof("Clearing domainmgr error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
 	} else {
 		if ds.HasError() {
-			log.Warnf("bringDown sees error from domainmgr for %s: %s\n",
+			log.Warnf("bringDown sees error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
 		}
 		if status.IsErrorSource(types.DomainStatus{}) {
-			log.Infof("Clearing domainmgr error %s\n", status.Error)
+			log.Infof("Clearing domainmgr error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
@@ -749,7 +757,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		case types.RESTARTING, types.PURGING:
 			// Leave unchanged
 		default:
-			log.Infof("Set State from DomainStatus from %d to %d\n",
+			log.Infof("Set State from DomainStatus from %d to %d",
 				status.State, ds.State)
 			status.State = ds.State
 			changed = true
@@ -759,12 +767,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	status.IoAdapterList = ds.IoAdapterList
 	changed = true
 	if ds.State < types.BOOTING {
-		log.Infof("Waiting for DomainStatus to BOOTING for %s\n",
+		log.Infof("Waiting for DomainStatus to BOOTING for %s",
 			uuidStr)
 		return changed
 	}
 	if ds.Pending() {
-		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus !Pending for %s", uuidStr)
 		return changed
 	}
 	// Update Vdev from DiskStatus
@@ -775,7 +783,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			if uuid.Equal(ss.ImageID, disk.ImageID) {
 				found = true
 				if ss.Vdev != disk.Vdev {
-					log.Infof("Update SSL Vdev for %s: %s\n",
+					log.Infof("Update SSL Vdev for %s: %s",
 						uuidStr, disk.Vdev)
 					ss.Vdev = disk.Vdev
 					changed = true
@@ -786,7 +794,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			log.Infof("No vdev for %s", uuidStr)
 		}
 	}
-	log.Infof("Done with DomainStatus for %s\n", uuidStr)
+	log.Infof("Done with DomainStatus for %s", uuidStr)
 
 	if !status.Activated {
 		status.Activated = true
@@ -796,26 +804,26 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringUp {
 		if ds.Activated {
-			log.Infof("RestartInprogress(%s) activated\n",
+			log.Infof("RestartInprogress(%s) activated",
 				status.Key())
 			status.RestartInprogress = types.NotInprogress
 			status.State = types.RUNNING
 			changed = true
 		} else {
-			log.Infof("RestartInprogress(%s) waiting for Activated\n",
+			log.Infof("RestartInprogress(%s) waiting for Activated",
 				status.Key())
 		}
 	}
 	if status.PurgeInprogress == types.BringUp {
 		if ds.Activated {
-			log.Infof("PurgeInprogress(%s) activated\n",
+			log.Infof("PurgeInprogress(%s) activated",
 				status.Key())
 			status.PurgeInprogress = types.NotInprogress
 			status.State = types.RUNNING
 			_ = purgeCmdDone(ctx, config, status)
 			changed = true
 		} else {
-			log.Infof("PurgeInprogress(%s) waiting for Activated\n",
+			log.Infof("PurgeInprogress(%s) waiting for Activated",
 				status.Key())
 		}
 	}
@@ -878,7 +886,7 @@ func lookupStorageConfig(config *types.AppInstanceConfig, ss types.StorageStatus
 func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	status *types.AppInstanceStatus) bool {
 
-	log.Infof("purgeCmdDone(%s) for %s\n", config.Key(), config.DisplayName)
+	log.Infof("purgeCmdDone(%s) for %s", config.Key(), config.DisplayName)
 
 	changed := false
 	// Process the StorageStatusList items which are not in StorageConfigList
@@ -890,7 +898,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			newSs = append(newSs, *ss)
 			continue
 		}
-		log.Debugf("purgeCmdDone(%s) unused SS %s %s\n",
+		log.Debugf("purgeCmdDone(%s) unused SS %s %s",
 			config.Key(), ss.Name, ss.ImageID)
 		c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
 		if c {
@@ -899,7 +907,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
 			ss.ImageID, ss.PurgeCounter)
 	}
-	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d\n",
+	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d",
 		config.Key(), len(status.StorageStatusList), len(newSs))
 	status.StorageStatusList = newSs
 	// Update persistent counter
@@ -939,7 +947,7 @@ func doRemove(ctx *zedmanagerContext,
 	c, done := doInactivate(ctx, appInstID, status)
 	changed = changed || c
 	if !done {
-		log.Infof("doRemove waiting for inactivate for %s\n", uuidStr)
+		log.Infof("doRemove waiting for inactivate for %s", uuidStr)
 		return changed, done
 	}
 	if !status.Activated {
@@ -953,7 +961,7 @@ func doRemove(ctx *zedmanagerContext,
 			done = true
 		}
 	}
-	log.Infof("doRemove done for %s\n", uuidStr)
+	log.Infof("doRemove done for %s", uuidStr)
 	return changed, done
 }
 
@@ -961,27 +969,27 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	status *types.AppInstanceStatus) (bool, bool) {
 
 	uuidStr := appInstID.String()
-	log.Infof("doInactivate for %s\n", uuidStr)
+	log.Infof("doInactivate for %s", uuidStr)
 	changed := false
 	done := false
 	uninstall := (status.PurgeInprogress != types.BringDown)
 
 	if uninstall {
-		log.Infof("doInactivate uninstall for %s\n", uuidStr)
+		log.Infof("doInactivate uninstall for %s", uuidStr)
 		// First halt the domain by deleting
 		if lookupDomainConfig(ctx, uuidStr) != nil {
 			unpublishDomainConfig(ctx, uuidStr)
 		}
 
 	} else {
-		log.Infof("doInactivate NOT uninstall for %s\n", uuidStr)
+		log.Infof("doInactivate NOT uninstall for %s", uuidStr)
 		// First half the domain by clearing Activate
 		dc := lookupDomainConfig(ctx, uuidStr)
 		if dc == nil {
-			log.Warnf("doInactivate: No DomainConfig for %s\n",
+			log.Warnf("doInactivate: No DomainConfig for %s",
 				uuidStr)
 		} else if dc.Activate {
-			log.Infof("doInactivate: Clearing Activate for DomainConfig for %s\n",
+			log.Infof("doInactivate: Clearing Activate for DomainConfig for %s",
 				uuidStr)
 			dc.Activate = false
 			publishDomainConfig(ctx, dc)
@@ -991,10 +999,10 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds != nil && (uninstall || ds.Activated) {
 		if uninstall {
-			log.Infof("Waiting for DomainStatus removal for %s\n",
+			log.Infof("Waiting for DomainStatus removal for %s",
 				uuidStr)
 		} else {
-			log.Infof("Waiting for DomainStatus !Activated for %s\n",
+			log.Infof("Waiting for DomainStatus !Activated for %s",
 				uuidStr)
 		}
 		// Update state
@@ -1015,20 +1023,20 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 		}
 		// Look for errors
 		if ds.HasError() {
-			log.Errorf("Received error from domainmgr for %s: %s\n",
+			log.Errorf("Received error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
 			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
 				ds.ErrorTime)
 			changed = true
 		} else if status.IsErrorSource(types.DomainStatus{}) {
-			log.Infof("Clearing domainmgr error %s\n",
+			log.Infof("Clearing domainmgr error %s",
 				status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
 		return changed, done
 	}
-	log.Infof("Done with DomainStatus removal/deactivate for %s\n", uuidStr)
+	log.Infof("Done with DomainStatus removal/deactivate for %s", uuidStr)
 
 	if uninstall {
 		if lookupAppNetworkConfig(ctx, uuidStr) != nil {
@@ -1037,10 +1045,10 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	} else {
 		m := lookupAppNetworkConfig(ctx, status.Key())
 		if m == nil {
-			log.Warnf("doInactivate: No AppNetworkConfig for %s\n",
+			log.Warnf("doInactivate: No AppNetworkConfig for %s",
 				uuidStr)
 		} else if m.Activate {
-			log.Infof("doInactivate: Clearing Activate for AppNetworkConfig for %s\n",
+			log.Infof("doInactivate: Clearing Activate for AppNetworkConfig for %s",
 				uuidStr)
 			m.Activate = false
 			publishAppNetworkConfig(ctx, m)
@@ -1050,37 +1058,37 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns != nil && (uninstall || ns.Activated) {
 		if uninstall {
-			log.Infof("Waiting for AppNetworkStatus removal for %s\n",
+			log.Infof("Waiting for AppNetworkStatus removal for %s",
 				uuidStr)
 		} else {
-			log.Infof("Waiting for AppNetworkStatus !Activated for %s\n",
+			log.Infof("Waiting for AppNetworkStatus !Activated for %s",
 				uuidStr)
 		}
 		if ns.HasError() {
-			log.Errorf("Received error from zedrouter for %s: %s\n",
+			log.Errorf("Received error from zedrouter for %s: %s",
 				uuidStr, ns.Error)
 			status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
 				ns.ErrorTime)
 			changed = true
 		} else if status.IsErrorSource(types.AppNetworkStatus{}) {
-			log.Infof("Clearing zedrouter error %s\n", status.Error)
+			log.Infof("Clearing zedrouter error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
 		return changed, done
 	}
-	log.Infof("Done with AppNetworkStatus removal/deactivaye for %s\n", uuidStr)
+	log.Infof("Done with AppNetworkStatus removal/deactivaye for %s", uuidStr)
 	done = true
 	status.Activated = false
 	status.ActivateInprogress = false
-	log.Infof("doInactivate done for %s\n", uuidStr)
+	log.Infof("doInactivate done for %s", uuidStr)
 	return changed, done
 }
 
 func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 	status *types.AppInstanceStatus) bool {
 
-	log.Infof("doUnprepare for %s\n", uuidStr)
+	log.Infof("doUnprepare for %s", uuidStr)
 	changed := false
 
 	// Remove the EIDConfig for each overlay
@@ -1093,7 +1101,7 @@ func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 		key := types.EidKey(status.UUIDandVersion, es.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es != nil {
-			log.Infof("lookupEIDStatus not gone on remove for %s\n",
+			log.Infof("lookupEIDStatus not gone on remove for %s",
 				key)
 			// Could it have changed?
 			changed = true
@@ -1104,12 +1112,12 @@ func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	if !eidsFreed {
-		log.Infof("Waiting for all EID frees for %s\n", uuidStr)
+		log.Infof("Waiting for all EID frees for %s", uuidStr)
 		return changed
 	}
-	log.Debugf("Done with EID frees for %s\n", uuidStr)
+	log.Debugf("Done with EID frees for %s", uuidStr)
 
-	log.Infof("doUnprepare done for %s\n", uuidStr)
+	log.Infof("doUnprepare done for %s", uuidStr)
 	return changed
 }
 
@@ -1144,44 +1152,44 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
 	uuidStr := status.Key()
-	log.Infof("doInactivateHalt for %s\n", uuidStr)
+	log.Infof("doInactivateHalt for %s", uuidStr)
 	changed := false
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns == nil {
-		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus for %s", uuidStr)
 		return changed
 	}
 	updateAppNetworkStatus(status, ns)
 	if ns.Pending() {
-		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
 		return changed
 	}
 	// XXX should we make it not Activated?
 	if ns.HasError() {
-		log.Errorf("Received error from zedrouter for %s: %s\n",
+		log.Errorf("Received error from zedrouter for %s: %s",
 			uuidStr, ns.Error)
 		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
 			ns.ErrorTime)
 		changed = true
 		return changed
 	} else if status.IsErrorSource(types.AppNetworkStatus{}) {
-		log.Infof("Clearing zedrouter error %s\n", status.Error)
+		log.Infof("Clearing zedrouter error %s", status.Error)
 		status.ClearErrorWithSource()
 		changed = true
 	}
-	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
+	log.Debugf("Done with AppNetworkStatus for %s", uuidStr)
 
 	// Make sure we have a DomainConfig. Clears dc.Activate based
 	// on the AppInstanceConfig's Activate
 	err := MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
-		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
+		log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 			uuidStr, err)
 		status.SetError(err.Error(), time.Now())
 		changed = true
-		log.Infof("Waiting for DomainStatus Activated for %s\n",
+		log.Infof("Waiting for DomainStatus Activated for %s",
 			uuidStr)
 		return changed
 	}
@@ -1189,7 +1197,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds == nil {
-		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus for %s", uuidStr)
 		return changed
 	}
 	if status.DomainName != ds.DomainName {
@@ -1211,7 +1219,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		case types.RESTARTING, types.PURGING:
 			// Leave unchanged
 		default:
-			log.Infof("Set State from DomainStatus from %d to %d\n",
+			log.Infof("Set State from DomainStatus from %d to %d",
 				status.State, ds.State)
 			status.State = ds.State
 			changed = true
@@ -1219,11 +1227,11 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	}
 	// Ignore errors during a halt
 	if ds.HasError() {
-		log.Warnf("doInactivateHalt sees error from domainmgr for %s: %s\n",
+		log.Warnf("doInactivateHalt sees error from domainmgr for %s: %s",
 			uuidStr, ds.Error)
 	}
 	if status.IsErrorSource(types.DomainStatus{}) {
-		log.Infof("Clearing domainmgr error %s\n", status.Error)
+		log.Infof("Clearing domainmgr error %s", status.Error)
 		status.ClearErrorWithSource()
 		changed = true
 	}
@@ -1231,11 +1239,11 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	status.IoAdapterList = ds.IoAdapterList
 	changed = true
 	if ds.Pending() {
-		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus !Pending for %s", uuidStr)
 		return changed
 	}
 	if ds.Activated {
-		log.Infof("Waiting for Not Activated for DomainStatus %s\n",
+		log.Infof("Waiting for Not Activated for DomainStatus %s",
 			uuidStr)
 		return changed
 	}
@@ -1244,7 +1252,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	status.Activated = false
 	status.ActivateInprogress = false
 	changed = true
-	log.Infof("doInactivateHalt done for %s\n", uuidStr)
+	log.Infof("doInactivateHalt done for %s", uuidStr)
 	return changed
 }
 

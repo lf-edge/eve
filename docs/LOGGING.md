@@ -56,6 +56,27 @@ Logmanager instead of now logging directly to file would now send it's logs to m
 
 Reboot reason and reboot stack files present in /persist and /persist/log directories. reboot-reaon, reboot-stack files present in /persist/log directory get appended with updates. The sames files in /persist directory keep getting overwritten with new content every time there is USR1 signal sent to a process or in the event of Fatal crash. These stack traces are also exported to cloud using logging mechanism.
 
+## Object life cycle events and relations
+
+Objects in EVE software can transition through many different states. These state transitions can be easily logged/tracked using object logging infrastructure that we have.
+Look at ```pkg/pillar/base/logobjecttypes.go``` for reference.
+
+Life cycle events can be logged automatically for objects that implement ```base.LoggableObject``` interface.
+There are hooks added into pubsub that call logging functions for objects that implement the following methods.
+
+* ```LogKey()```    -> Key using which the object can be identified uniquely
+* ```LogCreate()``` -> Called when a new instance of the object is created in the view of pubsub.
+* ```LogModify()``` -> Called when the object gets modified and published to pubsub.
+* ```LogDelete()``` -> Called when the object is unpublished from pubsub.
+
+Every time a object gets added to pubsub or gets modified log events are automatically generated. This helps in tracing through the state
+transitions that the object goes through while traversing between different EVE services.
+
+Reference implementation can be seen for AppInstanceConfig, AppInstanceStatus objects present in ```pkg/pillar/types/zedmanagertypes.go```.
+
+Similarly relations between objects can be represented/logged using relation type objects with this infrastructure.
+Same relation implementation between AppInstanceConfig and VolumeConfig can be found in functions AddOrRefcountVolumeConfig, MaybeRemoveVolumeConfig.
+
 # Helpful debug commands
 
 1. If you are debugging a device and for some reason do not see logs coming to /persist/rsyslog/syslog.txt (possible issue with rsyslogd) and would like to read/tail logs directly from memlogd buffers, use the following command.

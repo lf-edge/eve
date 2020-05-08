@@ -162,9 +162,6 @@ type VolumeStatus struct {
 	VolumeID     uuid.UUID
 	PurgeCounter uint32
 
-	// XXX temporary hack for containers until we get a ResolveConfig
-	ContainerSha256 string
-
 	DisplayName string // User-friendly name for logging
 	ObjType     string
 
@@ -172,7 +169,7 @@ type VolumeStatus struct {
 	PendingModify bool
 	PendingDelete bool
 
-	VolumeCreated bool // There is something to destroy on delete
+	VolumeCreated bool // Done aka Activated
 
 	// Information about the source/origin of the volume
 	Origin         OriginType

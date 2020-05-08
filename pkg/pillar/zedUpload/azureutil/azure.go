@@ -93,7 +93,9 @@ func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, 
 	return nil
 }
 
-func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client, prgNotify NotifChan) error {
+func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string,
+	objSize int64, httpClient *http.Client, prgNotify NotifChan) error {
+
 	stats := UpdateStats{}
 	c, err := NewClient(accountName, accountKey, httpClient)
 	if err != nil {
@@ -133,7 +135,7 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	chunkSize := SingleMB
 	var written, copiedSize int64
 	var copyErr error
-	stats.Size = int64(blob.Properties.ContentLength)
+	stats.Size = objSize
 	for {
 		if written, copyErr = io.CopyN(file, readCloser, chunkSize); copyErr != nil && copyErr != io.EOF {
 			return copyErr

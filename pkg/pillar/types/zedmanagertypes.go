@@ -11,6 +11,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -84,6 +85,45 @@ type IoAdapter struct {
 	Name string // Short hand name such as "COM1" or "eth1-2"
 }
 
+// LogCreate :
+func (config AppInstanceConfig) LogCreate() {
+	logObject := base.NewLogObject(base.AppInstanceConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("activate", config.Activate).AddField("remote-console", config.RemoteConsole).
+		Infof("App instance config create")
+}
+
+// LogModify :
+func (config AppInstanceConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.AppInstanceConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+
+	oldConfig, ok := old.(AppInstanceConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of AppInstanceConfig type")
+	}
+	if oldConfig.Activate != config.Activate ||
+		oldConfig.RemoteConsole != config.RemoteConsole {
+
+		logObject.CloneAndAddField("activate", config.Activate).AddField("remote-console", config.RemoteConsole).
+			Infof("App instance config modify")
+	}
+
+}
+
+// LogDelete :
+func (config AppInstanceConfig) LogDelete() {
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config AppInstanceConfig) LogKey() string {
+	return string(base.AppInstanceConfigLogType) + "-" + config.Key()
+}
+
 func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
@@ -130,6 +170,53 @@ type AppInstanceStatus struct {
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
+}
+
+// LogCreate :
+func (status AppInstanceStatus) LogCreate() {
+	logObject := base.NewLogObject(base.AppInstanceStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
+		AddField("purge-in-progress", status.PurgeInprogress).Infof("App instance status create")
+}
+
+// LogModify :
+func (status AppInstanceStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.AppInstanceStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+
+	oldStatus, ok := old.(AppInstanceStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of AppInstanceStatus type")
+	}
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime()
+		logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
+			AddField("purge-in-progress", status.PurgeInprogress).AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).Errorf("App instance status modify")
+		return
+	}
+	if oldStatus.State != status.State ||
+		oldStatus.RestartInprogress != status.RestartInprogress ||
+		oldStatus.PurgeInprogress != status.PurgeInprogress {
+
+		logObject.CloneAndAddField("state", status.State).AddField("restart-in-progress", status.RestartInprogress).
+			AddField("purge-in-progress", status.PurgeInprogress).Infof("App instance status modify")
+	}
+
+}
+
+// LogDelete :
+func (status AppInstanceStatus) LogDelete() {
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status AppInstanceStatus) LogKey() string {
+	return string(base.AppInstanceStatusLogType) + "-" + status.Key()
 }
 
 // Track more complicated workflows

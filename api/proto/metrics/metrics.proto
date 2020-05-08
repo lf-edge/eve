@@ -24,7 +24,7 @@ message memoryMetric {
 }
 
 message networkMetric {
-  // iName - Set to SystemAdapter.Name
+  // iName - Set to SystemAdapter.Name which is the Logicallabel in phyio
   string iName = 1;	// name from config; displayName for network instance
   // alias - Set to SystemAdapter.alias
   string alias = 20;

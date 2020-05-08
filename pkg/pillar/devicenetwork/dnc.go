@@ -40,7 +40,7 @@ type DPCPending struct {
 }
 
 type DeviceNetworkContext struct {
-	cipher.DecryptCipherContext
+	DecryptCipherContext    cipher.DecryptCipherContext
 	UsableAddressCount      int
 	DevicePortConfig        *types.DevicePortConfig // Currently in use
 	DevicePortConfigList    *types.DevicePortConfigList
@@ -703,8 +703,12 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
 
-			if current != nil && current.Equal(oldConfig) {
-				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
+			// If this is current and current is in use (index=0)
+			// then no work needed. Otherwise we reorder
+			if current != nil && current.Equal(oldConfig) &&
+				currentIndex == 0 {
+
+				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as currentIndex=0")
 				return false
 			}
 			log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")

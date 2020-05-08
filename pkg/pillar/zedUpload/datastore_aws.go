@@ -179,7 +179,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		return fmt.Errorf("unable to create S3 context"), 0
 	}
 
-	err := sc.DownloadFile(req.objloc, ep.bucket, req.name, prgChan)
+	err := sc.DownloadFile(req.objloc, ep.bucket, req.name, req.sizelimit, prgChan)
 	if err != nil {
 		return err, 0
 	}

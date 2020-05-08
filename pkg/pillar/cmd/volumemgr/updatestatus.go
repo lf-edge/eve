@@ -4,10 +4,10 @@
 package volumemgr
 
 import (
-	"time"
+	"path"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,7 +19,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 	status.WaitingForCerts = false
 
 	// Anything to do?
-	if status.State == types.DELIVERED {
+	if status.State == types.DELIVERED && status.VolumeCreated {
 		log.Infof("doUpdate(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
@@ -31,37 +31,23 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		log.Infof("Found %s based on VolumeID %s sha %s",
 			status.DisplayName, status.VolumeID, status.BlobSha256)
 
-		// XXX should not happen once ResolveConfig in place
-		// XXX messes up container since end up with different object
-		// XXX temporary container field HACK
-		// XXX create logic...
-		if status.ContainerSha256 != status.BlobSha256 {
-			status.ContainerSha256 = status.BlobSha256
-		}
-		// XXX compare logic ...
-		if status.ContainerSha256 != vs.ImageSha256 {
-			log.Infof("updating image sha from %s to %s",
-				status.ContainerSha256, vs.ImageSha256)
-			status.ContainerSha256 = vs.ImageSha256
-			changed = true
-		}
 		if status.State != vs.State {
 			status.State = vs.State
 			changed = true
 		}
 		if vs.Pending() {
-			log.Infof("lookupVerifyImageStatus %s Pending\n", status.VolumeID)
+			log.Infof("lookupVerifyImageStatus %s Pending", status.VolumeID)
 			return changed, false
 		}
 		if vs.HasError() {
-			log.Errorf("Received error from verifier for %s: %s\n",
+			log.Errorf("Received error from verifier for %s: %s",
 				status.VolumeID, vs.Error)
 			status.SetErrorWithSource(vs.Error, types.VerifyImageStatus{},
 				vs.ErrorTime)
 			changed = true
 			return changed, false
 		} else if status.IsErrorSource(types.VerifyImageStatus{}) {
-			log.Infof("Clearing verifier error %s\n", status.Error)
+			log.Infof("Clearing verifier error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
@@ -71,24 +57,49 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		case types.DELIVERED:
 			if status.FileLocation != vs.FileLocation {
 				status.FileLocation = vs.FileLocation
-				log.Infof("Update SSL FileLocation for %s: %s\n",
+				log.Infof("Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}
-			c, err := createVolume(ctx, status, vs.FileLocation)
-			if err != nil {
-				status.SetErrorWithSource(err.Error(),
-					types.VolumeStatus{}, time.Now())
-				changed = true
-				return changed, false
+			if !status.VolumeCreated {
+				// Asynch creation; ensure we have requested it
+				MaybeAddWorkCreate(ctx, status)
+				vr := lookupVolumeWorkResult(ctx, status.Key())
+				if vr != nil {
+					log.Infof("VolumeWorkResult(%s) location %s, created %t",
+						status.Key(), vr.FileLocation,
+						vr.VolumeCreated)
+					deleteVolumeWorkResult(ctx, status.Key())
+					// Compare to set changed?
+					status.VolumeCreated = vr.VolumeCreated
+					status.FileLocation = vr.FileLocation
+					changed = true
+					if vr.Error != nil {
+						status.SetErrorWithSource(vr.Error.Error(),
+							types.VolumeStatus{},
+							vr.ErrorTime)
+						changed = true
+						return changed, false
+					} else if status.IsErrorSource(types.VolumeStatus{}) {
+						log.Infof("Clearing volume error %s",
+							status.Error)
+						status.ClearErrorWithSource()
+						changed = true
+					}
+				} else {
+					log.Infof("VolumeWorkResult(%s) not found",
+						status.Key())
+				}
 			}
-			if c {
-				changed = true
+			if status.VolumeCreated {
+				// Work is done
+				DeleteWorkCreate(ctx, status)
 			}
+
 		default:
 			if status.FileLocation != vs.FileLocation {
 				status.FileLocation = vs.FileLocation
-				log.Infof("Update SSL FileLocation for %s: %s\n",
+				log.Infof("Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}
@@ -121,11 +132,12 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		changed = true
 		return changed, false
 	}
-	if ds.FileLocation != "" && status.FileLocation == "" {
-		status.FileLocation = ds.FileLocation
+	if ds.Target != "" && status.FileLocation == "" {
+		locDirname := path.Dir(ds.Target)
+		status.FileLocation = locDirname
 		changed = true
 		log.Infof("From ds set FileLocation to %s for %s",
-			ds.FileLocation, status.VolumeID)
+			locDirname, status.VolumeID)
 	}
 	if status.State != ds.State {
 		status.State = ds.State
@@ -136,12 +148,12 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		changed = true
 	}
 	if ds.Pending() {
-		log.Infof("lookupDownloaderStatus %s Pending\n",
+		log.Infof("lookupDownloaderStatus %s Pending",
 			status.VolumeID)
 		return changed, false
 	}
 	if ds.HasError() {
-		log.Errorf("Received error from downloader for %s: %s\n",
+		log.Errorf("Received error from downloader for %s: %s",
 			status.VolumeID, ds.Error)
 		status.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
 			ds.ErrorTime)
@@ -149,7 +161,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		return changed, false
 	}
 	if status.IsErrorSource(types.DownloaderStatus{}) {
-		log.Infof("Clearing downloader error %s\n", status.Error)
+		log.Infof("Clearing downloader error %s", status.Error)
 		status.ClearErrorWithSource()
 		changed = true
 	}
@@ -166,10 +178,10 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		}
 	}
 	if status.WaitingForCerts {
-		log.Infof("Waiting for certs for %s\n", status.Key())
+		log.Infof("Waiting for certs for %s", status.Key())
 		return changed, false
 	}
-	log.Infof("Waiting for download for %s\n", status.Key())
+	log.Infof("Waiting for download for %s", status.Key())
 	return changed, false
 }
 
@@ -288,15 +300,35 @@ func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 	}
 
 	if status.VolumeCreated {
-		_, err := destroyVolume(ctx, status)
-		if err != nil {
-			status.SetErrorWithSource(err.Error(), types.VolumeStatus{},
-				time.Now())
+		// Asynch destruction; make sure we have a request for the work
+		MaybeAddWorkDestroy(ctx, status)
+		vr := lookupVolumeWorkResult(ctx, status.Key())
+		if vr != nil {
+			log.Infof("VolumeWorkResult(%s) location %s, created %t",
+				status.Key(), vr.FileLocation, vr.VolumeCreated)
+			deleteVolumeWorkResult(ctx, status.Key())
+			// Compare to set changed?
+			status.VolumeCreated = vr.VolumeCreated
+			status.FileLocation = vr.FileLocation
 			changed = true
-			return changed
+			if vr.Error != nil {
+				status.SetErrorWithSource(vr.Error.Error(),
+					types.VolumeStatus{}, vr.ErrorTime)
+				changed = true
+				return changed
+			} else if status.IsErrorSource(types.VolumeStatus{}) {
+				log.Infof("Clearing volume error %s",
+					status.Error)
+				status.ClearErrorWithSource()
+				changed = true
+			}
+			if !status.VolumeCreated {
+				DeleteWorkDestroy(ctx, status)
+			}
+		} else {
+			log.Infof("VolumeWorkResult(%s) not found", status.Key())
 		}
-		status.VolumeCreated = false
-		changed = true
+
 	}
 	return changed
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type downloaderContext struct {
-	cipher.DecryptCipherContext
+	decryptCipherContext    cipher.DecryptCipherContext
 	dCtx                    *zedUpload.DronaCtx
 	subDeviceNetworkStatus  pubsub.Subscription
 	subAppImgConfig         pubsub.Subscription
@@ -48,7 +48,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.SubControllerCert = subControllerCert
+	ctx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
 	// Look for cipher context which will be used for decryption
@@ -64,7 +64,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.SubCipherContext = subCipherContext
+	ctx.decryptCipherContext.SubCipherContext = subCipherContext
 	subCipherContext.Activate()
 
 	// Look for global config such as log levels

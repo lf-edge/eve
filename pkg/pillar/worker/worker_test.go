@@ -54,11 +54,11 @@ func TestWork(t *testing.T) {
 			w := Work{Key: testname, Description: d}
 			timestamp = time.Now() // In case we ask for sleep
 			worker.Submit(w)
-			assert.Equal(t, 1, worker.NumPending())
+			assert.Equal(t, worker.NumPending(), 1)
 			res := worker.Process(<-worker.MsgChan())
-			assert.Equal(t, 0, worker.NumPending())
-			assert.Equal(t, testname, res.Key)
-			assert.Equal(t, d.generateOutput, res.Output)
+			assert.Equal(t, worker.NumPending(), 0)
+			assert.Equal(t, res.Key, testname)
+			assert.Equal(t, res.Output, d.generateOutput)
 			if d.sleepTime != 0 {
 				minDuration := time.Duration(d.sleepTime) * time.Second
 				maxDuration := minDuration + 100*time.Millisecond
@@ -66,18 +66,20 @@ func TestWork(t *testing.T) {
 				assert.GreaterOrEqual(t, int64(took), int64(minDuration))
 				assert.Less(t, int64(took), int64(maxDuration))
 			}
-
 			if d.generateError {
-				assert.NotEqual(t, nil, res.Error)
-				assert.Equal(t, timestamp, res.ErrorTime)
+				assert.NotNil(t, res.Error)
+				assert.Equal(t, res.ErrorTime, timestamp)
 			}
+			dout := res.Description.(dummyDescription)
+			assert.Equal(t, dout.generateOutput, d.generateOutput)
+			assert.True(t, dout.done)
 		})
 	}
-	assert.Equal(t, 0, worker.NumPending())
+	assert.Equal(t, worker.NumPending(), 0)
 	worker.Done()
 	_, ok := <-worker.MsgChan()
 	done := !ok
-	assert.Equal(t, true, done)
+	assert.True(t, done)
 }
 
 var sleep1 = dummyDescription{
@@ -104,7 +106,7 @@ func TestLength(t *testing.T) {
 	timestamp = time.Now() // In case we ask for sleep
 	submit1start := timestamp
 	worker.Submit(w1)
-	assert.Equal(t, 1, worker.NumPending())
+	assert.Equal(t, worker.NumPending(), 1)
 	submit1time := time.Since(submit1start)
 	log.Printf("Submit1 took %v", submit1time)
 	minDuration := time.Duration(0)
@@ -115,7 +117,7 @@ func TestLength(t *testing.T) {
 	w2 := Work{Key: testname, Description: sleep2}
 	submit2start := time.Now()
 	worker.Submit(w2)
-	assert.Equal(t, 2, worker.NumPending())
+	assert.Equal(t, worker.NumPending(), 2)
 	submit2time := time.Since(submit2start)
 	log.Printf("Submit2 took %v", submit2time)
 	assert.GreaterOrEqual(t, int64(submit2time), int64(minDuration))
@@ -124,7 +126,7 @@ func TestLength(t *testing.T) {
 	w3 := Work{Key: testname, Description: sleep3}
 	submit3start := time.Now()
 	worker.Submit(w3)
-	assert.Equal(t, 3, worker.NumPending())
+	assert.Equal(t, worker.NumPending(), 3)
 	submit3time := time.Since(submit3start)
 	log.Printf("Submit3 took %v", submit3time)
 	// With channel length 1 have to wait for w1 to complete
@@ -135,9 +137,9 @@ func TestLength(t *testing.T) {
 	assert.Less(t, int64(submit3time), int64(maxDuration))
 
 	res1 := worker.Process(<-worker.MsgChan())
-	assert.Equal(t, 2, worker.NumPending())
-	assert.Equal(t, testname, res1.Key)
-	assert.Equal(t, sleep1.generateOutput, res1.Output)
+	assert.Equal(t, worker.NumPending(), 2)
+	assert.Equal(t, res1.Key, testname)
+	assert.Equal(t, res1.Output, sleep1.generateOutput)
 	if sleep1.sleepTime != 0 {
 		minDuration := time.Duration(sleep1.sleepTime)*time.Second + submit1time
 		maxDuration := minDuration + 100*time.Millisecond
@@ -146,23 +148,24 @@ func TestLength(t *testing.T) {
 		assert.Less(t, int64(took), int64(maxDuration))
 	}
 	res2 := worker.Process(<-worker.MsgChan())
-	assert.Equal(t, 1, worker.NumPending())
-	assert.Equal(t, testname, res2.Key)
-	assert.Equal(t, sleep2.generateOutput, res2.Output)
+	assert.Equal(t, worker.NumPending(), 1)
+	assert.Equal(t, res2.Key, testname)
+	assert.Equal(t, res2.Output, sleep2.generateOutput)
 	if sleep2.sleepTime != 0 {
 		// Single worker processing serially
 		secs := sleep1.sleepTime + sleep2.sleepTime
 		minDuration := time.Duration(secs)*time.Second + submit1time + submit2time
 		maxDuration := minDuration + 100*time.Millisecond
+		minDuration -= 100 * time.Millisecond
 		took := time.Since(timestamp)
 		assert.GreaterOrEqual(t, int64(took), int64(minDuration))
 		assert.Less(t, int64(took), int64(maxDuration))
 	}
 
 	res3 := worker.Process(<-worker.MsgChan())
-	assert.Equal(t, 0, worker.NumPending())
-	assert.Equal(t, testname, res3.Key)
-	assert.Equal(t, sleep3.generateOutput, res3.Output)
+	assert.Equal(t, worker.NumPending(), 0)
+	assert.Equal(t, res3.Key, testname)
+	assert.Equal(t, res3.Output, sleep3.generateOutput)
 	if sleep3.sleepTime != 0 {
 		minDuration := time.Duration(sleep3.sleepTime)*time.Second + submit1time + submit2time + submit3time
 		maxDuration := minDuration + 100*time.Millisecond
@@ -171,11 +174,11 @@ func TestLength(t *testing.T) {
 		assert.Less(t, int64(took), int64(maxDuration))
 	}
 
-	assert.Equal(t, 0, worker.NumPending())
+	assert.Equal(t, worker.NumPending(), 0)
 	worker.Done()
 	_, ok := <-worker.MsgChan()
 	done := !ok
-	assert.Equal(t, true, done)
+	assert.True(t, done)
 }
 
 type dummyContext struct {
@@ -186,6 +189,7 @@ type dummyDescription struct {
 	sleepTime      int
 	generateOutput string
 	generateError  bool
+	done           bool
 }
 
 func dummyWorker(ctxPtr interface{}, w Work) WorkResult {
@@ -206,5 +210,7 @@ func dummyWorker(ctxPtr interface{}, w Work) WorkResult {
 		result.Error = errors.New("generated error")
 		result.ErrorTime = timestamp
 	}
+	d.done = true
+	result.Description = d
 	return result
 }

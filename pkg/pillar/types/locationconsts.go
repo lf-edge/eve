@@ -45,11 +45,14 @@ const (
 	// UUIDFileName - device UUID
 	UUIDFileName = IdentityDirname + "/uuid"
 
-	// APIV2FileName - user can statically allow for API v2
-	APIV2FileName = IdentityDirname + "/Force-API-V2"
+	// APIV1FileName - user can statically allow for API v1
+	APIV1FileName = IdentityDirname + "/Force-API-V1"
+
 	// ServerSigningCertFileName - filename for server signing leaf certificate
 	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
 
+	// ShareCertDirname - directory to place private proxy server certificates
+	ShareCertDirname = "/usr/local/share/ca-certificates"
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"
 	// BaseOsObj - name of base image obj dir

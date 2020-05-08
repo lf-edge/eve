@@ -77,7 +77,7 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    P3_ID=$((IMGA_ID + 7))
 
    IMGA_SIZE=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition size:/ { print $3; }')
-   IMGA_GUID=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition unique GUID:/ { print $4; }')
+   IMGA_GUID=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition GUID code:/ { print $4; }')
 
    SEC_START=$(sgdisk -f "$DEV")
    SEC_END=$((SEC_START + IMGA_SIZE))

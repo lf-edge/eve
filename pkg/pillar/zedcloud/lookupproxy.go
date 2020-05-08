@@ -121,3 +121,34 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 	log.Infof("LookupProxy: No proxy configured for port %s", ifname)
 	return nil, nil
 }
+
+// IntfLookupProxyCfg - check if the intf has proxy configured
+func IntfLookupProxyCfg(status *types.DeviceNetworkStatus, ifname, downloadURL string) string {
+	// if proxy is not on the intf, then don't change anything
+	// if download URL has "http://" or "https://" then no change here regardless of proxy
+	// if there is proxy on this intf, treat empty url scheme as for https or http but prefer https,
+	// replace the passed-in download-url scheme "docker://" and maybe "sftp://" later, to https
+	passURL, err := url.Parse(downloadURL)
+	if err != nil {
+		return downloadURL
+	}
+
+	switch passURL.Scheme {
+	case "http://", "https://":
+		return downloadURL
+	}
+
+	tmpURL := passURL
+	tmpURL.Scheme = "https://"
+	proxyURL, err := LookupProxy(status, ifname, tmpURL.String())
+	if err == nil && proxyURL != nil {
+		return tmpURL.String()
+	}
+	tmpURL.Scheme = "http://"
+	proxyURL, err = LookupProxy(status, ifname, tmpURL.String())
+	if err == nil && proxyURL != nil {
+		return tmpURL.String()
+	}
+
+	return downloadURL
+}

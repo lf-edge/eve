@@ -6,6 +6,7 @@ package zedmanager
 // Code for the interface with VolumeMgr
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -60,6 +61,8 @@ func AddOrRefcountVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 		}
 		publishVolumeConfig(ctx, &n)
 	}
+	base.NewRelationObject(base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
+		base.VolumeConfigLogType, key).Infof("App instance to volume relation.")
 	log.Infof("AddOrRefcountVolumeConfig done for %s", key)
 }
 
@@ -88,6 +91,8 @@ func MaybeRemoveVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 			m.RefCount, key)
 		publishVolumeConfig(ctx, m)
 	}
+	base.NewRelationObject(base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
+		base.VolumeConfigLogType, key).Infof("App instance to volume relation.")
 }
 
 func lookupVolumeConfig(ctx *zedmanagerContext, key string) *types.VolumeConfig {

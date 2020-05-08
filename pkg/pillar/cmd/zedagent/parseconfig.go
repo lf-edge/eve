@@ -652,16 +652,18 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		sysAdapter.Name, sysAdapter.LowerLayerName)
 	port := new(types.NetworkPortConfig)
 
+	port.Logicallabel = sysAdapter.Name
+	port.Alias = sysAdapter.Alias
+	// Look up using LowerLayerName which should match a phyio PhysicalLabel.
+	// If LowerLayerName was not set we use Name
 	if sysAdapter.LowerLayerName == "" {
 		port.Phylabel = sysAdapter.Name
 	} else {
 		port.Phylabel = sysAdapter.LowerLayerName
 	}
-	// Look up using LowerLayerName which should match a phyio PhysicalLabel.
-	// If LowerLayerName is not found, use sysAdapter.Name to do the lookup
-	phyio := lookupDeviceIo(getconfigCtx, sysAdapter.LowerLayerName)
+	phyio := lookupDeviceIoLogicallabel(getconfigCtx, port.Logicallabel)
 	if phyio == nil {
-		phyio = lookupDeviceIo(getconfigCtx, sysAdapter.Name)
+		phyio = lookupDeviceIoPhylabel(getconfigCtx, port.Phylabel)
 	}
 	if phyio == nil {
 		// We will re-check when phyio changes.
@@ -670,7 +672,6 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		log.Error(errStr)
 		// Report error but set Dhcp, isMgmt, and isFree to sane values
 		port.RecordFailure(errStr)
-		port.Logicallabel = port.Phylabel
 		port.IfName = sysAdapter.Name
 		isFree = true
 	} else if !types.IoType(phyio.Ptype).IsNet() {
@@ -679,8 +680,13 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		log.Error(errStr)
 		return nil
 	} else {
+		if port.Logicallabel != phyio.Logicallabel {
+			errStr := fmt.Sprintf("phyio for %s lower %s mismatched logicallabel %s vs %s",
+				sysAdapter.Name, sysAdapter.LowerLayerName,
+				port.Logicallabel, phyio.Logicallabel)
+			log.Warn(errStr)
+		}
 		port.Phylabel = phyio.Phylabel
-		port.Logicallabel = phyio.Logicallabel
 		port.IfName = phyio.Phyaddr.Ifname
 		if port.IfName == "" {
 			// Might not be set for all models
@@ -889,13 +895,16 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	return true
 }
 
-// XXX should we continue to compare logicalLabel as a fallback?
-func lookupDeviceIo(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
+func lookupDeviceIoPhylabel(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
 	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
 		if port.Phylabel == label {
 			return &port
 		}
 	}
+	return nil
+}
+
+func lookupDeviceIoLogicallabel(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
 	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
 		if port.Logicallabel == label {
 			return &port

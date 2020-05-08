@@ -216,6 +216,8 @@ func (x *ConfigItem) GetValue() string {
 }
 
 // Adapter bundles corresponding to a subset of what is in ZioBundle
+// When used by a NetworkInstanceConfig the name is the logicallabel
+// for the network adapter.
 type Adapter struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

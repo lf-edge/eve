@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -200,11 +201,19 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 		}
 		log.Debugf("pubsub.handleModify(%s/%s) replacing due to diff",
 			name, key)
+		loggable, ok := item.(base.LoggableObject)
+		if ok {
+			loggable.LogModify(m)
+		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
 		log.Debugf("pubsub.handleModify(%s) add for key %s\n",
 			name, key)
 		created = true
+		loggable, ok := item.(base.LoggableObject)
+		if ok {
+			loggable.LogCreate()
+		}
 	}
 	sub.km.key.Store(key, item)
 	if log.GetLevel() == log.DebugLevel {
@@ -228,6 +237,10 @@ func handleDelete(ctxArg interface{}, key string) {
 		log.Errorf("pubsub.handleDelete(%s) %s key not found\n",
 			name, key)
 		return
+	}
+	loggable, ok := m.(base.LoggableObject)
+	if ok {
+		loggable.LogDelete()
 	}
 	// DO NOT log Values. They may contain sensitive information.
 	log.Debugf("pubsub.handleDelete(%s) key %s", name, key)

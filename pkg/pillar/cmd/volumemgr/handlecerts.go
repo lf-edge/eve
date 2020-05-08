@@ -46,21 +46,21 @@ func certObjCheckConfigModify(ctx *volumemgrContext, uuidStr string,
 	for idx, sc := range config.StorageConfigList {
 		ss := status.StorageStatusList[idx]
 		if sc.Name != ss.Name {
-			log.Infof("certObjCheckConfigModify(%s) CertObj changed %s, %s\n",
+			log.Infof("certObjCheckConfigModify(%s) CertObj changed %s, %s",
 				uuidStr, ss.Name, sc.Name)
 			return true
 		}
 	}
-	log.Infof("certObjCheckConfigModify(%s): no change\n", uuidStr)
+	log.Infof("certObjCheckConfigModify(%s): no change", uuidStr)
 	return false
 }
 
 func certObjHandleStatusUpdateImageID(ctx *volumemgrContext, imageID uuid.UUID) {
 
-	log.Infof("certObjHandleStatusUpdateImageId(%s)\n", imageID)
+	log.Infof("certObjHandleStatusUpdateImageId(%s)", imageID)
 	configPtrList := lookupCertObjImageID(ctx, imageID)
 	if len(configPtrList) == 0 {
-		log.Infof("certObjHandleStatusUpdateImageID(%s) not found\n",
+		log.Infof("certObjHandleStatusUpdateImageID(%s) not found",
 			imageID)
 		return
 	}
@@ -68,11 +68,11 @@ func certObjHandleStatusUpdateImageID(ctx *volumemgrContext, imageID uuid.UUID) 
 		uuidStr := configPtr.Key()
 		statusPtr := lookupCertObjStatus(ctx, uuidStr)
 		if statusPtr == nil {
-			log.Infof("certObjHandleStatusUpdateImageID(%s) no status\n",
+			log.Infof("certObjHandleStatusUpdateImageID(%s) no status",
 				imageID)
 			continue
 		}
-		log.Infof("certObjHandleStatusUpdateImageID(%s) found %s\n",
+		log.Infof("certObjHandleStatusUpdateImageID(%s) found %s",
 			imageID, uuidStr)
 		certObjHandleStatusUpdate(ctx, configPtr, statusPtr)
 	}
@@ -83,11 +83,11 @@ func certObjHandleStatusUpdate(ctx *volumemgrContext,
 	config *types.CertObjConfig, status *types.CertObjStatus) {
 
 	uuidStr := config.Key()
-	log.Infof("certObjHandleStatusUpdate(%s)\n", uuidStr)
+	log.Infof("certObjHandleStatusUpdate(%s)", uuidStr)
 
 	changed := doCertObjStatusUpdate(ctx, uuidStr, *config, status)
 	if changed {
-		log.Infof("certObjHandleStatusUpdate(%s) changed\n",
+		log.Infof("certObjHandleStatusUpdate(%s) changed",
 			uuidStr)
 		publishCertObjStatus(ctx, status)
 	}
@@ -96,7 +96,7 @@ func certObjHandleStatusUpdate(ctx *volumemgrContext,
 func doCertObjStatusUpdate(ctx *volumemgrContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
-	log.Infof("doCertObjStatusUpdate(%s)\n", uuidStr)
+	log.Infof("doCertObjStatusUpdate(%s)", uuidStr)
 
 	changed, proceed := doCertObjInstall(ctx, uuidStr, config, status)
 	if !proceed {
@@ -119,14 +119,14 @@ func doCertObjStatusUpdate(ctx *volumemgrContext, uuidStr string, config types.C
 			doUpdate(ctx, &vs)
 		}
 	}
-	log.Infof("doCertObjStatusUdate(%s) done %v\n", uuidStr, changed)
+	log.Infof("doCertObjStatusUdate(%s) done %v", uuidStr, changed)
 	return changed
 }
 
 func doCertObjInstall(ctx *volumemgrContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) (bool, bool) {
 
-	log.Infof("doCertObjInstall(%s)\n", uuidStr)
+	log.Infof("doCertObjInstall(%s)", uuidStr)
 	changed := false
 
 	if len(config.StorageConfigList) != len(status.StorageStatusList) {
@@ -169,7 +169,7 @@ func doCertObjInstall(ctx *volumemgrContext, uuidStr string, config types.CertOb
 	//	}
 
 	publishCertObjStatus(ctx, status)
-	log.Infof("doCertObjInstall(%s) done %v\n", uuidStr, changed)
+	log.Infof("doCertObjInstall(%s) done %v", uuidStr, changed)
 	return changed, true
 }
 
@@ -182,36 +182,36 @@ func checkCertObjStorageDownloadStatus(ctx *volumemgrContext, uuidStr string,
 	status.State = ret.MinState
 	status.SetError(ret.AllErrors, ret.ErrorTime)
 
-	log.Infof("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
+	log.Infof("checkCertObjDownloadStatus %s, %v", uuidStr, ret.MinState)
 
 	if ret.AllErrors != "" {
-		log.Errorf("checkCertObjDownloadStatus for %s, Download error %s\n",
+		log.Errorf("checkCertObjDownloadStatus for %s, Download error %s",
 			uuidStr, ret.AllErrors)
 		return ret.Changed, false
 	}
 
 	if ret.MinState < types.DOWNLOADED {
-		log.Infof("checkCertObjDownloaStatus %s, Waiting for downloads\n",
+		log.Infof("checkCertObjDownloaStatus %s, Waiting for downloads",
 			uuidStr)
 		return ret.Changed, false
 	}
 
-	log.Infof("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
+	log.Infof("checkCertObjDownloadStatus for %s, Downloads done", uuidStr)
 	return ret.Changed, true
 }
 
 func removeCertObjConfig(ctx *volumemgrContext, uuidStr string) {
 
-	log.Infof("removeCertObjConfig(%s)\n", uuidStr)
+	log.Infof("removeCertObjConfig(%s)", uuidStr)
 	status := lookupCertObjStatus(ctx, uuidStr)
 	if status == nil {
-		log.Infof("removeCertObjConfig(%s), no status\n", uuidStr)
+		log.Infof("removeCertObjConfig(%s), no status", uuidStr)
 		return
 	}
 
 	changed, del := doCertObjUninstall(ctx, uuidStr, status)
 	if changed {
-		log.Infof("removeCertObjConfig(%s) status changed\n", uuidStr)
+		log.Infof("removeCertObjConfig(%s) status changed", uuidStr)
 		publishCertObjStatus(ctx, status)
 	}
 
@@ -219,7 +219,7 @@ func removeCertObjConfig(ctx *volumemgrContext, uuidStr string) {
 		// Write out what we modified to CertObj aka delete
 		unpublishCertObjStatus(ctx, status.Key())
 	}
-	log.Infof("removeCertObjConfig(%s) done\n", uuidStr)
+	log.Infof("removeCertObjConfig(%s) done", uuidStr)
 }
 
 // XXX how many elements in StorageStatusList for a certobj?
@@ -234,12 +234,12 @@ func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 	// XXX VolumeStatus for function
 	vstatus := new(types.VolumeStatus)
 	removedAll = true
-	log.Infof("doCertObjUninstall(%s)\n", uuidStr)
+	log.Infof("doCertObjUninstall(%s)", uuidStr)
 
 	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
-		log.Infof("doCertObjUninstall(%s) imageID %s\n",
+		log.Infof("doCertObjUninstall(%s) imageID %s",
 			uuidStr, ss.ImageID)
 		// Decrease refcount if we had increased it
 		if vstatus.DownloadOrigin.HasDownloaderRef {
@@ -251,7 +251,7 @@ func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 		ds := lookupDownloaderStatus(ctx, types.CertObj, ss.ImageID.String())
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
-			log.Infof("doCertObjUninstall(%s) download %s not yet gone\n",
+			log.Infof("doCertObjUninstall(%s) download %s not yet gone",
 				uuidStr, ss.ImageID)
 			removedAll = false
 			continue
@@ -259,7 +259,7 @@ func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 	}
 
 	if !removedAll {
-		log.Infof("doCertObjUninstall(%s) waiting for download purge\n",
+		log.Infof("doCertObjUninstall(%s) waiting for download purge",
 			uuidStr)
 		return changed, del
 	}
@@ -278,7 +278,7 @@ func lookupCertObjConfig(ctx *volumemgrContext, key string) *types.CertObjConfig
 	sub := ctx.subCertObjConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupCertObjConfig(%s) not found\n", key)
+		log.Infof("lookupCertObjConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.CertObjConfig)
@@ -290,7 +290,7 @@ func lookupCertObjStatus(ctx *volumemgrContext, key string) *types.CertObjStatus
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupCertObjStatus(%s) not found\n", key)
+		log.Infof("lookupCertObjStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.CertObjStatus)
@@ -300,18 +300,18 @@ func lookupCertObjStatus(ctx *volumemgrContext, key string) *types.CertObjStatus
 func publishCertObjStatus(ctx *volumemgrContext, status *types.CertObjStatus) {
 
 	key := status.Key()
-	log.Debugf("publishCertObjStatus(%s)\n", key)
+	log.Debugf("publishCertObjStatus(%s)", key)
 	pub := ctx.pubCertObjStatus
 	pub.Publish(key, *status)
 }
 
 func unpublishCertObjStatus(ctx *volumemgrContext, key string) {
 
-	log.Debugf("unpublishCertObjStatus(%s)\n", key)
+	log.Debugf("unpublishCertObjStatus(%s)", key)
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Errorf("unpublishCertObjStatus(%s) not found\n", key)
+		log.Errorf("unpublishCertObjStatus(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -326,7 +326,7 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 	srcCnt := st.Size()
 	// create the destination directory
 	if _, err := os.Stat(dstDirname); err != nil {
-		log.Debugf("Create %s\n", dstDirname)
+		log.Debugf("Create %s", dstDirname)
 		if err := os.MkdirAll(dstDirname, 0700); err != nil {
 			log.Fatal("installCertObject: ", err, dstDirname)
 		}
@@ -337,14 +337,14 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 	// XXX needed? Check for truncated file and replace??
 	if _, err := os.Stat(dstFilename); err == nil {
 		// Remove and replace
-		log.Infof("installCertObject: replacing %s\n",
+		log.Infof("installCertObject: replacing %s",
 			dstFilename)
 		if err := os.Remove(dstFilename); err != nil {
-			log.Fatalf("installCertObject failed %s\n", err)
+			log.Fatalf("installCertObject failed %s", err)
 		}
 	}
 
-	log.Infof("installCertObject: writing %s to %s\n",
+	log.Infof("installCertObject: writing %s to %s",
 		srcFilename, dstFilename)
 
 	// XXX:FIXME its copy, not move
@@ -355,7 +355,7 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 		log.Errorln("installCertObject: ", err, dstFilename)
 	}
 	if dstCnt != srcCnt {
-		log.Errorf("installCertObject: mismatched copy len %d vs %d, %s\n",
+		log.Errorf("installCertObject: mismatched copy len %d vs %d, %s",
 			dstCnt, srcCnt, dstFilename)
 	}
 	return err

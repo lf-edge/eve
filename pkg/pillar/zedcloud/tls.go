@@ -14,9 +14,14 @@ import (
 	"fmt"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -256,6 +261,9 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 		}
 	}
 
+	// May updating the /etc/ssl/certs for proxy certs in /usr/local/share/ca-certificates directory
+	updateEtcSSLforProxyCerts(ctx, devNS)
+
 	log.Infof("UpdateTLSProxyCerts: root CA updated")
 	ctx.TlsConfig.RootCAs = caCertPool
 	// save the new proxy Certs, or null it out
@@ -295,4 +303,51 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 		log.Errorln("Certificate Status Revoked")
 	}
 	return resp.Status == ocsp.Good
+}
+
+func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkStatus) {
+	// Only zedagent is to update the host ca-certificates
+	if !ctx.V2API || ctx.AgentName != "zedagent" {
+		log.Infof("updateEtcSSLforProxyCerts: skip agent %s", ctx.AgentName)
+		return
+	}
+
+	proxyCertPrefix := "/proxy-cert-"
+	proxyCertDirFile := types.ShareCertDirname + proxyCertPrefix
+	err := filepath.Walk(types.ShareCertDirname, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Error(err)
+		}
+		if path != types.ShareCertDirname && info.IsDir() {
+			return filepath.SkipDir
+		}
+		if strings.HasPrefix(path, proxyCertDirFile) {
+			log.Infof("updateEtcSSLforProxyCerts: remove file %s", path)
+			os.Remove(path)
+		}
+		return err
+	})
+	if err != nil {
+		log.Errorf("updateEtcSSLforProxyCerts: reomove proxy certs (%s)", err)
+	}
+
+	newCerts := cacheProxyCerts(dns)
+	for i, pem := range newCerts {
+		proxyFilename := proxyCertDirFile + strconv.Itoa(i) + ".pem"
+		err = fileutils.WriteRename(proxyFilename, pem)
+		if err != nil {
+			log.Errorf("updateEtcSSLforProxyCerts: file %s save err %v", proxyFilename, err)
+		}
+		log.Infof("updateEtcSSLforProxyCerts: file saved to %s", proxyFilename)
+	}
+
+	cmdName := "/usr/sbin/update-ca-certificates"
+	cmd := exec.Command(cmdName)
+	log.Infof("updateEtcSSLforProxyCerts: Calling command %s", cmdName)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("updateEtcSSLforProxyCerts: update-ca-certificates, certs num %d, (%s)", len(newCerts), err)
+	} else {
+		log.Infof("updateEtcSSLforProxyCerts: update-ca-certificates %s, certs num %d", out, len(newCerts))
+	}
 }

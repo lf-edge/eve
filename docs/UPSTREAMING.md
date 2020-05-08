@@ -27,11 +27,11 @@ There is no tool that currently does anything close to this. The closest option 
 
 ### maketestconfig
 
-[maketestconfig.sh](../maketestconfig.sh) is a script that tars up the contents of [conf/](../conf/), passing the tar stream to [mkconf](../pkg/mkconf), which lays those contents on top of the contents of `/opt/zededa/examples/config` from [pillar](../pkg/pillar/conf) and puts the result in a FAT32 image named `config.img`.
+[tools/makeconfig.sh](../tools/makeconfig.sh) is a script that tars up the contents of [conf/](../conf/), passing the tar stream to [mkconf](../pkg/mkconf), which lays those contents on top of the contents of `/opt/zededa/examples/config` from [pillar](../pkg/pillar/conf) and puts the result in a FAT32 image named `config.img`.
 
 This is a fairly straightforward process - somewhat complicated by the two layers of tarring the local directory up and then overwriting the `pillar` default in a separate container, but not unduly so - and is unlikely to be replaced by any other tool. At best, in its current usage, it can be simplified somewhat as a single container image run.
 
-More relevant and useful is an analysis of the usage of `config` in a production-quality system. It is unlikely that the fixed config in `/opt/zededa/examples/config` or `conf/`, as described by the installer name `maketestconfig.sh` (with the word `test`), will be used in production-scale deployments. We should determine how we want to use `config` in real deployed systems, how it will be installed, where it applies to the device API protocol, and design a full solution.
+More relevant and useful is an analysis of the usage of `config` in a production-quality system. It is unlikely that the fixed config in `/opt/zededa/examples/config` or `conf/` will be used in production-scale deployments. We should determine how we want to use `config` in real deployed systems, how it will be installed, where it applies to the device API protocol, and design a full solution.
 
 ## Components
 

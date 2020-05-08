@@ -51,6 +51,7 @@ var zcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
 	Timeout:       maxRemoteProbeWait,
 	TLSConfig:     &tls.Config{InsecureSkipVerify: true},
 	NeedStatsFunc: true,
+	AgentName:     agentName,
 })
 
 // use probeMutex to protect the status.PInfo[] map entries. When the external

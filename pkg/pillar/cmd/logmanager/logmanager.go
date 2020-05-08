@@ -407,7 +407,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		}
 		logMsg := logEntry{
 			source:    logSource,
-			content:   timestamp.String() + ": " + logParts["content"].(string),
+			content:   logParts["content"].(string),
 			severity:  logInfo.Level,
 			timestamp: timestamp,
 			function:  logInfo.Function,
@@ -665,6 +665,9 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 			appUUID, len(appLogBundle.Log))
 		messageCount := len(appLogBundle.Log)
 		byteCount := proto.Size(appLogBundle)
+		if len(appLogBundle.Log) == 0 {
+			continue
+		}
 		sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
 
 		// Take care of metrics
@@ -699,7 +702,7 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	// handle above 64k; we limit payload at 32k
 	strLen := len(event.content)
 	if strLen > logMaxBytes {
-		log.Errorf("handleLogEvent: dropping source %s %d bytes",
+		log.Errorf("handleAppLogEvent: dropping source %s %d bytes",
 			event.source, strLen)
 		return false
 	}
@@ -722,7 +725,7 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	appLogs.Log = append(appLogs.Log, logDetails)
 	newLen := int64(proto.Size(appLogs))
 	if newLen > logMaxBytes {
-		log.Warnf("handleLogEvent: source %s from %d to %d bytes",
+		log.Warnf("handleAppLogEvent: source %s from %d to %d bytes",
 			event.source, oldLen, newLen)
 	}
 	return true
@@ -866,7 +869,13 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	}
 
 	// api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs
-	appLogURL := fmt.Sprintf("apps/instances/id/%s/logs", appUUID)
+	// api/v2/edgeDevice/apps/instanceid/<app-instance-uuid>/logs
+	var appLogURL string
+	if zedcloudCtx.V2API {
+		appLogURL = fmt.Sprintf("apps/instanceid/%s/logs", appUUID)
+	} else {
+		appLogURL = fmt.Sprintf("apps/instances/id/%s/logs", appUUID)
+	}
 	//get server name
 	serverBytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
@@ -876,7 +885,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(serverBytes))
 	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false,
-		nilUUID, appLogURL)
+		devUUID, appLogURL)
 
 	// For any 400 error we abandon
 	const return400 = true
@@ -952,6 +961,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
+		AgentName:        agentName,
 	})
 	log.Infof("sendCtxInit: Use V2 API %v", zedcloud.UseV2API())
 

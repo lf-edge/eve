@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -34,15 +33,14 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	debug              = false
-	debugOverride      bool                               // From command line arg
-	downloadGCTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
-	retryTime          = time.Duration(600) * time.Second // Unless from GlobalConfig
-	downloaderObjTypes = []string{types.AppImgObj, types.BaseOsObj, types.CertObj}
-	Version            = "No version specified" // Set from Makefile
-	nilUUID            uuid.UUID                // should be a const, just the default nil value of uuid.UUID
-	dHandler           = makeDownloadHandler()
-	resHandler         = makeResolveHandler()
+	debug          = false
+	debugOverride  bool                               // From command line arg
+	downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+	retryTime      = time.Duration(600) * time.Second // Unless from GlobalConfig
+	Version        = "No version specified"           // Set from Makefile
+	nilUUID        uuid.UUID                          // should be a const, just the default nil value of uuid.UUID
+	dHandler       = makeDownloadHandler()
+	resHandler     = makeResolveHandler()
 )
 
 func Run(ps *pubsub.PubSub) {
@@ -142,11 +140,11 @@ func Run(ps *pubsub.PubSub) {
 
 	for {
 		select {
-		case change := <-ctx.SubControllerCert.MsgChan():
-			ctx.SubControllerCert.ProcessChange(change)
+		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
+			ctx.decryptCipherContext.SubControllerCert.ProcessChange(change)
 
-		case change := <-ctx.SubCipherContext.MsgChan():
-			ctx.SubCipherContext.ProcessChange(change)
+		case change := <-ctx.decryptCipherContext.SubCipherContext.MsgChan():
+			ctx.decryptCipherContext.SubCipherContext.ProcessChange(change)
 
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
@@ -420,15 +418,20 @@ func handleModify(ctx *downloaderContext, key string,
 	log.Infof("handleModify done for %s", config.Name)
 }
 
-func doDelete(ctx *downloaderContext, key string, locDirname string,
+func doDelete(ctx *downloaderContext, key string, filename string,
 	status *types.DownloaderStatus) {
 
 	log.Infof("doDelete(%s) for %s", status.ImageID, status.Name)
 
-	deletefile(locDirname+"/pending", status)
+	if _, err := os.Stat(filename); err == nil {
+		log.Infof("Deleting %s", filename)
+		if err := os.RemoveAll(filename); err != nil {
+			log.Errorf("Failed to remove %s: err %s",
+				filename, err)
+		}
+	}
 
 	status.State = types.INITIAL
-	deleteSpace(ctx, status)
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
@@ -460,31 +463,7 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 		return
 	}
 
-	// try to reserve storage, must be released on error
-	kb := types.RoundupToKB(config.Size)
-	if ret, errStr := tryReserveSpace(ctx, status, kb); !ret {
-		status.RetryCount++
-		status.HandleDownloadFail(errStr)
-		publishDownloaderStatus(ctx, status)
-		log.Errorf("doDownload(%s): deferred with %s", config.Name, errStr)
-		return
-	}
 	handleSyncOp(ctx, status.Key(), config, status, dst)
-}
-
-func deletefile(dirname string, status *types.DownloaderStatus) {
-	// XXX common routines to determine pathname?
-	dirname = dirname + "/" + status.ImageID.String()
-
-	// XXX delete whole directory?
-	if _, err := os.Stat(dirname); err == nil {
-		log.Infof("Deleting %s", dirname)
-		// Remove directory
-		if err := os.RemoveAll(dirname); err != nil {
-			log.Errorf("Failed to remove %s: err %s",
-				dirname, err)
-		}
-	}
 }
 
 func handleDelete(ctx *downloaderContext, key string,
@@ -498,44 +477,23 @@ func handleDelete(ctx *downloaderContext, key string,
 		log.Fatalf("handleDelete: No ObjType for %s",
 			status.ImageID)
 	}
-	locDirname := types.DownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
 
-	// Update globalStatus and status
-	unreserveSpace(ctx, status)
-
-	publishDownloaderStatus(ctx, status)
-
-	doDelete(ctx, key, locDirname, status)
+	doDelete(ctx, key, status.Target, status)
 
 	status.PendingDelete = false
 	publishDownloaderStatus(ctx, status)
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Infof("handleDelete done for %s, %s", status.Name,
-		locDirname)
+	log.Infof("handleDelete done for %s", status.Name)
 }
 
 // helper functions
 
 func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
-
-	initializeDirs()
-
-	log.Infof("MaxSpace %d", ctx.globalConfig.MaxSpace)
-
-	// XXX how do we find out when verifier cleans up duplicates etc?
-	// XXX run this periodically... What about downloads inprogress
-	// when we run it?
-	// XXX look at verifier and downloader status which have Size
-	// We read types.DownloadDirname/* and determine how much space
-	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	totalUsed := diskmetrics.SizeFromDir(types.DownloadDirname)
-	kb := types.RoundupToKB(totalUsed)
-	initSpace(ctx, kb)
 
 	// create drona interface
 	dCtx, err := zedUpload.NewDronaCtx("zdownloader", 0)
@@ -583,10 +541,6 @@ func gcObjects(ctx *downloaderContext) {
 			publishDownloaderStatus(ctx, &status)
 		}
 	}
-}
-
-func publishGlobalStatus(ctx *downloaderContext) {
-	ctx.pubGlobalDownloadStatus.Publish("global", ctx.globalStatus)
 }
 
 func publishDownloaderStatus(ctx *downloaderContext,
