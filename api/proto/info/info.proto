@@ -62,6 +62,7 @@ enum ZInfoTypes {
   ZiNetworkInstance = 6;
   ZiVolume = 7;
   ZiContentTree = 8;
+  ZiBlobList = 9;
 }
 
 // Information about assignable I/O adapter bundles
