@@ -83,7 +83,6 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus, src
 	created := false
 	filelocation := getContainerPath(status.AppInstID.String())
 	status.FileLocation = filelocation
-	filelocation := containerd.GetContainerPath(status.AppInstID.String())
 
 	ociFilename, err := utils.VerifiedImageFileLocation(status.ContainerSha256)
 	if err != nil {
@@ -161,8 +160,7 @@ func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (b
 	filelocation := status.FileLocation
 	log.Infof("Removing container volume %s", filelocation)
 	if err := ctrRm(status.FileLocation, false); err != nil {
-		return changed, err
-
+		return created, filelocation, err
 	}
 	filelocation = ""
 	created = false

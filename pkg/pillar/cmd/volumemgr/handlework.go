@@ -32,8 +32,7 @@ func HandleWorkResult(ctx *volumemgrContext, res worker.WorkResult) {
 		VolumeCreated: d.VolumeCreated,
 	}
 	addVolumeWorkResult(ctx, res.Key, vres)
-	updateVolumeStatus(ctx, d.status.ObjType, d.status.BlobSha256,
-		d.status.VolumeID)
+	updateVolumeStatus(ctx, d.status.ObjType, d.status.VolumeID)
 }
 
 // Map of pending work for create and destroy, respectively
