@@ -28,7 +28,8 @@ func FlushRoutesTable(table int, ifindex int) {
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
-		log.Fatalf("RouteList failed: %v", err)
+		log.Errorf("FlushRoutesTable: for table %d, ifindex %d failed, error %v", table, ifindex, err)
+		return
 	}
 	log.Debugf("FlushRoutesTable(%d, %d) - got %d",
 		table, ifindex, len(routes))
@@ -54,7 +55,8 @@ func FlushRoutesTable(table int, ifindex int) {
 func FlushRules(ifindex int) {
 	rules, err := netlink.RuleList(syscall.AF_UNSPEC)
 	if err != nil {
-		log.Fatalf("RuleList failed: %v", err)
+		log.Errorf("FlushRules: for ifindex %d failed, error %v", ifindex, err)
+		return
 	}
 	log.Debugf("FlushRules(%d) - got %d", ifindex, len(rules))
 	for _, r := range rules {

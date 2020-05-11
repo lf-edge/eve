@@ -1561,7 +1561,8 @@ func getDefaultRouters(ifname string) []string {
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
-		log.Fatalf("getDefaultRouters RouteList failed: %v", err)
+		log.Errorf("getDefaultRouters: for ifname %s RouteList failed: %v\n", ifname, err)
+		return res
 	}
 	// log.Debugf("getDefaultRouters(%s) - got %d", ifname, len(routes))
 	for _, rt := range routes {
