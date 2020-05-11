@@ -6,7 +6,7 @@ See [https://www.lfedge.org/projects/eve/](https://www.lfedge.org/projects/eve/)
 
 This directory defines only the API itself. It is in two parts:
 
-* documentation in the file [API.md](./API.md) for the protocol
+* documentation in the file [APIv2.md](./APIv2.md) for the protocol
 * message definitions as [protobufs](https://developers.google.com/protocol-buffers/) in subdirectories to this directory
 
 To use the protobufs, you need to compile them into the target language of your choice, such as Go, Python or Node.
