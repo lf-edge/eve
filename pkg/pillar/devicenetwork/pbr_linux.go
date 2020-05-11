@@ -31,7 +31,8 @@ func CopyRoutesTable(srcTable int, ifindex int, dstTable int) {
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
-		log.Fatalf("RouteList failed: %v", err)
+		log.Errorf("CopyRoutesTable: for src table %d, ifindex %d failed, error %v", srcTable, ifindex, err)
+		return
 	}
 	log.Infof("CopyRoutesTable(%d, %d, %d) - got %d",
 		srcTable, ifindex, dstTable, len(routes))

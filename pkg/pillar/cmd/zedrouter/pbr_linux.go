@@ -28,7 +28,8 @@ func getAllIPv4Routes(ifindex int) []netlink.Route {
 	routes, err := netlink.RouteListFiltered(syscall.AF_INET,
 		&filter, fflags)
 	if err != nil {
-		log.Fatalf("RouteList failed: %v\n", err)
+		log.Errorf("getAllIPv4Routes: ifindex %d failed, error %v", ifindex, err)
+		return nil
 	}
 	log.Debugf("getAllIPv4Routes(%d) - got %d matches\n",
 		ifindex, len(routes))
