@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -86,6 +87,59 @@ func getChangeProtectorParams(protectorID string) []string {
 		"--old-key=" + oldKeyFile, "--source=raw_key",
 		"--protector=" + mountPoint + ":" + protectorID}
 	return args
+}
+
+func getRemoveProtectorParams(protectorID string) []string {
+	args := []string{"metadata", "destroy", "--protector=" + mountPoint + ":" + protectorID, "--quiet", "--force"}
+	return args
+}
+
+func getRemovePolicyParams(policyID string) []string {
+	args := []string{"metadata", "destroy", "--policy=" + mountPoint + ":" + policyID, "--quiet", "--force"}
+	return args
+}
+
+func getProtectorIDByName(vaultPath string) ([][]string, error) {
+	stdOut, _, err := execCmd(fscryptPath, statusParams...)
+	if err != nil {
+		return nil, err
+	}
+	patternStr := fmt.Sprintf("([[:xdigit:]]+)  No      raw key protector \"%s\"",
+		protectorPrefix+filepath.Base(vaultPath))
+	protector := regexp.MustCompile(patternStr)
+	return protector.FindAllStringSubmatch(stdOut, -1), nil
+}
+
+func getPolicyIDByProtectorID(protectID string) ([][]string, error) {
+	stdOut, _, err := execCmd(fscryptPath, statusParams...)
+	if err != nil {
+		return nil, err
+	}
+	patternStr := fmt.Sprintf("([[:xdigit:]]+)  No        %s", protectID)
+	policy := regexp.MustCompile(patternStr)
+	return policy.FindAllStringSubmatch(stdOut, -1), nil
+}
+
+func removeProtectorIfAny(vaultPath string) error {
+	protectorID, err := getProtectorIDByName(vaultPath)
+	if err == nil {
+		log.Infof("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
+		args := getRemoveProtectorParams(protectorID[0][1])
+		if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+			log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
+			return err
+		}
+		policyID, err := getPolicyIDByProtectorID(protectorID[0][1])
+		if err == nil {
+			log.Infof("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
+			args := getRemovePolicyParams(policyID[0][1])
+			if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+				log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func getProtectorID(vaultPath string) ([][]string, error) {
@@ -303,9 +357,13 @@ func setupVault(vaultPath string) error {
 		if _, _, err := execCmd("mkdir", "-p", vaultPath); err != nil {
 			return err
 		}
+		if err := removeProtectorIfAny(vaultPath); err != nil {
+			return err
+		}
 	}
 	args := getStatusParams(vaultPath)
-	if _, _, err := execCmd(fscryptPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+		log.Infof("%v, %v, %v", stdOut, stdErr, err)
 		if !isDirEmpty(vaultPath) {
 			//Don't disturb existing installations
 			log.Infof("Not disturbing non-empty %s", vaultPath)
@@ -351,9 +409,10 @@ func publishVaultStatus(ctx *vaultMgrContext,
 		status.SetErrorNow(fscryptError)
 	} else {
 		args := getStatusParams(vaultPath)
-		if stderr, _, err := execCmd(fscryptPath, args...); err != nil {
+		if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+			log.Errorf("Status failed, %v, %v, %v", err, stdOut, stdErr)
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-			status.SetErrorNow(stderr)
+			status.SetErrorNow(stdOut + stdErr)
 		} else {
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
 		}
@@ -466,7 +525,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
 		}
 		if err = setupVault(defaultCfgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
+			log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
