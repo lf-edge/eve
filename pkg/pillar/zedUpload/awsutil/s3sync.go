@@ -6,6 +6,7 @@ package awsutil
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -29,6 +30,7 @@ type UpdateStats struct {
 
 type NotifChan chan UpdateStats
 
+// CustomReader contains the details of Chunks being downloaded
 type CustomReader struct {
 	fp        *os.File
 	upSize    UpdateStats
@@ -189,6 +191,21 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 	return nil
 }
 
+// DownloadFileByChunks downloads the file from s3 chunk by chunk and passes it to the caller
+func (s *S3ctx) DownloadFileByChunks(fname, bname, bkey string) (io.ReadCloser, int64, error) {
+	err, bsize := s.GetObjectSize(bname, bkey)
+	if err != nil {
+		return nil, 0, err
+	}
+	fmt.Println("size,", bsize)
+	req, err := s.ss3.GetObject(&s3.GetObjectInput{Bucket: aws.String(bname),
+		Key: aws.String(bkey)})
+	if err != nil {
+		return nil, 0, err
+	}
+	return req.Body, bsize, nil
+}
+
 func (s *S3ctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) {
 	var img []string
 	input := &s3.ListObjectsInput{
@@ -262,6 +279,9 @@ func (s *S3ctx) UploadPart(bname, bkey string, chunk []byte, partNumber int64, u
 		ContentLength: aws.Int64(int64(len(chunk))),
 	}
 	uploadResult, err := s.ss3.UploadPart(partInput)
+	if err != nil {
+		return "", "", err
+	}
 	return *uploadResult.ETag, uploadID, err
 }
 

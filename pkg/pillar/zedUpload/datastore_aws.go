@@ -51,6 +51,8 @@ func (ep *AwsTransportMethod) Action(req *DronaRequest) error {
 		if err == nil {
 			req.SasURI = sasURL
 		}
+	case SysOpDownloadByChunks:
+		err = ep.processS3DownloadByChunks(req)
 	default:
 		err = fmt.Errorf("Unknown AWS S3 datastore operation")
 	}
@@ -191,6 +193,26 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	csize = int(st.Size())
 
 	return err, csize
+}
+
+func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error {
+	pwd := strings.TrimSuffix(ep.apiKey, "\n")
+	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+	if sc == nil {
+		return fmt.Errorf("unable to create S3 context")
+	}
+	readCloser, size, err := sc.DownloadFileByChunks(req.objloc, ep.bucket, req.name)
+	if err != nil {
+		return err
+	}
+	req.chunkInfoChan = make(chan ChunkData, 1)
+	chunkChan := make(chan ChunkData)
+	go func(chunkChan chan ChunkData) {
+		for chunkData := range chunkChan {
+			ep.ctx.postChunk(req, chunkData)
+		}
+	}(chunkChan)
+	return processChunkByChunk(readCloser, size, chunkChan)
 }
 
 // File delete from AWS S3 Datastore
