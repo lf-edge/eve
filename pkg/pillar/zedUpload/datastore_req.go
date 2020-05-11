@@ -83,6 +83,8 @@ type DronaRequest struct {
 	UploadID string
 	// generated after uploading the part to the multipart file
 	EtagID string
+	// chunkInfoChan used for communication of chunk details
+	chunkInfoChan chan ChunkData
 }
 
 // Return object local name
@@ -194,6 +196,14 @@ func (req *DronaRequest) updateOsize(size int64) {
 	req.Lock()
 	defer req.Unlock()
 	req.objectSize = size
+}
+
+// GetChunkDetails Return the chunk details
+func (req *DronaRequest) GetChunkDetails() (int64, []byte, bool) {
+	req.Lock()
+	defer req.Unlock()
+	chunkDetails := <-req.chunkInfoChan
+	return chunkDetails.Size, chunkDetails.Chunk, chunkDetails.EOF
 }
 
 // Return the if the object was downloaded with error

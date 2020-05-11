@@ -29,8 +29,8 @@ const (
 	SyncOpGetURI                = 7
 	SysOpPutPart                = 8
 	SysOpCompleteParts          = 9
-
-	DefaultNumberOfHandlers = 10
+	SysOpDownloadByChunks       = 10
+	DefaultNumberOfHandlers     = 11
 
 	StatsUpdateTicker = 5 * time.Second // timer for updating client for stats
 	FailPostTimeout   = 2 * time.Minute
@@ -169,6 +169,13 @@ func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
 	req.setInprogress()
 	req.updateOsize(size)
 	req.updateAsize(asize)
+	req.result <- req
+}
+
+// postChunk:
+//  post the chunk data which is downloaded from the respective datastore
+func (ctx *DronaCtx) postChunk(req *DronaRequest, chunkDetail ChunkData) {
+	req.chunkInfoChan <- chunkDetail
 	req.result <- req
 }
 

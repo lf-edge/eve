@@ -44,6 +44,8 @@ func (ep *HttpTransportMethod) Action(req *DronaRequest) error {
 	case SyncOpGetObjectMetaData:
 		err, contentLength = ep.processHttpObjectMetaData(req)
 		req.contentLength = contentLength
+	case SysOpDownloadByChunks:
+		err = fmt.Errorf("Chunk download for HTTP transport is not supported yet")
 	default:
 		err = fmt.Errorf("Unknown HTTP datastore operation")
 	}
