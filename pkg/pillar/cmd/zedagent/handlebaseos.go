@@ -31,13 +31,13 @@ func getZbootPartitionStatusAll(ctx *zedagentContext) map[string]interface{} {
 func getZbootPartitionStatus(ctx *zedagentContext, partName string) *types.ZbootStatus {
 	partName = strings.TrimSpace(partName)
 	if !isZbootValidPartitionLabel(partName) {
-		log.Errorf("getZbootPartitionStatus(%s) invalid partition\n", partName)
+		log.Errorf("getZbootPartitionStatus(%s) invalid partition", partName)
 		return nil
 	}
 	sub := ctx.subZbootStatus
 	st, err := sub.Get(partName)
 	if err != nil {
-		log.Errorf("getZbootPartitionStatus(%s) not found\n", partName)
+		log.Errorf("getZbootPartitionStatus(%s) not found", partName)
 		return nil
 	}
 	status := st.(types.ZbootStatus)
@@ -50,11 +50,11 @@ func getZbootCurrentPartition(ctx *zedagentContext) string {
 	for _, st := range items {
 		status := st.(types.ZbootStatus)
 		if status.CurrentPartition {
-			log.Debugf("getZbootCurrentPartition:%s\n", status.PartitionLabel)
+			log.Debugf("getZbootCurrentPartition:%s", status.PartitionLabel)
 			return status.PartitionLabel
 		}
 	}
-	log.Errorf("getZbootCurrentPartition() not found\n")
+	log.Errorf("getZbootCurrentPartition() not found")
 	return partName
 }
 
@@ -64,10 +64,10 @@ func getZbootOtherPartition(ctx *zedagentContext) string {
 	for _, st := range items {
 		status := st.(types.ZbootStatus)
 		if !status.CurrentPartition {
-			log.Debugf("getZbootOtherPartition:%s\n", status.PartitionLabel)
+			log.Debugf("getZbootOtherPartition:%s", status.PartitionLabel)
 			return status.PartitionLabel
 		}
 	}
-	log.Errorf("getZbootOtherPartition() not found\n")
+	log.Errorf("getZbootOtherPartition() not found")
 	return partName
 }

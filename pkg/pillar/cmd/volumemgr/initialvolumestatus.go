@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,14 +32,17 @@ var nilUUID = uuid.UUID{}
 // we could switch this to imageID
 // XXX other types of volumes might want a different name.
 func appRwVolumeName(sha256, uuidStr string, purgeCounter uint32, format zconfig.Format,
-	origin types.OriginType) string {
+	origin types.OriginType, isContainer bool) string {
 
-	if origin != types.OriginTypeDownload {
-		log.Fatalf("XXX unsupported origin %v", origin)
-	}
 	purgeString := ""
 	if purgeCounter != 0 {
 		purgeString = fmt.Sprintf("#%d", purgeCounter)
+	}
+	if isContainer {
+		return fmt.Sprintf("%s-%s%s", sha256, uuidStr, purgeString)
+	}
+	if origin != types.OriginTypeDownload {
+		log.Fatalf("XXX unsupported origin %v", origin)
 	}
 	formatStr := strings.ToLower(format.String())
 	return fmt.Sprintf("%s/%s-%s%s.%s", rwImgDirname, sha256,
@@ -46,10 +50,16 @@ func appRwVolumeName(sha256, uuidStr string, purgeCounter uint32, format zconfig
 }
 
 // parseAppRwVolumeName - Returns rwImgDirname, sha256, uuidStr, purgeCounter
-func parseAppRwVolumeName(image string) (string, string, string, uint32) {
+func parseAppRwVolumeName(image string, isContainer bool) (string, string, string, uint32) {
 	// VolumeSha is provided by the controller - it can be uppercase
 	// or lowercase.
-	re1 := regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)#([0-9]+)\.(.+)`)
+	var re1 *regexp.Regexp
+	var re2 *regexp.Regexp
+	if isContainer {
+		re1 = regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)#([0-9]+)`)
+	} else {
+		re1 = regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)#([0-9]+)\.(.+)`)
+	}
 	if re1.MatchString(image) {
 		// With purgeCounter
 		parsedStrings := re1.FindStringSubmatch(image)
@@ -62,7 +72,11 @@ func parseAppRwVolumeName(image string) (string, string, string, uint32) {
 			uint32(count)
 	}
 	// Without purgeCounter
-	re2 := regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)\.([^\.]+)`)
+	if isContainer {
+		re2 = regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)`)
+	} else {
+		re2 = regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)\.([^\.]+)`)
+	}
 	if !re2.MatchString(image) {
 		log.Errorf("AppRwVolumeName %s doesn't match pattern", image)
 		return "", "", "", 0
@@ -76,6 +90,12 @@ func parseAppRwVolumeName(image string) (string, string, string, uint32) {
 func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
 	log.Infof("populateInitialVolumeStatus(%s)", dirName)
+	var isContainer bool
+	if dirName == rwImgDirname {
+		isContainer = false
+	} else if dirName == roContImgDirname {
+		isContainer = true
+	}
 
 	// Record host boot time for comparisons
 	hinfo, err := host.Info()
@@ -86,16 +106,18 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
-		log.Fatal(err)
+		log.Errorf("populateInitialVolumeStatus: read directory '%s' failed: %v",
+			dirName, err)
+		return
 	}
 
 	for _, location := range locations {
 		filelocation := dirName + "/" + location.Name()
-		if location.IsDir() {
+		if location.IsDir() && !isContainer {
 			log.Debugf("populateInitialVolumeStatus: directory %s ignored", filelocation)
 			continue
 		}
-
+		var size int64
 		info, err := os.Stat(filelocation)
 		if err != nil {
 			log.Errorf("Error in getting file information. Err: %s. "+
@@ -103,9 +125,11 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			deleteFile(filelocation)
 			continue
 		}
-
-		size := info.Size()
-		_, sha256, appUUIDStr, purgeCounter := parseAppRwVolumeName(filelocation)
+		size = info.Size()
+		if isContainer {
+			size, _ = dirSize(filelocation)
+		}
+		_, sha256, appUUIDStr, purgeCounter := parseAppRwVolumeName(filelocation, isContainer)
 		log.Infof("populateInitialVolumeStatus: Processing sha256: %s, AppUuid: %s, "+
 			"%d Mbytes, fileLocation:%s",
 			sha256, appUUIDStr, size/(1024*1024), filelocation)
@@ -126,6 +150,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			PurgeCounter: purgeCounter,
 			DisplayName:  "Found in /persist/img",
 			FileLocation: filelocation,
+			State:        types.CREATED_VOLUME,
 			// XXX Is this the correct size? vs. qcow2 size?
 			TargetSizeBytes: uint64(size),
 			ObjType:         types.UnknownObj,
@@ -248,4 +273,18 @@ func deleteFile(filelocation string) {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())
 	}
+}
+
+func dirSize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+	return size, err
 }

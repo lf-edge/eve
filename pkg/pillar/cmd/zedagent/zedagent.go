@@ -179,7 +179,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
-	log.Infof("Starting %s\n", agentName)
+	log.Infof("Starting %s", agentName)
 
 	triggerDeviceInfo := make(chan struct{}, 1)
 	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
@@ -733,7 +733,7 @@ func Run(ps *pubsub.PubSub) {
 	// Pick up debug aka log level before we start real work
 
 	for !zedagentCtx.GCInitialized {
-		log.Infof("Waiting for GCInitialized\n")
+		log.Infof("Waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -750,7 +750,7 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 			if zedagentCtx.zbootRestarted {
-				log.Infof("Zboot reported restarted\n")
+				log.Infof("Zboot reported restarted")
 			}
 
 		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
@@ -773,9 +773,9 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 
-	log.Infof("Waiting until we have some uplinks with usable addresses\n")
+	log.Infof("Waiting until we have some uplinks with usable addresses")
 	for !DNSctx.DNSinitialized {
-		log.Infof("Waiting for DeviceNetworkStatus %v\n",
+		log.Infof("Waiting for DeviceNetworkStatus %v",
 			DNSctx.DNSinitialized)
 
 		select {
@@ -893,7 +893,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Process the verifierStatus to avoid downloading an image we
 	// already have in place
-	log.Infof("Handling initial verifier Status\n")
+	log.Infof("Handling initial verifier Status")
 	for !zedagentCtx.verifierRestarted {
 		select {
 		case change := <-subZbootStatus.MsgChan():
@@ -905,7 +905,7 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subBaseOsVerifierStatus.MsgChan():
 			subBaseOsVerifierStatus.ProcessChange(change)
 			if zedagentCtx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
+				log.Infof("Verifier reported restarted")
 				break
 			}
 
@@ -928,7 +928,7 @@ func Run(ps *pubsub.PubSub) {
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
-				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
+				log.Infof("NetworkStatus triggered PublishDeviceInfo")
 				triggerPublishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
@@ -1021,7 +1021,7 @@ func Run(ps *pubsub.PubSub) {
 			}
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
-				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
+				log.Infof("NetworkStatus triggered PublishDeviceInfo")
 				triggerPublishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
@@ -1033,7 +1033,7 @@ func Run(ps *pubsub.PubSub) {
 			subNetworkMetrics.ProcessChange(change)
 			m, err := subNetworkMetrics.Get("global")
 			if err != nil {
-				log.Errorf("subNetworkMetrics.Get failed: %s\n",
+				log.Errorf("subNetworkMetrics.Get failed: %s",
 					err)
 			} else {
 				networkMetrics = m.(types.NetworkMetrics)
@@ -1043,7 +1043,7 @@ func Run(ps *pubsub.PubSub) {
 			subClientMetrics.ProcessChange(change)
 			m, err := subClientMetrics.Get("global")
 			if err != nil {
-				log.Errorf("subClientMetrics.Get failed: %s\n",
+				log.Errorf("subClientMetrics.Get failed: %s",
 					err)
 			} else {
 				clientMetrics = m.(types.MetricsMap)
@@ -1053,7 +1053,7 @@ func Run(ps *pubsub.PubSub) {
 			subLogmanagerMetrics.ProcessChange(change)
 			m, err := subLogmanagerMetrics.Get("global")
 			if err != nil {
-				log.Errorf("subLogmanagerMetrics.Get failed: %s\n",
+				log.Errorf("subLogmanagerMetrics.Get failed: %s",
 					err)
 			} else {
 				logmanagerMetrics = m.(types.MetricsMap)
@@ -1063,7 +1063,7 @@ func Run(ps *pubsub.PubSub) {
 			subDownloaderMetrics.ProcessChange(change)
 			m, err := subDownloaderMetrics.Get("global")
 			if err != nil {
-				log.Errorf("subDownloaderMetrics.Get failed: %s\n",
+				log.Errorf("subDownloaderMetrics.Get failed: %s",
 					err)
 			} else {
 				downloaderMetrics = m.(types.MetricsMap)
@@ -1100,7 +1100,7 @@ func Run(ps *pubsub.PubSub) {
 		case <-zedagentCtx.getCertsTimer.C:
 			start := time.Now()
 			ok := getCloudCertChain(&zedagentCtx)
-			log.Infof("zedagent Run: getCertsTimer get cloud cert ok %v\n", ok)
+			log.Infof("zedagent Run: getCertsTimer get cloud cert ok %v", ok)
 			pubsub.CheckMaxTimeTopic(agentName, "getCertsTimer", start,
 				warningTime, errorTime)
 
@@ -1155,7 +1155,7 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleVerifierRestarted(%v)\n", done)
+	log.Infof("handleVerifierRestarted(%v)", done)
 	if done {
 		ctx.verifierRestarted = true
 	}
@@ -1166,7 +1166,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
+	log.Infof("handleVerifierStatusModify for %s", status.ImageID)
 	// Nothing to do
 }
 
@@ -1175,14 +1175,14 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
+	log.Infof("handleVeriferStatusDelete RefCount %d for %s",
 		status.RefCount, key)
 	// Nothing to do
 }
 
 func handleZbootRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleZbootRestarted(%v)\n", done)
+	log.Infof("handleZbootRestarted(%v)", done)
 	if done {
 		ctx.zbootRestarted = true
 	}
@@ -1197,25 +1197,25 @@ func initializeDirs() {
 
 	// create persistent holder directory
 	if _, err := os.Stat(types.PersistDir); err != nil {
-		log.Debugf("Create %s\n", types.PersistDir)
+		log.Debugf("Create %s", types.PersistDir)
 		if err := os.MkdirAll(types.PersistDir, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(types.CertificateDirname); err != nil {
-		log.Debugf("Create %s\n", types.CertificateDirname)
+		log.Debugf("Create %s", types.CertificateDirname)
 		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(checkpointDirname); err != nil {
-		log.Debugf("Create %s\n", checkpointDirname)
+		log.Debugf("Create %s", checkpointDirname)
 		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(types.DownloadDirname); err != nil {
-		log.Debugf("Create %s\n", types.DownloadDirname)
+		log.Debugf("Create %s", types.DownloadDirname)
 		if err := os.MkdirAll(types.DownloadDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -1264,7 +1264,7 @@ func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanc
 	sub := ctx.getconfigCtx.subAppInstanceStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
+		log.Infof("lookupAppInstanceStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.AppInstanceStatus)
@@ -1276,13 +1276,13 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSModify for %s", key)
 	// XXX empty is equal
 	if cmp.Equal(*deviceNetworkStatus, status) {
-		log.Infof("handleDNSModify no change\n")
+		log.Infof("handleDNSModify no change")
 		ctx.DNSinitialized = true
 		return
 	}
@@ -1293,7 +1293,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	// XXX should we also trigger if the count increases?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
+		log.Infof("DeviceNetworkStatus from %d to %d addresses",
 			ctx.usableAddressCount, newAddrCount)
 		ctx.triggerGetConfig = true
 	}
@@ -1304,24 +1304,24 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(&zedcloudCtx)
 	}
-	log.Infof("handleDNSModify done for %s\n", key)
+	log.Infof("handleDNSModify done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDNSDelete for %s\n", key)
+	log.Infof("handleDNSDelete for %s", key)
 	ctx := ctxArg.(*DNSContext)
 
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		log.Infof("handleDNSDelete: ignoring %s", key)
 		return
 	}
 	*deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.DNSinitialized = false
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSDelete done for %s\n", key)
+	log.Infof("handleDNSDelete done for %s", key)
 }
 
 func handleDPCLModify(ctxArg interface{}, key string, statusArg interface{}) {
@@ -1329,11 +1329,11 @@ func handleDPCLModify(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleDPCLModify: ignoring %s\n", key)
+		log.Infof("handleDPCLModify: ignoring %s", key)
 		return
 	}
 	if cmp.Equal(ctx.devicePortConfigList, status) {
-		log.Infof("handleDPCLModify no change\n")
+		log.Infof("handleDPCLModify no change")
 		return
 	}
 	// Note that lastSucceeded will increment a lot; ignore it but compare
@@ -1348,10 +1348,10 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleDPCLDelete: ignoring %s\n", key)
+		log.Infof("handleDPCLDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDPCLDelete for %s\n", key)
+	log.Infof("handleDPCLDelete for %s", key)
 	ctx.devicePortConfigList = types.DevicePortConfigList{}
 	triggerPublishDevInfo(ctx)
 }
@@ -1362,16 +1362,16 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
+	log.Infof("handleBaseOsStatusModify(%s) done", key)
 }
 
 func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleBaseOsStatusDelete(%s)\n", key)
+	log.Infof("handleBaseOsStatusDelete(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
+	log.Infof("handleBaseOsStatusDelete(%s) done", key)
 }
 
 // vault status event handlers
@@ -1379,16 +1379,16 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 func handleVaultStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleVaultStatusModify(%s) done\n", key)
+	log.Infof("handleVaultStatusModify(%s) done", key)
 }
 
 func handleVaultStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleVaultStatusDelete(%s)\n", key)
+	log.Infof("handleVaultStatusDelete(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleVaultStatusDelete(%s) done\n", key)
+	log.Infof("handleVaultStatusDelete(%s) done", key)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -1401,10 +1401,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
@@ -1412,7 +1412,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1420,14 +1420,14 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	ctx.globalConfig = *types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
 // Handles both create and modify events
@@ -1437,13 +1437,13 @@ func handleAAModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
-		log.Infof("handleAAModify: ignoring %s\n", key)
+		log.Infof("handleAAModify: ignoring %s", key)
 		return
 	}
-	log.Infof("handleAAModify() %+v\n", status)
+	log.Infof("handleAAModify() %+v", status)
 	*ctx.assignableAdapters = status
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleAAModify() done\n")
+	log.Infof("handleAAModify() done")
 }
 
 func handleAADelete(ctxArg interface{}, key string,
@@ -1451,13 +1451,13 @@ func handleAADelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleAADelete: ignoring %s\n", key)
+		log.Infof("handleAADelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleAADelete()\n")
+	log.Infof("handleAADelete()")
 	ctx.assignableAdapters.Initialized = false
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleAADelete() done\n")
+	log.Infof("handleAADelete() done")
 }
 
 // Handles both create and modify events
@@ -1466,10 +1466,10 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	if !isZbootValidPartitionLabel(key) {
-		log.Errorf("handleZbootStatusModify: invalid key %s\n", key)
+		log.Errorf("handleZbootStatusModify: invalid key %s", key)
 		return
 	}
-	log.Infof("handleZbootStatusModify: for %s\n", key)
+	log.Infof("handleZbootStatusModify: for %s", key)
 	// nothing to do
 	triggerPublishDevInfo(ctx)
 }
@@ -1477,10 +1477,10 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 func handleZbootStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	if !isZbootValidPartitionLabel(key) {
-		log.Errorf("handleZbootStatusDelete: invalid key %s\n", key)
+		log.Errorf("handleZbootStatusDelete: invalid key %s", key)
 		return
 	}
-	log.Infof("handleZbootStatusDelete: for %s\n", key)
+	log.Infof("handleZbootStatusDelete: for %s", key)
 	// Nothing to do
 }
 
@@ -1504,7 +1504,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	// state, initiate the reboot process
 	if ctx.rebootCmdDeferred &&
 		updateInprogress && !status.UpdateInprogress {
-		log.Infof("TestComplete and deferred reboot\n")
+		log.Infof("TestComplete and deferred reboot")
 		ctx.rebootCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd\n")
 		handleRebootCmd(ctx, infoStr)
@@ -1513,13 +1513,13 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 		handleDeviceReboot(ctx)
 	}
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleNodeAgentStatusModify: done.\n")
+	log.Infof("handleNodeAgentStatusModify: done.")
 }
 
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleNodeAgentStatusDelete: for %s\n", key)
+	log.Infof("handleNodeAgentStatusDelete: for %s", key)
 	// Nothing to do
 	triggerPublishDevInfo(ctx)
 }

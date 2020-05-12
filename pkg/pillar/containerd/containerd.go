@@ -41,7 +41,7 @@ const (
 	containerdRunTime = "io.containerd.runtime.v1.linux"
 
 	// root path to all containers
-	containersRoot = "/persist/runx/pods/prepared"
+	containersRoot = types.ROContImgDirname
 	// relative path to rootfs for an individual container
 	containerRootfsPath = "rootfs/"
 	// container config file name
@@ -76,8 +76,8 @@ func InitContainerdClient() error {
 
 // GetContainerPath return the path to the root of the container. This is *not*
 // necessarily the rootfs, which may be a layer below
-func GetContainerPath(containerID string) string {
-	return path.Join(containersRoot, containerID)
+func GetContainerPath(containerDir string) string {
+	return path.Join(containersRoot, containerDir)
 }
 
 // containerdLoadImageTar load an image tar into the containerd content store
@@ -320,10 +320,10 @@ func getContainerPath(containerID string) string {
 	}
 }
 
-func getSavedImageInfo(containerID string) (v1.Image, error) {
+func getSavedImageInfo(containerPath string) (v1.Image, error) {
 	var image v1.Image
 
-	appDir := getContainerPath(containerID)
+	appDir := getContainerPath(containerPath)
 	data, err := ioutil.ReadFile(filepath.Join(appDir, imageConfigFilename))
 	if err != nil {
 		return image, err
@@ -564,7 +564,7 @@ func CtrDelete(containerID string) error {
 func CtrPrepareMount(containerID uuid.UUID, containerPath string, envVars map[string]string, noOfDisks int) error {
 	log.Infof("ctrPrepareMount(%s, %s, %v, %d)", containerID, containerPath,
 		envVars, noOfDisks)
-	imageInfo, err := getSavedImageInfo(containerID.String())
+	imageInfo, err := getSavedImageInfo(containerPath)
 	if err != nil {
 		log.Errorf("ctrPrepareMount(%s, %s) getImageInfo failed: %s",
 			containerID, containerPath, err)

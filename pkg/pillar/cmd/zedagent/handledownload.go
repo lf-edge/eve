@@ -19,7 +19,7 @@ func downloaderSubscription(ctx *zedagentContext, objType string) pubsub.Subscri
 	case types.AppImgObj:
 		sub = ctx.subAppImgDownloadStatus
 	default:
-		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
+		log.Fatalf("downloaderSubscription: Unknown ObjType %s",
 			objType)
 	}
 	return sub

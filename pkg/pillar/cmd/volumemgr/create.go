@@ -50,7 +50,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLoca
 
 	filelocation := appRwVolumeName(status.BlobSha256, status.AppInstID.String(),
 		// XXX in general status.VolumeID,
-		status.PurgeCounter, status.Format, status.Origin)
+		status.PurgeCounter, status.Format, status.Origin, false)
 
 	if _, err := os.Stat(filelocation); err == nil {
 		errStr := fmt.Sprintf("Can not create %s for %s: exists",
@@ -82,7 +82,11 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLoca
 func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLocation string) (bool, string, error) {
 
 	created := false
-	filelocation := containerd.GetContainerPath(status.AppInstID.String())
+	dirName := appRwVolumeName(status.BlobSha256, status.AppInstID.String(),
+		// XXX in general status.VolumeID,
+		status.PurgeCounter, status.Format, status.Origin, true)
+
+	filelocation := containerd.GetContainerPath(dirName)
 
 	ociFilename, err := utils.VerifiedImageFileLocation(status.BlobSha256)
 	if err != nil {
@@ -159,7 +163,7 @@ func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (b
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
 	log.Infof("Removing container volume %s", filelocation)
-	if err := containerd.SnapshotRm(filelocation, false); err != nil {
+	if err := containerd.SnapshotRm(filelocation, true); err != nil {
 		return created, filelocation, err
 	}
 	filelocation = ""

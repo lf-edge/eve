@@ -31,10 +31,10 @@ func parseCipherContext(ctx *getconfigContext,
 	if bytes.Equal(newHash, cipherCtxHash) {
 		return
 	}
-	log.Infof("parseCipherContext: Applying updated config\n"+
-		"Last Sha: % x\n"+
-		"New  Sha: % x\n"+
-		"Num of cfgCipherContext: %d\n",
+	log.Infof("parseCipherContext: Applying updated config "+
+		"Last Sha: % x, "+
+		"New  Sha: % x, "+
+		"Num of cfgCipherContext: %d",
 		cipherCtxHash, newHash, len(cfgCipherContextList))
 
 	cipherCtxHash = newHash
@@ -51,14 +51,14 @@ func parseCipherContext(ctx *getconfigContext,
 		}
 		// cipherContext not found, delete
 		if !found {
-			log.Infof("parseCipherContext: deleting %s\n", idStr)
+			log.Infof("parseCipherContext: deleting %s", idStr)
 			unpublishCipherContext(ctx, idStr)
 		}
 	}
 
 	for _, cfgCipherContext := range cfgCipherContextList {
 		if cfgCipherContext.GetContextId() == "" {
-			log.Debugf("parseCipherContext ignoring empty\n")
+			log.Debugf("parseCipherContext ignoring empty")
 			continue
 		}
 		context := types.CipherContext{
@@ -71,7 +71,7 @@ func parseCipherContext(ctx *getconfigContext,
 		}
 		publishCipherContext(ctx, context)
 	}
-	log.Infof("parsing cipher context done\n")
+	log.Infof("parsing cipher context done")
 }
 
 // parseCipherBlock : will collate all the relevant information
@@ -79,7 +79,7 @@ func parseCipherContext(ctx *getconfigContext,
 func parseCipherBlock(ctx *getconfigContext, key string,
 	cfgCipherBlock *zconfig.CipherBlock) types.CipherBlockStatus {
 
-	log.Infof("parseCipherBlock(%s) started\n", key)
+	log.Infof("parseCipherBlock(%s) started", key)
 	if cfgCipherBlock == nil {
 		log.Infof("parseCipherBlock(%s) nil cipher block", key)
 		return types.CipherBlockStatus{CipherBlockID: key}
@@ -100,30 +100,30 @@ func parseCipherBlock(ctx *getconfigContext, key string,
 		cipherBlock.SetErrorNow(errStr)
 		return cipherBlock
 	}
-	log.Infof("%s, marking cipher as true\n", key)
+	log.Infof("%s, marking cipher as true", key)
 	cipherBlock.IsCipher = true
 
-	log.Infof("parseCipherBlock(%s) done\n", key)
+	log.Infof("parseCipherBlock(%s) done", key)
 	return cipherBlock
 }
 
 func publishCipherContext(ctx *getconfigContext,
 	status types.CipherContext) {
 	key := status.Key()
-	log.Debugf("publishCipherContext(%s)\n", key)
+	log.Debugf("publishCipherContext(%s)", key)
 	pub := ctx.pubCipherContext
 	pub.Publish(key, status)
-	log.Debugf("publishCipherContext(%s) done\n", key)
+	log.Debugf("publishCipherContext(%s) done", key)
 }
 
 func unpublishCipherContext(ctx *getconfigContext, key string) {
-	log.Debugf("unpublishCipherContext(%s)\n", key)
+	log.Debugf("unpublishCipherContext(%s)", key)
 	pub := ctx.pubCipherContext
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishCipherContext(%s) not found\n", key)
+		log.Errorf("unpublishCipherContext(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
-	log.Debugf("unpublishCipherContext(%s) done\n", key)
+	log.Debugf("unpublishCipherContext(%s) done", key)
 }

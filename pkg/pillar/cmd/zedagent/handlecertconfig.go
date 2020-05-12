@@ -24,7 +24,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 	cfgConfig := &zcert.ZControllerCert{}
 	err := proto.Unmarshal(contents, cfgConfig)
 	if err != nil {
-		log.Errorf("parseControllerCerts(): Unmarshal error %v\n", err)
+		log.Errorf("parseControllerCerts(): Unmarshal error %v", err)
 		return
 	}
 
@@ -37,10 +37,10 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 	if bytes.Equal(newHash, certHash) {
 		return
 	}
-	log.Infof("parseControllerCerts: Applying updated config\n"+
-		"Last Sha: % x\n"+
-		"New  Sha: % x\n"+
-		"Num of cfgCert: %d\n",
+	log.Infof("parseControllerCerts: Applying updated config "+
+		"Last Sha: % x, "+
+		"New  Sha: % x, "+
+		"Num of cfgCert: %d",
 		certHash, newHash, len(cfgCerts))
 
 	certHash = newHash
@@ -59,7 +59,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 			}
 		}
 		if !found {
-			log.Infof("parseControllerCerts: deleting %s\n", config.Key())
+			log.Infof("parseControllerCerts: deleting %s", config.Key())
 			unpublishControllerCert(ctx.getconfigCtx, config.Key())
 		}
 	}
@@ -68,7 +68,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 		certKey := hex.EncodeToString(cfgConfig.GetCertHash())
 		cert := lookupControllerCert(ctx.getconfigCtx, certKey)
 		if cert == nil {
-			log.Infof("parseControllerCerts: not found %s\n", certKey)
+			log.Infof("parseControllerCerts: not found %s", certKey)
 			cert = &types.ControllerCert{
 				HashAlgo: cfgConfig.GetHashAlgo(),
 				Type:     cfgConfig.GetType(),
@@ -78,21 +78,21 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 			publishControllerCert(ctx.getconfigCtx, *cert)
 		}
 	}
-	log.Infof("parsing controller certs done\n")
+	log.Infof("parsing controller certs done")
 }
 
 // look up controller cert
 func lookupControllerCert(ctx *getconfigContext,
 	key string) *types.ControllerCert {
-	log.Infof("lookupControllerCert(%s)\n", key)
+	log.Infof("lookupControllerCert(%s)", key)
 	pub := ctx.pubControllerCert
 	item, err := pub.Get(key)
 	if err != nil {
-		log.Errorf("lookupControllerCert(%s) not found\n", key)
+		log.Errorf("lookupControllerCert(%s) not found", key)
 		return nil
 	}
 	status := item.(types.ControllerCert)
-	log.Infof("lookupControllerCert(%s) Done\n", key)
+	log.Infof("lookupControllerCert(%s) Done", key)
 	return &status
 }
 
@@ -101,21 +101,21 @@ func lookupControllerCert(ctx *getconfigContext,
 func publishControllerCert(ctx *getconfigContext,
 	config types.ControllerCert) {
 	key := config.Key()
-	log.Debugf("publishControllerCert %s\n", key)
+	log.Debugf("publishControllerCert %s", key)
 	pub := ctx.pubControllerCert
 	pub.Publish(key, config)
-	log.Debugf("publishControllerCert %s Done\n", key)
+	log.Debugf("publishControllerCert %s Done", key)
 }
 
 func unpublishControllerCert(ctx *getconfigContext, key string) {
-	log.Debugf("unpublishControllerCert %s\n", key)
+	log.Debugf("unpublishControllerCert %s", key)
 	pub := ctx.pubControllerCert
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishControllerCert(%s) not found\n", key)
+		log.Errorf("unpublishControllerCert(%s) not found", key)
 		return
 	}
-	log.Debugf("unpublishControllerCert %s Done\n", key)
+	log.Debugf("unpublishControllerCert %s Done", key)
 	pub.Unpublish(key)
 }
 
@@ -124,7 +124,7 @@ func handleAttestCertModify(ctxArg interface{}, key string,
 
 	// XXX TBD
 	status := configArg.(types.AttestCert)
-	log.Infof("handleAttestCertModify for %s\n", status.Key())
+	log.Infof("handleAttestCertModify for %s", status.Key())
 	return
 }
 
@@ -133,6 +133,6 @@ func handleAttestCertDelete(ctxArg interface{}, key string,
 
 	// XXX TBD
 	status := configArg.(types.AttestCert)
-	log.Infof("handleAttestCertDelete for %s\n", status.Key())
+	log.Infof("handleAttestCertDelete for %s", status.Key())
 	return
 }

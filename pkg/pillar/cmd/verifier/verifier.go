@@ -395,7 +395,7 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 }
 
 // Recreate status files for verified objects as types.DOWNLOADED
-// except containers which we mark as types.DELIVERED
+// except containers which we mark as types.VERIFIED
 func handleInitVerifiedObjects(ctx *verifierContext) {
 
 	for _, objType := range verifierObjTypes {
@@ -827,7 +827,7 @@ func handleCreate(ctx *verifierContext, objType string,
 				config.ImageSha256, config.ImageID)
 			status.VerifyStatus = ps.VerifyStatus
 			status.PendingAdd = false
-			status.State = types.DELIVERED
+			status.State = types.VERIFIED
 			status.FileLocation = ps.FileLocation
 			publishVerifyImageStatus(ctx, &status)
 			log.Infof("handleCreate done for %s", config.Name)
@@ -855,7 +855,7 @@ func handleCreate(ctx *verifierContext, objType string,
 		log.Fatalf("Verified but no FileLocation for %s", status.Key())
 	}
 	status.PendingAdd = false
-	status.State = types.DELIVERED
+	status.State = types.VERIFIED
 	publishVerifyImageStatus(ctx, &status)
 	log.Infof("handleCreate done for %s", config.Name)
 }
