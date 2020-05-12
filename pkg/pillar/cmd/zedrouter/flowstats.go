@@ -53,7 +53,6 @@ type aclAttr struct {
 	tableName string
 	aclName   string
 	chainName string
-	action    string
 	bridge    string
 	intfname  string // App virtual interface name assigned by cloud template
 }
@@ -191,8 +190,9 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			// temp print out the flow "tuple" and stats per app/bridge
 			for i, tuple := range timeOutTuples { // search for flowstats by bridge
 				var aclattr aclAttr
-				var bridgeName, aclaction string
+				var bridgeName string
 				var aclNum int
+				var aclaction types.ACLActionType
 
 				appN := tuple.appNum
 				if int(appN) != appIdx { // allow non-App flows to be uploaded
@@ -226,7 +226,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 						continue
 					}
 					scope.Intf = aclattr.intfname // App side DomU internal interface name
-					aclaction = aclattr.action
+					aclaction = types.ACLActionAccept
 					aclNum = int(aclattr.aclNum)
 				} else { // conntrack mark aclNum field being 0xffffff
 					// special drop aclNum
@@ -236,7 +236,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					}
 					scope.Intf = appinfo.intf
 					bridgeName = appinfo.localintf
-					aclaction = "drop-" + bridgeName + "-" + appinfo.intf
+					aclaction = types.ACLActionDrop
 					aclNum = 0
 				}
 
@@ -571,9 +571,7 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 				tempAttr.tableName = rule.Table
 				tempAttr.bridge = ulStatus.Bridge
 				tempAttr.intfname = ulStatus.Name
-				if len(rule.Action) >= 2 { // '-j ACCEPT', '-j drop-all-bn1-nbu2x1'
-					tempAttr.action = rule.Action[1]
-				}
+
 				if _, ok := instData.ipaclattr[status.AppNum][int(rule.RuleID)]; !ok { // fake j as the aclNUM
 					instData.ipaclattr[status.AppNum][int(rule.RuleID)] = tempAttr
 				} else {
@@ -606,8 +604,7 @@ func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
 // DNSMonitor : DNS Query and Reply monitor on bridges
 func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 	var (
-		err error
-		//action      string
+		err         error
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
 		promiscuous       = true             // mainly for switched network
 		timeout           = 10 * time.Second // collect enough packets in 10sec before processing
