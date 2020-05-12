@@ -106,7 +106,9 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
-		log.Fatal(err)
+		log.Errorf("populateInitialVolumeStatus: read directory '%s' failed: %v",
+			dirName, err)
+		return
 	}
 
 	for _, location := range locations {
