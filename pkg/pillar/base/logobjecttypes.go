@@ -49,6 +49,10 @@ const (
 	BaseOsConfigLogType LogObjectType = "baseos_config"
 	// BaseOsStatusLogType :
 	BaseOsStatusLogType LogObjectType = "baseos_status"
+	// ZbootConfigLogType :
+	ZbootConfigLogType LogObjectType = "zboot_config"
+	// ZbootStatusLogType :
+	ZbootStatusLogType LogObjectType = "zboot_status"
 )
 
 // RelationObjectType :
