@@ -110,7 +110,7 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 
 	if ret.MinState == types.MAXSTATE {
 		// No StorageStatus
-		ret.MinState = types.DOWNLOADED
+		ret.MinState = types.INITIAL
 		ret.Changed = true
 	}
 
@@ -127,7 +127,7 @@ func installDownloadedObjects(uuidStr string,
 	for i := range *status {
 		ssPtr := &(*status)[i]
 
-		if ssPtr.State == types.VERIFIED {
+		if ssPtr.State == types.CREATED_VOLUME {
 			err := installDownloadedObject(ssPtr.ImageID, ssPtr)
 			if err != nil {
 				log.Error(err)
