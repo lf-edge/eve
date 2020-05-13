@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -45,6 +46,50 @@ func (config BaseOsConfig) VerifyFilename(fileName string) bool {
 			fileName, expect)
 	}
 	return ret
+}
+
+// LogCreate :
+func (config BaseOsConfig) LogCreate() {
+	logObject := base.NewLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
+		config.UUIDandVersion.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("activate", config.Activate).
+		Infof("BaseOs config create")
+}
+
+// LogModify :
+func (config BaseOsConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
+		config.UUIDandVersion.UUID, config.LogKey())
+
+	oldConfig, ok := old.(BaseOsConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of BaseOsConfig type")
+	}
+	if oldConfig.Activate != config.Activate {
+
+		logObject.CloneAndAddField("activate", config.Activate).
+			AddField("old-activate", oldConfig.Activate).
+			Infof("BaseOs config modify")
+	}
+
+}
+
+// LogDelete :
+func (config BaseOsConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
+		config.UUIDandVersion.UUID, config.LogKey())
+	logObject.CloneAndAddField("activate", config.Activate).
+		Infof("BaseOs config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config BaseOsConfig) LogKey() string {
+	return string(base.BaseOsConfigLogType) + "-" + config.BaseOsVersion
 }
 
 // Indexed by UUIDandVersion as above
@@ -93,6 +138,57 @@ func (status BaseOsStatus) CheckPendingModify() bool {
 
 func (status BaseOsStatus) CheckPendingDelete() bool {
 	return false
+}
+
+// LogCreate :
+func (status BaseOsStatus) LogCreate() {
+	logObject := base.NewLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
+		status.UUIDandVersion.UUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("state", status.State.String()).
+		Infof("BaseOs status create")
+}
+
+// LogModify :
+func (status BaseOsStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
+		status.UUIDandVersion.UUID, status.LogKey())
+
+	oldStatus, ok := old.(BaseOsStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of BaseOsStatus type")
+	}
+	if oldStatus.State != status.State {
+
+		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("old-state", oldStatus.State.String()).
+			Infof("BaseOs status modify")
+	}
+
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime
+		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).
+			Errorf("BaseOs status modify")
+	}
+}
+
+// LogDelete :
+func (status BaseOsStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
+		status.UUIDandVersion.UUID, status.LogKey())
+	logObject.CloneAndAddField("state", status.State.String()).
+		Infof("BaseOs status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status BaseOsStatus) LogKey() string {
+	return string(base.BaseOsStatusLogType) + "-" + status.BaseOsVersion
 }
 
 // captures the certificate config currently embeded
