@@ -45,6 +45,10 @@ const (
 	DomainConfigLogType LogObjectType = "domain_config"
 	// DomainStatusLogType :
 	DomainStatusLogType LogObjectType = "domain_status"
+	// BaseOsConfigLogType :
+	BaseOsConfigLogType LogObjectType = "baseos_config"
+	// BaseOsStatusLogType :
+	BaseOsStatusLogType LogObjectType = "baseos_status"
 )
 
 // RelationObjectType :
