@@ -80,6 +80,7 @@ func publishDownloaderConfig(ctx *volumemgrContext, objType string,
 	log.Debugf("publishDownloaderConfig(%s)", key)
 	pub := ctx.publication(*config, objType)
 	pub.Publish(key, *config)
+	log.Debugf("publishDownloaderConfig(%s) Done", key)
 }
 
 func unpublishDownloaderConfig(ctx *volumemgrContext, objType string,
@@ -90,10 +91,11 @@ func unpublishDownloaderConfig(ctx *volumemgrContext, objType string,
 	pub := ctx.publication(*config, objType)
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishVerifyImageConfig(%s) not found", key)
+		log.Errorf("unpublishDownloaderConfig(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
+	log.Debugf("unpublishDownloaderConfig(%s) Done", key)
 }
 
 func handleDownloaderStatusModify(ctxArg interface{}, key string,
