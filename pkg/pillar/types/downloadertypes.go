@@ -19,7 +19,6 @@ type DownloaderConfig struct {
 	Name             string
 	Target           string // file path where to download the file
 	NameIsURL        bool   // If not we form URL based on datastore info
-	IsContainer      bool
 	AllowNonFreePort bool
 	Size             uint64 // In bytes
 	FinalObjDir      string // final Object Store
@@ -55,7 +54,6 @@ type DownloaderStatus struct {
 	Target           string // file path where we download the file
 	Name             string
 	ObjType          string
-	IsContainer      bool
 	PendingAdd       bool
 	PendingModify    bool
 	PendingDelete    bool
