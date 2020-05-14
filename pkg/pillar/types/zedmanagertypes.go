@@ -564,5 +564,9 @@ type AppAndImageToHash struct {
 
 // Key is used for pubsub
 func (aih AppAndImageToHash) Key() string {
-	return fmt.Sprintf("%s.%s.%d", aih.AppUUID.String(), aih.ImageID.String(), aih.PurgeCounter)
+	if aih.PurgeCounter == 0 {
+		return fmt.Sprintf("%s.%s", aih.AppUUID.String(), aih.ImageID.String())
+	} else {
+		return fmt.Sprintf("%s.%s.%d", aih.AppUUID.String(), aih.ImageID.String(), aih.PurgeCounter)
+	}
 }
