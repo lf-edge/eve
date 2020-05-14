@@ -398,12 +398,6 @@ func handleModify(ctx *downloaderContext, key string,
 		status.ImageID, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
 
-	if config.IsContainer != status.IsContainer {
-		log.Infof("handleModify: Setting IsContainer to %t for %s",
-			config.IsContainer, status.ImageID)
-		status.IsContainer = config.IsContainer
-		publishDownloaderStatus(ctx, status)
-	}
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		log.Infof("handleModify installing %s", config.Name)
