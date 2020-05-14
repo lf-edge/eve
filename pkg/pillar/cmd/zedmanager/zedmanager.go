@@ -633,7 +633,11 @@ func handleModify(ctxArg interface{}, key string,
 	// We detect significant changes which require a reboot and/or
 	// purge of disk changes, so we can generate errors if it is
 	// not a PurgeCmd and RestartCmd, respectively
+	// If we are purging then restart is redundant.
 	needPurge, needRestart := quantifyChanges(config, *status)
+	if needPurge {
+		needRestart = false
+	}
 
 	if config.RestartCmd.Counter != status.RestartCmd.Counter {
 
