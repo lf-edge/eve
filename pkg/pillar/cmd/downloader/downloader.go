@@ -359,6 +359,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
 		status.Expired = false
+		status.ClearError()
 	}
 	publishDownloaderStatus(ctx, status)
 
@@ -396,8 +397,9 @@ func handleModify(ctx *downloaderContext, key string,
 		status.ImageID, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
 
-	// If RefCount from zero to non-zero then do install
-	if status.RefCount == 0 && config.RefCount != 0 {
+	// If RefCount from zero to non-zero and status has error
+	// or status is not downloaded then do install
+	if config.RefCount != 0 && (status.HasError() || status.State != types.DOWNLOADED) {
 		log.Infof("handleModify installing %s", config.Name)
 		handleCreate(ctx, status.ObjType, config, status, key)
 	} else if status.RefCount != config.RefCount {
