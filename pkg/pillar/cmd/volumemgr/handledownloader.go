@@ -38,7 +38,6 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 			Name:        name, // XXX URL? DisplayName?
 			NameIsURL:   status.DownloadOrigin.NameIsURL,
 			ImageSha256: status.DownloadOrigin.ImageSha256,
-			IsContainer: status.DownloadOrigin.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
 			Size:     size,
@@ -63,9 +62,8 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha
 	}
 	if m.RefCount == 0 {
 		log.Fatalf("MaybeRemoveDownloaderConfig: Attempting to reduce "+
-			"0 RefCount. Image Details - Name: %s, ImageSha: %s, "+
-			"IsContainer: %t",
-			m.Name, m.ImageSha256, m.IsContainer)
+			"0 RefCount. Image Details - Name: %s, ImageSha: %s, ",
+			m.Name, m.ImageSha256)
 	}
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s",
@@ -129,8 +127,6 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 			Name:        status.Name,
 			NameIsURL:   status.NameIsURL,
 			ImageSha256: status.ImageSha256,
-			// IsContainer might not be known by downloader
-			IsContainer: status.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
 			Size:     status.Size,
