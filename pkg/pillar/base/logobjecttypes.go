@@ -53,6 +53,22 @@ const (
 	ZbootConfigLogType LogObjectType = "zboot_config"
 	// ZbootStatusLogType :
 	ZbootStatusLogType LogObjectType = "zboot_status"
+	// DownloaderConfigLogType :
+	DownloaderConfigLogType LogObjectType = "downloader_config"
+	// DownloaderStatusLogType :
+	DownloaderStatusLogType LogObjectType = "downloader_status"
+	// ResolveConfigLogType :
+	ResolveConfigLogType LogObjectType = "resolve_config"
+	// ResolveStatusLogType :
+	ResolveStatusLogType LogObjectType = "resolve_status"
+	// VerifyImageConfigLogType :
+	VerifyImageConfigLogType LogObjectType = "verifyimage_config"
+	// VerifyImageStatusLogType :
+	VerifyImageStatusLogType LogObjectType = "verifyimage_status"
+	// PersistImageConfigLogType :
+	PersistImageConfigLogType LogObjectType = "persistimage_config"
+	// PersistImageStatusLogType :
+	PersistImageStatusLogType LogObjectType = "persistimage_status"
 )
 
 // RelationObjectType :
