@@ -48,7 +48,7 @@ type flexTickerConfig struct {
 func NewRangeTicker(minTime time.Duration, maxTime time.Duration) FlexTickerHandle {
 	initialConfig := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime}
-	configChan := make(chan flexTickerConfig, 1)
+	configChan := make(chan flexTickerConfig, 5)
 	tickChan := newFlexTicker(configChan)
 	configChan <- initialConfig
 	return FlexTickerHandle{C: tickChan, privateChan: tickChan, configChan: configChan}
@@ -58,7 +58,7 @@ func NewExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor flo
 	initialConfig := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime, exponential: true,
 		randomFactor: randomFactor}
-	configChan := make(chan flexTickerConfig, 1)
+	configChan := make(chan flexTickerConfig, 5)
 	tickChan := newFlexTicker(configChan)
 	configChan <- initialConfig
 	return FlexTickerHandle{C: tickChan, configChan: configChan}
