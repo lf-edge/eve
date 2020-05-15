@@ -2011,12 +2011,22 @@ type FlowScope struct {
 	Sequence  string // used internally for limit and pkt size per app/bn
 }
 
+// ACLActionType - action
+type ACLActionType uint8
+
+// ACLAction Enum
+const (
+	ACLActionNone ACLActionType = iota
+	ACLActionAccept
+	ACLActionDrop
+)
+
 // FlowRec :
 type FlowRec struct {
 	Flow      IPTuple
 	Inbound   bool
 	ACLID     int32
-	Action    string
+	Action    ACLActionType
 	StartTime int64
 	StopTime  int64
 	TxBytes   int64

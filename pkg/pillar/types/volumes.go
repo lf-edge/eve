@@ -150,7 +150,7 @@ func (config VolumeConfig) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("origin", config.Origin).
 			AddField("target-size-bytes", config.TargetSizeBytes).
-			AddField("old-origin", oldConfig.TargetSizeBytes).
+			AddField("old-origin", oldConfig.Origin).
 			AddField("old-target-size-bytes", oldConfig.TargetSizeBytes).
 			Infof("Volume config modify")
 	}
@@ -160,7 +160,9 @@ func (config VolumeConfig) LogModify(old interface{}) {
 func (config VolumeConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
-	logObject.Infof("Volume config delete")
+	logObject.CloneAndAddField("origin", config.Origin).
+		AddField("target-size-bytes", config.TargetSizeBytes).
+		Infof("Volume config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }

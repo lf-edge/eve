@@ -757,11 +757,11 @@ func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string, ipAddr ne
 	}
 }
 
-func aclActionToProtoAction(action string) flowlog.ACLAction {
+func aclActionToProtoAction(action types.ACLActionType) flowlog.ACLAction {
 	switch action {
-	case "ACCEPT":
+	case types.ACLActionAccept:
 		return flowlog.ACLAction_ActionAccept
-	case "DROP":
+	case types.ACLActionDrop:
 		return flowlog.ACLAction_ActionDrop
 	default:
 		return flowlog.ACLAction_ActionUnknown
