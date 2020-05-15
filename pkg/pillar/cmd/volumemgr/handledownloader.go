@@ -14,7 +14,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s", status.BlobSha256)
 
-	refCount := uint(0)
+	refCount := uint(1)
 	m := lookupDownloaderConfig(ctx, status.ObjType, status.BlobSha256)
 	if m != nil {
 		log.Infof("downloader config exists for %s to refcount %d",
