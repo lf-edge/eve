@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 
 	"sync/atomic"
 
@@ -121,6 +122,22 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	}
 	defer w.Close()
 
+	tag, ok := ref.(name.Tag)
+	if !ok {
+		d, ok := ref.(name.Digest)
+		if !ok {
+			err := fmt.Errorf("Image name %s doesn't have a tag or digest", ref)
+			return manifestDirect, manifestResolved, size, err
+		}
+		parts := strings.Split(d.DigestStr(), ":")
+		if len(parts) != 2 {
+			err := fmt.Errorf("Image name %s is malformed, expected: <name>@sha256:<hash>", d.String())
+			return manifestDirect, manifestResolved, size, err
+		}
+		digestTag := fmt.Sprintf("dummyTag-%s", parts[1])
+		tag = d.Repository.Tag(digestTag)
+	}
+
 	// get updates on downloads, convert and pass them to sendStats
 	c := make(chan v1.Update, 200)
 	defer close(c)
@@ -132,7 +149,7 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	// OCI layout format.
 	go func() {
 		// we do not need to catch the return error, because tarball.WithProgress sends error updates on channels
-		_ = tarball.Write(ref, img, w, tarball.WithProgress(c))
+		_ = tarball.Write(tag, img, w, tarball.WithProgress(c))
 	}()
 
 	for update := range c {
