@@ -383,15 +383,6 @@ func handleModify(ctx *downloaderContext, key string,
 		log.Fatalf("handleModify: No ObjType for %s",
 			status.ImageID)
 	}
-	if config.Name != status.Name {
-		errStr := fmt.Sprintf("Name changed - not allowed %s -> %s\n",
-			config.Name, status.Name)
-		status.RetryCount++
-		status.HandleDownloadFail(errStr)
-		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleModify(%s): failed with %s", config.Name, errStr)
-		return
-	}
 
 	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s",
 		status.ImageID, status.RefCount, config.RefCount,
