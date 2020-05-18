@@ -84,7 +84,12 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s",
 		m.RefCount, imageSha)
-	publishDownloaderConfig(ctx, objType, m)
+	if m.RefCount == 0 {
+		unpublishDownloaderConfig(ctx, objType, m)
+	} else {
+		publishDownloaderConfig(ctx, objType, m)
+	}
+	log.Infof("MaybeRemoveDownloaderConfig done for %s", imageSha)
 }
 
 func publishDownloaderConfig(ctx *volumemgrContext, objType string,
