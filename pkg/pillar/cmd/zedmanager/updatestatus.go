@@ -204,8 +204,7 @@ func getRemainingAppDiskSpace(ctxPtr *zedmanagerContext) (uint64, string, error)
 		// XXX does this work for a container??
 		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
-			log.Errorf("getRemainingAppDiskSpace: err: %s", err.Error())
-			return 0, appDiskSizeList, err
+			log.Warnf("getRemainingAppDiskSpace: err: %s", err.Error())
 		}
 		totalAppDiskSize += appDiskSize
 		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d)\n%s\n",
