@@ -39,6 +39,8 @@ type VerifyConfig struct {
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
+	FileLocation     string   // Current location; should be info about file
+	Size             int64    //FileLocation size
 }
 
 // Key returns the pubsub Key

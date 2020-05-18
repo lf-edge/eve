@@ -24,16 +24,26 @@ func handlePersistCreate(ctx *verifierContext, objType string,
 			config.ImageSha256)
 	}
 	// Require a status since we otherwise don't have a FileLocation
-	status := lookupPersistImageStatus(ctx, objType, config.ImageSha256)
+	var status *types.PersistImageStatus
+	status = lookupPersistImageStatus(ctx, objType, config.ImageSha256)
 	if status == nil {
-		log.Errorf("No PersistImageStatus but config for %s/%s",
-			objType, config.ImageSha256)
-		return
+		status = &types.PersistImageStatus{
+			VerifyStatus: types.VerifyStatus{
+				Name:         config.Name,
+				ObjType:      objType,
+				FileLocation: config.FileLocation,
+				ImageSha256:  config.ImageSha256,
+				Size:         config.Size,
+			},
+			LastUse:  time.Now(),
+			RefCount: config.RefCount,
+		}
+	} else {
+		// Update
+		status.Name = config.Name
+		status.RefCount = config.RefCount
+		status.LastUse = time.Now()
 	}
-	// Update
-	status.Name = config.Name
-	status.RefCount = config.RefCount
-	status.LastUse = time.Now()
 	publishPersistImageStatus(ctx, status)
 	log.Infof("handlePersistCreate done for %s", config.Name)
 }
