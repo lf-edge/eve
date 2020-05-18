@@ -67,8 +67,10 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		unpublishVolumeStatus(ctx, initStatus)
 
 		// XXX After device reboot, somehow files created by containerd snapshot prepare
-		// is getting deleted from persist/runx/pods/prepared/<container-dir-name>/rootfs/
+		// is getting deleted from /persist/runx/pods/prepared/<container-dir-name>/rootfs/
 		// So, doing a hack here for containers by calling containerd snapshot prepare again
+		// Note that this will fail if the verified image has been
+		// garbage collected, in which case we will download again.
 		if config.Format == zconfig.Format_CONTAINER {
 			ociFilename, err := utils.VerifiedImageFileLocation(config.BlobSha256)
 			if err != nil {
@@ -107,10 +109,16 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		initStatus.RefCount = config.RefCount
 		initStatus.LastUse = time.Now()
 		initStatus.PreReboot = false
-		publishVolumeStatus(ctx, initStatus)
-		log.Infof("vcCreate(%s) DONE objType %s for %s",
+		if !initStatus.HasError() {
+			publishVolumeStatus(ctx, initStatus)
+			log.Infof("vcCreate(%s) DONE objType %s for %s",
+				config.Key(), objType, config.DisplayName)
+			return
+		}
+		// Fall back to normal case of recreating since we got an
+		// error from the container case above.
+		log.Infof("vcCreate(%s) fallback from promote to normal create objType %s for %s",
 			config.Key(), objType, config.DisplayName)
-		return
 	}
 	status := types.VolumeStatus{
 		BlobSha256:      config.BlobSha256,
