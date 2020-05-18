@@ -486,6 +486,7 @@ func doInstallStorageStatus(ctx *zedmanagerContext,
 				rs.ImageSha256, ss.ImageID)
 			ss.ImageSha256 = rs.ImageSha256
 			ss.HasResolverRef = false
+			ss.Name = maybeInsertSha(ss.Name, ss.ImageSha256)
 			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
 				ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 			maybeLatchImageSha(ctx, config, ss)
