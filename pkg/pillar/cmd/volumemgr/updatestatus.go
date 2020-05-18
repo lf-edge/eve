@@ -111,7 +111,9 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.VolumeCreated {
-		status.State = types.CREATED_VOLUME
+		if !status.HasError() {
+			status.State = types.CREATED_VOLUME
+		}
 		changed = true
 		// Work is done
 		DeleteWorkCreate(ctx, status)
