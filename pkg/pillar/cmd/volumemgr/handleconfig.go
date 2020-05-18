@@ -109,6 +109,17 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		initStatus.RefCount = config.RefCount
 		initStatus.LastUse = time.Now()
 		initStatus.PreReboot = false
+		if initStatus.Origin == types.OriginTypeDownload &&
+			!initStatus.DownloadOrigin.HasVerifierRef {
+			// If the image exists in verifier we add a reference
+			// to make it not be deleted.
+			if lookupPersistImageStatus(ctx, objType, initStatus.BlobSha256) != nil ||
+				lookupVerifyImageStatus(ctx, objType, initStatus.BlobSha256) != nil {
+				log.Infof("vcCreate: Adding verified reference for initVolStatus: %s", initStatus.DisplayName)
+				AddOrRefcountVerifyConfig(ctx, initStatus)
+				initStatus.DownloadOrigin.HasVerifierRef = true
+			}
+		}
 		if !initStatus.HasError() {
 			publishVolumeStatus(ctx, initStatus)
 			log.Infof("vcCreate(%s) DONE objType %s for %s",
