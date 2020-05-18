@@ -58,31 +58,7 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 			}
 		}
 	}
-
-	m := lookupVerifyImageConfig(ctx, status.ObjType, status.BlobSha256)
-	if m != nil {
-		m.RefCount += 1
-		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s",
-			m.RefCount, status.BlobSha256)
-		publishVerifyImageConfig(ctx, status.ObjType, m)
-	} else {
-		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
-			status.BlobSha256, status.DownloadOrigin.IsContainer)
-		n := types.VerifyImageConfig{
-			ImageID: status.VolumeID,
-			VerifyConfig: types.VerifyConfig{
-				Name:             status.DisplayName,
-				ImageSha256:      status.BlobSha256,
-				CertificateChain: status.DownloadOrigin.CertificateChain,
-				ImageSignature:   status.DownloadOrigin.ImageSignature,
-				SignatureKey:     status.DownloadOrigin.SignatureKey,
-			},
-			IsContainer: status.DownloadOrigin.IsContainer,
-			RefCount:    1,
-		}
-		publishVerifyImageConfig(ctx, status.ObjType, &n)
-		log.Debugf("MaybeAddVerifyImageConfig - config: %+v", n)
-	}
+	AddOrRefcountVerifyConfig(ctx, &status)
 	log.Infof("MaybeAddVerifyImageConfig done for %s", status.BlobSha256)
 	return true, types.ErrorAndTime{}
 }
@@ -182,7 +158,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 
 // Make sure the PersistImageConfig has the sum of the refcounts
 // for the sha
-func updatePersistImageConfig(ctx *volumemgrContext, objType string, imageSha string) {
+func updatePersistImageConfig(ctx *volumemgrContext, objType, imageSha string) {
 	log.Infof("updatePersistImageConfig(%s) for %s", imageSha, objType)
 	if imageSha == "" {
 		return
@@ -191,13 +167,18 @@ func updatePersistImageConfig(ctx *volumemgrContext, objType string, imageSha st
 	sub := ctx.subscription(types.VerifyImageStatus{}, objType)
 	items := sub.GetAll()
 	name := ""
+	fileLocation := ""
+	var size int64
 	for _, s := range items {
 		status := s.(types.VerifyImageStatus)
 		if status.ImageSha256 == imageSha {
 			log.Infof("Adding RefCount %d from %s to %s",
 				status.RefCount, status.ImageID, imageSha)
 			refcount += status.RefCount
+			//Name, Size and FileLocation are expected to be same as it belongs to same sha.
 			name = status.Name
+			size = status.Size
+			fileLocation = status.FileLocation
 		}
 	}
 	config := lookupPersistImageConfig(ctx, objType, imageSha)
@@ -209,8 +190,10 @@ func updatePersistImageConfig(ctx *volumemgrContext, objType string, imageSha st
 		}
 		n := types.PersistImageConfig{
 			VerifyConfig: types.VerifyConfig{
-				Name:        name,
-				ImageSha256: imageSha,
+				Name:         name,
+				ImageSha256:  imageSha,
+				FileLocation: fileLocation,
+				Size:         size,
 			},
 			RefCount: refcount,
 		}
@@ -321,8 +304,10 @@ func handlePersistImageStatusModify(ctxArg interface{}, key string,
 			key)
 		n := types.PersistImageConfig{
 			VerifyConfig: types.VerifyConfig{
-				Name:        status.Name,
-				ImageSha256: status.ImageSha256,
+				Name:         status.Name,
+				ImageSha256:  status.ImageSha256,
+				FileLocation: status.FileLocation,
+				Size:         status.Size,
 			},
 			RefCount: 0,
 		}
@@ -345,4 +330,33 @@ func handlePersistImageStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*volumemgrContext)
 	unpublishPersistImageConfig(ctx, status.ObjType, key)
 	log.Infof("handlePersistImageStatusDelete done %s", key)
+}
+
+//AddOrRefcountVerifyConfig increments refCount of VerifyImageConfig by 1.
+// In case of no VerifyImageConfig, creates a new VerifyImageConfig with refCount = 1
+func AddOrRefcountVerifyConfig(ctx *volumemgrContext, status *types.VolumeStatus) {
+	m := lookupVerifyImageConfig(ctx, status.ObjType, status.BlobSha256)
+	if m != nil {
+		m.RefCount++
+		log.Infof("AddOrRefcountVerifyConfig: refcnt to %d for %s",
+			m.RefCount, status.BlobSha256)
+		publishVerifyImageConfig(ctx, status.ObjType, m)
+	} else {
+		log.Infof("AddOrRefcountVerifyConfig: add for %s, IsContainer: %t",
+			status.BlobSha256, status.DownloadOrigin.IsContainer)
+		n := types.VerifyImageConfig{
+			ImageID: status.VolumeID,
+			VerifyConfig: types.VerifyConfig{
+				Name:             status.DisplayName,
+				ImageSha256:      status.BlobSha256,
+				CertificateChain: status.DownloadOrigin.CertificateChain,
+				ImageSignature:   status.DownloadOrigin.ImageSignature,
+				SignatureKey:     status.DownloadOrigin.SignatureKey,
+			},
+			IsContainer: status.DownloadOrigin.IsContainer,
+			RefCount:    1,
+		}
+		publishVerifyImageConfig(ctx, status.ObjType, &n)
+		log.Debugf("AddOrRefcountVerifyConfig - config: %+v", n)
+	}
 }
