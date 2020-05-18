@@ -269,7 +269,7 @@ func gcResetObjectsLastUse(ctx *volumemgrContext, dirName string) {
 }
 
 func deleteFile(filelocation string) {
-	if err := os.Remove(filelocation); err != nil {
+	if err := os.RemoveAll(filelocation); err != nil {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())
 	}
