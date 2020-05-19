@@ -344,6 +344,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 			Name:             config.Name,
 			ImageSha256:      config.ImageSha256,
 			ObjType:          objType,
+			State:            types.DOWNLOADING,
 			RefCount:         config.RefCount,
 			LastUse:          time.Now(),
 			AllowNonFreePort: config.AllowNonFreePort,
@@ -356,6 +357,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.ImageID = config.ImageID
 		status.DatastoreID = config.DatastoreID
 		status.ImageSha256 = config.ImageSha256
+		status.State = types.DOWNLOADING
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
 		status.Expired = false

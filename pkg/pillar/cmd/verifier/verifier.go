@@ -812,7 +812,7 @@ func handleCreate(ctx *verifierContext, objType string,
 			ImageSha256: config.ImageSha256,
 		},
 		PendingAdd:  true,
-		State:       types.DOWNLOADED,
+		State:       types.VERIFYING,
 		RefCount:    config.RefCount,
 		IsContainer: config.IsContainer,
 	}
