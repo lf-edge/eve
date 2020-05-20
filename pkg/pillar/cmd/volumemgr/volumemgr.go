@@ -64,7 +64,7 @@ type volumemgrContext struct {
 
 	worker *worker.Worker // For background work
 
-	verifierRestarted bool
+	verifierRestarted uint // Count to two for appimg and baseos
 	usingConfig       bool // From zedagent
 	gcRunning         bool
 
@@ -481,8 +481,9 @@ func Run(ps *pubsub.PubSub) {
 
 	// First we process the verifierStatus to avoid triggering a download
 	// of an image we already have in place.
-	for !ctx.verifierRestarted {
-		log.Infof("Waiting for verifierRestarted")
+	for ctx.verifierRestarted != 2 {
+		log.Infof("Waiting for verifierRestarted: is %d",
+			ctx.verifierRestarted)
 
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -490,12 +491,12 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
-			if ctx.verifierRestarted {
-				log.Infof("Verifier reported restarted")
-			}
 
 		case change := <-subAppImgPersistStatus.MsgChan():
 			subAppImgPersistStatus.ProcessChange(change)
+
+		case change := <-subBaseOsVerifierStatus.MsgChan():
+			subBaseOsVerifierStatus.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
@@ -578,12 +579,14 @@ func Run(ps *pubsub.PubSub) {
 	}
 }
 
+// We could since we get a separate out-of-order notification for
+// each objType
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*volumemgrContext)
 
 	log.Infof("handleVerifierRestarted(%v)", done)
 	if done {
-		ctx.verifierRestarted = true
+		ctx.verifierRestarted++
 	}
 }
 
