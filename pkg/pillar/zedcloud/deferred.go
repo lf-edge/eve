@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	log "github.com/sirupsen/logrus"
-	"sync"
 	"time"
 )
 
@@ -43,8 +42,6 @@ const longTime2 = time.Hour * 48
 type DeferredContext struct {
 	deferredItems map[string]deferredItemList
 	ticker        flextimer.FlexTickerHandle
-	deferMutex    sync.Mutex
-	timerTrigged  bool
 }
 
 // From first InitDeferred
@@ -85,9 +82,6 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 
 	log.Infof("HandleDeferred(%v, %v) map %d\n",
 		event, spacing, len(ctx.deferredItems))
-	defaultCtx.deferMutex.Lock()
-	ctx.timerTrigged = false
-	defaultCtx.deferMutex.Unlock()
 	iteration := 0 // Do some load spreading
 	for key, l := range ctx.deferredItems {
 		log.Infof("Trying to send for %s items %d\n", key, len(l.list))
@@ -130,11 +124,9 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 			}
 		}
 	}
-	defaultCtx.deferMutex.Lock()
 	if len(ctx.deferredItems) == 0 {
 		stopTimer(ctx)
 	}
-	defaultCtx.deferMutex.Unlock()
 	log.Infof("HandleDeferred() done map %d\n", len(ctx.deferredItems))
 	return len(ctx.deferredItems) == 0
 }
@@ -173,6 +165,10 @@ func (ctx *DeferredContext) removeDeferred(key string) {
 	}
 	log.Debugf("Deleting key %s\n", key)
 	delete(ctx.deferredItems, key)
+
+	if len(ctx.deferredItems) == 0 {
+		stopTimer(ctx)
+	}
 }
 
 // Replace any item for the specified key. If timer not running start it
@@ -182,9 +178,7 @@ func SetDeferred(key string, buf *bytes.Buffer, size int64, url string,
 	if defaultCtx == nil {
 		log.Fatal("SetDeferred no defaultCtx")
 	}
-	defaultCtx.deferMutex.Lock()
 	defaultCtx.setDeferred(key, buf, size, url, zedcloudCtx, return400)
-	defaultCtx.deferMutex.Unlock()
 }
 
 func (ctx *DeferredContext) setDeferred(key string, buf *bytes.Buffer,
@@ -220,9 +214,7 @@ func AddDeferred(key string, buf *bytes.Buffer, size int64, url string,
 	if defaultCtx == nil {
 		log.Fatal("SetDeferred no defaultCtx")
 	}
-	defaultCtx.deferMutex.Lock()
 	defaultCtx.addDeferred(key, buf, size, url, zedcloudCtx, return400)
-	defaultCtx.deferMutex.Unlock()
 }
 
 func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
@@ -254,14 +246,9 @@ func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
 func startTimer(ctx *DeferredContext) {
 
 	log.Infof("startTimer()\n")
-	if ctx.timerTrigged {
-		log.Infof("startTimer() timer already set\n") // XXX
-		return
-	}
 	min := 1 * time.Minute
 	max := 15 * time.Minute
 	ctx.ticker.UpdateExpTicker(min, max, 0.3)
-	ctx.timerTrigged = true
 }
 
 func stopTimer(ctx *DeferredContext) {
