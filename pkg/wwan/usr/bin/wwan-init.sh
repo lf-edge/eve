@@ -12,6 +12,8 @@
 #
 # Some inspiration (but not the code!) taken from:
 #    https://github.com/openwrt-mirror/openwrt/blob/master/package/network/utils/uqmi/files/lib/netifd/proto/qmi.sh
+while true; do sleep 77; done
+
 BBS=/run/wwan
 
 # FIXME: we really need to pick the following from some config
