@@ -81,6 +81,12 @@ func GetCloudMetrics() types.MetricsMap {
 	return metrics
 }
 
+// SetCloudMetrics is used on agent startups e.g., to preserve
+// the metrics from a previous run of the agent/device
+func SetCloudMetrics(m types.MetricsMap) {
+	metrics = m
+}
+
 // Concatenate different interfaces and URLs into a union map
 func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
 	for ifname, cm1 := range cms1 {
