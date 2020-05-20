@@ -125,7 +125,7 @@ func (config PersistImageConfig) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Infof("VerifyImage config create")
+		Infof("PersistImage config create")
 }
 
 // LogModify :
@@ -141,7 +141,7 @@ func (config PersistImageConfig) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
 			AddField("old-refcount-int64", oldConfig.RefCount).
-			Infof("VerifyImage config modify")
+			Infof("PersistImage config modify")
 	}
 }
 
