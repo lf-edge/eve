@@ -99,10 +99,7 @@ func (object *logObjectMap) Lookup(key string) (*LogObject, bool) {
 	object.RLock()
 	logObject, ok := object.objectMap[key]
 	object.RUnlock()
-	if ok {
-		return logObject, true
-	}
-	return nil, false
+	return logObject, ok
 }
 
 func (object *logObjectMap) Insert(key string, logObject *LogObject) {
