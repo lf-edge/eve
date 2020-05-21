@@ -99,7 +99,6 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		err error
 	)
 	logger := log.WithFields(log.Fields{
-		"func":        "openLive",
 		"iface":       iface,
 		"snaplen":     snaplen,
 		"promiscuous": promiscuous,
