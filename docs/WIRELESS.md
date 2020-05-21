@@ -11,11 +11,11 @@ The rest of this document will be focused on details of wireless support in EVE.
 
 ## WiFi
 
-In general, WiFi support in EVE is pretty straightforward and largely depends on enabling required driver in the Linux kernel and finding an appropriate firmware binary blob to be loaded by the device driver. Please refer to our [new hardware bringup](HARDWARE-BRINGUP.md) document for more details on the former and make sure to checkout our [firmware package](../pkg/firmware) for the later.
+In general, WiFi support in EVE is pretty straightforward and largely depends on enabling the required driver in the Linux kernel and finding an appropriate firmware binary blob to be loaded by the device driver. Please refer to our [new hardware bringup](HARDWARE-BRINGUP.md) document for more details on the former and make sure to checkout our [firmware package](../pkg/firmware) for the latter.
 
 ## Cellular GSM Modems
 
-Compared to WiFi, cellular GSM modems present a major challenge. This is partially understandable, since radio regulations in different countries tend to be partially incompatible and at times [simply insane](https://www.afcea.org/content/disruptive-design-have-you-seen-flurry-acts-5g-security). All of this conspires to create a technology landscapte where modem manufacturers are forced to produce highly capable and highly configurable units that take onto very different personalities when loaded with firmware and given their final configuration.
+Compared to WiFi, cellular GSM modems present a major challenge. This is partially understandable, since radio regulations in different countries tend to be partially incompatible and at times [simply insane](https://www.afcea.org/content/disruptive-design-have-you-seen-flurry-acts-5g-security). All of this conspires to create a technology landscape where modem manufacturers are forced to produce highly capable and highly configurable units that take onto very different personalities when loaded with firmware and given their final configuration.
 
 Given the complexity of the task that a GSM modem has to perform, it is no wonder that they evolved to be self-contained computers with very sophisticated internal state. This comparison with remote computers/servers is especially apt, since the way you can interact with this device is very API-driven with pretty much zero offloading to ther host Linux kernel. Just like you would talk to a remote cloud service using a REST API you would talk to a GSM Modem using: AT commands, MBIM or QMI API.
 
@@ -32,9 +32,9 @@ As with any hardware, you will typically go through the following steps:
 
 #### 1. Basic bus connectivity
 
-Alsmot all well known GSM modems get hooked to a USB bus (most of them communicate using USB2 but some try USB3 and then [trouble may ensue](https://forum.sierrawireless.com/t/mc7455-not-recognized-at-boot/9735) and you may need to [do soldering](https://forum.sierrawireless.com/t/effect-of-removing-usb-3-0-pins-of-mc7455/12702/2)). From there, a single device will expose different interfaces to accommodate various ways of interacting with it. These include:
+Almost all well known GSM modems get hooked to a USB bus (most of them communicate using USB2 but some try USB3 and then [trouble may ensue](https://forum.sierrawireless.com/t/mc7455-not-recognized-at-boot/9735) and you may need to [do soldering](https://forum.sierrawireless.com/t/effect-of-removing-usb-3-0-pins-of-mc7455/12702/2)). From there, a single device will expose different interfaces to accommodate various ways of interacting with it. These include:
 
-* traditional serial interface capable of accepting AT-commands (popular choices of drivers include [Qualcom's qcserial](https://github.com/torvalds/linux/blob/master/drivers/usb/serial/qcserial.c) and [Sierra Wireless serial](https://github.com/torvalds/linux/blob/master/drivers/usb/serial/sierra.c)). This interface is NOT capable of directly transmitting Ethernet frames and requires an old-school PPP support
+* traditional serial interface capable of accepting AT-commands (popular choices of drivers include [Qualcomm's qcserial](https://github.com/torvalds/linux/blob/master/drivers/usb/serial/qcserial.c) and [Sierra Wireless serial](https://github.com/torvalds/linux/blob/master/drivers/usb/serial/sierra.c)). This interface is NOT capable of directly transmitting Ethernet frames and requires an old-school PPP support
 * traditional serial interface used for special purposes such as [GPS NMEA port](https://en.wikipedia.org/wiki/NMEA_0183) or [Diagnostic Monitoring](https://forum.sierrawireless.com/t/sierra-linux-qmi-dmcapture-sh-not-working/6373)
 * One of the CDC (no, not [that CDC](https://www.cdc.gov/) - rather [communications device class](https://en.wikipedia.org/wiki/USB_communications_device_class)) interfaces capable of direct transport of Ethernet frames:
   * [CDC MBIM](https://www.kernel.org/doc/Documentation/networking/cdc_mbim.txt)
@@ -42,7 +42,7 @@ Alsmot all well known GSM modems get hooked to a USB bus (most of them communica
 
 To put it all together, a single GSM modem is likely to look something like this when inspected by the `lsusb -t` command:
 
-```bash
+```console
 /:  Bus 01.Port 1: Dev 1, Class=root_hub, Driver=ehci-pci/2p, 480M
     |__ Port 1: Dev 2, If 0, Class=Hub, Driver=hub/4p, 480M
         |__ Port 2: Dev 3, If 0, Class=Hub, Driver=hub/4p, 480M
@@ -91,14 +91,20 @@ While GSM modems may connect to any compatible wireless provider (roaming), depe
 
 All the configuration that makes your modem connect to a desired wireless provider resides in SIM and modem's NVRAM. Both of these settings are expected to be done once before the hardware unit ships and EVE stays away from fiddling with these. Still, sometimes it is important to troubleshoot basic (non-data) wireless connectivity issues and most of the time you would use AT commands for that.
 
-When it comes to controlling GSM modems via AT commands, there's not much of a standard. Different vendors use different commands and worse yet the state machines of how modems operate tend to be very different. Some vendors (e.g. Sierra Wireless) [publish](https://source.sierrawireless.com/resources/airprime/minicard/74xx/4117727-airprime-em74xx-mc74xx-at-command-reference/#sthash.fPZTyQtd.dpbs) reasonably detailed references, but even those don't really contain enough details. Various [forums](https://ltehacks.com/viewtopic.php?t=33) tend to be a good source of information for what may work. In addition to that, here's a minimum set of AT commands to keep in mind when debugging GSM modem issues:
+When it comes to controlling GSM modems via AT commands, there's not much of a standard. Different vendors use different commands and worse yet the state machines of how modems operate tend to be very different. Some vendors (e.g. Sierra Wireless) [publish](https://source.sierrawireless.com/resources/airprime/minicard/74xx/4117727-airprime-em74xx-mc74xx-at-command-reference/#sthash.fPZTyQtd.dpbs) reasonably detailed references, but even those don't really contain enough details. Various [forums](https://ltehacks.com/viewtopic.php?t=33) tend to be a good source of information for what may work. In addition to that, here's a minimum set of AT commands to keep in mind when debugging GSM modem issues (they are roughly in order you'd use them):
 
-* `AT!USBCOMP=1,1,10d` for changing USB composition
-* `ATI` for general information and `AT!entercnd="A710"` (for Sierra Wireless) to enter extended command set
-* `AT+CPIN?` for working with SIM
-* `AT+CREG?` for figuring out network registration
+* `AT!RESET` and `AT+CFUN=0` followed by `AT+CFUN=1,1` for resetting the modem
+* `AT!ENTERCND="A710"` enter super user mode
+* `AT+CPIN?` for working with SIM (make sure SIM is ready to use)
+* `AT+CREG?` for figuring out network registration (make sure you are registred in the home network)
 * `AT+COPS=?` for showing available networks and `AT+COPS=0` for triggering the network registration or `AT+COPS=1,2,"xxxxx",7` to manually connect to a given provider
 * `AT+CSQ` (and especially `+WIND:`) for finding out signal quality and the connections
+* `AT+CGATT=1` for attaching to the service
+* `AT+CGDCONT?` and `AT+CGDCONT=1,"IP","apn.tmobile.com"` for defining Packet Data Protocol (PDP) context
+* `AT+CGACT=1,1` for activating one of the PDP contexts
+* `AT+CGPADDR=1` for requesting an IP address assigned by the context
+* `AT!USBCOMP=1,1,10d` for changing USB composition
+* `ATI` for general information and `AT!entercnd="A710"` (for Sierra Wireless) to enter extended command set
 * `$GPS_START` to start receiving GPS data on a lot of Qualcomm modems
 
 For example, the following may be a reasonable session to initialize your modem using AT commands:
@@ -135,6 +141,8 @@ uqmi --get-current-settings
 In general, a single GSM modem can actually multiplex between different data networks (and thus provide multiple network interfaces) this is very rarely done in practice (and EVE certainly doesn't support it) but you need to keep in mind that each of these networks is distinguished by a separate Packet Data Handle (PDH) value. For example, your `uqmi --start-network ...` command will return a unique PDH handle back to you and if you ever want to reference that particular data connection you'll have to either use that value or use a catchall one `0xFFFFFFFF`.
 
 Another concept that you will encounter when looking at QMI/MBIM protocols is that of a Client ID (CID). Think of it as an HTTP token in REST APIs -- something that uniquely identifies a stateful connection with a given client. If you're issuing a series of QMI/MBIM commands as a transaction you want to keep client ID the same for all of them. Take a look at how [this script](https://github.com/freedesktop/libqmi/blob/master/utils/qmi-network.in) handles both PDH and CID.
+
+This idea of an token guaranteeing an active connection is actually a pretty important one. For example, another popular script for attaching to data connection in [MBIM mode](https://github.com/freedesktop/libmbim/blob/master/utils/mbim-network.in) goes out of its way to keep a single active connection between different invocations of the `mbimcli` utility (look for how it uses `--no-open` and `--no-close` options and caches transactions IDs so that the next call to `mbimcli` can pick it up and use it as an argument for `--no-open`)
 
 ### Frequencies and antennas
 
