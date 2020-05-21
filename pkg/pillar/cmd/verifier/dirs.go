@@ -1,9 +1,10 @@
 package verifier
 
 import (
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"os"
 )
 
 var (
@@ -16,7 +17,6 @@ func initializeDirs() {
 	// downloader context
 	// XXX when does downloader calculate space?
 	clearInProgressDownloadDirs(verifierObjTypes)
-
 	// create the object download directories
 	createDownloadDirs(verifierObjTypes)
 }

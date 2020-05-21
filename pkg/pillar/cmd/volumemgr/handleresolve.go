@@ -107,6 +107,7 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 				status.DisplayName, status.ContentID)
 			publishContentTreeStatus(ctx, &status)
 		}
+		updateVolumeStatusFromContentID(ctx, status.ContentID)
 	}
 	log.Infof("handleResolveStatusModify done for %s", key)
 }

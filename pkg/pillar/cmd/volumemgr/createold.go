@@ -11,7 +11,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,13 +18,22 @@ import (
 // new values for VolumeCreated, FileLocation, and error
 func createOldVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
 
-	srcLocation := status.FileLocation
-	log.Infof("createOldVolume(%s) from %s", status.Key(), srcLocation)
 	switch status.Origin {
 	case types.OriginTypeDownload:
 		if status.Format == zconfig.Format_CONTAINER {
-			return createOldContainerVolume(ctx, status, srcLocation)
+			log.Infof("createOldVolume(%s) from container %s", status.Key(), status.DownloadOrigin.Name)
+			return createOldContainerVolume(ctx, status, status.DownloadOrigin.Name)
 		} else {
+			// the first blob always is the root
+			if len(status.Blobs) < 1 {
+				return false, "", fmt.Errorf("createOldVolume(%s) could not find path to root volume", status.Key())
+			}
+			blobStatus := lookupBlobStatus(ctx, status.Blobs[0])
+			if blobStatus == nil {
+				return false, "", fmt.Errorf("createOldVolume(%s) could not find blobStatus", status.Key())
+			}
+			srcLocation := blobStatus.Path
+			log.Infof("createOldVolume(%s) from disk %s", status.Key(), srcLocation)
 			return createOldVdiskVolume(ctx, status, srcLocation)
 		}
 	default:
@@ -78,28 +86,18 @@ func createOldVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, s
 // new values for VolumeCreated, FileLocation, and error
 func createOldContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
 
-	created := false
 	dirName := appRwOldVolumeName(status.BlobSha256, status.AppInstID.String(),
 		// XXX in general status.VolumeID,
 		status.PurgeCounter, status.Format, status.Origin, true)
 
 	filelocation := containerd.GetContainerPath(dirName)
 
-	ociFilename, err := utils.VerifiedImageFileLocation(status.BlobSha256)
-	if err != nil {
-		errStr := fmt.Sprintf("failed to get Image File Location. err: %+s",
-			err)
-		log.Error(errStr)
-		return created, filelocation, errors.New(errStr)
-	}
-	log.Infof("ociFilename %s sha %s", ociFilename, status.BlobSha256)
-	created = true
-	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
+	if err := containerd.SnapshotPrepare(filelocation, srcLocation); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
-		return created, filelocation, err
+		return true, filelocation, err
 	}
 	log.Infof("createOldContainerVolume(%s) DONE", status.Key())
-	return created, filelocation, nil
+	return true, filelocation, nil
 }
 
 // destroyOldVolume does not update status but returns

@@ -22,7 +22,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -1006,7 +1006,7 @@ func parseStorageConfigList(objType string,
 		image.ReadOnly = drive.Readonly
 		image.MaxVolSize = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
-		image.ImageSha256 = drive.Image.Sha256
+		image.ImageSha256 = strings.ToLower(drive.Image.Sha256)
 		storageList[idx] = *image
 		idx++
 	}

@@ -8,11 +8,10 @@
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
 //
-// Move the file from DownloadDirname/pending/<imageID> to
-// to DownloadDirname/verifier/<imageID> and make RO,
+// Move the file from DownloadDirname/pending/<sha> to
+// to DownloadDirname/verifier/<sha> and make RO,
 // then attempt to verify sum.
-// Once sum is verified, move to DownloadDirname/verified/<sha256>/<filename> where the
-// filename is the last part of the URL (after the last '/')
+// Once sum is verified, move to DownloadDirname/verified/<sha256> where the
 
 package verifier
 
@@ -582,7 +581,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 		return false
 	}
 
-	imageHashB, err := computeShaFileByType(verifierFilename, status.IsContainer)
+	imageHashB, err := computeShaFile(verifierFilename)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
@@ -618,17 +617,6 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 		}
 	}
 	return true
-}
-
-// compute the hash for different file types. If the file itself contains
-// sub-dependencies with hashes as well, example inside a tar file, validate
-// those hashes as well.
-// Returns the hash of the file itself, or the root of the dependencies.
-func computeShaFileByType(filename string, container bool) ([]byte, error) {
-	if container {
-		return computeShaOCITar(filename)
-	}
-	return computeShaFile(filename)
 }
 
 // compute the sha for a straight file
@@ -866,29 +854,13 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
-// ImageVerifierDirNames - Returns pendingDirname, verifierDirname, verifiedDirname
-// for the image.
-func ImageVerifierDirNames(objType, ImageID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
-
-	var pendingDirname, verifierDirname, verifiedDirname string
-	pendingDirname = path.Dir(config.FileLocation)
-	verifierDirname = getVerifierDir(objType) + "/" + ImageID
-	verifiedDirname = getVerifiedDir(objType) + "/" + ImageSha256
-	return pendingDirname, verifierDirname, verifiedDirname
-}
-
 // ImageVerifierFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
 // for the image
-func ImageVerifierFilenames(objType, ImageID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
-	var pendingFilename, verifierFilename, verifiedFilename string
-
-	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(objType, ImageID, ImageSha256, config)
+func ImageVerifierFilenames(objType, infile string) (string, string, string) {
+	verifierDirname, verifiedDirname := getVerifierDir(objType), getVerifiedDir(objType)
 	// Handle names which are paths
-	filename := path.Base(config.FileLocation)
-	pendingFilename = config.FileLocation
-	verifierFilename = verifierDirname + "/" + filename
-	verifiedFilename = verifiedDirname + "/" + filename
-	return pendingFilename, verifierFilename, verifiedFilename
+	filename := path.Base(infile)
+	return infile, path.Join(verifierDirname, filename), path.Join(verifiedDirname, filename)
 }
 
 // Returns ok, size of object
@@ -896,8 +868,8 @@ func markObjectAsVerifying(ctx *verifierContext,
 	config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) (bool, int64) {
 
-	pendingDirname, verifierDirname, _ := ImageVerifierDirNames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
-	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	verifierDirname := getVerifierDir(status.ObjType)
+	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(status.ObjType, config.FileLocation)
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -921,11 +893,6 @@ func markObjectAsVerifying(ctx *verifierContext,
 		}
 	}
 
-	if _, err := os.Stat(verifierDirname); err == nil {
-		if err := os.RemoveAll(verifierDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
 	log.Debugf("markObjectAsVerifying: Create %s", verifierDirname)
 	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
 		log.Fatal(err)
@@ -944,17 +911,14 @@ func markObjectAsVerifying(ctx *verifierContext,
 	}
 	status.FileLocation = verifierFilename
 	config.FileLocation = verifierFilename
-	// Clean up empty directory
-	if err := os.RemoveAll(pendingDirname); err != nil {
-		log.Fatal(err)
-	}
+
 	return true, info.Size()
 }
 
 func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyImageStatus) {
 
-	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
-	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	verifiedDirname := getVerifiedDir(status.ObjType)
+	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(status.ObjType, config.FileLocation)
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
@@ -967,13 +931,6 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 	if _, err := os.Stat(verifiedFilename); err == nil {
 		log.Warn(verifiedFilename + ": file exists")
 		if err := os.RemoveAll(verifiedFilename); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(verifiedDirname); err == nil {
-		log.Warn(verifiedDirname + ": directory exists")
-		if err := os.RemoveAll(verifiedDirname); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -993,10 +950,6 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 
 	status.FileLocation = verifiedFilename
 
-	// Clean up empty directory
-	if err := os.RemoveAll(verifierDirname); err != nil {
-		log.Fatal(err)
-	}
 	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s",
 		verifierFilename, verifiedFilename)
 }
@@ -1086,9 +1039,9 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 }
 
 func getVerifierDir(objType string) string {
-	return verifierBasePath + "/" + objType + "/" + "verifier"
+	return path.Join(verifierBasePath, objType, "verifier")
 }
 
 func getVerifiedDir(objType string) string {
-	return verifierBasePath + "/" + objType + "/" + "verified"
+	return path.Join(verifierBasePath, objType, "verified")
 }
