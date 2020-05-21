@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	"sync"
 )
 
 // LogEventType : Predefined object types
@@ -89,7 +90,36 @@ type LogObject struct {
 	Fields      map[string]interface{}
 }
 
-var logObjectMap = make(map[string]*LogObject)
+type logObjectMap struct {
+	sync.RWMutex
+	objectMap map[string]*LogObject
+}
+
+func (object *logObjectMap) Lookup(key string) (*LogObject, bool) {
+	object.RLock()
+	logObject, ok := object.objectMap[key]
+	object.RUnlock()
+	if ok {
+		return logObject, true
+	}
+	return nil, false
+}
+
+func (object *logObjectMap) Insert(key string, logObject *LogObject) {
+	object.Lock()
+	defer object.Unlock()
+	object.objectMap[key] = logObject
+}
+
+func (object *logObjectMap) Remove(key string) {
+	object.Lock()
+	defer object.Unlock()
+	delete(object.objectMap, key)
+}
+
+var logObjects = logObjectMap{
+	objectMap: make(map[string]*LogObject),
+}
 
 // LoggableObject :
 type LoggableObject interface {
@@ -111,7 +141,7 @@ func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key 
 		log.Fatal("NewLogObject: objType and key parameters mandatory")
 	}
 	// Check if we already have an object with the given key
-	object, ok := logObjectMap[key]
+	object, ok := logObjects.Lookup(key)
 	if ok {
 		return object
 	}
@@ -142,7 +172,7 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 	}
 	object.Initialized = true
 	object.Fields = fields
-	logObjectMap[key] = object
+	logObjects.Insert(key, object)
 }
 
 // NewRelationObject : Creates a relation object.
@@ -178,7 +208,7 @@ func NewRelationObject(relationObjectType RelationObjectType,
 
 // LookupLogObject :
 func LookupLogObject(key string) *LogObject {
-	object, ok := logObjectMap[key]
+	object, ok := logObjects.Lookup(key)
 	if ok {
 		return object
 	}
@@ -196,12 +226,12 @@ func EnsureLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, k
 
 // DeleteLogObject :
 func DeleteLogObject(key string) {
-	_, ok := logObjectMap[key]
+	_, ok := logObjects.Lookup(key)
 	if !ok {
 		log.Errorf("DeleteLogObject: LogObject with key %s not found in internal map", key)
 		return
 	}
-	delete(logObjectMap, key)
+	logObjects.Remove(key)
 }
 
 // AddField : Add a key value pair to be logged
