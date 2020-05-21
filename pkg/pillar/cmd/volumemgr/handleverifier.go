@@ -43,56 +43,34 @@ func unpublishVerifyImageConfig(ctx *volumemgrContext, objType string, key strin
 	pub.Unpublish(key)
 }
 
-// MaybeAddVerifyImageConfig publishes the verifier config to the verifier
-// If checkCerts is set this can return false. Otherwise not.
-func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
-	status types.ContentTreeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
+// MaybeAddVerifyImageConfigBlob publishes the verifier config
+func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, objType string, blob types.BlobStatus, signature SignatureVerifier) (bool, types.ErrorAndTime) {
 
-	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v",
-		status.ContentSha256, checkCerts)
+	log.Infof("MaybeAddVerifyImageConfigBlob for %s", blob.Sha256)
 
-	// check the certificate files, if not present,
-	// we can not start verification
-	if checkCerts {
-		certObjStatus := lookupCertObjStatus(ctx, status.ContentID.String())
-		displaystr := status.ContentID.String()
-		ret, err := status.IsCertsAvailable(displaystr)
-		if err != nil {
-			log.Fatalf("%s, invalid certificate configuration", displaystr)
-		}
-		if ret {
-			if ret, errInfo := status.HandleCertStatus(displaystr, *certObjStatus); !ret {
-				return false, errInfo
-			}
-		}
-	}
-
-	m := lookupVerifyImageConfig(ctx, status.ObjType, status.ContentSha256)
-	if m != nil {
-		m.RefCount++
-		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s",
-			m.RefCount, status.ContentSha256)
-		publishVerifyImageConfig(ctx, status.ObjType, m)
+	var vic *types.VerifyImageConfig
+	vic = lookupVerifyImageConfig(ctx, objType, blob.Sha256)
+	if vic != nil {
+		vic.RefCount++
+		log.Infof("MaybeAddVerifyImageConfigBlob: refcnt to %d for %s",
+			vic.RefCount, blob.Sha256)
 	} else {
-		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
-			status.ContentSha256, status.IsContainer())
-		n := types.VerifyImageConfig{
-			ImageID: status.ContentID,
+		log.Infof("MaybeAddVerifyImageConfigBlob: add for %s", blob.Sha256)
+		vic = &types.VerifyImageConfig{
 			VerifyConfig: types.VerifyConfig{
-				Name:             status.DisplayName,
-				ImageSha256:      status.ContentSha256,
-				CertificateChain: status.CertificateChain,
-				ImageSignature:   status.ImageSignature,
-				SignatureKey:     status.SignatureKey,
-				FileLocation:     status.FileLocation,
+				FileLocation:     blob.Path,   // the source of the file to verify
+				ImageSha256:      blob.Sha256, // the sha to verify
+				Name:             blob.Sha256, // we are just going to use the sha for the verifier display
+				CertificateChain: signature.CertificateChain,
+				ImageSignature:   signature.Signature,
+				SignatureKey:     signature.PublicKey,
 			},
-			IsContainer: status.IsContainer(),
-			RefCount:    1,
+			RefCount: 1,
 		}
-		publishVerifyImageConfig(ctx, status.ObjType, &n)
-		log.Debugf("MaybeAddVerifyImageConfig - config: %+v", n)
+		log.Debugf("MaybeAddVerifyImageConfigBlob - config: %+v", vic)
 	}
-	log.Infof("MaybeAddVerifyImageConfig done for %s", status.ContentSha256)
+	publishVerifyImageConfig(ctx, objType, vic)
+	log.Infof("MaybeAddVerifyImageConfigBlob done for %s", blob.Sha256)
 	return true, types.ErrorAndTime{}
 }
 
@@ -137,7 +115,32 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
-	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+
+	// update the BlobStatus
+	if blob := lookupBlobStatus(ctx, status.ImageSha256); blob != nil {
+		log.Infof("handleVerifyImageStatusModify(%s): Update State %d to %d, Path %s to %s", blob.Sha256, blob.State, status.State, blob.Path, status.FileLocation)
+		blob.State = status.State
+		blob.Path = status.FileLocation
+		if status.HasError() {
+			log.Errorf("handleVerifyImageStatusModify(%s): Received error from verifier: %s", blob.Sha256, status.Error)
+			blob.SetErrorWithSource(status.Error,
+				types.VerifyImageStatus{}, status.ErrorTime)
+		} else if blob.IsErrorSource(types.VerifyImageStatus{}) {
+			log.Infof("handleVerifyImageStatusModify(%s): Clearing verifier error %s", blob.Sha256, blob.Error)
+			blob.ClearErrorWithSource()
+		}
+		// also persist, if needed
+		if blob.State == types.VERIFIED && !blob.HasPersistRef {
+			log.Infof("handleVerifyImageStatusModify: Adding PersistImageStatus reference for blob: %s", blob.Sha256)
+			AddOrRefCountPersistImageStatus(ctx, status.Name, status.ObjType, status.FileLocation, status.ImageSha256, status.Size)
+			blob.HasPersistRef = true
+		}
+
+		publishBlobStatus(ctx, blob)
+	}
+
+	// update the status - do not change the sizes
+	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }
 
@@ -162,7 +165,8 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
-	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	// update the status - do not change the sizes
+	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {

@@ -20,13 +20,12 @@ import (
 // new values for VolumeCreated, FileLocation, and error
 func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
-	srcLocation := status.FileLocation
-	log.Infof("createVolume(%s) from %s", status.Key(), srcLocation)
 	if status.IsContainer() {
-		return createContainerVolume(ctx, status, srcLocation)
-	} else {
-		return createVdiskVolume(ctx, status, srcLocation)
+		log.Infof("createVolume(%s) from container %s", status.Key(), status.ReferenceName)
+		return createContainerVolume(ctx, status, status.ReferenceName)
 	}
+	log.Infof("createVolume(%s) from disk %s", status.Key(), status.FileLocation)
+	return createVdiskVolume(ctx, status, status.FileLocation)
 }
 
 // createVdiskVolume does not update status but returns
@@ -70,11 +69,13 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 // createContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
 func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
-	srcLocation string) (bool, string, error) {
+	ref string) (bool, string, error) {
 
 	created := false
+
 	filelocation := status.PathName()
-	if err := containerd.SnapshotPrepare(filelocation, srcLocation); err != nil {
+
+	if err := containerd.SnapshotPrepare(filelocation, ref); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}

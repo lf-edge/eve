@@ -160,9 +160,14 @@ func gcVerifiedObjects(ctx *volumemgrContext) {
 					(timePassed-downloadGCTime)/time.Second)
 				continue
 			}
-			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v",
-				status.Key(), status.LastUse, time.Now())
-			unpublishPersistImageStatus(ctx, &status)
+			log.Infof("gcVerifiedObjects: expiring status for %s at %s; LastUse %v now %v",
+				status.Key(), status.FileLocation, status.LastUse, time.Now())
+			if pub == ctx.pubAppImgPersistStatus {
+				log.Infof("gcVerifiedObjects: temporarily disabled unpublish for appImg for %s at %s",
+					status.Key(), status.FileLocation)
+			} else {
+				unpublishPersistImageStatus(ctx, &status)
+			}
 		}
 	}
 }

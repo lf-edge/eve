@@ -117,10 +117,14 @@ type ContentTreeStatus struct {
 	HasPersistRef     bool
 	WaitingForCerts   bool
 	State             SwState
+	TotalSize         int64  // expected size as reported by the downloader, if any
+	CurrentSize       int64  // current total downloaded size as reported by the downloader
 	Progress          uint   // In percent i.e., 0-100
 	FileLocation      string // Location of filestystem
 	ObjType           string
 	NameIsURL         bool
+	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
+	Blobs []string
 
 	ErrorAndTimeWithSource
 }

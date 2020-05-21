@@ -76,6 +76,8 @@ type volumemgrContext struct {
 	pubUnknownVolumeStatus      pubsub.Publication
 	pubContentTreeToHash        pubsub.Publication
 
+	pubBlobStatus pubsub.Publication
+
 	gc *time.Ticker
 
 	workerOld *worker.Worker // For background work
@@ -329,6 +331,17 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
+
+	pubBlobStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.BlobStatus{},
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBlobStatus = pubBlobStatus
 
 	// Publish existing volumes with RefCount zero in the "unknown"
 	// agentScope

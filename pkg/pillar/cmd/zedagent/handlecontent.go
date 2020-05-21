@@ -8,6 +8,7 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
+	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -62,7 +63,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.DatastoreID, _ = uuid.FromString(cfgContentTree.GetDsId())
 		contentConfig.RelativeURL = cfgContentTree.GetURL()
 		contentConfig.Format = cfgContentTree.GetIformat()
-		contentConfig.ContentSha256 = cfgContentTree.GetSha256()
+		contentConfig.ContentSha256 = strings.ToLower(cfgContentTree.GetSha256())
 		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
 		contentConfig.ImageSignature = cfgContentTree.Siginfo.Signature

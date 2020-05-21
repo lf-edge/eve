@@ -6,10 +6,10 @@
 package verifier
 
 import (
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"path"
 )
 
 // Callers must be careful to publish any changes to PersistImageStatus
@@ -46,15 +46,14 @@ func handlePersistImageStatusDelete(ctxArg interface{}, key string,
 		key, status.RefCount, status.Expired)
 	// No more use for this image. Delete
 
-	verifiedDirname := path.Dir(status.FileLocation)
-	_, err := os.Stat(verifiedDirname)
+	_, err := os.Stat(status.FileLocation)
 	if err == nil {
-		log.Infof("handlePersistImageStatusDelete removing %s", verifiedDirname)
-		if err := os.RemoveAll(verifiedDirname); err != nil {
+		log.Infof("handlePersistImageStatusDelete removing %s", status.FileLocation)
+		if err := os.RemoveAll(status.FileLocation); err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		log.Errorf("handlePersistImageStatusDelete: Unable to delete: %s. %s", verifiedDirname, err.Error())
+		log.Errorf("handlePersistImageStatusDelete: Unable to delete: %s. %s", status.FileLocation, err.Error())
 	}
 	log.Infof("handlePersistImageStatusDelete done %s", key)
 }

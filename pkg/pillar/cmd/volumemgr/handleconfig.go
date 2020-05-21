@@ -7,12 +7,16 @@
 package volumemgr
 
 import (
+	"strings"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
+// vcCreate create a volume config, the initialization point
+// of a new VolumeConfig and therefore a new volume
 func vcCreate(ctx *volumemgrContext, objType string, key string,
 	config types.OldVolumeConfig) {
 
@@ -100,6 +104,29 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		log.Infof("vcCreate(%s) fallback from promote to normal create objType %s for %s",
 			config.Key(), objType, config.DisplayName)
 	}
+	// blobType - we do not actually know until we download it, so we start by assuming
+	// that it is binary if VM, unknown (i.e. to be parsed) if container
+	// before we publish the blobstatus, see if it already exists
+	sv := SignatureVerifier{
+		Signature:        config.DownloadOrigin.ImageSignature,
+		PublicKey:        config.DownloadOrigin.SignatureKey,
+		CertificateChain: config.DownloadOrigin.CertificateChain,
+	}
+	if lookupOrCreateBlobStatus(ctx, sv, objType, dos.ImageSha256) == nil {
+		blobType := types.BlobBinary
+		if config.Format == zconfig.Format_CONTAINER {
+			blobType = types.BlobUnknown
+		}
+		rootBlob := &types.BlobStatus{
+			DatastoreID: dos.DatastoreID,
+			RelativeURL: dos.Name,
+			Sha256:      strings.ToLower(dos.ImageSha256),
+			Size:        dos.MaxDownSize,
+			State:       types.INITIAL,
+			BlobType:    blobType,
+		}
+		publishBlobStatus(ctx, rootBlob)
+	}
 	status := types.OldVolumeStatus{
 		BlobSha256:     config.BlobSha256,
 		AppInstID:      config.AppInstID,
@@ -113,6 +140,9 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		ReadOnly:       config.ReadOnly,
 		Format:         config.Format,
 		State:          types.INITIAL,
+		// set the root of the content tree
+		Blobs: []string{dos.ImageSha256},
+
 		// XXX if these are not needed in Status they are not needed in Config
 		//	DevType: config.DevType,
 		//	Target: config.Target,

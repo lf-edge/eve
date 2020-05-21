@@ -103,6 +103,8 @@ type VolumeStatus struct {
 	State                   SwState
 	RefCount                uint
 	Progress                uint   // In percent i.e., 0-100
+	TotalSize               int64  // expected size as reported by the downloader, if any
+	CurrentSize             int64  // current total downloaded size as reported by the downloader
 	FileLocation            string // Location of filestystem
 	VolumeCreated           bool   // Done aka Activated
 	ContentFormat           zconfig.Format
