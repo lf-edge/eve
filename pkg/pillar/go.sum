@@ -379,10 +379,8 @@ github.com/opencontainers/runtime-spec v1.0.2 h1:UfAcuLBJB9Coz72x1hgl8O5RVzTdNia
 github.com/opencontainers/runtime-spec v1.0.2/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/opencontainers/runtime-tools v0.0.0-20181011054405-1d69bd0f9c39/go.mod h1:r3f7wjNzSs2extwzU3Y+6pKfobzPh+kKFJ3ofN+3nfs=
 github.com/opennota/check v0.0.0-20180911053232-0c771f5545ff/go.mod h1:tydB+MZxWpY8M/NRu7jQhND/mXuLAPsKcSV6JkzofsA=
-github.com/packetcap/go-pcap v0.0.0-20200406074926-edb6ef79ee32 h1:NgXtUq5tN3CazjjdHU6LmrMgxAS4Vt6eV0VEC4fmuQk=
-github.com/packetcap/go-pcap v0.0.0-20200406074926-edb6ef79ee32/go.mod h1:XCKnlUKaMeSy1COa9MSajY3l5wL7Ajw8SxUxcaTbMIc=
-github.com/packetcap/go-pcap v0.0.0-20200406093224-b4b47c1ea359 h1:n7Q5jS+xH5AzgGKGIXf5j45i1g4XqbmUdM6Iqi7vxxk=
-github.com/packetcap/go-pcap v0.0.0-20200406093224-b4b47c1ea359/go.mod h1:XCKnlUKaMeSy1COa9MSajY3l5wL7Ajw8SxUxcaTbMIc=
+github.com/packetcap/go-pcap v0.0.0-20200521113507-74d0984aa02c h1:fLmQt1PhY/STrYSBVG5Iq1XQbNeFT8xdX7bO/ybms2o=
+github.com/packetcap/go-pcap v0.0.0-20200521113507-74d0984aa02c/go.mod h1:XCKnlUKaMeSy1COa9MSajY3l5wL7Ajw8SxUxcaTbMIc=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
 github.com/peterbourgon/diskv v2.0.1+incompatible h1:UBdAOUP5p4RWqPBg048CAvpKN+vxiaj6gdUUzhl4XmI=
 github.com/peterbourgon/diskv v2.0.1+incompatible/go.mod h1:uqqh8zWWbv1HBMNONnaR/tNboyR3/BZd58JJSHlUSCU=

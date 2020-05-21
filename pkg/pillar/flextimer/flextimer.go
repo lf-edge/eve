@@ -152,7 +152,15 @@ func flexTicker(config <-chan flexTickerConfig, tick chan<- time.Time) {
 		timer := time.NewTimer(d)
 		select {
 		case <-timer.C:
-			tick <- time.Now()
+			// this channel can not block, otherwise the config channel will block
+			// causing deadlock in zedagent
+			// this means only one timer trigger is taking effect (the first one), the later
+			// timer trigger will be ignored. This is fine since we get into block because even
+			// the first one can not be served yet, there is no need to trigger it to serve again.
+			select {
+			case tick <- time.Now():
+			default:
+			}
 		case c = <-config:
 			// Replace current parameters without
 			// looking at when current timer would fire

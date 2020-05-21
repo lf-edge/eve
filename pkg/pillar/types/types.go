@@ -51,11 +51,13 @@ func (state SwState) String() string {
 	case RESOLVED_TAG:
 		return "RESOLVED_TAG"
 	case DOWNLOADING:
-		return "DOWNLOAD_STARTED"
-	case DOWNLOADED, VERIFYING:
+		return "DOWNLOADING"
+	case DOWNLOADED:
 		return "DOWNLOADED"
+	case VERIFYING:
+		return "VERIFYING"
 	case VERIFIED:
-		return "DELIVERED"
+		return "VERIFIED"
 	case CREATING_VOLUME:
 		return "CREATING_VOLUME"
 	case CREATED_VOLUME:

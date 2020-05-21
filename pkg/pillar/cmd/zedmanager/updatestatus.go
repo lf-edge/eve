@@ -204,8 +204,7 @@ func getRemainingAppDiskSpace(ctxPtr *zedmanagerContext) (uint64, string, error)
 		// XXX does this work for a container??
 		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
-			log.Errorf("getRemainingAppDiskSpace: err: %s", err.Error())
-			return 0, appDiskSizeList, err
+			log.Warnf("getRemainingAppDiskSpace: err: %s", err.Error())
 		}
 		totalAppDiskSize += appDiskSize
 		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d)\n%s\n",
@@ -486,6 +485,7 @@ func doInstallStorageStatus(ctx *zedmanagerContext,
 				rs.ImageSha256, ss.ImageID)
 			ss.ImageSha256 = rs.ImageSha256
 			ss.HasResolverRef = false
+			ss.Name = maybeInsertSha(ss.Name, ss.ImageSha256)
 			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
 				ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 			maybeLatchImageSha(ctx, config, ss)

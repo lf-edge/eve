@@ -122,7 +122,6 @@ func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, 
 
 func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	logger := log.WithFields(log.Fields{
-		"func":   "readPacketDataMmap",
 		"method": "mmap",
 		"iface":  h.iface,
 	})
@@ -242,7 +241,6 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 // Close close sockets and release resources
 func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
-		"func":  "close",
 		"iface": h.iface,
 	})
 	h.isOpen = false
@@ -281,7 +279,6 @@ func tpacketAlign(base int32) int32 {
 
 func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Duration, syscalls bool) (handle *Handle, _ error) {
 	logger := log.WithFields(log.Fields{
-		"func":        "openLive",
 		"iface":       iface,
 		"snaplen":     snaplen,
 		"promiscuous": promiscuous,

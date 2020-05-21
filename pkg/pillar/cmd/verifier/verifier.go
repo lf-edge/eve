@@ -289,7 +289,8 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("processed GlobalConfig")
 
 	// Publish status for any objects that were verified before reboot
-	// The signatures will be re-checked during handleModify for App images.
+	// The signatures and shas can re-checked during handleCreate
+	// by inserting code.
 	handleInit(&ctx)
 
 	// Report to volumemgr that init is done
@@ -812,7 +813,7 @@ func handleCreate(ctx *verifierContext, objType string,
 			ImageSha256: config.ImageSha256,
 		},
 		PendingAdd:  true,
-		State:       types.DOWNLOADED,
+		State:       types.VERIFYING,
 		RefCount:    config.RefCount,
 		IsContainer: config.IsContainer,
 	}

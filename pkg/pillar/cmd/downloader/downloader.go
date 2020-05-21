@@ -344,6 +344,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 			Name:             config.Name,
 			ImageSha256:      config.ImageSha256,
 			ObjType:          objType,
+			State:            types.DOWNLOADING,
 			RefCount:         config.RefCount,
 			LastUse:          time.Now(),
 			AllowNonFreePort: config.AllowNonFreePort,
@@ -356,6 +357,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.ImageID = config.ImageID
 		status.DatastoreID = config.DatastoreID
 		status.ImageSha256 = config.ImageSha256
+		status.State = types.DOWNLOADING
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
 		status.Expired = false
@@ -382,15 +384,6 @@ func handleModify(ctx *downloaderContext, key string,
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s",
 			status.ImageID)
-	}
-	if config.Name != status.Name {
-		errStr := fmt.Sprintf("Name changed - not allowed %s -> %s\n",
-			config.Name, status.Name)
-		status.RetryCount++
-		status.HandleDownloadFail(errStr)
-		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleModify(%s): failed with %s", config.Name, errStr)
-		return
 	}
 
 	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s",

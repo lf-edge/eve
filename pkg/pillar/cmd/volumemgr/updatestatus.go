@@ -61,7 +61,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 					status.Key(), status.FileLocation)
 				changed = true
 			}
-		} else {
+		} else if status.State != types.DOWNLOADED {
 			log.Infof("VerifyImageStatus %s for %s sha %s not found",
 				status.DisplayName, status.VolumeID,
 				status.BlobSha256)
@@ -69,6 +69,11 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			if c {
 				changed = true
 			}
+			return changed, false
+		} else {
+			log.Infof("VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
+				status.DisplayName, status.VolumeID,
+				status.BlobSha256)
 			return changed, false
 		}
 	}
@@ -111,7 +116,9 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.VolumeCreated {
-		status.State = types.CREATED_VOLUME
+		if !status.HasError() {
+			status.State = types.CREATED_VOLUME
+		}
 		changed = true
 		// Work is done
 		DeleteWorkCreate(ctx, status)

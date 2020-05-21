@@ -39,6 +39,8 @@ type VerifyConfig struct {
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
+	FileLocation     string   // Current location; should be info about file
+	Size             int64    //FileLocation size
 }
 
 // Key returns the pubsub Key
@@ -123,7 +125,7 @@ func (config PersistImageConfig) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Infof("VerifyImage config create")
+		Infof("PersistImage config create")
 }
 
 // LogModify :
@@ -139,7 +141,7 @@ func (config PersistImageConfig) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
 			AddField("old-refcount-int64", oldConfig.RefCount).
-			Infof("VerifyImage config modify")
+			Infof("PersistImage config modify")
 	}
 }
 
