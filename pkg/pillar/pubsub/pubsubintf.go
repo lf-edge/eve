@@ -5,6 +5,10 @@
 
 package pubsub
 
+import (
+	"github.com/lf-edge/eve/pkg/pillar/base"
+)
+
 // Publication - Interface to be implemented by a Publication
 type Publication interface {
 	// Publish - Publish an object
@@ -20,7 +24,7 @@ type Publication interface {
 	// GetAll - Get a copy of the objects.
 	GetAll() map[string]interface{}
 	// Iterate - Perform some action on all items
-	Iterate(function fn)
+	Iterate(function base.StrMapFunc)
 }
 
 // Subscription - Interface to be implemented by a Subscription
@@ -30,7 +34,7 @@ type Subscription interface {
 	// GetAll - Get a copy of the objects.
 	GetAll() map[string]interface{}
 	// Iterate - Perform some action on all items
-	Iterate(function fn)
+	Iterate(function base.StrMapFunc)
 	// Restarted report if this subscription has been marked as restarted
 	Restarted() bool
 	// ProcessChange - Invoked on the string msg from Subscription Channel

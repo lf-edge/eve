@@ -171,7 +171,7 @@ func (pub *PublicationImpl) GetAll() map[string]interface{} {
 }
 
 // Iterate - performs some callback function on all items
-func (pub *PublicationImpl) Iterate(function fn) {
+func (pub *PublicationImpl) Iterate(function base.StrMapFunc) {
 	pub.km.key.Range(function)
 }
 
