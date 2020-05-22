@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -56,7 +57,7 @@ type SubRestartHandler func(ctx interface{}, restarted bool)
 // We use StringMap with a RWlock to allow concurrent access.
 type keyMap struct {
 	restarted bool
-	key       *LockedStringMap
+	key       *base.LockedStringMap
 }
 
 // PubSub is a system for publishing and subscribing to messages
@@ -96,7 +97,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 		topic:               topic,
 		topicType:           topicType,
 		userCtx:             options.Ctx,
-		km:                  keyMap{key: NewLockedStringMap()},
+		km:                  keyMap{key: base.NewLockedStringMap()},
 		defaultName:         p.driver.DefaultName(),
 		CreateHandler:       options.CreateHandler,
 		ModifyHandler:       options.ModifyHandler,
@@ -154,7 +155,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 		agentScope:  options.AgentScope,
 		topic:       topic,
 		topicType:   reflect.TypeOf(options.TopicType),
-		km:          keyMap{key: NewLockedStringMap()},
+		km:          keyMap{key: base.NewLockedStringMap()},
 		updaterList: p.updaterList,
 		defaultName: p.driver.DefaultName(),
 	}
