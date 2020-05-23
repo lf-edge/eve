@@ -554,12 +554,11 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 
 		for _, ss := range aiStatus.StorageStatusList {
-			diskfile := ss.ActiveFileLocation
 			appDiskDetails := new(metrics.AppDiskMetric)
-			err := getDiskInfo(diskfile, appDiskDetails)
+			err := getDiskInfo(ss, appDiskDetails)
 			if err != nil {
 				log.Errorf("getDiskInfo(%s) failed %v",
-					diskfile, err)
+					ss.ActiveFileLocation, err)
 				continue
 			}
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
@@ -575,16 +574,26 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	log.Debugf("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
 }
 
-func getDiskInfo(diskfile string, appDiskDetails *metrics.AppDiskMetric) error {
-	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
-	if err != nil {
-		return err
+func getDiskInfo(ss types.StorageStatus, appDiskDetails *metrics.AppDiskMetric) error {
+	if ss.IsContainer {
+		appDiskDetails.Disk = ss.ActiveFileLocation
+		// XXX For container images, max size is coming zero
+		// from the controller. So for now, we are setting up
+		// total size equal to the used size.
+		appDiskDetails.Provisioned = RoundToMbytes(ss.Size)
+		appDiskDetails.Used = RoundToMbytes(ss.Size)
+		appDiskDetails.DiskType = "CONTAINER"
+	} else {
+		imgInfo, err := diskmetrics.GetImgInfo(ss.ActiveFileLocation)
+		if err != nil {
+			return err
+		}
+		appDiskDetails.Disk = ss.ActiveFileLocation
+		appDiskDetails.Provisioned = RoundToMbytes(imgInfo.VirtualSize)
+		appDiskDetails.Used = RoundToMbytes(imgInfo.ActualSize)
+		appDiskDetails.DiskType = imgInfo.Format
+		appDiskDetails.Dirty = imgInfo.DirtyFlag
 	}
-	appDiskDetails.Disk = diskfile
-	appDiskDetails.Provisioned = RoundToMbytes(imgInfo.VirtualSize)
-	appDiskDetails.Used = RoundToMbytes(imgInfo.ActualSize)
-	appDiskDetails.DiskType = imgInfo.Format
-	appDiskDetails.Dirty = imgInfo.DirtyFlag
 	return nil
 }
 
