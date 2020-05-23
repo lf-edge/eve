@@ -8,6 +8,7 @@ package volumemgr
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -79,6 +80,13 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 				log.Error(errStr)
 				initStatus.SetError(errStr, time.Now())
 			} else {
+				info, err := os.Stat(ociFilename)
+				if err != nil {
+					errStr := fmt.Sprintf("Calculating size of container image failed: %v", err)
+					log.Error(errStr)
+				} else {
+					dos.MaxSizeBytes = uint64(info.Size())
+				}
 				if err := containerd.SnapshotPrepare(initStatus.FileLocation, ociFilename); err != nil {
 					errStr := fmt.Sprintf("Failed to create ctr bundle. Error %s", err)
 					log.Error(errStr)

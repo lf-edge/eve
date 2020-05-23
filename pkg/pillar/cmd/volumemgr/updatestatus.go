@@ -4,6 +4,9 @@
 package volumemgr
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -86,6 +89,18 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		// Asynch creation; ensure we have requested it
 		MaybeAddWorkCreate(ctx, status)
 	}
+	// If maximum download size is 0 then we are updating the
+	// downloaded size of an image in MaxSizeBytes
+	if status.DownloadOrigin.MaxSizeBytes == 0 {
+
+		info, err := os.Stat(status.FileLocation)
+		if err != nil {
+			errStr := fmt.Sprintf("Calculating size of container image failed: %v", err)
+			log.Error(errStr)
+		} else {
+			status.DownloadOrigin.MaxSizeBytes = uint64(info.Size())
+		}
+	}
 	if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
 		vr := lookupVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
@@ -164,6 +179,9 @@ func doDownload(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 	if status.State != ds.State {
 		status.State = ds.State
 		changed = true
+	}
+	if status.DownloadOrigin.MaxSizeBytes != ds.Size {
+		status.DownloadOrigin.MaxSizeBytes = ds.Size
 	}
 	if ds.Progress != status.Progress {
 		status.Progress = ds.Progress
