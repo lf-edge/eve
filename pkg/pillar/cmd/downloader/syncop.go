@@ -216,6 +216,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		} else {
 			size = info.Size()
 		}
+		status.Size = uint64(size)
 		zedcloud.ZedCloudSuccess(ifname,
 			metricsUrl, 1024, size)
 		handleSyncOpResponse(ctx, config, status,

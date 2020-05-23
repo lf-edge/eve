@@ -12,7 +12,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -118,7 +117,6 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			log.Debugf("populateInitialVolumeStatus: directory %s ignored", filelocation)
 			continue
 		}
-		var size int64
 		info, err := os.Stat(filelocation)
 		if err != nil {
 			log.Errorf("Error in getting file information. Err: %s. "+
@@ -126,14 +124,10 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			deleteFile(filelocation)
 			continue
 		}
-		size = info.Size()
-		if isContainer {
-			size, _ = dirSize(filelocation)
-		}
 		_, sha256, appUUIDStr, purgeCounter := parseAppRwVolumeName(filelocation, isContainer)
 		log.Infof("populateInitialVolumeStatus: Processing sha256: %s, AppUuid: %s, "+
-			"%d Mbytes, fileLocation:%s",
-			sha256, appUUIDStr, size/(1024*1024), filelocation)
+			"fileLocation:%s",
+			sha256, appUUIDStr, filelocation)
 
 		appUUID, err := uuid.FromString(appUUIDStr)
 		if err != nil {
@@ -145,20 +139,18 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 		}
 
 		status := types.VolumeStatus{
-			BlobSha256:   sha256,
-			AppInstID:    appUUID,
-			VolumeID:     nilUUID, // XXX known for other origins?
-			PurgeCounter: purgeCounter,
-			DisplayName:  "Found in /persist/img",
-			FileLocation: filelocation,
-			State:        types.CREATED_VOLUME,
-			// XXX Is this the correct size? vs. qcow2 size?
-			TargetSizeBytes: uint64(size),
-			ObjType:         types.UnknownObj,
-			VolumeCreated:   true,
-			RefCount:        0,
-			LastUse:         info.ModTime(),
-			PreReboot:       info.ModTime().Before(deviceBootTime),
+			BlobSha256:    sha256,
+			AppInstID:     appUUID,
+			VolumeID:      nilUUID, // XXX known for other origins?
+			PurgeCounter:  purgeCounter,
+			DisplayName:   "Found in /persist/img",
+			FileLocation:  filelocation,
+			State:         types.CREATED_VOLUME,
+			ObjType:       types.UnknownObj,
+			VolumeCreated: true,
+			RefCount:      0,
+			LastUse:       info.ModTime(),
+			PreReboot:     info.ModTime().Before(deviceBootTime),
 		}
 
 		publishVolumeStatus(ctx, &status)
@@ -326,18 +318,4 @@ func deleteFile(filelocation string) {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())
 	}
-}
-
-func dirSize(path string) (int64, error) {
-	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return err
-	})
-	return size, err
 }
