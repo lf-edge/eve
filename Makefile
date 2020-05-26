@@ -109,7 +109,8 @@ PART_SPEC_rpi_kvm=$(PART_SPEC_kvm_rpi)
 PART_SPEC=$(PART_SPEC_$(subst -,_,$(HV)))
 
 # public cloud settings (only CGP is supported for now)
-CLOUD_IMG_NAME=live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+# note how GCP doesn't like dots so we replace them with -
+CLOUD_IMG_NAME=$(subst .,-,live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH))
 CLOUD_PROJECT=-project lf-edge-eve
 CLOUD_BUCKET=-bucket eve-live
 CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
@@ -269,7 +270,7 @@ run-proxy:
 #           --source-uri=https://storage.googleapis.com/eve-live/live.img.tar.gz
 #           --licenses="https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx"
 run-live-gcp: $(LINUXKIT) | $(LIVE).img.tar.gz
-	if gcloud compute images list $(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
+	if gcloud compute images list -$(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
 	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $|                          ;\
 	fi
 	$^ run gcp $(CLOUD_PROJECT) $(CLOUD_INSTANCE) $(CLOUD_IMG_NAME)
