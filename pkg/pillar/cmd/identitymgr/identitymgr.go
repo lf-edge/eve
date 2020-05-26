@@ -29,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -414,8 +415,7 @@ func generateLispSignature(eid net.IP, iid uint32,
 	}
 	log.Debugf("r.bytes %d s.bytes %d", len(r.Bytes()),
 		len(s.Bytes()))
-	sigres := r.Bytes()
-	sigres = append(sigres, s.Bytes()...)
+	sigres := zedcloud.RSCombinedBytes(r.Bytes(), s.Bytes())
 	log.Debugf("sigres (len %d): % x", len(sigres), sigres)
 	return base64.StdEncoding.EncodeToString(sigres), nil
 }

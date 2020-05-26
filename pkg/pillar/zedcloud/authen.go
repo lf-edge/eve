@@ -144,7 +144,10 @@ func verifyAuthSig(signature []byte, cert *x509.Certificate, hash []byte) error 
 		log.Debugf("verifyAuthSig: verify rsa ok\n")
 	case *ecdsa.PublicKey:
 
-		sigHalflen := len(signature) / 2
+		sigHalflen, err := ecdsakeyBytes(pub)
+		if err != nil {
+			return err
+		}
 		rbytes := signature[0:sigHalflen]
 		sbytes := signature[sigHalflen:]
 		r := new(big.Int)
@@ -288,8 +291,7 @@ func signAuthData(sigdata []byte, cert tls.Certificate) ([]byte, error) {
 		}
 		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
-		sigres = r.Bytes()
-		sigres = append(sigres, s.Bytes()...)
+		sigres = RSCombinedBytes(r.Bytes(), s.Bytes())
 		log.Debugf("signAuthData: tpm sigres (len %d): %x\n", len(sigres), sigres)
 	case *ecdsa.PrivateKey:
 		r, s, err := ecdsa.Sign(rand.Reader, key, hash)
@@ -300,12 +302,58 @@ func signAuthData(sigdata []byte, cert tls.Certificate) ([]byte, error) {
 		}
 		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
-		sigres = r.Bytes()
-		sigres = append(sigres, s.Bytes()...)
+		sigres = RSCombinedBytes(r.Bytes(), s.Bytes())
 		log.Debugf("signAuthData: ecdas sigres (len %d): %x\n",
 			len(sigres), sigres)
 	}
 	return sigres, nil
+}
+
+// RSCombinedBytes - combine r & s into fixed length bytes
+func RSCombinedBytes(rBytes, sBytes []byte) []byte {
+	rsize := len(rBytes)
+	ssize := len(sBytes)
+	size := rsize
+	if ssize > rsize {
+		size = ssize
+	}
+	if size%8 > 0 {
+		size = getUpperMultiOf8(size)
+	}
+
+	// basically the size is 32 bytes. the r and s needs to be both left padded to two 32 bytes slice
+	// into a single signature buffer
+	buffer := make([]byte, size*2)
+	startPos := size - rsize
+	copy(buffer[startPos:], rBytes)
+	startPos = size*2 - ssize
+	copy(buffer[startPos:], sBytes)
+	return buffer[:]
+}
+
+func ecdsakeyBytes(pubKey *ecdsa.PublicKey) (int, error) {
+	curveBits := pubKey.Curve.Params().BitSize
+	keyBytes := curveBits / 8
+	if curveBits%8 > 0 {
+		keyBytes++
+	}
+
+	if keyBytes%8 > 0 {
+		errStr := fmt.Sprintf("ecdsa pubkey size error, curveBits %d", curveBits)
+		return 0, errors.New(errStr)
+	}
+	return keyBytes, nil
+}
+
+func getUpperMultiOf8(size int) int {
+	newsize := 8
+	for {
+		if newsize >= size {
+			break
+		}
+		newsize += 8
+	}
+	return newsize
 }
 
 // ComputeSha - Compute sha256 on data
