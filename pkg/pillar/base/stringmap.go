@@ -6,13 +6,11 @@
 // which access the StringMap.
 // XXX should we generalize to have Range copy the whole map?
 
-package pubsub
+package base
 
 import (
 	"sync"
 )
-
-type fn func(key string, val interface{}) bool
 
 type LockedStringMap struct {
 	sync.RWMutex
@@ -42,7 +40,10 @@ func (sm *LockedStringMap) Store(key string, value interface{}) {
 	sm.Unlock()
 }
 
-func (sm *LockedStringMap) Range(callback fn) {
+// StrMapFunc :
+type StrMapFunc func(key string, val interface{}) bool
+
+func (sm *LockedStringMap) Range(callback StrMapFunc) {
 	sm.RLock()
 	for k, v := range sm.locked {
 		if !callback(k, v) {

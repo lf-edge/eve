@@ -129,7 +129,7 @@ func (sub *SubscriptionImpl) GetAll() map[string]interface{} {
 }
 
 // Iterate - performs some callback function on all items
-func (sub *SubscriptionImpl) Iterate(function fn) {
+func (sub *SubscriptionImpl) Iterate(function base.StrMapFunc) {
 	sub.km.key.Range(function)
 }
 

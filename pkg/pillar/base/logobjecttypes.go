@@ -89,7 +89,7 @@ type LogObject struct {
 	Fields      map[string]interface{}
 }
 
-var logObjectMap = make(map[string]*LogObject)
+var logObjectMap = NewLockedStringMap()
 
 // LoggableObject :
 type LoggableObject interface {
@@ -111,9 +111,14 @@ func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key 
 		log.Fatal("NewLogObject: objType and key parameters mandatory")
 	}
 	// Check if we already have an object with the given key
-	object, ok := logObjectMap[key]
+	var object *LogObject
+	value, ok := logObjectMap.Load(key)
 	if ok {
-		return object
+		object, ok = value.(*LogObject)
+		if ok {
+			return object
+		}
+		log.Fatalf("NewLogObject: Object found in key map is not of type *LogObject, found: %T", value)
 	}
 
 	object = new(LogObject)
@@ -142,7 +147,7 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 	}
 	object.Initialized = true
 	object.Fields = fields
-	logObjectMap[key] = object
+	logObjectMap.Store(key, object)
 }
 
 // NewRelationObject : Creates a relation object.
@@ -178,11 +183,16 @@ func NewRelationObject(relationObjectType RelationObjectType,
 
 // LookupLogObject :
 func LookupLogObject(key string) *LogObject {
-	object, ok := logObjectMap[key]
-	if ok {
-		return object
+	var object *LogObject
+	value, ok := logObjectMap.Load(key)
+	if !ok {
+		return nil
 	}
-	return nil
+	object, ok = value.(*LogObject)
+	if !ok {
+		log.Fatalf("LookupLogObject: Object found in key map is not of type *LogObject, found: %T", value)
+	}
+	return object
 }
 
 // EnsureLogObject : Look for log object with given key or create new if we do not already have one.
@@ -196,12 +206,12 @@ func EnsureLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, k
 
 // DeleteLogObject :
 func DeleteLogObject(key string) {
-	_, ok := logObjectMap[key]
+	_, ok := logObjectMap.Load(key)
 	if !ok {
 		log.Errorf("DeleteLogObject: LogObject with key %s not found in internal map", key)
 		return
 	}
-	delete(logObjectMap, key)
+	logObjectMap.Delete(key)
 }
 
 // AddField : Add a key value pair to be logged
