@@ -4,8 +4,6 @@
 package volumemgr
 
 import (
-	"path"
-
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -30,39 +28,42 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 		var vs *types.VerifyImageStatus
 		vs, changed = lookForVerified(ctx, status)
 		if vs != nil {
-			log.Infof("Found %s based on VolumeID %s sha %s",
-				status.DisplayName, status.VolumeID,
-				status.BlobSha256)
-
+			log.Infof("doUpdate: Found %s based on VolumeID %s sha %s",
+				status.DisplayName, status.VolumeID, status.BlobSha256)
 			if status.State != vs.State {
+				if status.State == types.VERIFYING && vs.State == types.VERIFIED {
+					log.Infof("doUpdate: Adding PersistImageStatus reference for: %s", status.BlobSha256)
+					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
+				}
+				log.Infof("doUpdate: Update State of %s from %d to %d", status.BlobSha256, status.State, vs.State)
 				status.State = vs.State
 				changed = true
 			}
 			if vs.Pending() {
-				log.Infof("lookupVerifyImageStatus %s Pending",
+				log.Infof("doUpdate: lookupVerifyImageStatus %s Pending",
 					status.VolumeID)
 				return changed, false
 			}
 			if vs.HasError() {
-				log.Errorf("Received error from verifier for %s: %s",
+				log.Errorf("doUpdate: Received error from verifier for %s: %s",
 					status.VolumeID, vs.Error)
 				status.SetErrorWithSource(vs.Error,
 					types.VerifyImageStatus{}, vs.ErrorTime)
 				changed = true
 				return changed, false
 			} else if status.IsErrorSource(types.VerifyImageStatus{}) {
-				log.Infof("Clearing verifier error %s", status.Error)
+				log.Infof("doUpdate: Clearing verifier error %s", status.Error)
 				status.ClearErrorWithSource()
 				changed = true
 			}
 			if status.FileLocation != vs.FileLocation {
 				status.FileLocation = vs.FileLocation
-				log.Infof("Update FileLocation for %s: %s",
+				log.Infof("doUpdate: Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}
-		} else if status.State != types.DOWNLOADED {
-			log.Infof("VerifyImageStatus %s for %s sha %s not found",
+		} else if status.State <= types.DOWNLOADED {
+			log.Infof("doUpdate: VerifyImageStatus %s for %s sha %s not found",
 				status.DisplayName, status.VolumeID,
 				status.BlobSha256)
 			c := doDownload(ctx, status)
@@ -71,7 +72,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			}
 			return changed, false
 		} else {
-			log.Infof("VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
+			log.Infof("doUpdate: VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
 				status.DisplayName, status.VolumeID,
 				status.BlobSha256)
 			return changed, false
@@ -86,7 +87,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 	if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
 		vr := lookupVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
-			log.Infof("VolumeWorkResult(%s) location %s, created %t",
+			log.Infof("doUpdate: VolumeWorkResult(%s) location %s, created %t",
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
 			deleteVolumeWorkResult(ctx, status.Key())
 			if status.VolumeCreated != vr.VolumeCreated {
@@ -96,7 +97,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 				changed = true
 			}
 			if status.FileLocation != vr.FileLocation {
-				log.Infof("From vr set FileLocation to %s for %s",
+				log.Infof("doUpdate: From vr set FileLocation to %s for %s",
 					vr.FileLocation, status.VolumeID)
 				status.FileLocation = vr.FileLocation
 				changed = true
@@ -107,12 +108,12 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 				changed = true
 				return changed, false
 			} else if status.IsErrorSource(types.VolumeStatus{}) {
-				log.Infof("Clearing volume error %s", status.Error)
+				log.Infof("doUpdate: Clearing volume error %s", status.Error)
 				status.ClearErrorWithSource()
 				changed = true
 			}
 		} else {
-			log.Infof("VolumeWorkResult(%s) not found", status.Key())
+			log.Infof("doUpdate: VolumeWorkResult(%s) not found", status.Key())
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.VolumeCreated {
@@ -153,11 +154,10 @@ func doDownload(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 		return changed
 	}
 	if ds.Target != "" && status.FileLocation == "" {
-		locDirname := path.Dir(ds.Target)
-		status.FileLocation = locDirname
+		status.FileLocation = ds.Target
 		changed = true
 		log.Infof("From ds set FileLocation to %s for %s",
-			locDirname, status.VolumeID)
+			ds.Target, status.VolumeID)
 	}
 	if status.State != ds.State {
 		status.State = ds.State
@@ -210,6 +210,10 @@ func doDownload(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts bool) bool {
 	changed := false
 	if !status.DownloadOrigin.HasVerifierRef {
+		if status.State == types.DOWNLOADED {
+			status.State = types.VERIFYING
+			changed = true
+		}
 		done, errorAndTime := MaybeAddVerifyImageConfig(ctx, *status, checkCerts)
 		if done {
 			status.DownloadOrigin.HasVerifierRef = true
@@ -242,11 +246,19 @@ func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.
 			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
 				status.VolumeID, status.BlobSha256)
 		} else {
-			log.Infof("Found %s based on ImageSha256 %s VolumeID %s",
+			log.Infof("lookForVerified: Found PersistImageStatus: %s based on ImageSha256 %s VolumeID %s",
 				status.DisplayName, status.BlobSha256, status.VolumeID)
-			if status.State != types.DOWNLOADED {
-				status.State = types.DOWNLOADED
+			AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
+			//Marking the VolumeStatus state as VERIFIED as we already have a PersistImageStatus for the volume
+			if status.State != types.VERIFIED {
+				status.State = types.VERIFIED
 				status.Progress = 100
+				changed = true
+			}
+			if status.FileLocation != ps.FileLocation {
+				status.FileLocation = ps.FileLocation
+				log.Infof("lookForVerified: Update FileLocation for %s: %s",
+					status.Key(), status.FileLocation)
 				changed = true
 			}
 			// If we don't already have a RefCount add one
@@ -257,7 +269,7 @@ func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.
 				status.DownloadOrigin.HasVerifierRef = true
 				changed = true
 			}
-			// Wait for VerifyImageStatus to appear
+			//Wait for VerifyImageStatus to appear
 			return nil, changed
 		}
 	} else {
@@ -318,6 +330,7 @@ func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 			changed = true
 		}
 	}
+	ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
 
 	if status.VolumeCreated {
 		// Asynch destruction; make sure we have a request for the work

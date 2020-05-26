@@ -65,8 +65,6 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 	switch typeName {
 	case "VerifyImageConfig":
 		go runHandler(ctx, objType, key, h1)
-	case "PersistImageConfig":
-		go runPersistHandler(ctx, objType, key, h1)
 	default:
 		log.Fatalf("Unknown type %s", typeName)
 	}

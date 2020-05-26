@@ -6,7 +6,6 @@
 package types
 
 import (
-	"path"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -321,33 +320,6 @@ func (status PersistImageStatus) LogDelete() {
 // LogKey :
 func (status PersistImageStatus) LogKey() string {
 	return string(base.PersistImageStatusLogType) + "-" + status.Key()
-}
-
-// ImageDownloadDirNames - Returns pendingDirname, verifierDirname, verifiedDirname
-// for the image.
-func (status VerifyImageStatus) ImageDownloadDirNames() (string, string, string) {
-	downloadDirname := DownloadDirname + "/" + status.ObjType
-
-	var pendingDirname, verifierDirname, verifiedDirname string
-	pendingDirname = downloadDirname + "/pending/" + status.ImageID.String()
-	verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
-	verifiedDirname = downloadDirname + "/verified/" + status.ImageSha256
-	return pendingDirname, verifierDirname, verifiedDirname
-}
-
-// ImageDownloadFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
-// for the image
-func (status VerifyImageStatus) ImageDownloadFilenames() (string, string, string) {
-	var pendingFilename, verifierFilename, verifiedFilename string
-
-	pendingDirname, verifierDirname, verifiedDirname :=
-		status.ImageDownloadDirNames()
-	// Handle names which are paths
-	filename := path.Base(status.Name)
-	pendingFilename = pendingDirname + "/" + filename
-	verifierFilename = verifierDirname + "/" + filename
-	verifiedFilename = verifiedDirname + "/" + filename
-	return pendingFilename, verifierFilename, verifiedFilename
 }
 
 func (status VerifyImageStatus) CheckPendingAdd() bool {

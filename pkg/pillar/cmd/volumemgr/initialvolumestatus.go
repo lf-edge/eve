@@ -9,6 +9,7 @@ package volumemgr
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -248,6 +249,58 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 			}
 		}
 		unpublishVolumeStatus(ctx, &status)
+	}
+}
+
+// If an object has a zero RefCount and dropped to zero more than
+// downloadGCTime ago, then we delete the Status. That will result in the
+// verifier deleting the verified file
+// XXX Note that this runs concurrently with the handler.
+func gcVerifiedObjects(ctx *volumemgrContext) {
+	log.Debugf("gcVerifiedObjects()")
+	publications := []pubsub.Publication{
+		ctx.pubAppImgPersistStatus,
+		ctx.pubBaseOsPersistStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.PersistImageStatus)
+			if status.RefCount != 0 {
+				log.Debugf("gcVerifiedObjects: skipping RefCount %d: %s",
+					status.RefCount, status.Key())
+				continue
+			}
+			timePassed := time.Since(status.LastUse)
+			if timePassed < downloadGCTime {
+				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds",
+					status.Key(),
+					(timePassed-downloadGCTime)/time.Second)
+				continue
+			}
+			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v",
+				status.Key(), status.LastUse, time.Now())
+			unpublishPersistImageStatus(ctx, &status)
+		}
+	}
+}
+
+// gc timer just started, reset the LastUse timestamp to now if the refcount is zero
+func gcResetPersistObjectLastUse(ctx *volumemgrContext) {
+	publications := []pubsub.Publication{
+		ctx.pubAppImgPersistStatus,
+		ctx.pubBaseOsPersistStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.PersistImageStatus)
+			if status.RefCount == 0 {
+				status.LastUse = time.Now()
+				log.Infof("gcResetPersistObjectLastUse: reset %v LastUse to now", status.Key())
+				publishPersistImageStatus(ctx, &status)
+			}
+		}
 	}
 }
 
