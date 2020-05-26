@@ -86,14 +86,16 @@ var Version = "No version specified"
 
 // Based on the proto file
 type logEntry struct {
-	severity  string
-	source    string // basename of filename?
-	iid       string // XXX e.g. PID - where do we get it from?
-	content   string // One line
-	filename  string // file name that generated the logmsg
-	function  string // function name that generated the log msg
-	timestamp time.Time
-	isAppLog  bool
+	severity   string
+	source     string // basename of filename?
+	iid        string // XXX e.g. PID - where do we get it from?
+	content    string // One line
+	filename   string // file name that generated the logmsg
+	function   string // function name that generated the log msg
+	timestamp  time.Time
+	image      string
+	eveVersion string
+	isAppLog   bool
 }
 
 // List of log files we watch
@@ -406,13 +408,15 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			}
 		}
 		logMsg := logEntry{
-			source:    logSource,
-			content:   logParts["content"].(string),
-			severity:  logInfo.Level,
-			timestamp: timestamp,
-			function:  logInfo.Function,
-			filename:  logInfo.Filename,
-			isAppLog:  appLog,
+			source:     logSource,
+			content:    logParts["content"].(string),
+			severity:   logInfo.Level,
+			timestamp:  timestamp,
+			function:   logInfo.Function,
+			filename:   logInfo.Filename,
+			image:      logInfo.Image,
+			eveVersion: logInfo.EveVersion,
+			isAppLog:   appLog,
 		}
 		ctx.logChan <- logMsg
 
@@ -502,6 +506,9 @@ func processEvents(image string, logChan <-chan logEntry,
 	appUUID := ""
 	var appLogBundle *logs.AppInstanceLogBundle
 	var logMetrics types.LogMetrics
+
+	var curEveVersion string = ""
+	var curEvePartition string = ""
 	for {
 		// If we had a defer wait until it has been taken care of
 		// Note that globalDeferInprogress might not yet be set
@@ -540,6 +547,30 @@ func processEvents(image string, logChan <-chan logEntry,
 					reportLogs, appLogBundles, &logMetrics)
 				return
 			}
+
+			eveVersionInLog := event.eveVersion
+			evePartitionInLog := event.image
+			if eveVersionInLog != "" {
+				if curEveVersion == "" {
+					curEveVersion = eveVersionInLog
+					curEvePartition = evePartitionInLog
+				} else if curEveVersion != eveVersionInLog {
+					sent := flushAllLogBundles(curEvePartition, iteration, curEveVersion,
+						reportLogs, appLogBundles, &logMetrics)
+					iteration++
+					if !sent {
+						deferInprogress = true
+						logMetrics.IsLogProcessingDeferred = true
+						logMetrics.NumTimesDeferred++
+						logMetrics.LastLogDeferTime = time.Now()
+						// Publish LogMetrics
+						publishLogMetrics(ctx, &logMetrics)
+					}
+					curEveVersion = eveVersionInLog
+					curEvePartition = evePartitionInLog
+				}
+			}
+
 			if event.isAppLog {
 				appUUID = lookupDomainName(ctx, event.source)
 				if appUUID == "" {
@@ -583,7 +614,7 @@ func processEvents(image string, logChan <-chan logEntry,
 			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d",
 				image, messageCount, byteCount)
 			if event.isAppLog {
-				sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+				sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, curEvePartition)
 				if is4xx {
 					logMetrics.Num4xxResponses += uint64(messageCount)
 				} else {
@@ -594,7 +625,7 @@ func processEvents(image string, logChan <-chan logEntry,
 				}
 				delete(appLogBundles, appUUID)
 			} else {
-				sent = sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
+				sent = sendProtoStrForLogs(reportLogs, curEvePartition, iteration, curEveVersion)
 				logMetrics.NumDeviceEventsSent += uint64(messageCount)
 				logMetrics.NumDeviceBundleProtoBytesSent += uint64(byteCount)
 				logMetrics.NumDeviceBundlesSent++
@@ -617,7 +648,7 @@ func processEvents(image string, logChan <-chan logEntry,
 				dropped, messageCount,
 				proto.Size(reportLogs))
 			// Iterate the app/device log bundle map and send out all app logs
-			sent := flushAllLogBundles(image, iteration, eveVersion,
+			sent := flushAllLogBundles(curEvePartition, iteration, curEveVersion,
 				reportLogs, appLogBundles, &logMetrics)
 			iteration++
 			if !sent {
@@ -647,6 +678,12 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 	logMetrics *types.LogMetrics) bool {
 	messageCount := len(reportLogs.Log)
 	byteCount := proto.Size(reportLogs)
+	if image == "" {
+		image = agentlog.EveCurrentPartition()
+	}
+	if eveVersion == "" {
+		eveVersion = agentlog.EveVersion()
+	}
 	sent := sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
 	// Take care of metrics
 	logMetrics.NumDeviceEventsSent += uint64(messageCount)
@@ -777,6 +814,12 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	if len(reportLogs.Log) == 0 {
 		return true
 	}
+	if image == "" {
+		image = agentlog.EveCurrentPartition()
+	}
+	if eveVersion == "" {
+		eveVersion = agentlog.EveVersion()
+	}
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
@@ -850,6 +893,9 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	iteration int, image string) (sent, is4xx bool) {
 	if len(appLogs.Log) == 0 {
 		return true, false
+	}
+	if image == "" {
+		image = agentlog.EveCurrentPartition()
 	}
 	log.Debugln("sendProtoStrForAppLogs called...", iteration)
 	data, err := proto.Marshal(appLogs)

@@ -58,6 +58,8 @@ type SourceHook struct {
 func (hook *SourceHook) Fire(entry *log.Entry) error {
 	entry.Data["source"] = savedAgentName
 	entry.Data["pid"] = savedPid
+	entry.Data["image"] = EveCurrentPartition()
+	entry.Data["eveVersion"] = EveVersion()
 	return nil
 }
 
