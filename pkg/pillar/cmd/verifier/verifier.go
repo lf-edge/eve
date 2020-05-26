@@ -30,6 +30,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -37,27 +38,20 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	agentName = "verifier"
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
-
-	// If this file is present we don't delete verified files in handleDelete
-	preserveFilename = types.TmpDirname + "/preserve"
+	errorTime        = 3 * time.Minute
+	warningTime      = 40 * time.Second
+	verifierBasePath = "/persist/downloads"
 )
-
-// Really a constant
-var nilUUID uuid.UUID
 
 // Go doesn't like this as a constant
 var (
-	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
-	vHandler         = makeVerifyHandler()
+	vHandler = makeVerifyHandler()
 )
 
 // Set from Makefile
@@ -67,17 +61,15 @@ var Version = "No version specified"
 type verifierContext struct {
 	subAppImgConfig        pubsub.Subscription
 	pubAppImgStatus        pubsub.Publication
-	subAppImgPersistConfig pubsub.Subscription
-	pubAppImgPersistStatus pubsub.Publication
 	subBaseOsConfig        pubsub.Subscription
 	pubBaseOsStatus        pubsub.Publication
-	subBaseOsPersistConfig pubsub.Subscription
 	pubBaseOsPersistStatus pubsub.Publication
+	subBaseOsPersistStatus pubsub.Subscription
+	pubAppImgPersistStatus pubsub.Publication
+	subAppImgPersistStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
-	assignableAdapters     *types.AssignableAdapters
-	subAssignableAdapters  pubsub.Subscription
-	gc                     *time.Ticker
-	GCInitialized          bool
+
+	GCInitialized bool
 }
 
 var debug = false
@@ -114,10 +106,7 @@ func Run(ps *pubsub.PubSub) {
 	initializeDirs()
 
 	// Any state needed by handler functions
-	aa := types.AssignableAdapters{}
-	ctx := verifierContext{
-		assignableAdapters: &aa,
-	}
+	ctx := verifierContext{}
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := ps.NewPublication(
@@ -144,7 +133,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgPersistStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
@@ -221,60 +209,41 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subAppImgPersistConfig, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "volumemgr",
-			AgentScope:    types.AppImgObj,
-			TopicImpl:     types.PersistImageConfig{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleAppImgCreate,
-			ModifyHandler: handleAppImgModify,
-			DeleteHandler: handleAppImgDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subAppImgPersistConfig = subAppImgPersistConfig
-	subAppImgPersistConfig.Activate()
-
-	subBaseOsPersistConfig, err := ps.NewSubscription(
+	// Look for PersistImageStatus from verifier
+	subBaseOsPersistStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
 			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.PersistImageConfig{},
+			TopicImpl:     types.PersistImageStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleBaseOsCreate,
-			ModifyHandler: handleBaseOsModify,
-			DeleteHandler: handleBaseOsDelete,
+			DeleteHandler: handlePersistImageStatusDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
-
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subBaseOsPersistConfig = subBaseOsPersistConfig
-	subBaseOsPersistConfig.Activate()
+	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
+	subBaseOsPersistStatus.Activate()
 
-	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "domainmgr",
-		TopicImpl:     types.AssignableAdapters{},
-		Activate:      false,
-		Ctx:           &ctx,
-		ModifyHandler: handleAAModify,
-		DeleteHandler: handleAADelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
+	// Look for PersistImageStatus from volumemgr
+	subAppImgPersistStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "volumemgr",
+			AgentScope:    types.AppImgObj,
+			TopicImpl:     types.PersistImageStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			DeleteHandler: handlePersistImageStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAssignableAdapters = subAssignableAdapters
-	subAssignableAdapters.Activate()
+	ctx.subAppImgPersistStatus = subAppImgPersistStatus
+	subAppImgPersistStatus.Activate()
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
@@ -298,14 +267,6 @@ func Run(ps *pubsub.PubSub) {
 	pubBaseOsStatus.SignalRestarted()
 	log.Infof("SignalRestarted done")
 
-	// We will cleanup zero RefCount objects after a while
-	// We run timer 10 times more often than the limit on LastUse
-	// Here initialize the gc before the select handles it, but stop
-	// the timer since it waits until we are connected to the cloud and
-	// gets the AA init before declare something is stale and need deletion
-	ctx.gc = time.NewTicker(downloadGCTime / 10)
-	ctx.gc.Stop()
-
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -317,20 +278,11 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subBaseOsConfig.MsgChan():
 			subBaseOsConfig.ProcessChange(change)
 
-		case change := <-subAppImgPersistConfig.MsgChan():
-			subAppImgPersistConfig.ProcessChange(change)
+		case change := <-subBaseOsPersistStatus.MsgChan():
+			subBaseOsPersistStatus.ProcessChange(change)
 
-		case change := <-subBaseOsPersistConfig.MsgChan():
-			subBaseOsPersistConfig.ProcessChange(change)
-
-		case change := <-subAssignableAdapters.MsgChan():
-			subAssignableAdapters.ProcessChange(change)
-
-		case <-ctx.gc.C:
-			start := time.Now()
-			gcVerifiedObjects(&ctx)
-			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
-				warningTime, errorTime)
+		case change := <-subAppImgPersistStatus.MsgChan():
+			subAppImgPersistStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -352,25 +304,6 @@ func handleInit(ctx *verifierContext) {
 	handleInitMarkedDeletePendingObjects(ctx)
 
 	log.Infoln("handleInit done")
-}
-
-func initializeDirs() {
-	// first the certs directory
-	if _, err := os.Stat(types.CertificateDirname); err != nil {
-		log.Debugf("Create %s", types.CertificateDirname)
-		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Remove any files which didn't make it past the verifier.
-	// useful for calculating total available space in
-	// downloader context
-	// XXX when does downloader calculate space?
-	clearInProgressDownloadDirs(verifierObjTypes)
-
-	// create the object download directories
-	createDownloadDirs(verifierObjTypes)
 }
 
 // Mark all existing Status as PendingDelete.
@@ -395,90 +328,6 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 	}
 }
 
-// Recreate status files for verified objects as types.DOWNLOADED
-// except containers which we mark as types.VERIFIED
-func handleInitVerifiedObjects(ctx *verifierContext) {
-
-	for _, objType := range verifierObjTypes {
-
-		verifiedDirname := types.DownloadDirname + "/" + objType + "/verified"
-		if _, err := os.Stat(verifiedDirname); err == nil {
-			populateInitialStatusFromVerified(ctx, objType,
-				verifiedDirname, "")
-		}
-	}
-}
-
-func verifiedImageStatusFromImageFile(
-	objType, objDirname, parentDirname, imageFileName string,
-	size int64, filename string) *types.PersistImageStatus {
-
-	status := types.PersistImageStatus{
-		VerifyStatus: types.VerifyStatus{
-			Name:         imageFileName,
-			ObjType:      objType,
-			FileLocation: filename,
-			ImageSha256:  parentDirname,
-			Size:         size,
-		},
-		LastUse:  time.Now(),
-		RefCount: 0,
-	}
-
-	log.Debugf("verifiedImageStatusFromImageFile: objType: %s, "+
-		"objDirname: %s, parentDirname: %s, imageFileName: %s",
-		objType, objDirname, parentDirname, imageFileName)
-
-	log.Debugf("verifiedImageStatusFromImageFile: status: %+v", status)
-	return &status
-}
-
-// Recursive scanning for verified objects,
-// to recreate the VerifyImageStatus.
-func populateInitialStatusFromVerified(ctx *verifierContext,
-	objType string, objDirname string, parentDirname string) {
-
-	log.Infof("populateInitialStatusFromVerified(%s, %s)", objDirname,
-		parentDirname)
-
-	locations, err := ioutil.ReadDir(objDirname)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Debugf("populateInitialStatusFromVerified: processing locations %v", locations)
-
-	for _, location := range locations {
-
-		filename := objDirname + "/" + location.Name()
-
-		if location.IsDir() {
-			log.Debugf("populateInitialStatusFromVerified: Looking in %s", filename)
-			if _, err := os.Stat(filename); err == nil {
-				populateInitialStatusFromVerified(ctx,
-					objType, filename, location.Name())
-			}
-		} else {
-			size := int64(0)
-			info, err := os.Stat(filename)
-			if err != nil {
-				// XXX Delete file?
-				log.Error(err)
-			} else {
-				size = info.Size()
-			}
-			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes",
-				filename, size/(1024*1024))
-			status := verifiedImageStatusFromImageFile(objType, objDirname,
-				parentDirname, location.Name(), size, filename)
-			if status != nil {
-				publishPersistImageStatus(ctx, status)
-			}
-		}
-	}
-}
-
 // remove the status files marked as pending delete
 func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 	publications := []pubsub.Publication{
@@ -494,79 +343,6 @@ func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 					status.Key())
 				unpublishVerifyImageStatus(ctx, &status)
 			}
-		}
-	}
-}
-
-// Create the object download directories we own
-func createDownloadDirs(objTypes []string) {
-
-	workingDirTypes := []string{"verifier", "verified"}
-
-	// now create the download dirs
-	for _, objType := range objTypes {
-		for _, dirType := range workingDirTypes {
-			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
-			if _, err := os.Stat(dirName); err != nil {
-				log.Debugf("Create %s", dirName)
-				if err := os.MkdirAll(dirName, 0700); err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-	}
-}
-
-// clear in-progress object download directories
-func clearInProgressDownloadDirs(objTypes []string) {
-
-	inProgressDirTypes := []string{"verifier"}
-
-	// Now remove the in-progress dirs
-	for _, objType := range objTypes {
-		for _, dirType := range inProgressDirTypes {
-			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
-			if _, err := os.Stat(dirName); err == nil {
-				if err := os.RemoveAll(dirName); err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-	}
-}
-
-// If an object has a zero RefCount and dropped to zero more than
-// downloadGCTime ago, then we delete the Status. That will result in the
-// user (volumemgr) deleting the Config, unless a RefCount
-// increase is underway.
-// XXX Note that this runs concurrently with the handler.
-// XXX I guess we still need this for Persist to handshake the delete
-func gcVerifiedObjects(ctx *verifierContext) {
-	log.Debugf("gcVerifiedObjects()")
-	publications := []pubsub.Publication{
-		ctx.pubAppImgPersistStatus,
-		ctx.pubBaseOsPersistStatus,
-	}
-	for _, pub := range publications {
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.PersistImageStatus)
-			if status.RefCount != 0 {
-				log.Debugf("gcVerifiedObjects: skipping RefCount %d: %s",
-					status.RefCount, status.Key())
-				continue
-			}
-			timePassed := time.Since(status.LastUse)
-			if timePassed < downloadGCTime {
-				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds",
-					status.Key(),
-					(timePassed-downloadGCTime)/time.Second)
-				continue
-			}
-			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v",
-				status.Key(), status.LastUse, time.Now())
-			status.Expired = true
-			publishPersistImageStatus(ctx, &status)
 		}
 	}
 }
@@ -606,33 +382,6 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 	pub.Unpublish(key)
 }
 
-func publishPersistImageStatus(ctx *verifierContext,
-	status *types.PersistImageStatus) {
-
-	log.Debugf("publishPersistImageStatus(%s, %s)",
-		status.ObjType, status.ImageSha256)
-
-	pub := verifierPersistPublication(ctx, status.ObjType)
-	key := status.Key()
-	pub.Publish(key, *status)
-}
-
-func unpublishPersistImageStatus(ctx *verifierContext,
-	status *types.PersistImageStatus) {
-
-	log.Debugf("publishPersistImageStatus(%s, %s)",
-		status.ObjType, status.ImageSha256)
-
-	pub := verifierPersistPublication(ctx, status.ObjType)
-	key := status.Key()
-	st, _ := pub.Get(key)
-	if st == nil {
-		log.Errorf("unpublishPersistImageStatus(%s) not found", key)
-		return
-	}
-	pub.Unpublish(key)
-}
-
 func verifierPublication(ctx *verifierContext, objType string) pubsub.Publication {
 	var pub pubsub.Publication
 	switch objType {
@@ -661,7 +410,7 @@ func verifierSubscription(ctx *verifierContext, objType string) pubsub.Subscript
 	return sub
 }
 
-func verifierPersistPublication(ctx *verifierContext, objType string) pubsub.Publication {
+func verifierPersistStatusPublication(ctx *verifierContext, objType string) pubsub.Publication {
 	var pub pubsub.Publication
 	switch objType {
 	case types.AppImgObj:
@@ -669,19 +418,19 @@ func verifierPersistPublication(ctx *verifierContext, objType string) pubsub.Pub
 	case types.BaseOsObj:
 		pub = ctx.pubBaseOsPersistStatus
 	default:
-		log.Fatalf("verifierPersistPublication: Unknown ObjType %s",
+		log.Fatalf("verifierPersistStatusPublication: Unknown ObjType %s",
 			objType)
 	}
 	return pub
 }
 
-func verifierPersistSubscription(ctx *verifierContext, objType string) pubsub.Subscription {
+func verifierPersistStatusSubscription(ctx *verifierContext, objType string) pubsub.Subscription {
 	var sub pubsub.Subscription
 	switch objType {
 	case types.AppImgObj:
-		sub = ctx.subAppImgPersistConfig
+		sub = ctx.subAppImgPersistStatus
 	case types.BaseOsObj:
-		sub = ctx.subBaseOsPersistConfig
+		sub = ctx.subBaseOsPersistStatus
 	default:
 		log.Fatalf("verifierPersistSubscription: Unknown ObjType %s",
 			objType)
@@ -700,20 +449,6 @@ func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 		return nil
 	}
 	status := st.(types.VerifyImageStatus)
-	return &status
-}
-
-// Callers must be careful to publish any changes to PersistImageStatus
-func lookupPersistImageStatus(ctx *verifierContext, objType string,
-	sha string) *types.PersistImageStatus {
-
-	pub := verifierPersistPublication(ctx, objType)
-	st, _ := pub.Get(sha)
-	if st == nil {
-		log.Infof("lookupPersistImageStatus(%s) not found", sha)
-		return nil
-	}
-	status := st.(types.PersistImageStatus)
 	return &status
 }
 
@@ -754,45 +489,6 @@ func runHandler(ctx *verifierContext, objType string, key string,
 		}
 	}
 	log.Infof("runHandler(%s) DONE", key)
-}
-
-// Server for each PersistImageConfig
-func runPersistHandler(ctx *verifierContext, objType string, key string,
-	c <-chan Notify) {
-
-	log.Infof("runPersistHandler starting")
-
-	closed := false
-	for !closed {
-		select {
-		case _, ok := <-c:
-			if ok {
-				sub := verifierPersistSubscription(ctx, objType)
-				c, err := sub.Get(key)
-				if err != nil {
-					log.Errorf("runPersistHandler no config for %s", key)
-					continue
-				}
-				config := c.(types.PersistImageConfig)
-				status := lookupPersistImageStatus(ctx,
-					objType, key)
-				if status == nil {
-					handlePersistCreate(ctx, objType, &config)
-				} else {
-					handlePersistModify(ctx, &config, status)
-				}
-			} else {
-				// Closed
-				status := lookupPersistImageStatus(ctx,
-					objType, key)
-				if status != nil {
-					handlePersistDelete(ctx, status)
-				}
-				closed = true
-			}
-		}
-	}
-	log.Infof("runPersistHandler(%s) DONE", key)
 }
 
 func handleCreate(ctx *verifierContext, objType string,
@@ -837,94 +533,54 @@ func handleCreate(ctx *verifierContext, objType string,
 		log.Infof("No PersistImageStatus for %s id %s",
 			config.ImageSha256, config.ImageID)
 	}
+
+	if config.FileLocation == "" {
+		err := fmt.Errorf("handleCreate: verifyImageConfig: %s has empty fileLocation", config.ImageSha256)
+		log.Errorf(err.Error())
+		cerr := fmt.Sprintf("%v", err)
+		updateVerifyErrStatus(ctx, &status, cerr)
+		return
+	}
+
 	ok, size := markObjectAsVerifying(ctx, config, &status)
 	if !ok {
-		log.Errorf("handleCreate fail for %s", config.Name)
+		log.Errorf("handleCreate: markObjectAsVerifying failed for %s", config.Name)
 		return
 	}
 	status.Size = size
 	publishVerifyImageStatus(ctx, &status)
 
 	if !verifyObjectSha(ctx, config, &status) {
-		log.Errorf("handleCreate fail for %s", config.Name)
+		log.Errorf("handleCreate: verifyObjectSha failed for %s", config.Name)
 		return
 	}
 	publishVerifyImageStatus(ctx, &status)
 
-	markObjectAsVerified(ctx, config, &status)
+	markObjectAsVerified(config, &status)
 	if status.FileLocation == "" {
-		log.Fatalf("Verified but no FileLocation for %s", status.Key())
+		log.Fatalf("handleCreate: Verified but no FileLocation for %s", status.Key())
 	}
+
 	status.PendingAdd = false
 	status.State = types.VERIFIED
 	publishVerifyImageStatus(ctx, &status)
 	log.Infof("handleCreate done for %s", config.Name)
 }
 
-// Returns ok, size of object
-func markObjectAsVerifying(ctx *verifierContext,
-	config *types.VerifyImageConfig,
-	status *types.VerifyImageStatus) (bool, int64) {
+func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, status *types.VerifyImageStatus) bool {
 
-	pendingDirname, verifierDirname, _ := status.ImageDownloadDirNames()
-	pendingFilename, verifierFilename, _ := status.ImageDownloadFilenames()
+	verifierFilename := status.FileLocation
+	log.Infof("verifyObjectSha: Verifying URL %s file %s", config.Name, verifierFilename)
 
-	// Move to verifier directory which is RO
-	// XXX should have dom0 do this and/or have RO mounts
-	log.Infof("Move from %s to %s", pendingFilename, verifierFilename)
-
-	info, err := os.Stat(pendingFilename)
+	_, err := os.Stat(verifierFilename)
 	if err != nil {
-		// XXX hits sometimes; attempting to verify before download
-		// is complete?
-		log.Errorf("markObjectAsVerifying failed %s", err)
-		cerr := fmt.Sprintf("%v", err)
+		e := fmt.Errorf("verifyObjectSha: Unable to find location: %s. %s", verifierFilename, err)
+		cerr := fmt.Sprintf("%v", e)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("markObjectAsVerifying failed for %s", config.Name)
-		return false, 0
+		log.Errorf("verifyObjectSha %s failed %s",
+			config.Name, cerr)
+		return false
 	}
-
-	if _, err := os.Stat(verifierFilename); err == nil {
-		log.Warn(verifierFilename + ": file exists")
-		if err := os.RemoveAll(verifierFilename); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(verifierDirname); err == nil {
-		if err := os.RemoveAll(verifierDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-	log.Debugf("Create %s", verifierDirname)
-	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Rename(pendingFilename, verifierFilename); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Chmod(verifierDirname, 0500); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Chmod(verifierFilename, 0400); err != nil {
-		log.Fatal(err)
-	}
-	status.FileLocation = verifierFilename
-	// Clean up empty directory
-	if err := os.RemoveAll(pendingDirname); err != nil {
-		log.Fatal(err)
-	}
-	return true, info.Size()
-}
-
-func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
-	status *types.VerifyImageStatus) bool {
-
-	_, verifierFilename, _ := status.ImageDownloadFilenames()
-	log.Infof("Verifying URL %s file %s", config.Name, verifierFilename)
 
 	imageHashB, err := computeShaFileByType(verifierFilename, status.IsContainer)
 	if err != nil {
@@ -1126,57 +782,6 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	return ""
 }
 
-func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
-	status *types.VerifyImageStatus) {
-
-	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
-	_, verifierFilename, verifiedFilename := status.ImageDownloadFilenames()
-	// Move directory from DownloadDirname/verifier to
-	// DownloadDirname/verified
-	// XXX should have dom0 do this and/or have RO mounts
-	log.Infof("Move from %s to %s", verifierFilename, verifiedFilename)
-
-	if _, err := os.Stat(verifierFilename); err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := os.Stat(verifiedFilename); err == nil {
-		log.Warn(verifiedFilename + ": file exists")
-		if err := os.RemoveAll(verifiedFilename); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(verifiedDirname); err == nil {
-		log.Warn(verifiedDirname + ": directory exists")
-		if err := os.RemoveAll(verifiedDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	log.Infof("Create %s", verifiedDirname)
-	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Rename(verifierFilename, verifiedFilename); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Chmod(verifiedDirname, 0500); err != nil {
-		log.Fatal(err)
-	}
-
-	status.FileLocation = verifiedFilename
-
-	// Clean up empty directory
-	if err := os.RemoveAll(verifierDirname); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s",
-		verifierFilename, verifiedFilename)
-}
-
 func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 
@@ -1198,6 +803,20 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		log.Infof("handleModify RefCount change %s from %d to %d",
 			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
+		changed = true
+	}
+
+	if config.FileLocation != "" && config.FileLocation != status.FileLocation {
+		log.Infof("handleModify FileLocation change %s from %s to %s",
+			config.Name, status.FileLocation, config.FileLocation)
+		status.FileLocation = config.FileLocation
+		changed = true
+	}
+
+	if config.Size != 0 && config.Size != status.Size {
+		log.Infof("handleModify Size change %s from %d to %d",
+			config.Name, status.Size, config.Size)
+		status.Size = config.Size
 		changed = true
 	}
 
@@ -1261,55 +880,229 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
-func handleAAModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
+// ImageVerifierDirNames - Returns pendingDirname, verifierDirname, verifiedDirname
+// for the image.
+func ImageVerifierDirNames(objType, ImageID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
 
-	ctx := ctxArg.(*verifierContext)
-	status := statusArg.(types.AssignableAdapters)
-	if key != "global" {
-		log.Infof("handleAAModify: ignoring %s", key)
-		return
-	}
-	log.Infof("handleAAModify() %+v", status)
-	*ctx.assignableAdapters = status
-	// the AA iniializing starts the GC timer, and need to reset the
-	// LastUse timestamp
-	if ctx.assignableAdapters.Initialized {
-		ctx.gc = time.NewTicker(downloadGCTime / 10)
-		gcResetObjectLastUse(ctx)
-		log.Infof("handleAAModify: AA initialized. verifier set gc timer")
-	}
-	log.Infof("handleAAModify() done")
+	var pendingDirname, verifierDirname, verifiedDirname string
+	pendingDirname = path.Dir(config.FileLocation)
+	verifierDirname = getVerifierDir(objType) + "/" + ImageID
+	verifiedDirname = getVerifiedDir(objType) + "/" + ImageSha256
+	return pendingDirname, verifierDirname, verifiedDirname
 }
 
-func handleAADelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+// ImageVerifierFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
+// for the image
+func ImageVerifierFilenames(objType, ImageID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
+	var pendingFilename, verifierFilename, verifiedFilename string
 
-	ctx := ctxArg.(*verifierContext)
-	if key != "global" {
-		log.Infof("handleAADelete: ignoring %s", key)
-		return
-	}
-	log.Infof("handleAADelete()")
-	ctx.assignableAdapters.Initialized = false
-	log.Infof("handleAADelete() done")
+	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(objType, ImageID, ImageSha256, config)
+	// Handle names which are paths
+	filename := path.Base(config.FileLocation)
+	pendingFilename = config.FileLocation
+	verifierFilename = verifierDirname + "/" + filename
+	verifiedFilename = verifiedDirname + "/" + filename
+	return pendingFilename, verifierFilename, verifiedFilename
 }
 
-// gc timer just started, reset the LastUse timestamp to now if the refcount is zero
-func gcResetObjectLastUse(ctx *verifierContext) {
-	publications := []pubsub.Publication{
-		ctx.pubAppImgPersistStatus,
-		ctx.pubBaseOsPersistStatus,
+// Returns ok, size of object
+func markObjectAsVerifying(ctx *verifierContext,
+	config *types.VerifyImageConfig,
+	status *types.VerifyImageStatus) (bool, int64) {
+
+	pendingDirname, verifierDirname, _ := ImageVerifierDirNames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+
+	// Move to verifier directory which is RO
+	// XXX should have dom0 do this and/or have RO mounts
+	log.Infof("markObjectAsVerifying: Move from %s to %s", pendingFilename, verifierFilename)
+
+	info, err := os.Stat(pendingFilename)
+	if err != nil {
+		// XXX hits sometimes; attempting to verify before download
+		// is complete?
+		log.Errorf("markObjectAsVerifying failed %s", err)
+		cerr := fmt.Sprintf("%v", err)
+		updateVerifyErrStatus(ctx, status, cerr)
+		log.Errorf("markObjectAsVerifying failed for %s", config.Name)
+		return false, 0
 	}
-	for _, pub := range publications {
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.PersistImageStatus)
-			if status.RefCount == 0 {
-				status.LastUse = time.Now()
-				log.Infof("gcResetObjectLastUse: reset %v LastUse to now", status.Key())
-				publishPersistImageStatus(ctx, &status)
+
+	if _, err := os.Stat(verifierFilename); err == nil {
+		log.Warn(verifierFilename + ": file exists")
+		if err := os.RemoveAll(verifierFilename); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(verifierDirname); err == nil {
+		if err := os.RemoveAll(verifierDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
+	log.Debugf("markObjectAsVerifying: Create %s", verifierDirname)
+	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.Rename(pendingFilename, verifierFilename); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.Chmod(verifierDirname, 0500); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.Chmod(verifierFilename, 0400); err != nil {
+		log.Fatal(err)
+	}
+	status.FileLocation = verifierFilename
+	config.FileLocation = verifierFilename
+	// Clean up empty directory
+	if err := os.RemoveAll(pendingDirname); err != nil {
+		log.Fatal(err)
+	}
+	return true, info.Size()
+}
+
+func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyImageStatus) {
+
+	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	// Move directory from DownloadDirname/verifier to
+	// DownloadDirname/verified
+	// XXX should have dom0 do this and/or have RO mounts
+	log.Infof("markObjectAsVerified: Move from %s to %s", verifierFilename, verifiedFilename)
+
+	if _, err := os.Stat(verifierFilename); err != nil {
+		log.Fatal(err)
+	}
+
+	if _, err := os.Stat(verifiedFilename); err == nil {
+		log.Warn(verifiedFilename + ": file exists")
+		if err := os.RemoveAll(verifiedFilename); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(verifiedDirname); err == nil {
+		log.Warn(verifiedDirname + ": directory exists")
+		if err := os.RemoveAll(verifiedDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	log.Infof("markObjectAsVerified: Create %s", verifiedDirname)
+	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.Rename(verifierFilename, verifiedFilename); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.Chmod(verifiedDirname, 0500); err != nil {
+		log.Fatal(err)
+	}
+
+	status.FileLocation = verifiedFilename
+
+	// Clean up empty directory
+	if err := os.RemoveAll(verifierDirname); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s",
+		verifierFilename, verifiedFilename)
+}
+
+// Recreate status files for verified objects as types.DOWNLOADED
+// except containers which we mark as types.VERIFIED
+func handleInitVerifiedObjects(ctx *verifierContext) {
+
+	for _, objType := range verifierObjTypes {
+
+		verifiedDirname := getVerifiedDir(objType)
+		if _, err := os.Stat(verifiedDirname); err == nil {
+			populateInitialStatusFromVerified(ctx, objType,
+				verifiedDirname, "")
+		}
+	}
+}
+
+func persistImageStatusFromImageFile(
+	objType, objDirname, parentDirname, imageFileName string,
+	size int64, filename string) *types.PersistImageStatus {
+
+	status := types.PersistImageStatus{
+		VerifyStatus: types.VerifyStatus{
+			Name:         imageFileName,
+			ObjType:      objType,
+			FileLocation: filename,
+			ImageSha256:  parentDirname,
+			Size:         size,
+		},
+		LastUse:  time.Now(),
+		RefCount: 0,
+	}
+
+	log.Debugf("persistImageStatusFromImageFile: objType: %s, "+
+		"objDirname: %s, parentDirname: %s, imageFileName: %s",
+		objType, objDirname, parentDirname, imageFileName)
+
+	log.Debugf("persistImageStatusFromImageFile: status: %+v", status)
+	return &status
+}
+
+// Recursive scanning for verified objects,
+// to recreate the VerifyImageStatus.
+func populateInitialStatusFromVerified(ctx *verifierContext,
+	objType string, objDirname string, parentDirname string) {
+
+	log.Infof("populateInitialStatusFromVerified(%s, %s)", objDirname,
+		parentDirname)
+
+	locations, err := ioutil.ReadDir(objDirname)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Debugf("populateInitialStatusFromVerified: processing locations %v", locations)
+
+	for _, location := range locations {
+
+		filename := objDirname + "/" + location.Name()
+
+		if location.IsDir() {
+			log.Debugf("populateInitialStatusFromVerified: Looking in %s", filename)
+			if _, err := os.Stat(filename); err == nil {
+				populateInitialStatusFromVerified(ctx,
+					objType, filename, location.Name())
+			}
+		} else {
+			size := int64(0)
+			info, err := os.Stat(filename)
+			if err != nil {
+				// XXX Delete file?
+				log.Error(err)
+			} else {
+				size = info.Size()
+			}
+			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes",
+				filename, size/(1024*1024))
+			status := persistImageStatusFromImageFile(objType, objDirname,
+				parentDirname, location.Name(), size, filename)
+			if status != nil {
+				publishPersistImageStatus(ctx, status)
 			}
 		}
 	}
+}
+
+func getVerifierDir(objType string) string {
+	return verifierBasePath + "/" + objType + "/" + "verifier"
+}
+
+func getVerifiedDir(objType string) string {
+	return verifierBasePath + "/" + objType + "/" + "verified"
 }
