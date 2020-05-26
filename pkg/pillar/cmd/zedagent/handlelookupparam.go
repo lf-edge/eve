@@ -186,8 +186,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		}
 		log.Debugf("r.bytes %d s.bytes %d", len(r.Bytes()),
 			len(s.Bytes()))
-		sigres := r.Bytes()
-		sigres = append(sigres, s.Bytes()...)
+		sigres := zedcloud.RSCombinedBytes(r.Bytes(), s.Bytes())
 		signature = base64.StdEncoding.EncodeToString(sigres)
 		log.Debugf("sigres (len %d): % x",
 			len(sigres), sigres)
@@ -199,8 +198,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		}
 		log.Debugf("r.bytes %d s.bytes %d", len(r.Bytes()),
 			len(s.Bytes()))
-		sigres := r.Bytes()
-		sigres = append(sigres, s.Bytes()...)
+		sigres := zedcloud.RSCombinedBytes(r.Bytes(), s.Bytes())
 		signature = base64.StdEncoding.EncodeToString(sigres)
 		log.Debugf("sigres (len %d): % x",
 			len(sigres), sigres)
