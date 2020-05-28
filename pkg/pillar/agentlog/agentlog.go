@@ -317,10 +317,39 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
+// Send application stdout/stderr to this panic file
+func spoofStdFDs(panicFileName string) *os.File {
+	filename := fmt.Sprintf("%s/%s", types.PersistPanicDir, panicFileName)
+	panicOut, _ := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
+	fd2, err := syscall.Dup(int(os.Stdout.Fd()))
+	if err != nil {
+		log.Fatalf("Error duplicating Stdout: %s", err)
+	}
+	originalStdout, err := os.OpenFile(fmt.Sprintf("/dev/fd/%d", fd2),
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
+	if err != nil {
+		log.Fatalf("Error opening duplicate stdout with fd: %v", fd2)
+	}
+	// replace stdout
+	err = syscall.Dup2(int(panicOut.Fd()), 1)
+	if err != nil {
+		log.Fatalf("Error replacing stdout with panic file %s: %s",
+			filename, err)
+	}
+	err = syscall.Dup2(int(panicOut.Fd()), 2)
+	if err != nil {
+		log.Fatalf("Error replacing stderr with panic file %s: %s",
+			filename, err)
+	}
+	return originalStdout
+}
+
 func Init(agentName string) {
 	savedAgentName = agentName
 	savedPid = os.Getpid()
 	log.SetOutput(os.Stdout)
+	originalStdout := spoofStdFDs(agentName)
+	log.SetOutput(originalStdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
 	hook2 := new(SourceHook)

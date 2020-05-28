@@ -21,6 +21,8 @@ const (
 	RWImgDirname = PersistDir + "/img"
 	// ROContImgDirname - Location of read only images used by containerd
 	ROContImgDirname = PersistDir + "/runx/pods/prepared"
+	// PersistPanicDir - Location for service panic traces
+	PersistPanicDir = PersistDir + "/panic"
 	// AppImgDirname - location of downloaded app images. Read-only images
 	// named based on sha256 hash each in its own directory
 	AppImgDirname = DownloadDirname + "/" + AppImgObj
