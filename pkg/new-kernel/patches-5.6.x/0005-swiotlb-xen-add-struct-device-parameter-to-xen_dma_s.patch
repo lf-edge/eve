@@ -1,0 +1,73 @@
+From 2163db39277d335b3b64aea2a829f22acaaa6efd Mon Sep 17 00:00:00 2001
+From: Stefano Stabellini <stefano.stabellini@xilinx.com>
+Date: Wed, 20 May 2020 16:42:13 -0700
+Subject: [PATCH 05/10] swiotlb-xen: add struct device* parameter to
+ xen_dma_sync_for_cpu
+
+The parameter is unused in this patch.
+No functional changes.
+
+Signed-off-by: Stefano Stabellini <stefano.stabellini@xilinx.com>
+---
+ arch/arm/xen/mm.c         | 5 +++--
+ drivers/xen/swiotlb-xen.c | 4 ++--
+ include/xen/swiotlb-xen.h | 5 +++--
+ 3 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/xen/mm.c b/arch/arm/xen/mm.c
+index d40e9e5fc52b..1a00e8003c64 100644
+--- a/arch/arm/xen/mm.c
++++ b/arch/arm/xen/mm.c
+@@ -71,8 +71,9 @@ static void dma_cache_maint(dma_addr_t handle, size_t size, u32 op)
+  * pfn_valid returns true the pages is local and we can use the native
+  * dma-direct functions, otherwise we call the Xen specific version.
+  */
+-void xen_dma_sync_for_cpu(dma_addr_t handle, phys_addr_t paddr, size_t size,
+-		enum dma_data_direction dir)
++void xen_dma_sync_for_cpu(struct device *dev, dma_addr_t handle,
++			  phys_addr_t paddr, size_t size,
++			  enum dma_data_direction dir)
+ {
+ 	if (pfn_valid(PFN_DOWN(handle)))
+ 		arch_sync_dma_for_cpu(paddr, size, dir);
+diff --git a/drivers/xen/swiotlb-xen.c b/drivers/xen/swiotlb-xen.c
+index 9b4306a56feb..f9aa932973dd 100644
+--- a/drivers/xen/swiotlb-xen.c
++++ b/drivers/xen/swiotlb-xen.c
+@@ -425,7 +425,7 @@ static void xen_swiotlb_unmap_page(struct device *hwdev, dma_addr_t dev_addr,
+ 	BUG_ON(dir == DMA_NONE);
+ 
+ 	if (!dev_is_dma_coherent(hwdev) && !(attrs & DMA_ATTR_SKIP_CPU_SYNC))
+-		xen_dma_sync_for_cpu(dev_addr, paddr, size, dir);
++		xen_dma_sync_for_cpu(hwdev, dev_addr, paddr, size, dir);
+ 
+ 	/* NOTE: We use dev_addr here, not paddr! */
+ 	if (is_xen_swiotlb_buffer(dev_addr))
+@@ -439,7 +439,7 @@ xen_swiotlb_sync_single_for_cpu(struct device *dev, dma_addr_t dma_addr,
+ 	phys_addr_t paddr = xen_bus_to_phys(dev, dma_addr);
+ 
+ 	if (!dev_is_dma_coherent(dev))
+-		xen_dma_sync_for_cpu(dma_addr, paddr, size, dir);
++		xen_dma_sync_for_cpu(dev, dma_addr, paddr, size, dir);
+ 
+ 	if (is_xen_swiotlb_buffer(dma_addr))
+ 		swiotlb_tbl_sync_single(dev, paddr, size, dir, SYNC_FOR_CPU);
+diff --git a/include/xen/swiotlb-xen.h b/include/xen/swiotlb-xen.h
+index ffc0d3902b71..f62d1854780b 100644
+--- a/include/xen/swiotlb-xen.h
++++ b/include/xen/swiotlb-xen.h
+@@ -4,8 +4,9 @@
+ 
+ #include <linux/swiotlb.h>
+ 
+-void xen_dma_sync_for_cpu(dma_addr_t handle, phys_addr_t paddr, size_t size,
+-		enum dma_data_direction dir);
++void xen_dma_sync_for_cpu(struct device *dev, dma_addr_t handle,
++			  phys_addr_t paddr, size_t size,
++			  enum dma_data_direction dir);
+ void xen_dma_sync_for_device(dma_addr_t handle, phys_addr_t paddr, size_t size,
+ 		enum dma_data_direction dir);
+ 
+-- 
+2.15.4
+
