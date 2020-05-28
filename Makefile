@@ -98,15 +98,12 @@ DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
+PART_SPEC_=efi conf imga
 # FIXME: this is the only rpi specific stuff left - we'll get rid of it soon
-CONF_FILES_FILTER_kvm_rpi=| grep -v conf/eve.dts
-CONF_FILES_FILTER_rpi_kvm=$(CONF_FILES_FILTER_kvm_rpi)
-CONF_FILES=$(shell ls -d $(CONF_DIR)/* $(CONF_FILES_FILTER_$(subst -,_,$(HV))))
-
-PART_SPEC_$(subst -,_,$(HV))=efi conf imga
-PART_SPEC_kvm_rpi=boot conf imga
-PART_SPEC_rpi_kvm=$(PART_SPEC_kvm_rpi)
-PART_SPEC=$(PART_SPEC_$(subst -,_,$(HV)))
+CONF_FILES_FILTER_rpi=| grep -v conf/eve.dts
+CONF_FILES=$(shell ls -d $(CONF_DIR)/* $(CONF_FILES_FILTER_$(findstring rpi,$(HV))))
+PART_SPEC_rpi=boot conf imga
+PART_SPEC=$(PART_SPEC_$(findstring rpi,$(HV)))
 
 # public cloud settings (only CGP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
