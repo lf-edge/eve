@@ -1,0 +1,73 @@
+From 2994d272538c6a6e9a30741f74a02ef169c0f691 Mon Sep 17 00:00:00 2001
+From: Stefano Stabellini <stefano.stabellini@xilinx.com>
+Date: Wed, 20 May 2020 16:42:14 -0700
+Subject: [PATCH 06/10] swiotlb-xen: add struct device* parameter to
+ xen_dma_sync_for_device
+
+The parameter is unused in this patch.
+No functional changes.
+
+Signed-off-by: Stefano Stabellini <stefano.stabellini@xilinx.com>
+---
+ arch/arm/xen/mm.c         | 5 +++--
+ drivers/xen/swiotlb-xen.c | 4 ++--
+ include/xen/swiotlb-xen.h | 5 +++--
+ 3 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/xen/mm.c b/arch/arm/xen/mm.c
+index 1a00e8003c64..f2414ea40a79 100644
+--- a/arch/arm/xen/mm.c
++++ b/arch/arm/xen/mm.c
+@@ -81,8 +81,9 @@ void xen_dma_sync_for_cpu(struct device *dev, dma_addr_t handle,
+ 		dma_cache_maint(handle, size, GNTTAB_CACHE_INVAL);
+ }
+ 
+-void xen_dma_sync_for_device(dma_addr_t handle, phys_addr_t paddr, size_t size,
+-		enum dma_data_direction dir)
++void xen_dma_sync_for_device(struct device *dev, dma_addr_t handle,
++			     phys_addr_t paddr, size_t size,
++			     enum dma_data_direction dir)
+ {
+ 	if (pfn_valid(PFN_DOWN(handle)))
+ 		arch_sync_dma_for_device(paddr, size, dir);
+diff --git a/drivers/xen/swiotlb-xen.c b/drivers/xen/swiotlb-xen.c
+index f9aa932973dd..ef58f05ae445 100644
+--- a/drivers/xen/swiotlb-xen.c
++++ b/drivers/xen/swiotlb-xen.c
+@@ -405,7 +405,7 @@ static dma_addr_t xen_swiotlb_map_page(struct device *dev, struct page *page,
+ 
+ done:
+ 	if (!dev_is_dma_coherent(dev) && !(attrs & DMA_ATTR_SKIP_CPU_SYNC))
+-		xen_dma_sync_for_device(dev_addr, phys, size, dir);
++		xen_dma_sync_for_device(dev, dev_addr, phys, size, dir);
+ 	return dev_addr;
+ }
+ 
+@@ -455,7 +455,7 @@ xen_swiotlb_sync_single_for_device(struct device *dev, dma_addr_t dma_addr,
+ 		swiotlb_tbl_sync_single(dev, paddr, size, dir, SYNC_FOR_DEVICE);
+ 
+ 	if (!dev_is_dma_coherent(dev))
+-		xen_dma_sync_for_device(dma_addr, paddr, size, dir);
++		xen_dma_sync_for_device(dev, dma_addr, paddr, size, dir);
+ }
+ 
+ /*
+diff --git a/include/xen/swiotlb-xen.h b/include/xen/swiotlb-xen.h
+index f62d1854780b..6d235fe2b92d 100644
+--- a/include/xen/swiotlb-xen.h
++++ b/include/xen/swiotlb-xen.h
+@@ -7,8 +7,9 @@
+ void xen_dma_sync_for_cpu(struct device *dev, dma_addr_t handle,
+ 			  phys_addr_t paddr, size_t size,
+ 			  enum dma_data_direction dir);
+-void xen_dma_sync_for_device(dma_addr_t handle, phys_addr_t paddr, size_t size,
+-		enum dma_data_direction dir);
++void xen_dma_sync_for_device(struct device *dev, dma_addr_t handle,
++			     phys_addr_t paddr, size_t size,
++			     enum dma_data_direction dir);
+ 
+ extern int xen_swiotlb_init(int verbose, bool early);
+ extern const struct dma_map_ops xen_swiotlb_dma_ops;
+-- 
+2.15.4
+
