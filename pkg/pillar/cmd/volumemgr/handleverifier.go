@@ -126,7 +126,6 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha strin
 
 func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	changed := false
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*volumemgrContext)
 	log.Infof("handleVerifyImageStatusModify for ImageSha256: %s, "+
@@ -137,26 +136,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
-	verifyConfig := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageSha256)
-	if verifyConfig != nil {
-		if verifyConfig.FileLocation != status.FileLocation {
-			log.Infof("handleVerifyImageStatusModify: updating config: %s FileLocation from %s to %s",
-				verifyConfig.Name, verifyConfig.FileLocation, status.FileLocation)
-			verifyConfig.FileLocation = status.FileLocation
-			changed = true
-		}
-
-		if verifyConfig.Size != status.Size {
-			log.Infof("handleVerifyImageStatusModify: updating config: %s Size from %d to %d",
-				verifyConfig.Name, verifyConfig.Size, status.Size)
-			verifyConfig.Size = status.Size
-			changed = true
-		}
-	}
 	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
-	if changed {
-		publishVerifyImageConfig(ctx, status.ObjType, verifyConfig)
-	}
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }
 
