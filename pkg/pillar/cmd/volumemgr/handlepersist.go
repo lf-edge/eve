@@ -48,24 +48,17 @@ func unpublishPersistImageStatus(ctx *volumemgrContext,
 	pub.Unpublish(key)
 }
 
-//AddOrRefCountPersistImageStatus calculates and updates refcount of a PersistImageStatus.
-//Creates a PersistImageStatus with the refcount if there is no PersistImageStatus found for the imageSha.
+//AddOrRefCountPersistImageStatus increments refcount of a PersistImageStatus if already exists for the imageSha.
+//Creates a PersistImageStatus with refcount = 1 if there is no PersistImageStatus found for the imageSha.
 func AddOrRefCountPersistImageStatus(ctx *volumemgrContext, name, objType, fileLocation, imageSha string, size int64) {
 	log.Infof("AddOrRefCountPersistImageStatus: for PersistImageStatus: %s", imageSha)
-	persistImageStatus := lookupPersistImageStatus(ctx, objType, imageSha)
-	refcount := uint(0)
-	pub := ctx.publication(types.VolumeStatus{}, objType)
-	volumeStatusItems := pub.GetAll()
-	for _, p := range volumeStatusItems {
-		status := p.(types.VolumeStatus)
-		if status.BlobSha256 == imageSha {
-			log.Infof("AddOrRefCountPersistImageStatus: Adding RefCount %d from %s to %s",
-				status.RefCount, status.VolumeID, imageSha)
-			refcount++
-		}
-	}
 
-	if persistImageStatus == nil {
+	persistImageStatus := lookupPersistImageStatus(ctx, objType, imageSha)
+	if persistImageStatus != nil {
+		persistImageStatus.RefCount++
+		log.Infof("AddOrRefCountPersistImageStatus: RefCount to %d for %s",
+			persistImageStatus.RefCount, imageSha)
+	} else {
 		log.Infof("AddOrRefCountPersistImageStatus: Adding new PersistImageStatus for: %s", imageSha)
 		persistImageStatus = &types.PersistImageStatus{
 			VerifyStatus: types.VerifyStatus{
@@ -75,17 +68,9 @@ func AddOrRefCountPersistImageStatus(ctx *volumemgrContext, name, objType, fileL
 				ImageSha256:  imageSha,
 				Size:         size,
 			},
-			LastUse: time.Now(),
+			LastUse:  time.Now(),
+			RefCount: 1,
 		}
-	}
-	log.Infof("AddOrRefCountPersistImageStatus: Replacing refCount of PersistImageStatus: %s from %d to %d",
-		imageSha, persistImageStatus.RefCount, refcount)
-	persistImageStatus.RefCount = refcount
-	if persistImageStatus.RefCount == 0 {
-		// GC timer will clean up by marking status Expired
-		// and some point in time.
-		// Then verifier will delete status.
-		persistImageStatus.LastUse = time.Now()
 	}
 	publishPersistImageStatus(ctx, persistImageStatus)
 	log.Infof("AddOrRefCountPersistImageStatus: done for PersistImageStatus: %s", imageSha)

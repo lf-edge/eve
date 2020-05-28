@@ -31,9 +31,11 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			log.Infof("doUpdate: Found %s based on VolumeID %s sha %s",
 				status.DisplayName, status.VolumeID, status.BlobSha256)
 			if status.State != vs.State {
-				if status.State == types.VERIFYING && vs.State == types.VERIFIED {
-					log.Infof("doUpdate: Adding PersistImageStatus reference for: %s", status.BlobSha256)
+				if vs.State == types.VERIFIED && !status.DownloadOrigin.HasPersistRef {
+					log.Infof("doUpdate: Adding PersistImageStatus reference for VolumeStatus: %s", status.BlobSha256)
 					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
+					status.DownloadOrigin.HasPersistRef = true
+					changed = true
 				}
 				log.Infof("doUpdate: Update State of %s from %d to %d", status.BlobSha256, status.State, vs.State)
 				status.State = vs.State
@@ -248,7 +250,12 @@ func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.
 		} else {
 			log.Infof("lookForVerified: Found PersistImageStatus: %s based on ImageSha256 %s VolumeID %s",
 				status.DisplayName, status.BlobSha256, status.VolumeID)
-			AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
+			if !status.DownloadOrigin.HasPersistRef {
+				log.Infof("lookForVerified: Adding PersistImageStatus reference for VolumeStatus: %s", status.BlobSha256)
+				AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
+				status.DownloadOrigin.HasPersistRef = true
+				changed = true
+			}
 			//Marking the VolumeStatus state as VERIFIED as we already have a PersistImageStatus for the volume
 			if status.State != types.VERIFIED {
 				status.State = types.VERIFIED
@@ -329,8 +336,12 @@ func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 			status.DownloadOrigin.HasVerifierRef = false
 			changed = true
 		}
+		if status.DownloadOrigin.HasPersistRef {
+			ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
+			status.DownloadOrigin.HasPersistRef = false
+			changed = true
+		}
 	}
-	ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
 
 	if status.VolumeCreated {
 		// Asynch destruction; make sure we have a request for the work

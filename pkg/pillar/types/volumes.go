@@ -318,4 +318,5 @@ type DownloadOriginStatus struct {
 
 	HasDownloaderRef bool // Reference against downloader to clean up
 	HasVerifierRef   bool // Reference against verifier to clean up
+	HasPersistRef    bool // Reference against PersistImage to clean up (maintained by volumeMgr)
 }
