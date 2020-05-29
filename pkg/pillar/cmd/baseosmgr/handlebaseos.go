@@ -492,7 +492,7 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 		return ret.Changed, false
 	}
 
-	if ret.MinState < types.CREATED_VOLUME {
+	if ret.MinState < types.VERIFIED {
 		log.Infof("checkBaseOsVolumeStatus(%s) for %s, Waiting for volumemgr",
 			config.BaseOsVersion, uuidStr)
 		return ret.Changed, false

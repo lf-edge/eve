@@ -77,6 +77,10 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			return changed, false
 		}
 	}
+	if status.State == types.VERIFIED && status.ObjType == types.BaseOsObj {
+		// For base images, we don't need to create volumes
+		return changed, true
+	}
 	if status.State == types.VERIFIED && !status.VolumeCreated {
 		status.State = types.CREATING_VOLUME
 		changed = true
