@@ -295,9 +295,8 @@ type DiskConfig struct {
 	ReadOnly     bool
 	Preserve     bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Maxsizebytes uint64 // Resize filesystem to this size if set
-	Format       zconfig.Format
-	Devtype      string // Default ""; could be e.g. "cdrom"
+	Format  zconfig.Format
+	Devtype string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
@@ -306,7 +305,6 @@ type DiskStatus struct {
 	ReadOnly     bool
 	Preserve     bool
 	FileLocation string // From DiskConfig
-	Maxsizebytes uint64 // Resize filesystem to this size if set
 	Format       zconfig.Format
 	Devtype      string // From config
 	Vdev         string // Allocated
