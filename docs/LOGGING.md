@@ -77,6 +77,12 @@ Reference implementation can be seen for AppInstanceConfig, AppInstanceStatus ob
 Similarly relations between objects can be represented/logged using relation type objects with this infrastructure.
 Same relation implementation between AppInstanceConfig and VolumeConfig can be found in functions AddOrRefcountVolumeConfig, MaybeRemoveVolumeConfig.
 
+### Precautions with naming new keys in Log objects
+
+1) Try and use exiting key values used in other object types before creating new keys.
+2) If it becomes mandatory to create a new key field, suffix the key name with the type of value. We currently only support ```-int64``` & ```-bool```
+suffixes for keys. Anything else shall be treated as text/string type by cloud software.
+
 # Helpful debug commands
 
 1. If you are debugging a device and for some reason do not see logs coming to /persist/rsyslog/syslog.txt (possible issue with rsyslogd) and would like to read/tail logs directly from memlogd buffers, use the following command.
