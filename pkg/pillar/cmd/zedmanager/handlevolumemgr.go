@@ -37,27 +37,27 @@ func AddOrRefcountVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 			IsContainer: ss.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
-			MaxSizeBytes: ss.Size,
-			FinalObjDir:  ss.FinalObjDir, // XXX use?
+			MaxDownSize: ss.MaxDownSize,
+			FinalObjDir: ss.FinalObjDir, // XXX use?
 
 			CertificateChain: ss.CertificateChain,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
 		}
 		n := types.VolumeConfig{
-			BlobSha256:      blobSha256,
-			AppInstID:       appInstID,
-			VolumeID:        volumeID,
-			PurgeCounter:    purgeCounter,
-			DisplayName:     ss.Name,
-			Origin:          types.OriginTypeDownload,
-			DownloadOrigin:  &d,
-			TargetSizeBytes: ss.Maxsizebytes,
-			ReadOnly:        ss.ReadOnly,
-			Format:          ss.Format,
-			Devtype:         ss.Devtype,
-			Target:          ss.Target,
-			RefCount:        1,
+			BlobSha256:     blobSha256,
+			AppInstID:      appInstID,
+			VolumeID:       volumeID,
+			PurgeCounter:   purgeCounter,
+			DisplayName:    ss.Name,
+			Origin:         types.OriginTypeDownload,
+			DownloadOrigin: &d,
+			MaxVolSize:     ss.MaxVolSize,
+			ReadOnly:       ss.ReadOnly,
+			Format:         ss.Format,
+			Devtype:        ss.Devtype,
+			Target:         ss.Target,
+			RefCount:       1,
 		}
 		publishVolumeConfig(ctx, &n)
 	}

@@ -1004,7 +1004,7 @@ func parseStorageConfigList(objType string,
 			image.Name = drive.Image.Name
 			image.ImageID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
 			image.Format = drive.Image.Iformat
-			image.Size = uint64(drive.Image.SizeBytes)
+			image.MaxDownSize = uint64(drive.Image.SizeBytes)
 			image.ImageSignature = drive.Image.Siginfo.Signature
 			image.SignatureKey = drive.Image.Siginfo.Signercerturl
 
@@ -1020,7 +1020,7 @@ func parseStorageConfigList(objType string,
 		}
 		image.ReadOnly = drive.Readonly
 		image.Preserve = drive.Preserve
-		image.Maxsizebytes = uint64(drive.Maxsizebytes)
+		image.MaxVolSize = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
@@ -1889,7 +1889,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 		DatastoreID: image.DatastoreID,
 		Name:        certUrl, // XXX FIXME use??
 		NameIsURL:   true,
-		Size:        100 * 1024,
+		MaxDownSize: 100 * 1024,
 		ImageSha256: "",
 	}
 	config.StorageConfigList[idx] = *drive
