@@ -580,8 +580,8 @@ func getDiskInfo(ss types.StorageStatus, appDiskDetails *metrics.AppDiskMetric) 
 		// XXX For container images, max size is coming zero
 		// from the controller. So for now, we are setting up
 		// total size equal to the used size.
-		appDiskDetails.Provisioned = RoundToMbytes(ss.Size)
-		appDiskDetails.Used = RoundToMbytes(ss.Size)
+		appDiskDetails.Provisioned = RoundToMbytes(ss.MaxDownSize)
+		appDiskDetails.Used = RoundToMbytes(ss.MaxDownSize)
 		appDiskDetails.DiskType = "CONTAINER"
 	} else {
 		imgInfo, err := diskmetrics.GetImgInfo(ss.ActiveFileLocation)

@@ -496,11 +496,11 @@ func handleCreate(ctxArg interface{}, key string,
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
 		}
-		if ss.Size == 0 {
+		if ss.MaxDownSize == 0 {
 			log.Warnf("handleCreate(%s) zero size for %s",
 				config.Key(), ss.Name)
 		}
-		totalDiskUsage += ss.Size
+		totalDiskUsage += ss.MaxDownSize
 	}
 
 	status.EIDList = make([]types.EIDStatusDetails,
@@ -728,10 +728,10 @@ func checkPurgeDiskSizeFit(ctxPtr *zedmanagerContext, config types.AppInstanceCo
 	}
 	var oldDisk0Size, newDisk0Size uint64
 	if len(config.StorageConfigList) > 0 {
-		newDisk0Size = config.StorageConfigList[0].Size
+		newDisk0Size = config.StorageConfigList[0].MaxDownSize
 	}
 	if len(status.StorageStatusList) > 0 {
-		oldDisk0Size = status.StorageStatusList[0].Size
+		oldDisk0Size = status.StorageStatusList[0].MaxDownSize
 	}
 	if !status.Activated {
 		if newDisk0Size > oldDisk0Size &&
@@ -815,9 +815,9 @@ func quantifyChanges(config types.AppInstanceConfig,
 					ss.Format, sc.Format)
 				needPurge = true
 			}
-			if ss.Maxsizebytes != sc.Maxsizebytes {
-				log.Infof("quantifyChanges storage Maxsizebytes changed from %v to %v",
-					ss.Maxsizebytes, sc.Maxsizebytes)
+			if ss.MaxVolSize != sc.MaxVolSize {
+				log.Infof("quantifyChanges storage MaxVolSize changed from %v to %v",
+					ss.MaxVolSize, sc.MaxVolSize)
 				needPurge = true
 			}
 			if ss.Devtype != sc.Devtype {

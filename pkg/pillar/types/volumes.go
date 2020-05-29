@@ -100,8 +100,8 @@ type VolumeConfig struct {
 	DownloadOrigin *DownloadOriginConfig
 
 	// Information about the result
-	TargetSizeBytes uint64 // Create or resize to this size
-	ReadOnly        bool
+	MaxVolSize uint64 // Create or resize to this size
+	ReadOnly   bool
 	// XXX Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
 	// XXX Preserve is only interpreted by domainmgr?? Need new on reboot?
@@ -131,7 +131,7 @@ func (config VolumeConfig) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("origin", config.Origin).
-		AddField("target-size-bytes", config.TargetSizeBytes).
+		AddField("max-vol-size-int64", config.MaxVolSize).
 		Infof("Volume config create")
 }
 
@@ -146,12 +146,12 @@ func (config VolumeConfig) LogModify(old interface{}) {
 	}
 	// why would we get modified?
 	if oldConfig.Origin != config.Origin ||
-		oldConfig.TargetSizeBytes != config.TargetSizeBytes {
+		oldConfig.MaxVolSize != config.MaxVolSize {
 
 		logObject.CloneAndAddField("origin", config.Origin).
-			AddField("target-size-bytes", config.TargetSizeBytes).
+			AddField("max-vol-size-int64", config.MaxVolSize).
 			AddField("old-origin", oldConfig.Origin).
-			AddField("old-target-size-bytes", oldConfig.TargetSizeBytes).
+			AddField("old-max-vol-size-int64", oldConfig.MaxVolSize).
 			Infof("Volume config modify")
 	}
 }
@@ -161,7 +161,7 @@ func (config VolumeConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("origin", config.Origin).
-		AddField("target-size-bytes", config.TargetSizeBytes).
+		AddField("max-vol-size-int64", config.MaxVolSize).
 		Infof("Volume config delete")
 
 	base.DeleteLogObject(config.LogKey())
@@ -194,7 +194,7 @@ type DownloadOriginConfig struct {
 	ImageSha256      string
 	IsContainer      bool
 	AllowNonFreePort bool
-	MaxSizeBytes     uint64 // Upper limit
+	MaxDownSize      uint64 // Upper limit of download size
 
 	// XXX used?
 	FinalObjDir string // final Object Store
@@ -225,8 +225,8 @@ type VolumeStatus struct {
 	Origin         OriginType
 	DownloadOrigin *DownloadOriginStatus
 
-	TargetSizeBytes uint64 // Create or resize to this size
-	ReadOnly        bool
+	MaxVolSize uint64 // Create or resize to this size
+	ReadOnly   bool
 
 	WaitingForCerts bool
 
