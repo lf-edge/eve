@@ -1328,7 +1328,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Preserve = dc.Preserve
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
-		ds.Maxsizebytes = dc.Maxsizebytes
 		ds.Devtype = dc.Devtype
 		var xv string
 		if status.IsContainer {
