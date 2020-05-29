@@ -76,6 +76,8 @@ message Image {
   SignatureInfo siginfo = 5;
 
   string dsId = 6; // Datastore UUID
+  // sizeBytes indicates the maximum download size of an image.
+  // A value of 0 will indicate the unlimited download.
   int64 sizeBytes = 8;
 }
 
@@ -107,6 +109,7 @@ message Drive {
   DriveType drvtype = 8;
   Target target = 9;
   // Initial image need to be resized to this size.
+  // maxsizebytes indicates the maximum size of the volume.
   // A value of 0 will indicate that no resizing is required
   int64 maxsizebytes = 10;
 }
@@ -123,7 +126,9 @@ message ContentTree {
   // The sha is for the top blob of the ContentTree
   string sha256 = 5;
 
-  uint64 maxSizeBytes = 6; // used for capping resource consumption in EVE
+  // maxSizeBytes used for capping resource consumption in EVE.
+  // maxSizeBytes indicates the maximum download size of content tree.
+  uint64 maxSizeBytes = 6;
   SignatureInfo siginfo = 7;
   string displayName = 8; // Optional friendly name echo'ed in info
 }
@@ -166,7 +171,9 @@ message Volume {
   int64 generationCount = 4;
 
   // miscellaneous attributes of the Volume
-  int64 maxsizebytes = 5;  // Used for capping resource consumption
+  // maxSizeBytes Used for capping resource consumption in EVE.
+  // maxSizeBytes indicates the maximum size of the volume.
+  int64 maxsizebytes = 5;
   bool readonly = 6;       // Will be offered to tasks as read-only
   string displayName = 7;  // Optional friendly name echo'ed in info message
 }
