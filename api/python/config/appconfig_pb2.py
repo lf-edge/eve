@@ -24,7 +24,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x16\x63onfig/appconfig.proto\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\x80\x03\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\x12 \n\x07restart\x18\t \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x1e\n\x05purge\x18\n \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12 \n\ncipherData\x18\r \x01(\x0b\x32\x0c.CipherBlock\x12\x12\n\nvolumeRefs\x18\x0e \x03(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x16\x63onfig/appconfig.proto\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\x9f\x03\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\x12 \n\x07restart\x18\t \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x1e\n\x05purge\x18\n \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12 \n\ncipherData\x18\r \x01(\x0b\x32\x0c.CipherBlock\x12\x12\n\nvolumeRefs\x18\x0e \x03(\t\x12\x1d\n\x15\x63ollectStatsNetworkID\x18\x0f \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,config_dot_vm__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,])
 
@@ -167,6 +167,13 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='collectStatsNetworkID', full_name='AppInstanceConfig.collectStatsNetworkID', index=13,
+      number=15, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -180,7 +187,7 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=192,
-  serialized_end=576,
+  serialized_end=607,
 )
 
 _APPINSTANCECONFIG.fields_by_name['uuidandversion'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION

@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\026org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metrics'),
-  serialized_pb=_b('\n\x15metrics/metrics.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xaa\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\r\n\x05\x61lias\x18\x14 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xe5\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\nurlMetrics\x18\x06 \x03(\x0b\x32\x0f.urlcloudMetric\x12\x19\n\x11\x61uthVerifyFailure\x18\x07 \x01(\x04\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"I\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\"\xd7\x02\n\x0c\x64\x65viceMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\x12 \n\x18runtimeStorageOverheadMB\x18\t \x01(\x04\x12\x1b\n\x13\x61ppRunTimeStorageMB\x18\n \x01(\x04\x12-\n\x16systemServicesMemoryMB\x18\x0b \x01(\x0b\x32\r.memoryMetric\x12\x17\n\x03log\x18\x0c \x01(\x0b\x32\n.logMetric\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\xb9\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\x12\x1c\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0e.appDiskMetric\"\xb9\x04\n\tlogMetric\x12\x1b\n\x13numDeviceEventsSent\x18\x01 \x01(\x04\x12\x1c\n\x14numDeviceBundlesSent\x18\x02 \x01(\x04\x12\x18\n\x10numAppEventsSent\x18\x03 \x01(\x04\x12\x19\n\x11numAppBundlesSent\x18\x04 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x05 \x01(\x04\x12<\n\x18lastDeviceBundleSendTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15lastAppBundleSendTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1f\n\x17isLogProcessingDeferred\x18\x08 \x01(\x08\x12\x18\n\x10numTimesDeferred\x18\t \x01(\x04\x12\x34\n\x10lastLogDeferTime\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x13totalDeviceLogInput\x18\r \x01(\x04\x12\x18\n\x10totalAppLogInput\x18\x0e \x01(\x04\x12\x1c\n\x14numDeviceEventErrors\x18\x0f \x01(\x04\x12\x19\n\x11numAppEventErrors\x18\x10 \x01(\x04\x12%\n\x1dnumDeviceBundleProtoBytesSent\x18\x11 \x01(\x04\x12\"\n\x1anumAppBundleProtoBytesSent\x18\x12 \x01(\x04\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"R\n\tRlocStats\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x17\n\x05Stats\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x16SecondsSinceLastPacket\x18\x03 \x01(\x04\"J\n\x08\x45idStats\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\x0b\n\x03\x45ID\x18\x02 \x01(\t\x12$\n\x10RlocStatsEntries\x18\x03 \x03(\x0b\x32\n.RlocStats\"\xa6\x03\n\x0bZMetricLisp\x12\"\n\x0f\x45idStatsEntries\x18\x01 \x03(\x0b\x32\t.EidStats\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"~\n\x0bZMetricConn\x12\x18\n\x06InPkts\x18\x01 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x08.PktStat\"\x8a\x01\n\nZMetricVpn\x12\x1e\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07IkeStat\x18\x02 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1e\n\x08NatTStat\x18\x03 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07\x45spStat\x18\x04 \x01(\x0b\x32\x0c.ZMetricConn\"\r\n\x0bZMetricNone\"I\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x03\x65id\x18\x02 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"|\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x0e\n\x04rloc\x18\x02 \x01(\tH\x00\x12\x1e\n\x04link\x18\x05 \x03(\x0b\x32\x10.ZMetricFlowLink\x12\x17\n\x05stats\x18\n \x01(\x0b\x32\x08.PktStatB\n\n\x08\x45ndpoint\"\xa5\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0b\n\x03iid\x18\x04 \x01(\x04\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12\'\n\tlEndPoint\x18\n \x01(\x0b\x32\x14.ZMetricFlowEndPoint\x12\'\n\trEndPoint\x18\x0b \x03(\x0b\x32\x14.ZMetricFlowEndPoint\"\x88\x03\n\x11ZMetricLispGlobal\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"W\n\x0cNetworkStats\x12\x14\n\x0ctotalPackets\x18\x01 \x01(\x04\x12\x0e\n\x06\x65rrors\x18\x02 \x01(\x04\x12\r\n\x05\x64rops\x18\x03 \x01(\x04\x12\x12\n\ntotalBytes\x18\x04 \x01(\x04\"K\n\x13ZMetricNetworkStats\x12\x19\n\x02rx\x18\x01 \x01(\x0b\x32\r.NetworkStats\x12\x19\n\x02tx\x18\x02 \x01(\x0b\x32\r.NetworkStats\"\x98\x03\n\x0fZProbeNIMetrics\x12\x13\n\x0b\x63urrentIntf\x18\x01 \x01(\t\x12\x16\n\x0eremoteEndpoint\x18\x02 \x01(\t\x12\x10\n\x08pingIntv\x18\x03 \x01(\r\x12\x16\n\x0eremotePingIntv\x18\x04 \x01(\r\x12\x11\n\tuplinkCnt\x18\x05 \x01(\r\x12\x35\n\nintfMetric\x18\n \x03(\x0b\x32!.ZProbeNIMetrics.ZProbeIntfMetric\x1a\xe3\x01\n\x10ZProbeIntfMetric\x12\x10\n\x08intfName\x18\x0b \x01(\t\x12\x16\n\x0egatewayNexhtop\x18\x0c \x01(\t\x12\x11\n\tgatewayUP\x18\r \x01(\x08\x12\x14\n\x0cremoteHostUP\x18\x0e \x01(\x08\x12\x16\n\x0enexthopUpCount\x18\x0f \x01(\r\x12\x18\n\x10nexthopDownCount\x18\x10 \x01(\r\x12\x15\n\rremoteUpCount\x18\x11 \x01(\r\x12\x17\n\x0fremoteDownCount\x18\x12 \x01(\r\x12\x1a\n\x12remoteProbeLatency\x18\x13 \x01(\r\"\xad\x03\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x1f\n\x07network\x18\n \x03(\x0b\x32\x0e.networkMetric\x12%\n\x0bprobeMetric\x18\x0c \x01(\x0b\x32\x10.ZProbeNIMetrics\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1d\n\x05nonem\x18\x16 \x01(\x0b\x32\x0c.ZMetricNoneH\x00\x12\x1f\n\tflowStats\x18\x1e \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x1f \x01(\x0b\x32\x12.ZMetricLispGlobal\x12*\n\x0cnetworkStats\x18( \x01(\x0b\x32\x14.ZMetricNetworkStatsB\x11\n\x0fInstanceContent\"\xba\x01\n\rZMetricVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\x12\n\ntotalBytes\x18\x07 \x01(\x04\x12\x11\n\tusedBytes\x18\x08 \x01(\x04\x12\x11\n\tfreeBytes\x18\t \x01(\x04\"\xd3\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetric\x12#\n\x02nm\x18\x07 \x03(\x0b\x32\x17.ZMetricNetworkInstance\x12\x1a\n\x02vm\x18\x08 \x03(\x0b\x32\x0e.ZMetricVolumeB\x0f\n\rMetricContent*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42?\n\x16org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metricsb\x06proto3')
+  serialized_pb=_b('\n\x15metrics/metrics.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xaa\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\r\n\x05\x61lias\x18\x14 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xe5\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\nurlMetrics\x18\x06 \x03(\x0b\x32\x0f.urlcloudMetric\x12\x19\n\x11\x61uthVerifyFailure\x18\x07 \x01(\x04\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"^\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\x12\x13\n\x0bsystemTotal\x18\x06 \x01(\x04\"\xd7\x02\n\x0c\x64\x65viceMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\x12 \n\x18runtimeStorageOverheadMB\x18\t \x01(\x04\x12\x1b\n\x13\x61ppRunTimeStorageMB\x18\n \x01(\x04\x12-\n\x16systemServicesMemoryMB\x18\x0b \x01(\x0b\x32\r.memoryMetric\x12\x17\n\x03log\x18\x0c \x01(\x0b\x32\n.logMetric\"\xbd\x01\n\x0f\x63ontainerMetric\x12\x15\n\rcontainerName\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0c\n\x04PIDs\x18\x03 \x01(\r\x12\x1a\n\x03\x63pu\x18\x04 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x05 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x06 \x01(\x0b\x32\x0e.networkMetric\x12\x19\n\x04\x64isk\x18\x07 \x01(\x0b\x32\x0b.diskMetric\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\xde\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\x12\x1c\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0e.appDiskMetric\x12#\n\tcontainer\x18\x07 \x03(\x0b\x32\x10.containerMetric\"\xb9\x04\n\tlogMetric\x12\x1b\n\x13numDeviceEventsSent\x18\x01 \x01(\x04\x12\x1c\n\x14numDeviceBundlesSent\x18\x02 \x01(\x04\x12\x18\n\x10numAppEventsSent\x18\x03 \x01(\x04\x12\x19\n\x11numAppBundlesSent\x18\x04 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x05 \x01(\x04\x12<\n\x18lastDeviceBundleSendTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15lastAppBundleSendTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1f\n\x17isLogProcessingDeferred\x18\x08 \x01(\x08\x12\x18\n\x10numTimesDeferred\x18\t \x01(\x04\x12\x34\n\x10lastLogDeferTime\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x13totalDeviceLogInput\x18\r \x01(\x04\x12\x18\n\x10totalAppLogInput\x18\x0e \x01(\x04\x12\x1c\n\x14numDeviceEventErrors\x18\x0f \x01(\x04\x12\x19\n\x11numAppEventErrors\x18\x10 \x01(\x04\x12%\n\x1dnumDeviceBundleProtoBytesSent\x18\x11 \x01(\x04\x12\"\n\x1anumAppBundleProtoBytesSent\x18\x12 \x01(\x04\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"R\n\tRlocStats\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x17\n\x05Stats\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x16SecondsSinceLastPacket\x18\x03 \x01(\x04\"J\n\x08\x45idStats\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\x0b\n\x03\x45ID\x18\x02 \x01(\t\x12$\n\x10RlocStatsEntries\x18\x03 \x03(\x0b\x32\n.RlocStats\"\xa6\x03\n\x0bZMetricLisp\x12\"\n\x0f\x45idStatsEntries\x18\x01 \x03(\x0b\x32\t.EidStats\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"~\n\x0bZMetricConn\x12\x18\n\x06InPkts\x18\x01 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x08.PktStat\"\x8a\x01\n\nZMetricVpn\x12\x1e\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07IkeStat\x18\x02 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1e\n\x08NatTStat\x18\x03 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07\x45spStat\x18\x04 \x01(\x0b\x32\x0c.ZMetricConn\"\r\n\x0bZMetricNone\"I\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x03\x65id\x18\x02 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"|\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x0e\n\x04rloc\x18\x02 \x01(\tH\x00\x12\x1e\n\x04link\x18\x05 \x03(\x0b\x32\x10.ZMetricFlowLink\x12\x17\n\x05stats\x18\n \x01(\x0b\x32\x08.PktStatB\n\n\x08\x45ndpoint\"\xa5\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0b\n\x03iid\x18\x04 \x01(\x04\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12\'\n\tlEndPoint\x18\n \x01(\x0b\x32\x14.ZMetricFlowEndPoint\x12\'\n\trEndPoint\x18\x0b \x03(\x0b\x32\x14.ZMetricFlowEndPoint\"\x88\x03\n\x11ZMetricLispGlobal\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"W\n\x0cNetworkStats\x12\x14\n\x0ctotalPackets\x18\x01 \x01(\x04\x12\x0e\n\x06\x65rrors\x18\x02 \x01(\x04\x12\r\n\x05\x64rops\x18\x03 \x01(\x04\x12\x12\n\ntotalBytes\x18\x04 \x01(\x04\"K\n\x13ZMetricNetworkStats\x12\x19\n\x02rx\x18\x01 \x01(\x0b\x32\r.NetworkStats\x12\x19\n\x02tx\x18\x02 \x01(\x0b\x32\r.NetworkStats\"\x98\x03\n\x0fZProbeNIMetrics\x12\x13\n\x0b\x63urrentIntf\x18\x01 \x01(\t\x12\x16\n\x0eremoteEndpoint\x18\x02 \x01(\t\x12\x10\n\x08pingIntv\x18\x03 \x01(\r\x12\x16\n\x0eremotePingIntv\x18\x04 \x01(\r\x12\x11\n\tuplinkCnt\x18\x05 \x01(\r\x12\x35\n\nintfMetric\x18\n \x03(\x0b\x32!.ZProbeNIMetrics.ZProbeIntfMetric\x1a\xe3\x01\n\x10ZProbeIntfMetric\x12\x10\n\x08intfName\x18\x0b \x01(\t\x12\x16\n\x0egatewayNexhtop\x18\x0c \x01(\t\x12\x11\n\tgatewayUP\x18\r \x01(\x08\x12\x14\n\x0cremoteHostUP\x18\x0e \x01(\x08\x12\x16\n\x0enexthopUpCount\x18\x0f \x01(\r\x12\x18\n\x10nexthopDownCount\x18\x10 \x01(\r\x12\x15\n\rremoteUpCount\x18\x11 \x01(\r\x12\x17\n\x0fremoteDownCount\x18\x12 \x01(\r\x12\x1a\n\x12remoteProbeLatency\x18\x13 \x01(\r\"\xad\x03\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x1f\n\x07network\x18\n \x03(\x0b\x32\x0e.networkMetric\x12%\n\x0bprobeMetric\x18\x0c \x01(\x0b\x32\x10.ZProbeNIMetrics\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1d\n\x05nonem\x18\x16 \x01(\x0b\x32\x0c.ZMetricNoneH\x00\x12\x1f\n\tflowStats\x18\x1e \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x1f \x01(\x0b\x32\x12.ZMetricLispGlobal\x12*\n\x0cnetworkStats\x18( \x01(\x0b\x32\x14.ZMetricNetworkStatsB\x11\n\x0fInstanceContent\"\xba\x01\n\rZMetricVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\x12\n\ntotalBytes\x18\x07 \x01(\x04\x12\x11\n\tusedBytes\x18\x08 \x01(\x04\x12\x11\n\tfreeBytes\x18\t \x01(\x04\"\xd3\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetric\x12#\n\x02nm\x18\x07 \x03(\x0b\x32\x17.ZMetricNetworkInstance\x12\x1a\n\x02vm\x18\x08 \x03(\x0b\x32\x0e.ZMetricVolumeB\x0f\n\rMetricContent*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42?\n\x16org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metricsb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -46,8 +46,8 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=5583,
-  serialized_end=5633,
+  serialized_start=5833,
+  serialized_end=5883,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
@@ -77,8 +77,8 @@ _METRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=5635,
-  serialized_end=5737,
+  serialized_start=5885,
+  serialized_end=5987,
 )
 _sym_db.RegisterEnumDescriptor(_METRICITEMTYPE)
 
@@ -441,6 +441,13 @@ _APPCPUMETRIC = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='systemTotal', full_name='appCpuMetric.systemTotal', index=2,
+      number=6, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -454,7 +461,7 @@ _APPCPUMETRIC = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=856,
-  serialized_end=929,
+  serialized_end=950,
 )
 
 
@@ -547,8 +554,81 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=932,
-  serialized_end=1275,
+  serialized_start=953,
+  serialized_end=1296,
+)
+
+
+_CONTAINERMETRIC = _descriptor.Descriptor(
+  name='containerMetric',
+  full_name='containerMetric',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='containerName', full_name='containerMetric.containerName', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='status', full_name='containerMetric.status', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='PIDs', full_name='containerMetric.PIDs', index=2,
+      number=3, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='cpu', full_name='containerMetric.cpu', index=3,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='memory', full_name='containerMetric.memory', index=4,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='network', full_name='containerMetric.network', index=5,
+      number=6, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='disk', full_name='containerMetric.disk', index=6,
+      number=7, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1299,
+  serialized_end=1488,
 )
 
 
@@ -623,8 +703,8 @@ _METRICITEM = _descriptor.Descriptor(
       name='metricItemValue', full_name='MetricItem.metricItemValue',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=1278,
-  serialized_end=1465,
+  serialized_start=1491,
+  serialized_end=1678,
 )
 
 
@@ -710,8 +790,8 @@ _DISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1468,
-  serialized_end=1634,
+  serialized_start=1681,
+  serialized_end=1847,
 )
 
 
@@ -769,8 +849,8 @@ _APPDISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1636,
-  serialized_end=1733,
+  serialized_start=1849,
+  serialized_end=1946,
 )
 
 
@@ -830,6 +910,13 @@ _APPMETRIC = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='container', full_name='appMetric.container', index=7,
+      number=7, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -842,8 +929,8 @@ _APPMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1736,
-  serialized_end=1921,
+  serialized_start=1949,
+  serialized_end=2171,
 )
 
 
@@ -978,8 +1065,8 @@ _LOGMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1924,
-  serialized_end=2493,
+  serialized_start=2174,
+  serialized_end=2743,
 )
 
 
@@ -1016,8 +1103,8 @@ _PKTSTAT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2495,
-  serialized_end=2536,
+  serialized_start=2745,
+  serialized_end=2786,
 )
 
 
@@ -1061,8 +1148,8 @@ _RLOCSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2538,
-  serialized_end=2620,
+  serialized_start=2788,
+  serialized_end=2870,
 )
 
 
@@ -1106,8 +1193,8 @@ _EIDSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2622,
-  serialized_end=2696,
+  serialized_start=2872,
+  serialized_end=2946,
 )
 
 
@@ -1214,8 +1301,8 @@ _ZMETRICLISP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2699,
-  serialized_end=3121,
+  serialized_start=2949,
+  serialized_end=3371,
 )
 
 
@@ -1266,8 +1353,8 @@ _ZMETRICCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3123,
-  serialized_end=3249,
+  serialized_start=3373,
+  serialized_end=3499,
 )
 
 
@@ -1318,8 +1405,8 @@ _ZMETRICVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3252,
-  serialized_end=3390,
+  serialized_start=3502,
+  serialized_end=3640,
 )
 
 
@@ -1342,8 +1429,8 @@ _ZMETRICNONE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3392,
-  serialized_end=3405,
+  serialized_start=3642,
+  serialized_end=3655,
 )
 
 
@@ -1390,8 +1477,8 @@ _ZMETRICFLOWLINK = _descriptor.Descriptor(
       name='Link', full_name='ZMetricFlowLink.Link',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=3407,
-  serialized_end=3480,
+  serialized_start=3657,
+  serialized_end=3730,
 )
 
 
@@ -1445,8 +1532,8 @@ _ZMETRICFLOWENDPOINT = _descriptor.Descriptor(
       name='Endpoint', full_name='ZMetricFlowEndPoint.Endpoint',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=3482,
-  serialized_end=3606,
+  serialized_start=3732,
+  serialized_end=3856,
 )
 
 
@@ -1518,8 +1605,8 @@ _ZMETRICFLOW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3609,
-  serialized_end=3774,
+  serialized_start=3859,
+  serialized_end=4024,
 )
 
 
@@ -1619,8 +1706,8 @@ _ZMETRICLISPGLOBAL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3777,
-  serialized_end=4169,
+  serialized_start=4027,
+  serialized_end=4419,
 )
 
 
@@ -1671,8 +1758,8 @@ _NETWORKSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4171,
-  serialized_end=4258,
+  serialized_start=4421,
+  serialized_end=4508,
 )
 
 
@@ -1709,8 +1796,8 @@ _ZMETRICNETWORKSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4260,
-  serialized_end=4335,
+  serialized_start=4510,
+  serialized_end=4585,
 )
 
 
@@ -1796,8 +1883,8 @@ _ZPROBENIMETRICS_ZPROBEINTFMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4519,
-  serialized_end=4746,
+  serialized_start=4769,
+  serialized_end=4996,
 )
 
 _ZPROBENIMETRICS = _descriptor.Descriptor(
@@ -1861,8 +1948,8 @@ _ZPROBENIMETRICS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4338,
-  serialized_end=4746,
+  serialized_start=4588,
+  serialized_end=4996,
 )
 
 
@@ -1979,8 +2066,8 @@ _ZMETRICNETWORKINSTANCE = _descriptor.Descriptor(
       name='InstanceContent', full_name='ZMetricNetworkInstance.InstanceContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=4749,
-  serialized_end=5178,
+  serialized_start=4999,
+  serialized_end=5428,
 )
 
 
@@ -2066,8 +2153,8 @@ _ZMETRICVOLUME = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5181,
-  serialized_end=5367,
+  serialized_start=5431,
+  serialized_end=5617,
 )
 
 
@@ -2135,8 +2222,8 @@ _ZMETRICMSG = _descriptor.Descriptor(
       name='MetricContent', full_name='ZMetricMsg.MetricContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=5370,
-  serialized_end=5581,
+  serialized_start=5620,
+  serialized_end=5831,
 )
 
 _ZEDCLOUDMETRIC.fields_by_name['lastFailure'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
@@ -2151,6 +2238,10 @@ _DEVICEMETRIC.fields_by_name['cpuMetric'].message_type = _APPCPUMETRIC
 _DEVICEMETRIC.fields_by_name['metricItems'].message_type = _METRICITEM
 _DEVICEMETRIC.fields_by_name['systemServicesMemoryMB'].message_type = _MEMORYMETRIC
 _DEVICEMETRIC.fields_by_name['log'].message_type = _LOGMETRIC
+_CONTAINERMETRIC.fields_by_name['cpu'].message_type = _APPCPUMETRIC
+_CONTAINERMETRIC.fields_by_name['memory'].message_type = _MEMORYMETRIC
+_CONTAINERMETRIC.fields_by_name['network'].message_type = _NETWORKMETRIC
+_CONTAINERMETRIC.fields_by_name['disk'].message_type = _DISKMETRIC
 _METRICITEM.fields_by_name['type'].enum_type = _METRICITEMTYPE
 _METRICITEM.oneofs_by_name['metricItemValue'].fields.append(
   _METRICITEM.fields_by_name['boolValue'])
@@ -2171,6 +2262,7 @@ _APPMETRIC.fields_by_name['cpu'].message_type = _APPCPUMETRIC
 _APPMETRIC.fields_by_name['memory'].message_type = _MEMORYMETRIC
 _APPMETRIC.fields_by_name['network'].message_type = _NETWORKMETRIC
 _APPMETRIC.fields_by_name['disk'].message_type = _APPDISKMETRIC
+_APPMETRIC.fields_by_name['container'].message_type = _CONTAINERMETRIC
 _LOGMETRIC.fields_by_name['lastDeviceBundleSendTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _LOGMETRIC.fields_by_name['lastAppBundleSendTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _LOGMETRIC.fields_by_name['lastLogDeferTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
@@ -2258,6 +2350,7 @@ DESCRIPTOR.message_types_by_name['zedcloudMetric'] = _ZEDCLOUDMETRIC
 DESCRIPTOR.message_types_by_name['urlcloudMetric'] = _URLCLOUDMETRIC
 DESCRIPTOR.message_types_by_name['appCpuMetric'] = _APPCPUMETRIC
 DESCRIPTOR.message_types_by_name['deviceMetric'] = _DEVICEMETRIC
+DESCRIPTOR.message_types_by_name['containerMetric'] = _CONTAINERMETRIC
 DESCRIPTOR.message_types_by_name['MetricItem'] = _METRICITEM
 DESCRIPTOR.message_types_by_name['diskMetric'] = _DISKMETRIC
 DESCRIPTOR.message_types_by_name['appDiskMetric'] = _APPDISKMETRIC
@@ -2325,6 +2418,13 @@ deviceMetric = _reflection.GeneratedProtocolMessageType('deviceMetric', (_messag
   # @@protoc_insertion_point(class_scope:deviceMetric)
   ))
 _sym_db.RegisterMessage(deviceMetric)
+
+containerMetric = _reflection.GeneratedProtocolMessageType('containerMetric', (_message.Message,), dict(
+  DESCRIPTOR = _CONTAINERMETRIC,
+  __module__ = 'metrics.metrics_pb2'
+  # @@protoc_insertion_point(class_scope:containerMetric)
+  ))
+_sym_db.RegisterMessage(containerMetric)
 
 MetricItem = _reflection.GeneratedProtocolMessageType('MetricItem', (_message.Message,), dict(
   DESCRIPTOR = _METRICITEM,

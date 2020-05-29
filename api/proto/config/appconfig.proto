@@ -86,4 +86,9 @@ message AppInstanceConfig {
   // container in the order they are listed, e.g., the first VM image
   // will be the root disk.
   repeated string volumeRefs = 14;
+
+  // the UUID of the NetworkAdapter which App Container stats collection
+  // uses. If the UUID is valid, the NetworkAdapter IP address is statically
+  // configured from the zedcloud.
+  string collectStatsNetworkID = 15;
 }
