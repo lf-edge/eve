@@ -108,9 +108,9 @@ message Drive {
   bool preserve = 6; // XXX deprecate; EVE always preserves unless there is a purge
   DriveType drvtype = 8;
   Target target = 9;
-  // Initial image need to be resized to this size.
   // maxsizebytes indicates the maximum size of the volume.
-  // A value of 0 will indicate that no resizing is required
+  // Initial image size will be resized to the maxsizebytes
+  // iff maxsizebytes is greater than the image size.
   int64 maxsizebytes = 10;
 }
 
