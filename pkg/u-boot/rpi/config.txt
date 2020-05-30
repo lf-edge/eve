@@ -25,11 +25,7 @@ avoid_warnings=1
 
 # This overlay fixes divergences between the RPi device tree and what
 # upstream provides
-dtoverlay=upstream
-dtoverlay=disable-vc4
-dtoverlay=rpi4-cma
-dtoverlay=rpi4-thermal
-dtoverlay=rpi4-gpio-names
+dtoverlay=pi4-64-xen
 
 # overscan is only needed on old TV sets and if analog gear is in the chain (e.g. DPI)
 disable_overscan=1
