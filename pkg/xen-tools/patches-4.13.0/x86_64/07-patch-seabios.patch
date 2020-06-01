@@ -4,7 +4,7 @@
  seabios-dir:
  	GIT=$(GIT) $(XEN_ROOT)/scripts/git-checkout.sh $(SEABIOS_UPSTREAM_URL) $(SEABIOS_UPSTREAM_REVISION) seabios-dir
  	cp seabios-config seabios-dir/.config;
-+	cd seabios-dir && patch -p1 < /patches/patch.seabios
++	cd seabios-dir && patch -p1 < /patches/x86_64/patch.seabios
  	$(MAKE) -C seabios-dir olddefconfig CC=$(SEABIOSCC) LD=$(SEABIOSLD)
  	rm -f seabios-dir/.version
  	echo '$(SEABIOS_UPSTREAM_REVISION)' > seabios-dir/.version
