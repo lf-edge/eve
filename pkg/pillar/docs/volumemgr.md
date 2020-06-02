@@ -48,7 +48,6 @@ Both VolumeStatus and VolumeConfig use the agentScope mechanism to keep the base
 
 Volume Manager in turn requests work from downloader and verifier. This consists of a set of objects (all using the agentScope mechanism):
 
-- PersistImageConfig is published by verifier for the verified images, including those found on disk after a device reboot.
 - PersistImageStatus is published by volumemgr to track reference counts on the verified images, including a handshake when the verifier wishes to garbage collection unused images.
 - DownloaderConfig is published by volumemgr and subscribed to by downloader. This specifies the desire to find a downloaded blob for a particular object.
 - DownloaderStatus is publishes by downloader to capture progress, errors, and completion of downloading blobs.
@@ -80,9 +79,7 @@ When volumemgr starts it finds existing volumes on disk and publishes those (for
 
 When volumemgr gets a request for a volume, it first looks whether it matches an existing volume. That might exist in the above "unknown" agentScope collection, in which case it is promoted to the agentScope for the particular requester. In this case its work is complete.
 
-Otherwise (for the `OriginTypeDownload`), volumemgr looks for any existing already verified blob in `VerifyImageStatus` and
-`PersistImageStatus`. If one is found, it ensures that there is a corresponding `VerifyImageConfig` and `PersistImageConfig`
-to retain a reference count on the verified image.
+Otherwise (for the `OriginTypeDownload`), the volumemgr looks for any existing already verified blob in `VerifyImageStatus` and `PersistImageStatus`. If one is found, it ensures that there is a corresponding `VerifyImageConfig` and/or `PersistImageStatus` to retain a reference count on the verified image.
 
 Once there is a `VerifyImageStatus` indicating a successful verification, it is used to construct the volume.
 
@@ -137,7 +134,7 @@ For a container this uses containerd to prepare the container for use.
 
 ### Destroying volumes
 
-When zedmanager or baseosmgr deletes a VolumeConfig, then volumemgr will destroy the volume (and delete the VolumeStatus). This includes dropping any reference counts it has on a DownloaderConfig, VerifyImageConfig, and/or PersistImageConfig. Finally any Read/Write volume is deleted.
+When zedmanager or baseosmgr deletes a VolumeConfig, then volumemgr will destroy the volume (and delete the VolumeStatus). This includes dropping any reference counts it has on a DownloaderConfig, VerifyImageConfig, and/or PersistImageStatus. Finally any Read/Write volume is deleted.
 
 ### Garbage collection
 
