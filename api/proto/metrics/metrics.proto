@@ -75,7 +75,8 @@ message appCpuMetric {
   // deprecated = 2;
   // deprecated = 3;
   google.protobuf.Timestamp upTime = 4;
-  uint64 total = 5;                   // cpu total in secs.
+  uint64 total = 5;                   // cpu total in secs. In docker stats, it's the container user usage
+  uint64 systemTotal = 6;             // docker host system cpu total in secs. inc user, system and idle
 }
 
 message deviceMetric {
@@ -91,6 +92,16 @@ message deviceMetric {
   uint64 appRunTimeStorageMB = 10;         // In MB
   memoryMetric systemServicesMemoryMB = 11;  // In MB
   logMetric log = 12;
+}
+
+message appContainerMetric {
+  string appContainerName = 1; // the unique key for the container in a VM or IoT Edge
+  string status = 2;           // Status string e.g. Uptime 3 hours
+  uint32 PIDs = 3;             // Number of PIDs inside the container
+  appCpuMetric cpu = 4;        // container cpu usage
+  memoryMetric memory = 5;     // container memory usage, will fill 'usedMem', 'availMem' initially
+  networkMetric network = 6;   // container network usage, will fill 'txBytes', 'rxBytes' initially
+  diskMetric disk = 7;         // container Block IO, will fill 'readBytes', 'writeBytes' initially
 }
 
 enum MetricItemType {
@@ -143,6 +154,7 @@ message appMetric {
   memoryMetric memory = 4;
   repeated networkMetric network = 5;
   repeated appDiskMetric disk = 6;
+  repeated appContainerMetric container = 7;
 }
 
 // We track device and app logs separately with these counters.
