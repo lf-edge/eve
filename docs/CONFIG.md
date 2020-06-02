@@ -176,21 +176,15 @@ zcli edge-node create.
 
 ### Adding configuration to the install image
 
-It is possible to provide an initial DevicePortConfig and/or GlobalConfig
-during the build of the installation medium.
+It is possible to provide an initial DevicePortConfig during the build of the installation medium.
 
-The former can be used to specify proxies and static IP configuration for
+It can be used to specify proxies and static IP configuration for
 the ports, if that is necessary to have the device connect to the controller.
 But a DevicePortConfig can also be added to a USB stick in which case it
 will be copied from the USB stick on boot. See [tools/makeusbconf.sh](../tools/makeusbconf.sh)
 
-The latter can be used to specify the initial timers and ssh/usb behavior
-which will be in place until the device connects to the controller and gets its
-configuration from there. The variables are documented in
-[runtime configuration properties](CONFIG-PROPERTIES.md)
-
-To add either during the build, in EVE's conf directory create a
-subdirectory called DevicePortConfig or GlobalConfig, respectively.
+To add it during the build, in EVE's conf directory create a
+subdirectory called DevicePortConfig.
 Then add the valid json file named as global.json in that directory.
 Finally:
 make config.img; make installer.raw

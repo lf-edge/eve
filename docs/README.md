@@ -192,8 +192,7 @@ implementation would simply be able to consume exactly the same protobuf encoded
 binary blob that it receives from the Controller, currently we still have to
 rely on an ad-hoc collection of configuration files that serve the same purpose.
 We expect these configuration files to go away relatively quickly, but for now
-EVE is still stuck with at least *DevicePortConfig/global.json* and
-*GlobalConfig/global.json* and they are documented in [legacy configuration](CONFIG.md).
+EVE is still stuck with at least *DevicePortConfig/global.json* and it is documented in [legacy configuration](CONFIG.md).
 See [the following FAQ entry](FAQ.md) for how to manage both of these
 legacy files.
 
@@ -225,11 +224,6 @@ always start with debug.*microservice*.
 
 You can find a complete list of generic and microservices specific configuration
 properties in [configuration properties table](CONFIG-PROPERTIES.md).
-
-It goes without saying that runtime configuration properties can also be
-delivered out-of-band just like any other part of the EVE's configuration
-object. While in transition from legacy configuration files, you will have
-to use [GlobalConfig/global.json](FAQ.md) to make them available to EVE.
 
 ## Installing EVE on Edge Nodes
 
