@@ -68,19 +68,35 @@ Given the complexity of designing such a protocol for EVE (especially solving th
 
 If there's an attempted modification of either controller's address (stored in /config/server) and controller's Root CA (/config/root-certificate.pem) Edge Node should get disconnected from the controller and should be forced to do a hardware-assisted clear operation and start all over again.
 
-On systems where TPM is available, the idea is to change TPM authentication policy from password to HMAC based authentication (TPM2_PolicyAuthValue), with hash calculated from the Root CA.  When device key is created, HMAC from Root CA will be passed, which is to be honored for every TPM command related to the key entity. i.e Each time Sign command is passed to TPM, the Root CA hash needs to be the same. If someone changes Root CA, HMAC will not match, and the device will be disconnected from zedCloud, forcing the user to do a TPM clear and start all over again.
+On systems where TPM is available, the idea is to change TPM authentication policy from password to HMAC based authentication (TPM2_PolicyAuthValue), with hash calculated from the Root CA.  When device key is created, HMAC from Root CA will be passed, which is to be honored for every TPM command related to the key entity. i.e Each time Sign command is passed to TPM, the Root CA hash needs to be the same. If someone changes Root CA, HMAC will not match, and the device will be disconnected from the controller, forcing the user to do a TPM clear and start all over again.
 
 ### EVE trusting side-channel configuration
 
-[TBD](https://github.com/lf-edge/eve/issues/233)
+The use of [object signing](../api/OBJECT-SIGNING.md) is designed to enable delivering device configuration using side channels such as USB sticks. But the details of timestamp checks to avoid replay attacks has yet to be designed and implemented. Those aspects are [TBD](https://github.com/lf-edge/eve/issues/233)
+
+### Identity of EVE's instance
+
+Each device running EVE has a unique device certificate. Further, if the device has a TPM, the device private key is generated and stored in the TPM to prevent cloning the device identity.
+
+If the device does not have a TPM/TEE for secure key generation and storage then the device certificate and private key are stored in a file in the /config partition, hence the confidentiality of the private key depends on the physical protection of the storage on the device.
+
+The device certificates are currently self-signed by the device with a long lifetime, since instead of certificate revocation for untrusted devices the controller can explicitly mark them as untrustworthy (the device certificate is only used to communicate to the controller).
+
+But in the future EVE can send Certificate Signing Requests over the EVE API to have the controller ask some backend CA to sign the device certificates in the cases where that facilitates managing the devices.
 
 ### Controller trusting EVE
 
-[TBD](https://github.com/lf-edge/eve/issues/232)
+As a result of on-boarding a device, the controller is told to trust the device with a particular device certificate (and also that it is "owned" by some particular user of the controller).
+
+Separately measured boot with remote attestation will ensure that the device is running the expected versions and hashes of firmware and of the EVE software.
 
 #### Initial on-boarding
 
-#### Identity of EVE's instance
+There are several ways in which devices running EVE can be on-boarded to a controller. The details depend on the support available in the location, e.g., a factory, where the EVE software is installed on the device.
+
+One approach is that EVE is booted and the TPM is used to generate the device certificate, and that device certificate is securely delivered from the factory to the intended end user of the device. That end user can then upload the device certificate to the controller to claim the device. (A controller would presumably check for attempts for more than one party claiming ownership of the same device hence so that a disclosed device certificate can be detected.)
+
+Another approach is that an onboarding token (in the form of a certificate and private key) is added to the EVE image, but the factory does not need to boot EVE and upload information after installing the image. When the device boots EVE the first time at the installation site it will present the onboarding certificate and its serial numbers using a register API call to the controller, and the user can scan and upload the serial number to the controller. This has weaker security especially if serial numbers can be guessed by an attacker having an account on the same controller, but different devices can be given different onboarding tokens to make such attacks more difficult.
 
 ## Encrypted Data Store
 
@@ -91,3 +107,11 @@ One big driving factor for this is protecting Edge Containers and the Data Volum
 For more details, please consider [Encrypting Sensitive Information at Rest at the Edge](https://wiki.lfedge.org/display/EVE/Encrypting+Sensitive+Information+at+Rest+at+the+Edge) design proposal.
 
 ## Secure Overlay Network
+
+EVE provides a secure overlay network for ECOS for cases when east-west communication is needed between ECOS. This is built using [LISP](https://tools.ietf.org/html/rfc6830) with a strong security foundation. Each ECO is attached to a mesh network instance which describes common parameters for the overlay network such as the location of the LISP RTR.
+
+Each ECO has a unique certificate and private key generated when the ECO is deployed, and the LISP endpoint identifier contains a hash of that public key. This enables secure authenticated registrations with the LISP map server since the device can prove that it owns the private key whose hash is in the EID as part of the LISP register message.
+
+Two ECOs communicating using the overlay will get an secure channel since LISP will perform a kay exchange using the pair of public keys (which are bound to the EIDs per above).
+
+In addition, the LISP map server can provide ability to limit access to the mappings for certain EIDs based on the EID which is trying to look them up.
