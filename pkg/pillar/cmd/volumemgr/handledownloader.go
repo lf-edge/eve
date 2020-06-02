@@ -46,7 +46,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeSta
 	// where should the final downloaded file be?
 	locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.VolumeID.String(), path.Base(name))
 	// try to reserve storage, must be released on error
-	size := status.DownloadOrigin.MaxSizeBytes // XXX should this be MaxSize
+	size := status.DownloadOrigin.MaxDownSize
 
 	n := types.DownloaderConfig{
 		ImageID:     status.VolumeID,

@@ -531,6 +531,9 @@ func doInstallStorageStatus(ctx *zedmanagerContext,
 		ss.State = vs.State
 		changed = true
 	}
+	if ss.MaxDownSize != vs.DownloadOrigin.MaxDownSize {
+		ss.MaxDownSize = vs.DownloadOrigin.MaxDownSize
+	}
 	if vs.Progress != ss.Progress {
 		ss.Progress = vs.Progress
 		changed = true

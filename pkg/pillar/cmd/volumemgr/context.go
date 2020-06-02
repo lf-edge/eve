@@ -50,16 +50,6 @@ func (ctx *volumemgrContext) subscription(topicType interface{}, objType string)
 			log.Fatalf("subscription: Unknown ObjType %s for %T",
 				objType, typeName)
 		}
-	case types.PersistImageStatus:
-		switch objType {
-		case types.AppImgObj:
-			sub = ctx.subAppImgPersistStatus
-		case types.BaseOsObj:
-			sub = ctx.subBaseOsPersistStatus
-		default:
-			log.Fatalf("subscription: Unknown ObjType %s for %T",
-				objType, typeName)
-		}
 	default:
 		log.Fatalf("subscription: Unknown typeName %T",
 			typeName)
@@ -108,12 +98,12 @@ func (ctx *volumemgrContext) publication(topicType interface{}, objType string) 
 			log.Fatalf("publication: Unknown ObjType %s for %T",
 				objType, typeName)
 		}
-	case types.PersistImageConfig:
+	case types.PersistImageStatus:
 		switch objType {
 		case types.AppImgObj:
-			pub = ctx.pubAppImgPersistConfig
+			pub = ctx.pubAppImgPersistStatus
 		case types.BaseOsObj:
-			pub = ctx.pubBaseOsPersistConfig
+			pub = ctx.pubBaseOsPersistStatus
 		default:
 			log.Fatalf("publication: Unknown ObjType %s for %T",
 				objType, typeName)

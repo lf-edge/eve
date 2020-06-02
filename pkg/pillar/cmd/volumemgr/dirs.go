@@ -13,6 +13,14 @@ var (
 
 func initializeDirs() {
 
+	// first the certs directory
+	if _, err := os.Stat(types.CertificateDirname); err != nil {
+		log.Debugf("initializeDirs: Create %s", types.CertificateDirname)
+		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	// Remove any files which didn't make it to the verifier.
 	// XXX space calculation doesn't take into account files in verifier
 	// XXX get space report from verifier??

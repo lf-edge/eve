@@ -67,7 +67,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLoca
 		return created, filelocation, errors.New(errStr)
 	}
 	// Do we need to expand disk?
-	err := maybeResizeDisk(filelocation, status.TargetSizeBytes)
+	err := maybeResizeDisk(filelocation, status.MaxVolSize)
 	if err != nil {
 		log.Error(err)
 		return created, filelocation, err

@@ -341,7 +341,7 @@ type StorageConfig struct {
 	PurgeCounter     uint32
 	Name             string   // XXX Do depend on URL for clobber avoidance?
 	NameIsURL        bool     // If not we form URL based on datastore info
-	Size             uint64   // In bytes
+	MaxDownSize      uint64   // Maximum download size (In bytes)
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
@@ -350,10 +350,10 @@ type StorageConfig struct {
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Maxsizebytes uint64         // Resize filesystem to this size if set
-	Format       zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype      string         // Default ""; could be e.g. "cdrom"
-	Target       string         // Default "" is interpreted as "disk"
+	MaxVolSize uint64         // Resize filesystem to this size if set (In bytes)
+	Format     zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype    string         // Default ""; could be e.g. "cdrom"
+	Target     string         // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -368,13 +368,13 @@ type StorageStatus struct {
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
 	NameIsURL          bool     // If not we form URL based on datastore info
-	Size               uint64   // In bytes
+	MaxDownSize        uint64   // Maximum download size (In bytes)
 	CertificateChain   []string //name of intermediate certificates
 	ImageSignature     []byte   //signature of image
 	SignatureKey       string   //certificate containing public key
 	ReadOnly           bool
 	Preserve           bool
-	Maxsizebytes       uint64 // Resize filesystem to this size if set
+	MaxVolSize         uint64 // Resize filesystem to this size if set (In bytes)
 	Format             zconfig.Format
 	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
@@ -403,13 +403,13 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.Name = sc.Name
 	ss.ImageSha256 = sc.ImageSha256
 	ss.NameIsURL = sc.NameIsURL
-	ss.Size = sc.Size
+	ss.MaxDownSize = sc.MaxDownSize
 	ss.CertificateChain = sc.CertificateChain
 	ss.ImageSignature = sc.ImageSignature
 	ss.SignatureKey = sc.SignatureKey
 	ss.ReadOnly = sc.ReadOnly
 	ss.Preserve = sc.Preserve
-	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.MaxVolSize = sc.MaxVolSize
 	ss.Format = sc.Format
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target

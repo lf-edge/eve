@@ -144,7 +144,10 @@ func verifyAuthSig(signature []byte, cert *x509.Certificate, hash []byte) error 
 		log.Debugf("verifyAuthSig: verify rsa ok\n")
 	case *ecdsa.PublicKey:
 
-		sigHalflen := len(signature) / 2
+		sigHalflen, err := ecdsakeyBytes(pub)
+		if err != nil {
+			return err
+		}
 		rbytes := signature[0:sigHalflen]
 		sbytes := signature[sigHalflen:]
 		r := new(big.Int)
@@ -288,8 +291,10 @@ func signAuthData(sigdata []byte, cert tls.Certificate) ([]byte, error) {
 		}
 		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
-		sigres = r.Bytes()
-		sigres = append(sigres, s.Bytes()...)
+		sigres, err = RSCombinedBytes(r.Bytes(), s.Bytes(), key.PublicKey.(*ecdsa.PublicKey))
+		if err != nil {
+			return nil, err
+		}
 		log.Debugf("signAuthData: tpm sigres (len %d): %x\n", len(sigres), sigres)
 	case *ecdsa.PrivateKey:
 		r, s, err := ecdsa.Sign(rand.Reader, key, hash)
@@ -300,12 +305,52 @@ func signAuthData(sigdata []byte, cert tls.Certificate) ([]byte, error) {
 		}
 		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
-		sigres = r.Bytes()
-		sigres = append(sigres, s.Bytes()...)
+		sigres, err = RSCombinedBytes(r.Bytes(), s.Bytes(), &key.PublicKey)
+		if err != nil {
+			return nil, err
+		}
 		log.Debugf("signAuthData: ecdas sigres (len %d): %x\n",
 			len(sigres), sigres)
 	}
 	return sigres, nil
+}
+
+// RSCombinedBytes - combine r & s into fixed length bytes
+func RSCombinedBytes(rBytes, sBytes []byte, pubKey *ecdsa.PublicKey) ([]byte, error) {
+	keySize, err := ecdsakeyBytes(pubKey)
+	if err != nil {
+		log.Errorf("RSCombinedBytes: ecdsa key bytes error %v", err)
+		return nil, err
+	}
+	rsize := len(rBytes)
+	ssize := len(sBytes)
+	if rsize > keySize || ssize > keySize {
+		errStr := fmt.Sprintf("RSCombinedBytes: error. keySize %d, rSize %d, sSize %d", keySize, rsize, ssize)
+		return nil, errors.New(errStr)
+	}
+
+	// basically the size is 32 bytes. the r and s needs to be both left padded to two 32 bytes slice
+	// into a single signature buffer
+	buffer := make([]byte, keySize*2)
+	startPos := keySize - rsize
+	copy(buffer[startPos:], rBytes)
+	startPos = keySize*2 - ssize
+	copy(buffer[startPos:], sBytes)
+	return buffer[:], nil
+}
+
+func ecdsakeyBytes(pubKey *ecdsa.PublicKey) (int, error) {
+	curveBits := pubKey.Curve.Params().BitSize
+	keyBytes := curveBits / 8
+	if curveBits%8 > 0 {
+		keyBytes++
+	}
+
+	if keyBytes%8 > 0 {
+		errStr := fmt.Sprintf("ecdsa pubkey size error, curveBits %d", curveBits)
+		return 0, errors.New(errStr)
+	}
+	return keyBytes, nil
 }
 
 // ComputeSha - Compute sha256 on data

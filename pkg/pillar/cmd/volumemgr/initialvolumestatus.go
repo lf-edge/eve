@@ -9,9 +9,9 @@ package volumemgr
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -117,7 +117,6 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			log.Debugf("populateInitialVolumeStatus: directory %s ignored", filelocation)
 			continue
 		}
-		var size int64
 		info, err := os.Stat(filelocation)
 		if err != nil {
 			log.Errorf("Error in getting file information. Err: %s. "+
@@ -125,14 +124,10 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			deleteFile(filelocation)
 			continue
 		}
-		size = info.Size()
-		if isContainer {
-			size, _ = dirSize(filelocation)
-		}
 		_, sha256, appUUIDStr, purgeCounter := parseAppRwVolumeName(filelocation, isContainer)
 		log.Infof("populateInitialVolumeStatus: Processing sha256: %s, AppUuid: %s, "+
-			"%d Mbytes, fileLocation:%s",
-			sha256, appUUIDStr, size/(1024*1024), filelocation)
+			"fileLocation:%s",
+			sha256, appUUIDStr, filelocation)
 
 		appUUID, err := uuid.FromString(appUUIDStr)
 		if err != nil {
@@ -144,20 +139,18 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 		}
 
 		status := types.VolumeStatus{
-			BlobSha256:   sha256,
-			AppInstID:    appUUID,
-			VolumeID:     nilUUID, // XXX known for other origins?
-			PurgeCounter: purgeCounter,
-			DisplayName:  "Found in /persist/img",
-			FileLocation: filelocation,
-			State:        types.CREATED_VOLUME,
-			// XXX Is this the correct size? vs. qcow2 size?
-			TargetSizeBytes: uint64(size),
-			ObjType:         types.UnknownObj,
-			VolumeCreated:   true,
-			RefCount:        0,
-			LastUse:         info.ModTime(),
-			PreReboot:       info.ModTime().Before(deviceBootTime),
+			BlobSha256:    sha256,
+			AppInstID:     appUUID,
+			VolumeID:      nilUUID, // XXX known for other origins?
+			PurgeCounter:  purgeCounter,
+			DisplayName:   "Found in /persist/img",
+			FileLocation:  filelocation,
+			State:         types.CREATED_VOLUME,
+			ObjType:       types.UnknownObj,
+			VolumeCreated: true,
+			RefCount:      0,
+			LastUse:       info.ModTime(),
+			PreReboot:     info.ModTime().Before(deviceBootTime),
 		}
 
 		publishVolumeStatus(ctx, &status)
@@ -251,6 +244,58 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 	}
 }
 
+// If an object has a zero RefCount and dropped to zero more than
+// downloadGCTime ago, then we delete the Status. That will result in the
+// verifier deleting the verified file
+// XXX Note that this runs concurrently with the handler.
+func gcVerifiedObjects(ctx *volumemgrContext) {
+	log.Debugf("gcVerifiedObjects()")
+	publications := []pubsub.Publication{
+		ctx.pubAppImgPersistStatus,
+		ctx.pubBaseOsPersistStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.PersistImageStatus)
+			if status.RefCount != 0 {
+				log.Debugf("gcVerifiedObjects: skipping RefCount %d: %s",
+					status.RefCount, status.Key())
+				continue
+			}
+			timePassed := time.Since(status.LastUse)
+			if timePassed < downloadGCTime {
+				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds",
+					status.Key(),
+					(timePassed-downloadGCTime)/time.Second)
+				continue
+			}
+			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v",
+				status.Key(), status.LastUse, time.Now())
+			unpublishPersistImageStatus(ctx, &status)
+		}
+	}
+}
+
+// gc timer just started, reset the LastUse timestamp to now if the refcount is zero
+func gcResetPersistObjectLastUse(ctx *volumemgrContext) {
+	publications := []pubsub.Publication{
+		ctx.pubAppImgPersistStatus,
+		ctx.pubBaseOsPersistStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.PersistImageStatus)
+			if status.RefCount == 0 {
+				status.LastUse = time.Now()
+				log.Infof("gcResetPersistObjectLastUse: reset %v LastUse to now", status.Key())
+				publishPersistImageStatus(ctx, &status)
+			}
+		}
+	}
+}
+
 // gc timer just started, reset the LastUse timestamp
 func gcResetObjectsLastUse(ctx *volumemgrContext, dirName string) {
 
@@ -273,18 +318,4 @@ func deleteFile(filelocation string) {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())
 	}
-}
-
-func dirSize(path string) (int64, error) {
-	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return err
-	})
-	return size, err
 }

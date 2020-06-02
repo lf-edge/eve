@@ -110,11 +110,12 @@ func TestCreateDomConfig(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  accel = "kvm"
   usb = "off"
   dump-guest-core = "off"
+  accel = "kvm"
   vmport = "off"
   kernel-irqchip = "on"
+  firmware = "/usr/lib/xen/boot/ovmf.bin"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
   append = "init=/bin/sh"
@@ -362,9 +363,9 @@ func TestCreateDomConfig(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  accel = "kvm"
   usb = "off"
   dump-guest-core = "off"
+  accel = "kvm"
   vmport = "off"
   kernel-irqchip = "on"
   firmware = "/usr/lib/xen/boot/ovmf.bin"
@@ -615,9 +616,10 @@ func TestCreateDomConfig(t *testing.T) {
 
 [machine]
   type = "virt"
-  accel = "kvm"
   usb = "off"
   dump-guest-core = "off"
+  accel = "kvm:tcg"
+  gic_version = "host"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
   append = "init=/bin/sh"

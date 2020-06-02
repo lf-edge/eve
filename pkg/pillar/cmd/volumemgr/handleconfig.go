@@ -8,6 +8,7 @@ package volumemgr
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -79,6 +80,13 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 				log.Error(errStr)
 				initStatus.SetError(errStr, time.Now())
 			} else {
+				info, err := os.Stat(ociFilename)
+				if err != nil {
+					errStr := fmt.Sprintf("Calculating size of container image failed: %v", err)
+					log.Error(errStr)
+				} else {
+					dos.MaxDownSize = uint64(info.Size())
+				}
 				if err := containerd.SnapshotPrepare(initStatus.FileLocation, ociFilename); err != nil {
 					errStr := fmt.Sprintf("Failed to create ctr bundle. Error %s", err)
 					log.Error(errStr)
@@ -98,7 +106,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 
 		initStatus.Origin = config.Origin
 		initStatus.DownloadOrigin = dos
-		initStatus.TargetSizeBytes = config.TargetSizeBytes // XXX change?
+		initStatus.MaxVolSize = config.MaxVolSize
 		initStatus.ReadOnly = config.ReadOnly
 
 		initStatus.State = types.CREATED_VOLUME
@@ -109,18 +117,12 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		initStatus.RefCount = config.RefCount
 		initStatus.LastUse = time.Now()
 		initStatus.PreReboot = false
-		if initStatus.Origin == types.OriginTypeDownload &&
-			!initStatus.DownloadOrigin.HasVerifierRef {
-			// If the image exists in verifier we add a reference
-			// to make it not be deleted.
-			if lookupPersistImageStatus(ctx, objType, initStatus.BlobSha256) != nil ||
-				lookupVerifyImageStatus(ctx, objType, initStatus.BlobSha256) != nil {
-				log.Infof("vcCreate: Adding verified reference for initVolStatus: %s", initStatus.DisplayName)
-				AddOrRefcountVerifyConfig(ctx, initStatus)
-				initStatus.DownloadOrigin.HasVerifierRef = true
-			}
-		}
 		if !initStatus.HasError() {
+			if lookupPersistImageStatus(ctx, objType, initStatus.BlobSha256) != nil && !initStatus.DownloadOrigin.HasPersistRef {
+				log.Infof("vcCreate: Adding PersistImageStatus reference for VolumeStatus: %s", initStatus.BlobSha256)
+				AddOrRefCountPersistImageStatus(ctx, initStatus.DisplayName, objType, "", initStatus.BlobSha256, 0)
+				initStatus.DownloadOrigin.HasPersistRef = true
+			}
 			publishVolumeStatus(ctx, initStatus)
 			log.Infof("vcCreate(%s) DONE objType %s for %s",
 				config.Key(), objType, config.DisplayName)
@@ -132,18 +134,18 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 			config.Key(), objType, config.DisplayName)
 	}
 	status := types.VolumeStatus{
-		BlobSha256:      config.BlobSha256,
-		AppInstID:       config.AppInstID,
-		VolumeID:        config.VolumeID,
-		PurgeCounter:    config.PurgeCounter,
-		DisplayName:     config.DisplayName,
-		ObjType:         objType,
-		Origin:          config.Origin,
-		DownloadOrigin:  dos,
-		TargetSizeBytes: config.TargetSizeBytes,
-		ReadOnly:        config.ReadOnly,
-		Format:          config.Format,
-		State:           types.INITIAL,
+		BlobSha256:     config.BlobSha256,
+		AppInstID:      config.AppInstID,
+		VolumeID:       config.VolumeID,
+		PurgeCounter:   config.PurgeCounter,
+		DisplayName:    config.DisplayName,
+		ObjType:        objType,
+		Origin:         config.Origin,
+		DownloadOrigin: dos,
+		MaxVolSize:     config.MaxVolSize,
+		ReadOnly:       config.ReadOnly,
+		Format:         config.Format,
+		State:          types.INITIAL,
 		// XXX if these are not needed in Status they are not needed in Config
 		//	DevType: config.DevType,
 		//	Target: config.Target,

@@ -41,11 +41,11 @@ func GetDiskSizeForAppInstance(status types.AppInstanceStatus) (
 		}
 		diskSizeList += fmt.Sprintf(
 			"disk: %s, imageVirtualSize: %d, DiskMaxSize: %d\n",
-			ssPtr.Name, imageVirtualSize, ssPtr.Maxsizebytes)
-		if imageVirtualSize > ssPtr.Maxsizebytes {
+			ssPtr.Name, imageVirtualSize, ssPtr.MaxVolSize)
+		if imageVirtualSize > ssPtr.MaxVolSize {
 			totalSize += imageVirtualSize
 		} else {
-			totalSize += ssPtr.Maxsizebytes
+			totalSize += ssPtr.MaxVolSize
 		}
 	}
 	return totalSize, diskSizeList, nil

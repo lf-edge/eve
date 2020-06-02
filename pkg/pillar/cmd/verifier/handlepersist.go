@@ -1,118 +1,60 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Handlers for PersistImageConfig
+// Handlers for PersistImageStatus
 
 package verifier
 
 import (
-	"os"
-	"time"
-
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
+	"os"
+	"path"
 )
 
-// Track the RefCount on the Persist object
-func handlePersistCreate(ctx *verifierContext, objType string,
-	config *types.PersistImageConfig) {
+// Callers must be careful to publish any changes to PersistImageStatus
+func lookupPersistImageStatus(ctx *verifierContext, objType string,
+	imageSha string) *types.PersistImageStatus {
 
-	log.Infof("handlePersistCreate(%s) objType %s for %s",
-		config.ImageSha256, objType, config.Name)
-	if objType == "" {
-		log.Fatalf("handlePersistCreate: No ObjType for %s",
-			config.ImageSha256)
+	if imageSha == "" {
+		return nil
 	}
-	// Require a status since we otherwise don't have a FileLocation
-	var status *types.PersistImageStatus
-	status = lookupPersistImageStatus(ctx, objType, config.ImageSha256)
-	if status == nil {
-		status = &types.PersistImageStatus{
-			VerifyStatus: types.VerifyStatus{
-				Name:         config.Name,
-				ObjType:      objType,
-				FileLocation: config.FileLocation,
-				ImageSha256:  config.ImageSha256,
-				Size:         config.Size,
-			},
-			LastUse:  time.Now(),
-			RefCount: config.RefCount,
-		}
-	} else {
-		// Update
-		status.Name = config.Name
-		status.RefCount = config.RefCount
-		status.LastUse = time.Now()
+	sub := verifierPersistStatusSubscription(ctx, objType)
+	s, _ := sub.Get(imageSha)
+	if s == nil {
+		log.Infof("lookupPersistImageStatus(%s) not found for %s", imageSha, objType)
+		return nil
 	}
-	publishPersistImageStatus(ctx, status)
-	log.Infof("handlePersistCreate done for %s", config.Name)
+	status := s.(types.PersistImageStatus)
+	return &status
 }
 
-// Track RefCount on persistent object
-func handlePersistModify(ctx *verifierContext, config *types.PersistImageConfig,
+func publishPersistImageStatus(ctx *verifierContext,
 	status *types.PersistImageStatus) {
+	log.Debugf("publishPersistImageStatus(%s, %s)",
+		status.ObjType, status.ImageSha256)
 
-	changed := false
-	log.Infof("handlePersistModify(%s) objType %s for %s, config.RefCount: %d, "+
-		"status.RefCount: %d",
-		status.ImageSha256, status.ObjType, config.Name, config.RefCount,
-		status.RefCount)
-
-	if status.ObjType == "" {
-		log.Fatalf("handlePersistModify: No ObjType for %s",
-			status.ImageSha256)
-	}
-
-	// Always update RefCount
-	if status.RefCount != config.RefCount {
-		log.Infof("handlePersistModify RefCount change %s from %d to %d Expired %v",
-			config.Name, status.RefCount, config.RefCount,
-			status.Expired)
-		status.RefCount = config.RefCount
-		status.Expired = false
-		changed = true
-	}
-
-	if status.RefCount == 0 {
-		// GC timer will clean up by marking status Expired
-		// and some point in time.
-		// Then user (volumemgr) will delete config.
-		status.LastUse = time.Now()
-		changed = true
-	}
-
-	if changed {
-		publishPersistImageStatus(ctx, status)
-	}
-	log.Infof("handlePersistModify done for %s. Status.RefCount=%d, Expired=%t",
-		config.Name, status.RefCount, status.Expired)
+	pub := verifierPersistStatusPublication(ctx, status.ObjType)
+	key := status.Key()
+	pub.Publish(key, *status)
 }
 
-func handlePersistDelete(ctx *verifierContext, status *types.PersistImageStatus) {
-
-	log.Infof("handlePersistDelete(%s) objType %s refcount %d lastUse %v Expired %v",
-		status.ImageSha256, status.ObjType, status.RefCount,
-		status.LastUse, status.Expired)
-
-	if status.ObjType == "" {
-		log.Fatalf("handlePersistDelete: No ObjType for %s",
-			status.ImageSha256)
-	}
-
+func handlePersistImageStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	status := statusArg.(types.PersistImageStatus)
+	log.Infof("handlePersistImageStatusDelete for %s refcount %d expired %t",
+		key, status.RefCount, status.Expired)
 	// No more use for this image. Delete
-	verifiedDirname := status.ImageDownloadDirName()
+
+	verifiedDirname := path.Dir(status.FileLocation)
 	_, err := os.Stat(verifiedDirname)
 	if err == nil {
-		if _, err := os.Stat(preserveFilename); err != nil {
-			log.Infof("handlePersistDelete removing %s", verifiedDirname)
-			if err := os.RemoveAll(verifiedDirname); err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			log.Infof("handlePersistDelete preserving %s", verifiedDirname)
+		log.Infof("handlePersistImageStatusDelete removing %s", verifiedDirname)
+		if err := os.RemoveAll(verifiedDirname); err != nil {
+			log.Fatal(err)
 		}
+	} else {
+		log.Errorf("handlePersistImageStatusDelete: Unable to delete: %s. %s", verifiedDirname, err.Error())
 	}
-
-	unpublishPersistImageStatus(ctx, status)
-	log.Infof("handlePersistDelete done for %s", status.ImageSha256)
+	log.Infof("handlePersistImageStatusDelete done %s", key)
 }

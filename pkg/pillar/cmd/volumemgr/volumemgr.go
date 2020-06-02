@@ -34,6 +34,7 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
+var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 type volumemgrContext struct {
 	subAppVolumeConfig     pubsub.Subscription
@@ -53,14 +54,16 @@ type volumemgrContext struct {
 	subAppImgDownloadStatus pubsub.Subscription
 	pubAppImgVerifierConfig pubsub.Publication
 	subAppImgVerifierStatus pubsub.Subscription
-	pubAppImgPersistConfig  pubsub.Publication
-	subAppImgPersistStatus  pubsub.Subscription
 	pubBaseOsDownloadConfig pubsub.Publication
 	subBaseOsDownloadStatus pubsub.Subscription
 	pubBaseOsVerifierConfig pubsub.Publication
 	subBaseOsVerifierStatus pubsub.Subscription
-	pubBaseOsPersistConfig  pubsub.Publication
+	pubAppImgPersistStatus  pubsub.Publication
+	subAppImgPersistStatus  pubsub.Subscription
+	pubBaseOsPersistStatus  pubsub.Publication
 	subBaseOsPersistStatus  pubsub.Subscription
+
+	gc *time.Ticker
 
 	worker *worker.Worker // For background work
 
@@ -98,6 +101,9 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
+
+	// create the directories
+	initializeDirs()
 
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
@@ -151,17 +157,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
 
-	pubAppImgPersistConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.AppImgObj,
-			TopicType:  types.PersistImageConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppImgPersistConfig = pubAppImgPersistConfig
-
 	pubBaseOsDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.BaseOsObj,
@@ -181,17 +176,6 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
-
-	pubBaseOsPersistConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.BaseOsObj,
-			TopicType:  types.PersistImageConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsPersistConfig = pubBaseOsPersistConfig
 
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -246,6 +230,29 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubCertObjDownloadConfig.ClearRestarted()
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
+
+	// Set up our publications before the subscriptions so ctx is set
+	pubAppImgPersistStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.PersistImageStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppImgPersistStatus = pubAppImgPersistStatus
+
+	pubBaseOsPersistStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.PersistImageStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
 
 	// Publish existing volumes with RefCount zero in the "unknown"
 	// agentScope
@@ -318,9 +325,7 @@ func Run(ps *pubsub.PubSub) {
 			TopicImpl:     types.PersistImageStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handlePersistImageStatusModify,
-			ModifyHandler: handlePersistImageStatusModify,
-			DeleteHandler: handlePersistImageStatusDelete,
+			CreateHandler: handlePersistImageStatusCreate,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
@@ -329,6 +334,24 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.subAppImgPersistStatus = subAppImgPersistStatus
 	subAppImgPersistStatus.Activate()
+
+	// Look for PersistImageStatus from verifier
+	subBaseOsPersistStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "verifier",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.PersistImageStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handlePersistImageStatusCreate,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
+	subBaseOsPersistStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
 	subBaseOsDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -368,26 +391,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
-
-	// Look for PersistImageStatus from verifier
-	subBaseOsPersistStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "verifier",
-			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.PersistImageStatus{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handlePersistImageStatusModify,
-			ModifyHandler: handlePersistImageStatusModify,
-			DeleteHandler: handlePersistImageStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
-	subBaseOsPersistStatus.Activate()
 
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := ps.NewSubscription(
@@ -513,8 +516,8 @@ func Run(ps *pubsub.PubSub) {
 	// config (or using a saved config) to avoid removing volumes when
 	// they might become used.
 	duration := time.Duration(ctx.vdiskGCTime / 10)
-	gc := time.NewTicker(duration * time.Second)
-	gc.Stop()
+	ctx.gc = time.NewTicker(duration * time.Second)
+	ctx.gc.Stop()
 
 	for {
 		select {
@@ -526,10 +529,11 @@ func Run(ps *pubsub.PubSub) {
 			if ctx.usingConfig && !ctx.gcRunning {
 				log.Infof("Starting gc timer")
 				duration := time.Duration(ctx.vdiskGCTime / 10)
-				gc = time.NewTicker(duration * time.Second)
+				ctx.gc = time.NewTicker(duration * time.Second)
 				// Update the LastUse here to be now
 				gcResetObjectsLastUse(&ctx, rwImgDirname)
 				gcResetObjectsLastUse(&ctx, roContImgDirname)
+				gcResetPersistObjectLastUse(&ctx)
 				ctx.gcRunning = true
 			}
 
@@ -542,17 +546,11 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
 
-		case change := <-subAppImgPersistStatus.MsgChan():
-			subAppImgPersistStatus.ProcessChange(change)
-
 		case change := <-subBaseOsDownloadStatus.MsgChan():
 			subBaseOsDownloadStatus.ProcessChange(change)
 
 		case change := <-subBaseOsVerifierStatus.MsgChan():
 			subBaseOsVerifierStatus.ProcessChange(change)
-
-		case change := <-subBaseOsPersistStatus.MsgChan():
-			subBaseOsPersistStatus.ProcessChange(change)
 
 		case change := <-ctx.subCertObjDownloadStatus.MsgChan():
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
@@ -563,10 +561,17 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subBaseOsVolumeConfig.MsgChan():
 			ctx.subBaseOsVolumeConfig.ProcessChange(change)
 
-		case <-gc.C:
+		case change := <-subAppImgPersistStatus.MsgChan():
+			subAppImgPersistStatus.ProcessChange(change)
+
+		case change := <-subBaseOsPersistStatus.MsgChan():
+			subBaseOsPersistStatus.ProcessChange(change)
+
+		case <-ctx.gc.C:
 			start := time.Now()
 			gcObjects(&ctx, rwImgDirname)
 			gcObjects(&ctx, roContImgDirname)
+			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
@@ -606,6 +611,9 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
 			ctx.vdiskGCTime = gcp.GlobalValueInt(types.VdiskGCTime)
 		}
+		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
+			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
+		}
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
@@ -635,6 +643,9 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 	switch status.ConfigGetStatus {
 	case types.ConfigGetSuccess, types.ConfigGetReadSaved:
 		ctx.usingConfig = true
+		duration := time.Duration(ctx.vdiskGCTime / 10)
+		ctx.gc = time.NewTicker(duration * time.Second)
+		gcResetPersistObjectLastUse(ctx)
 	}
 }
 
