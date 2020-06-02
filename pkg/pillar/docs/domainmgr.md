@@ -11,19 +11,20 @@ Domainmgr is the interface to the hypervisor to start DomU instances:
 
 ## Key Input/Output
 
-Domain Manager interacts with the Cloud controller (e.g. zedcloud) indirectly using three key messages:
+Domain Manager interacts with the Cloud controller (e.g. zedcloud) indirectly using four key messages:
 - DomainConfig from controller is fed to domainmgr. This contains the configuration information about a DomU instance. DomainConfig is defined in `pillar/types/domainmgrtypes.go`
 - DomainStatus is fed from `domainmgr` to controller. This contains the operational information about a DomU instance. DomainStatus is defined in `pillar/types/domainmgrtypes.go`
 - DomainMetric with CPU and memory metrics for the host (dom0) and the applications
+- PhysicalIOAdapterList specifes the set of physical I/O adapters which can potentially be used for adapter assignment.
 
-zedmanager publishes DomainConfig and subscribes to DomainStatus, while zedagent subscribes to DomainMetric.
+zedmanager publishes DomainConfig and subscribes to DomainStatus, while zedagent publishes PhysicalIOAdapterList and subscribes to DomainMetric.
 
 ## PCI Device Management
 
 - XEN uses a PCI backend driver called pciback, to provide PCI passthrough to DomU instances. For more details, see <https://wiki.xen.org/wiki/Xen_PCI_Passthrough>
 - Domain Manager assigns PCI devices that are not in use in Dom0 to pciback driver for use in DomU instances, i.e. all PCI networking devices are assigned to pciback unless they are a port in DeviceNetworkStatus (from `pillar/cmd/nim`), and all USB controllers are assigned to pciback unless debug.enable.usb is set to true in Dom0 configuration.
 - Note that the assigning away doesn’t happen until domainmgr starts. domainmgr starts once the device has been successfully onboarded in the Cloud controller.
-- Since each hardware model can have different set of network or USB adapters, for every hardware model, there is JSON file which lists the adapters that are available for assignment to pciback on that device model. One can find these files under `/var/tmp/zededa/AssignableAdapters/` directory on the device.
+- Since each hardware model can have different set of network or USB adapters, for every hardware model, the controller provides a [PhysicalIO](../../api/proto/config/devmodel.proto) in the API which zedagent publishes as `PhysicalIOAdapterList`.
 
 ## Internal Operation
 
