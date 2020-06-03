@@ -431,7 +431,7 @@ func spoofStdFDs(agentName string) *os.File {
 		log.Fatalf("spoofStdFDs: Error opening duplicate stdout with fd: %v", fd2)
 	}
 	// replace stdout
-	err = syscall.Dup2(int(stdOut.Fd()), 1)
+	err = syscall.Dup3(int(stdOut.Fd()), 1, 0)
 	if err != nil {
 		log.Fatalf("spoofStdFDs: Error replacing stdout with panic file %s: %s",
 			stdOutFile, err)
