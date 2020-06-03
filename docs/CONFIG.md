@@ -25,34 +25,12 @@ We plan to completely transition to this way of configuring all aspects of EVE i
 
 ## Controlling EVE behavior at boot via legacy configuration management
 
-When the device boots it determines the set of network interfaces.
-By default this is determined by extracting the manufacturer and model
-strings from dmidecode; /opt/zededa/bin/hardwaremodel does this determination.
+When the device boots the first time it determines the set of potentially usable network interfaces to use to reach the controller, as specified in [DEVICE-CONNECTIVITY last resort](DEVICE-CONNECTIVITY.md).
 
-That model string is used to look up a json file in /var/tmp/zededa/DeviceNetworkConfig/
-If no such json file is found the device uses /var/tmp/zededa/DeviceNetworkConfig/default.json
-
-Those files merely specify the set of management ports, plus which of them
-do not have per usage charging (to separate out e.g., LTE modems).
-
-The default.json is:
-
-```json
-{
-    "Uplink":["eth0","wlan0","wwan0"],
-    "FreeUplinks":["eth0","wlan0"]
-}
-```
-
-Note that the above file uses the old "uplink" terminology; new terminology for
-this concept is "management port".
-
-This per-model comfiguration can be overridden by an optional file in
+That default configuration can be overridden by an optional file in
 /config which is added when the image is built/installed.
 That file is /config/DevicePortConfig/override.json
-[Note that this file does not override cloud configuration. TBD: should we rename
-it to local.json instead?]
-And futher overridden by a USB memory stick plugged in when the device is powered
+And futher it can be overridden by a USB memory stick plugged in when the device is powered
 on. The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can be used to create a
 USB stick with a json file specifying the device connectivity based on the
 examples below.
@@ -62,10 +40,11 @@ systemAdapter part of the API. The most recent information DevicePortConfig
 becomes the highest priority, but the device tests that it works before using it
 (and falls back to a lower-priority working config.)
 
-That build/USB file can specify multiple management interfaces, as well as
+More specifics in how this is handled are in [DEVICE-CONNECTIVITY](DEVICE-CONNECTIVITY.md).
+
+The above build/USB file can specify multiple management interfaces, as well as
 non-mananagement interface, and can specify static IP and DNS configuration
-(for environments where DHCP is not used). In addition it can specify proxies
-using several different mechanism.
+(for environments where DHCP is not used), plus WiFi and cellular modem specifics. In addition it can specify proxies using several different mechanism.
 
 ### Example DevicePortConfig
 
@@ -197,21 +176,15 @@ zcli edge-node create.
 
 ### Adding configuration to the install image
 
-It is possible to provide an initial DevicePortConfig and/or GlobalConfig
-during the build of the installation medium.
+It is possible to provide an initial DevicePortConfig during the build of the installation medium.
 
-The former can be used to specify proxies and static IP configuration for
+It can be used to specify proxies and static IP configuration for
 the ports, if that is necessary to have the device connect to the controller.
 But a DevicePortConfig can also be added to a USB stick in which case it
 will be copied from the USB stick on boot. See [tools/makeusbconf.sh](../tools/makeusbconf.sh)
 
-The latter can be used to specify the initial timers and ssh/usb behavior
-which will be in place until the device connects to the controller and gets its
-configuration from there. The variables are documented in
-[runtime configuration properties](CONFIG-PROPERTIES.md)
-
-To add either during the build, in EVE's conf directory create a
-subdirectory called DevicePortConfig or GlobalConfig, respectively.
+To add it during the build, in EVE's conf directory create a
+subdirectory called DevicePortConfig.
 Then add the valid json file named as global.json in that directory.
 Finally:
 make config.img; make installer.raw

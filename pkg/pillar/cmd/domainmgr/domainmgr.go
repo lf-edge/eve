@@ -728,7 +728,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	status.TriedCount += 1
 
 	ctx.createSema.V(1)
-	domainID, err := DomainCreate(*status)
+	domainID, err := DomainCreate(ctx, *status)
 	ctx.createSema.P(1)
 	if err != nil {
 		log.Errorf("maybeRetryBoot DomainCreate for %s: %s",
@@ -1058,7 +1058,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.TriedCount += 1
 		var err error
 		ctx.createSema.V(1)
-		domainID, err = DomainCreate(*status)
+		domainID, err = DomainCreate(ctx, *status)
 		ctx.createSema.P(1)
 		if err == nil {
 			break
@@ -1649,7 +1649,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 // DomainCreate is a wrapper for domain creation
 // returns domainID and error
-func DomainCreate(status types.DomainStatus) (int, error) {
+func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 
 	var (
 		domainID int
@@ -1670,7 +1670,13 @@ func DomainCreate(status types.DomainStatus) (int, error) {
 
 	// Now create a domain
 	log.Infof("Creating domain with the config - %s", filename)
-	domainID, err = hyper.Create(status.DomainName, filename, status.VirtualizationMode)
+	config := lookupDomainConfig(ctx, status.Key())
+	if config == nil {
+		// Odd to have status but no config
+		log.Errorf("DomainCreate(%s) no DomainConfig", status.Key())
+		return 0, fmt.Errorf("DomainCreate(%s) no DomainConfig", status.Key())
+	}
+	domainID, err = hyper.Create(status.DomainName, filename, config)
 
 	return domainID, err
 }

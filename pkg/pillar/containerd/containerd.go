@@ -62,6 +62,12 @@ var (
 	CtrdClient *containerd.Client
 )
 
+const (
+	//TBD: Have a better way to calculate this number.
+	//For now it is based on some trial-and-error experiments
+	qemuOverHead = int64(500 * 1024 * 1024)
+)
+
 // InitContainerdClient initializes CtrdClient and ctrdCtx
 func InitContainerdClient() error {
 	var err error
@@ -466,31 +472,12 @@ func CtrStart(domainName string) (int, error) {
 
 	logger := GetLog()
 
-	// This is silly but necessary due to containerd bug
-	// https://github.com/containerd/containerd/issues/4019
-	// essentially, when you create a container and then remove it,
-	// containerd blows away everything in the parent dir of the first one it finds,
-	// in this case, "/dev/null", so it blows away everything in "/dev".
-	// This most certainly is a "bad thing".
-	//
-	// To fix it temporarily, we are creating a tmpdir and creating a null
-	// device there, so that it can blow away the tempdir
-	stdinDir := path.Join("/run", "containers-stdin", domainName)
-	if err := os.MkdirAll(stdinDir, 0700); err != nil {
-		return 0, err
-	}
-	stdinFile := path.Join(stdinDir, "null")
-	// make a dev null in stdinDir
-	if err := syscall.Mknod(stdinFile, uint32(os.FileMode(0660)|syscall.S_IFCHR), int(unix.Mkdev(1, 3))); err != nil {
-		return 0, err
-	}
-
 	io := func(id string) (cio.IO, error) {
 		stdoutFile := logger.Path(domainName + ".out")
 		stderrFile := logger.Path(domainName)
 		return &logio{
 			cio.Config{
-				Stdin:    stdinFile,
+				Stdin:    "/dev/null",
 				Stdout:   stdoutFile,
 				Stderr:   stderrFile,
 				Terminal: false,
@@ -706,16 +693,18 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 // it R/O into the container. On top of that we expect the usual suspects of /run,
 // /persist and /config to be taken care of by the OCI config that lk produced.
 func LKTaskLaunch(name, linuxkit string, domSettings *types.DomainConfig, args []string) (int, error) {
-	config := "/containers/services" + linuxkit + "/config.json"
-	rootfs := "/containers/services" + linuxkit + "/lower"
+	config := "/containers/services/" + linuxkit + "/config.json"
+	rootfs := "/containers/services/" + linuxkit + "/rootfs"
 
-	f, err := os.Open(config)
+	log.Infof("Starting LKTaskLaunch for %s", linuxkit)
+	f, err := os.Open("/hostfs" + config)
 	if err != nil {
 		return 0, fmt.Errorf("can't open spec file %s %v", config, err)
 	}
 
 	spec, err := NewOciSpec(name)
 	if err != nil {
+		log.Errorf("NewOciSpec failed with error %v", err)
 		return 0, err
 	}
 	if err = spec.Load(f); err != nil {
@@ -725,16 +714,24 @@ func LKTaskLaunch(name, linuxkit string, domSettings *types.DomainConfig, args [
 	spec.Root.Path = rootfs
 	spec.Root.Readonly = true
 	if domSettings != nil {
-		spec.UpdateFromDomain(*domSettings)
+		spec.UpdateFromDomain(*domSettings, false)
+		spec.AdjustMemLimit(*domSettings, qemuOverHead)
 	}
 
 	if args != nil {
 		spec.Process.Args = args
 	}
 
+	//Delete existing container, if any
+	if err := CtrDelete(name); err == nil {
+		log.Infof("Deleted previously existing container %s", name)
+	}
+
 	if err = spec.CreateContainer(true); err == nil {
+		log.Infof("Starting LKTaskLaunch Container %s", name)
 		return CtrStart(name)
 	}
 
+	log.Errorf("LKTaskLaunch CreateContainer failed with error %v", err)
 	return 0, err
 }

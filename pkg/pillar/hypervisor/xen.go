@@ -339,7 +339,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	return nil
 }
 
-func (ctx xenContext) Create(domainName string, xenCfgFilename string, VirtualizationMode types.VmMode) (int, error) {
+func (ctx xenContext) Create(domainName string, xenCfgFilename string, config *types.DomainConfig) (int, error) {
 	log.Infof("xlCreate %s %s\n", domainName, xenCfgFilename)
 	cmd := "xl"
 	args := []string{

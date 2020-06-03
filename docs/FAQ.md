@@ -11,9 +11,7 @@ zcli edge-node update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
 
 ## 2. Legacy method for out-of-band configuration delivery
 
-It is possible to provide an initial DevicePortConfig and/or GlobalConfig during
-the build. Read up on legacy EVE [configuration management](CONFIG.md) for more
-details on how these are structured.
+It is possible to provide an initial DevicePortConfig during the build. Read up on [legacy EVE configuration management](CONFIG.md) for more details on how it is structured.
 
 The DevicePortConfig can be statically put into EVE's configuration partition under */config/DevicePortConfig/global.json*
 to specify proxies and static IPs for the ports. This could be required
@@ -23,17 +21,7 @@ be copied from the USB stick during boot and used.  See [tools/makeusbconf.sh](.
 for details. The format of the DevicePortConfig/global.json is specified with
 examples in [legacy EVE configuration management](CONFIG.md)
 
-The GlobalConfig can be used to specify the initial timers and ssh/usb behavior
-which will be in place until the device connects to the controller and gets its
-configuration from there. All of that is specified using [Runtime Configuration
-Properties](CONFIG-PROPERTIES.md) in a json file included in */config/GlobalConfig/global.json*.
-The format of that file is the natural json encoding of GlobalConfig as specified
-in [types/global.go](../pkg/pillar/types/global.go). The variables are documented
-in [configuration properties table](CONFIG-PROPERTIES.md)
-
-To add either during the build, in EVE's conf directory create a
-subdirectory called DevicePortConfig or GlobalConfig, respectively.
-Then add the valid json file named as global.json in that directory.
+To add it during the build, in EVE's conf directory create a subdirectory called DevicePortConfig. Then add the valid json file named as global.json in that directory.
 Finally:
 
 ```bash

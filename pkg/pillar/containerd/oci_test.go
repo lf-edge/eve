@@ -88,7 +88,7 @@ func TestOciSpec(t *testing.T) {
 			{Vif: "vif0", Bridge: "br0", Mac: "52:54:00:12:34:56", VifUsed: "vif0-ctr"},
 			{Vif: "vif1", Bridge: "br0", Mac: "52:54:00:12:34:57", VifUsed: "vif1-ctr"},
 		},
-	})
+	}, true)
 	spec.UpdateFromVolume(tmpdir)
 
 	if err := spec.Save(tmpfile); err != nil {

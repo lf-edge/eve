@@ -121,7 +121,7 @@ A good way to think about this is that Controller is to EVE what Kubernetes is
 to Docker Engine.
 
 An API between EVE and its Controller is considered a [public API of Project EVE](../api).
-Refer to [API documentation](../api/API.md) for detailed information on API
+Refer to [API documentation](../api/APIv2.md) for detailed information on API
 end points and message format.
 
 EVE design makes the trust between an EVE instance and its controller extremely
@@ -144,7 +144,7 @@ URL for the Controller and its Root x509 certificate are made available during
 
 ## Runtime Configuration
 
-The heart of EVE API is a self-contained [configuration object](../api/API.md#configuration)
+The heart of EVE API is a self-contained [configuration object](../api/APIv2.md#configuration)
 that each instance of EVE receives from its controller. This object is
 serialized into a protobuf message but it can also be represented as a JSON.
 It is self-contained in a sense that a running EVE instance doesn't need to
@@ -192,8 +192,7 @@ implementation would simply be able to consume exactly the same protobuf encoded
 binary blob that it receives from the Controller, currently we still have to
 rely on an ad-hoc collection of configuration files that serve the same purpose.
 We expect these configuration files to go away relatively quickly, but for now
-EVE is still stuck with at least *DevicePortConfig/global.json* and
-*GlobalConfig/global.json* and they are documented in [legacy configuration](CONFIG.md).
+EVE is still stuck with at least *DevicePortConfig/global.json* and it is documented in [legacy configuration](CONFIG.md).
 See [the following FAQ entry](FAQ.md) for how to manage both of these
 legacy files.
 
@@ -225,11 +224,6 @@ always start with debug.*microservice*.
 
 You can find a complete list of generic and microservices specific configuration
 properties in [configuration properties table](CONFIG-PROPERTIES.md).
-
-It goes without saying that runtime configuration properties can also be
-delivered out-of-band just like any other part of the EVE's configuration
-object. While in transition from legacy configuration files, you will have
-to use [GlobalConfig/global.json](FAQ.md) to make them available to EVE.
 
 ## Installing EVE on Edge Nodes
 

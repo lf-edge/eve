@@ -1,11 +1,13 @@
 #!/bin/sh
 
 CTR_CMD="ctr --namespace services.linuxkit"
+CTR_UA_CMD="ctr --namespace eve-user-apps"
 
 help() {
   cat <<__EOT__
 Welcome to EVE!
   commands: enter [qube (assumed pillar)] [command (assumed sh)]
+  commands: enter-user-app <qube>
             exec qube command
             list
             status
@@ -53,6 +55,10 @@ case "$1" in
           ;;
    enter) # shellcheck disable=SC2086
           ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
+          ;;
+   enter-user-app) [ -z "$2" ] && help
+          # shellcheck disable=SC2046,SC2086
+          ${CTR_UA_CMD} t exec -t --exec-id $(basename $(mktemp)) $2 sh -l
           ;;
     list) ${CTR_CMD} c ls
           ;;

@@ -19,7 +19,7 @@
 | timer.port.testduration | integer in seconds | 30 | wait for DHCP to give address |
 | timer.port.testinterval | timer in seconds | 300 | retest the current port config |
 | timer.port.timeout | timer in seconds | 15 | time for each http/send |
-| timer.port.testbetterinterval | timer in seconds | 0 (disabled) | test a higher prio port config |
+| timer.port.testbetterinterval | timer in seconds | 600 | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet, WiFi, or LTE |
 | network.allow.wwan.app.download | "enabled" or "disabled" | disabled | allow app image download over non-free ports like LTE |
 | network.allow.wwan.baseos.download | "enabled" or "disabled" | enabled | allow baseos image download over non-free ports like LTE |

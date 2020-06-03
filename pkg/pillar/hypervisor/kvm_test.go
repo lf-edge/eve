@@ -2,6 +2,7 @@ package hypervisor
 
 import (
 	"fmt"
+	v1stat "github.com/containerd/cgroups/stats/v1"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -12,11 +13,33 @@ import (
 	"testing"
 )
 
+type KvmContainerMockImpl struct{}
+
+func (k *KvmContainerMockImpl) InitContainerdClient() error {
+	return nil
+}
+
+func (k *KvmContainerMockImpl) GetMetrics(ctrID string) (*v1stat.Metrics, error) {
+	m := &v1stat.Metrics{}
+
+	m.Memory = &v1stat.MemoryStat{}
+	m.Memory.Usage = &v1stat.MemoryEntry{}
+	m.Memory.Usage.Usage = 400000
+	m.Memory.Usage.Max = 500000
+
+	m.CPU = &v1stat.CPUStat{}
+	m.CPU.Usage = &v1stat.CPUUsage{}
+	m.CPU.Usage.Total = 80000000
+
+	return m, nil
+}
+
 var hyperKvm Hypervisor
 var kvmIntel, kvmArm kvmContext
 
 func init() {
 	var err error
+	kvmContainerImpl = &KvmContainerMockImpl{}
 	hyperKvm, err = GetHypervisor("kvm")
 	if hyperKvm.Name() != "kvm" || err != nil {
 		panic(fmt.Sprintf("Requested kvm hypervisor, got %s (with error %v) instead", hyperKvm.Name(), err))
@@ -845,6 +868,27 @@ func TestCreateDom(t *testing.T) {
 		return
 	}
 
+	config := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{UUID: uuid.NewV4(), Version: "1.0"},
+		VmConfig: types.VmConfig{
+			Kernel:             "/boot/kernel",
+			Ramdisk:            "/boot/ramdisk",
+			ExtraArgs:          "init=/bin/sh",
+			Memory:             1024 * 1024 * 10,
+			VCpus:              2,
+			VncDisplay:         5,
+			VncPasswd:          "rosebud",
+			VirtualizationMode: types.HVM,
+		},
+		VifList: []types.VifInfo{
+			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
+			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
+		},
+		IoAdapterList: []types.IoAdapter{
+			{Type: types.IoNetEth, Name: "eth0"},
+			{Type: types.IoCom, Name: "COM1"},
+		},
+	}
 	os.RemoveAll(kvmStateDir)
 
 	conf, err := ioutil.TempFile("/tmp/", "config")
@@ -909,7 +953,7 @@ func TestCreateDom(t *testing.T) {
   cores = "2"
   threads = "1"`), 0777)
 
-	if _, err := hyperKvm.Create("test", conf.Name(), types.HVM); err != nil {
+	if _, err := hyperKvm.Create("test", conf.Name(), &config); err != nil {
 		t.Errorf("Create domain config failed %v", err)
 	}
 

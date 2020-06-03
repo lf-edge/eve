@@ -92,27 +92,38 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	return err
 }
 
-// UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
-func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig) {
-	// use pre-start and post-stop hooks for networking
-	if s.Hooks == nil {
-		s.Hooks = &specs.Hooks{}
+// AdjustMemLimit adds Memory Resources of the spec with given number
+func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
+	// update cgroup resource constraints for CPU and memory
+	if s.Linux != nil {
+		m := int64(dom.Memory*1024) + addMemory
+		s.Linux.Resources.Memory.Limit = &m
 	}
-	timeout := 60
-	for _, v := range dom.VifList {
-		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
-		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
-			Env:     vifSpec,
-			Path:    eveScript,
-			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
-			Timeout: &timeout,
-		})
-		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
-			Env:     vifSpec,
-			Path:    eveScript,
-			Args:    append(vethScript, "down", v.Vif),
-			Timeout: &timeout,
-		})
+}
+
+// UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
+func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig, needsNetWorkSetup bool) {
+	if needsNetWorkSetup {
+		// use pre-start and post-stop hooks for networking
+		if s.Hooks == nil {
+			s.Hooks = &specs.Hooks{}
+		}
+		timeout := 60
+		for _, v := range dom.VifList {
+			vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
+			s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
+				Env:     vifSpec,
+				Path:    eveScript,
+				Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
+				Timeout: &timeout,
+			})
+			s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
+				Env:     vifSpec,
+				Path:    eveScript,
+				Args:    append(vethScript, "down", v.Vif),
+				Timeout: &timeout,
+			})
+		}
 	}
 
 	// update cgroup resource constraints for CPU and memory

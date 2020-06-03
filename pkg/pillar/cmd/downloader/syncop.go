@@ -22,11 +22,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
 	dst *types.DatastoreConfig) {
 	var (
-		err                                                              error
-		errStr, locFilename, locDirname, filename, remoteName, serverURL string
-		syncOp                                                           zedUpload.SyncOpType = zedUpload.SyncOpDownload
-		trType                                                           zedUpload.SyncTransportType
-		auth                                                             *zedUpload.AuthInput
+		err                                                    error
+		errStr, locFilename, locDirname, remoteName, serverURL string
+		syncOp                                                 zedUpload.SyncOpType = zedUpload.SyncOpDownload
+		trType                                                 zedUpload.SyncTransportType
+		auth                                                   *zedUpload.AuthInput
 	)
 
 	if status.ObjType == "" {
@@ -44,7 +44,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// As of this writing, the file is downloaded directly to `config.Target`
 	locFilename = config.Target
 	locDirname = path.Dir(locFilename)
-	filename = path.Base(locFilename)
 
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
@@ -115,8 +114,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 		trType = zedUpload.SyncAwsTr
 		serverURL = dsCtx.DownloadURL
-		remoteName = filename
-		metricsUrl = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, filename)
+		// pass in the config.Name instead of 'filename' which
+		// does not contain the prefix of the relative path with '/'s
+		remoteName = config.Name
+		metricsUrl = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, config.Name)
 
 	case zconfig.DsType_DsAzureBlob.String():
 		auth = &zedUpload.AuthInput{

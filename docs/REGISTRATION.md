@@ -1,6 +1,6 @@
 # Registration
 
-This document describes how an EVE device registers with a Controller on first boot. It complies with the official "Device API" available [here](../api/API.md).
+This document describes how an EVE device registers with a Controller on first boot. It complies with the official "Device API" available [here](../api/APIv2.md).
 
 An EVE device, on boot, first determines if it already is registered, then, if it is not, runs the registration process.
 

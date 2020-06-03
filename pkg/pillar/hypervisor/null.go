@@ -44,9 +44,9 @@ func (ctx nullContext) CreateDomConfig(string, types.DomainConfig, []types.DiskS
 	return nil
 }
 
-func (ctx nullContext) Create(domainName string, cfgFilename string, VirtualizationMode types.VmMode) (int, error) {
+func (ctx nullContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
 	// pre-flight checks
-	if _, err := os.Stat(cfgFilename); domainName == "" || err != nil {
+	if _, err := os.Stat(cfgFilename); domainName == "" || err != nil || config == nil {
 		return 0, fmt.Errorf("Null Domain create failed to create domain with either empty name or empty config %s\n", domainName)
 	}
 	if _, found := ctx.doms[domainName]; found {
@@ -59,18 +59,18 @@ func (ctx nullContext) Create(domainName string, cfgFilename string, Virtualizat
 		return 0, fmt.Errorf("Null Domain create failed to create domain descriptor %v\n", err)
 	}
 
-	config, err := ioutil.ReadFile(cfgFilename)
+	configContent, err := ioutil.ReadFile(cfgFilename)
 	if err != nil {
 		return 0, fmt.Errorf("Null Domain create failed to read cfgFilename %s %v\n", cfgFilename, err)
 	}
 
-	if _, err := domFile.Write(config); err != nil {
+	if _, err := domFile.Write(configContent); err != nil {
 		return 0, fmt.Errorf("Null Domain create failed to write domain descriptor %s %v\n", domDescriptor, err)
 	}
 
 	// calls to Create are serialized in the consumer: no need to worry about locking
 	ctx.domCounter++
-	ctx.doms[domainName] = &domState{id: ctx.domCounter, config: string(config), state: "stopped"}
+	ctx.doms[domainName] = &domState{id: ctx.domCounter, config: string(configContent), state: "stopped"}
 
 	return ctx.domCounter, nil
 }

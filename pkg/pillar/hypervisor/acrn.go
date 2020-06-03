@@ -25,7 +25,7 @@ func (ctx acrnContext) CreateDomConfig(string, types.DomainConfig, []types.DiskS
 }
 
 // Create creates a domain in a stopped state
-func (ctx acrnContext) Create(domainName string, xenCfgFilename string, VirtualizationMode types.VmMode) (int, error) {
+func (ctx acrnContext) Create(domainName string, xenCfgFilename string, config *types.DomainConfig) (int, error) {
 	return 0, nil
 }
 
