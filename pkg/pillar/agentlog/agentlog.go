@@ -140,8 +140,6 @@ func printStack() {
 // It also appends to /persist/log/reboot-reason.log
 // NOTE: can not use log here since we are called from a log hook!
 func RebootReason(reason string, normal bool) {
-	// NOTE: can not use log here since we are called from a log hook!
-	fmt.Printf("RebootReason(%s)", reason)
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
@@ -160,13 +158,15 @@ func RebootReason(reason string, normal bool) {
 		fmt.Printf("printToFile failed %s\n", err)
 	}
 
-	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, savedAgentName)
+	if !normal {
+		agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, savedAgentName)
 
-	agentFatalReasonFilename := agentDebugDir + "/fatal-reason"
-	err = overWriteFile(agentFatalReasonFilename, reason)
-	if err != nil {
-		// Note: can not use log here since we are called from a log hook!
-		fmt.Printf("printToFile failed %s\n", err)
+		agentFatalReasonFilename := agentDebugDir + "/fatal-reason"
+		err = overWriteFile(agentFatalReasonFilename, reason)
+		if err != nil {
+			// Note: can not use log here since we are called from a log hook!
+			fmt.Printf("printToFile failed %s\n", err)
+		}
 	}
 
 	filename = "/persist/" + rebootImage
