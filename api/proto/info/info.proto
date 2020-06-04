@@ -63,6 +63,7 @@ enum ZInfoTypes {
   ZiVolume = 7;
   ZiContentTree = 8;
   ZiBlobList = 9;
+  Z_INFO_TYPES_CIPHER_INFO = 10;
 }
 
 // Information about assignable I/O adapter bundles
@@ -544,6 +545,41 @@ message ZInfoVolume {
   int64 generation_count = 8; // version of volume
 }
 
+// cipher object type
+enum CipherObjectType {
+ CIPHER_OBJECT_TYPE_INVALID          = 0;
+ CIPHER_OBJECT_TYPE_CONTEXT          = 1;
+ CIPHER_OBJECT_TYPE_CONTROLLER_CERT  = 2;
+ CIPHER_OBJECT_TYPE_NODE_CERT        = 3;
+ CIPHER_OBJECT_TYPE_NIM_BLOCK        = 4;
+ CIPHER_OBJECT_TYPE_DOMAINMGR_BLOCK  = 5;
+ CIPHER_OBJECT_TYPE_DOWNLOADER_BLOCK = 6;
+}
+
+// cipher object event
+enum CipherObjectEvent {
+ CIPHER_OBJECT_EVENT_INVALID  = 0;
+ CIPHER_OBJECT_EVENT_CREATE   = 1;
+ CIPHER_OBJECT_EVENT_DELETE   = 2;
+ CIPHER_OBJECT_EVENT_MODIFY   = 3;
+ CIPHER_OBJECT_EVENT_DECRYPT  = 4;
+}
+
+enum CipherObjectStatus {
+ CIPHER_OBJECT_STATUS_INVALID  = 0;
+ CIPHER_OBJECT_STATUS_SUCCESS  = 1;
+ CIPHER_OBJECT_STATUS_ERROR    = 2;
+}
+
+// for conveying the cipher procesing status
+message  ZInfoCipher {
+   string id = 1;
+   CipherObjectType type = 2;
+   CipherObjectEvent event = 3;
+   CipherObjectStatus status = 4;
+   ErrorInfo err = 5;
+}
+
 message ContentResources {
   uint64 curSizeBytes = 1;  // Current disk usage
 }
@@ -598,6 +634,7 @@ message ZInfoMsg {
     ZInfoVolume vinfo = 13;
     ZInfoContentTree cinfo = 14;
     ZInfoBlobList binfo = 15;
+    ZInfoCipher cipherinfo = 16;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }

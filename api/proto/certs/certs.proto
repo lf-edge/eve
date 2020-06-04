@@ -13,9 +13,12 @@ option java_package = "org.lfedge.eve.certs";
 // ZControllerCert carries a set of X.509 certificate and their properties
 // from Controller to EVE.
 message ZControllerCert {
+  // deprecated, to be inherited from eveommon
   repeated ZCert certs = 1;  //list of certificates sent by controller
+  repeated org.lfedge.eve.common.ZCert ccerts = 2; //controller certificated
 }
 
+// to be deprecated, moved to evecommon
 message ZCert {
   org.lfedge.eve.common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
   bytes certHash = 2;             //truncated hash of the cert, according to hashing scheme in hashAlgo
@@ -23,6 +26,7 @@ message ZCert {
   bytes cert = 4;                 //X509 cert in .PEM format
 }
 
+// to be deprecated, moved to evecommon
 enum ZCertType {
   CERT_TYPE_CONTROLLER_NONE = 0;
   CERT_TYPE_CONTROLLER_SIGNING = 1;        //set for the leaf certificate used by controller to sign payload envelopes
