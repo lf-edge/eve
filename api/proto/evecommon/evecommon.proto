@@ -10,8 +10,35 @@ option java_package = "org.lfedge.eve.common";
 option java_multiple_files = true;
 option java_outer_classname = "Evecommon";
 
+message ZCert {
+  HashAlgorithm hash_algo = 1; //hash method used to arrive at certHash
+  ZCertType type = 2;          // certificate type
+  bytes hash = 3;              // certificate hash, defined by hash algorithm
+  bytes cert = 4;             //X509 cert in .PEM format
+  ZCertAttr attributes = 5;   //properties of this certificate
+}
+
+message ZCertAttr {
+  bool is_mutable = 1; //set to false for immutable certificates
+}
+
 enum HashAlgorithm {
   HASH_ALGORITHM_INVALID = 0;
   HASH_ALGORITHM_SHA256_16BYTES = 1; // hash with sha256, the 1st 16 bytes of result
   HASH_ALGORITHM_SHA256_32BYTES = 2; // hash with sha256, the whole 32 bytes of result
+}
+
+enum ZCertType {
+  Z_CERT_TYPE_INVALID = 0;
+
+  // controller generated certificates
+  Z_CERT_TYPE_CONTROLLER_SIGNING = 1;        //to sign payload envelopes
+  Z_CERT_TYPE_CONTROLLER_INTERMEDIATE = 2;   //intermediate certs used to validate the certificates
+  Z_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 3;  //to share symmetric key using ECDH
+
+  // device generated certificates
+  Z_CERT_TYPE_DEVICE_ONBOARDING = 10;         //for identifying the device
+  Z_CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 11; //node for attestation
+  Z_CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 12;    //endorsement key certificate with RSASSA signing algorithm
+  Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE = 13;      //to share symmetric key using ECDH
 }
