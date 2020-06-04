@@ -724,15 +724,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	disks := findDisksPartitions()
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
-		size, isPart := diskmetrics.PartitionSize(disk)
+		size, _ := diskmetrics.PartitionSize(disk)
 		log.Debugf("Disk/partition %s size %d", disk, size)
 		size = RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
-		if isPart {
-			ReportDeviceInfo.Storage += *proto.Uint64(size)
-		}
+		// XXX should we report whether it is a disk or a partition?
 	}
 	for _, path := range reportDiskPaths {
 		u, err := disk.Usage(path)
@@ -743,12 +741,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
-		is := info.ZInfoStorage{
-			MountPath: path, Total: RoundToMbytes(u.Total)}
+		size := RoundToMbytes(u.Total)
+		is := info.ZInfoStorage{MountPath: path, Total: size}
 		// We know this is where we store images and keep
 		// domU virtual disks.
 		if path == types.PersistDir {
 			is.StorageLocation = true
+			ReportDeviceInfo.Storage += *proto.Uint64(size)
 		}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)

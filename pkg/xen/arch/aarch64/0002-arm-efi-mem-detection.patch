@@ -1,0 +1,26 @@
+--- a/include/efi/efidef.h	2019-12-17 14:23:09.000000000 +0000
++++ b/include/efi/efidef.h	2019-12-31 22:55:08.181551593 +0000
+@@ -147,6 +147,7 @@
+     EfiMemoryMappedIO,
+     EfiMemoryMappedIOPortSpace,
+     EfiPalCode,
++    EfiPersistentMemory,
+     EfiMaxMemoryType
+ } EFI_MEMORY_TYPE;
+ 
+--- a/arch/arm/efi/efi-boot.h	2019-12-17 14:23:09.000000000 +0000
++++ b/arch/arm/efi/efi-boot.h	2019-12-31 22:55:08.181551593 +0000
+@@ -153,9 +153,10 @@
+              (desc_ptr->Type == EfiConventionalMemory ||
+               desc_ptr->Type == EfiLoaderCode ||
+               desc_ptr->Type == EfiLoaderData ||
+-              (!map_bs &&
+-               (desc_ptr->Type == EfiBootServicesCode ||
+-                desc_ptr->Type == EfiBootServicesData))) )
++            desc_ptr->Type == EfiACPIReclaimMemory ||
++            desc_ptr->Type == EfiPersistentMemory ||
++            desc_ptr->Type == EfiBootServicesCode ||
++            desc_ptr->Type == EfiBootServicesData) )
+         {
+             if ( !meminfo_add_bank(&bootinfo.mem, desc_ptr) )
+             {

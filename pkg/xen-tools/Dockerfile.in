@@ -43,7 +43,7 @@ RUN \
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches
 WORKDIR /xen
-RUN set -e && for patch in /patches/*.patch; do \
+RUN set -e && for patch in /patches/*.patch /patches/"$(uname -m)"/*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done

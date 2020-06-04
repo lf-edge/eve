@@ -1,0 +1,71 @@
+From 9749386d4ba0adb545cfad494b312894909cc7a4 Mon Sep 17 00:00:00 2001
+From: Stefano Stabellini <stefano.stabellini@xilinx.com>
+Date: Wed, 20 May 2020 16:43:07 -0700
+Subject: [PATCH 09/10] xen/arm: introduce phys/dma translations in
+ xen_dma_sync_for_*
+
+Add phys_to_dma/dma_to_phys calls to
+xen_dma_sync_for_cpu, xen_dma_sync_for_device, and
+xen_arch_need_swiotlb.
+
+In xen_arch_need_swiotlb, take the opportunity to switch to the simpler
+pfn_valid check we use everywhere else.
+
+dma_cache_maint is fixed by the next patch.
+
+Signed-off-by: Stefano Stabellini <stefano.stabellini@xilinx.com>
+---
+ arch/arm/xen/mm.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/xen/mm.c b/arch/arm/xen/mm.c
+index f2414ea40a79..7639251bcc79 100644
+--- a/arch/arm/xen/mm.c
++++ b/arch/arm/xen/mm.c
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ #include <linux/cpu.h>
++#include <linux/dma-direct.h>
+ #include <linux/dma-noncoherent.h>
+ #include <linux/gfp.h>
+ #include <linux/highmem.h>
+@@ -75,7 +76,7 @@ void xen_dma_sync_for_cpu(struct device *dev, dma_addr_t handle,
+ 			  phys_addr_t paddr, size_t size,
+ 			  enum dma_data_direction dir)
+ {
+-	if (pfn_valid(PFN_DOWN(handle)))
++	if (pfn_valid(PFN_DOWN(dma_to_phys(dev, handle))))
+ 		arch_sync_dma_for_cpu(paddr, size, dir);
+ 	else if (dir != DMA_TO_DEVICE)
+ 		dma_cache_maint(handle, size, GNTTAB_CACHE_INVAL);
+@@ -85,7 +86,7 @@ void xen_dma_sync_for_device(struct device *dev, dma_addr_t handle,
+ 			     phys_addr_t paddr, size_t size,
+ 			     enum dma_data_direction dir)
+ {
+-	if (pfn_valid(PFN_DOWN(handle)))
++	if (pfn_valid(PFN_DOWN(dma_to_phys(dev, handle))))
+ 		arch_sync_dma_for_device(paddr, size, dir);
+ 	else if (dir == DMA_FROM_DEVICE)
+ 		dma_cache_maint(handle, size, GNTTAB_CACHE_INVAL);
+@@ -97,8 +98,7 @@ bool xen_arch_need_swiotlb(struct device *dev,
+ 			   phys_addr_t phys,
+ 			   dma_addr_t dev_addr)
+ {
+-	unsigned int xen_pfn = XEN_PFN_DOWN(phys);
+-	unsigned int bfn = XEN_PFN_DOWN(dev_addr);
++	unsigned int bfn = XEN_PFN_DOWN(dma_to_phys(dev, dev_addr));
+ 
+ 	/*
+ 	 * The swiotlb buffer should be used if
+@@ -115,7 +115,7 @@ bool xen_arch_need_swiotlb(struct device *dev,
+ 	 * require a bounce buffer because the device doesn't support coherent
+ 	 * memory and we are not able to flush the cache.
+ 	 */
+-	return (!hypercall_cflush && (xen_pfn != bfn) &&
++	return (!hypercall_cflush && !pfn_valid(bfn) &&
+ 		!dev_is_dma_coherent(dev));
+ }
+ 
+-- 
+2.15.4
+
