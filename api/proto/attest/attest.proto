@@ -13,9 +13,7 @@ option java_package = "org.lfedge.eve.attest";
 message ZAttestReq {
   ZAttestReqType reqType = 1;  //type of the request
   ZAttestQuote quote = 2;      //attestation quote msg
-  // to be depcrecated
-  repeated ZEveCert certs = 3; //X509 certs in .PEM format, signed by device certificate
-  repeated org.lfedge.eve.common.ZCert node_certs = 4; // eve node generated certificate
+  repeated org.lfedge.eve.common.ZCert certs = 3; // eve node generated certificate
 }
 
 // This is the response payload for POST /api/v2/edgeDevice/id/<uuid>/attest
@@ -58,28 +56,4 @@ enum ZAttestResponseCode {
 
 message ZAttestQuoteResp {
   ZAttestResponseCode response = 1; //result of quote validation
-}
-
-// to be depcrecated, moved to evecommon
-message ZEveCert {
-  org.lfedge.eve.common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
-  bytes certHash = 2;            //Hash of the cert, computed using hashAlgo
-  ZEveCertType type = 3;         //what kind of certificate(to identify the target use case)
-  bytes cert = 4;                //X509 cert in .PEM format
-
-  ZEveCertAttr attributes = 5;   //properties of this certificate
-}
-
-// to be depcrecated, moved to evecommon
-enum ZEveCertType {
-  CERT_TYPE_DEVICE_NONE = 0;
-  CERT_TYPE_DEVICE_ONBOARDING = 1;         //set for certificate used by edge node for identifying the device
-  CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 2; //set for certificate used by edge node for attestation
-  CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 3;    //set for endorsement key certificate with RSASSA signing algorithm
-  CERT_TYPE_DEVICE_ECDH_EXCHANGE = 4;      //set for certificate used by edge node to share symmetric key using ECDH
-}
-
-// to be depcrecated, moved to evecommon
-message ZEveCertAttr {
-  bool isMutable = 1; //set to false for immutable certificates
 }
