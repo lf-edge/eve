@@ -806,20 +806,6 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		changed = true
 	}
 
-	if config.FileLocation != "" && config.FileLocation != status.FileLocation {
-		log.Infof("handleModify FileLocation change %s from %s to %s",
-			config.Name, status.FileLocation, config.FileLocation)
-		status.FileLocation = config.FileLocation
-		changed = true
-	}
-
-	if config.Size != 0 && config.Size != status.Size {
-		log.Infof("handleModify Size change %s from %d to %d",
-			config.Name, status.Size, config.Size)
-		status.Size = config.Size
-		changed = true
-	}
-
 	if changed {
 		publishVerifyImageStatus(ctx, status)
 	}
