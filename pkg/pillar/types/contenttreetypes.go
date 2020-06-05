@@ -21,9 +21,8 @@ type ContentTreeConfig struct {
 	DatastoreID       uuid.UUID
 	RelativeURL       string
 	Format            zconfig.Format
-	IsContainer       bool
 	ContentSha256     string
-	MaxDownSize       uint64
+	MaxDownloadSize   uint64
 	GenerationCounter int64
 	ImageSignature    []byte   //signature of image
 	SignatureKey      string   //certificate containing public key
@@ -61,18 +60,18 @@ func (config ContentTreeConfig) LogModify(old interface{}) {
 		oldConfig.RelativeURL != config.RelativeURL ||
 		oldConfig.Format != config.Format ||
 		oldConfig.ContentSha256 != config.ContentSha256 ||
-		oldConfig.MaxDownSize != config.MaxDownSize {
+		oldConfig.MaxDownloadSize != config.MaxDownloadSize {
 
 		logObject.CloneAndAddField("datastore-id", config.DatastoreID).
 			AddField("relativeURL", config.RelativeURL).
 			AddField("format", config.Format).
 			AddField("contentSha256", config.ContentSha256).
-			AddField("maxDownSize", config.MaxDownSize).
+			AddField("maxDownloadSize", config.MaxDownloadSize).
 			AddField("old-datastore-id", oldConfig.DatastoreID).
 			AddField("old-relativeURL", oldConfig.RelativeURL).
 			AddField("old-format", oldConfig.Format).
 			AddField("old-contentSha256", oldConfig.ContentSha256).
-			AddField("old-maxDownSize", oldConfig.MaxDownSize).
+			AddField("old-maxDownloadSize", oldConfig.MaxDownloadSize).
 			Infof("ContentTree config modify")
 	}
 }
@@ -98,14 +97,14 @@ type ContentTreeStatus struct {
 	ContentID         uuid.UUID
 	DatastoreID       uuid.UUID
 	RelativeURL       string
+	Format            zconfig.Format
 	ContentSha256     string
-	MaxDownSize       uint64
+	MaxDownloadSize   uint64
 	GenerationCounter int64
 	ImageSignature    []byte   //signature of image
 	SignatureKey      string   //certificate containing public key
 	CertificateChain  []string //name of intermediate certificates
 	DisplayName       string
-	IsContainer       bool
 	HasResolverRef    bool
 	HasDownloaderRef  bool
 	HasVerifierRef    bool
@@ -131,6 +130,14 @@ func (status ContentTreeStatus) ResolveKey() string {
 		status.RelativeURL, status.GenerationCounter)
 }
 
+// IsContainer will return true if content tree is of container type
+func (status ContentTreeStatus) IsContainer() bool {
+	if status.Format == zconfig.Format_CONTAINER {
+		return true
+	}
+	return false
+}
+
 // LogCreate :
 func (status ContentTreeStatus) LogCreate() {
 	logObject := base.NewLogObject(base.ContentTreeStatusLogType, status.DisplayName,
@@ -139,7 +146,7 @@ func (status ContentTreeStatus) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("contentSha256", status.ContentSha256).
-		AddField("maxSizeBytes", status.MaxDownSize).
+		AddField("maxDownloadSize", status.MaxDownloadSize).
 		AddField("state", status.State).
 		AddField("progress", status.Progress).
 		AddField("fileLocation", status.FileLocation).
@@ -156,18 +163,18 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 		log.Errorf("LogModify: Old object interface passed is not of ContentTreeStatus type")
 	}
 	if oldStatus.ContentSha256 != status.ContentSha256 ||
-		oldStatus.MaxDownSize != status.MaxDownSize ||
+		oldStatus.MaxDownloadSize != status.MaxDownloadSize ||
 		oldStatus.State != status.State ||
 		oldStatus.Progress != status.Progress ||
 		oldStatus.FileLocation != status.FileLocation {
 
 		logObject.CloneAndAddField("contentSha256", status.ContentSha256).
-			AddField("maxSizeBytes", status.MaxDownSize).
+			AddField("maxDownloadSize", status.MaxDownloadSize).
 			AddField("state", status.State).
 			AddField("progress", status.Progress).
 			AddField("fileLocation", status.FileLocation).
 			AddField("old-contentSha256", oldStatus.ContentSha256).
-			AddField("old-maxSizeBytes", oldStatus.MaxDownSize).
+			AddField("old-maxDownloadSize", oldStatus.MaxDownloadSize).
 			AddField("old-state", oldStatus.State).
 			AddField("old-progress", oldStatus.Progress).
 			AddField("old-fileLocation", oldStatus.FileLocation).
@@ -180,7 +187,7 @@ func (status ContentTreeStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.ContentTreeStatusLogType, status.DisplayName,
 		status.ContentID, status.LogKey())
 	logObject.CloneAndAddField("contentSha256", status.ContentSha256).
-		AddField("maxDownSize", status.MaxDownSize).
+		AddField("maxDownloadSize", status.MaxDownloadSize).
 		Infof("ContentTree status delete")
 
 	base.DeleteLogObject(status.LogKey())

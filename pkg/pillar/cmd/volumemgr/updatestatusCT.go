@@ -16,15 +16,15 @@ import (
 // XXX remove "done" boolean return?
 func doUpdateCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, bool) {
 
-	log.Infof("doUpdate(%s) name %s", status.Key(), status.DisplayName)
+	log.Infof("doUpdateCT(%s) name %s", status.Key(), status.DisplayName)
 	status.WaitingForCerts = false
 
 	changed := false
 	if status.State < types.VERIFIED {
-		if status.IsContainer {
-			maybeLatchImageSha(ctx, status)
+		if status.IsContainer() {
+			maybeLatchContentTreeHash(ctx, status)
 		}
-		if status.IsContainer && status.ContentSha256 == "" {
+		if status.IsContainer() && status.ContentSha256 == "" {
 			rs := lookupResolveStatus(ctx, status.ResolveKey())
 			if rs == nil {
 				log.Infof("Resolve status not found for %s",
@@ -64,9 +64,9 @@ func doUpdateCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, b
 			status.ContentSha256 = rs.ImageSha256
 			status.HasResolverRef = false
 			status.RelativeURL = maybeInsertSha(status.RelativeURL, status.ContentSha256)
-			addAppAndImageHash(ctx, status.ContentID,
+			latchContentTreeHash(ctx, status.ContentID,
 				status.ContentSha256, uint32(status.GenerationCounter))
-			maybeLatchImageSha(ctx, status)
+			maybeLatchContentTreeHash(ctx, status)
 			deleteResolveConfig(ctx, rs.Key())
 			changed = true
 		}
@@ -74,44 +74,44 @@ func doUpdateCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, b
 		var vs *types.VerifyImageStatus
 		vs, changed = lookForVerifiedCT(ctx, status)
 		if vs != nil {
-			log.Infof("doUpdate: Found %s based on ContentID %s sha %s",
+			log.Infof("doUpdateCT: Found %s based on ContentID %s sha %s",
 				status.DisplayName, status.ContentID, status.ContentSha256)
 			if status.State != vs.State {
 				if vs.State == types.VERIFIED && !status.HasPersistRef {
-					log.Infof("doUpdate: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
+					log.Infof("doUpdateCT: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
 					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
 					status.HasPersistRef = true
 					changed = true
 				}
-				log.Infof("doUpdate: Update State of %s from %d to %d", status.ContentSha256, status.State, vs.State)
+				log.Infof("doUpdateCT: Update State of %s from %d to %d", status.ContentSha256, status.State, vs.State)
 				status.State = vs.State
 				changed = true
 			}
 			if vs.Pending() {
-				log.Infof("doUpdate: lookupVerifyImageStatus %s Pending",
+				log.Infof("doUpdateCT: lookupVerifyImageStatus %s Pending",
 					status.ContentID)
 				return changed, false
 			}
 			if vs.HasError() {
-				log.Errorf("doUpdate: Received error from verifier for %s: %s",
+				log.Errorf("doUpdateCT: Received error from verifier for %s: %s",
 					status.ContentID, vs.Error)
 				status.SetErrorWithSource(vs.Error,
 					types.VerifyImageStatus{}, vs.ErrorTime)
 				changed = true
 				return changed, false
 			} else if status.IsErrorSource(types.VerifyImageStatus{}) {
-				log.Infof("doUpdate: Clearing verifier error %s", status.Error)
+				log.Infof("doUpdateCT: Clearing verifier error %s", status.Error)
 				status.ClearErrorWithSource()
 				changed = true
 			}
 			if status.FileLocation != vs.FileLocation {
 				status.FileLocation = vs.FileLocation
-				log.Infof("doUpdate: Update FileLocation for %s: %s",
+				log.Infof("doUpdateCT: Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}
 		} else if status.State <= types.DOWNLOADED {
-			log.Infof("doUpdate: VerifyImageStatus %s for %s sha %s not found",
+			log.Infof("doUpdateCT: VerifyImageStatus %s for %s sha %s not found",
 				status.DisplayName, status.ContentID,
 				status.ContentSha256)
 			c := doDownloadCT(ctx, status)
@@ -120,7 +120,7 @@ func doUpdateCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, b
 			}
 			return changed, false
 		} else {
-			log.Infof("doUpdate: VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
+			log.Infof("doUpdateCT: VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
 				status.DisplayName, status.ContentID,
 				status.ContentSha256)
 			return changed, false
@@ -128,14 +128,14 @@ func doUpdateCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, b
 	}
 	// If maximum download size is 0 then we are updating the
 	// downloaded size of an image in MaxSizeBytes
-	if status.MaxDownSize == 0 {
+	if status.MaxDownloadSize == 0 {
 
 		info, err := os.Stat(status.FileLocation)
 		if err != nil {
 			errStr := fmt.Sprintf("Calculating size of container image failed: %v", err)
 			log.Error(errStr)
 		} else {
-			status.MaxDownSize = uint64(info.Size())
+			status.MaxDownloadSize = uint64(info.Size())
 		}
 	}
 	if status.State == types.VERIFIED {
@@ -179,8 +179,8 @@ func doDownloadCT(ctx *volumemgrContext, status *types.ContentTreeStatus) bool {
 		status.State = ds.State
 		changed = true
 	}
-	if status.MaxDownSize != ds.Size {
-		status.MaxDownSize = ds.Size
+	if status.MaxDownloadSize != ds.Size {
+		status.MaxDownloadSize = ds.Size
 	}
 	if ds.Progress != status.Progress {
 		status.Progress = ds.Progress
@@ -252,7 +252,7 @@ func kickVerifierCT(ctx *volumemgrContext, status *types.ContentTreeStatus, chec
 	return changed
 }
 
-// lookForVerified handles the split between PersistImageStatus and
+// lookForVerifiedCT handles the split between PersistImageStatus and
 // VerifyImageStatus. If it only finds the Persist it returns nil but
 // sets up a VerifyImageConfig.
 // Also returns changed=true if the VolumeStatus is changed
@@ -265,10 +265,10 @@ func lookForVerifiedCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (
 			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
 				status.ContentID, status.ContentSha256)
 		} else {
-			log.Infof("lookForVerified: Found PersistImageStatus: %s based on ImageSha256 %s ContentID %s",
+			log.Infof("lookForVerifiedCT: Found PersistImageStatus: %s based on ImageSha256 %s ContentID %s",
 				status.DisplayName, status.ContentSha256, status.ContentID)
 			if !status.HasPersistRef {
-				log.Infof("lookForVerified: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
+				log.Infof("lookForVerifiedCT: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
 				AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
 				status.HasPersistRef = true
 				changed = true
@@ -281,7 +281,7 @@ func lookForVerifiedCT(ctx *volumemgrContext, status *types.ContentTreeStatus) (
 			}
 			if status.FileLocation != ps.FileLocation {
 				status.FileLocation = ps.FileLocation
-				log.Infof("lookForVerified: Update FileLocation for %s: %s",
+				log.Infof("lookForVerifiedCT: Update FileLocation for %s: %s",
 					status.Key(), status.FileLocation)
 				changed = true
 			}

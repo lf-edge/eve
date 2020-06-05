@@ -477,7 +477,6 @@ func Run(ps *pubsub.PubSub) {
 	subAppVifIPTrig.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
-
 	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
 		TopicImpl:     types.AppInstanceStatus{},
@@ -494,6 +493,25 @@ func Run(ps *pubsub.PubSub) {
 	}
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
+
+	// Look for ContentTreeStatus from volumemgr
+	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ContentTreeStatus{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleContentTreeStatusModify,
+		ModifyHandler: handleContentTreeStatusModify,
+		DeleteHandler: handleContentTreeStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.subContentTreeStatus = subContentTreeStatus
+	subContentTreeStatus.Activate()
 
 	// Look for DomainMetric from domainmgr
 	subDomainMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -997,6 +1015,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppInstanceStatus.MsgChan():
 			subAppInstanceStatus.ProcessChange(change)
+
+		case change := <-subContentTreeStatus.MsgChan():
+			subContentTreeStatus.ProcessChange(change)
 
 		case change := <-subDomainMetric.MsgChan():
 			subDomainMetric.ProcessChange(change)

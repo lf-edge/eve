@@ -136,8 +136,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
-	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
-	updateContentTreeStatus(ctx, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }
 
@@ -162,8 +161,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
-	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
-	updateContentTreeStatus(ctx, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {
