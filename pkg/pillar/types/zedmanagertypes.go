@@ -69,6 +69,8 @@ type AppInstanceConfig struct {
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
 	RemoteConsole     bool
+	// Collect Stats IP Address
+	CollectStatsIPAddr string
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
