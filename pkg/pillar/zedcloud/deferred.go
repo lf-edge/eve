@@ -172,6 +172,10 @@ func (ctx *DeferredContext) removeDeferred(key string) {
 }
 
 // Replace any item for the specified key. If timer not running start it
+// SetDeferred uses the key for identifying the channel. Please note that
+// for deviceUUID key is used for attestUrl, which is not the same for
+// other Urls, where in other caes, the key is very specific for the object
+//  and object type
 func SetDeferred(key string, buf *bytes.Buffer, size int64, url string,
 	zedcloudCtx ZedCloudContext, return400 bool) {
 
