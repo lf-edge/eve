@@ -13,7 +13,7 @@ import (
 // AddOrRefcountDownloaderConfigCT used to publish the downloader config
 func AddOrRefcountDownloaderConfigCT(ctx *volumemgrContext, status types.ContentTreeStatus) {
 
-	log.Infof("AddOrRefcountDownloaderConfig for %s", status.ContentSha256)
+	log.Infof("AddOrRefcountDownloaderConfigCT for %s", status.ContentSha256)
 
 	refCount := uint(1)
 	m := lookupDownloaderConfig(ctx, status.ObjType, status.ContentSha256)
@@ -39,7 +39,7 @@ func AddOrRefcountDownloaderConfigCT(ctx *volumemgrContext, status types.Content
 		// in the downloader config before publishing
 		// Same is true for other fields
 	} else {
-		log.Debugf("AddOrRefcountDownloaderConfig: add for %s",
+		log.Debugf("AddOrRefcountDownloaderConfigCT: add for %s",
 			status.ContentSha256)
 	}
 	name := status.RelativeURL
@@ -47,7 +47,7 @@ func AddOrRefcountDownloaderConfigCT(ctx *volumemgrContext, status types.Content
 	// where should the final downloaded file be?
 	locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.ContentID.String(), path.Base(name))
 	// try to reserve storage, must be released on error
-	size := status.MaxDownSize
+	size := status.MaxDownloadSize
 
 	n := types.DownloaderConfig{
 		ImageID:     status.ContentID,
@@ -62,8 +62,8 @@ func AddOrRefcountDownloaderConfigCT(ctx *volumemgrContext, status types.Content
 		Target:   locFilename,
 		RefCount: refCount,
 	}
-	log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
+	log.Infof("AddOrRefcountDownloaderConfigCT: DownloaderConfig: %+v", n)
 	publishDownloaderConfig(ctx, status.ObjType, &n)
-	log.Infof("AddOrRefcountDownloaderConfig done for %s",
+	log.Infof("AddOrRefcountDownloaderConfigCT done for %s",
 		status.ContentSha256)
 }

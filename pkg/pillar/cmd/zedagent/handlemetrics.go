@@ -1477,6 +1477,73 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 }
 
+// PublishContentInfoToZedCloud is called per change, hence needs to try over all management ports
+// When content tree Status is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
+func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
+	ctStatus *types.ContentTreeStatus, iteration int) {
+
+	log.Infof("PublishContentInfoToZedCloud uuid %s", uuid)
+	var ReportInfo = &info.ZInfoMsg{}
+
+	contentType := new(info.ZInfoTypes)
+	*contentType = info.ZInfoTypes_ZiContentTree
+	ReportInfo.Ztype = *contentType
+	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+
+	ReportContentInfo := new(info.ZInfoContentTree)
+
+	ReportContentInfo.Uuid = uuid
+	ReportContentInfo.State = info.ZSwState_HALTED
+	if ctStatus != nil {
+		ReportContentInfo.DisplayName = ctStatus.DisplayName
+		ReportContentInfo.State = ctStatus.State.ZSwState()
+
+		if !ctStatus.ErrorTime.IsZero() {
+			errInfo := encodeErrorInfo(
+				ctStatus.ErrorAndTimeWithSource.ErrorAndTime())
+			ReportContentInfo.Err = errInfo
+		}
+
+		ReportContentInfo.Sha256 = ctStatus.ContentSha256
+		ReportContentInfo.ProgressPercentage = uint32(ctStatus.Progress)
+		ReportContentInfo.GenerationCount = ctStatus.GenerationCounter
+	}
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Cinfo)
+	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Cinfo); ok {
+		x.Cinfo = ReportContentInfo
+	}
+
+	log.Infof("PublishContentInfoToZedCloud sending %v", ReportInfo)
+
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishContentInfoToZedCloud proto marshaling error: ", err)
+	}
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "info")
+
+	zedcloud.RemoveDeferred(uuid)
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+	err = SendProtobuf(statusURL, buf, size, iteration)
+	if err != nil {
+		log.Errorf("PublishContentInfoToZedCloud failed: %s", err)
+		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
+		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+			true)
+	}
+}
+
 func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.VifUsed == vifname {

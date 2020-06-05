@@ -166,8 +166,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update case
-	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
-	updateContentTreeStatus(ctx, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	log.Infof("handleDownloaderStatusModify done for %s", status.ImageSha256)
 }
 
@@ -204,8 +203,7 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloaderStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.DownloaderStatus)
-	updateVolumeStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
-	updateContentTreeStatus(ctx, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {

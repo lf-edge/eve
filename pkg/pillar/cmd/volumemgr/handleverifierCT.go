@@ -12,7 +12,7 @@ import (
 func MaybeAddVerifyImageConfigCT(ctx *volumemgrContext,
 	status types.ContentTreeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
 
-	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v",
+	log.Infof("MaybeAddVerifyImageConfigCT for %s, checkCerts: %v",
 		status.ContentSha256, checkCerts)
 
 	// check the certificate files, if not present,
@@ -34,12 +34,12 @@ func MaybeAddVerifyImageConfigCT(ctx *volumemgrContext,
 	m := lookupVerifyImageConfig(ctx, status.ObjType, status.ContentSha256)
 	if m != nil {
 		m.RefCount++
-		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s",
+		log.Infof("MaybeAddVerifyImageConfigCT: refcnt to %d for %s",
 			m.RefCount, status.ContentSha256)
 		publishVerifyImageConfig(ctx, status.ObjType, m)
 	} else {
-		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
-			status.ContentSha256, status.IsContainer)
+		log.Infof("MaybeAddVerifyImageConfigCT: add for %s, IsContainer: %t",
+			status.ContentSha256, status.IsContainer())
 		n := types.VerifyImageConfig{
 			ImageID: status.ContentID,
 			VerifyConfig: types.VerifyConfig{
@@ -50,12 +50,12 @@ func MaybeAddVerifyImageConfigCT(ctx *volumemgrContext,
 				SignatureKey:     status.SignatureKey,
 				FileLocation:     status.FileLocation,
 			},
-			IsContainer: status.IsContainer,
+			IsContainer: status.IsContainer(),
 			RefCount:    1,
 		}
 		publishVerifyImageConfig(ctx, status.ObjType, &n)
-		log.Debugf("MaybeAddVerifyImageConfig - config: %+v", n)
+		log.Debugf("MaybeAddVerifyImageConfigCT - config: %+v", n)
 	}
-	log.Infof("MaybeAddVerifyImageConfig done for %s", status.ContentSha256)
+	log.Infof("MaybeAddVerifyImageConfigCT done for %s", status.ContentSha256)
 	return true, types.ErrorAndTime{}
 }

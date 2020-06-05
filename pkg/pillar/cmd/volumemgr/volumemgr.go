@@ -67,7 +67,7 @@ type volumemgrContext struct {
 	pubContentTreeResolveConfig pubsub.Publication
 	subContentTreeConfig        pubsub.Subscription
 	pubContentTreeStatus        pubsub.Publication
-	pubAppAndImageToHash        pubsub.Publication
+	pubContentTreeToHash        pubsub.Publication
 
 	gc *time.Ticker
 
@@ -204,7 +204,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubContentTreeStatus = pubContentTreeStatus
 
-	pubAppAndImageToHash, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubContentTreeToHash, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		Persistent: true,
 		TopicType:  types.AppAndImageToHash{},
@@ -212,7 +212,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppAndImageToHash = pubAppAndImageToHash
+	ctx.pubContentTreeToHash = pubContentTreeToHash
 
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,

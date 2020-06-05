@@ -84,14 +84,14 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 			ContentID:         config.ContentID,
 			DatastoreID:       config.DatastoreID,
 			RelativeURL:       config.RelativeURL,
+			Format:            config.Format,
 			ContentSha256:     config.ContentSha256,
-			MaxDownSize:       config.MaxDownSize,
+			MaxDownloadSize:   config.MaxDownloadSize,
 			GenerationCounter: config.GenerationCounter,
 			ImageSignature:    config.ImageSignature,
 			SignatureKey:      config.SignatureKey,
 			CertificateChain:  config.CertificateChain,
 			DisplayName:       config.DisplayName,
-			IsContainer:       config.IsContainer,
 			ObjType:           types.AppImgObj,
 		}
 	}
@@ -132,5 +132,6 @@ func deleteContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 		publishContentTreeStatus(ctx, status)
 	}
 	unpublishContentTreeStatus(ctx, status)
+	deleteLatchContentTreeHash(ctx, config.ContentID, uint32(config.GenerationCounter))
 	log.Infof("deleteContentTree for %v Done", config.ContentID)
 }

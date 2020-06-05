@@ -17,11 +17,11 @@ import (
 
 var contentInfoHash []byte
 
-// cipher context parsing routine
+// content info parsing routine
 func parseContentInfoConfig(ctx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 
-	log.Infof("Started parsing content info config")
+	log.Debugf("Started parsing content info config")
 	cfgContentTreeList := config.GetContentInfo()
 	h := sha256.New()
 	for _, cfgContentTree := range cfgContentTreeList {
@@ -62,11 +62,8 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.DatastoreID, _ = uuid.FromString(cfgContentTree.GetDsId())
 		contentConfig.RelativeURL = cfgContentTree.GetURL()
 		contentConfig.Format = cfgContentTree.GetIformat()
-		if cfgContentTree.GetIformat() == zconfig.Format_CONTAINER {
-			contentConfig.IsContainer = true
-		}
 		contentConfig.ContentSha256 = cfgContentTree.GetSha256()
-		contentConfig.MaxDownSize = cfgContentTree.GetMaxSizeBytes()
+		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
 		contentConfig.ImageSignature = cfgContentTree.Siginfo.Signature
 		contentConfig.SignatureKey = cfgContentTree.Siginfo.Signercerturl
@@ -103,4 +100,25 @@ func unpublishContentTreeConfig(ctx *getconfigContext, key string) {
 	}
 	pub.Unpublish(key)
 	log.Debugf("unpublishContentTreeConfig(%s) done\n", key)
+}
+
+// content tree event watch to capture transitions
+// and publish to zedCloud
+// Handles both create and modify events
+func handleContentTreeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	status := statusArg.(types.ContentTreeStatus)
+	ctx := ctxArg.(*zedagentContext)
+	uuidStr := status.Key()
+	PublishContentInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration)
+	ctx.iteration++
+}
+
+func handleContentTreeStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedagentContext)
+	uuidStr := key
+	PublishContentInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration)
+	ctx.iteration++
 }

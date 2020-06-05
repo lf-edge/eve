@@ -311,16 +311,16 @@ func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.
 	return vs, changed
 }
 
-// Find all the VolumeStatus which refer to this BlobSha256
-func updateVolumeStatus(ctx *volumemgrContext, objType, blobSha256 string, volumeID uuid.UUID) {
+// Find all the VolumeStatus/ContentTreeStatus which refer to this Sha256
+func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
 
-	log.Infof("updateVolumeStatus(%s) objType %s", volumeID, objType)
+	log.Infof("updateStatus(%s) objType %s", uuid, objType)
 	found := false
-	pub := ctx.publication(types.VolumeStatus{}, objType)
-	items := pub.GetAll()
-	for _, st := range items {
+	volPub := ctx.publication(types.VolumeStatus{}, objType)
+	volItems := volPub.GetAll()
+	for _, st := range volItems {
 		status := st.(types.VolumeStatus)
-		if status.BlobSha256 == blobSha256 {
+		if status.BlobSha256 == sha {
 			log.Infof("Found VolumeStatus %s", status.Key())
 			found = true
 			changed, _ := doUpdate(ctx, &status)
@@ -329,9 +329,22 @@ func updateVolumeStatus(ctx *volumemgrContext, objType, blobSha256 string, volum
 			}
 		}
 	}
+	ctPub := ctx.pubContentTreeStatus
+	ctItems := ctPub.GetAll()
+	for _, st := range ctItems {
+		status := st.(types.ContentTreeStatus)
+		if status.ContentSha256 == sha {
+			log.Infof("Found ContentTreeStatus %s", status.Key())
+			found = true
+			changed, _ := doUpdateCT(ctx, &status)
+			if changed {
+				publishContentTreeStatus(ctx, &status)
+			}
+		}
+	}
 	if !found {
-		log.Warnf("XXX updateVolumeStatus(%s) objType %s NOT FOUND",
-			volumeID, objType)
+		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND",
+			uuid, objType)
 	}
 }
 
