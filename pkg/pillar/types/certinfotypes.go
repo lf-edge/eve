@@ -10,18 +10,61 @@ import (
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 )
 
-// ControllerCert : controller certicate
+// ControllerCertConfig : controller certicate
 // config received from controller
-type ControllerCert struct {
+type ControllerCertConfig struct {
 	HashAlgo zcommon.HashAlgorithm
 	Type     zcert.ZCertType
 	Cert     []byte
-	CertHash []byte
-	// ErrorAndTime provides SetErrorNow() and ClearError()
+	Hash     []byte
+}
+
+// Key :
+func (cert *ControllerCertConfig) Key() string {
+	return hex.EncodeToString(cert.Hash)
+}
+
+// ControllerCertStatus : controller certicate
+// status
+type ControllerCertStatus struct {
+	HashAlgo zcommon.HashAlgorithm
+	Type     zcert.ZCertType
+	Cert     []byte
+	Hash     []byte
 	ErrorAndTime
 }
 
 // Key :
-func (cert *ControllerCert) Key() string {
-	return hex.EncodeToString(cert.CertHash)
+func (cert *ControllerCertStatus) Key() string {
+	return hex.EncodeToString(cert.Hash)
+}
+
+// EveNodeCertConfig : controller certicate
+// config received from controller
+type EveNodeCertConfig struct {
+	HashAlgo zcommon.HashAlgorithm
+	Type     zcommon.ZCertType
+	Hash     []byte
+	Cert     []byte
+	PvtKey   []byte
+}
+
+// Key :
+func (cert *EveNodeCertConfig) Key() string {
+	return hex.EncodeToString(cert.Hash)
+}
+
+// EveNodeCertStatus : controller certicate
+// status
+type EveNodeCertStatus struct {
+	HashAlgo zcommon.HashAlgorithm
+	Type     zcommon.ZCertType
+	Hash     []byte
+	Cert     []byte
+	ErrorAndTime
+}
+
+// Key :
+func (cert *EveNodeCertStatus) Key() string {
+	return hex.EncodeToString(cert.Hash)
 }

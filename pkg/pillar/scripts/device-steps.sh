@@ -460,7 +460,7 @@ for AGENT in $AGENTS; do
     touch "$WATCHDOG_PID/$AGENT.pid"
     touch "$WATCHDOG_FILE/$AGENT.touch"
     if [ "$AGENT" = "zedagent" ]; then
-       touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch"
+       touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch" touch "$WATCHDOG_FILE/${AGENT}certs.touch" "$WATCHDOG_FILE/${AGENT}ccerts.touch"
     fi
 done
 

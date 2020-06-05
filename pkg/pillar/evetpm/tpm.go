@@ -123,6 +123,12 @@ func FileExists(filename string) bool {
 	return err == nil
 }
 
+// remove the file
+func FileRemove(filename string) {
+	os.Remove(filename)
+	return
+}
+
 //IsTpmEnabled checks if TPM is being used by software for creating device cert
 func IsTpmEnabled() bool {
 	return FileExists(types.DeviceCertName) && !FileExists(types.DeviceKeyName)
