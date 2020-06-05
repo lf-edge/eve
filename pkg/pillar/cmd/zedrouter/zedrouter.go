@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -84,6 +85,8 @@ type zedrouterContext struct {
 	hostProbeTimer            *time.Timer
 	hostFastProbe             bool
 	appNetCreateTimer         *time.Timer
+	appCollectStatsRunning    bool
+	appStatsMutex             sync.Mutex // to protect the changing appNetworkStatus & appCollectStatsRunning
 }
 
 var debug = false
@@ -1108,7 +1111,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		publishAppNetworkStatus(ctx, status)
 		return
 	}
-	appNetworkDoCopyNetworksToStatus(config, status)
+	appNetworkDoCopyNetworksToStatus(ctx, config, status)
 	if !validateAppNetworkConfig(ctx, config, status) {
 		log.Errorf("doActivate(%v) AppNetwork Config check failed for %s\n",
 			config.UUIDandVersion, config.DisplayName)
@@ -1522,8 +1525,13 @@ func appNetworkDoActivateOverlayNetwork(
 }
 
 func appNetworkDoCopyNetworksToStatus(
+	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
+
+	// during doActive, copy the collect stats IP to status and
+	// check to see if need to launch the process
+	appCheckStatsCollect(ctx, config, status)
 
 	olcount := len(config.OverlayNetworkList)
 	if olcount > 0 {
@@ -1991,6 +1999,10 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	// If we are not activated, then the doActivate below will set up
 	// the ACLs
 	if status.Activated {
+		// during modify, copy the collect stats IP to status and
+		// check to see if need to launch the process
+		appCheckStatsCollect(ctx, config, status)
+
 		// Look for ACL changes in overlay
 		doAppNetworkModifyAllOverlayNetworks(ctx, config, status, ipsets)
 
