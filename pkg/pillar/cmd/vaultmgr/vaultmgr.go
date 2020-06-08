@@ -39,6 +39,7 @@ const (
 	mountPoint          = types.PersistDir
 	defaultImgVault     = types.PersistDir + "/img"
 	defaultCfgVault     = types.PersistDir + "/config"
+	defaultVault        = types.PersistDir + "/vault"
 	oldKeyDir           = "/TmpVaultDir1"
 	keyDir              = "/TmpVaultDir2"
 	protectorPrefix     = "TheVaultKey"
@@ -122,6 +123,10 @@ func getPolicyIDByProtectorID(protectID string) ([][]string, error) {
 
 func removeProtectorIfAny(vaultPath string) error {
 	protectorID, err := getProtectorIDByName(vaultPath)
+	if err == nil && len(protectorID) == 0 {
+		//No protector found, nothing to be done.
+		return nil
+	}
 	if err == nil {
 		log.Infof("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
 		args := getRemoveProtectorParams(protectorID[0][1])
@@ -381,6 +386,7 @@ func setupVault(vaultPath string) error {
 		log.Infof("Migrating keys to TPM %s", vaultPath)
 		return changeProtector(vaultPath)
 	}
+	log.Infof("Successfully unlocked %s", vaultPath)
 	return nil
 }
 
@@ -526,6 +532,9 @@ func Run(ps *pubsub.PubSub) {
 		}
 		if err = setupVault(defaultCfgVault); err != nil {
 			log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
+		}
+		if err = setupVault(defaultVault); err != nil {
+			log.Fatalf("Error in setting up vault %s:%v", defaultVault, err)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
