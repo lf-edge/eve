@@ -175,7 +175,7 @@ message Volume {
 
   // change in generationCount indicates that the mutated volume needs to be
   // purged and built from scratch. This is a generalization of the purge
-  // command for an application unstance
+  // command for an application instance
   int64 generationCount = 4;
 
   // miscellaneous attributes of the Volume
