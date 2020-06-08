@@ -1020,7 +1020,6 @@ func parseStorageConfigList(objType string,
 			}
 		}
 		image.ReadOnly = drive.Readonly
-		image.Preserve = drive.Preserve
 		image.MaxVolSize = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())

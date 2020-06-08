@@ -348,12 +348,10 @@ type StorageConfig struct {
 
 	ImageSha256 string // sha256 of immutable image
 	ReadOnly    bool
-	Preserve    bool // If set a rw disk will be preserved across
-	// boots (acivate/inactivate)
-	MaxVolSize uint64         // Resize filesystem to this size if set (In bytes)
-	Format     zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype    string         // Default ""; could be e.g. "cdrom"
-	Target     string         // Default "" is interpreted as "disk"
+	MaxVolSize  uint64         // Resize filesystem to this size if set (In bytes)
+	Format      zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype     string         // Default ""; could be e.g. "cdrom"
+	Target      string         // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -373,7 +371,6 @@ type StorageStatus struct {
 	ImageSignature     []byte   //signature of image
 	SignatureKey       string   //certificate containing public key
 	ReadOnly           bool
-	Preserve           bool
 	MaxVolSize         uint64 // Resize filesystem to this size if set (In bytes)
 	Format             zconfig.Format
 	Devtype            string
@@ -408,7 +405,6 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.ImageSignature = sc.ImageSignature
 	ss.SignatureKey = sc.SignatureKey
 	ss.ReadOnly = sc.ReadOnly
-	ss.Preserve = sc.Preserve
 	ss.MaxVolSize = sc.MaxVolSize
 	ss.Format = sc.Format
 	ss.Devtype = sc.Devtype

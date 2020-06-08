@@ -805,11 +805,6 @@ func quantifyChanges(config types.AppInstanceConfig,
 					ss.ReadOnly, sc.ReadOnly)
 				needPurge = true
 			}
-			if ss.Preserve != sc.Preserve {
-				log.Infof("quantifyChanges storage Preserve changed from %v to %v",
-					ss.Preserve, sc.Preserve)
-				needPurge = true
-			}
 			if ss.Format != sc.Format {
 				log.Infof("quantifyChanges storage Format changed from %v to %v",
 					ss.Format, sc.Format)
