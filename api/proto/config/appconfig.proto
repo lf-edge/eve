@@ -81,11 +81,7 @@ message AppInstanceConfig {
   // contains the encrypted userdata
   CipherBlock cipherData = 13;
 
-  // UUID of volumes to be attached to the app-instance.
-  // The order here is critical because they are presented to the VM or
-  // container in the order they are listed, e.g., the first VM image
-  // will be the root disk.
-  repeated string volumeRefs = 14;
+  // Deprecated 14
 
   // The static IP address assigned on the NetworkAdapter which App Container
   // stats collection uses. If the 'collectStatsIPAddr' is not empty and valid,
@@ -95,4 +91,18 @@ message AppInstanceConfig {
   // is assigned to the App interface, and based on the subnet of the NI, statically
   // assign an IP address on the same subnet, e.g. 10.1.0.100
   string collectStatsIPAddr = 15;
+
+  // The volumes to be attached to the app-instance.
+  // The order here is critical because they are presented to the VM or
+  // container in the order they are listed, e.g., the first VM image
+  // will be the root disk.
+  repeated VolumeRef volumeRefs = 16;
+}
+
+// Reference to a Volume specified separately in the API
+// If a volume is purged (re-created from scratch) it will either have a new
+// UUID or a new generationCount
+message VolumeRef {
+  string uuid = 1; // Volume UUID
+  int64 generationCount = 2;
 }
