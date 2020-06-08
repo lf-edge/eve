@@ -27,11 +27,11 @@ import (
 // Really a constant
 var nilUUID = uuid.UUID{}
 
-// appRwVolumeName - Returns name of the image ( including parent dir )
+// appRwOldVolumeName - Returns name of the image ( including parent dir )
 // Note that we still use the sha in the filename to not impact running images. Otherwise
 // we could switch this to imageID
 // XXX other types of volumes might want a different name.
-func appRwVolumeName(sha256, uuidStr string, purgeCounter uint32, format zconfig.Format,
+func appRwOldVolumeName(sha256, uuidStr string, purgeCounter uint32, format zconfig.Format,
 	origin types.OriginType, isContainer bool) string {
 
 	purgeString := ""
@@ -49,8 +49,8 @@ func appRwVolumeName(sha256, uuidStr string, purgeCounter uint32, format zconfig
 		uuidStr, purgeString, formatStr)
 }
 
-// parseAppRwVolumeName - Returns rwImgDirname, sha256, uuidStr, purgeCounter
-func parseAppRwVolumeName(image string, isContainer bool) (string, string, string, uint32) {
+// parseAppRwOldVolumeName - Returns rwImgDirname, sha256, uuidStr, purgeCounter
+func parseAppRwOldVolumeName(image string, isContainer bool) (string, string, string, uint32) {
 	// VolumeSha is provided by the controller - it can be uppercase
 	// or lowercase.
 	var re1 *regexp.Regexp
@@ -78,7 +78,7 @@ func parseAppRwVolumeName(image string, isContainer bool) (string, string, strin
 		re2 = regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-([0-9a-fA-F\-]+)\.([^\.]+)`)
 	}
 	if !re2.MatchString(image) {
-		log.Errorf("AppRwVolumeName %s doesn't match pattern", image)
+		log.Errorf("AppRwOldVolumeName %s doesn't match pattern", image)
 		return "", "", "", 0
 	}
 	parsedStrings := re2.FindStringSubmatch(image)
@@ -87,9 +87,9 @@ func parseAppRwVolumeName(image string, isContainer bool) (string, string, strin
 
 // recursive scanning for verified objects,
 // to recreate the status files
-func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
+func populateInitialOldVolumeStatus(ctx *volumemgrContext, dirName string) {
 
-	log.Infof("populateInitialVolumeStatus(%s)", dirName)
+	log.Infof("populateInitialOldVolumeStatus(%s)", dirName)
 	var isContainer bool
 	if dirName == rwImgDirname {
 		isContainer = false
@@ -106,7 +106,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
-		log.Errorf("populateInitialVolumeStatus: read directory '%s' failed: %v",
+		log.Errorf("populateInitialOldVolumeStatus: read directory '%s' failed: %v",
 			dirName, err)
 		return
 	}
@@ -114,7 +114,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 	for _, location := range locations {
 		filelocation := dirName + "/" + location.Name()
 		if location.IsDir() && !isContainer {
-			log.Debugf("populateInitialVolumeStatus: directory %s ignored", filelocation)
+			log.Debugf("populateInitialOldVolumeStatus: directory %s ignored", filelocation)
 			continue
 		}
 		info, err := os.Stat(filelocation)
@@ -124,14 +124,14 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			deleteFile(filelocation)
 			continue
 		}
-		_, sha256, appUUIDStr, purgeCounter := parseAppRwVolumeName(filelocation, isContainer)
-		log.Infof("populateInitialVolumeStatus: Processing sha256: %s, AppUuid: %s, "+
+		_, sha256, appUUIDStr, purgeCounter := parseAppRwOldVolumeName(filelocation, isContainer)
+		log.Infof("populateInitialOldVolumeStatus: Processing sha256: %s, AppUuid: %s, "+
 			"fileLocation:%s",
 			sha256, appUUIDStr, filelocation)
 
 		appUUID, err := uuid.FromString(appUUIDStr)
 		if err != nil {
-			log.Errorf("populateInitialVolumeStatus: Invalid UUIDStr(%s) in "+
+			log.Errorf("populateInitialOldVolumeStatus: Invalid UUIDStr(%s) in "+
 				"filename (%s). err: %s. Deleting the File",
 				appUUIDStr, filelocation, err)
 			deleteFile(filelocation)
@@ -153,18 +153,18 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			PreReboot:     info.ModTime().Before(deviceBootTime),
 		}
 
-		publishVolumeStatus(ctx, &status)
+		publishOldVolumeStatus(ctx, &status)
 	}
 }
 
-// Remove from VolumeStatus since fileLocation has been deleted
+// Remove from OldVolumeStatus since fileLocation has been deleted
 // XXX implement and call.
-func unpublishInitialVolumeStatus(ctx *volumemgrContext, volumeKey string) {
+func unpublishInitialOldVolumeStatus(ctx *volumemgrContext, volumeKey string) {
 
 	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	st, _ := pub.Get(volumeKey)
 	if st == nil {
-		log.Errorf("unpublishInitialVolumeStatus(%s) key not found",
+		log.Errorf("unpublishInitialOldVolumeStatus(%s) key not found",
 			volumeKey)
 		return
 	}
@@ -173,9 +173,9 @@ func unpublishInitialVolumeStatus(ctx *volumemgrContext, volumeKey string) {
 
 // XXX for now only handle those with a sha and appInstID
 // XXX format arg is not used
-func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType types.OriginType, format zconfig.Format) *types.OldVolumeStatus {
+func lookupInitOldVolumeStatus(ctx *volumemgrContext, volumeKey string, originType types.OriginType, format zconfig.Format) *types.OldVolumeStatus {
 
-	log.Infof("lookupInitVolumeStatus(%s) type %d format %d", volumeKey,
+	log.Infof("lookupInitOldVolumeStatus(%s) type %d format %d", volumeKey,
 		originType, format)
 	// XXX for now
 	if originType != types.OriginTypeDownload {
@@ -184,24 +184,24 @@ func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType 
 	// XXX do we need these check or just look up on volumeKey
 	blobSha256, appInstID, volumeID, purgeCounter, err := types.VolumeKeyToParts(volumeKey)
 	if err != nil {
-		log.Errorf("lookupInitVolumeStatus failed: err %s", err)
+		log.Errorf("lookupInitOldVolumeStatus failed: err %s", err)
 		return nil
 	}
 	// XXX debug
-	log.Infof("lookupInitVolumeStatus sha %s appinst %s volume %s purgeCounter %d",
+	log.Infof("lookupInitOldVolumeStatus sha %s appinst %s volume %s purgeCounter %d",
 		blobSha256, appInstID, volumeID, purgeCounter)
 	if blobSha256 == "" {
-		log.Infof("lookupInitVolumeStatus(%s) no sha; not found", volumeKey)
+		log.Infof("lookupInitOldVolumeStatus(%s) no sha; not found", volumeKey)
 		return nil
 	}
 	if appInstID == nilUUID {
-		log.Infof("lookupInitVolumeStatus(%s) no appInstID; not found", volumeKey)
+		log.Infof("lookupInitOldVolumeStatus(%s) no appInstID; not found", volumeKey)
 		return nil
 	}
 	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	st, _ := pub.Get(volumeKey)
 	if st == nil {
-		log.Infof("lookupInitVolumeStatus(%s) key not found", volumeKey)
+		log.Infof("lookupInitOldVolumeStatus(%s) key not found", volumeKey)
 		return nil
 	}
 	status := st.(types.OldVolumeStatus)
@@ -210,23 +210,23 @@ func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType 
 
 // Periodic garbage collection looking at RefCount=0 files in the unknown
 // Others have their delete handler.
-func gcObjects(ctx *volumemgrContext, dirName string) {
+func gcOldObjects(ctx *volumemgrContext, dirName string) {
 
-	log.Debugf("gcObjects()")
+	log.Debugf("gcOldObjects()")
 
 	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.OldVolumeStatus)
 		if status.RefCount != 0 {
-			log.Debugf("gcObjects: skipping RefCount %d: %s",
+			log.Debugf("gcOldObjects: skipping RefCount %d: %s",
 				status.RefCount, status.Key())
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
 		timeLimit := time.Duration(ctx.vdiskGCTime) * time.Second
 		if timePassed < timeLimit {
-			log.Debugf("gcObjects: skipping recently used %s remains %d seconds",
+			log.Debugf("gcOldObjects: skipping recently used %s remains %d seconds",
 				status.Key(), (timePassed-timeLimit)/time.Second)
 			continue
 		}
@@ -234,13 +234,13 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 		if filelocation == "" {
 			log.Errorf("No filelocation to remove for %s", status.Key())
 		} else {
-			log.Infof("gcObjects: removing %s LastUse %v now %v: %s",
+			log.Infof("gcOldObjects: removing %s LastUse %v now %v: %s",
 				filelocation, status.LastUse, time.Now(), status.Key())
 			if err := os.Remove(filelocation); err != nil {
 				log.Errorln(err)
 			}
 		}
-		unpublishVolumeStatus(ctx, &status)
+		unpublishOldVolumeStatus(ctx, &status)
 	}
 }
 
@@ -308,7 +308,7 @@ func gcResetObjectsLastUse(ctx *volumemgrContext, dirName string) {
 		if status.RefCount == 0 {
 			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now", status.Key())
 			status.LastUse = time.Now()
-			publishVolumeStatus(ctx, &status)
+			publishOldVolumeStatus(ctx, &status)
 		}
 	}
 }

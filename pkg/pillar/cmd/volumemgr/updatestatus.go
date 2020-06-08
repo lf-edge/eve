@@ -325,7 +325,7 @@ func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
 			found = true
 			changed, _ := doUpdate(ctx, &status)
 			if changed {
-				publishVolumeStatus(ctx, &status)
+				publishOldVolumeStatus(ctx, &status)
 			}
 		}
 	}

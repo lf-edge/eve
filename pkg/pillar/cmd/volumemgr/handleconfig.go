@@ -28,7 +28,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		log.Fatalf("vcCreate: No ObjType for %s",
 			config.Key())
 	}
-	if lookupVolumeStatus(ctx, objType, config.Key()) != nil {
+	if lookupOldVolumeStatus(ctx, objType, config.Key()) != nil {
 		log.Fatalf("status exists at Create for %s", config.Key())
 	}
 	var dos *types.DownloadOriginStatus
@@ -39,7 +39,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 	}
 
 	// Do we have a VolumeStatus from Init from before a device reboot?
-	initStatus := lookupInitVolumeStatus(ctx, config.Key(), config.Origin,
+	initStatus := lookupInitOldVolumeStatus(ctx, config.Key(), config.Origin,
 		config.Format)
 	if initStatus == nil {
 		// XXX is we have an InitVolumeStatus from before boot with
@@ -48,7 +48,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		save := config.PurgeCounter
 		key := config.Key()
 		config.PurgeCounter = save
-		initStatus = lookupInitVolumeStatus(ctx, key, config.Origin,
+		initStatus = lookupInitOldVolumeStatus(ctx, key, config.Origin,
 			config.Format)
 		if initStatus != nil {
 			if initStatus.PreReboot {
@@ -65,7 +65,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 	if initStatus != nil {
 		log.Infof("vcCreate promote status from init for %s", config.Key())
 		// We are moving this from unknown to this objType
-		unpublishVolumeStatus(ctx, initStatus)
+		unpublishOldVolumeStatus(ctx, initStatus)
 
 		// XXX After device reboot, somehow files created by containerd snapshot prepare
 		// is getting deleted from /persist/runx/pods/prepared/<container-dir-name>/rootfs/
@@ -123,7 +123,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 				AddOrRefCountPersistImageStatus(ctx, initStatus.DisplayName, objType, "", initStatus.BlobSha256, 0)
 				initStatus.DownloadOrigin.HasPersistRef = true
 			}
-			publishVolumeStatus(ctx, initStatus)
+			publishOldVolumeStatus(ctx, initStatus)
 			log.Infof("vcCreate(%s) DONE objType %s for %s",
 				config.Key(), objType, config.DisplayName)
 			return
@@ -153,11 +153,11 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 	}
 	status.LastUse = time.Now()
 	status.PendingAdd = true
-	publishVolumeStatus(ctx, &status)
+	publishOldVolumeStatus(ctx, &status)
 	// Ignore return value since we always publish
 	doUpdate(ctx, &status)
 	status.PendingAdd = false
-	publishVolumeStatus(ctx, &status)
+	publishOldVolumeStatus(ctx, &status)
 	log.Infof("vcCreate(%s) DONE objType %s for %s",
 		config.Key(), objType, config.DisplayName)
 }
@@ -165,7 +165,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 func vcModify(ctx *volumemgrContext, objType string, key string,
 	config types.OldVolumeConfig) {
 
-	status := lookupVolumeStatus(ctx, objType, config.Key())
+	status := lookupOldVolumeStatus(ctx, objType, config.Key())
 	if status == nil {
 		log.Fatalf("No status exists at Modify for %s", config.Key())
 	}
@@ -178,7 +178,7 @@ func vcModify(ctx *volumemgrContext, objType string, key string,
 			status.Key())
 	}
 	status.PendingModify = true
-	publishVolumeStatus(ctx, status)
+	publishOldVolumeStatus(ctx, status)
 	// XXX handle anything but refcount changes?
 	// XXX change TargetSizeBytes to resize qcow2?
 	log.Infof("vcModify(%s) from RefCount %d to %d", config.Key(),
@@ -190,7 +190,7 @@ func vcModify(ctx *volumemgrContext, objType string, key string,
 	}
 	status.RefCount = config.RefCount
 	status.PendingModify = false
-	publishVolumeStatus(ctx, status)
+	publishOldVolumeStatus(ctx, status)
 	log.Infof("vcModify(%s) DONE %s for %s",
 		config.Key(), status.ObjType, status.DisplayName)
 }
@@ -198,7 +198,7 @@ func vcModify(ctx *volumemgrContext, objType string, key string,
 func vcDelete(ctx *volumemgrContext, objType string, key string,
 	config types.OldVolumeConfig) {
 
-	status := lookupVolumeStatus(ctx, objType, config.Key())
+	status := lookupOldVolumeStatus(ctx, objType, config.Key())
 	if status == nil {
 		log.Fatalf("No status exists at Delete for %s", config.Key())
 	}
@@ -211,11 +211,11 @@ func vcDelete(ctx *volumemgrContext, objType string, key string,
 			status.Key())
 	}
 	status.PendingDelete = true
-	publishVolumeStatus(ctx, status)
+	publishOldVolumeStatus(ctx, status)
 	doDelete(ctx, status)
 	status.PendingDelete = false
-	publishVolumeStatus(ctx, status)
-	unpublishVolumeStatus(ctx, status)
+	publishOldVolumeStatus(ctx, status)
+	unpublishOldVolumeStatus(ctx, status)
 
 	log.Infof("vcDelete(%s) DONE objType %s for %s",
 		status.Key(), status.ObjType, status.DisplayName)
@@ -223,50 +223,50 @@ func vcDelete(ctx *volumemgrContext, objType string, key string,
 }
 
 // Callers must be careful to publish any changes to VolumeStatus
-func lookupVolumeStatus(ctx *volumemgrContext, objType string,
+func lookupOldVolumeStatus(ctx *volumemgrContext, objType string,
 	key string) *types.OldVolumeStatus {
 
 	pub := ctx.publication(types.OldVolumeStatus{}, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupVolumeStatus(%s) not found", key)
+		log.Infof("lookupOldVolumeStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.OldVolumeStatus)
 	return &status
 }
 
-func lookupVolumeConfig(ctx *volumemgrContext, objType string,
+func lookupOldVolumeConfig(ctx *volumemgrContext, objType string,
 	key string) *types.OldVolumeConfig {
 
 	sub := ctx.subscription(types.OldVolumeConfig{}, objType)
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeConfig(%s) not found", key)
+		log.Infof("lookupOldVolumeConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.OldVolumeConfig)
 	return &config
 }
 
-func publishVolumeStatus(ctx *volumemgrContext,
+func publishOldVolumeStatus(ctx *volumemgrContext,
 	status *types.OldVolumeStatus) {
 
 	pub := ctx.publication(*status, status.ObjType)
 	key := status.Key()
-	log.Debugf("publishVolumeStatus(%s)", key)
+	log.Debugf("publishOldVolumeStatus(%s)", key)
 	pub.Publish(key, *status)
 }
 
-func unpublishVolumeStatus(ctx *volumemgrContext,
+func unpublishOldVolumeStatus(ctx *volumemgrContext,
 	status *types.OldVolumeStatus) {
 
 	pub := ctx.publication(*status, status.ObjType)
 	key := status.Key()
-	log.Debugf("unpublishVolumeStatus(%s)", key)
+	log.Debugf("unpublishOldVolumeStatus(%s)", key)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Errorf("unpublishVolumeStatus(%s) not found", key)
+		log.Errorf("unpublishOldVolumeStatus(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)

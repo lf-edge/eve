@@ -67,11 +67,15 @@ type volumemgrContext struct {
 	pubContentTreeResolveConfig pubsub.Publication
 	subContentTreeConfig        pubsub.Subscription
 	pubContentTreeStatus        pubsub.Publication
+	subVolumeConfig             pubsub.Subscription
+	pubVolumeStatus             pubsub.Publication
+	pubUnknownNewVolumeStatus   pubsub.Publication
 	pubContentTreeToHash        pubsub.Publication
 
 	gc *time.Ticker
 
-	worker *worker.Worker // For background work
+	worker    *worker.Worker // For background work
+	workerVol *worker.Worker // For background work
 
 	verifierRestarted uint // Count to two for appimg and baseos
 	usingConfig       bool // From zedagent
@@ -141,6 +145,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Create the background worker
 	ctx.worker = InitHandleWork(&ctx)
+	ctx.workerVol = InitHandleWorkVol(&ctx)
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -203,6 +208,26 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubContentTreeStatus = pubContentTreeStatus
+
+	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.VolumeStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumeStatus = pubVolumeStatus
+
+	pubUnknownNewVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.UnknownObj,
+		TopicType:  types.VolumeStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubUnknownNewVolumeStatus = pubUnknownNewVolumeStatus
 
 	pubContentTreeToHash, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -295,6 +320,8 @@ func Run(ps *pubsub.PubSub) {
 	// agentScope
 	// Note that nobody subscribes to this. Used internally
 	// to look up a Volume.
+	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
+	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
 	populateInitialVolumeStatus(&ctx, rwImgDirname)
 	populateInitialVolumeStatus(&ctx, roContImgDirname)
 
@@ -502,6 +529,22 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subContentTreeConfig = subContentTreeConfig
 	subContentTreeConfig.Activate()
 
+	subVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleVolumeCreate,
+		ModifyHandler: handleVolumeModify,
+		DeleteHandler: handleVolumeDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zedagent",
+		TopicImpl:     types.VolumeConfig{},
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeConfig = subVolumeConfig
+	subVolumeConfig.Activate()
+
 	subAppVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleAppImgCreate,
 		ModifyHandler: handleAppImgModify,
@@ -575,6 +618,9 @@ func Run(ps *pubsub.PubSub) {
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
 
+		case res := <-ctx.workerVol.MsgChan():
+			HandleWorkResultVol(&ctx, ctx.workerVol.Process(res))
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -632,6 +678,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subContentTreeConfig.MsgChan():
 			ctx.subContentTreeConfig.ProcessChange(change)
 
+		case change := <-ctx.subVolumeConfig.MsgChan():
+			ctx.subVolumeConfig.ProcessChange(change)
+
 		case change := <-ctx.subAppVolumeConfig.MsgChan():
 			ctx.subAppVolumeConfig.ProcessChange(change)
 
@@ -646,14 +695,17 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-ctx.gc.C:
 			start := time.Now()
-			gcObjects(&ctx, rwImgDirname)
-			gcObjects(&ctx, roContImgDirname)
+			gcOldObjects(&ctx, rwImgDirname)
+			gcOldObjects(&ctx, roContImgDirname)
 			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
+
+		case res := <-ctx.workerVol.MsgChan():
+			HandleWorkResultVol(&ctx, ctx.workerVol.Process(res))
 
 		case <-stillRunning.C:
 		}

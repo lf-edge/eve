@@ -44,6 +44,7 @@ func publishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeSt
 	log.Debugf("publishContentTreeStatus(%s)", key)
 	pub := ctx.pubContentTreeStatus
 	pub.Publish(key, *status)
+	updateVolumeStatusFromContentID(ctx, status.ContentID)
 	log.Debugf("publishContentTreeStatus(%s) Done", key)
 }
 
