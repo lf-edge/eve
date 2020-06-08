@@ -1588,6 +1588,14 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 }
 
+// PublishVolumeToZedCloud is called per change, hence needs to try over all management ports
+// When volume status is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
+func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
+	ctStatus *types.VolumeStatus, iteration int) {
+
+}
+
 func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.VifUsed == vifname {

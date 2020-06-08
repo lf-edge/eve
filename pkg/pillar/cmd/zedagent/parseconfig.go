@@ -69,8 +69,9 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
-		parseAppInstanceConfig(config, getconfigCtx)
+		//parseAppInstanceConfig(config, getconfigCtx)
 		parseContentInfoConfig(getconfigCtx, config)
+		parseVolumeConfig(getconfigCtx, config)
 	}
 	return false
 }

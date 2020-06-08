@@ -176,9 +176,9 @@ func volumeWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	var fileLocation string
 	var err error
 	if d.create {
-		volumeCreated, fileLocation, err = createVolume(ctx, d.status)
+		volumeCreated, fileLocation, err = createOldVolume(ctx, d.status)
 	} else if d.destroy {
-		volumeCreated, fileLocation, err = destroyVolume(ctx, d.status)
+		volumeCreated, fileLocation, err = destroyOldVolume(ctx, d.status)
 	}
 	d.VolumeCreated = volumeCreated
 	d.FileLocation = fileLocation

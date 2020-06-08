@@ -46,7 +46,7 @@ func TestHandleWorkCreate(t *testing.T) {
 			SrcLocation: "/dev/null",
 			BlobSha256:  "somesha",
 			ExpectFail:  true,
-			ExpectedLocation: appRwVolumeName("somesha", status.AppInstID.String(),
+			ExpectedLocation: appRwOldVolumeName("somesha", status.AppInstID.String(),
 				status.PurgeCounter, status.Format, status.Origin, false),
 
 			ExpectCreated: true,

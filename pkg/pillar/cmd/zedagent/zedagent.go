@@ -393,6 +393,18 @@ func Run(ps *pubsub.PubSub) {
 	pubContentTreeConfig.ClearRestarted()
 	getconfigCtx.pubContentTreeConfig = pubContentTreeConfig
 
+	// for volume config Publisher
+	pubVolumeConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.VolumeConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubVolumeConfig.ClearRestarted()
+	getconfigCtx.pubVolumeConfig = pubVolumeConfig
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -514,6 +526,25 @@ func Run(ps *pubsub.PubSub) {
 	}
 	getconfigCtx.subContentTreeStatus = subContentTreeStatus
 	subContentTreeStatus.Activate()
+
+	// Look for VolumeStatus from volumemgr
+	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.VolumeStatus{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleVolumeStatusModify,
+		ModifyHandler: handleVolumeStatusModify,
+		DeleteHandler: handleVolumeStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
 
 	// Look for DomainMetric from domainmgr
 	subDomainMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1037,6 +1068,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subContentTreeStatus.MsgChan():
 			subContentTreeStatus.ProcessChange(change)
+
+		case change := <-subVolumeStatus.MsgChan():
+			subVolumeStatus.ProcessChange(change)
 
 		case change := <-subDomainMetric.MsgChan():
 			subDomainMetric.ProcessChange(change)

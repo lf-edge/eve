@@ -124,7 +124,7 @@ func TestParseAppRwVolumeName(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		dir, sha, uuid, purgeCounter := parseAppRwVolumeName(test.filename, test.isContainer)
+		dir, sha, uuid, purgeCounter := parseAppRwOldVolumeName(test.filename, test.isContainer)
 		if dir != test.dir {
 			t.Errorf("dir ( %s ) != Expected value ( %s )", dir, test.dir)
 		}
