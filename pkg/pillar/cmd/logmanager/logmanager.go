@@ -884,7 +884,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	}
 	// Preserve port
 	serverNameAndPort := strings.TrimSpace(string(serverBytes))
-	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false,
+	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, appLogURL)
 
 	// For any 400 error we abandon
@@ -994,7 +994,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		break
 	}
 	// wait for uuid of logs V2 URL string
-	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "logs")
+	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "logs")
 	log.Infof("Read UUID %s", devUUID)
 }
 
