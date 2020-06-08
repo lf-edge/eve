@@ -15,7 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// VolumeKeyFromParts creates the key for VolumeConfig and VolumeStatus. It is:
+// VolumeKeyFromParts creates the key for OldVolumeConfig and OldVolumeStatus. It is:
 // BlobSha256+AppInstID if the sha is set (common case for volumes based on downloaded blobs), otherwise
 // AppInstID:VolumeID if AppInstID is set (for blank and cloudinit volumes), otherwise
 // VolumeID if this is a blank, named volume (which can be shared between apps)
@@ -85,9 +85,9 @@ func VolumeKeyToParts(key string) (string, uuid.UUID, uuid.UUID, uint32, error) 
 	return "", nilUUID, uv, purgeCounter, nil
 }
 
-// VolumeConfig is a request to volumemgr to have a volume available
+// OldVolumeConfig is a request to volumemgr to have a volume available
 // for a particular application instance.
-type VolumeConfig struct {
+type OldVolumeConfig struct {
 	BlobSha256   string
 	AppInstID    uuid.UUID
 	VolumeID     uuid.UUID
@@ -118,14 +118,14 @@ type VolumeConfig struct {
 }
 
 // Key is for pubsub; unique per object.
-func (config VolumeConfig) Key() string {
+func (config OldVolumeConfig) Key() string {
 	return VolumeKeyFromParts(config.BlobSha256, config.AppInstID,
 		config.VolumeID, config.PurgeCounter)
 }
 
 // LogCreate :
-func (config VolumeConfig) LogCreate() {
-	logObject := base.NewLogObject(base.VolumeConfigLogType, config.DisplayName,
+func (config OldVolumeConfig) LogCreate() {
+	logObject := base.NewLogObject(base.OldVolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 	if logObject == nil {
 		return
@@ -136,13 +136,13 @@ func (config VolumeConfig) LogCreate() {
 }
 
 // LogModify :
-func (config VolumeConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
+func (config OldVolumeConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.OldVolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 
-	oldConfig, ok := old.(VolumeConfig)
+	oldConfig, ok := old.(OldVolumeConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VolumeConfig type")
+		log.Errorf("LogModify: Old object interface passed is not of OldVolumeConfig type")
 	}
 	// why would we get modified?
 	if oldConfig.Origin != config.Origin ||
@@ -157,8 +157,8 @@ func (config VolumeConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config VolumeConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
+func (config OldVolumeConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.OldVolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("origin", config.Origin).
 		AddField("max-vol-size-int64", config.MaxVolSize).
@@ -168,8 +168,8 @@ func (config VolumeConfig) LogDelete() {
 }
 
 // LogKey :
-func (config VolumeConfig) LogKey() string {
-	return string(base.VolumeConfigLogType) + "-" + config.Key()
+func (config OldVolumeConfig) LogKey() string {
+	return string(base.OldVolumeConfigLogType) + "-" + config.Key()
 }
 
 // OriginType - types of origin
@@ -204,9 +204,9 @@ type DownloadOriginConfig struct {
 	SignatureKey     string   //certificate containing public key
 }
 
-// VolumeStatus is a response from volumemgr to have a volume available
-// for a particular application instance. Its key the same as for VolumeConfig
-type VolumeStatus struct {
+// OldVolumeStatus is a response from volumemgr to have a volume available
+// for a particular application instance. Its key the same as for OldVolumeConfig
+type OldVolumeStatus struct {
 	BlobSha256   string
 	AppInstID    uuid.UUID
 	VolumeID     uuid.UUID
@@ -245,19 +245,19 @@ type VolumeStatus struct {
 }
 
 // Key is for pubsub; unique per object.
-func (status VolumeStatus) Key() string {
+func (status OldVolumeStatus) Key() string {
 	return VolumeKeyFromParts(status.BlobSha256, status.AppInstID,
 		status.VolumeID, status.PurgeCounter)
 }
 
 // Pending returns if any of the pending flags are set
-func (status VolumeStatus) Pending() bool {
+func (status OldVolumeStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
 // LogCreate :
-func (status VolumeStatus) LogCreate() {
-	logObject := base.NewLogObject(base.VolumeStatusLogType, status.DisplayName,
+func (status OldVolumeStatus) LogCreate() {
+	logObject := base.NewLogObject(base.OldVolumeStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 	if logObject == nil {
 		return
@@ -268,13 +268,13 @@ func (status VolumeStatus) LogCreate() {
 }
 
 // LogModify :
-func (status VolumeStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
+func (status OldVolumeStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.OldVolumeStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 
-	oldStatus, ok := old.(VolumeStatus)
+	oldStatus, ok := old.(OldVolumeStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VolumeStatus type")
+		log.Errorf("LogModify: Old object interface passed is not of OldVolumeStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.VolumeCreated != status.VolumeCreated {
@@ -297,8 +297,8 @@ func (status VolumeStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status VolumeStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
+func (status OldVolumeStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.OldVolumeStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("volume-created", status.VolumeCreated).
@@ -308,8 +308,8 @@ func (status VolumeStatus) LogDelete() {
 }
 
 // LogKey :
-func (status VolumeStatus) LogKey() string {
-	return string(base.VolumeStatusLogType) + "-" + status.Key()
+func (status OldVolumeStatus) LogKey() string {
+	return string(base.OldVolumeStatusLogType) + "-" + status.Key()
 }
 
 // DownloadOriginStatus is status when the OriginType is download

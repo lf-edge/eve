@@ -105,14 +105,14 @@ func doCertObjStatusUpdate(ctx *volumemgrContext, uuidStr string, config types.C
 
 	// Walk all which have WaitingForCerts set
 	pubs := []pubsub.Publication{
-		ctx.publication(types.VolumeStatus{}, types.AppImgObj),
-		ctx.publication(types.VolumeStatus{}, types.BaseOsObj),
+		ctx.publication(types.OldVolumeStatus{}, types.AppImgObj),
+		ctx.publication(types.OldVolumeStatus{}, types.BaseOsObj),
 	}
 
 	for _, pub := range pubs {
 		items := pub.GetAll()
 		for _, st := range items {
-			vs := st.(types.VolumeStatus)
+			vs := st.(types.OldVolumeStatus)
 			if !vs.WaitingForCerts {
 				continue
 			}
@@ -232,7 +232,7 @@ func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 
 	var del, changed, removedAll bool
 	// XXX VolumeStatus for function
-	vstatus := new(types.VolumeStatus)
+	vstatus := new(types.OldVolumeStatus)
 	removedAll = true
 	log.Infof("doCertObjUninstall(%s)", uuidStr)
 

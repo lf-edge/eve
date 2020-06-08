@@ -100,7 +100,7 @@ func checkVolumeStatus(ctx *baseOsMgrContext,
 		if vs.HasError() {
 			log.Errorf("checkVolumeStatus %s, volumemgr error, %s",
 				uuidStr, vs.Error)
-			ss.SetErrorWithSource(vs.Error, types.VolumeStatus{},
+			ss.SetErrorWithSource(vs.Error, types.OldVolumeStatus{},
 				vs.ErrorTime)
 			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", vs.Error)
 			ret.ErrorTime = ss.ErrorTime
@@ -186,7 +186,7 @@ func installDownloadedObject(imageID uuid.UUID,
 		log.Infof("installDownloadedObject(%s) done", imageID)
 	} else {
 		errStr := fmt.Sprintf("installDownloadedObject: %s", ret)
-		ssPtr.SetErrorWithSource(errStr, types.VolumeStatus{}, time.Now())
+		ssPtr.SetErrorWithSource(errStr, types.OldVolumeStatus{}, time.Now())
 	}
 	return ret
 }

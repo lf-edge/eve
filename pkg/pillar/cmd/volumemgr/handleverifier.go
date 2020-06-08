@@ -45,7 +45,7 @@ func unpublishVerifyImageConfig(ctx *volumemgrContext, objType string, key strin
 
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
-	status types.VolumeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
+	status types.OldVolumeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v",
 		status.BlobSha256, checkCerts)

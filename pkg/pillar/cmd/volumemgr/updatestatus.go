@@ -14,7 +14,7 @@ import (
 
 // Returns changed
 // XXX remove "done" boolean return?
-func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
+func doUpdate(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bool) {
 
 	log.Infof("doUpdate(%s) name %s", status.Key(), status.DisplayName)
 	status.WaitingForCerts = false
@@ -121,10 +121,10 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 			}
 			if vr.Error != nil {
 				status.SetErrorWithSource(vr.Error.Error(),
-					types.VolumeStatus{}, vr.ErrorTime)
+					types.OldVolumeStatus{}, vr.ErrorTime)
 				changed = true
 				return changed, false
-			} else if status.IsErrorSource(types.VolumeStatus{}) {
+			} else if status.IsErrorSource(types.OldVolumeStatus{}) {
 				log.Infof("doUpdate: Clearing volume error %s", status.Error)
 				status.ClearErrorWithSource()
 				changed = true
@@ -146,7 +146,7 @@ func doUpdate(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 }
 
 // Returns changed
-func doDownload(ctx *volumemgrContext, status *types.VolumeStatus) bool {
+func doDownload(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 
 	changed := false
 	// Make sure we kick the downloader and have a refcount
@@ -227,7 +227,7 @@ func doDownload(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 
 // Returns changed
 // Updates status with WaitingForCerts if checkCerts is set
-func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts bool) bool {
+func kickVerifier(ctx *volumemgrContext, status *types.OldVolumeStatus, checkCerts bool) bool {
 	changed := false
 	if !status.DownloadOrigin.HasVerifierRef {
 		if status.State == types.DOWNLOADED {
@@ -257,7 +257,7 @@ func kickVerifier(ctx *volumemgrContext, status *types.VolumeStatus, checkCerts 
 // VerifyImageStatus. If it only finds the Persist it returns nil but
 // sets up a VerifyImageConfig.
 // Also returns changed=true if the VolumeStatus is changed
-func lookForVerified(ctx *volumemgrContext, status *types.VolumeStatus) (*types.VerifyImageStatus, bool) {
+func lookForVerified(ctx *volumemgrContext, status *types.OldVolumeStatus) (*types.VerifyImageStatus, bool) {
 	changed := false
 	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.BlobSha256)
 	if vs == nil {
@@ -316,10 +316,10 @@ func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
 
 	log.Infof("updateStatus(%s) objType %s", uuid, objType)
 	found := false
-	volPub := ctx.publication(types.VolumeStatus{}, objType)
+	volPub := ctx.publication(types.OldVolumeStatus{}, objType)
 	volItems := volPub.GetAll()
 	for _, st := range volItems {
-		status := st.(types.VolumeStatus)
+		status := st.(types.OldVolumeStatus)
 		if status.BlobSha256 == sha {
 			log.Infof("Found VolumeStatus %s", status.Key())
 			found = true
@@ -350,7 +350,7 @@ func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
 
 // doDelete returns changed boolean
 // XXX need return value?
-func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
+func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 	changed := false
 
 	// XXX support other types
@@ -388,10 +388,10 @@ func doDelete(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 			changed = true
 			if vr.Error != nil {
 				status.SetErrorWithSource(vr.Error.Error(),
-					types.VolumeStatus{}, vr.ErrorTime)
+					types.OldVolumeStatus{}, vr.ErrorTime)
 				changed = true
 				return changed
-			} else if status.IsErrorSource(types.VolumeStatus{}) {
+			} else if status.IsErrorSource(types.OldVolumeStatus{}) {
 				log.Infof("Clearing volume error %s",
 					status.Error)
 				status.ClearErrorWithSource()

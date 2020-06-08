@@ -37,10 +37,10 @@ const (
 	AppInstanceStatusLogType LogObjectType = "app_instance_status"
 	// AppInstanceConfigLogType :
 	AppInstanceConfigLogType LogObjectType = "app_instance_config"
-	// VolumeConfigLogType :
-	VolumeConfigLogType LogObjectType = "volume_config"
-	// VolumeStatusLogType :
-	VolumeStatusLogType LogObjectType = "volume_status"
+	// OldVolumeConfigLogType :
+	OldVolumeConfigLogType LogObjectType = "old_volume_config"
+	// OldVolumeStatusLogType :
+	OldVolumeStatusLogType LogObjectType = "old_volume_status"
 	// DomainConfigLogType :
 	DomainConfigLogType LogObjectType = "domain_config"
 	// DomainStatusLogType :
