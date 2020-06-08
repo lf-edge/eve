@@ -102,11 +102,7 @@ type VolumeConfig struct {
 	// Information about the result
 	MaxVolSize uint64 // Create or resize to this size
 	ReadOnly   bool
-	// XXX Preserve    bool // If set a rw disk will be preserved across
-	// boots (acivate/inactivate)
-	// XXX Preserve is only interpreted by domainmgr?? Need new on reboot?
-	// XXX drop/ignore Preserve?
-	Format zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
+	Format     zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
 	// XXX add "directory" to format?  enum?
 
 	// XXX if these are not needed in Status they are not needed in Config

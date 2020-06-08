@@ -1325,7 +1325,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ImageID = dc.ImageID
 		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
-		ds.Preserve = dc.Preserve
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
 		ds.Devtype = dc.Devtype
@@ -1884,7 +1883,6 @@ func createCloudInitISO(ctx *domainContext,
 	ds.Format = zconfig.Format_RAW
 	ds.Vdev = "hdc:cdrom"
 	ds.ReadOnly = false
-	ds.Preserve = true // Prevent attempt to copy; XXX remove
 	return ds, nil
 }
 
