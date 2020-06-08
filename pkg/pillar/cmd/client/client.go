@@ -78,7 +78,6 @@ var (
 	debug             = false
 	debugOverride     bool // From command line arg
 	serverNameAndPort string
-	serverName        string
 	onboardTLSConfig  *tls.Config
 	devtlsConfig      *tls.Config
 )
@@ -558,7 +557,7 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 // if got certs, the leaf is saved to types.ServerSigningCertFileName file
 func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, retryCount int, force bool) bool {
 	var resp *http.Response
-	var b, contents []byte
+	var contents []byte
 	var done bool
 
 	if !force {
@@ -568,20 +567,20 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 		}
 	}
 
-	// certs API is always V2, and without UUID, use http for now
-	requrl := zedcloud.URLPathString(serverNameAndPort, true, true, nilUUID, "certs")
+	// certs API is always V2, and without UUID, use https
+	requrl := zedcloud.URLPathString(serverNameAndPort, true, false, nilUUID, "certs")
 	// currently there is no data included for the request, same as myGet()
-	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount, int64(len(b)), bytes.NewBuffer(b))
+	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount, 0, nil)
 	if resp != nil {
 		log.Infof("client fetchCertChain done %v, resp-code %d, content len %d", done, resp.StatusCode, len(contents))
 		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized ||
 			resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusBadRequest {
 			// cloud server does not support V2 API
-			log.Infof("client fetchCertChain: server %s does not support V2 API", serverName)
+			log.Infof("client fetchCertChain: server %s does not support V2 API", serverNameAndPort)
 			return false
 		}
 		// catch default return status, if not done, will return false later
-		log.Infof("client fetchCertChain: server %s return status %s, done %v", serverName, resp.Status, done)
+		log.Infof("client fetchCertChain: server %s return status %s, done %v", serverNameAndPort, resp.Status, done)
 	} else {
 		log.Infof("client fetchCertChain done %v, resp null, content len %d", done, len(contents))
 	}

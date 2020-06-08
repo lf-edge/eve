@@ -284,7 +284,7 @@ func getLatestConfig(url string, iteration int,
 }
 
 func getCloudCertChain(ctx *zedagentContext) bool {
-	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, true, nilUUID, "certs")
+	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "certs")
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, certURL, 0, nil, 0, false)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {
