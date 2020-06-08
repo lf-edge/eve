@@ -226,7 +226,7 @@ The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, 
 
 ### Controller Certificates
 
-Retrieve Certificates that Controller will use. Controller can include one or more certificates in the response, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format. The device will verify the certificate chains against its trusted root certificate hence the controller certificates are sent in the clear.
+Retrieve Certificates that Controller will use. Controller can include one or more certificates in the response, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format. The device will verify the certificate chains against its trusted root certificate.
 
    GET /api/v1/edgeDevice/certs
 

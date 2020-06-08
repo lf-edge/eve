@@ -60,7 +60,7 @@ In general, there is one directory for each API endpoint:
 
 ## Authentication
 
-All communication messages, except `/ping` and `/certs`,  MUST be encrypted with TLS v1.2 or higher, and MUST authenticate the server using TLS. It is RECOMMENDED to use TLS v1.3 or higher to provider better privacy for the Device certificate and faster communication initialization. There is no client TLS authentication in this version of the API.
+All communication messages MUST be encrypted with TLS v1.2 or higher, and MUST authenticate the server using TLS. It is RECOMMENDED to use TLS v1.3 or higher to provider better privacy for the Device certificate and faster communication initialization. There is no client TLS authentication in this version of the API.
 
 In addition the payload of the message MUST use the [auth.AuthContainer](./proto/auth/auth.proto) to provide end-to-end integrity of the message payload in the presence of MiTM TLS proxies and/or server-side load balancers. More information about this object signing is in [Object Signing](./OBJECT-SIGNING.md).
 
@@ -73,7 +73,7 @@ A Controller MUST NOT expose other any endpoints that do not offer TLS encryptio
 
 The `ping` endpoint may be useful for a Device to check connectivity before registering. Since the device has not yet registered, it MUST use its onboarding certificate to authenticate to the `ping` endpoint. The Controller SHOULD rate limit the endpoint when authenticated via onboarding certificate. A Device MUST expect that its Controller may rate limit the `ping` endpoint, and have an appropriate backoff scheme for retrying.
 
-The `certs` API is used early during device initialization to bootstrap the use of the AuthContainer. It is not protected by TLS, but by the verification of the received signature chains. The Controller SHOULD rate limit the endpoint and a Device MUST expect that its Controller may rate limit the endpoint, and have an appropriate backoff scheme for retrying.
+The `certs` API is used early during device initialization to bootstrap the use of the AuthContainer. It is protected by server TLS, but also the received signature chains are the verified against the trusted root. The Controller SHOULD rate limit the endpoint and a Device MUST expect that its Controller may rate limit the endpoint, and have an appropriate backoff scheme for retrying.
 
 The common return codes for failed authentication or authorization are:
 
@@ -204,7 +204,7 @@ The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, 
 
 ### Controller Certificates
 
-Retrieve Certificates that Controller will use. Controller can include one or more certificates in the response, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format. The device will verify the certificate chains against its trusted root certificate hence the controller certificates are sent in the clear.
+Retrieve Certificates that Controller will use. Controller can include one or more certificates in the response, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format. The device will verify the certificate chains against its trusted root certificate.
 
    GET /api/v2/edgeDevice/certs
 
