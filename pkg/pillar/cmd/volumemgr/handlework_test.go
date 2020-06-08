@@ -17,7 +17,7 @@ import (
 )
 
 func TestHandleWorkCreate(t *testing.T) {
-	status := types.VolumeStatus{
+	status := types.OldVolumeStatus{
 		VolumeID:     uuid.NewV4(), // XXX future
 		AppInstID:    uuid.NewV4(),
 		PurgeCounter: 0,
@@ -135,7 +135,7 @@ func TestHandleWorkDestroy(t *testing.T) {
 	}
 	ctx := initCtx(t)
 	ctx.worker = InitHandleWork(&ctx)
-	status := types.VolumeStatus{
+	status := types.OldVolumeStatus{
 		VolumeID:     uuid.NewV4(), // XXX future
 		AppInstID:    uuid.NewV4(),
 		PurgeCounter: 0,
@@ -191,7 +191,7 @@ func initCtx(t *testing.T) volumemgrContext {
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeStatus{},
+		TopicType:  types.OldVolumeStatus{},
 	})
 	assert.Nil(t, err)
 	ctx.pubAppVolumeStatus = pubAppVolumeStatus

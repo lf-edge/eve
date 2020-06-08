@@ -138,7 +138,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 			continue
 		}
 
-		status := types.VolumeStatus{
+		status := types.OldVolumeStatus{
 			BlobSha256:    sha256,
 			AppInstID:     appUUID,
 			VolumeID:      nilUUID, // XXX known for other origins?
@@ -161,7 +161,7 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 // XXX implement and call.
 func unpublishInitialVolumeStatus(ctx *volumemgrContext, volumeKey string) {
 
-	pub := ctx.publication(types.VolumeStatus{}, types.UnknownObj)
+	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	st, _ := pub.Get(volumeKey)
 	if st == nil {
 		log.Errorf("unpublishInitialVolumeStatus(%s) key not found",
@@ -173,7 +173,7 @@ func unpublishInitialVolumeStatus(ctx *volumemgrContext, volumeKey string) {
 
 // XXX for now only handle those with a sha and appInstID
 // XXX format arg is not used
-func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType types.OriginType, format zconfig.Format) *types.VolumeStatus {
+func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType types.OriginType, format zconfig.Format) *types.OldVolumeStatus {
 
 	log.Infof("lookupInitVolumeStatus(%s) type %d format %d", volumeKey,
 		originType, format)
@@ -198,13 +198,13 @@ func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string, originType 
 		log.Infof("lookupInitVolumeStatus(%s) no appInstID; not found", volumeKey)
 		return nil
 	}
-	pub := ctx.publication(types.VolumeStatus{}, types.UnknownObj)
+	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	st, _ := pub.Get(volumeKey)
 	if st == nil {
 		log.Infof("lookupInitVolumeStatus(%s) key not found", volumeKey)
 		return nil
 	}
-	status := st.(types.VolumeStatus)
+	status := st.(types.OldVolumeStatus)
 	return &status
 }
 
@@ -214,10 +214,10 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 
 	log.Debugf("gcObjects()")
 
-	pub := ctx.publication(types.VolumeStatus{}, types.UnknownObj)
+	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	items := pub.GetAll()
 	for _, st := range items {
-		status := st.(types.VolumeStatus)
+		status := st.(types.OldVolumeStatus)
 		if status.RefCount != 0 {
 			log.Debugf("gcObjects: skipping RefCount %d: %s",
 				status.RefCount, status.Key())
@@ -301,10 +301,10 @@ func gcResetObjectsLastUse(ctx *volumemgrContext, dirName string) {
 
 	log.Debugf("gcResetObjectsLastUse()")
 
-	pub := ctx.publication(types.VolumeStatus{}, types.UnknownObj)
+	pub := ctx.publication(types.OldVolumeStatus{}, types.UnknownObj)
 	items := pub.GetAll()
 	for _, st := range items {
-		status := st.(types.VolumeStatus)
+		status := st.(types.OldVolumeStatus)
 		if status.RefCount == 0 {
 			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now", status.Key())
 			status.LastUse = time.Now()

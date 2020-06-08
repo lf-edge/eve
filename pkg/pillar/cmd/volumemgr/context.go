@@ -18,7 +18,7 @@ func (ctx *volumemgrContext) subscription(topicType interface{}, objType string)
 		log.Fatalf("subscription got a pointer type: %T", topicType)
 	}
 	switch typeName := topicType.(type) {
-	case types.VolumeConfig:
+	case types.OldVolumeConfig:
 		switch objType {
 		case types.AppImgObj:
 			sub = ctx.subAppVolumeConfig
@@ -64,7 +64,7 @@ func (ctx *volumemgrContext) publication(topicType interface{}, objType string) 
 		log.Fatalf("publication got a pointer type: %T", topicType)
 	}
 	switch typeName := topicType.(type) {
-	case types.VolumeStatus:
+	case types.OldVolumeStatus:
 		switch objType {
 		case types.AppImgObj:
 			pub = ctx.pubAppVolumeStatus

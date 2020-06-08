@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.VolumeStatus) {
+func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.OldVolumeStatus) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s", status.BlobSha256)
 

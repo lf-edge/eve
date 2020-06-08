@@ -102,7 +102,7 @@ func Run(ps *pubsub.PubSub) {
 	pubVolumeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeConfig{},
+		TopicType:  types.OldVolumeConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -212,7 +212,7 @@ func Run(ps *pubsub.PubSub) {
 	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		AgentScope:    types.AppImgObj,
-		TopicImpl:     types.VolumeStatus{},
+		TopicImpl:     types.OldVolumeStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
 		CreateHandler: handleVolumeStatusModify,

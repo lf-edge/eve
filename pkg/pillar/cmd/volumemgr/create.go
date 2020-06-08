@@ -20,7 +20,7 @@ import (
 
 // createVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
+func createVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
 
 	srcLocation := status.FileLocation
 	log.Infof("createVolume(%s) from %s", status.Key(), srcLocation)
@@ -39,7 +39,7 @@ func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, strin
 
 // createVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLocation string) (bool, string, error) {
+func createVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
 
 	created := false
 	if status.ReadOnly {
@@ -79,7 +79,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLoca
 
 // createContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus, srcLocation string) (bool, string, error) {
+func createContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
 
 	created := false
 	dirName := appRwVolumeName(status.BlobSha256, status.AppInstID.String(),
@@ -107,7 +107,7 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus, src
 
 // destroyVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
+func destroyVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
 
 	log.Infof("destroyVolume(%s)", status.Key())
 	if !status.VolumeCreated {
@@ -140,7 +140,7 @@ func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, stri
 
 // destroyVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
+func destroyVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
@@ -158,7 +158,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 
 // destroyContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
+func destroyContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
