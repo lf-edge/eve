@@ -513,7 +513,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			cfgApp.Drives)
 
 		// fill in the collect stats IP address of the App
-		appInstance.CollectStatsIPAddr = cfgApp.GetCollectStatsIPAddr()
+		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
 
 		// fill the overlay/underlay config
 		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,

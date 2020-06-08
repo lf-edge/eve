@@ -10,7 +10,6 @@
 package zedrouter
 
 import (
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -23,17 +22,11 @@ func appCheckStatsCollect(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 	oldIPAddr := status.GetStatsIPAddr
 	status.GetStatsIPAddr = config.GetStatsIPAddr
-	if strings.Compare(config.GetStatsIPAddr, oldIPAddr) != 0 {
-		log.Infof("appCheckStatsCollect: config ip %s, status ip %s", config.GetStatsIPAddr, oldIPAddr)
-		if oldIPAddr == "" && config.GetStatsIPAddr != "" {
-			ctx.appStatsMutex.Lock()
-			publishAppNetworkStatus(ctx, status)
-			if !ctx.appCollectStatsRunning {
-				ctx.appStatsMutex.Unlock()
-				go appStatsCollect(ctx)
-			} else {
-				ctx.appStatsMutex.Unlock()
-			}
+	publishAppNetworkStatus(ctx, status)
+	if !config.GetStatsIPAddr.Equal(oldIPAddr) {
+		log.Infof("appCheckStatsCollect: config ip %s, status ip %s", config.GetStatsIPAddr.String(), oldIPAddr.String())
+		if oldIPAddr == nil && config.GetStatsIPAddr != nil {
+			ensureStatsCollectRunning(ctx)
 		}
 	}
 }
@@ -41,34 +34,54 @@ func appCheckStatsCollect(ctx *zedrouterContext, config types.AppNetworkConfig,
 // goroutine for App container stats collection
 func appStatsCollect(ctx *zedrouterContext) {
 	log.Infof("appStatsCollect: containerStats, started")
-	appStatsCollectTimer := time.NewTimer(600 * time.Second)
+	appStatsCollectTimer := time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 	for {
 		select {
 		case <-appStatsCollectTimer.C:
-			var numStatsIP int
-			ctx.appStatsMutex.Lock()
-			pub := ctx.pubAppNetworkStatus
-			items := pub.GetAll()
-			for _, st := range items {
-				status := st.(types.AppNetworkStatus)
-				if status.GetStatsIPAddr != "" {
-					numStatsIP++
-				}
-			}
-			if numStatsIP == 0 {
-				log.Infof("appStatsCollect: no stats IP anymore. stop and exit out")
-				ctx.appCollectStatsRunning = false
-				ctx.appStatsMutex.Unlock()
+			items, stopped := checkAppStopStatsCollect(ctx)
+			if stopped {
 				return
 			}
-			ctx.appStatsMutex.Unlock()
+
 			for _, st := range items {
 				status := st.(types.AppNetworkStatus)
-				if status.GetStatsIPAddr != "" {
+				if status.GetStatsIPAddr != nil {
 					// XXX temp for later, collection function to fill in here
 				}
 			}
-			appStatsCollectTimer = time.NewTimer(600 * time.Second)
+			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 		}
 	}
+}
+
+func ensureStatsCollectRunning(ctx *zedrouterContext) {
+	ctx.appStatsMutex.Lock()
+	if !ctx.appCollectStatsRunning {
+		ctx.appCollectStatsRunning = true
+		ctx.appStatsMutex.Unlock()
+		go appStatsCollect(ctx)
+	} else {
+		ctx.appStatsMutex.Unlock()
+	}
+}
+
+func checkAppStopStatsCollect(ctx *zedrouterContext) (map[string]interface{}, bool) {
+	var numStatsIP int
+	ctx.appStatsMutex.Lock()
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		if status.GetStatsIPAddr != nil {
+			numStatsIP++
+		}
+	}
+	if numStatsIP == 0 {
+		log.Infof("checkAppStopStatsCollect: no stats IP anymore. stop and exit out")
+		ctx.appCollectStatsRunning = false
+		ctx.appStatsMutex.Unlock()
+		return items, true
+	}
+	ctx.appStatsMutex.Unlock()
+	return items, false
 }

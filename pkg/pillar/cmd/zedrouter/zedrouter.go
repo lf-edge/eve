@@ -87,6 +87,7 @@ type zedrouterContext struct {
 	appNetCreateTimer         *time.Timer
 	appCollectStatsRunning    bool
 	appStatsMutex             sync.Mutex // to protect the changing appNetworkStatus & appCollectStatsRunning
+	appStatsInterval          uint32
 }
 
 var debug = false
@@ -189,6 +190,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
+
+	gcp := *types.DefaultConfigItemValueMap()
+	zedrouterCtx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -2777,6 +2781,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
+		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -2792,6 +2797,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	gcp := *types.DefaultConfigItemValueMap()
+	ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
