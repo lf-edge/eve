@@ -118,7 +118,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		AgentName:        "devicenetwork",
 	})
 	log.Infof("VerifyDeviceNetworkStatus: Use V2 API %v\n", zedcloud.UseV2API())
-	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "ping")
+	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
 
 	log.Debugf("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)

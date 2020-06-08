@@ -487,7 +487,7 @@ func UseV2API() bool {
 }
 
 // URLPathString - generate url for either v1 or v1 API path
-func URLPathString(server string, isV2api, isHTTP bool, devUUID uuid.UUID, action string) string {
+func URLPathString(server string, isV2api bool, devUUID uuid.UUID, action string) string {
 	var urlstr string
 	if !isV2api {
 		urlstr = server + "/api/v1/edgedevice/" + action
@@ -497,9 +497,6 @@ func URLPathString(server string, isV2api, isHTTP bool, devUUID uuid.UUID, actio
 			urlstr = urlstr + "id/" + devUUID.String() + "/"
 		}
 		urlstr = urlstr + action
-	}
-	if isHTTP {
-		return "http://" + urlstr
 	}
 	return urlstr
 }

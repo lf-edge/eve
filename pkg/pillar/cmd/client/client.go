@@ -535,7 +535,7 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 		return false
 	}
 	// in V2 API, register does not send UUID string
-	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "register")
+	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "register")
 	done, resp, _, contents := myPost(zedcloudCtx, tlsConfig,
 		requrl, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
@@ -568,7 +568,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 	}
 
 	// certs API is always V2, and without UUID, use https
-	requrl := zedcloud.URLPathString(serverNameAndPort, true, false, nilUUID, "certs")
+	requrl := zedcloud.URLPathString(serverNameAndPort, true, nilUUID, "certs")
 	// currently there is no data included for the request, same as myGet()
 	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount, 0, nil)
 	if resp != nil {
@@ -615,7 +615,7 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	zedcloudCtx := ctx.zedcloudCtx
 
 	// get UUID does not have UUID string in V2 API
-	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "config")
+	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "config")
 	b, err := generateConfigRequest()
 	if err != nil {
 		log.Errorln(err)
