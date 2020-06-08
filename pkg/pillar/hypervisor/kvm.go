@@ -652,20 +652,20 @@ func (ctx kvmContext) PCIReserve(long string) error {
 
 	//map vfio-pci as the driver_override for the device
 	if err := ioutil.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
-		log.Fatalf("driver_override failure for PCI device %s: %v",
+		return logError("driver_override failure for PCI device %s: %v",
 			long, err)
 	}
 
 	//Unbind the current driver, whatever it is, if there is one
 	if _, err := os.Stat(unbindFile); err == nil {
 		if err := ioutil.WriteFile(unbindFile, []byte(long), 0644); err != nil {
-			log.Fatalf("unbind failure for PCI device %s: %v",
+			return logError("unbind failure for PCI device %s: %v",
 				long, err)
 		}
 	}
 
 	if err := ioutil.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
-		log.Fatalf("drivers_probe failure for PCI device %s: %v",
+		return logError("drivers_probe failure for PCI device %s: %v",
 			long, err)
 	}
 
@@ -673,7 +673,7 @@ func (ctx kvmContext) PCIReserve(long string) error {
 }
 
 func (ctx kvmContext) PCIRelease(long string) error {
-	log.Errorf("PCIRelease long addr is %s", long)
+	log.Infof("PCIRelease long addr is %s", long)
 
 	overrideFile := sysfsPciDevices + long + "/driver_override"
 	unbindFile := sysfsPciDevices + long + "/driver/unbind"
