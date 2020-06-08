@@ -69,8 +69,8 @@ type AppInstanceConfig struct {
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
 	RemoteConsole     bool
-	// Collect Stats IP Address
-	CollectStatsIPAddr string
+	// Collect Stats IP Address, assume port is the default docker API for http: 2375
+	CollectStatsIPAddr net.IP
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus

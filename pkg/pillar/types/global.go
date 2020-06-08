@@ -141,6 +141,8 @@ const (
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
 	//  Dom0MinDiskUsagePercent upto a max of  Dom0DiskUsageMaxBytes
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
+	// AppContainerStatsInterval - App Container Stats Collection
+	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 
 	// Bool Items
 	// UsbAccess global setting key
@@ -705,6 +707,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)

@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"strings"
 )
 
 // MaybeAddAppNetworkConfig ensures we have an AppNetworkConfig
@@ -39,9 +38,9 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 				m.Activate, aiConfig.Activate)
 			changed = true
 		}
-		if strings.Compare(m.GetStatsIPAddr, aiConfig.CollectStatsIPAddr) != 0 {
+		if !m.GetStatsIPAddr.Equal(aiConfig.CollectStatsIPAddr) {
 			log.Infof("MaybeAddAppNetworkConfig: stats ip changed from  %s to %s",
-				m.GetStatsIPAddr, aiConfig.CollectStatsIPAddr)
+				m.GetStatsIPAddr.String(), aiConfig.CollectStatsIPAddr.String())
 			changed = true
 		}
 		for i, new := range aiConfig.OverlayNetworkList {
