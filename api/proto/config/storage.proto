@@ -105,7 +105,7 @@ enum DriveType {
 message Drive {
   Image image = 1;
   bool readonly = 5;
-  bool preserve = 6; // XXX deprecate; EVE always preserves unless there is a purge
+  // deprecated = 6;
   DriveType drvtype = 8;
   Target target = 9;
   // maxsizebytes indicates the maximum size of the volume.
