@@ -32,7 +32,7 @@ The sender of a message has a its own certificate and associated private key plu
 
 The `AuthContainer` wrapper is constructed by:
 
-1. Put the above payload in the `authPayload` field
+1. Put the above payload in the `protectedPayload` field
 1. Compute Sha256 over the above payload
 1. Compute the ECDSA signature of that sha, and place it in the `signatureHash` field
 1. To identify the sender, place a truncated sha of the sender's certificate in `senderCertHash`
@@ -44,7 +44,7 @@ The steps to verify a `AuthContainer` message wrapper are:
 1. Verify that the `algo` is a supported algorithm.
 1. If the `senderCert` field is set, use that base64 encoded PEM format certificate to determine who the sender is, and whether it is authorized to access the particular API endpoint
 1. Else, use the `senderCertHash` to look up the sender. The result of the lookup will be the sender's certificate, and information about what is it authorized to access.
-1. Compute Sha256 over the `authPayload` bytes
+1. Compute Sha256 over the `protectedPayload` bytes
 1. Using the public key from the sender's certificate, verify the ECDSA signature in the `signatureHash`
 1. If all successful, pass the identity of the sender to subsequent senders so they can make authorization checks (For instance, in a controller a device can only access API endpoints for its own UUID and the UUID is associated with the device certificate.)
 
@@ -79,7 +79,7 @@ When using the `register` message to onboard the sequence is:
 - device boots up, and first sends a GET for `ControllerCerts` retrieving the payload signing and intermediate certificates used by the controller
 - device verifies the signing certs up to the root CA certificate the device trusts since birth
 - device sends the `register` POST call to upload it's device.cert and serial number to controller. This is signed using the onboarding certificate's priavate key and wraooed in the `AuthContainer` message
-- the controller inspects the onboarding certificate and compars serial number to determine whether this is a legitimate new device, and verifies that the `authPayload` is signed by using the onboarding public key.
+- the controller inspects the onboarding certificate and compars serial number to determine whether this is a legitimate new device, and verifies that the `protectedPayload` is signed by using the onboarding public key.
 
 The device then proceeds with the POST of `ConfigRequest` as below.
 
@@ -92,6 +92,6 @@ The sequence during boot is:
 - device boots up, and if it doesn't have the controllers certificates, it send a GET for `ControllerCerts` (it might also do this on every boot)
 - if the device retrieved the controller certs, then it verifies the signing certs up to the root CA certificate the device trusts since birth
 - device invokes the `ConfigRequest` API call get its EdgeDevConfig. This is signed using the device certificate and the `AuthContainer` message per above
-- the controller looks up the device certificate based on the `senderCertHash` and if found verifies that the `authPayload` is signed by using the device public key.
+- the controller looks up the device certificate based on the `senderCertHash` and if found verifies that the `protectedPayload` is signed by using the device public key.
 
 Subsequence info and metrics messages from the device use the same approach.

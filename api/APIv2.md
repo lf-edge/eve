@@ -123,7 +123,7 @@ Return codes:
 
 Request:
 
-The request MUST use the onboarding certificate to sign the authPayload in the AuthContainer. The Controller MAY retain the onboarding certificate or information within it for further purposes.
+The request MUST use the onboarding certificate to sign the protectedPayload in the AuthContainer. The Controller MAY retain the onboarding certificate or information within it for further purposes.
 
 The request mime type MUST be "application/x-proto-binary".
 The request MUST have the body of a single protobuf message of type AuthContainer where the AuthBody is a protobuf message of type [register.ZRegisterMsg](./proto/register/register.proto). The message MUST include the Device certificate. The full onboarding certificate MUST be included in the senderCert in the AuthContainer to facilitate the lookup of on the controller side.
@@ -185,7 +185,7 @@ Return codes:
 
 Request:
 
-The request MUST use the Device certificate to sign the authPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
 
 The request mime type MUST be "application/x-proto-binary".
 The request MUST have the body of a single protobuf message of type AuthContainer where the AuthBody is a protobuf message of type [config.ConfigRequest](./proto/config/devconfig.proto). The message should include the previous configHash from a previous ConfigResponse message to reduce network utilization when there is no configuration change.
@@ -265,7 +265,7 @@ Return codes:
 
 Request:
 
-The request MUST use the Device certificate to sign the authPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
 
 The request MUST be of mime type "application/x-proto-binary".
 
@@ -302,7 +302,7 @@ Return codes:
 
 Request:
 
-The request MUST use the Device certificate to sign the authPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
 
 The request MUST be of mime type "application/x-proto-binary".
 
@@ -336,7 +336,7 @@ Return codes:
 
 Request:
 
-The request MUST use the Device certificate to sign the authPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
 
 The request MUST be of mime type "application/x-proto-binary".
 
@@ -370,7 +370,7 @@ Return codes:
 
 Request:
 
-The request MUST use the Device certificate to sign the authPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
 
 The request MUST be of mime type "application/x-proto-binary".
 
@@ -406,7 +406,7 @@ Return codes:
 
 Request:
 
-The request MUST use the Device certificate to sign the authPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
 
 The request MUST be of mime type "application/x-proto-binary".
 
