@@ -49,7 +49,7 @@ func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]by
 		return nil, senderSt, err
 	}
 
-	data := sm.AuthPayload.GetPayload()
+	data := sm.ProtectedPayload.GetPayload()
 	if !skipVerify { // no verify for /certs itself
 		if len(sm.GetSenderCertHash()) != hashSha256Len16 &&
 			len(sm.GetSenderCertHash()) != hashSha256Len32 {
@@ -176,7 +176,7 @@ func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (
 		Payload: data,
 	}
 	sm := zauth.AuthContainer{}
-	sm.AuthPayload = &body
+	sm.ProtectedPayload = &body
 
 	cert, err := getMyDevCert(ctx, useOnboard)
 	if err != nil {
