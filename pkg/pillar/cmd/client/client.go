@@ -37,9 +37,9 @@ const (
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
-	return400   = false
+	errorTime     = 3 * time.Minute
+	warningTime   = 40 * time.Second
+	bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 )
 
 // Really a constant
@@ -445,7 +445,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 	senderStatus := types.SenderStatusNone
 	zedcloudCtx.TlsConfig = tlsConfig
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-		requrl, reqlen, b, retryCount, return400)
+		requrl, reqlen, b, retryCount, bailOnHTTPErr)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {
 			log.Errorf("remoteTemporaryFailure %s", err)
