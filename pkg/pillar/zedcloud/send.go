@@ -239,7 +239,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	var reqUrl string
-	var useTLS, isEdgenode, ishttpGet, useOnboard, isCerts bool
+	var useTLS, isEdgenode, isGet, useOnboard, isCerts bool
 
 	senderStatus := types.SenderStatusNone
 	if strings.HasPrefix(destURL, "http:") {
@@ -256,14 +256,14 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 
 	if strings.Contains(destURL, "/edgedevice/") {
 		isEdgenode = true
-		if strings.Contains(destURL, "/ping") {
-			ishttpGet = true
-		} else if strings.Contains(destURL, "/certs") {
-			ishttpGet = true
+		if strings.Contains(destURL, "/certs") {
 			isCerts = true
 		} else if strings.Contains(destURL, "/register") {
 			useOnboard = true
 		}
+	}
+	if b == nil {
+		isGet = true
 	}
 
 	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, intf)
@@ -358,7 +358,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 
 		var req *http.Request
 		var b2 *bytes.Buffer
-		if ctx.V2API && isEdgenode && !ishttpGet {
+		if ctx.V2API && isEdgenode && !isGet {
 			b2, err = addAuthentication(ctx, b, useOnboard)
 			if err != nil {
 				log.Errorf("SendOnIntf: auth error %v\n", err)
@@ -420,7 +420,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
 			trace))
 		log.Debugf("SendOnIntf: req method %s, isget %v, url %s",
-			req.Method, ishttpGet, reqUrl)
+			req.Method, isGet, reqUrl)
 		resp, err := client.Do(req)
 		if err != nil {
 			if cf, cert := isCertFailure(err); cf {
