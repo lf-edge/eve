@@ -98,10 +98,8 @@ DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
+CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
 PART_SPEC_=efi conf imga
-# FIXME: this is the only rpi specific stuff left - we'll get rid of it soon
-CONF_FILES_FILTER_rpi=| grep -v conf/eve.dts
-CONF_FILES=$(shell ls -d $(CONF_DIR)/* $(CONF_FILES_FILTER_$(findstring rpi,$(HV))))
 PART_SPEC_rpi=boot conf imga
 PART_SPEC=$(PART_SPEC_$(findstring rpi,$(HV)))
 
