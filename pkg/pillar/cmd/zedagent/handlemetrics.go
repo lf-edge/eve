@@ -1560,14 +1560,16 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 
 // This function is called per change, hence needs to try over all management ports
 // For each port we try different source IPs until we find a working one.
-// For any 400 error we give up (don't retry) by not returning an error
+// For any 4xx and 5xx error we give up (don't retry) by not returning an error
+// Hence such error result in a loss of info.
+// XXX this is wrong - will not get update if controller is out
 func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
-	const return400 = true
+	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
 	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
-		size, buf, iteration, return400)
-	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		size, buf, iteration, bailOnHTTPErr)
+	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 600 {
 		log.Infof("SendProtoBuf: %s silently ignore code %d",
 			url, resp.StatusCode)
 		return nil
@@ -1588,9 +1590,9 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "metrics")
-	const return400 = false
+	const bailOnHTTPErr = false
 	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, metricsUrl,
-		size, buf, iteration, return400)
+		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		if rtf == types.SenderStatusRemTempFail {

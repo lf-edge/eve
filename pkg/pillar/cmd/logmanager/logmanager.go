@@ -802,18 +802,18 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs malloc error:")
 	}
 
-	// For any 400 error we abandon
-	const return400 = true
+	// For any 4xx and 5xx HTTP error we abandon
+	const bailOnHTTPErr = true
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s",
 			image)
 		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
-			return400)
+			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
 	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, logsURL,
-		size, buf, iteration, return400)
+		size, buf, iteration, bailOnHTTPErr)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
 	// XXX Should we inject a separate log entry to record that we dropped
@@ -836,7 +836,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
 		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
-			return400)
+			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
@@ -887,18 +887,18 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, appLogURL)
 
-	// For any 400 error we abandon
-	const return400 = true
+	// For any 4xx and 5xx HTTP error we abandon
+	const bailOnHTTPErr = true
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForAppLogs queued after existing for %s",
 			image)
 		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
-			return400)
+			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
 	}
 	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, appLogsURL,
-		size, buf, iteration, return400)
+		size, buf, iteration, bailOnHTTPErr)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
 	// XXX Should we inject a separate log entry to record that we dropped
@@ -926,7 +926,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
 		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
-			return400)
+			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
 	}

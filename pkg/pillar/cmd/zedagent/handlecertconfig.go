@@ -195,9 +195,9 @@ func sendCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "attest")
-	const return400 = false
+	const bailOnHTTPErr = false
 	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, attestURL,
-		size, buf, iteration, return400)
+		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {
 			log.Errorf("sendCertsProtobuf remoteTemporaryFailure: %s",
