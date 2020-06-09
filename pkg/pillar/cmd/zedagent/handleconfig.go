@@ -245,6 +245,7 @@ func getLatestConfig(url string, iteration int,
 					true)
 			}
 		}
+		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
@@ -253,6 +254,7 @@ func getLatestConfig(url string, iteration int,
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
+		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
@@ -262,6 +264,7 @@ func getLatestConfig(url string, iteration int,
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
+		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
@@ -273,6 +276,7 @@ func getLatestConfig(url string, iteration int,
 		getconfigCtx.configReceived = true
 	}
 	getconfigCtx.configGetStatus = types.ConfigGetSuccess
+	publishZedAgentStatus(getconfigCtx)
 
 	if !changed {
 		log.Debugf("Configuration from zedcloud is unchanged")
