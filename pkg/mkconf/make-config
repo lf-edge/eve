@@ -13,12 +13,6 @@ CONFIG_SIZE_KB=1024
 # Traverse /conf to a point where we either see multiple files or no subdirectories
 (cd /conf; while cd "$(echo ./*)" >/dev/null 2>&1 ; do true ; done ; cp -r ./* /conf ; rm -rf /conf/raw)
 
-DTS=/conf/eve.dts
-if [ -f "$DTS" ]; then
-   [ "$ZARCH" = arm64 ] && dtc -O dtb -o /conf/eve.dtb -I dts "$DTS"
-   rm "$DTS"
-fi
-
 #
 # Create Config image
 #
