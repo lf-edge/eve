@@ -13,6 +13,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -181,15 +182,77 @@ func NewIntfStatusMap() *IntfStatusMap {
 	return &intfStatusMap
 }
 
-// Array in timestamp aka priority order; first one is the most desired
-// config to use
+// DevicePortConfigList is an array in timestamp aka priority order;
+// first one is the most desired config to use
+// It includes test results hence is misnamed - should have a separate status
+// This is only published under the key "global"
 type DevicePortConfigList struct {
+	Key            string // Assume "gobal" if empty
 	CurrentIndex   int
 	PortConfigList []DevicePortConfig
 }
 
-// A complete set of configuration for all the ports used by zedrouter on the
-// device
+// PubKey is used for pubsub
+func (config DevicePortConfigList) PubKey() string {
+	if config.Key == "" {
+		return "global"
+	} else {
+		return config.Key
+	}
+}
+
+// LogCreate :
+func (config DevicePortConfigList) LogCreate() {
+	logObject := base.NewLogObject(base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+		AddField("num-portconfig-int64", len(config.PortConfigList)).
+		Infof("DevicePortConfigList create")
+}
+
+// LogModify :
+func (config DevicePortConfigList) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+
+	oldConfig, ok := old.(DevicePortConfigList)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+	}
+	if oldConfig.CurrentIndex != config.CurrentIndex ||
+		len(oldConfig.PortConfigList) != len(config.PortConfigList) {
+
+		logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+			AddField("num-portconfig-int64", len(config.PortConfigList)).
+			AddField("old-current-index-int64", oldConfig.CurrentIndex).
+			AddField("old-num-portconfig-int64", len(oldConfig.PortConfigList)).
+			Infof("DevicePortConfigList modify")
+	}
+
+}
+
+// LogDelete :
+func (config DevicePortConfigList) LogDelete() {
+	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+		AddField("num-portconfig-int64", len(config.PortConfigList)).
+		Infof("DevicePortConfigList delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config DevicePortConfigList) LogKey() string {
+	return string(base.DevicePortConfigListLogType) + "-" + config.Key
+}
+
+// DevicePortConfig is a misnomer in that it includes the total test results
+// plus the test results for a given port. The complete status with
+// IP addresses lives in DeviceNetworkStatus
 type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
 	Key          string
@@ -199,6 +262,106 @@ type DevicePortConfig struct {
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
 
 	Ports []NetworkPortConfig
+}
+
+// PubKey is used for pubsub. Key string plus TimePriority
+func (config DevicePortConfig) PubKey() string {
+	return config.Key + "@" + config.TimePriority.UTC().Format(time.RFC3339Nano)
+}
+
+// LogCreate :
+func (config DevicePortConfig) LogCreate() {
+	logObject := base.NewLogObject(base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		AddField("last-failed", config.LastFailed).
+		AddField("last-succeeded", config.LastSucceeded).
+		AddField("last-error", config.LastError).
+		Infof("DevicePortConfig create")
+	for _, p := range config.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DevicePortConfig create")
+	}
+}
+
+// LogModify :
+func (config DevicePortConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+
+	oldConfig, ok := old.(DevicePortConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfig type")
+	}
+	if len(oldConfig.Ports) != len(config.Ports) ||
+		oldConfig.LastFailed != config.LastFailed ||
+		oldConfig.LastSucceeded != config.LastSucceeded ||
+		oldConfig.LastError != config.LastError {
+
+		logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+			AddField("last-failed", config.LastFailed).
+			AddField("last-succeeded", config.LastSucceeded).
+			AddField("last-error", config.LastError).
+			AddField("old-ports-int64", len(oldConfig.Ports)).
+			AddField("old-last-failed", oldConfig.LastFailed).
+			AddField("old-last-succeeded", oldConfig.LastSucceeded).
+			AddField("old-last-error", oldConfig.LastError).
+			Infof("DevicePortConfig modify")
+	}
+	// XXX which fields to compare/log?
+	for i, p := range config.Ports {
+		if len(oldConfig.Ports) >= i {
+			continue
+		}
+		op := oldConfig.Ports[i]
+		// XXX different logobject for a particular port?
+		if p.HasError() != op.HasError() ||
+			p.LastFailed != op.LastFailed ||
+			p.LastSucceeded != op.LastSucceeded ||
+			p.LastError != op.LastError {
+			logObject.CloneAndAddField("ifname", p.IfName).
+				AddField("last-error", p.LastError).
+				AddField("last-succeeded", p.LastSucceeded).
+				AddField("last-failed", p.LastFailed).
+				AddField("old-last-error", op.LastError).
+				AddField("old-last-succeeded", op.LastSucceeded).
+				AddField("old-last-failed", op.LastFailed).
+				Infof("DevicePortConfig modify")
+		}
+	}
+}
+
+// LogDelete :
+func (config DevicePortConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		AddField("last-failed", config.LastFailed).
+		AddField("last-succeeded", config.LastSucceeded).
+		AddField("last-error", config.LastError).
+		Infof("DevicePortConfig delete")
+	for _, p := range config.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DevicePortConfig delete")
+	}
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config DevicePortConfig) LogKey() string {
+	return string(base.DevicePortConfigLogType) + "-" + config.Key
 }
 
 // TestResults is used to record when some test Failed or Succeeded.
@@ -576,11 +739,102 @@ type AddrInfo struct {
 	LastGeoTimestamp time.Time
 }
 
-// Published to microservices which needs to know about ports and IP addresses
+// DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
+// It is published under the key "global" only
 type DeviceNetworkStatus struct {
 	Version DevicePortConfigVersion // From DevicePortConfig
 	Testing bool                    // Ignore since it is not yet verified
 	Ports   []NetworkPortStatus
+}
+
+// Key is used for pubsub
+func (status DeviceNetworkStatus) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (status DeviceNetworkStatus) LogCreate() {
+	logObject := base.NewLogObject(base.DeviceNetworkStatusLogType, "",
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("testing-bool", status.Testing).
+		AddField("ports-int64", len(status.Ports)).
+		Infof("DeviceNetworkStatus create")
+	for _, p := range status.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DeviceNetworkStatus create")
+	}
+}
+
+// LogModify :
+func (status DeviceNetworkStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(DeviceNetworkStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
+	}
+	if oldStatus.Testing != status.Testing ||
+		len(oldStatus.Ports) != len(status.Ports) {
+
+		logObject.CloneAndAddField("testing-bool", status.Testing).
+			AddField("ports-int64", len(status.Ports)).
+			AddField("old-testing-bool", oldStatus.Testing).
+			AddField("old-ports-int64", len(oldStatus.Ports)).
+			Infof("DeviceNetworkStatus modify")
+	}
+	// XXX which fields to compare/log?
+	for i, p := range status.Ports {
+		if len(oldStatus.Ports) >= i {
+			continue
+		}
+		op := oldStatus.Ports[i]
+		// XXX different logobject for a particular port?
+		if p.HasError() != op.HasError() ||
+			p.LastFailed != op.LastFailed ||
+			p.LastSucceeded != op.LastSucceeded ||
+			p.LastError != op.LastError {
+			logObject.CloneAndAddField("ifname", p.IfName).
+				AddField("last-error", p.LastError).
+				AddField("last-succeeded", p.LastSucceeded).
+				AddField("last-failed", p.LastFailed).
+				AddField("old-last-error", op.LastError).
+				AddField("old-last-succeeded", op.LastSucceeded).
+				AddField("old-last-failed", op.LastFailed).
+				Infof("DeviceNetworkStatus modify")
+		}
+	}
+}
+
+// LogDelete :
+func (status DeviceNetworkStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+		nilUUID, status.LogKey())
+	logObject.CloneAndAddField("testing-bool", status.Testing).
+		AddField("ports-int64", len(status.Ports)).
+		Infof("DeviceNetworkStatus instance status delete")
+	for _, p := range status.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DeviceNetworkStatus delete")
+	}
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status DeviceNetworkStatus) LogKey() string {
+	return string(base.DeviceNetworkStatusLogType) + "-" + status.Key()
 }
 
 // GetPortByIfName - Get Port Status for port with given Ifname
