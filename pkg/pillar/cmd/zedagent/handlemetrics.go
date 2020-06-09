@@ -1560,20 +1560,13 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 
 // This function is called per change, hence needs to try over all management ports
 // For each port we try different source IPs until we find a working one.
-// For any 4xx and 5xx error we give up (don't retry) by not returning an error
-// Hence such error result in a loss of info.
-// XXX this is wrong - will not get update if controller is out
+// For any 4xx and 5xx error we don't try all port/IP address but return an error so the caller will defer and retry.
 func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
-	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
+	_, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
 		size, buf, iteration, bailOnHTTPErr)
-	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 600 {
-		log.Infof("SendProtoBuf: %s silently ignore code %d",
-			url, resp.StatusCode)
-		return nil
-	}
 	return err
 }
 
