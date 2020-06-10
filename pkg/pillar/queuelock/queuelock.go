@@ -61,10 +61,10 @@ func (hdl *Handle) Exit(work uint) {
 	hdl.Lock()
 	defer hdl.Unlock()
 	if !hdl.isRunning {
-		log.Fatalf("Exit but not running")
+		log.Panicf("Exit but not running")
 	}
 	if hdl.running != work {
-		log.Fatalf("Exit mismatched running %d work %d",
+		log.Panicf("Exit mismatched running %d work %d",
 			hdl.running, work)
 	}
 	hdl.isRunning = false
@@ -79,7 +79,7 @@ func (hdl *Handle) Exit(work uint) {
 	case hdl.next <- next:
 		log.Infof("Exit() sent %d", next)
 	default:
-		log.Fatalf("Exit channel busy")
+		log.Panicf("Exit channel busy")
 	}
 }
 
@@ -120,7 +120,7 @@ func (hdl *Handle) enqueue(work uint) {
 func (hdl *Handle) dequeue() uint {
 	log.Infof("dequeue() %d waiting", len(hdl.waiting))
 	if len(hdl.waiting) == 0 {
-		log.Fatalf("dequeue empty waiting")
+		log.Panicf("dequeue empty waiting")
 	}
 	work := hdl.waiting[0]
 	hdl.waiting = hdl.waiting[1:]

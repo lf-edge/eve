@@ -26,14 +26,39 @@ const (
 	myWorkRestart
 )
 
+func assertPanic(t *testing.T, f func()) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+	f()
+}
+
+func TestExtraExit(t *testing.T) {
+	h := NewQueueLock()
+	assert.NotNil(t, h)
+	assert.Equal(t, 0, h.NumWaiters())
+	assert.False(t, h.IsBusy())
+
+	exitWithoutEnter := func() { h.Exit(myWorkValidate) }
+	assertPanic(t, exitWithoutEnter)
+}
+
 func TestBadExit(t *testing.T) {
 	h := NewQueueLock()
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
 
-	// XXX can we test for exit/panic with h.Exit(myWorkValidate)
-	// h.Exit(myWorkValidate)
+	entered := h.Enter(myWorkUpdate)
+	assert.True(t, entered)
+	assert.Equal(t, 0, h.NumWaiters())
+	assert.True(t, h.IsBusy())
+	assert.True(t, h.IsRunning(myWorkUpdate))
+
+	wrongExit := func() { h.Exit(myWorkValidate) }
+	assertPanic(t, wrongExit)
 }
 
 func TestOne(t *testing.T) {
