@@ -674,11 +674,9 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		errStr := fmt.Sprintf("Missing phyio for %s lower %s; ignored",
 			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
-		// Report error but set Dhcp, isMgmt, and isFree to sane values
-		port.RecordFailure(errStr)
-		port.IfName = sysAdapter.Name
-		isFree = true
-	} else if !types.IoType(phyio.Ptype).IsNet() {
+		return nil
+	}
+	if !types.IoType(phyio.Ptype).IsNet() {
 		errStr := fmt.Sprintf("phyio for %s lower %s not IsNet; ignored",
 			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
