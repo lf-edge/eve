@@ -1,0 +1,18 @@
+# hadolint ignore=DL3006
+FROM MKISO_TAG as iso
+# hadolint ignore=DL3006
+FROM MKRAW_TAG as raw
+# we need to get rid of embedded initrd since we will get it from outside
+RUN rm /initrd.img
+# hadolint ignore=DL3006
+FROM MKCONF_TAG as conf
+
+COPY --from=iso / /
+COPY --from=raw / /
+COPY installer /bits
+COPY OVMF* /firmware/
+COPY runme.sh /
+RUN mkdir /in /out
+
+WORKDIR /bits
+ENTRYPOINT ["/runme.sh"]

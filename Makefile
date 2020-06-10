@@ -79,7 +79,7 @@ DOCKER_ARCH_TAG=$(ZARCH)
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
 
-BIOS_IMG=$(DIST)/OVMF.fd
+BIOS_IMG=$(DIST)/OVMF.fd $(DIST)/OVMF_CODE.fd $(DIST)/OVMF_VARS.fd
 LIVE=$(DIST)/live
 LIVE_IMG=$(DIST)/live.$(IMG_FORMAT)
 TARGET_IMG=$(DIST)/target.img
@@ -127,9 +127,8 @@ QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 QEMU_MEMORY:=4096
 
 ifeq ($(PFLASH),)
-QEMU_OPTS_BIOS=-bios $(BIOS_IMG)
+QEMU_OPTS_BIOS=-bios $(DIST)/OVMF.fd
 else
-BIOS_IMG=$(DIST)/OVMF*
 QEMU_OPTS_BIOS=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(DIST)/OVMF_VARS.fd
 endif
 
@@ -325,9 +324,10 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG) rootfs-kvm
-	cp pkg/eve/* Makefile images/*.yml $(DIST)
-	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring rpi,$(HV)),$(BOOT_PART)) | $(DIST)
+	cp pkg/eve/build.yml pkg/eve/runme.sh images/*.yml $|
+	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
+	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
 
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
