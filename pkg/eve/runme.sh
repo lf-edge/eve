@@ -14,12 +14,12 @@ dump() {
   # First let's see if postprocesing of a raw diks was requested
   case "$FMT" in
      qcow2) qemu-img convert -c -f raw -O qcow2 "$INAME" "$INAME.qcow2"
-	    INAME="$INAME.qcow2"
+            INAME="$INAME.qcow2"
             ONAME="$ONAME.qcow2"
-	    ;;
+            ;;
        gcp) tar --mode=644 --owner=root --group=root -S -h -czvf "$INAME.img.tar.gz" "$INAME"
-	    INAME="$INAME.img.tar.gz"
-	    ONAME="$ONAME.img.tar.gz"
+            INAME="$INAME.img.tar.gz"
+            ONAME="$ONAME.img.tar.gz"
             ;;
   esac
 
@@ -85,16 +85,17 @@ do_installer_iso() {
 # Lets' parse global options first
 while true; do
    case "$1" in
-     -f*) FMT="${1/-f/}"
-	  if [ -z "$FMT" ]; then
-	     FMT="$2"
-	     shift
+     -f*) #shellcheck disable=SC2039
+          FMT="${1/-f/}"
+          if [ -z "$FMT" ]; then
+             FMT="$2"
+             shift
           fi
-	  shift
-	  [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && bail "Unknown format: $FMT"
-	  ;;
+          shift
+          [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && bail "Unknown format: $FMT"
+          ;;
        *) break
-	  ;;
+          ;;
    esac
 done
 
