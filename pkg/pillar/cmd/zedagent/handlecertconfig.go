@@ -194,7 +194,7 @@ func sendCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
-		false, devUUID, "attest")
+		devUUID, "attest")
 	const return400 = false
 	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, attestURL,
 		size, buf, iteration, return400)
