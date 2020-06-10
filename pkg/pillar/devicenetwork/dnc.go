@@ -740,7 +740,8 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	if newplace == nil {
 		// Current Got deleted. If [0] was working we stick to it, otherwise we
 		// restart looking through the list.
-		if ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+		if len(ctx.DevicePortConfigList.PortConfigList) != 0 &&
+			ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
 			ctx.DevicePortConfigList.CurrentIndex = 0
 		} else {
 			ctx.DevicePortConfigList.CurrentIndex = -1
