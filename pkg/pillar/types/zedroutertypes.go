@@ -415,10 +415,10 @@ func (trPtr *TestResults) Update(src TestResults) {
 type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig method to get config pointer
-func (portConfig *DevicePortConfig) GetPortByIfName(
+func (config *DevicePortConfig) GetPortByIfName(
 	ifname string) *NetworkPortConfig {
-	for indx := range portConfig.Ports {
-		portPtr := &portConfig.Ports[indx]
+	for indx := range config.Ports {
+		portPtr := &config.Ports[indx]
 		if ifname == portPtr.IfName {
 			return portPtr
 		}
@@ -427,23 +427,23 @@ func (portConfig *DevicePortConfig) GetPortByIfName(
 }
 
 // RecordPortSuccess - Record for given ifname in PortConfig
-func (portConfig *DevicePortConfig) RecordPortSuccess(ifname string) {
-	portPtr := portConfig.GetPortByIfName(ifname)
+func (config *DevicePortConfig) RecordPortSuccess(ifname string) {
+	portPtr := config.GetPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordSuccess()
 	} else {
-		log.Errorf("portConfig.RecordPortSuccess - port %s not found",
+		log.Errorf("DevicePortConfig.RecordPortSuccess - port %s not found",
 			ifname)
 	}
 }
 
 // RecordPortFailure - Record for given ifname in PortConfig
-func (portConfig *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
-	portPtr := portConfig.GetPortByIfName(ifname)
+func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
+	portPtr := config.GetPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordFailure(errStr)
 	} else {
-		log.Errorf("portConfig.RecordPortFailure - port %s not found, "+
+		log.Errorf("DevicePortConfig.RecordPortFailure - port %s not found, "+
 			"err: %s", ifname, errStr)
 	}
 }
@@ -456,39 +456,39 @@ const (
 )
 
 // DoSanitize -
-func (portConfig *DevicePortConfig) DoSanitize(
+func (config *DevicePortConfig) DoSanitize(
 	sanitizeTimePriority bool,
 	sanitizeKey bool, key string,
 	sanitizeName bool) {
 
 	if sanitizeTimePriority {
 		zeroTime := time.Time{}
-		if portConfig.TimePriority == zeroTime {
+		if config.TimePriority == zeroTime {
 			// If we can stat the file use its modify time
 			filename := fmt.Sprintf("%s/DevicePortConfig/%s.json",
 				TmpDirname, key)
 			fi, err := os.Stat(filename)
 			if err == nil {
-				portConfig.TimePriority = fi.ModTime()
+				config.TimePriority = fi.ModTime()
 			} else {
-				portConfig.TimePriority = time.Unix(0, 0)
+				config.TimePriority = time.Unix(0, 0)
 			}
 			log.Infof("DoSanitize: Forcing TimePriority for %s to %v\n",
-				key, portConfig.TimePriority)
+				key, config.TimePriority)
 		}
 	}
 	if sanitizeKey {
-		if portConfig.Key == "" {
-			portConfig.Key = key
+		if config.Key == "" {
+			config.Key = key
 			log.Infof("DoSanitize: Forcing Key for %s TS %v\n",
-				key, portConfig.TimePriority)
+				key, config.TimePriority)
 		}
 	}
 	if sanitizeName {
 		// In case Phylabel isn't set we make it match IfName. Ditto for Logicallabel
 		// XXX still needed?
-		for i := range portConfig.Ports {
-			port := &portConfig.Ports[i]
+		for i := range config.Ports {
+			port := &config.Ports[i]
 			if port.Phylabel == "" {
 				port.Phylabel = port.IfName
 				log.Infof("XXX DoSanitize: Forcing Phylabel for %s ifname %s\n",
@@ -505,10 +505,10 @@ func (portConfig *DevicePortConfig) DoSanitize(
 
 // CountMgmtPorts returns the number of management ports
 // Exclude any broken ones with Dhcp = DT_NONE
-func (portConfig *DevicePortConfig) CountMgmtPorts() int {
+func (config *DevicePortConfig) CountMgmtPorts() int {
 
 	count := 0
-	for _, port := range portConfig.Ports {
+	for _, port := range config.Ports {
 		if port.IsMgmt && port.Dhcp != DT_NONE {
 			count++
 		}
@@ -520,16 +520,16 @@ func (portConfig *DevicePortConfig) CountMgmtPorts() int {
 // more of status such as the timestamps and the TestResults
 // XXX Compare Version or not?
 // We compare the Ports in array order.
-func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
+func (config *DevicePortConfig) Equal(config2 *DevicePortConfig) bool {
 
-	if portConfig.Key != portConfig2.Key {
+	if config.Key != config2.Key {
 		return false
 	}
-	if len(portConfig.Ports) != len(portConfig2.Ports) {
+	if len(config.Ports) != len(config2.Ports) {
 		return false
 	}
-	for i, p1 := range portConfig.Ports {
-		p2 := portConfig2.Ports[i]
+	for i, p1 := range config.Ports {
+		p2 := config2.Ports[i]
 		if p1.IfName != p2.IfName ||
 			p1.Phylabel != p2.Phylabel ||
 			p1.Logicallabel != p2.Logicallabel ||
@@ -549,27 +549,27 @@ func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
 
 // IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
 // Also returns false if it isn't usable
-func (portConfig DevicePortConfig) IsDPCTestable() bool {
+func (config DevicePortConfig) IsDPCTestable() bool {
 
-	if !portConfig.IsDPCUsable() {
+	if !config.IsDPCUsable() {
 		return false
 	}
-	if portConfig.LastFailed.IsZero() {
+	if config.LastFailed.IsZero() {
 		return true
 	}
-	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
 	// convert time difference in nano seconds to seconds
-	timeDiff := time.Since(portConfig.LastFailed) / time.Second
+	timeDiff := time.Since(config.LastFailed) / time.Second
 	return (timeDiff > 60)
 }
 
 // IsDPCUntested - returns true if this is something we might want to test now.
 // Checks if it is Usable since there is no point in testing unusable things.
-func (portConfig DevicePortConfig) IsDPCUntested() bool {
-	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() &&
-		portConfig.IsDPCUsable() {
+func (config DevicePortConfig) IsDPCUntested() bool {
+	if config.LastFailed.IsZero() && config.LastSucceeded.IsZero() &&
+		config.IsDPCUsable() {
 		return true
 	}
 	return false
@@ -577,30 +577,30 @@ func (portConfig DevicePortConfig) IsDPCUntested() bool {
 
 // IsDPCUsable - checks whether something is invalid; no management IP
 // addresses means it isn't usable hence we return false if none.
-func (portConfig DevicePortConfig) IsDPCUsable() bool {
-	mgmtCount := portConfig.CountMgmtPorts()
+func (config DevicePortConfig) IsDPCUsable() bool {
+	mgmtCount := config.CountMgmtPorts()
 	return mgmtCount > 0
 }
 
 // WasDPCWorking - Check if the last results for the DPC was Success
-func (portConfig DevicePortConfig) WasDPCWorking() bool {
+func (config DevicePortConfig) WasDPCWorking() bool {
 
-	if portConfig.LastSucceeded.IsZero() {
+	if config.LastSucceeded.IsZero() {
 		return false
 	}
-	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
 	return false
 }
 
-// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in portConfig to
+// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in DevicePortConfig to
 // those from intfStatusMap. If a port is not found in intfStatusMap, it means
 // the port was not tested, so we retain the original TestResults for the port.
-func (portConfig *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
+func (config *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
 	intfStatusMap IntfStatusMap) {
-	for indx := range portConfig.Ports {
-		portPtr := &portConfig.Ports[indx]
+	for indx := range config.Ports {
+		portPtr := &config.Ports[indx]
 		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
 			portPtr.TestResults.Update(tr)
@@ -1331,15 +1331,15 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 //	If true, it also returns the ifName ( NOT bundle name )
 //	Also returns whether it is currently used by an application by
 //	returning a UUID. If the UUID is zero it is in PCIback but available.
-func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
+func (config *DevicePortConfig) IsAnyPortInPciBack(
 	aa *AssignableAdapters) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Infof("IsAnyPortInPciBack: nil aa")
 		return false, "", uuid.UUID{}
 	}
 	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
-		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
-	for _, port := range portConfig.Ports {
+		aa.Initialized, len(aa.IoBundleList), len(config.Ports))
+	for _, port := range config.Ports {
 		ioBundle := aa.LookupIoBundleIfName(port.IfName)
 		if ioBundle == nil {
 			// It is not guaranteed that all Ports are part of Assignable Adapters
