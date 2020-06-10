@@ -379,6 +379,18 @@ func Run(ps *pubsub.PubSub) {
 	pubCipherContext.ClearRestarted()
 	getconfigCtx.pubCipherContext = pubCipherContext
 
+	// for ContentTree config Publisher
+	pubContentTreeConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ContentTreeConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubContentTreeConfig.ClearRestarted()
+	getconfigCtx.pubContentTreeConfig = pubContentTreeConfig
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -465,7 +477,6 @@ func Run(ps *pubsub.PubSub) {
 	subAppVifIPTrig.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
-
 	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
 		TopicImpl:     types.AppInstanceStatus{},
@@ -482,6 +493,25 @@ func Run(ps *pubsub.PubSub) {
 	}
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
+
+	// Look for ContentTreeStatus from volumemgr
+	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.ContentTreeStatus{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleContentTreeStatusModify,
+		ModifyHandler: handleContentTreeStatusModify,
+		DeleteHandler: handleContentTreeStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.subContentTreeStatus = subContentTreeStatus
+	subContentTreeStatus.Activate()
 
 	// Look for DomainMetric from domainmgr
 	subDomainMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -985,6 +1015,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppInstanceStatus.MsgChan():
 			subAppInstanceStatus.ProcessChange(change)
+
+		case change := <-subContentTreeStatus.MsgChan():
+			subContentTreeStatus.ProcessChange(change)
 
 		case change := <-subDomainMetric.MsgChan():
 			subDomainMetric.ProcessChange(change)

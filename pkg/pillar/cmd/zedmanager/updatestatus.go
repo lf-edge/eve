@@ -546,9 +546,9 @@ func doInstallStorageStatus(ctx *zedmanagerContext,
 		log.Errorf("Received error from volumemgr for %s: %s",
 			ss.Name, vs.Error)
 		ss.SetErrorWithSource(vs.Error,
-			types.VolumeStatus{}, vs.ErrorTime)
+			types.OldVolumeStatus{}, vs.ErrorTime)
 		changed = true
-	} else if ss.IsErrorSource(types.VolumeStatus{}) {
+	} else if ss.IsErrorSource(types.OldVolumeStatus{}) {
 		log.Infof("Clearing volumemgr error %s", ss.Error)
 		ss.ClearErrorWithSource()
 		changed = true

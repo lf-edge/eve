@@ -63,6 +63,8 @@ func (ep *SftpTransportMethod) Action(req *DronaRequest) error {
 	case SyncOpGetObjectMetaData:
 		err, contentLength = ep.processSftpObjectMetaData(req)
 		req.contentLength = contentLength
+	case SysOpDownloadByChunks:
+		err = fmt.Errorf("Chunk download for SFTP transport is not supported yet")
 	default:
 		err = fmt.Errorf("Unknown SFTP datastore operation")
 	}

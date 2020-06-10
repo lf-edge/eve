@@ -105,7 +105,7 @@ enum DriveType {
 message Drive {
   Image image = 1;
   bool readonly = 5;
-  bool preserve = 6; // XXX deprecate; EVE always preserves unless there is a purge
+  // deprecated = 6;
   DriveType drvtype = 8;
   Target target = 9;
   // maxsizebytes indicates the maximum size of the volume.
@@ -175,7 +175,7 @@ message Volume {
 
   // change in generationCount indicates that the mutated volume needs to be
   // purged and built from scratch. This is a generalization of the purge
-  // command for an application unstance
+  // command for an application instance
   int64 generationCount = 4;
 
   // miscellaneous attributes of the Volume

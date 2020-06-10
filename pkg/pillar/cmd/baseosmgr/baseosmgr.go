@@ -269,7 +269,7 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			AgentScope: types.BaseOsObj,
-			TopicType:  types.VolumeConfig{},
+			TopicType:  types.OldVolumeConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -371,12 +371,12 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
-	// Look for BaseOs VolumeStatus from volumemgr
+	// Look for BaseOs OldVolumeStatus from volumemgr
 	subVolumeStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
 			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.VolumeStatus{},
+			TopicImpl:     types.OldVolumeStatus{},
 			Activate:      false,
 			Ctx:           ctx,
 			CreateHandler: handleVolumeStatusModify,

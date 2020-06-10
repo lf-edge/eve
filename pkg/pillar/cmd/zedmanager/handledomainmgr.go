@@ -80,7 +80,6 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			disk.ImageSha256 = ssPtr.ImageSha256
 			disk.FileLocation = location
 			disk.ReadOnly = sc.ReadOnly
-			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
 			disk.Devtype = sc.Devtype
 			dc.DiskConfigList = append(dc.DiskConfigList, disk)

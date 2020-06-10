@@ -9,10 +9,15 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/lf-edge/eve/api/go/attest"
 	zcert "github.com/lf-edge/eve/api/go/certs"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -135,4 +140,78 @@ func handleAttestCertDelete(ctxArg interface{}, key string,
 	status := configArg.(types.AttestCert)
 	log.Infof("handleAttestCertDelete for %s", status.Key())
 	return
+}
+
+// Run a task certificate post task, on change trigger
+func certsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
+	iteration := 0
+	log.Infoln("starting certs publish task")
+	publishCerts(ctx, iteration)
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName+"certs", warningTime, errorTime)
+
+	for {
+		select {
+		case <-triggerCerts:
+			start := time.Now()
+			iteration++
+			publishCerts(ctx, iteration)
+			pubsub.CheckMaxTimeTopic(agentName+"certs", "publishCerts", start,
+				warningTime, errorTime)
+
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName+"certs", warningTime, errorTime)
+	}
+}
+
+// prepare the certs list proto message
+func publishCerts(ctx *zedagentContext, iteration int) {
+	var attestReq = &attest.ZAttestReq{}
+
+	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_CERT
+	// no quotes
+
+	// TBD:XXX, get the ECDH Certs here
+
+	log.Debugf("publishCerts to ZedCloud, sending %s", attestReq)
+	sendCertsProtobuf(attestReq, iteration)
+}
+
+// Try all (first free, then rest) until it gets through.
+// Each iteration we try a different port for load spreading.
+// For each port we try all its local IP addresses until we get a success.
+func sendCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
+	data, err := proto.Marshal(attestReq)
+	if err != nil {
+		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
+	}
+
+	deviceUUID := zcdevUUID.String()
+	zedcloud.RemoveDeferred("attest:" + deviceUUID)
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(attestReq))
+	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+		devUUID, "attest")
+	const return400 = false
+	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, attestURL,
+		size, buf, iteration, return400)
+	if err != nil {
+		if rtf == types.SenderStatusRemTempFail {
+			log.Errorf("sendCertsProtobuf remoteTemporaryFailure: %s",
+				err)
+		} else {
+			log.Errorf("sendCertsProtobuf failed: %s", err)
+		}
+		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
+		zedcloud.SetDeferred("attest:"+deviceUUID, buf, size, attestURL,
+			zedcloudCtx, true)
+	}
 }

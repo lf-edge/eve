@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -84,6 +85,9 @@ type zedrouterContext struct {
 	hostProbeTimer            *time.Timer
 	hostFastProbe             bool
 	appNetCreateTimer         *time.Timer
+	appCollectStatsRunning    bool
+	appStatsMutex             sync.Mutex // to protect the changing appNetworkStatus & appCollectStatsRunning
+	appStatsInterval          uint32
 }
 
 var debug = false
@@ -186,6 +190,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
+
+	gcp := *types.DefaultConfigItemValueMap()
+	zedrouterCtx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1108,7 +1115,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		publishAppNetworkStatus(ctx, status)
 		return
 	}
-	appNetworkDoCopyNetworksToStatus(config, status)
+	appNetworkDoCopyNetworksToStatus(ctx, config, status)
 	if !validateAppNetworkConfig(ctx, config, status) {
 		log.Errorf("doActivate(%v) AppNetwork Config check failed for %s\n",
 			config.UUIDandVersion, config.DisplayName)
@@ -1522,8 +1529,13 @@ func appNetworkDoActivateOverlayNetwork(
 }
 
 func appNetworkDoCopyNetworksToStatus(
+	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
+
+	// during doActive, copy the collect stats IP to status and
+	// check to see if need to launch the process
+	appCheckStatsCollect(ctx, config, status)
 
 	olcount := len(config.OverlayNetworkList)
 	if olcount > 0 {
@@ -1991,6 +2003,10 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	// If we are not activated, then the doActivate below will set up
 	// the ACLs
 	if status.Activated {
+		// during modify, copy the collect stats IP to status and
+		// check to see if need to launch the process
+		appCheckStatsCollect(ctx, config, status)
+
 		// Look for ACL changes in overlay
 		doAppNetworkModifyAllOverlayNetworks(ctx, config, status, ipsets)
 
@@ -2765,6 +2781,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
+		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -2780,6 +2797,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	gcp := *types.DefaultConfigItemValueMap()
+	ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

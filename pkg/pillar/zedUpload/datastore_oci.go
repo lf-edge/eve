@@ -57,6 +57,8 @@ func (ep *OCITransportMethod) Action(req *DronaRequest) error {
 		sha256, contentLength, err = ep.processObjectMetaData(req)
 		req.contentLength = contentLength
 		req.ImageSha256 = sha256
+	case SysOpDownloadByChunks:
+		err = fmt.Errorf("Chunk download for OCI tansport is not supported yet")
 	default:
 		err = fmt.Errorf("Unknown OCI registry operation")
 	}

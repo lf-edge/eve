@@ -38,6 +38,11 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 				m.Activate, aiConfig.Activate)
 			changed = true
 		}
+		if !m.GetStatsIPAddr.Equal(aiConfig.CollectStatsIPAddr) {
+			log.Infof("MaybeAddAppNetworkConfig: stats ip changed from  %s to %s",
+				m.GetStatsIPAddr.String(), aiConfig.CollectStatsIPAddr.String())
+			changed = true
+		}
 		for i, new := range aiConfig.OverlayNetworkList {
 			old := m.OverlayNetworkList[i]
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
@@ -66,6 +71,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			DisplayName:    aiConfig.DisplayName,
 			IsZedmanager:   false,
 			Activate:       aiConfig.Activate,
+			GetStatsIPAddr: aiConfig.CollectStatsIPAddr,
 		}
 		nc.OverlayNetworkList = make([]types.OverlayNetworkConfig,
 			len(aiStatus.EIDList))

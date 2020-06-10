@@ -293,17 +293,14 @@ type DiskConfig struct {
 	ImageSha256  string    // sha256 of immutable image
 	FileLocation string    // Where to find the volume
 	ReadOnly     bool
-	Preserve     bool // If set a rw disk will be preserved across
-	// boots (acivate/inactivate)
-	Format  zconfig.Format
-	Devtype string // Default ""; could be e.g. "cdrom"
+	Format       zconfig.Format
+	Devtype      string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
 	ImageID      uuid.UUID // UUID of immutable image
 	ImageSha256  string    // sha256 of immutable image
 	ReadOnly     bool
-	Preserve     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
 	Devtype      string // From config

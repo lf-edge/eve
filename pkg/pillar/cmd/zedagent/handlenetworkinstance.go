@@ -688,7 +688,7 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 	if err != nil {
 		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "info")
+	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 	zedcloud.RemoveDeferred(UUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -844,7 +844,7 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		flowIteration++
 		buf := bytes.NewBuffer(data)
 		size := int64(proto.Size(pflowsPtr))
-		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "flowlog")
+		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
 		const return400 = false
 		_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, flowlogURL,
 			size, buf, flowIteration, return400)

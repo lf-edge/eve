@@ -5,14 +5,15 @@ package sftp
 
 import (
 	"fmt"
-	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"log"
 	"net"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 const (

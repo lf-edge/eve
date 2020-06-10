@@ -773,7 +773,7 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 	zedcloudCtx := ctx.zedcloudCtx
 	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	if reqURL == "" {
-		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "ping")
+		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
 		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 		if err != nil {
 			errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
@@ -833,7 +833,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	}
 	zedcloudCtx := ctx.zedcloudCtx
 
-	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, ctx.devUUID, "config")
+	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, ctx.devUUID, "config")
 	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	err = zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 	if err != nil {

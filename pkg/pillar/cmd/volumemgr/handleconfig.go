@@ -19,7 +19,7 @@ import (
 )
 
 func vcCreate(ctx *volumemgrContext, objType string, key string,
-	config types.VolumeConfig) {
+	config types.OldVolumeConfig) {
 
 	log.Infof("vcCreate(%s) objType %s for %s",
 		config.Key(), objType, config.DisplayName)
@@ -133,7 +133,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		log.Infof("vcCreate(%s) fallback from promote to normal create objType %s for %s",
 			config.Key(), objType, config.DisplayName)
 	}
-	status := types.VolumeStatus{
+	status := types.OldVolumeStatus{
 		BlobSha256:     config.BlobSha256,
 		AppInstID:      config.AppInstID,
 		VolumeID:       config.VolumeID,
@@ -163,7 +163,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 }
 
 func vcModify(ctx *volumemgrContext, objType string, key string,
-	config types.VolumeConfig) {
+	config types.OldVolumeConfig) {
 
 	status := lookupVolumeStatus(ctx, objType, config.Key())
 	if status == nil {
@@ -196,7 +196,7 @@ func vcModify(ctx *volumemgrContext, objType string, key string,
 }
 
 func vcDelete(ctx *volumemgrContext, objType string, key string,
-	config types.VolumeConfig) {
+	config types.OldVolumeConfig) {
 
 	status := lookupVolumeStatus(ctx, objType, config.Key())
 	if status == nil {
@@ -224,33 +224,33 @@ func vcDelete(ctx *volumemgrContext, objType string, key string,
 
 // Callers must be careful to publish any changes to VolumeStatus
 func lookupVolumeStatus(ctx *volumemgrContext, objType string,
-	key string) *types.VolumeStatus {
+	key string) *types.OldVolumeStatus {
 
-	pub := ctx.publication(types.VolumeStatus{}, objType)
+	pub := ctx.publication(types.OldVolumeStatus{}, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Infof("lookupVolumeStatus(%s) not found", key)
 		return nil
 	}
-	status := st.(types.VolumeStatus)
+	status := st.(types.OldVolumeStatus)
 	return &status
 }
 
 func lookupVolumeConfig(ctx *volumemgrContext, objType string,
-	key string) *types.VolumeConfig {
+	key string) *types.OldVolumeConfig {
 
-	sub := ctx.subscription(types.VolumeConfig{}, objType)
+	sub := ctx.subscription(types.OldVolumeConfig{}, objType)
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupVolumeConfig(%s) not found", key)
 		return nil
 	}
-	config := c.(types.VolumeConfig)
+	config := c.(types.OldVolumeConfig)
 	return &config
 }
 
 func publishVolumeStatus(ctx *volumemgrContext,
-	status *types.VolumeStatus) {
+	status *types.OldVolumeStatus) {
 
 	pub := ctx.publication(*status, status.ObjType)
 	key := status.Key()
@@ -259,7 +259,7 @@ func publishVolumeStatus(ctx *volumemgrContext,
 }
 
 func unpublishVolumeStatus(ctx *volumemgrContext,
-	status *types.VolumeStatus) {
+	status *types.OldVolumeStatus) {
 
 	pub := ctx.publication(*status, status.ObjType)
 	key := status.Key()

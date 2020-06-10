@@ -44,7 +44,7 @@ func AddOrRefcountVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
 		}
-		n := types.VolumeConfig{
+		n := types.OldVolumeConfig{
 			BlobSha256:     blobSha256,
 			AppInstID:      appInstID,
 			VolumeID:       volumeID,
@@ -62,7 +62,7 @@ func AddOrRefcountVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 		publishVolumeConfig(ctx, &n)
 	}
 	base.NewRelationObject(base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.VolumeConfigLogType, key).Infof("App instance to volume relation.")
+		base.OldVolumeConfigLogType, key).Infof("App instance to volume relation.")
 	log.Infof("AddOrRefcountVolumeConfig done for %s", key)
 }
 
@@ -92,10 +92,10 @@ func MaybeRemoveVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
 		publishVolumeConfig(ctx, m)
 	}
 	base.NewRelationObject(base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.VolumeConfigLogType, key).Infof("App instance to volume relation.")
+		base.OldVolumeConfigLogType, key).Infof("App instance to volume relation.")
 }
 
-func lookupVolumeConfig(ctx *zedmanagerContext, key string) *types.VolumeConfig {
+func lookupVolumeConfig(ctx *zedmanagerContext, key string) *types.OldVolumeConfig {
 
 	pub := ctx.pubVolumeConfig
 	c, _ := pub.Get(key)
@@ -103,13 +103,13 @@ func lookupVolumeConfig(ctx *zedmanagerContext, key string) *types.VolumeConfig 
 		log.Infof("lookupVolumeConfig(%s) not found", key)
 		return nil
 	}
-	config := c.(types.VolumeConfig)
+	config := c.(types.OldVolumeConfig)
 	return &config
 }
 
 // Note that this function returns the entry even if Pending* is set.
 func lookupVolumeStatus(ctx *zedmanagerContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID, purgeCounter uint32) *types.VolumeStatus {
+	appInstID uuid.UUID, volumeID uuid.UUID, purgeCounter uint32) *types.OldVolumeStatus {
 
 	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, purgeCounter)
 	sub := ctx.subVolumeStatus
@@ -118,12 +118,12 @@ func lookupVolumeStatus(ctx *zedmanagerContext, blobSha256 string,
 		log.Infof("lookupVolumeStatus(%s) not found", key)
 		return nil
 	}
-	status := st.(types.VolumeStatus)
+	status := st.(types.OldVolumeStatus)
 	return &status
 }
 
 func publishVolumeConfig(ctx *zedmanagerContext,
-	status *types.VolumeConfig) {
+	status *types.OldVolumeConfig) {
 
 	key := status.Key()
 	log.Infof("publishVolumeConfig(%s)", key)
@@ -146,7 +146,7 @@ func unpublishVolumeConfig(ctx *zedmanagerContext, uuidStr string) {
 
 func handleVolumeStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(types.VolumeStatus)
+	status := statusArg.(types.OldVolumeStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Infof("handleVolumeStatusModify: key:%s, name:%s",
 		key, status.DisplayName)
@@ -167,7 +167,7 @@ func handleVolumeStatusDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleVolumeStatusDelete for %s", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	status := statusArg.(types.VolumeStatus)
+	status := statusArg.(types.OldVolumeStatus)
 	if status.AppInstID != nilUUID {
 		updateAIStatusUUID(ctx, status.AppInstID.String())
 	} else {

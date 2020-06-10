@@ -69,6 +69,8 @@ type AppInstanceConfig struct {
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
 	RemoteConsole     bool
+	// Collect Stats IP Address, assume port is the default docker API for http: 2375
+	CollectStatsIPAddr net.IP
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
@@ -348,12 +350,10 @@ type StorageConfig struct {
 
 	ImageSha256 string // sha256 of immutable image
 	ReadOnly    bool
-	Preserve    bool // If set a rw disk will be preserved across
-	// boots (acivate/inactivate)
-	MaxVolSize uint64         // Resize filesystem to this size if set (In bytes)
-	Format     zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype    string         // Default ""; could be e.g. "cdrom"
-	Target     string         // Default "" is interpreted as "disk"
+	MaxVolSize  uint64         // Resize filesystem to this size if set (In bytes)
+	Format      zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype     string         // Default ""; could be e.g. "cdrom"
+	Target      string         // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -373,7 +373,6 @@ type StorageStatus struct {
 	ImageSignature     []byte   //signature of image
 	SignatureKey       string   //certificate containing public key
 	ReadOnly           bool
-	Preserve           bool
 	MaxVolSize         uint64 // Resize filesystem to this size if set (In bytes)
 	Format             zconfig.Format
 	Devtype            string
@@ -408,7 +407,6 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.ImageSignature = sc.ImageSignature
 	ss.SignatureKey = sc.SignatureKey
 	ss.ReadOnly = sc.ReadOnly
-	ss.Preserve = sc.Preserve
 	ss.MaxVolSize = sc.MaxVolSize
 	ss.Format = sc.Format
 	ss.Devtype = sc.Devtype
@@ -428,7 +426,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 }
 
 // IsCertsAvailable checks certificate requirement/availability for a Volume object
-func (vs VolumeStatus) IsCertsAvailable(displaystr string) (bool, error) {
+func (vs OldVolumeStatus) IsCertsAvailable(displaystr string) (bool, error) {
 	if !vs.needsCerts() {
 		log.Debugf("%s, Certs are not required\n", displaystr)
 		return false, nil
@@ -440,7 +438,7 @@ func (vs VolumeStatus) IsCertsAvailable(displaystr string) (bool, error) {
 // HandleCertStatus gets the CertObject Status for the volume object
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
-func (vs VolumeStatus) HandleCertStatus(displaystr string,
+func (vs OldVolumeStatus) HandleCertStatus(displaystr string,
 	certObjStatus CertObjStatus) (bool, ErrorAndTime) {
 	if ret, errInfo := vs.checkCertsStatusForObject(certObjStatus); !ret {
 		log.Infof("%s, Certs are still not ready\n", displaystr)
@@ -454,7 +452,7 @@ func (vs VolumeStatus) HandleCertStatus(displaystr string,
 }
 
 // needsCerts whether certificates are required for the Volume object
-func (vs VolumeStatus) needsCerts() bool {
+func (vs OldVolumeStatus) needsCerts() bool {
 	if vs.DownloadOrigin == nil {
 		return false
 	}
@@ -466,7 +464,7 @@ func (vs VolumeStatus) needsCerts() bool {
 
 // getCertCount returns the number of certificates for the Volume Object
 // called with valid ImageSignature only
-func (vs VolumeStatus) getCertCount(displaystr string) (int, error) {
+func (vs OldVolumeStatus) getCertCount(displaystr string) (int, error) {
 	cidx := 0
 	if vs.DownloadOrigin == nil {
 		return 0, nil
@@ -492,7 +490,7 @@ func (vs VolumeStatus) getCertCount(displaystr string) (int, error) {
 }
 
 // checkCertsStatusForObject checks certificates for installation status
-func (vs VolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorAndTime) {
+func (vs OldVolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorAndTime) {
 
 	dos := vs.DownloadOrigin
 	if dos == nil {
@@ -515,7 +513,7 @@ func (vs VolumeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (b
 }
 
 // checkCertsForObject checks availability of Certs in Disk
-func (vs VolumeStatus) checkCertsForObject() bool {
+func (vs OldVolumeStatus) checkCertsForObject() bool {
 
 	dos := vs.DownloadOrigin
 	if dos == nil {

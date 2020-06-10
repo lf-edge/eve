@@ -27,6 +27,7 @@ type AppNetworkConfig struct {
 	Activate            bool
 	IsZedmanager        bool
 	LegacyDataPlane     bool
+	GetStatsIPAddr      net.IP
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
@@ -108,6 +109,7 @@ type AppNetworkStatus struct {
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
 	LegacyDataPlane     bool
+	GetStatsIPAddr      net.IP
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks

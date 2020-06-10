@@ -155,6 +155,41 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	return nil
 }
 
+// DownloadAzureBlobByChunks will process the blob download by chunks, i.e., chunks will be
+// responded back on as and hwen they recieve
+func DownloadAzureBlobByChunks(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (io.ReadCloser, int64, error) {
+	c, err := NewClient(accountName, accountKey, httpClient)
+	if err != nil {
+		return nil, 0, err
+	}
+	blobClient := c.GetBlobService()
+	container := blobClient.GetContainerReference(containerName)
+	containerExists, err := container.Exists()
+	if err != nil {
+		return nil, 0, err
+	}
+	if !containerExists {
+		return nil, 0, fmt.Errorf("Container :%s doesn't exist ", containerName)
+	}
+	blob := container.GetBlobReference(remoteFile)
+	exists, err := blob.Exists()
+	if err != nil {
+		return nil, 0, err
+	}
+	if !exists {
+		return nil, 0, fmt.Errorf("%s: blob doesn't exist", remoteFile)
+	}
+	getErr := blob.GetProperties(nil)
+	if getErr != nil {
+		return nil, 0, getErr
+	}
+	readCloser, err := blob.Get(nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	return readCloser, int64(blob.Properties.ContentLength), nil
+}
+
 // PutBlockBlob uploads given stream into a block blob by splitting
 // data stream into chunks and uploading as blocks. Commits the block
 // list at the end. This is a helper method built on top of PutBlock
@@ -202,10 +237,8 @@ func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFi
 	container := blobClient.GetContainerReference(containerName)
 	containerExists, _ := container.Exists()
 	if !containerExists {
-		fmt.Printf("Container is creating")
 		err := container.Create(nil)
 		if err != nil {
-			fmt.Printf("Error %v", err)
 			return location, err
 		}
 	}

@@ -68,6 +68,14 @@ message EdgeDevConfig {
   // Application instances will refer to the volumes.
   repeated ContentTree contentInfo = 20;
   repeated Volume volumes = 21;
+
+  // each sha256 field is 256 bytes long hex string,
+  // they are controller and eve node certficate list configuration sum sha256 value.
+  // sha256 is computed for the each type of configuration; e.g., controller,
+  // eve node cerfificate list sum
+  // eve node certificate sha256 is for ECDH certificates only
+  string controllercert_confighash = 22;
+  string nodecert_confighash = 23;
 }
 
 message ConfigRequest {

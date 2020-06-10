@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\023org.lfedge.eve.authZ\"github.com/lf-edge/eve/api/go/auth'),
-  serialized_pb=_b('\n\x0f\x61uth/auth.proto\x1a\x19\x65vecommon/evecommon.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"\xa6\x01\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x32\n\x04\x61lgo\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c\x12\x12\n\nsenderCert\x18\x05 \x01(\x0c\x42\x39\n\x13org.lfedge.eve.authZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
+  serialized_pb=_b('\n\x0f\x61uth/auth.proto\x1a\x19\x65vecommon/evecommon.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"\xab\x01\n\rAuthContainer\x12#\n\x10protectedPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x32\n\x04\x61lgo\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c\x12\x12\n\nsenderCert\x18\x05 \x01(\x0c\x42\x39\n\x13org.lfedge.eve.authZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
   ,
   dependencies=[evecommon_dot_evecommon__pb2.DESCRIPTOR,])
 
@@ -66,7 +66,7 @@ _AUTHCONTAINER = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='authPayload', full_name='AuthContainer.authPayload', index=0,
+      name='protectedPayload', full_name='AuthContainer.protectedPayload', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -113,10 +113,10 @@ _AUTHCONTAINER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=76,
-  serialized_end=242,
+  serialized_end=247,
 )
 
-_AUTHCONTAINER.fields_by_name['authPayload'].message_type = _AUTHBODY
+_AUTHCONTAINER.fields_by_name['protectedPayload'].message_type = _AUTHBODY
 _AUTHCONTAINER.fields_by_name['algo'].enum_type = evecommon_dot_evecommon__pb2._HASHALGORITHM
 DESCRIPTOR.message_types_by_name['AuthBody'] = _AUTHBODY
 DESCRIPTOR.message_types_by_name['AuthContainer'] = _AUTHCONTAINER

@@ -29,6 +29,7 @@
 | debug.default.remote.loglevel | string | warning | min level sent to controller |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
 | storage.apps.ignore.disk.check | boolean | false | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
+| timer.appcontainer.stats.interval | integer in seconds | 300 | collect applicatio container stats |
 
 
 In addition, there can be per-agent settings.

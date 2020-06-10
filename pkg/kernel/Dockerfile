@@ -115,12 +115,20 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
     make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
                    M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
          modules modules_install
+
+# Device Tree Blobs
+# FIXME: we will switch to a native make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install at some point
+RUN if [ "$(uname -m)" = aarch64 ]; then \
+       mkdir -p /tmp/kernel-modules/boot/dtb/eve && \
+       ./scripts/dtc/dtc -O dtb -o /tmp/kernel-modules/boot/dtb/eve/eve.dtb -I dts /eve.dts ;\
+    fi
+
 # Package all the modules up
 RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
       cd /tmp/kernel-modules/lib/modules/$DVER && \
       rm build source && \
       ln -s /usr/src/linux-headers-$DVER build ) && \
-    ( cd /tmp/kernel-modules && tar cf /out/kernel.tar lib )
+    ( cd /tmp/kernel-modules && tar cf /out/kernel.tar . )
 
 # Headers (userspace API)
 RUN mkdir -p /tmp/kernel-headers/usr && \

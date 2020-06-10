@@ -17,7 +17,7 @@ import (
 )
 
 func TestHandleWorkCreate(t *testing.T) {
-	status := types.VolumeStatus{
+	status := types.OldVolumeStatus{
 		VolumeID:     uuid.NewV4(), // XXX future
 		AppInstID:    uuid.NewV4(),
 		PurgeCounter: 0,
@@ -52,7 +52,7 @@ func TestHandleWorkCreate(t *testing.T) {
 			ExpectCreated: true,
 		},
 	}
-	ctx := initVolumeCtx(t)
+	ctx := initCtx(t)
 	ctx.worker = InitHandleWork(&ctx)
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
@@ -133,9 +133,9 @@ func TestHandleWorkDestroy(t *testing.T) {
 			ExpectCreated:    false,
 		},
 	}
-	ctx := initVolumeCtx(t)
+	ctx := initCtx(t)
 	ctx.worker = InitHandleWork(&ctx)
-	status := types.VolumeStatus{
+	status := types.OldVolumeStatus{
 		VolumeID:     uuid.NewV4(), // XXX future
 		AppInstID:    uuid.NewV4(),
 		PurgeCounter: 0,
@@ -184,15 +184,24 @@ func TestHandleWorkDestroy(t *testing.T) {
 	}
 }
 
-func initVolumeCtx(t *testing.T) volumemgrContext {
+func initCtx(t *testing.T) volumemgrContext {
 	ctx := volumemgrContext{}
 	ps := pubsub.New(&pubsub.EmptyDriver{})
+
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeStatus{},
+		TopicType:  types.OldVolumeStatus{},
 	})
 	assert.Nil(t, err)
 	ctx.pubAppVolumeStatus = pubAppVolumeStatus
+
+	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.ContentTreeStatus{},
+	})
+	assert.Nil(t, err)
+	ctx.pubContentTreeStatus = pubContentTreeStatus
 	return ctx
 }

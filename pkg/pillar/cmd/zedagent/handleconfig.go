@@ -57,6 +57,8 @@ type getconfigContext struct {
 	pubNetworkInstanceConfig pubsub.Publication
 	pubControllerCert        pubsub.Publication
 	pubCipherContext         pubsub.Publication
+	subContentTreeStatus     pubsub.Subscription
+	pubContentTreeConfig     pubsub.Publication
 	rebootFlag               bool
 }
 
@@ -119,7 +121,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 
-	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "config")
+	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
 		getconfigCtx)
@@ -282,7 +284,7 @@ func getLatestConfig(url string, iteration int,
 }
 
 func getCloudCertChain(ctx *zedagentContext) bool {
-	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, true, nilUUID, "certs")
+	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "certs")
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, certURL, 0, nil, 0, false)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {

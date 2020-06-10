@@ -45,7 +45,7 @@ func AddOrRefcountVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
 		}
-		n := types.VolumeConfig{
+		n := types.OldVolumeConfig{
 			BlobSha256:     blobSha256,
 			AppInstID:      appInstID,
 			VolumeID:       volumeID,
@@ -94,7 +94,7 @@ func MaybeRemoveVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 	}
 }
 
-func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.VolumeConfig {
+func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.OldVolumeConfig {
 
 	pub := ctx.pubVolumeConfig
 	c, _ := pub.Get(key)
@@ -102,14 +102,14 @@ func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.VolumeConfig {
 		log.Infof("lookupVolumeConfig(%s) not found", key)
 		return nil
 	}
-	config := c.(types.VolumeConfig)
+	config := c.(types.OldVolumeConfig)
 	return &config
 }
 
 // Note that this function returns the entry even if Pending* is set.
 // We use the baseos object UUID as appInstID here
 func lookupVolumeStatus(ctx *baseOsMgrContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID) *types.VolumeStatus {
+	appInstID uuid.UUID, volumeID uuid.UUID) *types.OldVolumeStatus {
 
 	// No PurgeCounter for baseos
 	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, 0)
@@ -119,12 +119,12 @@ func lookupVolumeStatus(ctx *baseOsMgrContext, blobSha256 string,
 		log.Infof("lookupVolumeStatus(%s) not found", key)
 		return nil
 	}
-	status := st.(types.VolumeStatus)
+	status := st.(types.OldVolumeStatus)
 	return &status
 }
 
 func publishVolumeConfig(ctx *baseOsMgrContext,
-	status *types.VolumeConfig) {
+	status *types.OldVolumeConfig) {
 
 	key := status.Key()
 	log.Infof("publishVolumeConfig(%s)", key)
@@ -147,7 +147,7 @@ func unpublishVolumeConfig(ctx *baseOsMgrContext, uuidStr string) {
 
 func handleVolumeStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(types.VolumeStatus)
+	status := statusArg.(types.OldVolumeStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleVolumeStatusModify: key:%s, name:%s",
 		key, status.DisplayName)
@@ -166,7 +166,7 @@ func handleVolumeStatusDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleVolumeStatusDelete for %s", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-	status := statusArg.(types.VolumeStatus)
+	status := statusArg.(types.OldVolumeStatus)
 	if status.BlobSha256 != "" {
 		baseOsHandleStatusUpdateImageSha(ctx, status.BlobSha256)
 	} else {

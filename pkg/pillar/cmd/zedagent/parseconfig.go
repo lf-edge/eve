@@ -70,6 +70,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseAppInstanceConfig(config, getconfigCtx)
+		parseContentInfoConfig(getconfigCtx, config)
 	}
 	return false
 }
@@ -510,6 +511,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			len(cfgApp.Drives))
 		parseStorageConfigList(types.AppImgObj, appInstance.StorageConfigList,
 			cfgApp.Drives)
+
+		// fill in the collect stats IP address of the App
+		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
 
 		// fill the overlay/underlay config
 		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
@@ -1019,7 +1023,6 @@ func parseStorageConfigList(objType string,
 			}
 		}
 		image.ReadOnly = drive.Readonly
-		image.Preserve = drive.Preserve
 		image.MaxVolSize = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
