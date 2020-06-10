@@ -247,32 +247,40 @@ func (config DevicePortConfigList) LogDelete() {
 
 // LogKey :
 func (config DevicePortConfigList) LogKey() string {
-	return string(base.DevicePortConfigListLogType) + "-" + config.Key
+	return string(base.DevicePortConfigListLogType) + "-" + config.PubKey()
 }
 
 // PendDPCStatus tracks the internal progression of a DPC
 type PendDPCStatus uint32
 
-// DPC_FAIL and friends is the internal state of the testing
+// DPC_NONE and friends is the internal state of the testing
 const (
-	DPC_FAIL PendDPCStatus = iota
+	DPC_NONE PendDPCStatus = iota
+	DPC_FAIL
 	DPC_SUCCESS
-	DPC_WAIT
-	DPC_PCI_WAIT
-	// XXX add DPC_INTF_WAIT?
+	DPC_IPDNS_WAIT  // DPC_IPDNS_WAIT means not IP and DNS server yet
+	DPC_PCI_WAIT    // DPC_PCI_WAIT means some interface still in pci back
+	DPC_INTF_WAIT   // DPC_INTF_WAIT means some interface missing from kernel
+	DPC_REMOTE_WAIT // DPC_REMOTE_WAIT means controller is down or has old certificate
 )
 
 // String returns the string name
 func (status PendDPCStatus) String() string {
 	switch status {
+	case DPC_NONE:
+		return ""
 	case DPC_FAIL:
 		return "DPC_FAIL"
 	case DPC_SUCCESS:
 		return "DPC_SUCCESS"
-	case DPC_WAIT:
-		return "DPC_WAIT"
+	case DPC_IPDNS_WAIT:
+		return "DPC_IPDNS_WAIT"
 	case DPC_PCI_WAIT:
 		return "DPC_PCI_WAIT"
+	case DPC_INTF_WAIT:
+		return "DPC_INTF_WAIT"
+	case DPC_REMOTE_WAIT:
+		return "DPC_REMOTE_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -395,7 +403,7 @@ func (config DevicePortConfig) LogDelete() {
 
 // LogKey :
 func (config DevicePortConfig) LogKey() string {
-	return string(base.DevicePortConfigLogType) + "-" + config.Key
+	return string(base.DevicePortConfigLogType) + "-" + config.PubKey()
 }
 
 // TestResults is used to record when some test Failed or Succeeded.

@@ -227,7 +227,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 			log.Warnf("VerifyPending: interface check: retry due to ifname %s at count %d: %s",
 				ifname, pending.TestCount, err)
 			pending.TestCount++
-			return types.DPC_WAIT
+			return types.DPC_INTF_WAIT
 		}
 		log.Warnf("VerifyPending: interface check: failed due to ifname %s: %s",
 			ifname, err)
@@ -276,7 +276,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		log.Errorf("VerifyPending: remoteTemporaryFailure %s", errStr)
 		// NOTE: do not increase TestCount; we retry until e.g., the
 		// certificate or ECONNREFUSED is fixed on the server side.
-		return types.DPC_WAIT
+		return types.DPC_REMOTE_WAIT
 	}
 	if !checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
 		// Still waiting for IP or DNS
@@ -284,7 +284,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 			pending.TestCount++
 			log.Infof("VerifyPending no IP/DNS: TestCount %d: %s for %+v\n",
 				pending.TestCount, errStr, pending.PendDNS)
-			return types.DPC_WAIT
+			return types.DPC_IPDNS_WAIT
 		} else {
 			log.Errorf("VerifyPending no IP/DNS: exceeded TestCount: %s for %+v\n",
 				errStr, pending.PendDNS)
@@ -341,24 +341,20 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			ctx.Pending.PendDNS.Testing = true
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
+		log.Infof("VerifyDevicePortConfig: %s for %d",
+			res.String(), ctx.NextDPCIndex)
 		switch res {
 		case types.DPC_PCI_WAIT:
 			// We have already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
 			// and testing this new configuration.
-			log.Infof("VerifyDevicePortConfig: DPC_PCI_WAIT for %d",
-				ctx.NextDPCIndex)
 			return
-		case types.DPC_WAIT:
+		case types.DPC_IPDNS_WAIT, types.DPC_INTF_WAIT, types.DPC_REMOTE_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
 			duration := time.Duration(ctx.DPCTestDuration) * time.Second
 			pending.PendTimer = time.NewTimer(duration)
-			log.Infof("VerifyDevicePortConfig: DPC_WAIT for %d",
-				ctx.NextDPCIndex)
 			return
 		case types.DPC_FAIL:
-			log.Infof("VerifyDevicePortConfig: DPC_FAIL for %d",
-				ctx.NextDPCIndex)
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
 			tested, index := lookupPortConfig(ctx, pending.PendDPC)
@@ -398,8 +394,6 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			continue
 
 		case types.DPC_SUCCESS:
-			log.Infof("VerifyDevicePortConfig: DPC_SUCCESS for %d",
-				ctx.NextDPCIndex)
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
 			tested, index := lookupPortConfig(ctx, pending.PendDPC)
