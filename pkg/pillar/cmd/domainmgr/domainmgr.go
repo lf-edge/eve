@@ -948,6 +948,11 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					status.DomainName)
 			}
+			if isPort(ctx, ib.Ifname) {
+				log.Fatalf("doAssignIoAdaptersToDomain IoBundle stolen by zedrouter: %d %s for %s",
+					adapter.Type, adapter.Name,
+					status.DomainName)
+			}
 			if !isInUsbGroup(*aa, *ib) {
 				continue
 			}
@@ -1381,6 +1386,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 			return fmt.Errorf("unknown adapter %d %s",
 				adapter.Type, adapter.Name)
 		}
+
 		for _, ibp := range list {
 			if ibp == nil {
 				continue
