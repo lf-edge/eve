@@ -123,7 +123,7 @@ func FileExists(filename string) bool {
 	return err == nil
 }
 
-// remove the file
+// FileRemove removes the file from storage
 func FileRemove(filename string) {
 	os.Remove(filename)
 	return

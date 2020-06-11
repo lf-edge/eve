@@ -318,8 +318,8 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	certURL := zedcloud.URLPathString(serverNameAndPort,
 		zedcloudCtx.V2API, nilUUID, "certs")
 
-	reqId := zcdevUUID.String()
-	zedcloud.RemoveDeferred("certs:" + reqId)
+	reqID := zcdevUUID.String()
+	zedcloud.RemoveDeferred("certs:" + reqID)
 
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx,
 		certURL, 0, nil, 0, false)
@@ -329,7 +329,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		} else {
 			log.Errorf("getCertsFromController failed: %s", err)
 		}
-		zedcloud.SetDeferred("certs:"+reqId, nil, 0, certURL,
+		zedcloud.SetDeferred("certs:"+reqID, nil, 0, certURL,
 			zedcloudCtx, true)
 		return false
 	}
@@ -487,8 +487,8 @@ func sendEveNodeCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	reqId := zcdevUUID.String()
-	zedcloud.RemoveDeferred("attest:" + reqId)
+	reqID := zcdevUUID.String()
+	zedcloud.RemoveDeferred("attest:" + reqID)
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
@@ -504,7 +504,7 @@ func sendEveNodeCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		} else {
 			log.Errorf("sendEveNodeCertsProtobuf failed: %s", err)
 		}
-		zedcloud.SetDeferred("attest:"+reqId, buf, size, attestURL,
+		zedcloud.SetDeferred("attest:"+reqID, buf, size, attestURL,
 			zedcloudCtx, true)
 	}
 }
