@@ -8,6 +8,7 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -1560,13 +1561,30 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 
 // This function is called per change, hence needs to try over all management ports
 // For each port we try different source IPs until we find a working one.
-// For any 4xx and 5xx error we don't try all port/IP address but return an error so the caller will defer and retry.
+// For the HTTP errors indicating the object is gone we ignore the error
+// so the caller does not defer and retry
 func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
-	_, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
 		size, buf, iteration, bailOnHTTPErr)
+	if resp != nil {
+		switch resp.StatusCode {
+		// XXX Some controller gives a generic 400 which should be fixed
+		case http.StatusBadRequest:
+			log.Warnf("XXX SendProtoBuf: %s silently ignore code %d %s",
+				url, resp.StatusCode, http.StatusText(resp.StatusCode))
+			return nil
+
+		case http.StatusNotFound, http.StatusGone:
+			// Assume the resource is gone in the controller
+
+			log.Infof("SendProtoBuf: %s silently ignore code %d %s",
+				url, resp.StatusCode, http.StatusText(resp.StatusCode))
+			return nil
+		}
+	}
 	return err
 }
 
