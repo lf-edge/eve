@@ -79,6 +79,7 @@ type zedrouterContext struct {
 	pubNetworkInstanceMetrics pubsub.Publication
 	pubAppFlowMonitor         pubsub.Publication
 	pubAppVifIPTrig           pubsub.Publication
+	pubAppContainerMetrics    pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 	dnsServers                map[string][]net.IP // Key is ifname
 	checkNIUplinks            chan bool
@@ -273,6 +274,15 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppVifIPTrig = pubAppVifIPTrig
+
+	pubAppContainerMetrics, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppContainerMetrics{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppContainerMetrics = pubAppContainerMetrics
 
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
