@@ -106,7 +106,7 @@ type nodeagentContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
-func newNodeagentContext() nodeagentContext {
+func newNodeagentContext() *nodeagentContext {
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.minRebootDelay = minRebootDelay
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
@@ -130,8 +130,8 @@ func newNodeagentContext() nodeagentContext {
 
 	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
-	nodeagentCtx.agentBaseContext.NeedWatchdog = true
-	return nodeagentCtx
+	nodeagentCtx.agentBaseContext = agentbase.DefaultContext(agentName)
+	return &nodeagentCtx
 }
 
 func (ctxPtr *nodeagentContext) AgentBaseContext() *agentbase.Context {
@@ -148,15 +148,15 @@ func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
 
 // Run : nodeagent run entry function
 func Run(ps *pubsub.PubSub) {
-	nodeagentCtx := newNodeagentContext()
+	nodeagentCtxPtr := newNodeagentContext()
 
-	agentbase.Run(&nodeagentCtx)
+	agentbase.Run(ps, nodeagentCtxPtr)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
 
 	// get the last reboot reason
-	handleLastRebootReason(&nodeagentCtx)
+	handleLastRebootReason(nodeagentCtxPtr)
 
 	// publisher of NodeAgent Status
 	pubNodeAgentStatus, err := ps.NewPublication(
@@ -168,7 +168,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	pubNodeAgentStatus.ClearRestarted()
-	nodeagentCtx.pubNodeAgentStatus = pubNodeAgentStatus
+	nodeagentCtxPtr.pubNodeAgentStatus = pubNodeAgentStatus
 
 	// publisher of Zboot Config
 	pubZbootConfig, err := ps.NewPublication(
@@ -180,14 +180,14 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	pubZbootConfig.ClearRestarted()
-	nodeagentCtx.pubZbootConfig = pubZbootConfig
+	nodeagentCtxPtr.pubZbootConfig = pubZbootConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
-		Ctx:           &nodeagentCtx,
+		Ctx:           &nodeagentCtxPtr,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		SyncHandler:   handleGlobalConfigSynchronized,
@@ -197,43 +197,43 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nodeagentCtx.subGlobalConfig = subGlobalConfig
+	nodeagentCtxPtr.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// publish zboot config as of now
-	publishZbootConfigAll(&nodeagentCtx)
+	publishZbootConfigAll(nodeagentCtxPtr)
 
 	// access the zboot APIs directly, baseosmgr is still not ready
-	nodeagentCtx.updateInprogress = zboot.IsCurrentPartitionStateInProgress()
-	log.Infof("Current partition: %s, inProgress: %v", nodeagentCtx.curPart,
-		nodeagentCtx.updateInprogress)
-	publishNodeAgentStatus(&nodeagentCtx)
+	nodeagentCtxPtr.updateInprogress = zboot.IsCurrentPartitionStateInProgress()
+	log.Infof("Current partition: %s, inProgress: %v", nodeagentCtxPtr.curPart,
+		nodeagentCtxPtr.updateInprogress)
+	publishNodeAgentStatus(nodeagentCtxPtr)
 
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "domainmgr",
 		TopicImpl: types.DomainStatus{},
 		Activate:  false,
-		Ctx:       &nodeagentCtx,
+		Ctx:       &nodeagentCtxPtr,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	nodeagentCtx.subDomainStatus = subDomainStatus
+	nodeagentCtxPtr.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
 	// Pick up debug aka log level before we start real work
 	log.Infof("Waiting for GCInitialized")
-	for !nodeagentCtx.GCInitialized {
+	for !nodeagentCtxPtr.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case <-nodeagentCtx.tickerTimer.C:
-			handleDeviceTimers(&nodeagentCtx)
+		case <-nodeagentCtxPtr.tickerTimer.C:
+			handleDeviceTimers(nodeagentCtxPtr)
 
-		case <-nodeagentCtx.stillRunning.C:
+		case <-nodeagentCtxPtr.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
@@ -241,8 +241,8 @@ func Run(ps *pubsub.PubSub) {
 
 	// when the partition status is inprogress state
 	// check network connectivity for 300 seconds
-	if nodeagentCtx.updateInprogress {
-		checkNetworkConnectivity(ps, &nodeagentCtx)
+	if nodeagentCtxPtr.updateInprogress {
+		checkNetworkConnectivity(ps, nodeagentCtxPtr)
 	}
 
 	// if current partition state is not in-progress,
@@ -260,19 +260,19 @@ func Run(ps *pubsub.PubSub) {
 	// cloud connectionnectivity status.
 
 	log.Infof("Waiting for device registration check")
-	for !nodeagentCtx.deviceRegistered {
+	for !nodeagentCtxPtr.deviceRegistered {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case <-nodeagentCtx.tickerTimer.C:
-			handleDeviceTimers(&nodeagentCtx)
+		case <-nodeagentCtxPtr.tickerTimer.C:
+			handleDeviceTimers(nodeagentCtxPtr)
 
-		case <-nodeagentCtx.stillRunning.C:
+		case <-nodeagentCtxPtr.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
-		if isZedAgentAlive(&nodeagentCtx) {
-			nodeagentCtx.deviceRegistered = true
+		if isZedAgentAlive(nodeagentCtxPtr) {
+			nodeagentCtxPtr.deviceRegistered = true
 		}
 	}
 
@@ -281,7 +281,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "baseosmgr",
 		TopicImpl:     types.ZbootStatus{},
 		Activate:      false,
-		Ctx:           &nodeagentCtx,
+		Ctx:           &nodeagentCtxPtr,
 		ModifyHandler: handleZbootStatusModify,
 		DeleteHandler: handleZbootStatusDelete,
 		WarningTime:   warningTime,
@@ -290,7 +290,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nodeagentCtx.subZbootStatus = subZbootStatus
+	nodeagentCtxPtr.subZbootStatus = subZbootStatus
 	subZbootStatus.Activate()
 
 	// subscribe to zedagent status events
@@ -298,7 +298,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "zedagent",
 		TopicImpl:     types.ZedAgentStatus{},
 		Activate:      false,
-		Ctx:           &nodeagentCtx,
+		Ctx:           &nodeagentCtxPtr,
 		ModifyHandler: handleZedAgentStatusModify,
 		DeleteHandler: handleZedAgentStatusDelete,
 		WarningTime:   warningTime,
@@ -307,7 +307,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nodeagentCtx.subZedAgentStatus = subZedAgentStatus
+	nodeagentCtxPtr.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
 	log.Infof("zedbox event loop")
@@ -325,10 +325,10 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
 
-		case <-nodeagentCtx.tickerTimer.C:
-			handleDeviceTimers(&nodeagentCtx)
+		case <-nodeagentCtxPtr.tickerTimer.C:
+			handleDeviceTimers(nodeagentCtxPtr)
 
-		case <-nodeagentCtx.stillRunning.C:
+		case <-nodeagentCtxPtr.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}

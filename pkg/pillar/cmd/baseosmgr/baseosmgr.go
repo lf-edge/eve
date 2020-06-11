@@ -8,13 +8,11 @@
 package baseosmgr
 
 import (
-	"flag"
 	"fmt"
-	"os"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -28,17 +26,12 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 type baseOsMgrContext struct {
-	pubBaseOsStatus pubsub.Publication
-	pubVolumeConfig pubsub.Publication
-	pubZbootStatus  pubsub.Publication
+	agentBaseContext agentbase.Context
+	pubBaseOsStatus  pubsub.Publication
+	pubVolumeConfig  pubsub.Publication
+	pubZbootStatus   pubsub.Publication
 
-	subGlobalConfig    pubsub.Subscription
-	globalConfig       *types.ConfigItemValueMap
-	GCInitialized      bool
 	subBaseOsConfig    pubsub.Subscription
 	subZbootConfig     pubsub.Subscription
 	subVolumeStatus    pubsub.Subscription
@@ -48,61 +41,47 @@ type baseOsMgrContext struct {
 	rebootImage        string    // Image from which the last reboot happened
 }
 
-var debug = false
-var debugOverride bool // From command line arg
+func newBaseOsMgrContext() *baseOsMgrContext {
+	baseOsMgrContext := baseOsMgrContext{}
+	baseOsMgrContext.agentBaseContext = agentbase.DefaultContext(agentName)
+	// Once all the agents are converted, SubscribeToGlobalConfig would be set to true in agentbase.DefaultContext itself.
+	baseOsMgrContext.agentBaseContext.AgentOptions.SubscribeToGlobalConfig = true
+	return &baseOsMgrContext
+}
+
+func (ctxPtr *baseOsMgrContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
 
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
+	ctxPtr := newBaseOsMgrContext()
 
-	log.Infof("Starting %s", agentName)
+	agentbase.Run(ps, ctxPtr)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
-	// Context to pass around
-	ctx := baseOsMgrContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
-	}
-
 	// initialize publishing handles
-	initializeSelfPublishHandles(ps, &ctx)
+	initializeSelfPublishHandles(ps, ctxPtr)
 
 	// initialize module specific subscriber handles
-	initializeGlobalConfigHandles(ps, &ctx)
-	initializeNodeAgentHandles(ps, &ctx)
-	initializeZedagentHandles(ps, &ctx)
-	initializeVolumemgrHandles(ps, &ctx)
+	initializeNodeAgentHandles(ps, ctxPtr)
+	initializeZedagentHandles(ps, ctxPtr)
+	initializeVolumemgrHandles(ps, ctxPtr)
 
 	// publish zboot partition status
-	publishZbootPartitionStatusAll(&ctx)
+	publishZbootPartitionStatusAll(ctxPtr)
 
 	// report other agents, about, zboot status availability
-	ctx.pubZbootStatus.SignalRestarted()
+	ctxPtr.pubZbootStatus.SignalRestarted()
 
 	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
+	for !ctxPtr.agentBaseContext.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-ctx.subGlobalConfig.MsgChan():
-			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctxPtr.agentBaseContext.SubGlobalConfig.MsgChan():
+			ctxPtr.agentBaseContext.SubGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -112,20 +91,20 @@ func Run(ps *pubsub.PubSub) {
 	// start the forever loop for event handling
 	for {
 		select {
-		case change := <-ctx.subGlobalConfig.MsgChan():
-			ctx.subGlobalConfig.ProcessChange(change)
+		case change := <-ctxPtr.agentBaseContext.SubGlobalConfig.MsgChan():
+			ctxPtr.agentBaseContext.SubGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsConfig.MsgChan():
-			ctx.subBaseOsConfig.ProcessChange(change)
+		case change := <-ctxPtr.subBaseOsConfig.MsgChan():
+			ctxPtr.subBaseOsConfig.ProcessChange(change)
 
-		case change := <-ctx.subZbootConfig.MsgChan():
-			ctx.subZbootConfig.ProcessChange(change)
+		case change := <-ctxPtr.subZbootConfig.MsgChan():
+			ctxPtr.subZbootConfig.ProcessChange(change)
 
-		case change := <-ctx.subVolumeStatus.MsgChan():
-			ctx.subVolumeStatus.ProcessChange(change)
+		case change := <-ctxPtr.subVolumeStatus.MsgChan():
+			ctxPtr.subVolumeStatus.ProcessChange(change)
 
-		case change := <-ctx.subNodeAgentStatus.MsgChan():
-			ctx.subNodeAgentStatus.ProcessChange(change)
+		case change := <-ctxPtr.subNodeAgentStatus.MsgChan():
+			ctxPtr.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -216,41 +195,7 @@ func handleBaseOsDelete(ctx *baseOsMgrContext, key string,
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
-	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
-}
-
-// This handles both the create and modify events
-func handleGlobalConfigModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*baseOsMgrContext)
-	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
-		return
-	}
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
-	if gcp != nil {
-		ctx.globalConfig = gcp
-		ctx.GCInitialized = true
-	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
-}
-
-func handleGlobalConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*baseOsMgrContext)
-	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
-		return
-	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
-	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	return fmt.Sprintf("%s%s: %s", allErrors, prefix, lasterr)
 }
 
 func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
@@ -286,28 +231,6 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	pubZbootStatus.ClearRestarted()
 	ctx.pubZbootStatus = pubZbootStatus
-}
-
-func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
-
-	// Look for global config such as log levels
-	subGlobalConfig, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "",
-			TopicImpl:     types.ConfigItemValueMap{},
-			Activate:      false,
-			Ctx:           ctx,
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subGlobalConfig = subGlobalConfig
-	subGlobalConfig.Activate()
 }
 
 func initializeNodeAgentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
@@ -371,7 +294,7 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
-	// Look for BaseOs OldVolumeStatus from volumemgr
+	// Look for BaseOs VolumeStatus from volumemgr
 	subVolumeStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
