@@ -2243,14 +2243,14 @@ func updateUsbAccess(ctx *domainContext) {
 
 	log.Infof("updateUsbAccess(%t)", ctx.usbAccess)
 	if !ctx.usbAccess {
-		maybeAssignableAdd(ctx)
+		maybeAssignableAddUSB(ctx)
 	} else {
-		maybeAssignableRem(ctx)
+		maybeAssignableRemUSB(ctx)
 	}
 	checkIoBundleAll(ctx)
 }
 
-func maybeAssignableAdd(ctx *domainContext) {
+func maybeAssignableAddUSB(ctx *domainContext) {
 
 	var assignments []string
 	aa := ctx.assignableAdapters
@@ -2263,7 +2263,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 			continue
 		}
 		if !ib.IsPort && !ib.IsPCIBack {
-			log.Infof("maybeAssignableAdd: Assigning %s (%s) to pciback",
+			log.Infof("maybeAssignableAddUSB: Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
 			assignments = addNoDuplicate(assignments, ib.PciLong)
 			ib.IsPCIBack = true
@@ -2272,7 +2272,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 	for _, long := range assignments {
 		err := hyper.PCIReserve(long)
 		if err != nil {
-			log.Errorf("maybeAssignableAdd: add failed: %s", err)
+			log.Errorf("maybeAssignableAddUSB: add failed: %s", err)
 		}
 	}
 	if len(assignments) != 0 {
@@ -2280,7 +2280,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 	}
 }
 
-func maybeAssignableRem(ctx *domainContext) {
+func maybeAssignableRemUSB(ctx *domainContext) {
 
 	var assignments []string
 	aa := ctx.assignableAdapters
@@ -2307,7 +2307,7 @@ func maybeAssignableRem(ctx *domainContext) {
 	for _, long := range assignments {
 		err := hyper.PCIRelease(long)
 		if err != nil {
-			log.Errorf("maybeAssignableRem remove failed: %s", err)
+			log.Errorf("maybeAssignableRemUSB remove failed: %s", err)
 		}
 	}
 	if len(assignments) != 0 {
