@@ -3995,7 +3995,7 @@ CONFIG_FB_TILEBLITTING=y
 #
 # Frame buffer hardware drivers
 #
-# CONFIG_FB_BCM2708 is not set
+CONFIG_FB_BCM2708=y
 # CONFIG_FB_CIRRUS is not set
 # CONFIG_FB_PM2 is not set
 # CONFIG_FB_ARMCLCD is not set
@@ -4035,7 +4035,7 @@ CONFIG_XEN_FBDEV_FRONTEND=y
 # CONFIG_FB_METRONOME is not set
 # CONFIG_FB_MB862XX is not set
 CONFIG_FB_MX3=y
-# CONFIG_FB_SIMPLE is not set
+CONFIG_FB_SIMPLE=y
 # CONFIG_FB_SSD1307 is not set
 # CONFIG_FB_SM712 is not set
 # CONFIG_FB_RPISENSE is not set
