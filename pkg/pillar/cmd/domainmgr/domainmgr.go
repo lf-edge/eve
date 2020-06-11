@@ -2262,7 +2262,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 		if ib.PciLong == "" {
 			continue
 		}
-		if !ib.IsPCIBack {
+		if !ib.IsPort && !ib.IsPCIBack {
 			log.Infof("maybeAssignableAdd: Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
 			assignments = addNoDuplicate(assignments, ib.PciLong)
