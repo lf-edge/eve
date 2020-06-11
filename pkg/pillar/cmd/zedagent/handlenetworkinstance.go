@@ -879,3 +879,10 @@ func timeNanoToProto(timenum int64) *timestamp.Timestamp {
 func writeSentFlowProtoMessage(contents []byte) {
 	writeProtoMessage("lastflowlog", contents)
 }
+
+func handleAppContainerMetricsModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	acMetrics := statusArg.(types.AppContainerMetrics)
+	log.Debugf("handleAppContainerMetricsModify(%s), num containers %d", key, len(acMetrics.StatsList))
+}

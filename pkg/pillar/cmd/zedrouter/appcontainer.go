@@ -10,6 +10,7 @@
 package zedrouter
 
 import (
+	"net"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -43,10 +44,19 @@ func appStatsCollect(ctx *zedrouterContext) {
 				return
 			}
 
+			collectTime := time.Now() // all apps collection assign the same timestamp
 			for _, st := range items {
 				status := st.(types.AppNetworkStatus)
 				if status.GetStatsIPAddr != nil {
-					// XXX temp for later, collection function to fill in here
+					acMetrics, err := appContainerGetStats(status.GetStatsIPAddr)
+					if err != nil {
+						log.Errorf("appStatsCollect: can't get App %s Container Metrics on %s, %v",
+							status.UUIDandVersion.UUID.String(), status.GetStatsIPAddr.String(), err)
+						continue
+					}
+					acMetrics.UUIDandVersion = status.UUIDandVersion
+					acMetrics.CollectTime = collectTime
+					ctx.pubAppContainerMetrics.Publish(acMetrics.Key(), acMetrics)
 				}
 			}
 			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
@@ -84,4 +94,10 @@ func checkAppStopStatsCollect(ctx *zedrouterContext) (map[string]interface{}, bo
 	}
 	ctx.appStatsMutex.Unlock()
 	return items, false
+}
+
+func appContainerGetStats(ipAddr net.IP) (types.AppContainerMetrics, error) {
+	var acMetrics types.AppContainerMetrics
+	// XXX collect container stats for each container with the docker API endpoint ipAddr
+	return acMetrics, nil
 }

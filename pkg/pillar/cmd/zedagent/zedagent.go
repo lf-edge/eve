@@ -101,6 +101,7 @@ type zedagentContext struct {
 	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
+	subAppContainerMetrics    pubsub.Subscription
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -123,6 +124,7 @@ type zedagentContext struct {
 	specMap                 types.ConfigItemSpecMap
 	globalStatus            types.GlobalStatus
 	getCertsTimer           *time.Timer
+	appContainerStatsTime   time.Time // last time the App Container stats uploaded
 }
 
 var debug = false
@@ -558,6 +560,23 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subZbootStatus = subZbootStatus
 	subZbootStatus.Activate()
+
+	// sub AppContainerMetrics from zedrouter
+	subAppContainerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		TopicImpl:     types.AppContainerMetrics{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleAppContainerMetricsModify,
+		ModifyHandler: handleAppContainerMetricsModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subAppContainerMetrics = subAppContainerMetrics
+	subAppContainerMetrics.Activate()
 
 	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "baseosmgr",
@@ -1129,6 +1148,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
+
+		case change := <-subAppContainerMetrics.MsgChan():
+			subAppContainerMetrics.ProcessChange(change)
 
 		case <-zedagentCtx.getCertsTimer.C:
 			start := time.Now()

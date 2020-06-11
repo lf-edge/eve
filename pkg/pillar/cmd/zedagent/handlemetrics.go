@@ -168,6 +168,16 @@ func lookupDomainMetric(ctx *zedagentContext, uuidStr string) *types.DomainMetri
 	return &metric
 }
 
+func lookupAppContainerMetric(ctx *zedagentContext, uuidStr string) *types.AppContainerMetrics {
+	sub := ctx.subAppContainerMetrics
+	m, _ := sub.Get(uuidStr)
+	if m == nil {
+		return nil
+	}
+	metric := m.(types.AppContainerMetrics)
+	return &metric
+}
+
 func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	var ReportMetrics = &metrics.ZMetricMsg{}
@@ -565,6 +575,39 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
 				appDiskDetails)
 		}
+
+		acMetric := lookupAppContainerMetric(ctx, aiStatus.UUIDandVersion.UUID.String())
+		// upload acMetric when it's been newly updated
+		if acMetric != nil && acMetric.CollectTime.Sub(ctx.appContainerStatsTime) > 0 {
+			for _, stats := range acMetric.StatsList { // go through each container
+				appContainerMetric := new(metrics.AppContainerMetric)
+				appContainerMetric.AppContainerName = stats.ContainerName
+				appContainerMetric.Status = stats.Status
+				appContainerMetric.PIDs = stats.Pids
+
+				appContainerMetric.Cpu = new(metrics.AppCpuMetric)
+				uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
+				appContainerMetric.Cpu.UpTime = uptime
+				appContainerMetric.Cpu.Total = stats.CPUTotal
+				appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
+
+				appContainerMetric.Memory = new(metrics.MemoryMetric)
+				appContainerMetric.Memory.UsedMem = stats.UsedMem
+				appContainerMetric.Memory.AvailMem = stats.AvailMem
+
+				appContainerMetric.Network = new(metrics.NetworkMetric)
+				appContainerMetric.Network.TxBytes = stats.TxBytes
+				appContainerMetric.Network.RxBytes = stats.RxBytes
+
+				appContainerMetric.Disk = new(metrics.DiskMetric)
+				appContainerMetric.Disk.ReadBytes = stats.ReadBytes
+				appContainerMetric.Disk.WriteBytes = stats.WriteBytes
+
+				ReportAppMetric.Container = append(ReportAppMetric.Container, appContainerMetric)
+			}
+			ctx.appContainerStatsTime = acMetric.CollectTime
+		}
+
 		ReportMetrics.Am = append(ReportMetrics.Am, ReportAppMetric)
 	}
 

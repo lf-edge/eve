@@ -134,6 +134,39 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 }
 
+// AppContainerMetrics - App Container Metrics
+type AppContainerMetrics struct {
+	UUIDandVersion UUIDandVersion // App UUID
+	// Stats Collection time for uploading stats to cloud
+	CollectTime time.Time
+	StatsList   []AppContainerStats
+}
+
+// AppContainerStats - for App Container Stats
+type AppContainerStats struct {
+	ContainerName string // unique under an App
+	Status        string // uptime, pause, stop status
+	Pids          uint32 // number of PIDs within the container
+	// CPU stats
+	Uptime         int64  // unix.nano, time since container starts
+	CPUTotal       uint64 // container CPU since starts in sec
+	SystemCPUTotal uint64 // total system, user, idle in sec
+	// Memory stats
+	UsedMem  uint32 // in MBytes
+	AvailMem uint32 // in MBytes
+	// Network stats
+	TxBytes uint64 // in Bytes
+	RxBytes uint64 // in Bytes
+	// Disk stats
+	ReadBytes  uint64 // in MBytes
+	WriteBytes uint64 // in MBytes
+}
+
+// Key - key for AppContainerMetric
+func (acMetric AppContainerMetrics) Key() string {
+	return acMetric.UUIDandVersion.UUID.String()
+}
+
 // IntfStatusMap - Used to return per-interface test results (success and failures)
 //  ifName is used as the key
 type IntfStatusMap struct {
