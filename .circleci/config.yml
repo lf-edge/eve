@@ -35,8 +35,13 @@ jobs:
           command: >
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} FORCE_BUILD=--disable-cache pkgs
       - run:
+          name: KVM
+          command: >
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push EVE_SNAPSHOT_VERSION=0.0.0-snapshot} HV=kvm eve
+      - run:
           name: EVE
           command: >
+            rm -rf dist ;
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push EVE_SNAPSHOT_VERSION=0.0.0-snapshot} eve
       - run:
           name: Preserve artifacts
