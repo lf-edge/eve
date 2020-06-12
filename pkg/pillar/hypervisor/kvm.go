@@ -679,7 +679,7 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	unbindFile := sysfsPciDevices + long + "/driver/unbind"
 
 	//Write Empty string, to clear driver_override for the device
-	if err := ioutil.WriteFile(overrideFile, []byte(""), 0644); err != nil {
+	if err := ioutil.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
 		log.Fatalf("driver_override failure for PCI device %s: %v",
 			long, err)
 	}
