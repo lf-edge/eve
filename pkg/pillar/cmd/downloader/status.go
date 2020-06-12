@@ -6,7 +6,7 @@ import (
 
 // Status provides a struct that can be called to update download progress
 type Status interface {
-	Progress(uint)
+	Progress(uint, int64, int64)
 }
 
 // PublishStatus practical implementation of Status
@@ -18,7 +18,9 @@ type PublishStatus struct {
 }
 
 // Progress report progress as a percentage of completeness
-func (d *PublishStatus) Progress(p uint) {
+func (d *PublishStatus) Progress(p uint, osize, asize int64) {
 	d.status.Progress = p
+	d.status.CurrentSize = osize
+	d.status.TotalSize = asize
 	publishDownloaderStatus(d.ctx, d.status)
 }

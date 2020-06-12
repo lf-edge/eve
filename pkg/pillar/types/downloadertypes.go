@@ -123,7 +123,9 @@ type DownloaderStatus struct {
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes
-	Progress         uint    // In percent i.e., 0-100
+	TotalSize        int64   // expected size as reported by the downloader, if any
+	CurrentSize      int64   // current total downloaded size as reported by the downloader
+	Progress         uint    // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
 	ModTime          time.Time
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
