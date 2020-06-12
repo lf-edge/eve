@@ -20,13 +20,14 @@ type VolumeConfig struct {
 	VolumeContentOriginType zconfig.VolumeContentOriginType
 	MaxVolSize              uint64
 	ReadOnly                bool
+	RefCount                uint
 	GenerationCounter       int64
 	DisplayName             string
 }
 
 // Key is volume UUID which will be unique
 func (config VolumeConfig) Key() string {
-	return fmt.Sprintf("%s.%d", config.VolumeID.String(), config.GenerationCounter)
+	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
 }
 
 // LogCreate :
@@ -51,14 +52,17 @@ func (config VolumeConfig) LogModify(old interface{}) {
 	}
 	if oldConfig.ContentID != config.ContentID ||
 		oldConfig.MaxVolSize != config.MaxVolSize ||
+		oldConfig.RefCount != config.RefCount ||
 		oldConfig.GenerationCounter != config.GenerationCounter {
 
 		logObject.CloneAndAddField("content-id", config.ContentID).
-			AddField("maxVolSize", config.MaxVolSize).
-			AddField("generationCounter", config.GenerationCounter).
+			AddField("max-vol-size-int64", config.MaxVolSize).
+			AddField("refcount-int64", config.RefCount).
+			AddField("generation-counter-int64", config.GenerationCounter).
 			AddField("old-content-id", oldConfig.ContentID).
-			AddField("old-maxVolSize", oldConfig.MaxVolSize).
-			AddField("old-generationCounter", oldConfig.GenerationCounter).
+			AddField("old-max-vol-size-int64", oldConfig.MaxVolSize).
+			AddField("old-refcount-int64", oldConfig.RefCount).
+			AddField("old-generation-counter-int64", oldConfig.GenerationCounter).
 			Infof("Volume config modify")
 	}
 }
@@ -88,6 +92,8 @@ type VolumeStatus struct {
 	GenerationCounter       int64
 	DisplayName             string
 	State                   SwState
+	RefCount                uint
+	Progress                uint   // In percent i.e., 0-100
 	FileLocation            string // Location of filestystem
 	VolumeCreated           bool   // Done aka Activated
 	ContentFormat           zconfig.Format
@@ -99,7 +105,7 @@ type VolumeStatus struct {
 
 // Key is volume UUID which will be unique
 func (status VolumeStatus) Key() string {
-	return fmt.Sprintf("%s.%d", status.VolumeID.String(), status.GenerationCounter)
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(), status.GenerationCounter)
 }
 
 // IsContainer will return true if content tree attached
@@ -111,64 +117,66 @@ func (status VolumeStatus) IsContainer() bool {
 	return false
 }
 
-/*
 // LogCreate :
-func (status ContentTreeStatus) LogCreate() {
-	logObject := base.NewLogObject(base.ContentTreeStatusLogType, status.DisplayName,
-		status.ContentID, status.LogKey())
+func (status VolumeStatus) LogCreate() {
+	logObject := base.NewLogObject(base.VolumeStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("contentSha256", status.ContentSha256).
-		AddField("maxDownloadSize", status.MaxDownloadSize).
+	logObject.CloneAndAddField("content-id", status.ContentID).
+		AddField("max-vol-size-int64", status.MaxVolSize).
 		AddField("state", status.State).
-		AddField("progress", status.Progress).
-		AddField("fileLocation", status.FileLocation).
-		Infof("Content tree status create")
+		AddField("progress-int64", status.Progress).
+		AddField("refcount-int64", status.RefCount).
+		AddField("filelocation", status.FileLocation).
+		Infof("Volume status create")
 }
 
 // LogModify :
-func (status ContentTreeStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ContentTreeStatusLogType, status.DisplayName,
-		status.ContentID, status.LogKey())
+func (status VolumeStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
 
-	oldStatus, ok := old.(ContentTreeStatus)
+	oldStatus, ok := old.(VolumeStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ContentTreeStatus type")
+		log.Errorf("LogModify: Old object interface passed is not of VolumeStatus type")
 	}
-	if oldStatus.ContentSha256 != status.ContentSha256 ||
-		oldStatus.MaxDownloadSize != status.MaxDownloadSize ||
+	if oldStatus.ContentID != status.ContentID ||
+		oldStatus.MaxVolSize != status.MaxVolSize ||
 		oldStatus.State != status.State ||
 		oldStatus.Progress != status.Progress ||
+		oldStatus.RefCount != status.RefCount ||
 		oldStatus.FileLocation != status.FileLocation {
 
-		logObject.CloneAndAddField("contentSha256", status.ContentSha256).
-			AddField("maxDownloadSize", status.MaxDownloadSize).
+		logObject.CloneAndAddField("content-id", status.ContentID).
+			AddField("max-vol-size-int64", status.MaxVolSize).
 			AddField("state", status.State).
-			AddField("progress", status.Progress).
-			AddField("fileLocation", status.FileLocation).
-			AddField("old-contentSha256", oldStatus.ContentSha256).
-			AddField("old-maxDownloadSize", oldStatus.MaxDownloadSize).
+			AddField("progress-int64", status.Progress).
+			AddField("refcount-int64", status.RefCount).
+			AddField("filelocation", status.FileLocation).
+			AddField("old-content-id", oldStatus.ContentID).
+			AddField("old-max-vol-size-int64", oldStatus.MaxVolSize).
 			AddField("old-state", oldStatus.State).
-			AddField("old-progress", oldStatus.Progress).
-			AddField("old-fileLocation", oldStatus.FileLocation).
-			Infof("ContentTree status modify")
+			AddField("old-progress-int64", oldStatus.Progress).
+			AddField("old-refcount-int64", oldStatus.RefCount).
+			AddField("old-filelocation", oldStatus.FileLocation).
+			Infof("Volume status modify")
 	}
 }
 
 // LogDelete :
-func (status ContentTreeStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.ContentTreeStatusLogType, status.DisplayName,
-		status.ContentID, status.LogKey())
-	logObject.CloneAndAddField("contentSha256", status.ContentSha256).
-		AddField("maxDownloadSize", status.MaxDownloadSize).
-		Infof("ContentTree status delete")
+func (status VolumeStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.VolumeStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+	logObject.CloneAndAddField("content-id", status.ContentID).
+		AddField("max-vol-size-int64", status.MaxVolSize).
+		Infof("Volume status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
 
 // LogKey :
-func (status ContentTreeStatus) LogKey() string {
-	return string(base.ContentTreeStatusLogType) + "-" + status.Key()
+func (status VolumeStatus) LogKey() string {
+	return string(base.VolumeStatusLogType) + "-" + status.Key()
 }
-*/

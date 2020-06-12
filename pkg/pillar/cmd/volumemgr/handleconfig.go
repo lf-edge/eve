@@ -155,7 +155,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 	status.PendingAdd = true
 	publishOldVolumeStatus(ctx, &status)
 	// Ignore return value since we always publish
-	doUpdate(ctx, &status)
+	doUpdateOld(ctx, &status)
 	status.PendingAdd = false
 	publishOldVolumeStatus(ctx, &status)
 	log.Infof("vcCreate(%s) DONE objType %s for %s",

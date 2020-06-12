@@ -4,6 +4,8 @@
 package volumemgr
 
 import (
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -92,6 +94,8 @@ func updateVolume(ctx *volumemgrContext,
 			GenerationCounter:       config.GenerationCounter,
 			DisplayName:             config.DisplayName,
 			ReadOnly:                config.ReadOnly,
+			RefCount:                config.RefCount,
+			LastUse:                 time.Now(),
 		}
 	}
 	publishVolumeStatus(ctx, status)
@@ -111,9 +115,20 @@ func deleteVolume(ctx *volumemgrContext,
 		log.Infof("deleteVolume for %v, VolumeStatus not found", config.VolumeID)
 		return
 	}
+	if status.RefCount == 0 {
+		log.Fatalf("deleteVolume: Attempting to reduce "+
+			"0 RefCount. Volume Details - Name: %s, UUID: %v, ",
+			status.DisplayName, status.VolumeID)
+	}
+	status.RefCount--
+	if status.RefCount != 0 {
+		publishVolumeStatus(ctx, status)
+		log.Infof("deleteVolume for %v Done", config.VolumeID)
+		return
+	}
 	if status.VolumeCreated {
 		// Asynch destruction; make sure we have a request for the work
-		MaybeAddWorkDestroyVol(ctx, status)
+		MaybeAddWorkDestroy(ctx, status)
 		vr := lookupVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
 			log.Infof("VolumeWorkResult(%s) location %s, created %t",
@@ -131,12 +146,11 @@ func deleteVolume(ctx *volumemgrContext,
 				status.ClearErrorWithSource()
 			}
 			if !status.VolumeCreated {
-				DeleteWorkDestroyVol(ctx, status)
+				DeleteWorkDestroy(ctx, status)
 			}
 		} else {
 			log.Infof("VolumeWorkResult(%s) not found", status.Key())
 		}
-
 	}
 	publishVolumeStatus(ctx, status)
 	unpublishVolumeStatus(ctx, status)

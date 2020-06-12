@@ -6,49 +6,43 @@ package volumemgr
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
 )
 
-// createOldVolume does not update status but returns
+// createVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createOldVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	srcLocation := status.FileLocation
-	log.Infof("createOldVolume(%s) from %s", status.Key(), srcLocation)
-	switch status.Origin {
-	case types.OriginTypeDownload:
-		if status.Format == zconfig.Format_CONTAINER {
-			return createOldContainerVolume(ctx, status, srcLocation)
-		} else {
-			return createOldVdiskVolume(ctx, status, srcLocation)
-		}
-	default:
-		log.Fatalf("XXX unsupported origin %v", status.Origin)
+	log.Infof("createVolume(%s) from %s", status.Key(), srcLocation)
+	if status.IsContainer() {
+		return createContainerVolume(ctx, status, srcLocation)
+	} else {
+		return createVdiskVolume(ctx, status, srcLocation)
 	}
-	return false, "", nil
 }
 
-// createOldVdiskVolume does not update status but returns
+// createVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createOldVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
+func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
+	srcLocation string) (bool, string, error) {
 
 	created := false
 	if status.ReadOnly {
-		log.Infof("createOldVdiskVolume(%s) ReadOnly", status.Key())
+		log.Infof("createVolume(%s) ReadOnly", status.Key())
 		created = true // To make doUpdate proceed
 		return created, srcLocation, nil
 	}
 
-	filelocation := appRwOldVolumeName(status.BlobSha256, status.AppInstID.String(),
-		// XXX in general status.VolumeID,
-		status.PurgeCounter, status.Format, status.Origin, false)
-
+	filelocation := fmt.Sprintf("%s/%s#%d", rwImgDirname,
+		status.VolumeID.String(), status.GenerationCounter)
 	if _, err := os.Stat(filelocation); err == nil {
 		errStr := fmt.Sprintf("Can not create %s for %s: exists",
 			filelocation, status.Key())
@@ -70,74 +64,57 @@ func createOldVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, s
 		return created, filelocation, err
 	}
 	log.Infof("Copy DONE from %s to %s", srcLocation, status.FileLocation)
-	log.Infof("createOldVdiskVolume(%s) DONE", status.Key())
+	log.Infof("createVdiskVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
 
-// createOldContainerVolume does not update status but returns
+// createContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createOldContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
+func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
+	srcLocation string) (bool, string, error) {
 
 	created := false
-	dirName := appRwOldVolumeName(status.BlobSha256, status.AppInstID.String(),
-		// XXX in general status.VolumeID,
-		status.PurgeCounter, status.Format, status.Origin, true)
-
-	filelocation := containerd.GetContainerPath(dirName)
-
-	ociFilename, err := utils.VerifiedImageFileLocation(status.BlobSha256)
-	if err != nil {
-		errStr := fmt.Sprintf("failed to get Image File Location. err: %+s",
-			err)
-		log.Error(errStr)
-		return created, filelocation, errors.New(errStr)
-	}
-	log.Infof("ociFilename %s sha %s", ociFilename, status.BlobSha256)
-	created = true
-	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
+	filelocation := fmt.Sprintf("%s/%s#%d", roContImgDirname,
+		status.VolumeID.String(), status.GenerationCounter)
+	if err := containerd.SnapshotPrepare(filelocation, srcLocation); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}
-	log.Infof("createOldContainerVolume(%s) DONE", status.Key())
+	created = true
+	log.Infof("createContainerVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
 
-// destroyOldVolume does not update status but returns
+// destroyVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyOldVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
-	log.Infof("destroyOldVolume(%s)", status.Key())
+	log.Infof("destroyVolume(%s)", status.Key())
 	if !status.VolumeCreated {
-		log.Infof("destroyOldVolume(%s) nothing was created", status.Key())
+		log.Infof("destroyVolume(%s) nothing was created", status.Key())
 		return false, status.FileLocation, nil
 	}
 
 	if status.ReadOnly {
-		log.Infof("destroyOldVolume(%s) ReadOnly", status.Key())
+		log.Infof("destroyVolume(%s) ReadOnly", status.Key())
 		return false, "", nil
 	}
 
 	if status.FileLocation == "" {
-		log.Errorf("destroyOldVolume(%s) no FileLocation", status.Key())
+		log.Errorf("destroyVolume(%s) no FileLocation", status.Key())
 		return false, "", nil
 	}
 
-	switch status.Origin {
-	case types.OriginTypeDownload:
-		if status.Format == zconfig.Format_CONTAINER {
-			return destroyOldContainerVolume(ctx, status)
-		} else {
-			return destroyOldVdiskVolume(ctx, status)
-		}
-	default:
-		log.Fatalf("XXX unsupported origin %v", status.Origin)
+	if status.IsContainer() {
+		return destroyContainerVolume(ctx, status)
+	} else {
+		return destroyVdiskVolume(ctx, status)
 	}
-	return false, "", nil
 }
 
-// destroyOldVdiskVolume does not update status but returns
+// destroyVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyOldVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
@@ -149,13 +126,13 @@ func destroyOldVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus) 
 	}
 	filelocation = ""
 	created = false
-	log.Infof("destroyOldVdiskVolume(%s) DONE", status.Key())
+	log.Infof("destroyVdiskVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
 
-// destroyOldContainerVolume does not update status but returns
+// destroyContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyOldContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
@@ -165,6 +142,48 @@ func destroyOldContainerVolume(ctx *volumemgrContext, status types.OldVolumeStat
 	}
 	filelocation = ""
 	created = false
-	log.Infof("destroyOldContainerVolume(%s) DONE", status.Key())
+	log.Infof("destroyContainerVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
+}
+
+func cp(dst, src string) error {
+	if strings.Compare(dst, src) == 0 {
+		log.Fatalf("Same src and dst: %s", src)
+	}
+	s, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	// no need to check errors on read only file, we already got everything
+	// we need from the filesystem, so nothing can go wrong now.
+	defer s.Close()
+	d, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(d, s); err != nil {
+		d.Close()
+		return err
+	}
+	return d.Close()
+}
+
+// Make sure the (virtual) size of the disk is at least maxsizebytes
+func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
+	if maxsizebytes == 0 {
+		return nil
+	}
+	currentSize, err := diskmetrics.GetDiskVirtualSize(diskfile)
+	if err != nil {
+		return err
+	}
+	log.Infof("maybeResizeDisk(%s) current %d to %d",
+		diskfile, currentSize, maxsizebytes)
+	if maxsizebytes < currentSize {
+		log.Warnf("maybeResizeDisk(%s) already above maxsize  %d vs. %d",
+			diskfile, maxsizebytes, currentSize)
+		return nil
+	}
+	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
+	return err
 }

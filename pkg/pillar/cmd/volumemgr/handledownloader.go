@@ -10,15 +10,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.OldVolumeStatus) {
+// AddOrRefcountDownloaderConfig used to publish the downloader config
+func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.ContentTreeStatus) {
 
-	log.Infof("AddOrRefcountDownloaderConfig for %s", status.BlobSha256)
+	log.Infof("AddOrRefcountDownloaderConfig for %s", status.ContentSha256)
 
 	refCount := uint(1)
-	m := lookupDownloaderConfig(ctx, status.ObjType, status.BlobSha256)
+	m := lookupDownloaderConfig(ctx, status.ObjType, status.ContentSha256)
 	if m != nil {
 		log.Infof("downloader config exists for %s to refcount %d",
-			status.VolumeID, m.RefCount)
+			status.ContentSha256, m.RefCount)
 		refCount = m.RefCount + 1
 		// We need to update datastore id before publishing the
 		// datastore config because datastore id can be updated
@@ -39,22 +40,22 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.OldVolume
 		// Same is true for other fields
 	} else {
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s",
-			status.BlobSha256)
+			status.ContentSha256)
 	}
-	name := status.DownloadOrigin.Name
+	name := status.RelativeURL
 
 	// where should the final downloaded file be?
-	locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.VolumeID.String(), path.Base(name))
+	locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.ContentID.String(), path.Base(name))
 	// try to reserve storage, must be released on error
-	size := status.DownloadOrigin.MaxDownSize
+	size := status.MaxDownloadSize
 
 	n := types.DownloaderConfig{
-		ImageID:     status.VolumeID,
-		DatastoreID: status.DownloadOrigin.DatastoreID,
+		ImageID:     status.ContentID,
+		DatastoreID: status.DatastoreID,
 		// XXX StorageConfig.Name is what?
 		Name:        name, // XXX URL? DisplayName?
-		NameIsURL:   status.DownloadOrigin.NameIsURL,
-		ImageSha256: status.DownloadOrigin.ImageSha256,
+		NameIsURL:   status.NameIsURL,
+		ImageSha256: status.ContentSha256,
 		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 			types.AppImgObj),
 		Size:     size,
@@ -64,7 +65,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.OldVolume
 	log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
 	publishDownloaderConfig(ctx, status.ObjType, &n)
 	log.Infof("AddOrRefcountDownloaderConfig done for %s",
-		status.BlobSha256)
+		status.ContentSha256)
 }
 
 func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha string) {
