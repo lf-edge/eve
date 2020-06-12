@@ -37,13 +37,13 @@ var Version = "No version specified"
 var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 type volumemgrContext struct {
-	subAppVolumeConfig     pubsub.Subscription
-	pubAppVolumeStatus     pubsub.Publication
-	subBaseOsVolumeConfig  pubsub.Subscription
-	pubBaseOsVolumeStatus  pubsub.Publication
-	pubUnknownVolumeStatus pubsub.Publication
-	subGlobalConfig        pubsub.Subscription
-	subZedAgentStatus      pubsub.Subscription
+	subAppVolumeConfig        pubsub.Subscription
+	pubAppVolumeStatus        pubsub.Publication
+	subBaseOsVolumeConfig     pubsub.Subscription
+	pubBaseOsVolumeStatus     pubsub.Publication
+	pubUnknownOldVolumeStatus pubsub.Publication
+	subGlobalConfig           pubsub.Subscription
+	subZedAgentStatus         pubsub.Subscription
 
 	subCertObjConfig         pubsub.Subscription
 	pubCertObjStatus         pubsub.Publication
@@ -69,13 +69,13 @@ type volumemgrContext struct {
 	pubContentTreeStatus        pubsub.Publication
 	subVolumeConfig             pubsub.Subscription
 	pubVolumeStatus             pubsub.Publication
-	pubUnknownNewVolumeStatus   pubsub.Publication
+	pubUnknownVolumeStatus      pubsub.Publication
 	pubContentTreeToHash        pubsub.Publication
 
 	gc *time.Ticker
 
+	workerOld *worker.Worker // For background work
 	worker    *worker.Worker // For background work
-	workerVol *worker.Worker // For background work
 
 	verifierRestarted uint // Count to two for appimg and baseos
 	usingConfig       bool // From zedagent
@@ -144,8 +144,8 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	// Create the background worker
+	ctx.workerOld = InitHandleWorkOld(&ctx)
 	ctx.worker = InitHandleWork(&ctx)
-	ctx.workerVol = InitHandleWorkVol(&ctx)
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -219,7 +219,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubVolumeStatus = pubVolumeStatus
 
-	pubUnknownNewVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.UnknownObj,
 		TopicType:  types.VolumeStatus{},
@@ -227,7 +227,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubUnknownNewVolumeStatus = pubUnknownNewVolumeStatus
+	ctx.pubUnknownVolumeStatus = pubUnknownVolumeStatus
 
 	pubContentTreeToHash, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -259,7 +259,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubBaseOsVolumeStatus = pubBaseOsVolumeStatus
 
-	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubUnknownOldVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.UnknownObj,
 		TopicType:  types.OldVolumeStatus{},
@@ -267,7 +267,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubUnknownVolumeStatus = pubUnknownVolumeStatus
+	ctx.pubUnknownOldVolumeStatus = pubUnknownOldVolumeStatus
 
 	pubCertObjStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -615,11 +615,11 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subBaseOsVerifierStatus.MsgChan():
 			subBaseOsVerifierStatus.ProcessChange(change)
 
+		case res := <-ctx.workerOld.MsgChan():
+			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
+
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
-
-		case res := <-ctx.workerVol.MsgChan():
-			HandleWorkResultVol(&ctx, ctx.workerVol.Process(res))
 
 		case <-stillRunning.C:
 		}
@@ -648,6 +648,8 @@ func Run(ps *pubsub.PubSub) {
 				duration := time.Duration(ctx.vdiskGCTime / 10)
 				ctx.gc = time.NewTicker(duration * time.Second)
 				// Update the LastUse here to be now
+				gcResetOldObjectsLastUse(&ctx, rwImgDirname)
+				gcResetOldObjectsLastUse(&ctx, roContImgDirname)
 				gcResetObjectsLastUse(&ctx, rwImgDirname)
 				gcResetObjectsLastUse(&ctx, roContImgDirname)
 				gcResetPersistObjectLastUse(&ctx)
@@ -697,15 +699,17 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			gcOldObjects(&ctx, rwImgDirname)
 			gcOldObjects(&ctx, roContImgDirname)
+			gcObjects(&ctx, rwImgDirname)
+			gcObjects(&ctx, roContImgDirname)
 			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
+		case res := <-ctx.workerOld.MsgChan():
+			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
+
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
-
-		case res := <-ctx.workerVol.MsgChan():
-			HandleWorkResultVol(&ctx, ctx.workerVol.Process(res))
 
 		case <-stillRunning.C:
 		}

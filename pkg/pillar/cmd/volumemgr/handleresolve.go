@@ -101,7 +101,7 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 		}
 		log.Infof("Updating SHA for content tree: %v",
 			status.ContentID)
-		changed, _ := doUpdateCT(ctx, &status)
+		changed, _ := doUpdateContentTree(ctx, &status)
 		if changed {
 			log.Infof("ContentTree(Name:%s, UUID:%s): handleResolveStatusModify status change.",
 				status.DisplayName, status.ContentID)

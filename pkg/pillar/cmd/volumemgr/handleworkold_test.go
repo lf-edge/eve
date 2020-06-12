@@ -53,7 +53,7 @@ func TestHandleWorkCreate(t *testing.T) {
 		},
 	}
 	ctx := initCtx(t)
-	ctx.worker = InitHandleWork(&ctx)
+	ctx.workerOld = InitHandleWorkOld(&ctx)
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		t.Run(testname, func(t *testing.T) {
@@ -62,21 +62,21 @@ func TestHandleWorkCreate(t *testing.T) {
 			status.FileLocation = test.SrcLocation
 			status.BlobSha256 = test.BlobSha256
 
-			MaybeAddWorkCreate(&ctx, &status)
-			assert.Equal(t, ctx.worker.NumPending(), 1)
-			MaybeAddWorkCreate(&ctx, &status)
-			assert.Equal(t, ctx.worker.NumPending(), 1)
+			MaybeAddWorkCreateOld(&ctx, &status)
+			assert.Equal(t, ctx.workerOld.NumPending(), 1)
+			MaybeAddWorkCreateOld(&ctx, &status)
+			assert.Equal(t, ctx.workerOld.NumPending(), 1)
 
 			vr := lookupVolumeWorkResult(&ctx, status.Key())
 			assert.Nil(t, vr)
 
-			res := <-ctx.worker.MsgChan()
-			HandleWorkResult(&ctx, ctx.worker.Process(res))
-			assert.Equal(t, ctx.worker.NumPending(), 0)
+			res := <-ctx.workerOld.MsgChan()
+			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
+			assert.Equal(t, ctx.workerOld.NumPending(), 0)
 			vr = lookupVolumeWorkResult(&ctx, status.Key())
 			assert.NotNil(t, vr)
 			deleteVolumeWorkResult(&ctx, status.Key())
-			DeleteWorkCreate(&ctx, &status)
+			DeleteWorkCreateOld(&ctx, &status)
 
 			if test.ExpectFail {
 				assert.NotNil(t, vr.Error, "Error")
@@ -134,7 +134,7 @@ func TestHandleWorkDestroy(t *testing.T) {
 		},
 	}
 	ctx := initCtx(t)
-	ctx.worker = InitHandleWork(&ctx)
+	ctx.workerOld = InitHandleWorkOld(&ctx)
 	status := types.OldVolumeStatus{
 		VolumeID:     uuid.NewV4(), // XXX future
 		AppInstID:    uuid.NewV4(),
@@ -151,21 +151,21 @@ func TestHandleWorkDestroy(t *testing.T) {
 			status.FileLocation = test.SrcLocation
 			status.BlobSha256 = test.BlobSha256
 			status.VolumeCreated = test.VolumeCreated
-			MaybeAddWorkDestroy(&ctx, &status)
-			assert.Equal(t, ctx.worker.NumPending(), 1)
-			MaybeAddWorkDestroy(&ctx, &status)
-			assert.Equal(t, ctx.worker.NumPending(), 1)
+			MaybeAddWorkDestroyOld(&ctx, &status)
+			assert.Equal(t, ctx.workerOld.NumPending(), 1)
+			MaybeAddWorkDestroyOld(&ctx, &status)
+			assert.Equal(t, ctx.workerOld.NumPending(), 1)
 
 			vr := lookupVolumeWorkResult(&ctx, status.Key())
 			assert.Nil(t, vr)
 
-			res := <-ctx.worker.MsgChan()
-			HandleWorkResult(&ctx, ctx.worker.Process(res))
-			assert.Equal(t, ctx.worker.NumPending(), 0)
+			res := <-ctx.workerOld.MsgChan()
+			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
+			assert.Equal(t, ctx.workerOld.NumPending(), 0)
 			vr = lookupVolumeWorkResult(&ctx, status.Key())
 			assert.NotNil(t, vr)
 			deleteVolumeWorkResult(&ctx, status.Key())
-			DeleteWorkDestroy(&ctx, &status)
+			DeleteWorkDestroyOld(&ctx, &status)
 
 			if test.ExpectFail {
 				assert.NotNil(t, vr.Error, "Error")

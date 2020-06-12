@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -68,6 +68,7 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig.GenerationCounter = cfgVolume.GetGenerationCount()
 		volumeConfig.DisplayName = cfgVolume.GetDisplayName()
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
+		volumeConfig.RefCount = 1
 		publishVolumeConfig(ctx, *volumeConfig)
 	}
 	log.Debugf("parsing volume config done\n")
