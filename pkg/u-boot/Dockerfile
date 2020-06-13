@@ -1,6 +1,6 @@
 FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 as build
 
-ENV VERSION v2020.01
+ENV VERSION v2020.07-rc4
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV TARGET_x86_64 qemu-x86_defconfig
 ENV TARGET_aarch64 rpi_4_defconfig
