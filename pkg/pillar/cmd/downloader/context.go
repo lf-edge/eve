@@ -36,10 +36,10 @@ type downloaderContext struct {
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
-	// Look for controller certs which will be used for decryption
-	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		TopicImpl:   types.ControllerCert{},
+	// Look for eve node ecdh certificate configuration, for decryption
+	subEveNodeCertConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "tpmmgr",
+		TopicImpl:   types.ZCertConfig{},
 		Activate:    false,
 		Ctx:         ctx,
 		WarningTime: warningTime,
@@ -49,13 +49,13 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.decryptCipherContext.SubControllerCert = subControllerCert
-	subControllerCert.Activate()
+	ctx.decryptCipherContext.SubEveNodeCertConfig = subEveNodeCertConfig
+	subEveNodeCertConfig.Activate()
 
-	// Look for cipher context which will be used for decryption
-	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Look for cipher context status, for decryption
+	subCipherContextStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
-		TopicImpl:   types.CipherContext{},
+		TopicImpl:   types.CipherContextStatus{},
 		Activate:    false,
 		Ctx:         ctx,
 		WarningTime: warningTime,
@@ -65,8 +65,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.decryptCipherContext.SubCipherContext = subCipherContext
-	subCipherContext.Activate()
+	ctx.decryptCipherContext.SubCipherContextStatus = subCipherContextStatus
+	subCipherContextStatus.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{

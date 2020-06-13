@@ -78,6 +78,7 @@ type DNSContext struct {
 type zedagentContext struct {
 	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
+	cipherCtx                 *cipherContext    // Cross link
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
@@ -96,7 +97,6 @@ type zedagentContext struct {
 	subAppVifIPTrig           pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
-	subAttestCert             pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -223,6 +223,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
+	cipherCtx := cipherContext{}
 
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
@@ -232,6 +233,9 @@ func Run(ps *pubsub.PubSub) {
 	// Cross link
 	getconfigCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.getconfigCtx = &getconfigCtx
+
+	cipherCtx.zedagentCtx = &zedagentCtx
+	zedagentCtx.cipherCtx = &cipherCtx
 
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.InitDeferred()
@@ -356,30 +360,8 @@ func Run(ps *pubsub.PubSub) {
 	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
 	pubDatastoreConfig.ClearRestarted()
 
-	pubControllerCert, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			Persistent: true,
-			TopicType:  types.ControllerCert{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubControllerCert.ClearRestarted()
-	getconfigCtx.pubControllerCert = pubControllerCert
-
-	// for CipherContextStatus Publisher
-	pubCipherContext, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			Persistent: true,
-			TopicType:  types.CipherContext{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCipherContext.ClearRestarted()
-	getconfigCtx.pubCipherContext = pubCipherContext
+	// initializing cipher information processing block
+	cipherModuleInitialize(&zedagentCtx, ps)
 
 	// for ContentTree config Publisher
 	pubContentTreeConfig, err := ps.NewPublication(
@@ -594,22 +576,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
-
-	subAttestCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "tpmmgr",
-		TopicImpl:     types.AttestCert{},
-		Activate:      false,
-		Ctx:           &zedagentCtx,
-		ModifyHandler: handleAttestCertModify,
-		DeleteHandler: handleAttestCertDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subAttestCert = subAttestCert
-	subAttestCert.Activate()
 
 	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
@@ -858,9 +824,6 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			subNodeAgentStatus.ProcessChange(change)
 
-		case change := <-subAttestCert.MsgChan():
-			subAttestCert.ProcessChange(change)
-
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
@@ -988,9 +951,6 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subDevicePortConfigList.MsgChan():
 			subDevicePortConfigList.ProcessChange(change)
 
-		case change := <-subAttestCert.MsgChan():
-			subAttestCert.ProcessChange(change)
-
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
@@ -1023,6 +983,9 @@ func Run(ps *pubsub.PubSub) {
 	if !zedcloud.UseV2API() {
 		zedagentCtx.getCertsTimer.Stop()
 	}
+
+	// start cipher module tasks
+	cipherModuleStart(&zedagentCtx)
 
 	for {
 		select {
@@ -1121,6 +1084,9 @@ func Run(ps *pubsub.PubSub) {
 				downloaderMetrics = m.(types.MetricsMap)
 			}
 
+		case change := <-cipherCtx.subEveNodeCertConfig.MsgChan():
+			cipherCtx.subEveNodeCertConfig.ProcessChange(change)
+
 		case change := <-deferredChan:
 			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -1142,9 +1108,6 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppVifIPTrig.MsgChan():
 			subAppVifIPTrig.ProcessChange(change)
-
-		case change := <-subAttestCert.MsgChan():
-			subAttestCert.ProcessChange(change)
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)

@@ -121,7 +121,8 @@ func handleConfigInit(networkSendTimeout uint32) {
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 
-	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
+	configUrl := zedcloud.URLPathString(serverNameAndPort,
+		zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
 		getconfigCtx)

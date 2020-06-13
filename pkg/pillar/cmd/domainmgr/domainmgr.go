@@ -235,10 +235,10 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.pubCipherBlockStatus = pubCipherBlockStatus
 	pubCipherBlockStatus.ClearRestarted()
 
-	// Look for controller certs which will be used for decryption
-	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Look for cipher context staus, to be used for decryption
+	subCipherContextStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
-		TopicImpl:   types.ControllerCert{},
+		TopicImpl:   types.CipherContextStatus{},
 		Activate:    false,
 		Ctx:         &domainCtx,
 		WarningTime: warningTime,
@@ -248,13 +248,13 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
-	subControllerCert.Activate()
+	domainCtx.decryptCipherContext.SubCipherContextStatus = subCipherContextStatus
+	subCipherContextStatus.Activate()
 
-	// Look for cipher context which will be used for decryption
-	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		TopicImpl:   types.CipherContext{},
+	// device certificate configuration fetch
+	subEveNodeCertConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "tpmmgr",
+		TopicImpl:   types.ZCertConfig{},
 		Activate:    false,
 		Ctx:         &domainCtx,
 		WarningTime: warningTime,
@@ -264,8 +264,8 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.decryptCipherContext.SubCipherContext = subCipherContext
-	subCipherContext.Activate()
+	domainCtx.decryptCipherContext.SubEveNodeCertConfig = subEveNodeCertConfig
+	subEveNodeCertConfig.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
@@ -396,11 +396,8 @@ func Run(ps *pubsub.PubSub) {
 
 	for {
 		select {
-		case change := <-subControllerCert.MsgChan():
-			subControllerCert.ProcessChange(change)
-
-		case change := <-subCipherContext.MsgChan():
-			subCipherContext.ProcessChange(change)
+		case change := <-subCipherContextStatus.MsgChan():
+			subCipherContextStatus.ProcessChange(change)
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
