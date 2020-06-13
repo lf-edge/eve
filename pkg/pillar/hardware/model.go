@@ -6,7 +6,8 @@
 // would have an API between a domU and dom0
 
 // Implements GetHardwareModel() string
-// We have no dmidecode on ARM. Can only report compatible string
+// We have no dmidecode on ARM, so we use /proc/cpuinfo and look for Serial
+// We also report compatible string:
 // Note that we replace any intermediate nul characters with '.' since
 // /proc/device-tree/compatible contains nuls to separate different strings.
 
@@ -21,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -28,6 +30,7 @@ import (
 
 const (
 	compatibleFile = "/proc/device-tree/compatible"
+	cpuInfoFile    = "/proc/cpuinfo"
 	overrideFile   = types.IdentityDirname + "/hardwaremodel"
 	softSerialFile = types.IdentityDirname + "/soft_serial"
 )
@@ -122,6 +125,23 @@ func GetCompatible() string {
 	return compatible
 }
 
+func getCPUSerial() string {
+	serial := ""
+	if _, err := os.Stat(cpuInfoFile); err == nil {
+		contents, err := ioutil.ReadFile(cpuInfoFile)
+		if err != nil {
+			log.Errorf("getCPUSerial(%s) failed %s\n",
+				cpuInfoFile, err)
+		} else {
+			match := regexp.MustCompile(`(?s)Serial\s*:\s*(\S+)`).FindStringSubmatch(string(contents))
+			if match != nil && len(match) == 2 {
+				serial = match[1]
+			}
+		}
+	}
+	return serial
+}
+
 func massageCompatible(contents []byte) []byte {
 	filter := func(r rune) rune {
 		if strings.IndexRune(controlChars, r) < 0 {
@@ -152,7 +172,11 @@ func GetProductSerial() string {
 			err)
 		serial = []byte{}
 	}
-	return strings.TrimSuffix(string(serial), "\n")
+	if string(serial) != "" {
+		return strings.TrimSuffix(string(serial), "\n")
+	} else {
+		return getCPUSerial()
+	}
 }
 
 // Returns productManufacturer, productName, productVersion, productSerial, productUuid
@@ -178,13 +202,6 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 			err)
 		version = []byte{}
 	}
-	cmd = exec.Command("dmidecode", "-s", "system-serial-number")
-	serial, err := cmd.Output()
-	if err != nil {
-		log.Errorf("GetDeviceManufacturerInfo system-serial-number failed %s\n",
-			err)
-		serial = []byte{}
-	}
 	cmd = exec.Command("dmidecode", "-s", "system-uuid")
 	uuid, err := cmd.Output()
 	if err != nil {
@@ -192,10 +209,10 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 			err)
 		uuid = []byte{}
 	}
+	productSerial := GetProductSerial()
 	productManufacturer := string(manufacturer)
 	productName := string(pname)
 	productVersion := string(version)
-	productSerial := string(serial)
 	productUuid := string(uuid)
 	return productManufacturer, productName, productVersion, productSerial, productUuid
 }
