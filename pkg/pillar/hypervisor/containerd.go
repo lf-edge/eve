@@ -77,7 +77,7 @@ func (ctx ctrdContext) Create(domainName string, cfgFilename string, config *typ
 }
 
 func (ctx ctrdContext) Start(domainName string, domainID int) error {
-	id, err := containerd.CtrStart(domainName)
+	id, err := containerd.CtrStartContainer(domainName)
 	if err != nil {
 		return logError("containerd failed to start domain %s %v", domainName, err)
 	}
@@ -86,7 +86,7 @@ func (ctx ctrdContext) Start(domainName string, domainID int) error {
 }
 
 func (ctx ctrdContext) Stop(domainName string, domainID int, force bool) error {
-	err := containerd.CtrStop(domainName, force)
+	err := containerd.CtrStopContainer(domainName, force)
 	if err == nil {
 		log.Infof("containerd stopped domain %s with PID %d (forced %v)", domainName, domainID, force)
 	} else {
@@ -96,7 +96,7 @@ func (ctx ctrdContext) Stop(domainName string, domainID int, force bool) error {
 }
 
 func (ctx ctrdContext) Delete(domainName string, domainID int) error {
-	err := containerd.CtrDelete(domainName)
+	err := containerd.CtrDeleteContainer(domainName)
 	if err == nil {
 		log.Infof("containerd deleted domain %s with PID %d", domainName, domainID)
 	} else {
@@ -106,7 +106,7 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx ctrdContext) Info(domainName string, domainID int) error {
-	pid, status, err := containerd.CtrInfo(domainName)
+	pid, status, err := containerd.CtrContainerInfo(domainName)
 	if err == nil {
 		if pid == domainID {
 			log.Infof("containerd domain %s with PID %d is %s\n", domainName, domainID, status)
@@ -122,7 +122,7 @@ func (ctx ctrdContext) Info(domainName string, domainID int) error {
 }
 
 func (ctx ctrdContext) LookupByName(domainName string, domainID int) (int, error) {
-	pid, status, err := containerd.CtrInfo(domainName)
+	pid, status, err := containerd.CtrContainerInfo(domainName)
 	if err == nil {
 		if pid == domainID {
 			log.Infof("containerd domain %s with PID %d is %s\n", domainName, domainID, status)
@@ -160,7 +160,7 @@ func (ctx ctrdContext) PCIRelease(long string) error {
 }
 
 func (ctx ctrdContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
-	_, status, err := containerd.CtrInfo(domainName)
+	_, status, err := containerd.CtrContainerInfo(domainName)
 	return err == nil && status == "pausing"
 }
 
@@ -175,7 +175,7 @@ func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 
 func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	res := map[string]types.DomainMetric{}
-	ids, err := containerd.CtrList()
+	ids, err := containerd.CtrListContainerIds()
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 		var usedMemPerc float64
 		var cpuTotal uint64
 
-		if metric, err := containerd.GetMetrics(id); err == nil {
+		if metric, err := containerd.CtrGetContainerMetrics(id); err == nil {
 			usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
 			availMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
 			if availMem != 0 {

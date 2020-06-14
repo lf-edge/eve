@@ -1032,7 +1032,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 		// XXX apparently this is under the appInstID and not under
 		// the ImageID aka VolumeID
-		if err := containerd.CtrPrepareMount(config.UUIDandVersion.UUID,
+		if err := containerd.PrepareMount(config.UUIDandVersion.UUID,
 			ds.FileLocation, status.EnvVariables,
 			len(status.DiskStatusList)); err != nil {
 

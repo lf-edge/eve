@@ -3,15 +3,11 @@ package cas
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/leases"
-	"github.com/containerd/containerd/namespaces"
-	"github.com/containerd/containerd/snapshots"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/identity"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
 	"runtime"
 	"strings"
@@ -21,36 +17,19 @@ import (
 	"time"
 )
 
-var (
-	ctrdClient   *containerd.Client
-	ctrdCtx      context.Context
-	contentStore content.Store
-)
-
-const (
-	// containerd socket
-	ctrdSocket = "/run/containerd/containerd.sock"
-	// ctrdServicesNamespace containerd namespace for running containers
-	ctrdServicesNamespace = "eve-user-apps"
-	//containerdRunTime - default runtime of containerd
-	containerdRunTime = "io.containerd.runtime.v1.linux"
-	// default snapshotter used by containerd
-	defaultSnapshotter = "overlayfs"
-)
-
 type containerdCAS struct {
 }
 
 //CheckBlobExists: returns true if the blob exists. Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) CheckBlobExists(blobHash string) bool {
-	_, err := contentStore.Info(ctrdCtx, digest.Digest(blobHash))
+	_, err := containerd.CtrGetBlobInfo(blobHash)
 	return err == nil
 }
 
 //GetBlobSize: returns: blob size. Arg 'blobHash' should be of format sha256:<hash>.
 //Returns error if no blob is found for the given 'blobHash'.
 func (c *containerdCAS) GetBlobSize(blobHash string) (int64, error) {
-	info, err := contentStore.Info(ctrdCtx, digest.Digest(blobHash))
+	info, err := containerd.CtrGetBlobInfo(blobHash)
 	if err != nil {
 		return -1, fmt.Errorf("GetBlobSize: Exception while getting size of blob: %s. %s", blobHash, err.Error())
 	}
@@ -59,7 +38,7 @@ func (c *containerdCAS) GetBlobSize(blobHash string) (int64, error) {
 
 //ListBlobs: returns list of blobs where each entry is of format sha256:<hash>.
 func (c *containerdCAS) ListBlobs() ([]string, error) {
-	infos, err := getContentInfoList()
+	infos, err := containerd.CtrListBlobInfo()
 	if err != nil {
 		return nil, fmt.Errorf("ListBlobs: Exception while getting blob list. %s", err.Error())
 	}
@@ -92,16 +71,12 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobHash string, reader 
 		leaseOpts = append(leaseOpts, leases.WithExpiration(exp))
 	}
 
-	_, err := ctrdClient.LeasesService().Create(ctrdCtx, leaseOpts...)
+	_, err := containerd.CtrCreateLease(leaseOpts)
 	if err != nil && !isAlreadyExistsError(err) {
 		return fmt.Errorf("IngestBlob: Exception while creating lease: %s. %s", leaseID, err.Error())
 	}
-	ctrdCtx = leases.WithLease(ctrdCtx, leaseID)
-	if blobHash == "" {
-		return fmt.Errorf("IngestBlob: blobHash cannot be empty")
-	}
-	expectedSha256Digest := digest.Digest(blobHash)
-	if err = content.WriteBlob(ctrdCtx, contentStore, blobHash, reader, spec.Descriptor{Digest: expectedSha256Digest}); err != nil {
+
+	if err = containerd.CtrWriteBlobWithLease(blobHash, leaseID, reader); err != nil {
 		return fmt.Errorf("IngestBlob: Exception while writing blob: %s. %s", blobHash, err.Error())
 	}
 	return nil
@@ -111,23 +86,19 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobHash string, reader 
 //Returns error if no blob is found for the given 'blobHash'.
 //Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) ReadBlob(blobHash string) (io.Reader, error) {
-	shaDigest := digest.Digest(blobHash)
-	_, err := contentStore.Info(ctrdCtx, shaDigest)
+	reader, err := containerd.CtrReadBlob(blobHash)
 	if err != nil {
-		return nil, fmt.Errorf("ReadBlob: Exception getting info of blob: %s. %s", blobHash, err.Error())
+		log.Errorf("ReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
+		return nil, err
 	}
-	readerAt, err := contentStore.ReaderAt(ctrdCtx, spec.Descriptor{Digest: shaDigest})
-	if err != nil {
-		return nil, fmt.Errorf("ReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
-	}
-	return content.NewReader(readerAt), nil
+	return reader, nil
 }
 
 //RemoveBlob: removes a blob which matches the given arg 'blobHash'.
 //To keep this method idempotent, no error is returned if the given arg 'blobHash' does not match any blob.
 //Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) RemoveBlob(blobHash string) error {
-	if err := contentStore.Delete(ctrdCtx, digest.Digest(blobHash)); err != nil && !isNotFoundError(err) {
+	if err := containerd.CtrDeleteBlob(blobHash); err != nil && !isNotFoundError(err) {
 		return fmt.Errorf("RemoveBlob: Exception while removing blob: %s. %s", blobHash, err.Error())
 	}
 	return nil
@@ -191,7 +162,7 @@ func (c *containerdCAS) CreateImage(reference, blobHash string) error {
 		CreatedAt: time.Time{},
 		UpdatedAt: time.Time{},
 	}
-	_, err = ctrdClient.ImageService().Create(ctrdCtx, image)
+	_, err = containerd.CtrCreateImage(image)
 	if err != nil {
 		return fmt.Errorf("CreateImage: Exception while creating reference: %s. %s", reference, err.Error())
 	}
@@ -201,16 +172,16 @@ func (c *containerdCAS) CreateImage(reference, blobHash string) error {
 //GetImageHash: returns a blob hash of format sha256:<hash> which the given 'reference' is pointing to.
 // Returns error if the given 'reference' is not found.
 func (c *containerdCAS) GetImageHash(reference string) (string, error) {
-	image, err := ctrdClient.ImageService().Get(ctrdCtx, reference)
+	image, err := containerd.CtrGetImage(reference)
 	if err != nil {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
-	return image.Target.Digest.String(), nil
+	return image.Target().Digest.String(), nil
 }
 
 //ListImages: returns a list of references
 func (c *containerdCAS) ListImages() ([]string, error) {
-	imageObjectList, err := ctrdClient.ImageService().List(ctrdCtx)
+	imageObjectList, err := containerd.CtrListImages()
 	if err != nil {
 		return nil, fmt.Errorf("ListImages: Exception while getting image list. %s", err.Error())
 	}
@@ -224,7 +195,7 @@ func (c *containerdCAS) ListImages() ([]string, error) {
 //RemoveImage: removes an reference along with its contents unless the contents are referred by another reference or snapshot.
 //To keep this method idempotent, no error  is returned if the given 'reference' is not found.
 func (c *containerdCAS) RemoveImage(reference string) error {
-	if err := ctrdClient.ImageService().Delete(ctrdCtx, reference); err != nil {
+	if err := containerd.CtrDeleteImage(reference); err != nil {
 		return fmt.Errorf("RemoveImage: Exception while removing image. %s", err.Error())
 	}
 	return nil
@@ -254,8 +225,7 @@ func (c *containerdCAS) ReplaceImage(reference, blobHash string) error {
 		CreatedAt: time.Time{},
 		UpdatedAt: time.Time{},
 	}
-	_, err = ctrdClient.ImageService().Update(ctrdCtx, image, "target")
-	if err != nil {
+	if _, err := containerd.CtrUpdateImage(image, "target"); err != nil {
 		return fmt.Errorf("ReplaceImage: Exception while updating reference: %s. %s", reference, err.Error())
 	}
 	return nil
@@ -264,20 +234,12 @@ func (c *containerdCAS) ReplaceImage(reference, blobHash string) error {
 //CreateSnapshotForImage: creates an snapshot with the given snapshotID for the given 'reference'
 //Arg 'snapshotID' should be of format sha256:<hash>.
 func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) error {
-	image, err := ctrdClient.GetImage(ctrdCtx, reference)
+	image, err := containerd.CtrGetImage(reference)
 	if err != nil {
 		return fmt.Errorf("CreateSnapshotForImage: Exception while getting image: %s. %s", reference, err.Error())
 	}
-	diffIDs, err := image.RootFS(ctrdCtx)
-	if err != nil {
-		return fmt.Errorf("CreateSnapshotForImage: Exception while getting "+
-			"image %s rootfs. %s", reference, err.Error())
-	}
 
-	parent := identity.ChainID(diffIDs).String()
-	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
-	_, err = snapshotter.Prepare(ctrdCtx, snapshotID, parent)
-	if err != nil {
+	if _, err := containerd.CtrPrepareSnapshot(snapshotID, image); err != nil {
 		return fmt.Errorf("CreateSnapshotForImage: Exception while creating snapshot: %s. %s", snapshotID, err.Error())
 	}
 	return nil
@@ -286,23 +248,21 @@ func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) err
 //MountSnapshot: mounts the snapshot on the given target path
 //Arg 'snapshotID' should be of format sha256:<hash>.
 func (c *containerdCAS) MountSnapshot(snapshotID, targetPath string) error {
-	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
-	mounts, err := snapshotter.Mounts(ctrdCtx, snapshotID)
-	if err != nil {
+	if err := containerd.CtrMountSnapshot(snapshotID, targetPath); err != nil {
 		return fmt.Errorf("MountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
 	}
-	return mounts[0].Mount(targetPath)
+	return nil
 }
 
 //ListSnapshots: returns a list of snapshotIDs where each entry is of format sha256:<hash>.
 func (c *containerdCAS) ListSnapshots() ([]string, error) {
-	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
+	snapshotInfoList, err := containerd.CtrListSnapshotInfo()
+	if err != nil {
+		return nil, fmt.Errorf("ListSnapshots: unable to get snapshot info list: %s", err.Error())
+	}
 	snapshotIDList := make([]string, 0)
-	if err := snapshotter.Walk(ctrdCtx, func(i context.Context, info snapshots.Info) error {
-		snapshotIDList = append(snapshotIDList, info.Name)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("ListSnapshots: Execption while fetching snapshot list. %s", err.Error())
+	for _, snapshotInfo := range snapshotInfoList {
+		snapshotIDList = append(snapshotIDList, snapshotInfo.Name)
 	}
 	return snapshotIDList, nil
 }
@@ -311,8 +271,7 @@ func (c *containerdCAS) ListSnapshots() ([]string, error) {
 //Arg 'snapshotID' should be of format sha256:<hash>.
 //To keep this method idempotent, no error  is returned if the given 'snapshotID' is not found.
 func (c *containerdCAS) RemoveSnapshot(snapshotID string) error {
-	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
-	if err := snapshotter.Remove(ctrdCtx, snapshotID); err != nil && !isNotFoundError(err) {
+	if err := containerd.CtrRemoveSnapshot(snapshotID); err != nil && !isNotFoundError(err) {
 		return fmt.Errorf("RemoveSnapshot: Exception while removing snapshot: %s. %s", snapshotID, err.Error())
 	}
 	return nil
@@ -320,21 +279,10 @@ func (c *containerdCAS) RemoveSnapshot(snapshotID string) error {
 
 //newContainerdCAS: constructor for containerd CAS
 func newContainerdCAS() CAS {
-	initContainerd()
+	if err := containerd.InitContainerdClient(); err != nil {
+		log.Fatalf("newContainerdCAS: excpetion while initializing containerd client: %s", err.Error())
+	}
 	return &containerdCAS{}
-}
-
-//getContentInfoList: returns a list of blobs as content.Info type
-func getContentInfoList() ([]content.Info, error) {
-	infos := make([]content.Info, 0)
-	walkFn := func(info content.Info) error {
-		infos = append(infos, info)
-		return nil
-	}
-	if err := contentStore.Walk(ctrdCtx, walkFn); err != nil {
-		return nil, fmt.Errorf("getContentInfoList: Exception while getting content list. %s", err.Error())
-	}
-	return infos, nil
 }
 
 //getIndexManifest: returns a indexManifest by parsing the given blobSha256
@@ -383,17 +331,6 @@ func getManifestBlobSha256FromIndex(indexManifest *v1.IndexManifest) (string, er
 		}
 	}
 	return "", fmt.Errorf("getManifestBlobSha256FromIndex: No manifest found in the Index for arch: %s", runtime.GOARCH)
-}
-
-func initContainerd() {
-	var err error
-	ctrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
-	if err != nil {
-		log.Fatalf("initContainerd: could not create containerd client. %v", err.Error())
-		return
-	}
-	ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
-	contentStore = ctrdClient.ContentStore()
 }
 
 //isNotFoundError: returns true if the given error is a "not found" error
