@@ -146,6 +146,7 @@ func CtrLoadImage(ctx context.Context, reader *os.File) ([]images.Image, error) 
 	return imgs, nil
 }
 
+//CtrGetImage returns image object for the reference. Returns error if no image is found for the reference.
 func CtrGetImage(reference string) (containerd.Image, error) {
 	if err := verifyCtr(); err != nil {
 		return nil, fmt.Errorf("CtrGetImage: exception while verifying ctrd client: %s", err.Error())
