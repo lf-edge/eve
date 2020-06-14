@@ -51,7 +51,7 @@ PARTS=${*:-"efi imga imgb conf persist"}
 PARTITION_TYPE_USR_X86_64=5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6
 
 # EFI partition size in bytes 
-EFI_PART_SIZE=$((1536 * 1024))
+EFI_PART_SIZE=$((36 * 1024 * 1024))
 # rootfs partition size in bytes
 ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # conf partition size in bytes
@@ -104,7 +104,7 @@ dir2vfat() {
   local LABEL=${3:-EVE}
   (rm -rf /tmp/data
    mkdir /tmp/data
-   mkfs.vfat -v -n "$LABEL" -C "$IMG" "$2"
+   mkfs.vfat -F32 -v -n "$LABEL" -C "$IMG" "$2"
    mcopy -i $IMG -s $1/* ::/ ) >&2
   echo $IMG
 }
