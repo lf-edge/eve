@@ -1,4 +1,6 @@
 #!/bin/sh
+exec 3>&1
+exec 1>&2
 
 OUTPUT_IMG=/tmp/output.img
 
@@ -29,7 +31,7 @@ dump() {
   elif mountpoint -q /out/f; then
      dd if="$INAME" bs=1M of=/out/f
   else
-     dd if="$INAME" bs=1M
+     dd if="$INAME" bs=1M >&3
   fi
 }
 

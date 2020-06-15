@@ -55,9 +55,10 @@ endif
 REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
 REPO_SHA=$(shell git describe --match v --abbrev=8 --always --dirty)
 REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d.%H.%M"))
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 
-ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)-$(shell date -u +"%Y-%m-%d.%H.%M"),$(REPO_TAG))
+ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG),$(REPO_TAG))
 
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
