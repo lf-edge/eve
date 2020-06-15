@@ -1,0 +1,22 @@
+FROM alpine:3.9.4 as tools
+RUN mkdir -p /out/etc/apk /out/boot && cp -r /etc/apk/* /out/etc/apk/
+RUN apk add --no-cache --initdb -p /out qemu-img=3.1.0-r3 tar=1.32-r0
+# hadolint ignore=DL3006
+FROM MKISO_TAG as iso
+# hadolint ignore=DL3006
+FROM MKRAW_TAG as raw
+# we need to get rid of embedded initrd since we will get it from outside
+RUN rm /initrd.img
+# hadolint ignore=DL3006
+FROM MKCONF_TAG as conf
+
+COPY --from=iso / /
+COPY --from=raw / /
+COPY --from=tools /out/ /
+COPY installer /bits
+COPY OVMF* /firmware/
+COPY runme.sh /
+RUN mkdir /in /out
+
+WORKDIR /bits
+ENTRYPOINT ["/runme.sh"]

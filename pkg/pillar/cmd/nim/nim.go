@@ -129,6 +129,18 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubDevicePortConfig.ClearRestarted()
 
+	// Publication to get lohs
+	pubDummyDevicePortConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: "dummy",
+			TopicType:  types.DevicePortConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubDummyDevicePortConfig.ClearRestarted()
+
 	pubDevicePortConfigList, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
@@ -203,6 +215,7 @@ func Run(ps *pubsub.PubSub) {
 	nimCtx.deviceNetworkContext.DevicePortConfig = &types.DevicePortConfig{}
 	nimCtx.deviceNetworkContext.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.deviceNetworkContext.PubDevicePortConfig = pubDevicePortConfig
+	nimCtx.deviceNetworkContext.PubDummyDevicePortConfig = pubDummyDevicePortConfig
 	nimCtx.deviceNetworkContext.PubDevicePortConfigList = pubDevicePortConfigList
 	nimCtx.deviceNetworkContext.PubCipherBlockStatus = pubCipherBlockStatus
 	nimCtx.deviceNetworkContext.PubDeviceNetworkStatus = pubDeviceNetworkStatus
@@ -786,6 +799,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 		dpc := &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 		dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+		ctx.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
 		log.Infof("publishing DevicePortConfigList update: %+v",
 			*ctx.DevicePortConfigList)
 		ctx.PubDevicePortConfigList.Publish("global",

@@ -72,9 +72,10 @@ var nilUUID = uuid.UUID{}
 // ensure load spreading across multiple interfaces.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
+// If bailOnHTTPErr is set we immediately return when we get a 4xx or 5xx error without trying the other interfaces.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
-func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, types.SenderResult, error) {
+func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
 	// If failed then try the non-free
 	const allowProxy = true
 	var errorList []error
@@ -113,8 +114,8 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 			if rtf != types.SenderStatusNone {
 				remoteTemporaryFailure = rtf
 			}
-			if return400 && resp != nil &&
-				resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			if bailOnHTTPErr && resp != nil &&
+				resp.StatusCode >= 400 && resp.StatusCode < 600 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 					url, reqlen, resp.StatusCode)
 				return resp, nil, remoteTemporaryFailure, err

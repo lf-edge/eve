@@ -845,9 +845,9 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		buf := bytes.NewBuffer(data)
 		size := int64(proto.Size(pflowsPtr))
 		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
-		const return400 = false
+		const bailOnHTTPErr = false
 		_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, flowlogURL,
-			size, buf, flowIteration, return400)
+			size, buf, flowIteration, bailOnHTTPErr)
 		if err != nil {
 			if rtf == types.SenderStatusRemTempFail {
 				log.Errorf("FlowStats: sendFlowProtobuf  remoteTemporaryFailure: %s",
@@ -878,4 +878,11 @@ func timeNanoToProto(timenum int64) *timestamp.Timestamp {
 
 func writeSentFlowProtoMessage(contents []byte) {
 	writeProtoMessage("lastflowlog", contents)
+}
+
+func handleAppContainerMetricsModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	acMetrics := statusArg.(types.AppContainerMetrics)
+	log.Debugf("handleAppContainerMetricsModify(%s), num containers %d", key, len(acMetrics.StatsList))
 }

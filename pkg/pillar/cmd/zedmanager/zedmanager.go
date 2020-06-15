@@ -634,7 +634,7 @@ func handleModify(ctxArg interface{}, key string,
 	// purge of disk changes, so we can generate errors if it is
 	// not a PurgeCmd and RestartCmd, respectively
 	// If we are purging then restart is redundant.
-	needPurge, needRestart := quantifyChanges(config, *status)
+	needPurge, needRestart, purgeReason, restartReason := quantifyChanges(config, *status)
 	if needPurge {
 		needRestart = false
 	}
@@ -659,7 +659,8 @@ func handleModify(ctxArg interface{}, key string,
 			status.RestartCmd.Counter = config.RestartCmd.Counter
 		}
 	} else if needRestart {
-		errStr := "Need restart due to change but not a restartCmd"
+		errStr := fmt.Sprintf("Need restart due to %s but not a restartCmd",
+			restartReason)
 		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
 		status.SetError(errStr, time.Now())
 		publishAppInstanceStatus(ctx, status)
@@ -691,7 +692,8 @@ func handleModify(ctxArg interface{}, key string,
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
 	} else if needPurge {
-		errStr := "Need purge due to change but not a purgeCmd"
+		errStr := fmt.Sprintf("Need purge due to %s but not a purgeCmd",
+			purgeReason)
 		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
 		status.SetError(errStr, time.Now())
 		publishAppInstanceStatus(ctx, status)
@@ -768,137 +770,174 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	log.Infof("handleDelete done for %s", status.DisplayName)
 }
 
-// Returns needRestart, needPurge
+// Returns needRestart, needPurge, plus a string for each.
 // If there is a change to the disks, adapters, or network interfaces
 // it returns needPurge.
 // If there is a change to the CPU etc resources it returns needRestart
 // Changes to ACLs don't result in either being returned.
 func quantifyChanges(config types.AppInstanceConfig,
-	status types.AppInstanceStatus) (bool, bool) {
+	status types.AppInstanceStatus) (bool, bool, string, string) {
 
 	needPurge := false
 	needRestart := false
+	var purgeReason, restartReason string
 	log.Infof("quantifyChanges for %s %s",
 		config.Key(), config.DisplayName)
 	if len(status.StorageStatusList) != len(config.StorageConfigList) {
-		log.Infof("quantifyChanges len storage changed from %d to %d",
+		str := fmt.Sprintf("number of volumes changed from %d to %d",
 			len(status.StorageStatusList),
 			len(config.StorageConfigList))
+		log.Infof(str)
 		needPurge = true
+		purgeReason += str + "\n"
 	} else {
 		for _, sc := range config.StorageConfigList {
 			ss := lookupStorageStatus(&status, sc)
 			if ss == nil {
-				log.Errorf("quantifyChanges missing StorageStatus for (Name: %s, "+
+				str := fmt.Sprintf("missing StorageStatus for (Name: %s, "+
 					"ImageSha256: %s, ImageID: %s, PurgeCounter: %d)",
 					sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
+				log.Errorf(str)
 				needPurge = true
+				purgeReason += str + "\n"
 				continue
 			}
 			if ss.ImageID != sc.ImageID {
-				log.Infof("quantifyChanges storage imageID changed from %s to %s",
+				str := fmt.Sprintf("storage imageID changed from %s to %s",
 					ss.ImageID, sc.ImageID)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if ss.ReadOnly != sc.ReadOnly {
-				log.Infof("quantifyChanges storage ReadOnly changed from %v to %v",
-					ss.ReadOnly, sc.ReadOnly)
+				str := fmt.Sprintf("storage ReadOnly changed from %v to %v for %s",
+					ss.ReadOnly, sc.ReadOnly, ss.ImageID)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if ss.Format != sc.Format {
-				log.Infof("quantifyChanges storage Format changed from %v to %v",
-					ss.Format, sc.Format)
+				str := fmt.Sprintf("storage Format changed from %v to %v for %s",
+					ss.Format, sc.Format, ss.ImageID)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if ss.MaxVolSize != sc.MaxVolSize {
-				log.Infof("quantifyChanges storage MaxVolSize changed from %v to %v",
-					ss.MaxVolSize, sc.MaxVolSize)
+				str := fmt.Sprintf("storage MaxVolSize changed from %v to %v for %s",
+					ss.MaxVolSize, sc.MaxVolSize, ss.ImageID)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if ss.Devtype != sc.Devtype {
-				log.Infof("quantifyChanges storage Devtype changed from %v to %v",
-					ss.Devtype, sc.Devtype)
+				str := fmt.Sprintf("storage Devtype changed from %v to %v for %s",
+					ss.Devtype, sc.Devtype, ss.ImageID)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 		}
 	}
 	// Compare networks without comparing ACLs
 	if len(status.OverlayNetworkList) != len(config.OverlayNetworkList) {
-		log.Infof("quantifyChanges len storage changed from %d to %d",
+		str := fmt.Sprintf("number of overlay interfaces changed from %d to %d",
 			len(status.OverlayNetworkList),
 			len(config.OverlayNetworkList))
+		log.Infof(str)
 		needPurge = true
+		purgeReason += str + "\n"
 	} else {
 		for i, oc := range config.OverlayNetworkList {
 			os := status.OverlayNetworkList[i]
 			if !cmp.Equal(oc.EIDConfigDetails, os.EIDConfigDetails) {
-				log.Infof("quantifyChanges EIDConfigDetails changed: %v",
+				str := fmt.Sprintf("EIDConfigDetails changed: %v",
 					cmp.Diff(oc.EIDConfigDetails, os.EIDConfigDetails))
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if os.AppMacAddr.String() != oc.AppMacAddr.String() {
-				log.Infof("quantifyChanges AppMacAddr changed from %v to %v",
+				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
 					os.AppMacAddr, oc.AppMacAddr)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if !os.AppIPAddr.Equal(oc.AppIPAddr) {
-				log.Infof("quantifyChanges AppIPAddr changed from %v to %v",
+				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
 					os.AppIPAddr, oc.AppIPAddr)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if os.Network != oc.Network {
-				log.Infof("quantifyChanges Network changed from %v to %v",
+				str := fmt.Sprintf("Network changed from %v to %v",
 					os.Network, oc.Network)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if !cmp.Equal(oc.ACLs, os.ACLs) {
-				log.Infof("quantifyChanges FYI ACLs changed: %v",
+				log.Infof("FYI ACLs changed: %v",
 					cmp.Diff(oc.ACLs, os.ACLs))
 			}
 		}
 	}
 	if len(status.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
-		log.Infof("quantifyChanges len storage changed from %d to %d",
+		str := fmt.Sprintf("number of underlay interfaces changed from %d to %d",
 			len(status.UnderlayNetworkList),
 			len(config.UnderlayNetworkList))
+		log.Infof(str)
 		needPurge = true
+		purgeReason += str + "\n"
 	} else {
 		for i, uc := range config.UnderlayNetworkList {
 			us := status.UnderlayNetworkList[i]
 			if us.AppMacAddr.String() != uc.AppMacAddr.String() {
-				log.Infof("quantifyChanges AppMacAddr changed from %v to %v",
+				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
 					us.AppMacAddr, uc.AppMacAddr)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if !us.AppIPAddr.Equal(uc.AppIPAddr) {
-				log.Infof("quantifyChanges AppIPAddr changed from %v to %v",
+				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
 					us.AppIPAddr, uc.AppIPAddr)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if us.Network != uc.Network {
-				log.Infof("quantifyChanges Network changed from %v to %v",
+				str := fmt.Sprintf("Network changed from %v to %v",
 					us.Network, uc.Network)
+				log.Infof(str)
 				needPurge = true
+				purgeReason += str + "\n"
 			}
 			if !cmp.Equal(uc.ACLs, us.ACLs) {
-				log.Infof("quantifyChanges FYI ACLs changed: %v",
+				log.Infof("FYI ACLs changed: %v",
 					cmp.Diff(uc.ACLs, us.ACLs))
 			}
 		}
 	}
 	if !cmp.Equal(config.IoAdapterList, status.IoAdapterList) {
-		log.Infof("quantifyChanges IoAdapterList changed: %v",
+		str := fmt.Sprintf("IoAdapterList changed: %v",
 			cmp.Diff(config.IoAdapterList, status.IoAdapterList))
+		log.Infof(str)
 		needPurge = true
+		purgeReason += str + "\n"
 	}
 	if !cmp.Equal(config.FixedResources, status.FixedResources) {
-		log.Infof("quantifyChanges FixedResources changed: %v",
+		str := fmt.Sprintf("FixedResources changed: %v",
 			cmp.Diff(config.FixedResources, status.FixedResources))
+		log.Infof(str)
 		needRestart = true
+		restartReason += str + "\n"
 	}
 	log.Infof("quantifyChanges for %s %s returns %v, %v",
 		config.Key(), config.DisplayName, needPurge, needRestart)
-	return needPurge, needRestart
+	return needPurge, needRestart, purgeReason, restartReason
 }
 
 // Handles both create and modify events

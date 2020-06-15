@@ -13,6 +13,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -133,6 +134,39 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 }
 
+// AppContainerMetrics - App Container Metrics
+type AppContainerMetrics struct {
+	UUIDandVersion UUIDandVersion // App UUID
+	// Stats Collection time for uploading stats to cloud
+	CollectTime time.Time
+	StatsList   []AppContainerStats
+}
+
+// AppContainerStats - for App Container Stats
+type AppContainerStats struct {
+	ContainerName string // unique under an App
+	Status        string // uptime, pause, stop status
+	Pids          uint32 // number of PIDs within the container
+	// CPU stats
+	Uptime         int64  // unix.nano, time since container starts
+	CPUTotal       uint64 // container CPU since starts in sec
+	SystemCPUTotal uint64 // total system, user, idle in sec
+	// Memory stats
+	UsedMem  uint32 // in MBytes
+	AvailMem uint32 // in MBytes
+	// Network stats
+	TxBytes uint64 // in Bytes
+	RxBytes uint64 // in Bytes
+	// Disk stats
+	ReadBytes  uint64 // in MBytes
+	WriteBytes uint64 // in MBytes
+}
+
+// Key - key for AppContainerMetric
+func (acMetric AppContainerMetrics) Key() string {
+	return acMetric.UUIDandVersion.UUID.String()
+}
+
 // IntfStatusMap - Used to return per-interface test results (success and failures)
 //  ifName is used as the key
 type IntfStatusMap struct {
@@ -181,24 +215,228 @@ func NewIntfStatusMap() *IntfStatusMap {
 	return &intfStatusMap
 }
 
-// Array in timestamp aka priority order; first one is the most desired
-// config to use
+// DevicePortConfigList is an array in timestamp aka priority order;
+// first one is the most desired config to use
+// It includes test results hence is misnamed - should have a separate status
+// This is only published under the key "global"
 type DevicePortConfigList struct {
+	Key            string // Assume "gobal" if empty
 	CurrentIndex   int
 	PortConfigList []DevicePortConfig
 }
 
-// A complete set of configuration for all the ports used by zedrouter on the
-// device
+// PubKey is used for pubsub
+func (config DevicePortConfigList) PubKey() string {
+	if config.Key == "" {
+		return "global"
+	} else {
+		return config.Key
+	}
+}
+
+// LogCreate :
+func (config DevicePortConfigList) LogCreate() {
+	logObject := base.NewLogObject(base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+		AddField("num-portconfig-int64", len(config.PortConfigList)).
+		Infof("DevicePortConfigList create")
+}
+
+// LogModify :
+func (config DevicePortConfigList) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+
+	oldConfig, ok := old.(DevicePortConfigList)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+	}
+	if oldConfig.CurrentIndex != config.CurrentIndex ||
+		len(oldConfig.PortConfigList) != len(config.PortConfigList) {
+
+		logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+			AddField("num-portconfig-int64", len(config.PortConfigList)).
+			AddField("old-current-index-int64", oldConfig.CurrentIndex).
+			AddField("old-num-portconfig-int64", len(oldConfig.PortConfigList)).
+			Infof("DevicePortConfigList modify")
+	}
+
+}
+
+// LogDelete :
+func (config DevicePortConfigList) LogDelete() {
+	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+		nilUUID, config.LogKey())
+	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
+		AddField("num-portconfig-int64", len(config.PortConfigList)).
+		Infof("DevicePortConfigList delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config DevicePortConfigList) LogKey() string {
+	return string(base.DevicePortConfigListLogType) + "-" + config.PubKey()
+}
+
+// PendDPCStatus tracks the internal progression of a DPC
+type PendDPCStatus uint32
+
+// DPC_NONE and friends is the internal state of the testing
+const (
+	DPC_NONE PendDPCStatus = iota
+	DPC_FAIL
+	DPC_SUCCESS
+	DPC_IPDNS_WAIT  // DPC_IPDNS_WAIT means not IP and DNS server yet
+	DPC_PCI_WAIT    // DPC_PCI_WAIT means some interface still in pci back
+	DPC_INTF_WAIT   // DPC_INTF_WAIT means some interface missing from kernel
+	DPC_REMOTE_WAIT // DPC_REMOTE_WAIT means controller is down or has old certificate
+)
+
+// String returns the string name
+func (status PendDPCStatus) String() string {
+	switch status {
+	case DPC_NONE:
+		return ""
+	case DPC_FAIL:
+		return "DPC_FAIL"
+	case DPC_SUCCESS:
+		return "DPC_SUCCESS"
+	case DPC_IPDNS_WAIT:
+		return "DPC_IPDNS_WAIT"
+	case DPC_PCI_WAIT:
+		return "DPC_PCI_WAIT"
+	case DPC_INTF_WAIT:
+		return "DPC_INTF_WAIT"
+	case DPC_REMOTE_WAIT:
+		return "DPC_REMOTE_WAIT"
+	default:
+		return fmt.Sprintf("Unknown status %d", status)
+	}
+}
+
+// DevicePortConfig is a misnomer in that it includes the total test results
+// plus the test results for a given port. The complete status with
+// IP addresses lives in DeviceNetworkStatus
 type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
+	Status       PendDPCStatus
 
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
 
 	Ports []NetworkPortConfig
+}
+
+// PubKey is used for pubsub. Key string plus TimePriority
+func (config DevicePortConfig) PubKey() string {
+	return config.Key + "@" + config.TimePriority.UTC().Format(time.RFC3339Nano)
+}
+
+// LogCreate :
+func (config DevicePortConfig) LogCreate() {
+	logObject := base.NewLogObject(base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		AddField("last-failed", config.LastFailed).
+		AddField("last-succeeded", config.LastSucceeded).
+		AddField("last-error", config.LastError).
+		AddField("status", config.Status.String()).
+		Infof("DevicePortConfig create")
+	for _, p := range config.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DevicePortConfig port create")
+	}
+}
+
+// LogModify :
+func (config DevicePortConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+
+	oldConfig, ok := old.(DevicePortConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfig type")
+	}
+	if len(oldConfig.Ports) != len(config.Ports) ||
+		oldConfig.LastFailed != config.LastFailed ||
+		oldConfig.LastSucceeded != config.LastSucceeded ||
+		oldConfig.LastError != config.LastError ||
+		oldConfig.Status != config.Status {
+
+		logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+			AddField("last-failed", config.LastFailed).
+			AddField("last-succeeded", config.LastSucceeded).
+			AddField("last-error", config.LastError).
+			AddField("status", config.Status.String()).
+			AddField("old-ports-int64", len(oldConfig.Ports)).
+			AddField("old-last-failed", oldConfig.LastFailed).
+			AddField("old-last-succeeded", oldConfig.LastSucceeded).
+			AddField("old-last-error", oldConfig.LastError).
+			AddField("old-status", oldConfig.Status.String()).
+			Infof("DevicePortConfig modify")
+	}
+	// XXX which fields to compare/log?
+	for i, p := range config.Ports {
+		if len(oldConfig.Ports) <= i {
+			continue
+		}
+		op := oldConfig.Ports[i]
+		// XXX different logobject for a particular port?
+		if p.HasError() != op.HasError() ||
+			p.LastFailed != op.LastFailed ||
+			p.LastSucceeded != op.LastSucceeded ||
+			p.LastError != op.LastError {
+			logObject.CloneAndAddField("ifname", p.IfName).
+				AddField("last-error", p.LastError).
+				AddField("last-succeeded", p.LastSucceeded).
+				AddField("last-failed", p.LastFailed).
+				AddField("old-last-error", op.LastError).
+				AddField("old-last-succeeded", op.LastSucceeded).
+				AddField("old-last-failed", op.LastFailed).
+				Infof("DevicePortConfig port modify")
+		}
+	}
+}
+
+// LogDelete :
+func (config DevicePortConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+		nilUUID, config.LogKey())
+	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		AddField("last-failed", config.LastFailed).
+		AddField("last-succeeded", config.LastSucceeded).
+		AddField("last-error", config.LastError).
+		AddField("status", config.Status.String()).
+		Infof("DevicePortConfig delete")
+	for _, p := range config.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DevicePortConfig port delete")
+	}
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config DevicePortConfig) LogKey() string {
+	return string(base.DevicePortConfigLogType) + "-" + config.PubKey()
 }
 
 // TestResults is used to record when some test Failed or Succeeded.
@@ -252,10 +490,10 @@ func (trPtr *TestResults) Update(src TestResults) {
 type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig method to get config pointer
-func (portConfig *DevicePortConfig) GetPortByIfName(
+func (config *DevicePortConfig) GetPortByIfName(
 	ifname string) *NetworkPortConfig {
-	for indx := range portConfig.Ports {
-		portPtr := &portConfig.Ports[indx]
+	for indx := range config.Ports {
+		portPtr := &config.Ports[indx]
 		if ifname == portPtr.IfName {
 			return portPtr
 		}
@@ -264,23 +502,23 @@ func (portConfig *DevicePortConfig) GetPortByIfName(
 }
 
 // RecordPortSuccess - Record for given ifname in PortConfig
-func (portConfig *DevicePortConfig) RecordPortSuccess(ifname string) {
-	portPtr := portConfig.GetPortByIfName(ifname)
+func (config *DevicePortConfig) RecordPortSuccess(ifname string) {
+	portPtr := config.GetPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordSuccess()
 	} else {
-		log.Errorf("portConfig.RecordPortSuccess - port %s not found",
+		log.Errorf("DevicePortConfig.RecordPortSuccess - port %s not found",
 			ifname)
 	}
 }
 
 // RecordPortFailure - Record for given ifname in PortConfig
-func (portConfig *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
-	portPtr := portConfig.GetPortByIfName(ifname)
+func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
+	portPtr := config.GetPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordFailure(errStr)
 	} else {
-		log.Errorf("portConfig.RecordPortFailure - port %s not found, "+
+		log.Errorf("DevicePortConfig.RecordPortFailure - port %s not found, "+
 			"err: %s", ifname, errStr)
 	}
 }
@@ -293,39 +531,39 @@ const (
 )
 
 // DoSanitize -
-func (portConfig *DevicePortConfig) DoSanitize(
+func (config *DevicePortConfig) DoSanitize(
 	sanitizeTimePriority bool,
 	sanitizeKey bool, key string,
 	sanitizeName bool) {
 
 	if sanitizeTimePriority {
 		zeroTime := time.Time{}
-		if portConfig.TimePriority == zeroTime {
+		if config.TimePriority == zeroTime {
 			// If we can stat the file use its modify time
 			filename := fmt.Sprintf("%s/DevicePortConfig/%s.json",
 				TmpDirname, key)
 			fi, err := os.Stat(filename)
 			if err == nil {
-				portConfig.TimePriority = fi.ModTime()
+				config.TimePriority = fi.ModTime()
 			} else {
-				portConfig.TimePriority = time.Unix(0, 0)
+				config.TimePriority = time.Unix(0, 0)
 			}
 			log.Infof("DoSanitize: Forcing TimePriority for %s to %v\n",
-				key, portConfig.TimePriority)
+				key, config.TimePriority)
 		}
 	}
 	if sanitizeKey {
-		if portConfig.Key == "" {
-			portConfig.Key = key
+		if config.Key == "" {
+			config.Key = key
 			log.Infof("DoSanitize: Forcing Key for %s TS %v\n",
-				key, portConfig.TimePriority)
+				key, config.TimePriority)
 		}
 	}
 	if sanitizeName {
 		// In case Phylabel isn't set we make it match IfName. Ditto for Logicallabel
 		// XXX still needed?
-		for i := range portConfig.Ports {
-			port := &portConfig.Ports[i]
+		for i := range config.Ports {
+			port := &config.Ports[i]
 			if port.Phylabel == "" {
 				port.Phylabel = port.IfName
 				log.Infof("XXX DoSanitize: Forcing Phylabel for %s ifname %s\n",
@@ -342,10 +580,10 @@ func (portConfig *DevicePortConfig) DoSanitize(
 
 // CountMgmtPorts returns the number of management ports
 // Exclude any broken ones with Dhcp = DT_NONE
-func (portConfig *DevicePortConfig) CountMgmtPorts() int {
+func (config *DevicePortConfig) CountMgmtPorts() int {
 
 	count := 0
-	for _, port := range portConfig.Ports {
+	for _, port := range config.Ports {
 		if port.IsMgmt && port.Dhcp != DT_NONE {
 			count++
 		}
@@ -357,16 +595,16 @@ func (portConfig *DevicePortConfig) CountMgmtPorts() int {
 // more of status such as the timestamps and the TestResults
 // XXX Compare Version or not?
 // We compare the Ports in array order.
-func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
+func (config *DevicePortConfig) Equal(config2 *DevicePortConfig) bool {
 
-	if portConfig.Key != portConfig2.Key {
+	if config.Key != config2.Key {
 		return false
 	}
-	if len(portConfig.Ports) != len(portConfig2.Ports) {
+	if len(config.Ports) != len(config2.Ports) {
 		return false
 	}
-	for i, p1 := range portConfig.Ports {
-		p2 := portConfig2.Ports[i]
+	for i, p1 := range config.Ports {
+		p2 := config2.Ports[i]
 		if p1.IfName != p2.IfName ||
 			p1.Phylabel != p2.Phylabel ||
 			p1.Logicallabel != p2.Logicallabel ||
@@ -386,27 +624,27 @@ func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
 
 // IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
 // Also returns false if it isn't usable
-func (portConfig DevicePortConfig) IsDPCTestable() bool {
+func (config DevicePortConfig) IsDPCTestable() bool {
 
-	if !portConfig.IsDPCUsable() {
+	if !config.IsDPCUsable() {
 		return false
 	}
-	if portConfig.LastFailed.IsZero() {
+	if config.LastFailed.IsZero() {
 		return true
 	}
-	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
 	// convert time difference in nano seconds to seconds
-	timeDiff := time.Since(portConfig.LastFailed) / time.Second
+	timeDiff := time.Since(config.LastFailed) / time.Second
 	return (timeDiff > 60)
 }
 
 // IsDPCUntested - returns true if this is something we might want to test now.
 // Checks if it is Usable since there is no point in testing unusable things.
-func (portConfig DevicePortConfig) IsDPCUntested() bool {
-	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() &&
-		portConfig.IsDPCUsable() {
+func (config DevicePortConfig) IsDPCUntested() bool {
+	if config.LastFailed.IsZero() && config.LastSucceeded.IsZero() &&
+		config.IsDPCUsable() {
 		return true
 	}
 	return false
@@ -414,30 +652,30 @@ func (portConfig DevicePortConfig) IsDPCUntested() bool {
 
 // IsDPCUsable - checks whether something is invalid; no management IP
 // addresses means it isn't usable hence we return false if none.
-func (portConfig DevicePortConfig) IsDPCUsable() bool {
-	mgmtCount := portConfig.CountMgmtPorts()
+func (config DevicePortConfig) IsDPCUsable() bool {
+	mgmtCount := config.CountMgmtPorts()
 	return mgmtCount > 0
 }
 
 // WasDPCWorking - Check if the last results for the DPC was Success
-func (portConfig DevicePortConfig) WasDPCWorking() bool {
+func (config DevicePortConfig) WasDPCWorking() bool {
 
-	if portConfig.LastSucceeded.IsZero() {
+	if config.LastSucceeded.IsZero() {
 		return false
 	}
-	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
 	return false
 }
 
-// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in portConfig to
+// UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in DevicePortConfig to
 // those from intfStatusMap. If a port is not found in intfStatusMap, it means
 // the port was not tested, so we retain the original TestResults for the port.
-func (portConfig *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
+func (config *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
 	intfStatusMap IntfStatusMap) {
-	for indx := range portConfig.Ports {
-		portPtr := &portConfig.Ports[indx]
+	for indx := range config.Ports {
+		portPtr := &config.Ports[indx]
 		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
 			portPtr.TestResults.Update(tr)
@@ -576,11 +814,102 @@ type AddrInfo struct {
 	LastGeoTimestamp time.Time
 }
 
-// Published to microservices which needs to know about ports and IP addresses
+// DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
+// It is published under the key "global" only
 type DeviceNetworkStatus struct {
 	Version DevicePortConfigVersion // From DevicePortConfig
 	Testing bool                    // Ignore since it is not yet verified
 	Ports   []NetworkPortStatus
+}
+
+// Key is used for pubsub
+func (status DeviceNetworkStatus) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (status DeviceNetworkStatus) LogCreate() {
+	logObject := base.NewLogObject(base.DeviceNetworkStatusLogType, "",
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("testing-bool", status.Testing).
+		AddField("ports-int64", len(status.Ports)).
+		Infof("DeviceNetworkStatus create")
+	for _, p := range status.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DeviceNetworkStatus port create")
+	}
+}
+
+// LogModify :
+func (status DeviceNetworkStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(DeviceNetworkStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
+	}
+	if oldStatus.Testing != status.Testing ||
+		len(oldStatus.Ports) != len(status.Ports) {
+
+		logObject.CloneAndAddField("testing-bool", status.Testing).
+			AddField("ports-int64", len(status.Ports)).
+			AddField("old-testing-bool", oldStatus.Testing).
+			AddField("old-ports-int64", len(oldStatus.Ports)).
+			Infof("DeviceNetworkStatus modify")
+	}
+	// XXX which fields to compare/log?
+	for i, p := range status.Ports {
+		if len(oldStatus.Ports) <= i {
+			continue
+		}
+		op := oldStatus.Ports[i]
+		// XXX different logobject for a particular port?
+		if p.HasError() != op.HasError() ||
+			p.LastFailed != op.LastFailed ||
+			p.LastSucceeded != op.LastSucceeded ||
+			p.LastError != op.LastError {
+			logObject.CloneAndAddField("ifname", p.IfName).
+				AddField("last-error", p.LastError).
+				AddField("last-succeeded", p.LastSucceeded).
+				AddField("last-failed", p.LastFailed).
+				AddField("old-last-error", op.LastError).
+				AddField("old-last-succeeded", op.LastSucceeded).
+				AddField("old-last-failed", op.LastFailed).
+				Infof("DeviceNetworkStatus port modify")
+		}
+	}
+}
+
+// LogDelete :
+func (status DeviceNetworkStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+		nilUUID, status.LogKey())
+	logObject.CloneAndAddField("testing-bool", status.Testing).
+		AddField("ports-int64", len(status.Ports)).
+		Infof("DeviceNetworkStatus instance status delete")
+	for _, p := range status.Ports {
+		// XXX different logobject for a particular port?
+		logObject.CloneAndAddField("ifname", p.IfName).
+			AddField("last-error", p.LastError).
+			AddField("last-succeeded", p.LastSucceeded).
+			AddField("last-failed", p.LastFailed).
+			Infof("DeviceNetworkStatus port delete")
+	}
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status DeviceNetworkStatus) LogKey() string {
+	return string(base.DeviceNetworkStatusLogType) + "-" + status.Key()
 }
 
 // GetPortByIfName - Get Port Status for port with given Ifname
@@ -1077,15 +1406,15 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 //	If true, it also returns the ifName ( NOT bundle name )
 //	Also returns whether it is currently used by an application by
 //	returning a UUID. If the UUID is zero it is in PCIback but available.
-func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
+func (config *DevicePortConfig) IsAnyPortInPciBack(
 	aa *AssignableAdapters) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Infof("IsAnyPortInPciBack: nil aa")
 		return false, "", uuid.UUID{}
 	}
 	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
-		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
-	for _, port := range portConfig.Ports {
+		aa.Initialized, len(aa.IoBundleList), len(config.Ports))
+	for _, port := range config.Ports {
 		ioBundle := aa.LookupIoBundleIfName(port.IfName)
 		if ioBundle == nil {
 			// It is not guaranteed that all Ports are part of Assignable Adapters

@@ -73,6 +73,12 @@ const (
 	ContentTreeConfigLogType LogObjectType = "contenttree_config"
 	// ContentTreeStatusLogType :
 	ContentTreeStatusLogType LogObjectType = "contenttree_status"
+	// DevicePortConfig : object being logged
+	DevicePortConfigLogType LogObjectType = "deviceport_config"
+	// DevicePortConfigList :
+	DevicePortConfigListLogType LogObjectType = "deviceportconfig_list"
+	// DeviceNetworkStatus :
+	DeviceNetworkStatusLogType LogObjectType = "devicenetwork_status"
 )
 
 // RelationObjectType :

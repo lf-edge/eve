@@ -120,6 +120,7 @@ Return codes:
 * Repeat valid registration for Device: `200`
 * Duplicate Device: `409`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -160,6 +161,7 @@ Return codes:
 * Unauthenticated or invalid credentials: `401`
 * Valid credentials without authorization: `403`
 * Success: `200`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -182,6 +184,7 @@ Return codes:
 * Valid credentials without authorization: `403`
 * Success: `200`
 * Unknown Device: `400`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -212,6 +215,7 @@ Return codes:
 
 * No such certificates to send: `404`
 * One or more certificates found: `200`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -236,6 +240,7 @@ Return codes:
 * Success: `201`
 * Unknown Device: `400`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -262,6 +267,7 @@ Return codes:
 * Success: `201`
 * Unknown Device: `400`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -299,6 +305,7 @@ Return codes:
 * Success: `201`
 * Unknown Device: `400`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -333,6 +340,7 @@ Return codes:
 * Success: `201`
 * Unknown Device: `400`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -367,6 +375,7 @@ Return codes:
 * Success: `201`
 * Unknown Application Instance: `400`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 
@@ -403,6 +412,7 @@ Return codes:
 * Success: `201`
 * Unknown Device: `400`
 * Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
 
 Request:
 

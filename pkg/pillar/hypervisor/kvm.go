@@ -292,7 +292,7 @@ func (k *KvmContainerImpl) InitContainerdClient() error {
 
 //GetMetrics implements GetMetrics interface of KvmContainerIntf
 func (k *KvmContainerImpl) GetMetrics(ctrID string) (*v1stat.Metrics, error) {
-	return containerd.GetMetrics(ctrID)
+	return containerd.CtrGetContainerMetrics(ctrID)
 }
 
 //Instantiate an object to call KvmContainerImpl methods
@@ -551,7 +551,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string, config *type
 	if err != nil {
 		return 0, logError("starting LKTaskLaunch failed for %s, (%v)", domainName, err)
 	}
-	pid, status, err := containerd.CtrInfo(domainName)
+	pid, status, err := containerd.CtrContainerInfo(domainName)
 	if err != nil {
 		log.Errorf("Error getting status for container %s: %v", domainName, err)
 		return 0, err
@@ -610,7 +610,7 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 	if err := os.RemoveAll(kvmStateDir + domainName); err != nil {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
-	if err := containerd.CtrDelete(domainName); err != nil {
+	if err := containerd.CtrDeleteContainer(domainName); err != nil {
 		return logError("failed to delete container task for domain %s, %v",
 			domainName, err)
 	}
@@ -679,7 +679,7 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	unbindFile := sysfsPciDevices + long + "/driver/unbind"
 
 	//Write Empty string, to clear driver_override for the device
-	if err := ioutil.WriteFile(overrideFile, []byte(""), 0644); err != nil {
+	if err := ioutil.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
 		log.Fatalf("driver_override failure for PCI device %s: %v",
 			long, err)
 	}

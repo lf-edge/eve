@@ -193,7 +193,7 @@ func getLatestConfig(url string, iteration int,
 
 	log.Debugf("getLatestConfig(%s, %d)", url, iteration)
 
-	const return400 = false
+	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest()
 	if err != nil {
@@ -202,7 +202,7 @@ func getLatestConfig(url string, iteration int,
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, return400)
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := 2
 		if rtf == types.SenderStatusRemTempFail {
@@ -245,6 +245,7 @@ func getLatestConfig(url string, iteration int,
 					true)
 			}
 		}
+		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
@@ -253,6 +254,7 @@ func getLatestConfig(url string, iteration int,
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
+		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
@@ -262,6 +264,7 @@ func getLatestConfig(url string, iteration int,
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
+		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
@@ -273,6 +276,7 @@ func getLatestConfig(url string, iteration int,
 		getconfigCtx.configReceived = true
 	}
 	getconfigCtx.configGetStatus = types.ConfigGetSuccess
+	publishZedAgentStatus(getconfigCtx)
 
 	if !changed {
 		log.Debugf("Configuration from zedcloud is unchanged")

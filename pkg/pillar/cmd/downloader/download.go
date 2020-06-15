@@ -74,7 +74,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
-			status.Progress(progress)
+			status.Progress(progress, osize, asize)
 			continue
 		}
 		if syncOp == zedUpload.SyncOpDownload {
@@ -85,10 +85,11 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		if resp.IsError() {
 			return err
 		}
+		asize, osize := resp.GetAsize(), resp.GetOsize()
 		log.Infof("Done for %v: size %v/%v",
 			resp.GetLocalName(),
-			resp.GetAsize(), resp.GetOsize())
-		status.Progress(100)
+			asize, osize)
+		status.Progress(100, osize, asize)
 		return nil
 	}
 	// if we got here, channel was closed

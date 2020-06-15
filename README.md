@@ -15,13 +15,26 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com), [Make](https://www.gnu.org/software/make/)
 and [go 1.12+](https://golang.org) installed in your system.
 
-Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
-vendoring those under build-tools/src. This means you don't have to have them
-locally installed, but it also means your first build time will be much longer.
+### Use pre-built release binaries
 
-If you're on MacOS the following steps should get you all the dependencies:
+EVE is an agile software project with bi-weekly release schedule. Each release gets tagged
+with x.y.z version in Git and a corresponding build is published on [DockerHUB](https://hub.docker.com/r/lfedge/eve).
+As is common with Docker releases, EVE also uses version `latest` to designate the latest
+official release and `snapshot` to designate the latest build off of master branch.
+
+Since EVE is not just an application, but a compute engine that expects to be deployed
+on real (or virtualized) hardware, you can't simply do `docker run` to give it a try.
+Instead, you need to use eve Docker container to produce one of the artifacts that
+you can then either run on bare metal hardware or deploy on virtualized infrastructure
+such as Google Compute Platform (GCP).
+
+EVE Docker container `lfedge/eve:<version>` is used to produce these deployment artifacts.
+
+Try running `docker run lfedge/eve` to get the most up-to-date help message.
 
 ### Install Dependencies
+
+The following steps are required to build and run EVE from source:
 
 #### Get Go
 

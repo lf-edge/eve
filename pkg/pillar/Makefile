@@ -20,6 +20,9 @@ endif
 APPS = zedbox
 APPS1 = $(notdir $(wildcard cmd/*))
 
+# find all GOFILES
+GOFILES = $(shell find . -path ./vendor -prune -o -name '*go' -print)
+
 .PHONY: all clean build test build-docker build-docker-git shell
 
 all: build
@@ -61,3 +64,12 @@ test:
 
 clean:
 	@rm -rf $(DISTDIR)
+
+fmt:
+	@gofmt -w -s $(GOFILES)
+
+fmt-check:
+	@gofmt -l $(GOFILES)
+
+vet:
+	go vet ./...
