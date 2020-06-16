@@ -5,15 +5,19 @@ package tpmmgr
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
+	"time"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -79,19 +83,98 @@ func createEveNodeCertificateOnTpm(ctx *tpmMgrContext,
 	}
 }
 
-// create the certificate using EVE software
+// create the ecdh template
+func createEcdhSoftTemplate() x509.Certificate {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
+	notBefore := time.Now()
+	// twenty years
+	notAfter := notBefore.AddDate(20, 0, 0)
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Country:      []string{"US"},
+			Province:     []string{"CA"},
+			Locality:     []string{"Santa Clara"},
+			Organization: []string{"Zededa, Inc"},
+			CommonName:   "Cipher Block",
+		},
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
+
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	return template
+}
+
 func createEveNodeCertificateSoft(ctx *tpmMgrContext,
 	certType evecommon.ZCertType) error {
 
-	// TBD:XXX
-	// create software based ECDH Certificate
+	/// not ECDH type return
+	if certType != evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE {
+		errStr := fmt.Sprintf("not ecdh certificate type")
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	// create the ecdh certificate
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		errStr := fmt.Sprintf("curve get fail, %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+	publicKey := priv.PublicKey
+	template := createEcdhSoftTemplate()
+
+	derBytes, err := x509.CreateCertificate(rand.Reader,
+		&template, &template, publicKey, priv)
+	if err != nil {
+		errStr := fmt.Sprintf("certificate create fail, %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	certBlock := &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: derBytes,
+	}
+
+	certBytes := pem.EncodeToMemory(certBlock)
+	if certBytes == nil {
+		errStr := fmt.Sprintf("PEM Encode error: empty bytes")
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		errStr := fmt.Sprintf("certificate marshal fail, %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	keyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privBytes,
+	}
+
+	keyBytes := pem.EncodeToMemory(keyBlock)
+	if keyBytes == nil {
+		errStr := fmt.Sprintf("PEM Encode error: empty bytes")
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
 
 	// now publish
-	// origin := types.types.CERT_ORIGIN_EVE_NODE_SOFTWARE
-	// algo := evecommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES
-	// handle := tpmutil.Handle{}
-	//prepareEvenNodeCertConfig(ctx, algo, type, origin, handle, pub, pvtKey)
-
+	algo := evecommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES
+	origin := types.CERT_ORIGIN_EVE_NODE_SOFTWARE
+	var handle tpmutil.Handle
+	prepareEvenNodeCertConfig(ctx, algo, certType, origin,
+		handle, certBytes, keyBytes)
 	return nil
 }
 
