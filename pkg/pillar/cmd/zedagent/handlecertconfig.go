@@ -14,6 +14,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/api/go/attest"
 	zcert "github.com/lf-edge/eve/api/go/certs"
+	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -75,8 +76,8 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 		if cert == nil {
 			log.Infof("parseControllerCerts: not found %s", certKey)
 			cert = &types.ControllerCert{
-				HashAlgo: cfgConfig.GetHashAlgo(),
-				Type:     cfgConfig.GetType(),
+				HashAlgo: convertApiHashToLocal(cfgConfig.GetHashAlgo()),
+				Type:     convertCertApiCertTypeToLocal(cfgConfig.GetType()),
 				Cert:     cfgConfig.GetCert(),
 				CertHash: cfgConfig.GetCertHash(),
 			}
@@ -213,5 +214,108 @@ func sendCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		}
 		zedcloud.SetDeferred("attest:"+deviceUUID, buf, size, attestURL,
 			zedcloudCtx, true)
+	}
+}
+
+// conversion routines used while interfacing with controller
+// convertApiHashToLocal :
+func convertApiHashToLocal(hash evecommon.HashAlgorithm) types.ZHashAlgorithm {
+
+	switch hash {
+	case evecommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
+		return types.HASH_ALGORITHM_SH256_16BYTES
+	case evecommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
+		return types.HASH_ALGORITHM_SH256_32BYTES
+	default:
+		return types.HASH_ALGORITHM_NONE
+	}
+}
+
+// convertLocalToApiHash :
+func convertLocalToApiHash(hash types.ZHashAlgorithm) evecommon.HashAlgorithm {
+
+	switch hash {
+	case types.HASH_ALGORITHM_SH256_16BYTES:
+		return evecommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES
+	case types.HASH_ALGORITHM_SH256_32BYTES:
+		return evecommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES
+	default:
+		return evecommon.HashAlgorithm_HASH_ALGORITHM_INVALID
+	}
+}
+
+// convertCertApiCertTypeToLocal :
+func convertCertApiCertTypeToLocal(certType zcert.ZCertType) types.ZCertType {
+
+	switch certType {
+	case zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING:
+		return types.CERT_TYPE_CONTROLLER_SIGNING
+	case zcert.ZCertType_CERT_TYPE_CONTROLLER_INTERMEDIATE:
+		return types.CERT_TYPE_CONTROLLER_INTERMEDIATE
+	case zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE:
+		return types.CERT_TYPE_CONTROLLER_ECDH_EXCHANGE
+	default:
+		return types.CERT_TYPE_NONE
+	}
+}
+
+// convertLocalToCertApiCertType :
+func convertLocalToCertApiCertType(certType types.ZCertType) zcert.ZCertType {
+
+	switch certType {
+	case types.CERT_TYPE_CONTROLLER_SIGNING:
+		return zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING
+	case types.CERT_TYPE_CONTROLLER_INTERMEDIATE:
+		return zcert.ZCertType_CERT_TYPE_CONTROLLER_INTERMEDIATE
+	case types.CERT_TYPE_CONTROLLER_ECDH_EXCHANGE:
+		return zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE
+	default:
+		return zcert.ZCertType_CERT_TYPE_CONTROLLER_NONE
+	}
+}
+
+// convertAttestApiCertTypeToLocal :
+func convertAttestApiCertTypeToLocal(certType evecommon.ZCertType) types.ZCertType {
+
+	switch certType {
+	case evecommon.ZCertType_Z_CERT_TYPE_CONTROLLER_SIGNING:
+		return types.CERT_TYPE_CONTROLLER_SIGNING
+	case evecommon.ZCertType_Z_CERT_TYPE_CONTROLLER_INTERMEDIATE:
+		return types.CERT_TYPE_CONTROLLER_INTERMEDIATE
+	case evecommon.ZCertType_Z_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE:
+		return types.CERT_TYPE_CONTROLLER_ECDH_EXCHANGE
+	case evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ONBOARDING:
+		return types.CERT_TYPE_DEVICE_ONBOARDING
+	case evecommon.ZCertType_Z_CERT_TYPE_DEVICE_RESTRICTED_SIGNING:
+		return types.CERT_TYPE_DEVICE_RESTRICTED_SIGNING
+	case evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ENDORSEMENT_RSA:
+		return types.CERT_TYPE_DEVICE_ENDORSEMENT_RSA
+	case evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE:
+		return types.CERT_TYPE_DEVICE_ECDH_EXCHANGE
+	default:
+		return types.CERT_TYPE_NONE
+	}
+}
+
+//  convertLocalToAttestApiCertType :
+func convertLocalToAttestApiCertType(certType types.ZCertType) evecommon.ZCertType {
+
+	switch certType {
+	case types.CERT_TYPE_CONTROLLER_SIGNING:
+		return evecommon.ZCertType_Z_CERT_TYPE_CONTROLLER_SIGNING
+	case types.CERT_TYPE_CONTROLLER_INTERMEDIATE:
+		return evecommon.ZCertType_Z_CERT_TYPE_CONTROLLER_INTERMEDIATE
+	case types.CERT_TYPE_CONTROLLER_ECDH_EXCHANGE:
+		return evecommon.ZCertType_Z_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE
+	case types.CERT_TYPE_DEVICE_ONBOARDING:
+		return evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ONBOARDING
+	case types.CERT_TYPE_DEVICE_RESTRICTED_SIGNING:
+		return evecommon.ZCertType_Z_CERT_TYPE_DEVICE_RESTRICTED_SIGNING
+	case types.CERT_TYPE_DEVICE_ENDORSEMENT_RSA:
+		return evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ENDORSEMENT_RSA
+	case types.CERT_TYPE_DEVICE_ECDH_EXCHANGE:
+		return evecommon.ZCertType_Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE
+	default:
+		return evecommon.ZCertType_Z_CERT_TYPE_INVALID
 	}
 }
