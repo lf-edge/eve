@@ -1,4 +1,6 @@
 #!/bin/sh
+set -e
+
 exec 3>&1
 exec 1>&2
 
@@ -47,6 +49,8 @@ Optionally you can pass the following right before run in docker run:
 Passing -v <local folder>:/out makes sure the file created is given most appropriate name.
 
 -f fmt selects a packaging format: raw (default), qcow2 and gcp are all valid options.
+
+live and installer_raw support an optional last argument specifying the size of the image in Mb.
 __EOT__
   exit 0
 }
@@ -63,7 +67,7 @@ do_rootfs() {
 }
 
 do_version() {
-  echo /bits/*.squash | sed -e 's#/bits/rootfs-##' -e 's#.squash##'
+  echo /bits/*.squash | sed -e 's#/bits/rootfs-##' -e 's#.squash##' >&3
 }
 
 do_live() {
@@ -101,10 +105,13 @@ while true; do
    esac
 done
 
+# If we were not told to do anything, print help and exit with success
+[ $# -eq 0 ] && do_help
+
 # Let's see what was it that we were asked to do
 ACTION="do_$1"
 #shellcheck disable=SC2039
-[ "$(type -t "$ACTION")" = "$ACTION" ] || ACTION=do_help
+[ "$(type -t "$ACTION")" = "$ACTION" ] || bail "Error: unsupported command '$1' - use 'help' command for more information."
 shift
 
 # If /in was provided, for now we assume it was to override configs
