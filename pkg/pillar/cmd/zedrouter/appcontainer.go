@@ -23,15 +23,20 @@ import (
 const DOCKERAPIPORT int = 2375
 
 // check if we need to launch the goroutine to collect App container stats
-func appCheckStatsCollect(ctx *zedrouterContext, config types.AppNetworkConfig,
+func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
 	oldIPAddr := status.GetStatsIPAddr
-	status.GetStatsIPAddr = config.GetStatsIPAddr
+	if config != nil {
+		status.GetStatsIPAddr = config.GetStatsIPAddr
+	} else {
+		status.GetStatsIPAddr = nil
+	}
 	publishAppNetworkStatus(ctx, status)
-	if !config.GetStatsIPAddr.Equal(oldIPAddr) {
-		log.Infof("appCheckStatsCollect: config ip %s, status ip %s", config.GetStatsIPAddr.String(), oldIPAddr.String())
-		if oldIPAddr == nil && config.GetStatsIPAddr != nil {
+	if status.GetStatsIPAddr == nil && oldIPAddr != nil ||
+		status.GetStatsIPAddr != nil && !status.GetStatsIPAddr.Equal(oldIPAddr) {
+		log.Infof("appCheckStatsCollect: config ip %v, status ip %v", status.GetStatsIPAddr, oldIPAddr)
+		if oldIPAddr == nil && status.GetStatsIPAddr != nil {
 			ensureStatsCollectRunning(ctx)
 		}
 		appChangeContainerStatsACL(status.GetStatsIPAddr, oldIPAddr)
