@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package socketdriver
 
 import (
@@ -179,7 +182,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	defer s.updaters.Remove(updater)
 
 	// Get a local snapshot of the collection and the set of keys
-	// we need to send these. Updates the slave collection.
+	// we need to send these. Updates the local collection.
 	keys := s.differ.DetermineDiffs(sendToPeer)
 
 	// Send the keys we just determined; all since this is the initial

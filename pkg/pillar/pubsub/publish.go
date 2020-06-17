@@ -1,3 +1,6 @@
+// Copyright (c) 2017-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package pubsub
 
 import (
@@ -229,42 +232,42 @@ func (pub *PublicationImpl) publisher() {
 
 // DetermineDiffs update a provided LocalCollection to the current state,
 // and return the deleted keys before the added/modified ones
-func (pub *PublicationImpl) DetermineDiffs(slaveCollection LocalCollection) []string {
+func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []string {
 	var keys []string
 	name := pub.nameString()
 	items := pub.GetAll()
 	// Look for deleted
-	for slaveKey := range slaveCollection {
-		_, ok := items[slaveKey]
+	for localKey := range localCollection {
+		_, ok := items[localKey]
 		if !ok {
 			log.Debugf("determineDiffs(%s): key %s deleted\n",
-				name, slaveKey)
-			delete(slaveCollection, slaveKey)
-			keys = append(keys, slaveKey)
+				name, localKey)
+			delete(localCollection, localKey)
+			keys = append(keys, localKey)
 		}
 	}
 	// Look for new/changed
-	for masterKey, master := range items {
-		masterb, err := json.Marshal(master)
+	for originKey, origin := range items {
+		originb, err := json.Marshal(origin)
 		if err != nil {
-			log.Fatalf("json Marshal in DetermineDiffs for master key %s: %v", masterKey, err)
+			log.Fatalf("json Marshal in DetermineDiffs for origin key %s: %v", originKey, err)
 		}
 
-		slave := lookupSlave(slaveCollection, masterKey)
-		if slave == nil {
+		local := lookupLocal(localCollection, originKey)
+		if local == nil {
 			log.Debugf("determineDiffs(%s): key %s added\n",
-				name, masterKey)
-			slaveCollection[masterKey] = masterb
-			keys = append(keys, masterKey)
-		} else if bytes.Compare(masterb, slave) != 0 {
+				name, originKey)
+			localCollection[originKey] = originb
+			keys = append(keys, originKey)
+		} else if bytes.Compare(originb, local) != 0 {
 			log.Debugf("determineDiffs(%s): key %s replacing due to diff\n",
-				name, masterKey)
+				name, originKey)
 			// XXX is deepCopy needed?
-			slaveCollection[masterKey] = masterb
-			keys = append(keys, masterKey)
+			localCollection[originKey] = originb
+			keys = append(keys, originKey)
 		} else {
 			log.Debugf("determineDiffs(%s): key %s unchanged\n",
-				name, masterKey)
+				name, originKey)
 		}
 	}
 	return keys
