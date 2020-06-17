@@ -11,10 +11,8 @@ package zedrouter
 
 import (
 	"net"
-	"strconv"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -121,33 +119,5 @@ func appChangeContainerStatsACL(newIPAddr, oldIPAddr net.IP) {
 	if newIPAddr != nil {
 		// install the App Container blocking ACL
 		appConfigContainerStatsACL(newIPAddr, false)
-	}
-}
-
-func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
-	var action string
-	if isRemove {
-		action = "-D"
-	} else {
-		action = "-A"
-	}
-	// install or remove the App Container Stats blocking ACL
-	// This ACL blocks the other Apps accessing through the same subnet to 'appIPAddr:DOCKERAPIPORT'
-	// in TCP protocol, and only allow the Dom0 process to query the App's docker stats
-	// - this blocking is only possible in the 'raw' table and 'PREROUTING' chain due to the marking
-	//   is done in the 'mangle' of 'PREROUTING'
-	// - this blocking ACL does not block the Dom0 access to the above TCP endpoint on the same
-	//   subnet. This is due to the IP packets from Dom0 to the internal bridge entering the linux
-	//   forwarding through the 'OUTPUT' chain
-	// - this blocking does not seem to work if further matching to the '--physdev', so the drop action
-	//   needs to be at network layer3
-	// - XXX currently the 'drop' mark of 0xffffff on the flow of internal traffic on bridge does not work,
-	//   later it may be possible to change below '-j DROP' to '-j MARK' action
-	err := iptables.IptableCmd("-t", "raw", action, "PREROUTING", "-d", appIPAddr.String(), "-p", "tcp",
-		"--dport", strconv.Itoa(DOCKERAPIPORT), "-j", "DROP")
-	if err != nil {
-		log.Errorf("appCheckContainerStatsACL: iptableCmd err %v", err)
-	} else {
-		log.Infof("appCheckContainerStatsACL: iptableCmd %s for %s", action, appIPAddr.String())
 	}
 }
