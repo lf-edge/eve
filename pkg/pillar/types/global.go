@@ -28,10 +28,14 @@ const (
 )
 
 const (
+	// MinuteInSec is number of seconds in a minute
 	MinuteInSec = 60
-	HourInSec   = 60 * MinuteInSec
-	DayInSec    = 24 * HourInSec
-	YearInSec   = 365 * DayInSec
+	// HourInSec is number of seconds in a minute
+	HourInSec = 60 * MinuteInSec
+	// DayInSec is number of seconds in a Day
+	DayInSec = 24 * HourInSec
+	// YearInSec is number of seconds in a year
+	YearInSec = 365 * DayInSec
 )
 
 // ConfigItemStatus - Status of Config Items
