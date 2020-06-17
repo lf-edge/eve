@@ -927,10 +927,10 @@ func getECDHCert(certPath string) ([]byte, error) {
 	return certBytes, nil
 }
 
-func getCertHash(cert []byte, hashAlgo types.ZHashAlgorithm) ([]byte, error) {
+func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 	certHash := sha256.Sum256(cert)
 	switch hashAlgo {
-	case types.HASH_ALGORITHM_SH256_16BYTES:
+	case types.CertHashTypeSha256First16:
 		return certHash[:16], nil
 	default:
 		return []byte{}, fmt.Errorf("Unsupported cert hash type: %d\n", hashAlgo)
@@ -949,16 +949,16 @@ func publishECDHCertToController(ctx *tpmMgrContext) {
 		log.Error(errStr)
 		return
 	}
-	certHash, err := getCertHash(certBytes, types.HASH_ALGORITHM_SH256_16BYTES)
+	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
 	if err != nil {
 		errStr := fmt.Sprintf("publishECDHCertToController failed: %v", err)
 		log.Error(errStr)
 		return
 	}
 	attestCert := types.AttestCert{
-		HashAlgo: types.HASH_ALGORITHM_SH256_16BYTES,
+		HashAlgo: types.CertHashTypeSha256First16,
 		CertID:   certHash,
-		CertType: types.CERT_TYPE_DEVICE_ECDH_EXCHANGE,
+		CertType: types.CertTypeEcdhXchange,
 		Cert:     certBytes,
 	}
 	publishAttestCert(ctx, attestCert)
