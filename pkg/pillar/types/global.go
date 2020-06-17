@@ -27,6 +27,13 @@ const (
 	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
 )
 
+const (
+	MinuteInSec = 60
+	HourInSec   = 60 * MinuteInSec
+	DayInSec    = 24 * HourInSec
+	YearInSec   = 365 * DayInSec
+)
+
 // ConfigItemStatus - Status of Config Items
 type ConfigItemStatus struct {
 	// Value - Current value of the item
@@ -689,25 +696,54 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
 
-	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
+	// timer.config.interval(seconds)
+	// MaxValue needs to be limited. If configured too high, the device will wait
+	// too long to get next config and is practically unreachable for any config
+	// changes or reboot through cloud.
+	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	// timer.metric.interval (seconds)
+	// Need to be careful about max value. Cloud uses this to indicate if a
+	// device is online or suspect state.
+	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
+	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*DayInSec,
+		120, 2*YearInSec)
+	// timer.update.fallback.no.network (seconds) - fallback after no cloud connectivity
+	// Max designed to allow the option of never rebooting even if device
+	//  can't connect to the cloud
 	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(StaleConfigTime, 600, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DownloadGCTime, 600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
+	// timer.test.baseimage.update - commit to update
+	//  This is the time to wait before declaring a baseos upgrade success.
+	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
+	// StaleConfigTime - use checkpointed config if no cloud connectivity
+	configItemSpecMap.AddIntItem(StaleConfigTime, 600, 0, DayInSec)
+	// DownloadGCTime - garbage collect unused downloaded objects
+	configItemSpecMap.AddIntItem(DownloadGCTime, 600, 60, DayInSec)
+	// VdiskGCTime - timer.gc.vdisk - garbage collect unused instance virtual disk
+	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, DayInSec)
+	// timer.download.retry - retry a failed download
+	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, DayInSec)
+	// timer.boot.retry - retry a failed domain boot
+	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, DayInSec)
+	// timer.port.georedo - redo IP geolocation
+	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, DayInSec)
+	// timer.port.georetry - retry geolocation after failure
+	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, DayInSec)
+	// timer.port.testduration - wait for DHCP to give address
+	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, DayInSec)
+	// timer.port.testinterval - retest the current port config
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, DayInSec)
+	// timer.port.testbetterinterval - test a higher prio port config
+	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, DayInSec)
+	// timer.port.timeout - time for each http/send
+	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, DayInSec)
+	// timer.send.timeout -time for each http/send
+	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, DayInSec)
+	// storage.dom0.disk.minusage.percent - min. percent of persist partition
+	// reserved for dom0
+	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
+	// timer.appcontainer.stats.interval - collect application container stats
+	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, DayInSec)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
