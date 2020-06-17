@@ -41,7 +41,7 @@ type tpmMgrContext struct {
 	subNodeAgentStatus pubsub.Subscription
 	subAttestNonce     pubsub.Subscription
 	pubAttestQuote     pubsub.Publication
-	pubAttestCert      pubsub.Publication
+	pubEveNodeCert     pubsub.Publication
 	globalConfig       *types.ConfigItemValueMap
 	GCInitialized      bool // GlobalConfig initialized
 	DeviceReboot       bool //is the device rebooting?
@@ -908,12 +908,12 @@ func createEcdhCert() error {
 	return nil
 }
 
-func publishAttestCert(ctx *tpmMgrContext, config types.AttestCert) {
+func publishEveNodeCert(ctx *tpmMgrContext, config types.EveNodeCert) {
 	key := config.Key()
-	log.Debugf("publishAttestCert %s", key)
-	pub := ctx.pubAttestCert
+	log.Debugf("publishEveNodeCert %s", key)
+	pub := ctx.pubEveNodeCert
 	pub.Publish(key, config)
-	log.Debugf("publishAttestCert %s Done", key)
+	log.Debugf("publishEveNodeCert %s Done", key)
 }
 
 func getECDHCert(certPath string) ([]byte, error) {
@@ -955,13 +955,14 @@ func publishECDHCertToController(ctx *tpmMgrContext) {
 		log.Error(errStr)
 		return
 	}
-	attestCert := types.AttestCert{
+	attestCert := types.EveNodeCert{
 		HashAlgo: types.CertHashTypeSha256First16,
 		CertID:   certHash,
 		CertType: types.CertTypeEcdhXchange,
 		Cert:     certBytes,
+		IsTpm:    true,
 	}
-	publishAttestCert(ctx, attestCert)
+	publishEveNodeCert(ctx, attestCert)
 	log.Infof("publishECDHCertToController Done")
 }
 
@@ -1101,15 +1102,15 @@ func Run(ps *pubsub.PubSub) {
 		ctx.subAttestNonce = subAttestNonce
 		//subAttestNonce.Activate()
 
-		pubAttestCert, err := ps.NewPublication(
+		pubEveNodeCert, err := ps.NewPublication(
 			pubsub.PublicationOptions{
 				AgentName: agentName,
-				TopicType: types.AttestCert{},
+				TopicType: types.EveNodeCert{},
 			})
 		if err != nil {
 			log.Fatal(err)
 		}
-		ctx.pubAttestCert = pubAttestCert
+		ctx.pubEveNodeCert = pubEveNodeCert
 		publishECDHCertToController(&ctx)
 
 		// Pick up debug aka log level before we start real work

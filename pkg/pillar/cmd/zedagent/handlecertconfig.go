@@ -124,21 +124,21 @@ func unpublishControllerCert(ctx *getconfigContext, key string) {
 	pub.Unpublish(key)
 }
 
-func handleAttestCertModify(ctxArg interface{}, key string,
+func handleEveNodeCertModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	// XXX TBD
-	status := configArg.(types.AttestCert)
-	log.Infof("handleAttestCertModify for %s", status.Key())
+	status := configArg.(types.EveNodeCert)
+	log.Infof("handleEveNodeCertModify for %s", status.Key())
 	return
 }
 
-func handleAttestCertDelete(ctxArg interface{}, key string,
+func handleEveNodeCertDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	// XXX TBD
-	status := configArg.(types.AttestCert)
-	log.Infof("handleAttestCertDelete for %s", status.Key())
+	status := configArg.(types.EveNodeCert)
+	log.Infof("handleEveNodeCertDelete for %s", status.Key())
 	return
 }
 
