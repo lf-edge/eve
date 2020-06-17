@@ -702,15 +702,14 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// changes or reboot through cloud.
 	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
 	// timer.metric.interval (seconds)
-	// Need to be careful about max value. Cloud uses this to indicate if a
-	// device is online or suspect state.
+	// Need to be careful about max value. Controller may use metric message to
+	// update status of device (online / suspect etc ).
 	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
 	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
-	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*DayInSec,
-		120, 2*YearInSec)
-	// timer.update.fallback.no.network (seconds) - fallback after no cloud connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
+	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
+	// timer.update.fallback.no.network (seconds) - fallback after no cloud connectivity
 	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
 	// timer.test.baseimage.update - commit to update
 	//  This is the time to wait before declaring a baseos upgrade success.
