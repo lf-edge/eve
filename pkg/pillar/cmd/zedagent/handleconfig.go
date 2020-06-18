@@ -420,14 +420,14 @@ func readSavedProtoMessage(staleConfigTime uint32,
 		log.Errorln("readSavedProtoMessage", err)
 		return nil, err
 	}
-	var config = &zconfig.EdgeDevConfig{}
-
-	err = proto.Unmarshal(contents, config)
+	var configResponse = &zconfig.ConfigResponse{}
+	err = proto.Unmarshal(contents, configResponse)
 	if err != nil {
 		log.Errorf("readSavedProtoMessage Unmarshalling failed: %v",
 			err)
 		return nil, err
 	}
+	config := configResponse.GetConfig()
 	return config, nil
 }
 
