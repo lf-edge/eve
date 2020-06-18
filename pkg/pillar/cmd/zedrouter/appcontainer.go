@@ -121,3 +121,21 @@ func appChangeContainerStatsACL(newIPAddr, oldIPAddr net.IP) {
 		appConfigContainerStatsACL(newIPAddr, false)
 	}
 }
+
+// reinstall the App Container blocking ACL to place in the top
+func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkConfig) {
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, item := range items {
+		cfg := item.(types.AppNetworkConfig)
+		if cfg.Key() == config.Key() {
+			log.Infof("appStatsMayNeedReinstallACL: same app, skip")
+			continue
+		}
+		if cfg.GetStatsIPAddr != nil {
+			appConfigContainerStatsACL(cfg.GetStatsIPAddr, true)
+			appConfigContainerStatsACL(cfg.GetStatsIPAddr, false)
+			log.Infof("appStatsMayNeedReinstallACL: reinstall %s\n", cfg.GetStatsIPAddr.String())
+		}
+	}
+}

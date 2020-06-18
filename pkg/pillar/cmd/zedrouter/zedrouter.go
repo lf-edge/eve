@@ -1341,6 +1341,10 @@ func appNetworkDoActivateUnderlayNetwork(
 	networkInstanceInfo.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
 		networkInstanceInfo.BridgeName)
+
+	// Check App Container Stats ACL need to be reinstalled
+	appStatsMayNeedReinstallACL(ctx, config)
+
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
