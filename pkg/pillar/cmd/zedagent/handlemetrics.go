@@ -1589,6 +1589,10 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportContentInfo.Err = errInfo
 		}
 
+		ContentResourcesInfo := new(info.ContentResources)
+		ContentResourcesInfo.CurSizeBytes = ctStatus.MaxDownloadSize
+		ReportContentInfo.Resources = ContentResourcesInfo
+
 		ReportContentInfo.Sha256 = ctStatus.ContentSha256
 		ReportContentInfo.ProgressPercentage = uint32(ctStatus.Progress)
 		ReportContentInfo.GenerationCount = ctStatus.GenerationCounter
