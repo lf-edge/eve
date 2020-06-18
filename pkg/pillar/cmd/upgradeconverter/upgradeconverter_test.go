@@ -102,6 +102,10 @@ func ucContextForTest() *ucContext {
 	//log.SetLevel(log.DebugLevel)
 	var err error
 	ctxPtr := &ucContext{}
+	ctxPtr.persistDir, err = ioutil.TempDir(".", "PersistDir")
+	if err != nil {
+		log.Fatalf("Failed to create persistDir. err: %s", err)
+	}
 	ctxPtr.persistConfigDir, err = ioutil.TempDir(".", "Converter")
 	if err != nil {
 		log.Fatalf("Failed to create persistConfigDir. err: %s", err)
@@ -114,6 +118,8 @@ func ucContextForTest() *ucContext {
 }
 
 func ucContextCleanupDirs(ctxPtr *ucContext) {
+	os.RemoveAll(ctxPtr.persistDir)
+	ctxPtr.persistDir = ""
 	os.RemoveAll(ctxPtr.persistConfigDir)
 	ctxPtr.persistConfigDir = ""
 	os.RemoveAll(ctxPtr.varTmpDir)

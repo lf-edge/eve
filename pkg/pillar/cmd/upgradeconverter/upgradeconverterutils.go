@@ -22,6 +22,19 @@ func fileExists(filename string) bool {
 	return false
 }
 
+func dirExists(dirname string) bool {
+	fi, err := os.Stat(dirname)
+	if err == nil {
+		return fi.IsDir()
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	log.Errorf("***Directory %s may or may not exist. Err: %s",
+		dirname, err)
+	return false
+}
+
 func fileTimeStamp(filename string) (time.Time, error) {
 	file, err := os.Stat(filename)
 	if err != nil {
