@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='org.lfedge.eve.common',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.commonB\tEvecommonP\001Z\'github.com/lf-edge/eve/api/go/evecommon'),
-  serialized_pb=_b('\n\x19\x65vecommon/evecommon.proto\x12\x15org.lfedge.eve.common\"\xc2\x01\n\x05ZCert\x12\x37\n\thash_algo\x18\x01 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12.\n\x04type\x18\x02 \x01(\x0e\x32 .org.lfedge.eve.common.ZCertType\x12\x0c\n\x04hash\x18\x03 \x01(\x0c\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c\x12\x34\n\nattributes\x18\x05 \x01(\x0b\x32 .org.lfedge.eve.common.ZCertAttr\"\x1f\n\tZCertAttr\x12\x12\n\nis_mutable\x18\x01 \x01(\x08*q\n\rHashAlgorithm\x12\x1a\n\x16HASH_ALGORITHM_INVALID\x10\x00\x12!\n\x1dHASH_ALGORITHM_SHA256_16BYTES\x10\x01\x12!\n\x1dHASH_ALGORITHM_SHA256_32BYTES\x10\x02*\xb7\x02\n\tZCertType\x12\x17\n\x13Z_CERT_TYPE_INVALID\x10\x00\x12\"\n\x1eZ_CERT_TYPE_CONTROLLER_SIGNING\x10\x01\x12\'\n#Z_CERT_TYPE_CONTROLLER_INTERMEDIATE\x10\x02\x12(\n$Z_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x03\x12!\n\x1dZ_CERT_TYPE_DEVICE_ONBOARDING\x10\n\x12)\n%Z_CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x0b\x12&\n\"Z_CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x0c\x12$\n Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE\x10\rBM\n\x15org.lfedge.eve.commonB\tEvecommonP\x01Z\'github.com/lf-edge/eve/api/go/evecommonb\x06proto3')
+  serialized_pb=_b('\n\x19\x65vecommon/evecommon.proto\x12\x15org.lfedge.eve.common*q\n\rHashAlgorithm\x12\x1a\n\x16HASH_ALGORITHM_INVALID\x10\x00\x12!\n\x1dHASH_ALGORITHM_SHA256_16BYTES\x10\x01\x12!\n\x1dHASH_ALGORITHM_SHA256_32BYTES\x10\x02\x42M\n\x15org.lfedge.eve.commonB\tEvecommonP\x01Z\'github.com/lf-edge/eve/api/go/evecommonb\x06proto3')
 )
 
 _HASHALGORITHM = _descriptor.EnumDescriptor(
@@ -44,184 +44,19 @@ _HASHALGORITHM = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=282,
-  serialized_end=395,
+  serialized_start=52,
+  serialized_end=165,
 )
 _sym_db.RegisterEnumDescriptor(_HASHALGORITHM)
 
 HashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_HASHALGORITHM)
-_ZCERTTYPE = _descriptor.EnumDescriptor(
-  name='ZCertType',
-  full_name='org.lfedge.eve.common.ZCertType',
-  filename=None,
-  file=DESCRIPTOR,
-  values=[
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_INVALID', index=0, number=0,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_CONTROLLER_SIGNING', index=1, number=1,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_CONTROLLER_INTERMEDIATE', index=2, number=2,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE', index=3, number=3,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_DEVICE_ONBOARDING', index=4, number=10,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_DEVICE_RESTRICTED_SIGNING', index=5, number=11,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_DEVICE_ENDORSEMENT_RSA', index=6, number=12,
-      serialized_options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE', index=7, number=13,
-      serialized_options=None,
-      type=None),
-  ],
-  containing_type=None,
-  serialized_options=None,
-  serialized_start=398,
-  serialized_end=709,
-)
-_sym_db.RegisterEnumDescriptor(_ZCERTTYPE)
-
-ZCertType = enum_type_wrapper.EnumTypeWrapper(_ZCERTTYPE)
 HASH_ALGORITHM_INVALID = 0
 HASH_ALGORITHM_SHA256_16BYTES = 1
 HASH_ALGORITHM_SHA256_32BYTES = 2
-Z_CERT_TYPE_INVALID = 0
-Z_CERT_TYPE_CONTROLLER_SIGNING = 1
-Z_CERT_TYPE_CONTROLLER_INTERMEDIATE = 2
-Z_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 3
-Z_CERT_TYPE_DEVICE_ONBOARDING = 10
-Z_CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 11
-Z_CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 12
-Z_CERT_TYPE_DEVICE_ECDH_EXCHANGE = 13
 
 
-
-_ZCERT = _descriptor.Descriptor(
-  name='ZCert',
-  full_name='org.lfedge.eve.common.ZCert',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='hash_algo', full_name='org.lfedge.eve.common.ZCert.hash_algo', index=0,
-      number=1, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='type', full_name='org.lfedge.eve.common.ZCert.type', index=1,
-      number=2, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='hash', full_name='org.lfedge.eve.common.ZCert.hash', index=2,
-      number=3, type=12, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b(""),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='cert', full_name='org.lfedge.eve.common.ZCert.cert', index=3,
-      number=4, type=12, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b(""),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='attributes', full_name='org.lfedge.eve.common.ZCert.attributes', index=4,
-      number=5, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=53,
-  serialized_end=247,
-)
-
-
-_ZCERTATTR = _descriptor.Descriptor(
-  name='ZCertAttr',
-  full_name='org.lfedge.eve.common.ZCertAttr',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='is_mutable', full_name='org.lfedge.eve.common.ZCertAttr.is_mutable', index=0,
-      number=1, type=8, cpp_type=7, label=1,
-      has_default_value=False, default_value=False,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=249,
-  serialized_end=280,
-)
-
-_ZCERT.fields_by_name['hash_algo'].enum_type = _HASHALGORITHM
-_ZCERT.fields_by_name['type'].enum_type = _ZCERTTYPE
-_ZCERT.fields_by_name['attributes'].message_type = _ZCERTATTR
-DESCRIPTOR.message_types_by_name['ZCert'] = _ZCERT
-DESCRIPTOR.message_types_by_name['ZCertAttr'] = _ZCERTATTR
 DESCRIPTOR.enum_types_by_name['HashAlgorithm'] = _HASHALGORITHM
-DESCRIPTOR.enum_types_by_name['ZCertType'] = _ZCERTTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
-
-ZCert = _reflection.GeneratedProtocolMessageType('ZCert', (_message.Message,), dict(
-  DESCRIPTOR = _ZCERT,
-  __module__ = 'evecommon.evecommon_pb2'
-  # @@protoc_insertion_point(class_scope:org.lfedge.eve.common.ZCert)
-  ))
-_sym_db.RegisterMessage(ZCert)
-
-ZCertAttr = _reflection.GeneratedProtocolMessageType('ZCertAttr', (_message.Message,), dict(
-  DESCRIPTOR = _ZCERTATTR,
-  __module__ = 'evecommon.evecommon_pb2'
-  # @@protoc_insertion_point(class_scope:org.lfedge.eve.common.ZCertAttr)
-  ))
-_sym_db.RegisterMessage(ZCertAttr)
 
 
 DESCRIPTOR._options = None

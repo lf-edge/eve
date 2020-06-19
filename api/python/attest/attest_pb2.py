@@ -13,7 +13,7 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from evecommon import evecommon_pb2 as evecommon_dot_evecommon__pb2
+from certs import certs_pb2 as certs_dot_certs__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
@@ -21,9 +21,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attest'),
-  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x1a\x19\x65vecommon/evecommon.proto\"y\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12+\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\x1c.org.lfedge.eve.common.ZCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode*f\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03*p\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03*i\n\x13ZAttestResponseCode\x12\x18\n\x14\x41TTEST_RESPONSE_NONE\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x01\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x02\x42=\n\x15org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
+  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x1a\x11\x63\x65rts/certs.proto\"c\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x15\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\x06.ZCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode*f\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03*p\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03*i\n\x13ZAttestResponseCode\x12\x18\n\x14\x41TTEST_RESPONSE_NONE\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x01\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x02\x42=\n\x15org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
   ,
-  dependencies=[evecommon_dot_evecommon__pb2.DESCRIPTOR,])
+  dependencies=[certs_dot_certs__pb2.DESCRIPTOR,])
 
 _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
   name='ZAttestReqType',
@@ -50,8 +50,8 @@ _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=450,
-  serialized_end=552,
+  serialized_start=420,
+  serialized_end=522,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTREQTYPE)
 
@@ -81,8 +81,8 @@ _ZATTESTRESPTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=554,
-  serialized_end=666,
+  serialized_start=524,
+  serialized_end=636,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPTYPE)
 
@@ -108,8 +108,8 @@ _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=668,
-  serialized_end=773,
+  serialized_start=638,
+  serialized_end=743,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPONSECODE)
 
@@ -168,8 +168,8 @@ _ZATTESTREQ = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=50,
-  serialized_end=171,
+  serialized_start=42,
+  serialized_end=141,
 )
 
 
@@ -213,8 +213,8 @@ _ZATTESTRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=173,
-  serialized_end=298,
+  serialized_start=143,
+  serialized_end=268,
 )
 
 
@@ -244,8 +244,8 @@ _ZATTESTNONCERESP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=300,
-  serialized_end=333,
+  serialized_start=270,
+  serialized_end=303,
 )
 
 
@@ -282,8 +282,8 @@ _ZATTESTQUOTE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=335,
-  serialized_end=388,
+  serialized_start=305,
+  serialized_end=358,
 )
 
 
@@ -313,13 +313,13 @@ _ZATTESTQUOTERESP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=390,
-  serialized_end=448,
+  serialized_start=360,
+  serialized_end=418,
 )
 
 _ZATTESTREQ.fields_by_name['reqType'].enum_type = _ZATTESTREQTYPE
 _ZATTESTREQ.fields_by_name['quote'].message_type = _ZATTESTQUOTE
-_ZATTESTREQ.fields_by_name['certs'].message_type = evecommon_dot_evecommon__pb2._ZCERT
+_ZATTESTREQ.fields_by_name['certs'].message_type = certs_dot_certs__pb2._ZCERT
 _ZATTESTRESPONSE.fields_by_name['respType'].enum_type = _ZATTESTRESPTYPE
 _ZATTESTRESPONSE.fields_by_name['nonce'].message_type = _ZATTESTNONCERESP
 _ZATTESTRESPONSE.fields_by_name['quoteResp'].message_type = _ZATTESTQUOTERESP
