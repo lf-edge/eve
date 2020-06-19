@@ -66,6 +66,7 @@ func parseVolumeConfig(ctx *getconfigContext,
 		}
 		volumeConfig.MaxVolSize = uint64(cfgVolume.GetMaxsizebytes())
 		volumeConfig.GenerationCounter = cfgVolume.GetGenerationCount()
+		volumeConfig.VolumeDir = types.VolumeEncryptedDirName
 		volumeConfig.DisplayName = cfgVolume.GetDisplayName()
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
 		volumeConfig.RefCount = 1
