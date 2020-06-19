@@ -15,6 +15,7 @@
 package ipcmonitor
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -37,6 +38,7 @@ func Run(ps *pubsub.PubSub) {
 		"topic")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	persistentPtr := flag.Bool("P", false, "Persistent flag")
+	formatPtr := flag.String("f", "go", "format flag, defaults to 'go', supports: 'go', 'json'")
 	flag.Parse()
 	agentName := *agentNamePtr
 	agentScope := *agentScopePtr
@@ -51,6 +53,7 @@ func Run(ps *pubsub.PubSub) {
 		testPersistent(ps, agentName, agentScope, topic)
 		return
 	}
+	format := *formatPtr
 
 	name := nameString(agentName, agentScope, topic)
 	sockName := fmt.Sprintf("/var/run/%s.sock", name)
@@ -122,12 +125,23 @@ func Run(ps *pubsub.PubSub) {
 				log.Errorf("base64: %s\n", err)
 			}
 
-			var output interface{}
-			if err := json.Unmarshal(val, &output); err != nil {
-				log.Fatal(err, "json Unmarshal")
+			switch format {
+			case "go":
+				var output interface{}
+				if err := json.Unmarshal(val, &output); err != nil {
+					log.Fatal(err, "json Unmarshal")
+				}
+				log.Infof("update type %s key %s val %+v\n",
+					t, key, output)
+			case "json":
+				var out bytes.Buffer
+				if err = json.Indent(&out, val, "", "\t"); err != nil {
+					log.Fatalf("unable to indent json: %v", err)
+				}
+				log.Infof("update type %s key %s: %s\n", t, key, out.String())
+			default:
+				log.Fatalf("unsupported format: %s", format)
 			}
-			log.Infof("update type %s key %s val %+v\n",
-				t, key, output)
 
 		default:
 			log.Errorf("Unknown message: %s\n", msg)
