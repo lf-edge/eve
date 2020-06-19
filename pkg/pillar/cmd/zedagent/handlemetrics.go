@@ -653,15 +653,15 @@ func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 		if err != nil {
 			return err
 		}
-		volumeResourcesDetails.MaxSizeBytes = RoundToMbytes(size)
-		volumeResourcesDetails.CurSizeBytes = RoundToMbytes(size)
+		volumeResourcesDetails.MaxSizeBytes = size
+		volumeResourcesDetails.CurSizeBytes = size
 	} else {
 		imgInfo, err := diskmetrics.GetImgInfo(volStatus.FileLocation)
 		if err != nil {
 			return err
 		}
-		volumeResourcesDetails.MaxSizeBytes = RoundToMbytes(imgInfo.VirtualSize)
-		volumeResourcesDetails.CurSizeBytes = RoundToMbytes(imgInfo.ActualSize)
+		volumeResourcesDetails.MaxSizeBytes = imgInfo.VirtualSize
+		volumeResourcesDetails.CurSizeBytes = imgInfo.ActualSize
 	}
 	return nil
 }
