@@ -71,9 +71,11 @@ type EveNodeCert struct {
 	CertType CertType     //type of the certificate
 	Cert     []byte       //PEM encoded
 	IsTpm    bool         //TPM generated or, not
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
-//Key uniquely identifies an AttestCert object
+//Key uniquely identifies the certificate
 func (cert EveNodeCert) Key() string {
 	return hex.EncodeToString(cert.CertID)
 }

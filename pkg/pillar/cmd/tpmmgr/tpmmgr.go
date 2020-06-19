@@ -13,6 +13,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -78,6 +79,10 @@ const (
 
 	//location of the ecdh certificate
 	ecdhCertFile = types.IdentityDirname + "/ecdh.cert.pem"
+
+	//location of the ecdh private key
+	//on devices without a TPM
+	ecdhKeyFile = types.IdentityDirname + "/ecdh.key.pem"
 
 	emptyPassword  = ""
 	tpmLockName    = types.TmpDirname + "/tpm.lock"
@@ -630,6 +635,7 @@ func printPCRs() {
 		fmt.Printf("Error opening TPM device: %s", err)
 		return
 	}
+	defer rw.Close()
 	for i := 0; i < 23; i++ {
 		pcrVal, err := tpm2.ReadPCR(rw, i, tpm2.AlgSHA256)
 		if err != nil {
@@ -709,8 +715,9 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 }
 
 //DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
-func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
-	decryptKey, err := getDecryptKey(X, Y)
+func DecryptSecretWithEcdhKey(X, Y *big.Int, eveNodeCert *types.EveNodeCert,
+	iv, ciphertext, plaintext []byte) error {
+	decryptKey, err := getDecryptKey(X, Y, eveNodeCert)
 	if err != nil {
 		log.Errorf("getDecryptKey failed: %v", err)
 		return err
@@ -718,13 +725,21 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) e
 	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
 }
 
+// This function takes the eveNodeCert as an argument. This value can be nil.
+// The eveNodeCert value nil indicates, it is called from Test Routine.
+// For nil value case, the key is determined based on, whether the device
+// is non-TPM( pickup the device key), or, TPm (pick up the software ecdh key)
 // getDecryptKey : uses the ECC params to construct the AES decryption Key
-func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
-	// when TPM is not enabled, use the locally stored private key
-	if !etpm.IsTpmEnabled() {
-		privateKey, err := getDevicePrivateKey()
+func getDecryptKey(X, Y *big.Int, eveNodeCert *types.EveNodeCert) ([32]byte, error) {
+	// check whether this is a software certificate
+	if !etpm.IsTpmEnabled() || !eveNodeCert.IsTpm {
+		isDeviceKey := false
+		if !etpm.IsTpmEnabled() && eveNodeCert == nil {
+			isDeviceKey = true
+		}
+		privateKey, err := getDevicePrivateKey(isDeviceKey)
 		if err != nil {
-			log.Errorf("getDevicePrivateKey failed: %v", err)
+			log.Errorf("getEveNodePrivateKeyfailed: %v", err)
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
@@ -787,7 +802,7 @@ func testEcdhAES() error {
 	aesEncrypt(ciphertext, msg, encryptKey[:], iv)
 
 	recoveredMsg := make([]byte, len(ciphertext))
-	err = DecryptSecretWithEcdhKey(publicAX, publicAY, iv, ciphertext, recoveredMsg)
+	err = DecryptSecretWithEcdhKey(publicAX, publicAY, nil, iv, ciphertext, recoveredMsg)
 	if err != nil {
 		fmt.Printf("Decryption failed with error %v\n", err)
 		return err
@@ -796,9 +811,13 @@ func testEcdhAES() error {
 	return nil
 }
 
-func getDevicePrivateKey() (*ecdsa.PrivateKey, error) {
-	// XXX:TBD, currently only one private key
-	keyPEMBlock, err := ioutil.ReadFile(types.DeviceKeyName)
+// device with no TPM, get the file based key
+func getDevicePrivateKey(isDeviceKey bool) (*ecdsa.PrivateKey, error) {
+	keyFile := ecdhKeyFile
+	if isDeviceKey {
+		keyFile = types.DeviceKeyName
+	}
+	keyPEMBlock, err := ioutil.ReadFile(keyFile)
 	if err != nil {
 		errStr := fmt.Sprintf("No valid PEM block found, %v", err)
 		log.Errorln(errStr)
@@ -842,7 +861,20 @@ func tpmKeyToEccKey(p tpm2.Public) (crypto.PublicKey, error) {
 	return pubKey, nil
 }
 
-func createEcdhCert() error {
+func createEveNodeEcdhCert() error {
+	// certificate is already created
+	if etpm.FileExists(ecdhCertFile) {
+		return nil
+	}
+	// try TPM
+	if etpm.IsTpmEnabled() {
+		return createEveNodeEcdhCertOnTpm()
+	}
+	// create soft certficate
+	return createEveNodeEcdhCertSoft()
+}
+
+func createEveNodeEcdhCertOnTpm() error {
 	//Check if we already have the certificate in /config
 	if !etpm.FileExists(ecdhCertFile) {
 		//Cert is not present in /config, generate new one
@@ -851,6 +883,7 @@ func createEcdhCert() error {
 		if err != nil {
 			return err
 		}
+		defer rw.Close()
 
 		clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 		if err != nil {
@@ -908,6 +941,110 @@ func createEcdhCert() error {
 	return nil
 }
 
+// create Ecdh Template
+func createEcdhSoftTemplate() x509.Certificate {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
+	notBefore := time.Now()
+	// twenty years
+	notAfter := notBefore.AddDate(20, 0, 0)
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Country:      []string{"US"},
+			Province:     []string{"CA"},
+			Locality:     []string{"Santa Clara"},
+			Organization: []string{"Zededa, Inc"},
+			CommonName:   "Device ECDH certificate",
+		},
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
+
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	return template
+}
+
+// generate the software ECDH key and certificate,
+// the certificate is signed using the device private key
+func createEveNodeEcdhCertSoft() error {
+
+	// get the device software private key
+	devicePrivKey, err := getDevicePrivateKey(true)
+	if err != nil {
+		errStr := fmt.Sprintf("device key file is absent")
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	// generate the ecdh private key
+	certPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		errStr := fmt.Sprintf("curve get fail, %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	// get the ecdh template
+	template := createEcdhSoftTemplate()
+
+	// create the certificate and sign with device private key
+	derBytes, err := x509.CreateCertificate(rand.Reader,
+		&template, &template, certPrivKey.Public(), devicePrivKey)
+	if err != nil {
+		errStr := fmt.Sprintf("certificate create fail, %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	certBlock := &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: derBytes,
+	}
+
+	// public cert bytes
+	certBytes := pem.EncodeToMemory(certBlock)
+	if certBytes == nil {
+		errStr := fmt.Sprintf("PEM Encode error: empty bytes")
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	// private cert bytes
+	privBytes, err := x509.MarshalPKCS8PrivateKey(certPrivKey)
+	if err != nil {
+		errStr := fmt.Sprintf("certificate marshal fail, %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+	keyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privBytes,
+	}
+
+	keyBytes := pem.EncodeToMemory(keyBlock)
+	if keyBytes == nil {
+		errStr := fmt.Sprintf("PEM Encode error: empty bytes")
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+	// write to /config
+	return writeEcdhCertToFile(certBytes, keyBytes)
+}
+
+func writeEcdhCertToFile(certBytes, keyBytes []byte) error {
+	if err := ioutil.WriteFile(ecdhKeyFile, keyBytes, 0644); err != nil {
+		return err
+	}
+	if err := ioutil.WriteFile(ecdhCertFile, certBytes, 0644); err != nil {
+		return err
+	}
+	return nil
+}
+
 func publishEveNodeCert(ctx *tpmMgrContext, config types.EveNodeCert) {
 	key := config.Key()
 	log.Debugf("publishEveNodeCert %s", key)
@@ -955,12 +1092,16 @@ func publishECDHCertToController(ctx *tpmMgrContext) {
 		log.Error(errStr)
 		return
 	}
+	isTpm := true
+	if !etpm.IsTpmEnabled() || etpm.FileExists(ecdhKeyFile) {
+		isTpm = false
+	}
 	attestCert := types.EveNodeCert{
 		HashAlgo: types.CertHashTypeSha256First16,
 		CertID:   certHash,
 		CertType: types.CertTypeEcdhXchange,
 		Cert:     certBytes,
-		IsTpm:    true,
+		IsTpm:    isTpm,
 	}
 	publishEveNodeCert(ctx, attestCert)
 	log.Infof("publishECDHCertToController Done")
@@ -1174,7 +1315,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Errorf("Error in creating Ecdh key: %v ", err)
 			os.Exit(1)
 		}
-		if err := createEcdhCert(); err != nil {
+		if err := createEveNodeEcdhCert(); err != nil {
 			log.Errorf("Error in creating Ecdh Certificate: %v", err)
 			os.Exit(1)
 		}

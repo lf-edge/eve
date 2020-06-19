@@ -177,6 +177,21 @@ func Run(ps *pubsub.PubSub) {
 	nimCtx.deviceNetworkContext.DecryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
+	// Look for eve node certs which will be used for decryption
+	subEveNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "tpmmgr",
+		TopicImpl:   types.EveNodeCert{},
+		Activate:    false,
+		Ctx:         &nimCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nimCtx.deviceNetworkContext.DecryptCipherContext.SubEveNodeCert = subEveNodeCert
+	subEveNodeCert.Activate()
+
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
@@ -555,6 +570,9 @@ func Run(ps *pubsub.PubSub) {
 		select {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
+
+		case change := <-subEveNodeCert.MsgChan():
+			subEveNodeCert.ProcessChange(change)
 
 		case change := <-subCipherContext.MsgChan():
 			subCipherContext.ProcessChange(change)

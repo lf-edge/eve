@@ -21,7 +21,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -216,8 +215,8 @@ func getLatestConfig(url string, iteration int,
 				getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
 			}
 		} else if rtf == types.SenderStatusCertMiss {
-			// trigger a one sec timer to acquire new certs from cloud
-			triggerFetchCerts(getconfigCtx.zedagentCtx)
+			// trigger to acquire new controller certs from cloud
+			triggerControllerCertEvent(getconfigCtx.zedagentCtx)
 		} else {
 			log.Errorf("getLatestConfig failed: %s", err)
 		}
@@ -287,59 +286,6 @@ func getLatestConfig(url string, iteration int,
 	writeReceivedProtoMessage(contents)
 
 	return inhaleDeviceConfig(config, getconfigCtx, false)
-}
-
-func getCloudCertChain(ctx *zedagentContext) bool {
-	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "certs")
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, certURL, 0, nil, 0, false)
-	if err != nil {
-		if rtf == types.SenderStatusRemTempFail {
-			log.Infof("getCloudCertChain remoteTemporaryFailure: %s", err)
-		} else {
-			log.Errorf("getCloudCertChain failed: %s", err)
-		}
-		return false
-	}
-
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
-		log.Infof("getCloudCertChain: status %s", resp.Status)
-	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotImplemented, http.StatusBadRequest:
-		log.Infof("getCloudCertChain: server %s does not support V2 API", serverName)
-		return false
-	default:
-		log.Errorf("getCloudCertChain: statuscode %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
-		return false
-	}
-
-	err = validateProtoMessage(certURL, resp)
-	if err != nil {
-		log.Errorf("getCloudCertChain: resp header error")
-		return false
-	}
-
-	// for cipher object handling
-	parseControllerCerts(ctx, contents)
-
-	certBytes, err := zedcloud.VerifySigningCertChain(&zedcloudCtx, contents)
-	if err != nil {
-		log.Errorf("getCloudCertChain: verify err %v", err)
-		return false
-	}
-	err = fileutils.WriteRename(types.ServerSigningCertFileName, certBytes)
-	if err != nil {
-		log.Errorf("getCloudCertChain: file save err %v", err)
-		return false
-	}
-
-	log.Infof("getCloudCertChain: success")
-	return true
-}
-
-func triggerFetchCerts(ctx *zedagentContext) {
-	// trigger a one sec timer to acquire new certs from cloud
-	log.Infof("triggerFetchCerts: set timer for 1 sec")
-	ctx.getCertsTimer = time.NewTimer(1 * time.Second)
 }
 
 func validateProtoMessage(url string, r *http.Response) error {
