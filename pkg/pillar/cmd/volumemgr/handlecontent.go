@@ -76,6 +76,21 @@ func lookupContentTreeStatus(ctx *volumemgrContext,
 	return &status
 }
 
+func lookupContentTreeConfig(ctx *volumemgrContext,
+	key string) *types.ContentTreeConfig {
+
+	log.Infof("lookupContentTreeConfig(%s)", key)
+	sub := ctx.subContentTreeConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Infof("lookupContentTreeConfig(%s) not found", key)
+		return nil
+	}
+	config := c.(types.ContentTreeConfig)
+	log.Infof("lookupContentTreeConfig(%s) Done", key)
+	return &config
+}
+
 func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 	log.Infof("updateContentTree for %v", config.ContentID)
 	status := lookupContentTreeStatus(ctx, config.Key())

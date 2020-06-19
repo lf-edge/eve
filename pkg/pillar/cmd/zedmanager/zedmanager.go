@@ -8,11 +8,9 @@
 package zedmanager
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -36,23 +34,20 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	subAppInstanceConfig   pubsub.Subscription
-	pubAppInstanceStatus   pubsub.Publication
-	pubVolumeConfig        pubsub.Publication
-	subVolumeStatus        pubsub.Subscription
-	pubAppNetworkConfig    pubsub.Publication
-	subAppNetworkStatus    pubsub.Subscription
-	pubDomainConfig        pubsub.Publication
-	subDomainStatus        pubsub.Subscription
-	pubAppImgResolveConfig pubsub.Publication
-	subAppImgResolveStatus pubsub.Subscription
-	pubEIDConfig           pubsub.Publication
-	subEIDStatus           pubsub.Subscription
-	subGlobalConfig        pubsub.Subscription
-	globalConfig           *types.ConfigItemValueMap
-	pubUuidToNum           pubsub.Publication
-	pubAppAndImageToHash   pubsub.Publication
-	GCInitialized          bool
+	subAppInstanceConfig pubsub.Subscription
+	pubAppInstanceStatus pubsub.Publication
+	pubVolumeRefConfig   pubsub.Publication
+	subVolumeRefStatus   pubsub.Subscription
+	pubAppNetworkConfig  pubsub.Publication
+	subAppNetworkStatus  pubsub.Subscription
+	pubDomainConfig      pubsub.Publication
+	subDomainStatus      pubsub.Subscription
+	pubEIDConfig         pubsub.Publication
+	subEIDStatus         pubsub.Subscription
+	subGlobalConfig      pubsub.Subscription
+	globalConfig         *types.ConfigItemValueMap
+	pubUuidToNum         pubsub.Publication
+	GCInitialized        bool
 }
 
 var debug = false
@@ -99,15 +94,15 @@ func Run(ps *pubsub.PubSub) {
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
-	pubVolumeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubVolumeRefConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
-		TopicType:  types.OldVolumeConfig{},
+		TopicType:  types.VolumeRefConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubVolumeConfig = pubVolumeConfig
+	ctx.pubVolumeRefConfig = pubVolumeRefConfig
 
 	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -150,27 +145,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.pubUuidToNum = pubUuidToNum
 	pubUuidToNum.ClearRestarted()
 
-	pubAppAndImageToHash, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		Persistent: true,
-		TopicType:  types.AppAndImageToHash{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppAndImageToHash = pubAppAndImageToHash
-
-	pubAppImgResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.ResolveConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubAppImgResolveConfig.ClearRestarted()
-	ctx.pubAppImgResolveConfig = pubAppImgResolveConfig
-
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -208,24 +182,24 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
-	// Look for VolumeStatus from volumemgr
-	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Look for VolumeRefStatus from volumemgr
+	subVolumeRefStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		AgentScope:    types.AppImgObj,
-		TopicImpl:     types.OldVolumeStatus{},
+		TopicImpl:     types.VolumeRefStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleVolumeStatusModify,
-		ModifyHandler: handleVolumeStatusModify,
-		DeleteHandler: handleVolumeStatusDelete,
+		CreateHandler: handleVolumeRefStatusModify,
+		ModifyHandler: handleVolumeRefStatusModify,
+		DeleteHandler: handleVolumeRefStatusDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subVolumeStatus = subVolumeStatus
-	subVolumeStatus.Activate()
+	ctx.subVolumeRefStatus = subVolumeRefStatus
+	subVolumeRefStatus.Activate()
 
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -283,24 +257,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
-	// Look for AppImgResolveStatus from downloader
-	subAppImgResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "downloader",
-		AgentScope:    types.AppImgObj,
-		TopicImpl:     types.ResolveStatus{},
-		Activate:      false,
-		Ctx:           &ctx,
-		CreateHandler: handleResolveStatusModify,
-		ModifyHandler: handleResolveStatusModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subAppImgResolveStatus = subAppImgResolveStatus
-	subAppImgResolveStatus.Activate()
-
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -317,8 +273,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subVolumeStatus.MsgChan():
-			subVolumeStatus.ProcessChange(change)
+		case change := <-subVolumeRefStatus.MsgChan():
+			subVolumeRefStatus.ProcessChange(change)
 
 		case change := <-subEIDStatus.MsgChan():
 			subEIDStatus.ProcessChange(change)
@@ -331,9 +287,6 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
-
-		case change := <-subAppImgResolveStatus.MsgChan():
-			subAppImgResolveStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -485,22 +438,14 @@ func handleCreate(ctxArg interface{}, key string,
 			true, "purgeCmdCounter")
 	}
 
-	var totalDiskUsage uint64
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.UpdateFromStorageConfig(sc)
-		if ss.IsContainer {
-			// FIXME - We really need a top level flag to tell the app is
-			//  a container. Deriving it from Storage seems hacky.
-			status.IsContainer = true
-		}
-		if ss.MaxDownSize == 0 {
-			log.Warnf("handleCreate(%s) zero size for %s",
-				config.Key(), ss.Name)
-		}
-		totalDiskUsage += ss.MaxDownSize
+	status.VolumeRefStatusList = make([]types.VolumeRefStatus,
+		len(config.VolumeRefConfigList))
+	for i, vrc := range config.VolumeRefConfigList {
+		vrs := &status.VolumeRefStatusList[i]
+		vrs.VolumeID = vrc.VolumeID
+		vrs.GenerationCounter = vrc.GenerationCounter
+		vrs.RefCount = vrc.RefCount
+		vrs.PendingAdd = true
 	}
 
 	status.EIDList = make([]types.EIDStatusDetails,
@@ -516,23 +461,6 @@ func handleCreate(ctxArg interface{}, key string,
 		}
 		log.Errorf("App Instance %s-%s: Errors in App Instance Create.",
 			config.DisplayName, config.UUIDandVersion.UUID)
-	}
-
-	if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
-		// Check disk usage
-		remaining, appDiskSizeList, err := getRemainingAppDiskSpace(ctx)
-		if err != nil {
-			errStr := fmt.Sprintf("getRemainingAppDiskSpace failed: %s\n",
-				err)
-			allErrors += errStr
-		} else if remaining < totalDiskUsage {
-			errStr := fmt.Sprintf("Remaining disk space %d app needs %d\n",
-				remaining, totalDiskUsage)
-			allErrors += errStr
-			errStr = fmt.Sprintf("Current app disk size list:\n%s\n",
-				appDiskSizeList)
-			allErrors += errStr
-		}
 	}
 
 	// Do some basic sanity checks.
@@ -564,57 +492,6 @@ func handleCreate(ctxArg interface{}, key string,
 		publishAppInstanceStatus(ctx, &status)
 	}
 	log.Infof("handleCreate done for %s", config.DisplayName)
-}
-
-func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
-	ssPtr *types.StorageStatus) {
-
-	imageSha := lookupAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-		ssPtr.ImageID, ssPtr.PurgeCounter)
-	if imageSha == "" {
-		if ssPtr.IsContainer && ssPtr.ImageSha256 == "" {
-			log.Infof("Container app/image %s %s/%s has not (yet) latched sha",
-				config.DisplayName, config.UUIDandVersion.UUID,
-				ssPtr.ImageID)
-		}
-		return
-	}
-	if ssPtr.ImageSha256 == "" {
-		log.Infof("Latching %s app/image %s/%s to sha %s",
-			config.DisplayName,
-			config.UUIDandVersion.UUID, ssPtr.ImageID, imageSha)
-		ssPtr.ImageSha256 = imageSha
-		if ssPtr.IsContainer {
-			newName := maybeInsertSha(ssPtr.Name, imageSha)
-			if newName != ssPtr.Name {
-				log.Infof("Changing container name from %s to %s",
-					ssPtr.Name, newName)
-				ssPtr.Name = newName
-			}
-		}
-	} else if ssPtr.ImageSha256 != imageSha {
-		// We already catch this change, but logging here in any case
-		log.Warnf("App/Image %s %s/%s hash sha %s received %s",
-			config.DisplayName,
-			config.UUIDandVersion.UUID, ssPtr.ImageID,
-			imageSha, ssPtr.ImageSha256)
-	}
-}
-
-// Check if the OCI name does not include an explicit sha and if not
-// return the name with the sha inserted.
-// Note that the sha must be lower case in the OCI reference.
-func maybeInsertSha(name string, sha string) string {
-	if strings.Index(name, "@") != -1 {
-		// Already has a sha
-		return name
-	}
-	sha = strings.ToLower(sha)
-	last := strings.LastIndex(name, ":")
-	if last == -1 {
-		return name + "@sha256:" + sha
-	}
-	return name[:last] + "@sha256:" + sha
 }
 
 func handleModify(ctxArg interface{}, key string,
@@ -673,16 +550,6 @@ func handleModify(ctxArg interface{}, key string,
 			config.UUIDandVersion, config.DisplayName,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
-		if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
-			err := checkPurgeDiskSizeFit(ctx, config, *status)
-			if err != nil {
-				log.Error(err)
-				status.SetErrorWithSource(err.Error(),
-					types.AppInstanceStatus{}, time.Now())
-				publishAppInstanceStatus(ctx, status)
-				return
-			}
-		}
 		if status.IsErrorSource(types.AppInstanceStatus{}) {
 			log.Infof("Removing error %s", status.Error)
 			status.ClearErrorWithSource()
@@ -716,47 +583,6 @@ func handleModify(ctxArg interface{}, key string,
 	log.Infof("handleModify done for %s", config.DisplayName)
 }
 
-// checkPurgeDiskSizeFit sees if a purge might exceed the remaining space
-// Check for change in disk usage for StorageConfig and if increase see if
-// sufficient space is available.
-// If app instance is Activated then both old and new have to fit since we
-// delete old volume after restarting app to minimize outage for application.
-func checkPurgeDiskSizeFit(ctxPtr *zedmanagerContext, config types.AppInstanceConfig,
-	status types.AppInstanceStatus) error {
-
-	remaining, appDiskSizeList, err := getRemainingAppDiskSpace(ctxPtr)
-	if err != nil {
-		return fmt.Errorf("getRemainingAppDiskSpace failed: %s", err)
-	}
-	var oldDisk0Size, newDisk0Size uint64
-	if len(config.StorageConfigList) > 0 {
-		newDisk0Size = config.StorageConfigList[0].MaxDownSize
-	}
-	if len(status.StorageStatusList) > 0 {
-		oldDisk0Size = status.StorageStatusList[0].MaxDownSize
-	}
-	if !status.Activated {
-		if newDisk0Size > oldDisk0Size &&
-			newDisk0Size-oldDisk0Size > remaining {
-			errStr := fmt.Sprintf("Remaining disk space %d app needs %d to purge\n",
-				remaining, newDisk0Size-oldDisk0Size)
-			errStr += fmt.Sprintf("Current app disk size list:\n%s\n",
-				appDiskSizeList)
-			return errors.New(errStr)
-		}
-	} else {
-		// The oldDisk0Size is already accounted for in remaining
-		if newDisk0Size > remaining {
-			errStr := fmt.Sprintf("Remaining disk space %d app needs %d to purge while Activated; deactivate then purge\n",
-				remaining, newDisk0Size)
-			errStr += fmt.Sprintf("Current app disk size list:\n%s\n",
-				appDiskSizeList)
-			return errors.New(errStr)
-		}
-	}
-	return nil
-}
-
 func handleDelete(ctx *zedmanagerContext, key string,
 	status *types.AppInstanceStatus) {
 
@@ -766,7 +592,6 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
 	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
-	purgeAppAndImageHash(ctx, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s", status.DisplayName)
 }
 
@@ -783,52 +608,23 @@ func quantifyChanges(config types.AppInstanceConfig,
 	var purgeReason, restartReason string
 	log.Infof("quantifyChanges for %s %s",
 		config.Key(), config.DisplayName)
-	if len(status.StorageStatusList) != len(config.StorageConfigList) {
-		str := fmt.Sprintf("number of volumes changed from %d to %d",
-			len(status.StorageStatusList),
-			len(config.StorageConfigList))
+	if len(status.VolumeRefStatusList) != len(config.VolumeRefConfigList) {
+		str := fmt.Sprintf("number of volume ref changed from %d to %d",
+			len(status.VolumeRefStatusList),
+			len(config.VolumeRefConfigList))
 		log.Infof(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
-		for _, sc := range config.StorageConfigList {
-			ss := lookupStorageStatus(&status, sc)
-			if ss == nil {
-				str := fmt.Sprintf("missing StorageStatus for (Name: %s, "+
-					"ImageSha256: %s, ImageID: %s, PurgeCounter: %d)",
-					sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
+		for _, vrc := range config.VolumeRefConfigList {
+			vrs := getVolumeRefStatusFromAIStatus(&status, vrc)
+			if vrs == nil {
+				str := fmt.Sprintf("Missing VolumeRefStatus for (VolumeID: %s, GenerationCounter: %d)",
+					vrc.VolumeID, vrc.GenerationCounter)
 				log.Errorf(str)
 				needPurge = true
 				purgeReason += str + "\n"
 				continue
-			}
-			if ss.ImageID != sc.ImageID {
-				str := fmt.Sprintf("storage imageID changed from %s to %s",
-					ss.ImageID, sc.ImageID)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if ss.ReadOnly != sc.ReadOnly {
-				str := fmt.Sprintf("storage ReadOnly changed from %v to %v for %s",
-					ss.ReadOnly, sc.ReadOnly, ss.ImageID)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if ss.Format != sc.Format {
-				str := fmt.Sprintf("storage Format changed from %v to %v for %s",
-					ss.Format, sc.Format, ss.ImageID)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if ss.MaxVolSize != sc.MaxVolSize {
-				str := fmt.Sprintf("storage MaxVolSize changed from %v to %v for %s",
-					ss.MaxVolSize, sc.MaxVolSize, ss.ImageID)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
 			}
 		}
 	}

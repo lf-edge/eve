@@ -6,173 +6,189 @@ package zedmanager
 // Code for the interface with VolumeMgr
 
 import (
+	"fmt"
+
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-// AddOrRefcountVolumeConfig makes sure we have a VolumeConfig with a non-zero
-// RefCount
-func AddOrRefcountVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID, purgeCounter uint32, ss types.StorageStatus) {
+// MaybeAddVolumeRefConfig publishes volume ref config with refcount
+// to the volumemgr
+func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
+	volumeID uuid.UUID, generationCounter int64) {
 
-	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, purgeCounter)
-	log.Infof("AddOrRefcountVolumeConfig for %s", key)
-	m := lookupVolumeConfig(ctx, key)
+	key := fmt.Sprintf("%s#%d", volumeID.String(), generationCounter)
+	log.Infof("MaybeAddVolumeRefConfig for %s", key)
+	m := lookupVolumeRefConfig(ctx, key)
 	if m != nil {
 		m.RefCount++
-		log.Infof("VolumeConfig exists for %s to refcount %d",
+		log.Infof("VolumeRefConfig exists for %s to refcount %d",
 			key, m.RefCount)
-		publishVolumeConfig(ctx, m)
+		publishVolumeRefConfig(ctx, m)
 	} else {
-		log.Debugf("AddOrRefcountVolumeConfig: add for %s", key)
-		// XXX hard-coded for OriginTypeDownload for now
-		d := types.DownloadOriginConfig{
-			ImageID:     ss.ImageID,
-			DatastoreID: ss.DatastoreID,
-			Name:        ss.Name,
-			NameIsURL:   ss.NameIsURL,
-			ImageSha256: ss.ImageSha256,
-			IsContainer: ss.IsContainer,
-			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-				types.AppImgObj),
-			MaxDownSize: ss.MaxDownSize,
-			FinalObjDir: ss.FinalObjDir, // XXX use?
-
-			CertificateChain: ss.CertificateChain,
-			ImageSignature:   ss.ImageSignature,
-			SignatureKey:     ss.SignatureKey,
+		log.Debugf("MaybeAddVolumeRefConfig: add for %s", key)
+		vrc := types.VolumeRefConfig{
+			VolumeID:          volumeID,
+			GenerationCounter: generationCounter,
+			RefCount:          1,
 		}
-		n := types.OldVolumeConfig{
-			BlobSha256:     blobSha256,
-			AppInstID:      appInstID,
-			VolumeID:       volumeID,
-			PurgeCounter:   purgeCounter,
-			DisplayName:    ss.Name,
-			Origin:         types.OriginTypeDownload,
-			DownloadOrigin: &d,
-			MaxVolSize:     ss.MaxVolSize,
-			ReadOnly:       ss.ReadOnly,
-			Format:         ss.Format,
-			Target:         ss.Target,
-			RefCount:       1,
-		}
-		publishVolumeConfig(ctx, &n)
+		publishVolumeRefConfig(ctx, &vrc)
 	}
 	base.NewRelationObject(base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.OldVolumeConfigLogType, key).Infof("App instance to volume relation.")
-	log.Infof("AddOrRefcountVolumeConfig done for %s", key)
+		base.VolumeRefConfigLogType, key).Infof("App instance to volume relation.")
+	log.Infof("MaybeAddVolumeRefConfig done for %s", key)
 }
 
-// MaybeRemoveVolumeConfig decreases the RefCount and deletes the VolumeConfig
+// MaybeRemoveVolumeRefConfig decreases the RefCount and deletes the VolumeRefConfig
 // when the RefCount reaches zero
-func MaybeRemoveVolumeConfig(ctx *zedmanagerContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID, purgeCounter uint32) {
+func MaybeRemoveVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
+	volumeID uuid.UUID, generationCounter int64) {
 
-	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, purgeCounter)
-	log.Infof("MaybeRemoveVolumeConfig for %s", key)
-	m := lookupVolumeConfig(ctx, key)
+	key := fmt.Sprintf("%s#%d", volumeID.String(), generationCounter)
+	log.Infof("MaybeRemoveVolumeRefConfig for %s", key)
+	m := lookupVolumeRefConfig(ctx, key)
 	if m == nil {
-		log.Infof("MaybeRemoveVolumeConfig: config missing for %s", key)
+		log.Infof("MaybeRemoveVolumeRefConfig: config missing for %s", key)
 		return
 	}
 	if m.RefCount == 0 {
-		log.Fatalf("MaybeRemoveVolumeConfig: Attempting to reduce "+
+		log.Fatalf("MaybeRemoveVolumeRefConfig: Attempting to reduce "+
 			"0 RefCount for %s", key)
 	}
 	m.RefCount--
 	if m.RefCount == 0 {
-		log.Infof("MaybeRemoveVolumeConfig deleting %s", key)
-		unpublishVolumeConfig(ctx, key)
+		log.Infof("MaybeRemoveVolumeRefConfig deleting %s", key)
+		unpublishVolumeRefConfig(ctx, key)
 	} else {
-		log.Infof("MaybeRemoveVolumeConfig remaining RefCount %d for %s",
+		log.Infof("MaybeRemoveVolumeRefConfig remaining RefCount %d for %s",
 			m.RefCount, key)
-		publishVolumeConfig(ctx, m)
+		publishVolumeRefConfig(ctx, m)
 	}
 	base.NewRelationObject(base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.OldVolumeConfigLogType, key).Infof("App instance to volume relation.")
+		base.VolumeRefConfigLogType, key).Infof("App instance to volume relation.")
+	log.Infof("MaybeRemoveVolumeRefConfig done for %s", key)
 }
 
-func lookupVolumeConfig(ctx *zedmanagerContext, key string) *types.OldVolumeConfig {
+func lookupVolumeRefConfig(ctx *zedmanagerContext, key string) *types.VolumeRefConfig {
 
-	pub := ctx.pubVolumeConfig
+	pub := ctx.pubVolumeRefConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeConfig(%s) not found", key)
+		log.Infof("lookupVolumeRefConfig(%s) not found", key)
 		return nil
 	}
-	config := c.(types.OldVolumeConfig)
+	config := c.(types.VolumeRefConfig)
 	return &config
 }
 
-// Note that this function returns the entry even if Pending* is set.
-func lookupVolumeStatus(ctx *zedmanagerContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID, purgeCounter uint32) *types.OldVolumeStatus {
+func lookupVolumeRefStatus(ctx *zedmanagerContext, key string) *types.VolumeRefStatus {
 
-	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, purgeCounter)
-	sub := ctx.subVolumeStatus
-	st, _ := sub.Get(key)
-	if st == nil {
-		log.Infof("lookupVolumeStatus(%s) not found", key)
+	sub := ctx.subVolumeRefStatus
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Infof("lookupVolumeRefStatus(%s) not found", key)
 		return nil
 	}
-	status := st.(types.OldVolumeStatus)
+	status := c.(types.VolumeRefStatus)
 	return &status
 }
 
-func publishVolumeConfig(ctx *zedmanagerContext,
-	status *types.OldVolumeConfig) {
+func publishVolumeRefConfig(ctx *zedmanagerContext, config *types.VolumeRefConfig) {
 
-	key := status.Key()
-	log.Infof("publishVolumeConfig(%s)", key)
-	pub := ctx.pubVolumeConfig
-	pub.Publish(key, *status)
+	key := config.Key()
+	log.Debugf("publishVolumeRefConfig(%s)", key)
+	pub := ctx.pubVolumeRefConfig
+	pub.Publish(key, *config)
+	log.Debugf("publishVolumeRefConfig(%s) Done", key)
 }
 
-func unpublishVolumeConfig(ctx *zedmanagerContext, uuidStr string) {
+func unpublishVolumeRefConfig(ctx *zedmanagerContext, key string) {
 
-	key := uuidStr
-	log.Infof("unpublishVolumeConfig(%s)", key)
-	pub := ctx.pubVolumeConfig
+	log.Debugf("unpublishVolumeRefConfig(%s)", key)
+	pub := ctx.pubVolumeRefConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishVolumeConfig(%s) not found", key)
+		log.Errorf("unpublishVolumeRefConfig(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
+	log.Debugf("unpublishVolumeRefConfig(%s) Done", key)
 }
 
-func handleVolumeStatusModify(ctxArg interface{}, key string,
+func handleVolumeRefStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(types.OldVolumeStatus)
+
+	status := statusArg.(types.VolumeRefStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleVolumeStatusModify: key:%s, name:%s",
+	log.Infof("handleVolumeRefStatusModify: key:%s, name:%s",
 		key, status.DisplayName)
-	// Process even if a Pending* flag is set to update progress
+	pub := ctx.pubAppInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		aiStatus := st.(types.AppInstanceStatus)
+		for _, vrs := range aiStatus.VolumeRefStatusList {
+			if vrs.GenerationCounter == status.GenerationCounter &&
+				vrs.VolumeID == status.VolumeID {
 
-	if status.AppInstID != nilUUID {
-		updateAIStatusUUID(ctx, status.AppInstID.String())
-	} else {
-		// XXX insert named volumes - process based on volumeID
-		log.Warnf("Unknown volume: sha %s volume %s", status.BlobSha256,
-			status.VolumeID)
+				updateAIStatusUUID(ctx, aiStatus.UUIDandVersion.UUID.String())
+			}
+		}
 	}
-	log.Infof("handleVolumeStatusModify done for %s", key)
+	log.Infof("handleVolumeRefStatusModify done for %s", key)
 }
 
-func handleVolumeStatusDelete(ctxArg interface{}, key string,
+func handleVolumeRefStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleVolumeStatusDelete for %s", key)
+	status := statusArg.(types.VolumeRefStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	status := statusArg.(types.OldVolumeStatus)
-	if status.AppInstID != nilUUID {
-		updateAIStatusUUID(ctx, status.AppInstID.String())
-	} else {
-		// XXX insert named volumes - process based on volumeID
-		log.Warnf("Unknown volume: sha %s volume %s", status.BlobSha256,
-			status.VolumeID)
+	log.Infof("handleVolumeRefStatusDelete: key:%s, name:%s",
+		key, status.DisplayName)
+	pub := ctx.pubAppInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		aiStatus := st.(types.AppInstanceStatus)
+		for _, vrs := range aiStatus.VolumeRefStatusList {
+			if vrs.GenerationCounter == status.GenerationCounter &&
+				vrs.VolumeID == status.VolumeID {
+
+				updateAIStatusUUID(ctx, aiStatus.UUIDandVersion.UUID.String())
+			}
+		}
 	}
-	log.Infof("handleVolumeStatusDelete done for %s", key)
+	log.Infof("handleVolumeRefStatusDelete done for %s", key)
+}
+
+func getVolumeRefStatusFromAIStatus(status *types.AppInstanceStatus,
+	vrc types.VolumeRefConfig) *types.VolumeRefStatus {
+
+	log.Debugf("getVolumeRefStatusFromAIStatus(%v)", vrc.Key())
+	for i := range status.VolumeRefStatusList {
+		vrs := &status.VolumeRefStatusList[i]
+		if vrs.VolumeID == vrc.VolumeID && vrs.GenerationCounter == vrc.GenerationCounter {
+			log.Debugf("getVolumeRefStatusFromAIStatus(%v) found %s generationCounter %d",
+				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter)
+			return vrs
+		}
+	}
+	log.Debugf("getVolumeRefStatusFromAIStatus(%v) Done", vrc.Key())
+	return nil
+}
+
+func getVolumeRefConfigFromAIConfig(config *types.AppInstanceConfig,
+	vrs types.VolumeRefStatus) *types.VolumeRefConfig {
+
+	log.Debugf("getVolumeRefConfigFromAIConfig(%v)", vrs.Key())
+	for i := range config.VolumeRefConfigList {
+		vrc := &config.VolumeRefConfigList[i]
+		if vrc.VolumeID == vrs.VolumeID && vrc.GenerationCounter == vrs.GenerationCounter {
+			log.Debugf("getVolumeRefConfigFromAIConfig(%v) found %s generationCounter %d",
+				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter)
+			return vrc
+		}
+	}
+	log.Debugf("getVolumeRefConfigFromAIConfig(%v) Done", vrs.Key())
+	return nil
 }

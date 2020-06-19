@@ -290,7 +290,6 @@ type VifInfo struct {
 // use xvd
 type DiskConfig struct {
 	ImageID      uuid.UUID // UUID of the image
-	ImageSha256  string    // sha256 of immutable image
 	FileLocation string    // Where to find the volume
 	ReadOnly     bool
 	Format       zconfig.Format
@@ -298,7 +297,6 @@ type DiskConfig struct {
 
 type DiskStatus struct {
 	ImageID      uuid.UUID // UUID of immutable image
-	ImageSha256  string    // sha256 of immutable image
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format

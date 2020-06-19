@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -119,6 +120,12 @@ func (status VolumeStatus) IsContainer() bool {
 	return false
 }
 
+// PathName returns the path of the volume
+func (status VolumeStatus) PathName() string {
+	return fmt.Sprintf("%s/%s#%d.%s", status.VolumeDir, status.VolumeID.String(),
+		status.GenerationCounter, strings.ToLower(status.ContentFormat.String()))
+}
+
 // LogCreate :
 func (status VolumeStatus) LogCreate() {
 	logObject := base.NewLogObject(base.VolumeStatusLogType, status.DisplayName,
@@ -181,4 +188,60 @@ func (status VolumeStatus) LogDelete() {
 // LogKey :
 func (status VolumeStatus) LogKey() string {
 	return string(base.VolumeStatusLogType) + "-" + status.Key()
+}
+
+// VolumeRefConfig : Reference to a Volume specified separately in the API
+// If a volume is purged (re-created from scratch) it will either have a new
+// UUID or a new generationCount
+type VolumeRefConfig struct {
+	VolumeID          uuid.UUID
+	GenerationCounter int64
+	RefCount          uint
+}
+
+// Key : VolumeRefConfig unique key
+func (config VolumeRefConfig) Key() string {
+	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
+}
+
+// VolumeKey : Unique key of volume referenced in VolumeRefConfig
+func (config VolumeRefConfig) VolumeKey() string {
+	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
+}
+
+// VolumeRefStatus : Reference to a Volume specified separately in the API
+// If a volume is purged (re-created from scratch) it will either have a new
+// UUID or a new generationCount
+type VolumeRefStatus struct {
+	VolumeID           uuid.UUID
+	GenerationCounter  int64
+	RefCount           uint
+	State              SwState
+	ActiveFileLocation string
+	ContentFormat      zconfig.Format
+	ReadOnly           bool
+	DisplayName        string
+	MaxVolSize         uint64
+	PendingAdd         bool // Flag to identify whether volume ref config published or not
+
+	ErrorAndTimeWithSource
+}
+
+// Key : VolumeRefStatus unique key
+func (status VolumeRefStatus) Key() string {
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(), status.GenerationCounter)
+}
+
+// VolumeKey : Unique key of volume referenced in VolumeRefStatus
+func (status VolumeRefStatus) VolumeKey() string {
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(), status.GenerationCounter)
+}
+
+// IsContainer will return true if content tree attached
+// to the volume ref is of container type
+func (status VolumeRefStatus) IsContainer() bool {
+	if status.ContentFormat == zconfig.Format_CONTAINER {
+		return true
+	}
+	return false
 }

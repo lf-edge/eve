@@ -8,6 +8,7 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -16,6 +17,11 @@ import (
 )
 
 var volumeHash []byte
+
+// volumeKey returns the key of the VM and OCI volumes
+func volumeKey(volumeID string, generationCounter int64) string {
+	return fmt.Sprintf("%s#%d", volumeID, generationCounter)
+}
 
 // volume parsing routine
 func parseVolumeConfig(ctx *getconfigContext,
@@ -44,7 +50,8 @@ func parseVolumeConfig(ctx *getconfigContext,
 	for idStr := range items {
 		found := false
 		for _, cfgVolume := range cfgVolumeList {
-			if cfgVolume.GetUuid() == idStr {
+			vKey := volumeKey(cfgVolume.GetUuid(), cfgVolume.GetGenerationCount())
+			if vKey == idStr {
 				found = true
 				break
 			}

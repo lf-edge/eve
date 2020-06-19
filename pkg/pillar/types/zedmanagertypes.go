@@ -59,7 +59,7 @@ type AppInstanceConfig struct {
 	//	so the cloud gets it.
 	Errors              []string
 	FixedResources      VmConfig // CPU etc
-	StorageConfigList   []StorageConfig
+	VolumeRefConfigList []VolumeRefConfig
 	Activate            bool
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
@@ -152,16 +152,16 @@ func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
 
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
-	UUIDandVersion     UUIDandVersion
-	DisplayName        string
-	DomainName         string // Once booted
-	Activated          bool
-	ActivateInprogress bool     // Needed for cleanup after failure
-	FixedResources     VmConfig // CPU etc
-	StorageStatusList  []StorageStatus
-	EIDList            []EIDStatusDetails
-	OverlayNetworks    []OverlayNetworkStatus
-	UnderlayNetworks   []UnderlayNetworkStatus
+	UUIDandVersion      UUIDandVersion
+	DisplayName         string
+	DomainName          string // Once booted
+	Activated           bool
+	ActivateInprogress  bool     // Needed for cleanup after failure
+	FixedResources      VmConfig // CPU etc
+	VolumeRefStatusList []VolumeRefStatus
+	EIDList             []EIDStatusDetails
+	OverlayNetworks     []OverlayNetworkStatus
+	UnderlayNetworks    []UnderlayNetworkStatus
 	// Copies of config to determine diffs
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
@@ -385,11 +385,6 @@ type StorageStatus struct {
 	FinalObjDir        string  // Installation dir; may differ from verified
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
-}
-
-// ResolveKey will return the key of resolver config/status
-func (ss *StorageStatus) ResolveKey() string {
-	return fmt.Sprintf("%s+%s+%v", ss.DatastoreID.String(), ss.Name, ss.PurgeCounter)
 }
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct

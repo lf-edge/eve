@@ -176,10 +176,13 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				status.Key(), status.DisplayName, status.ContentID)
 			errStr := fmt.Sprintf("ContentTreeStatus(%s) attached to volume %s is nil",
 				status.ContentID.String(), status.DisplayName)
-			status.SetErrorWithSource(errStr,
-				types.VolumeStatus{}, time.Now())
+			status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
 			changed = true
 			return changed, false
+		} else if status.IsErrorSource(types.ContentTreeStatus{}) {
+			log.Infof("doUpdate: Clearing volume error %s", status.Error)
+			status.ClearErrorWithSource()
+			changed = true
 		}
 		if status.Progress != ctStatus.Progress {
 			status.Progress = ctStatus.Progress
@@ -191,8 +194,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName, ctStatus.Error)
 				errStr := fmt.Sprintf("Found error in content tree %s attached to volume %s: %v",
 					ctStatus.DisplayName, status.DisplayName, ctStatus.Error)
-				status.SetErrorWithSource(errStr,
-					types.VolumeStatus{}, time.Now())
+				status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
 				changed = true
 				return changed, false
 			}
@@ -210,6 +212,11 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			changed = true
 			// Asynch creation; ensure we have requested it
 			MaybeAddWorkCreate(ctx, status)
+		}
+		if status.IsErrorSource(types.ContentTreeStatus{}) {
+			log.Infof("doUpdate: Clearing volume error %s", status.Error)
+			status.ClearErrorWithSource()
+			changed = true
 		}
 		if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
 			vr := lookupVolumeWorkResult(ctx, status.Key())
@@ -230,6 +237,8 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					changed = true
 				}
 				if vr.Error != nil {
+					log.Errorf("doUpdate: Error recieved from the volume worker %v",
+						vr.Error)
 					status.SetErrorWithSource(vr.Error.Error(),
 						types.VolumeStatus{}, vr.ErrorTime)
 					changed = true
@@ -507,6 +516,7 @@ func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) {
 			changed, _ := doUpdateVol(ctx, &status)
 			if changed {
 				publishVolumeStatus(ctx, &status)
+				updateVolumeRefStatus(ctx, &status)
 			}
 		}
 	}
@@ -531,6 +541,7 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 			changed, _ := doUpdateVol(ctx, &status)
 			if changed {
 				publishVolumeStatus(ctx, &status)
+				updateVolumeRefStatus(ctx, &status)
 			}
 		}
 	}
