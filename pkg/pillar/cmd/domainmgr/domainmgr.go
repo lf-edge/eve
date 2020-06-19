@@ -1364,7 +1364,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		}
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
-		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format

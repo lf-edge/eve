@@ -8,40 +8,10 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
-	"github.com/shirou/gopsutil/disk"
 	log "github.com/sirupsen/logrus"
 )
-
-// Find all the config which refer to this imageID.
-func updateAIStatusWithStorageImageID(ctx *zedmanagerContext, imageID uuid.UUID) {
-
-	log.Infof("updateAIStatusWithStorageImageID for %s", imageID)
-
-	pub := ctx.pubAppInstanceStatus
-	items := pub.GetAll()
-	found := false
-	for _, st := range items {
-		status := st.(types.AppInstanceStatus)
-		log.Debugf("updateAIStatusWithStorageImageID Processing "+
-			"AppInstanceConfig for UUID %s",
-			status.UUIDandVersion.UUID)
-		for ssIndx := range status.StorageStatusList {
-			ssPtr := &status.StorageStatusList[ssIndx]
-			if uuid.Equal((*ssPtr).ImageID, imageID) {
-				log.Infof("Found StorageStatus URL %s imageID %s",
-					ssPtr.Name, imageID)
-				updateAIStatusUUID(ctx, status.Key())
-				found = true
-			}
-		}
-	}
-	if !found {
-		log.Warnf("updateAIStatusWithStorageImageID for %s not found", imageID)
-	}
-}
 
 // Update this AppInstanceStatus generate config updates to
 // the microservices
@@ -123,31 +93,6 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	}
 }
 
-// Find all the Status which refer to this imageID
-func removeAIStatusImageID(ctx *zedmanagerContext, imageID uuid.UUID) {
-
-	log.Infof("removeAIStatusImageID for %s", imageID)
-	pub := ctx.pubAppInstanceStatus
-	items := pub.GetAll()
-	found := false
-	for _, st := range items {
-		status := st.(types.AppInstanceStatus)
-		log.Debugf("Processing AppInstanceStatus for UUID %s",
-			status.UUIDandVersion.UUID)
-		for _, ss := range status.StorageStatusList {
-			if uuid.Equal(ss.ImageID, imageID) {
-				log.Debugf("Found StorageStatus URL %s imageID %s",
-					ss.Name, ss.ImageID)
-				updateOrRemove(ctx, status)
-				found = true
-			}
-		}
-	}
-	if !found {
-		log.Warnf("removeAIStatusImageID for %s not found", imageID)
-	}
-}
-
 // If we have an AIConfig we update it - the image might have disappeared.
 // Otherwise we proceeed with remove.
 func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
@@ -165,71 +110,6 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 				uuidStr)
 			publishAppInstanceStatus(ctx, &status)
 		}
-	}
-}
-
-func dom0DiskReservedSize(ctxPtr *zedmanagerContext, deviceDiskSize uint64) uint64 {
-	dom0MinDiskUsagePercent := ctxPtr.globalConfig.GlobalValueInt(
-		types.Dom0MinDiskUsagePercent)
-	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
-		(float64(dom0MinDiskUsagePercent) * 0.01))
-	maxDom0DiskSize := uint64(ctxPtr.globalConfig.GlobalValueInt(
-		types.Dom0DiskUsageMaxBytes))
-	if diskReservedForDom0 > maxDom0DiskSize {
-		log.Debugf("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
-			"maxDom0DiskSize (%d)", maxDom0DiskSize)
-		diskReservedForDom0 = maxDom0DiskSize
-	}
-	return diskReservedForDom0
-}
-
-// getRemainingAppDiskSpace returns how many bytes remain for app usage
-// plus a string for printing the current app disk usage (latter used
-// if there isn't enough)
-func getRemainingAppDiskSpace(ctxPtr *zedmanagerContext) (uint64, string, error) {
-
-	var totalAppDiskSize uint64
-	appDiskSizeList := "" // In case caller wants to print an error
-
-	pub := ctxPtr.pubAppInstanceStatus
-	items := pub.GetAll()
-	for _, iterStatusJSON := range items {
-		iterStatus := iterStatusJSON.(types.AppInstanceStatus)
-		if iterStatus.State < types.CREATED_VOLUME {
-			// XXX look at MaxSizeBytes? Need to skip caller?
-			log.Debugf("App %s State %d < CREATED_VOLUME",
-				iterStatus.UUIDandVersion, iterStatus.State)
-			continue
-		}
-		// XXX does this work for a container??
-		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
-		if err != nil {
-			log.Warnf("getRemainingAppDiskSpace: err: %s", err.Error())
-		}
-		totalAppDiskSize += appDiskSize
-		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d)\n%s\n",
-			iterStatus.UUIDandVersion.UUID.String(), appDiskSize, diskSizeList)
-	}
-	deviceDiskUsage, err := disk.Usage(types.PersistDir)
-	if err != nil {
-		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
-		log.Errorf("diskSizeReservedForDom0: err:%s", err)
-		return 0, appDiskSizeList, err
-	}
-	deviceDiskSize := deviceDiskUsage.Total
-	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
-	var allowedDeviceDiskSizeForApps uint64
-	if deviceDiskSize < diskReservedForDom0 {
-		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
-			deviceDiskSize, diskReservedForDom0)
-		log.Errorf("***getRemainingAppDiskSpace: err: %s", err)
-		return ^uint64(0), appDiskSizeList, err
-	}
-	allowedDeviceDiskSizeForApps = deviceDiskSize - diskReservedForDom0
-	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
-		return 0, appDiskSizeList, nil
-	} else {
-		return allowedDeviceDiskSizeForApps - totalAppDiskSize, appDiskSizeList, nil
 	}
 }
 
@@ -307,10 +187,10 @@ func doInstall(ctx *zedmanagerContext,
 	var errorTime time.Time
 	changed := false
 
-	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d",
-			len(config.StorageConfigList),
-			len(status.StorageStatusList))
+	if len(config.VolumeRefConfigList) != len(status.VolumeRefStatusList) {
+		errString := fmt.Sprintf("Mismatch in volumeRefConfig vs. Status length: %d vs %d",
+			len(config.VolumeRefConfigList),
+			len(status.VolumeRefStatusList))
 		if status.PurgeInprogress == types.NotInprogress {
 			log.Errorln(errString)
 			status.SetError(errString, time.Now())
@@ -319,90 +199,91 @@ func doInstall(ctx *zedmanagerContext,
 		log.Warnln(errString)
 	}
 
-	// If we are purging and we failed to activate due some images
-	// which are now removed from StorageConfigList we remove them
+	// If we are purging and we failed to activate due some volumes
+	// which are now removed from VolumeRefConfigList we remove them
 	if status.PurgeInprogress == types.RecreateVolumes && !status.Activated {
 		removed := false
-		newSs := []types.StorageStatus{}
-		for i := range status.StorageStatusList {
-			ss := &status.StorageStatusList[i]
-			sc := lookupStorageConfig(&config, *ss)
-			if sc != nil {
-				newSs = append(newSs, *ss)
+		newVrs := []types.VolumeRefStatus{}
+		for i := range status.VolumeRefStatusList {
+			vrs := &status.VolumeRefStatusList[i]
+			vrc := getVolumeRefConfigFromAIConfig(&config, *vrs)
+			if vrc != nil {
+				newVrs = append(newVrs, *vrs)
 				continue
 			}
-			log.Infof("Removing potentially bad StorageStatus %v",
-				ss)
-			if status.IsErrorSource(ss.ErrorSourceType) {
+			log.Infof("Removing potentially bad VolumeRefStatus %v",
+				vrs)
+			if status.IsErrorSource(vrs.ErrorSourceType) {
 				log.Infof("Removing error %s", status.Error)
 				status.ClearErrorWithSource()
 			}
-			c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
-			if c {
-				// Keep in StorageStatus until we get an update
+			MaybeRemoveVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
+				vrs.VolumeID, vrs.GenerationCounter)
+			if !vrs.PendingAdd {
+				vrs.PendingAdd = true
+				// Keep in VolumeRefStatus until we get an update
 				// from volumemgr
-				newSs = append(newSs, *ss)
+				newVrs = append(newVrs, *vrs)
 				removed = true
 			}
-			deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-				ss.ImageID, ss.PurgeCounter)
 		}
-		log.Infof("purge inactive (%s) storageStatus from %d to %d",
-			config.Key(), len(status.StorageStatusList), len(newSs))
-		status.StorageStatusList = newSs
+		log.Infof("purge inactive (%s) volumeRefStatus from %d to %d",
+			config.Key(), len(status.VolumeRefStatusList), len(newVrs))
+		status.VolumeRefStatusList = newVrs
 		if removed {
-			log.Infof("Waiting for bad StorageStatus to go away for AppInst %s",
+			log.Infof("Waiting for bad VolumeRefStatus to go away for AppInst %s",
 				status.Key())
 			return removed, false
 		}
 	}
 
-	// Any StorageStatus to add?
-	for _, sc := range config.StorageConfigList {
-		ss := lookupStorageStatus(status, sc)
-		if ss != nil {
+	// Any VolumeRefStatus to add?
+	for _, vrc := range config.VolumeRefConfigList {
+		vrs := getVolumeRefStatusFromAIStatus(status, vrc)
+		if vrs != nil {
 			continue
 		}
 		if status.PurgeInprogress == types.NotInprogress {
-			errString := fmt.Sprintf("New storageConfig (Name: %s, "+
-				"ImageSha256: %s, ImageID: %s, PurgeCounter: %d) found. New Storage configs are "+
-				"not allowed unless purged",
-				sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
+			errString := fmt.Sprintf("New volumeRefConfig (VolumeID: %s, GenerationCounter: %d) found."+
+				"New Storage configs are not allowed unless purged",
+				vrc.VolumeID, vrc.GenerationCounter)
 			log.Error(errString)
 			status.SetError(errString, time.Now())
 			return true, false
 		}
-		newSs := types.StorageStatus{}
-		newSs.UpdateFromStorageConfig(sc)
-		log.Infof("Adding new StorageStatus %v", newSs)
-		status.StorageStatusList = append(status.StorageStatusList, newSs)
+		newVrs := types.VolumeRefStatus{}
+		newVrs.VolumeID = vrc.VolumeID
+		newVrs.GenerationCounter = vrc.GenerationCounter
+		newVrs.RefCount = vrc.RefCount
+		newVrs.PendingAdd = true
+		log.Infof("Adding new VolumeRefStatus %v", newVrs)
+		status.VolumeRefStatusList = append(status.VolumeRefStatusList, newVrs)
 		changed = true
 	}
 
-	// Do we have some Volume work?
 	if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress {
-		for i := range status.StorageStatusList {
-			ss := &status.StorageStatusList[i]
-			c := doInstallStorageStatus(ctx, config, ss)
+		for i := range status.VolumeRefStatusList {
+			vrs := &status.VolumeRefStatusList[i]
+			c := doInstallVolumeRef(ctx, config, status, vrs)
 			if c {
 				changed = true
 			}
 		}
 	}
-	// Determine minimum state and errors across all of StorageStatus
+	// Determine minimum state and errors across all of VolumeRefStatus
 	minState := types.MAXSTATE
-	for _, ss := range status.StorageStatusList {
-		if ss.State < minState {
-			minState = ss.State
+	for _, vrs := range status.VolumeRefStatusList {
+		if vrs.State < minState {
+			minState = vrs.State
 		}
-		if ss.HasError() {
-			errorSource = ss.ErrorSourceType
-			errorTime = ss.ErrorTime
-			allErrors = appendError(allErrors, ss.Error)
+		if vrs.HasError() {
+			errorSource = vrs.ErrorSourceType
+			errorTime = vrs.ErrorTime
+			allErrors = appendError(allErrors, vrs.Error)
 		}
 	}
 	if minState == types.MAXSTATE {
-		// No StorageStatus
+		// No VolumeRefStatus
 		minState = types.INITIAL
 	}
 	if status.State >= types.BOOTING {
@@ -433,125 +314,37 @@ func doInstall(ctx *zedmanagerContext,
 	return changed, true
 }
 
-// If StorageStatus was updated we return true
-func doInstallStorageStatus(ctx *zedmanagerContext,
-	config types.AppInstanceConfig, ss *types.StorageStatus) bool {
+// If VolumeRefStatus was updated we return true
+func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
+	status *types.AppInstanceStatus, vrs *types.VolumeRefStatus) bool {
 
 	changed := false
-	log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s, purgeCounter %d",
-		ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
+	if vrs.PendingAdd {
+		MaybeAddVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
+			vrs.VolumeID, vrs.GenerationCounter)
+		vrs.PendingAdd = false
+		changed = true
+	}
+	log.Infof("doInstallVolumeRef: VolumeRefStatus volumeID %s, generationCounter %d",
+		vrs.VolumeID, vrs.GenerationCounter)
 
-	if !ss.HasVolumemgrRef {
-		if ss.IsContainer {
-			maybeLatchImageSha(ctx, config, ss)
-		}
-		if ss.IsContainer && ss.ImageSha256 == "" {
-			rs := lookupResolveStatus(ctx, ss.ResolveKey())
-			if rs == nil {
-				log.Infof("Resolve status not found for %s",
-					ss.ImageID)
-				ss.HasResolverRef = true
-				MaybeAddResolveConfig(ctx, ss)
-				ss.State = types.RESOLVING_TAG
-				changed = true
-				return changed
-			}
-			log.Infof("Processing ResolveStatus for storage status (%v) in app instance (%s)",
-				ss.ImageID, config.Key())
-			ss.State = types.RESOLVED_TAG
-			changed = true
-			if rs.HasError() {
-				errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
-					ss.ResolveKey(), rs.ImageSha256, rs.Error)
-				log.Error(errStr)
-				ss.SetErrorWithSource(errStr, types.ResolveStatus{},
-					rs.ErrorTime)
-				changed = true
-				return changed
-			} else if rs.ImageSha256 == "" {
-				errStr := fmt.Sprintf("Received empty SHA from resolver for %s, SHA (%s): %s",
-					ss.ResolveKey(), rs.ImageSha256, rs.Error)
-				log.Error(errStr)
-				ss.SetErrorWithSource(errStr, types.ResolveStatus{},
-					rs.ErrorTime)
-				changed = true
-				return changed
-			} else if ss.IsErrorSource(types.ResolveStatus{}) {
-				log.Infof("Clearing resolver error %s", ss.Error)
-				ss.ClearErrorWithSource()
-				changed = true
-			}
-			log.Infof("Added Image SHA (%s) for storage status (%s)",
-				rs.ImageSha256, ss.ImageID)
-			ss.ImageSha256 = rs.ImageSha256
-			ss.HasResolverRef = false
-			ss.Name = maybeInsertSha(ss.Name, ss.ImageSha256)
-			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-				ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
-			maybeLatchImageSha(ctx, config, ss)
-			deleteResolveConfig(ctx, rs.Key())
-			changed = true
-		}
-		log.Infof("doInstall !HasVolumemgrRef for %s", ss.Name)
-		// XXX note that we use the ImageID for the VolumeID
-		// argument since we do not have a VolumeID
-		AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
-			config.UUIDandVersion.UUID, ss.ImageID,
-			ss.PurgeCounter, *ss)
-		ss.HasVolumemgrRef = true
-		changed = true
-	}
-	vs := lookupVolumeStatus(ctx, ss.ImageSha256,
-		config.UUIDandVersion.UUID, ss.ImageID, ss.PurgeCounter)
-	if vs == nil || vs.RefCount == 0 {
-		if vs == nil {
-			log.Infof("VolumeStatus not found. name: %s",
-				ss.Name)
-		} else {
-			log.Infof("VolumeStatus RefCount zero. name: %s",
-				ss.Name)
-		}
-		// Downloader/verifier will fill in more specific state
-		// once we get a VolumeStatus from the volumemgr.
-		// To avoid jumping to CREATING_VOLUME to DOWNLOADING,
-		// DOWNLOADED, VERIFYING, VERIFIED, and then back to
-		// CREATING_VOLUME we don't set CREATING_VOLUME for all
-		// types
-		// XXX but we only do types.OriginTypeDownload from
-		// zedmanager so no change to ss.State
+	// VolumeRefStatus in app instance status is updated with the volume
+	// ref status published from the volumemgr if status gets changed
+	pubsubVrs := lookupVolumeRefStatus(ctx, vrs.Key())
+	if pubsubVrs == nil {
+		log.Infof("doInstallVolumeRef: Volumemgr VolumeRefStatus not found. key: %s", vrs.Key())
 		return changed
 	}
-	if vs.FileLocation != ss.ActiveFileLocation {
-		ss.ActiveFileLocation = vs.FileLocation
+	if *pubsubVrs != *vrs {
+		*vrs = *pubsubVrs
 		changed = true
-		log.Infof("From VolumeStatus set ActiveFileLocation to %s for %s",
-			vs.FileLocation, ss.Name)
+		log.Infof("VolumeRefStatus updated for %s", vrs.Key())
 	}
-	if vs.State != ss.State {
-		ss.State = vs.State
+	if vrs.IsContainer() && !status.IsContainer {
+		status.IsContainer = true
 		changed = true
-	}
-	if ss.MaxDownSize != vs.DownloadOrigin.MaxDownSize {
-		ss.MaxDownSize = vs.DownloadOrigin.MaxDownSize
-	}
-	if vs.Progress != ss.Progress {
-		ss.Progress = vs.Progress
-		changed = true
-	}
-	if vs.Pending() {
-		log.Infof("lookupVolumeStatus %s Pending", ss.Name)
-		return changed
-	}
-	if vs.HasError() {
-		log.Errorf("Received error from volumemgr for %s: %s",
-			ss.Name, vs.Error)
-		ss.SetErrorWithSource(vs.Error,
-			types.OldVolumeStatus{}, vs.ErrorTime)
-		changed = true
-	} else if ss.IsErrorSource(types.OldVolumeStatus{}) {
-		log.Infof("Clearing volumemgr error %s", ss.Error)
-		ss.ClearErrorWithSource()
-		changed = true
+		log.Infof("doInstallVolumeRef: Updated IsContainer flag in app instance status to %v",
+			status.IsContainer)
 	}
 	return changed
 }
@@ -797,25 +590,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for DomainStatus !Pending for %s", uuidStr)
 		return changed
 	}
-	// Update Vdev from DiskStatus
-	for _, disk := range ds.DiskStatusList {
-		found := false
-		for i := range status.StorageStatusList {
-			ss := &status.StorageStatusList[i]
-			if uuid.Equal(ss.ImageID, disk.ImageID) {
-				found = true
-				if ss.Vdev != disk.Vdev {
-					log.Infof("Update SSL Vdev for %s: %s",
-						uuidStr, disk.Vdev)
-					ss.Vdev = disk.Vdev
-					changed = true
-				}
-			}
-		}
-		if !found {
-			log.Infof("No vdev for %s", uuidStr)
-		}
-	}
 	log.Infof("Done with DomainStatus for %s", uuidStr)
 
 	if !status.Activated {
@@ -879,32 +653,6 @@ func updateVifUsed(statusPtr *types.AppInstanceStatus, ds types.DomainStatus) bo
 	return changed
 }
 
-func lookupStorageStatus(status *types.AppInstanceStatus, sc types.StorageConfig) *types.StorageStatus {
-
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		if ss.ImageID == sc.ImageID && ss.PurgeCounter == sc.PurgeCounter {
-			log.Debugf("lookupStorageStatus found %s %s purgeCounter %d",
-				ss.Name, ss.ImageID, ss.PurgeCounter)
-			return ss
-		}
-	}
-	return nil
-}
-
-func lookupStorageConfig(config *types.AppInstanceConfig, ss types.StorageStatus) *types.StorageConfig {
-
-	for i := range config.StorageConfigList {
-		sc := &config.StorageConfigList[i]
-		if ss.ImageID == sc.ImageID && ss.PurgeCounter == sc.PurgeCounter {
-			log.Debugf("lookupStorageConfig found SC %s %s purgeCounter %d",
-				sc.Name, sc.ImageID, sc.PurgeCounter)
-			return sc
-		}
-	}
-	return nil
-}
-
 func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	status *types.AppInstanceStatus) bool {
 
@@ -912,48 +660,28 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 
 	changed := false
 	// Process the StorageStatusList items which are not in StorageConfigList
-	newSs := []types.StorageStatus{}
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		sc := lookupStorageConfig(&config, *ss)
-		if sc != nil {
-			newSs = append(newSs, *ss)
+	newVrs := []types.VolumeRefStatus{}
+	for i := range status.VolumeRefStatusList {
+		vrs := &status.VolumeRefStatusList[i]
+		vrc := getVolumeRefConfigFromAIConfig(&config, *vrs)
+		if vrc != nil {
+			newVrs = append(newVrs, *vrs)
 			continue
 		}
-		log.Infof("purgeCmdDone(%s) unused SS %s %s purgeCounter %d",
-			config.Key(), ss.Name, ss.ImageID, ss.PurgeCounter)
-		c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
-		if c {
-			changed = true
-		}
-		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-			ss.ImageID, ss.PurgeCounter)
+		log.Infof("purgeCmdDone(%s) unused volume ref %s generationCounter %d",
+			config.Key(), vrs.VolumeID, vrs.GenerationCounter)
+		MaybeRemoveVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
+			vrs.VolumeID, vrs.GenerationCounter)
+		changed = true
 	}
-	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d",
-		config.Key(), len(status.StorageStatusList), len(newSs))
-	status.StorageStatusList = newSs
+	log.Infof("purgeCmdDone(%s) volumeRefStatus from %d to %d",
+		config.Key(), len(status.VolumeRefStatusList), len(newVrs))
+	status.VolumeRefStatusList = newVrs
 	// Update persistent counter
 	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
 		status.UUIDandVersion.UUID,
 		int(status.PurgeCmd.Counter),
 		false, "purgeCmdCounter")
-	return changed
-}
-
-// MaybeRemoveStorageStatus returns changed bool and updates StorageStatus
-func MaybeRemoveStorageStatus(ctx *zedmanagerContext, AppInstID uuid.UUID,
-	ss *types.StorageStatus) bool {
-
-	changed := false
-	log.Infof("MaybeRemoveStorageStatus: removing StorageStatus for %s",
-		ss.Name)
-
-	// Decrease refcount if we had increased it
-	if ss.HasVolumemgrRef {
-		MaybeRemoveVolumeConfig(ctx, ss.ImageSha256, AppInstID, ss.ImageID, ss.PurgeCounter)
-		ss.HasVolumemgrRef = false
-		changed = true
-	}
 	return changed
 }
 
@@ -1150,16 +878,13 @@ func doUninstall(ctx *zedmanagerContext, appInstID uuid.UUID,
 	changed := false
 	del := false
 
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		c := MaybeRemoveStorageStatus(ctx, appInstID, ss)
-		if c {
-			changed = true
-		}
-		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
-			ss.ImageID, ss.PurgeCounter)
+	for i := range status.VolumeRefStatusList {
+		vrs := &status.VolumeRefStatusList[i]
+		MaybeRemoveVolumeRefConfig(ctx, appInstID,
+			vrs.VolumeID, vrs.GenerationCounter)
+		changed = true
 	}
-	log.Debugf("Done with all volumemgr removes for %s",
+	log.Debugf("Done with all volume refs removes for %s",
 		appInstID)
 
 	del = true
