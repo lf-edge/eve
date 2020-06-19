@@ -34,6 +34,11 @@ func (status *CipherContext) ControllerCertKey() string {
 	return hex.EncodeToString(status.ControllerCertHash)
 }
 
+// EveNodeCertKey :
+func (status *CipherContext) EveNodeCertKey() string {
+	return hex.EncodeToString(status.DeviceCertHash)
+}
+
 // CipherBlockStatus : Object specific encryption information
 type CipherBlockStatus struct {
 	CipherBlockID   string // constructed using individual reference
