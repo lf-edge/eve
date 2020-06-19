@@ -331,7 +331,7 @@ func newKvm() Hypervisor {
 		return kvmContext{
 			domains:      map[string]int{},
 			devicemodel:  "virt",
-			dmExec:       "qemu-system-aarch64",
+			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
 			dmArgs:       []string{"-display", "none", "-daemonize", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "pty"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{},

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Zededa, Inc.
+// Copyright (c) 2019-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package pubsub
@@ -45,10 +45,10 @@ func parseTemplate(sb []byte, targetType reflect.Type) (interface{}, error) {
 	return val.Interface(), nil
 }
 
-func lookupSlave(slaveCollection LocalCollection, key string) []byte {
-	for slaveKey := range slaveCollection {
-		if slaveKey == key {
-			res := slaveCollection[slaveKey]
+func lookupLocal(localCollection LocalCollection, key string) []byte {
+	for localKey := range localCollection {
+		if localKey == key {
+			res := localCollection[localKey]
 			return res
 		}
 	}

@@ -3,7 +3,7 @@
 
 syntax = "proto3";
 
-import "evecommon/evecommon.proto";
+import "certs/certs.proto";
 
 option go_package  = "github.com/lf-edge/eve/api/go/attest";
 option java_package = "org.lfedge.eve.attest";
@@ -13,7 +13,7 @@ option java_package = "org.lfedge.eve.attest";
 message ZAttestReq {
   ZAttestReqType reqType = 1;  //type of the request
   ZAttestQuote quote = 2;      //attestation quote msg
-  repeated org.lfedge.eve.common.ZCert certs = 3; // eve node generated certificate
+  repeated ZCert certs = 3; //X509 certs in .PEM format, signed by device certificate
 }
 
 // This is the response payload for POST /api/v2/edgeDevice/id/<uuid>/attest

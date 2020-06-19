@@ -102,9 +102,12 @@ dir2vfat() {
   # <img name> dir2vfat <dir> <image size> [label]
   local IMG=`mktemp -u -p /tmp/data`
   local LABEL=${3:-EVE}
+  local FORCE_FAT32="-F32"
+  # FAT32 can only reside on disks larger than 33Mb
+  [ "$2" -lt 33792 ] && FORCE_FAT32="-v"
   (rm -rf /tmp/data
    mkdir /tmp/data
-   mkfs.vfat -F32 -v -n "$LABEL" -C "$IMG" "$2"
+   mkfs.vfat "$FORCE_FAT32" -v -n "$LABEL" -C "$IMG" "$2"
    mcopy -i $IMG -s $1/* ::/ ) >&2
   echo $IMG
 }
@@ -345,7 +348,7 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
 esac
 
 for p in $PARTS ; do
-  eval do_$p CUR_SEC 2>/dev/null
+  eval do_$p CUR_SEC
 done
 
 # Create a hybrid MBR to allow booting on legacy BIOS PC systems and ARM boards that

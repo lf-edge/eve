@@ -43,18 +43,19 @@ func unpublishVerifyImageConfig(ctx *volumemgrContext, objType string, key strin
 	pub.Unpublish(key)
 }
 
+// MaybeAddVerifyImageConfig publishes the verifier config to the verifier
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
-	status types.OldVolumeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
+	status types.ContentTreeStatus, checkCerts bool) (bool, types.ErrorAndTime) {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v",
-		status.BlobSha256, checkCerts)
+		status.ContentSha256, checkCerts)
 
 	// check the certificate files, if not present,
 	// we can not start verification
 	if checkCerts {
-		certObjStatus := lookupCertObjStatus(ctx, status.AppInstID.String())
-		displaystr := status.VolumeID.String()
+		certObjStatus := lookupCertObjStatus(ctx, status.ContentID.String())
+		displaystr := status.ContentID.String()
 		ret, err := status.IsCertsAvailable(displaystr)
 		if err != nil {
 			log.Fatalf("%s, invalid certificate configuration", displaystr)
@@ -66,32 +67,32 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		}
 	}
 
-	m := lookupVerifyImageConfig(ctx, status.ObjType, status.BlobSha256)
+	m := lookupVerifyImageConfig(ctx, status.ObjType, status.ContentSha256)
 	if m != nil {
 		m.RefCount++
 		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s",
-			m.RefCount, status.BlobSha256)
+			m.RefCount, status.ContentSha256)
 		publishVerifyImageConfig(ctx, status.ObjType, m)
 	} else {
 		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
-			status.BlobSha256, status.DownloadOrigin.IsContainer)
+			status.ContentSha256, status.IsContainer())
 		n := types.VerifyImageConfig{
-			ImageID: status.VolumeID,
+			ImageID: status.ContentID,
 			VerifyConfig: types.VerifyConfig{
 				Name:             status.DisplayName,
-				ImageSha256:      status.BlobSha256,
-				CertificateChain: status.DownloadOrigin.CertificateChain,
-				ImageSignature:   status.DownloadOrigin.ImageSignature,
-				SignatureKey:     status.DownloadOrigin.SignatureKey,
+				ImageSha256:      status.ContentSha256,
+				CertificateChain: status.CertificateChain,
+				ImageSignature:   status.ImageSignature,
+				SignatureKey:     status.SignatureKey,
 				FileLocation:     status.FileLocation,
 			},
-			IsContainer: status.DownloadOrigin.IsContainer,
+			IsContainer: status.IsContainer(),
 			RefCount:    1,
 		}
 		publishVerifyImageConfig(ctx, status.ObjType, &n)
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v", n)
 	}
-	log.Infof("MaybeAddVerifyImageConfig done for %s", status.BlobSha256)
+	log.Infof("MaybeAddVerifyImageConfig done for %s", status.ContentSha256)
 	return true, types.ErrorAndTime{}
 }
 

@@ -96,7 +96,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 		}
 	}
 	publishContentTreeStatus(ctx, status)
-	changed, _ := doUpdateCT(ctx, status)
+	changed, _ := doUpdateContentTree(ctx, status)
 	if changed {
 		publishContentTreeStatus(ctx, status)
 	}

@@ -37,13 +37,13 @@ var Version = "No version specified"
 var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 type volumemgrContext struct {
-	subAppVolumeConfig     pubsub.Subscription
-	pubAppVolumeStatus     pubsub.Publication
-	subBaseOsVolumeConfig  pubsub.Subscription
-	pubBaseOsVolumeStatus  pubsub.Publication
-	pubUnknownVolumeStatus pubsub.Publication
-	subGlobalConfig        pubsub.Subscription
-	subZedAgentStatus      pubsub.Subscription
+	subAppVolumeConfig        pubsub.Subscription
+	pubAppVolumeStatus        pubsub.Publication
+	subBaseOsVolumeConfig     pubsub.Subscription
+	pubBaseOsVolumeStatus     pubsub.Publication
+	pubUnknownOldVolumeStatus pubsub.Publication
+	subGlobalConfig           pubsub.Subscription
+	subZedAgentStatus         pubsub.Subscription
 
 	subCertObjConfig         pubsub.Subscription
 	pubCertObjStatus         pubsub.Publication
@@ -67,11 +67,15 @@ type volumemgrContext struct {
 	pubContentTreeResolveConfig pubsub.Publication
 	subContentTreeConfig        pubsub.Subscription
 	pubContentTreeStatus        pubsub.Publication
+	subVolumeConfig             pubsub.Subscription
+	pubVolumeStatus             pubsub.Publication
+	pubUnknownVolumeStatus      pubsub.Publication
 	pubContentTreeToHash        pubsub.Publication
 
 	gc *time.Ticker
 
-	worker *worker.Worker // For background work
+	workerOld *worker.Worker // For background work
+	worker    *worker.Worker // For background work
 
 	verifierRestarted uint // Count to two for appimg and baseos
 	usingConfig       bool // From zedagent
@@ -140,6 +144,7 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	// Create the background worker
+	ctx.workerOld = InitHandleWorkOld(&ctx)
 	ctx.worker = InitHandleWork(&ctx)
 
 	// Set up our publications before the subscriptions so ctx is set
@@ -204,6 +209,26 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubContentTreeStatus = pubContentTreeStatus
 
+	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.VolumeStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumeStatus = pubVolumeStatus
+
+	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.UnknownObj,
+		TopicType:  types.VolumeStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubUnknownVolumeStatus = pubUnknownVolumeStatus
+
 	pubContentTreeToHash, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		Persistent: true,
@@ -234,7 +259,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubBaseOsVolumeStatus = pubBaseOsVolumeStatus
 
-	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubUnknownOldVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.UnknownObj,
 		TopicType:  types.OldVolumeStatus{},
@@ -242,7 +267,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubUnknownVolumeStatus = pubUnknownVolumeStatus
+	ctx.pubUnknownOldVolumeStatus = pubUnknownOldVolumeStatus
 
 	pubCertObjStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -295,6 +320,8 @@ func Run(ps *pubsub.PubSub) {
 	// agentScope
 	// Note that nobody subscribes to this. Used internally
 	// to look up a Volume.
+	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
+	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
 	populateInitialVolumeStatus(&ctx, rwImgDirname)
 	populateInitialVolumeStatus(&ctx, roContImgDirname)
 
@@ -502,6 +529,22 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subContentTreeConfig = subContentTreeConfig
 	subContentTreeConfig.Activate()
 
+	subVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleVolumeCreate,
+		ModifyHandler: handleVolumeModify,
+		DeleteHandler: handleVolumeDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zedagent",
+		TopicImpl:     types.VolumeConfig{},
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumeConfig = subVolumeConfig
+	subVolumeConfig.Activate()
+
 	subAppVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleAppImgCreate,
 		ModifyHandler: handleAppImgModify,
@@ -572,6 +615,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subBaseOsVerifierStatus.MsgChan():
 			subBaseOsVerifierStatus.ProcessChange(change)
 
+		case res := <-ctx.workerOld.MsgChan():
+			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
+
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
 
@@ -602,6 +648,8 @@ func Run(ps *pubsub.PubSub) {
 				duration := time.Duration(ctx.vdiskGCTime / 10)
 				ctx.gc = time.NewTicker(duration * time.Second)
 				// Update the LastUse here to be now
+				gcResetOldObjectsLastUse(&ctx, rwImgDirname)
+				gcResetOldObjectsLastUse(&ctx, roContImgDirname)
 				gcResetObjectsLastUse(&ctx, rwImgDirname)
 				gcResetObjectsLastUse(&ctx, roContImgDirname)
 				gcResetPersistObjectLastUse(&ctx)
@@ -632,6 +680,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subContentTreeConfig.MsgChan():
 			ctx.subContentTreeConfig.ProcessChange(change)
 
+		case change := <-ctx.subVolumeConfig.MsgChan():
+			ctx.subVolumeConfig.ProcessChange(change)
+
 		case change := <-ctx.subAppVolumeConfig.MsgChan():
 			ctx.subAppVolumeConfig.ProcessChange(change)
 
@@ -646,11 +697,16 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-ctx.gc.C:
 			start := time.Now()
+			gcOldObjects(&ctx, rwImgDirname)
+			gcOldObjects(&ctx, roContImgDirname)
 			gcObjects(&ctx, rwImgDirname)
 			gcObjects(&ctx, roContImgDirname)
 			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
+
+		case res := <-ctx.workerOld.MsgChan():
+			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
 
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))

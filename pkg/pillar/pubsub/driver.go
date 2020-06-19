@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package pubsub
 
 // Driver a backend driver for pubsub
@@ -68,5 +71,5 @@ type Restarted interface {
 // Differ interface that updates a LocalCollection from previous state to current state,
 // and returns a slice of keys that have changed
 type Differ interface {
-	DetermineDiffs(slaveCollection LocalCollection) []string
+	DetermineDiffs(localCollection LocalCollection) []string
 }

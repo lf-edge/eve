@@ -29,7 +29,7 @@ i.e. configs and statuses, are performed using publish-subscribe via
 `zedmanager` itself does not do any of the downloading, preparation or launching. It only _orchestrates_
 tasks between other microservices that do the actual work. Orchestration is via messages on the `pubsub`.
 
-`zedmanager`'s master function for launching or updating ECOs is
+`zedmanager`'s main function for launching or updating ECOs is
 [doUpdate()](../pkg/pillar/cmd/zedmanager/updatestatus.go#L308).
 This calls one separate function for each of the three major steps in launching an ECO.
 

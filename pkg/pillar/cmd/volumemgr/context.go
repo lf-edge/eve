@@ -71,7 +71,7 @@ func (ctx *volumemgrContext) publication(topicType interface{}, objType string) 
 		case types.BaseOsObj:
 			pub = ctx.pubBaseOsVolumeStatus
 		case types.UnknownObj:
-			pub = ctx.pubUnknownVolumeStatus
+			pub = ctx.pubUnknownOldVolumeStatus
 		default:
 			log.Fatalf("publication: Unknown ObjType %s for %T",
 				objType, typeName)

@@ -10,36 +10,29 @@ import (
 	"os"
 	"strings"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
 )
 
 // createVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	srcLocation := status.FileLocation
 	log.Infof("createVolume(%s) from %s", status.Key(), srcLocation)
-	switch status.Origin {
-	case types.OriginTypeDownload:
-		if status.Format == zconfig.Format_CONTAINER {
-			return createContainerVolume(ctx, status, srcLocation)
-		} else {
-			return createVdiskVolume(ctx, status, srcLocation)
-		}
-	default:
-		log.Fatalf("XXX unsupported origin %v", status.Origin)
+	if status.IsContainer() {
+		return createContainerVolume(ctx, status, srcLocation)
+	} else {
+		return createVdiskVolume(ctx, status, srcLocation)
 	}
-	return false, "", nil
 }
 
 // createVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
+func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
+	srcLocation string) (bool, string, error) {
 
 	created := false
 	if status.ReadOnly {
@@ -48,10 +41,8 @@ func createVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcL
 		return created, srcLocation, nil
 	}
 
-	filelocation := appRwVolumeName(status.BlobSha256, status.AppInstID.String(),
-		// XXX in general status.VolumeID,
-		status.PurgeCounter, status.Format, status.Origin, false)
-
+	filelocation := fmt.Sprintf("%s/%s#%d", rwImgDirname,
+		status.VolumeID.String(), status.GenerationCounter)
 	if _, err := os.Stat(filelocation); err == nil {
 		errStr := fmt.Sprintf("Can not create %s for %s: exists",
 			filelocation, status.Key())
@@ -79,35 +70,24 @@ func createVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcL
 
 // createContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func createContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus, srcLocation string) (bool, string, error) {
+func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
+	srcLocation string) (bool, string, error) {
 
 	created := false
-	dirName := appRwVolumeName(status.BlobSha256, status.AppInstID.String(),
-		// XXX in general status.VolumeID,
-		status.PurgeCounter, status.Format, status.Origin, true)
-
-	filelocation := containerd.GetContainerPath(dirName)
-
-	ociFilename, err := utils.VerifiedImageFileLocation(status.BlobSha256)
-	if err != nil {
-		errStr := fmt.Sprintf("failed to get Image File Location. err: %+s",
-			err)
-		log.Error(errStr)
-		return created, filelocation, errors.New(errStr)
-	}
-	log.Infof("ociFilename %s sha %s", ociFilename, status.BlobSha256)
-	created = true
-	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
+	filelocation := fmt.Sprintf("%s/%s#%d", roContImgDirname,
+		status.VolumeID.String(), status.GenerationCounter)
+	if err := containerd.SnapshotPrepare(filelocation, srcLocation); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}
+	created = true
 	log.Infof("createContainerVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
 
 // destroyVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	log.Infof("destroyVolume(%s)", status.Key())
 	if !status.VolumeCreated {
@@ -125,22 +105,16 @@ func destroyVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, s
 		return false, "", nil
 	}
 
-	switch status.Origin {
-	case types.OriginTypeDownload:
-		if status.Format == zconfig.Format_CONTAINER {
-			return destroyContainerVolume(ctx, status)
-		} else {
-			return destroyVdiskVolume(ctx, status)
-		}
-	default:
-		log.Fatalf("XXX unsupported origin %v", status.Origin)
+	if status.IsContainer() {
+		return destroyContainerVolume(ctx, status)
+	} else {
+		return destroyVdiskVolume(ctx, status)
 	}
-	return false, "", nil
 }
 
 // destroyVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
@@ -158,7 +132,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bo
 
 // destroyContainerVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
-func destroyContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatus) (bool, string, error) {
+func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	created := status.VolumeCreated
 	filelocation := status.FileLocation

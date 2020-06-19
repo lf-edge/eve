@@ -32,8 +32,7 @@ func HandleWorkResult(ctx *volumemgrContext, res worker.WorkResult) {
 		VolumeCreated: d.VolumeCreated,
 	}
 	addVolumeWorkResult(ctx, res.Key, vres)
-	updateStatus(ctx, d.status.ObjType, d.status.BlobSha256,
-		d.status.VolumeID)
+	updateVolumeStatus(ctx, d.status.VolumeID)
 }
 
 // Map of pending work for create and destroy, respectively
@@ -70,7 +69,7 @@ func deletePendingDestroy(ctx *volumemgrContext, key string) {
 type volumeWorkDescription struct {
 	create  bool
 	destroy bool
-	status  types.OldVolumeStatus
+	status  types.VolumeStatus
 	// Used for results
 	FileLocation  string
 	VolumeCreated bool
@@ -108,7 +107,7 @@ func deleteVolumeWorkResult(ctx *volumemgrContext, key string) {
 // MaybeAddWorkCreate checks if the Key is in the map of pending work
 // and if not kicks of a worker and adds it
 // XXX defer if busy?
-func MaybeAddWorkCreate(ctx *volumemgrContext, status *types.OldVolumeStatus) {
+func MaybeAddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Infof("MaybeAddWorkCreate(%s)", status.Key())
 	if lookupPendingCreate(ctx, status.Key()) {
 		log.Infof("MaybeAddWorkCreate(%s) found", status.Key())
@@ -127,7 +126,7 @@ func MaybeAddWorkCreate(ctx *volumemgrContext, status *types.OldVolumeStatus) {
 }
 
 // DeleteWorkCreate is called by user when work is done
-func DeleteWorkCreate(ctx *volumemgrContext, status *types.OldVolumeStatus) {
+func DeleteWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Infof("DeleteWorkCreate(%s)", status.Key())
 	if !lookupPendingCreate(ctx, status.Key()) {
 		log.Infof("DeleteWorkCreate(%s) NOT found", status.Key())
@@ -140,7 +139,7 @@ func DeleteWorkCreate(ctx *volumemgrContext, status *types.OldVolumeStatus) {
 // MaybeAddWorkDestroy checks if the Key is in the map of pending work
 // and if not kicks of a worker and adds it
 // XXX defer if busy?
-func MaybeAddWorkDestroy(ctx *volumemgrContext, status *types.OldVolumeStatus) {
+func MaybeAddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Infof("MaybeAddWorkDestroy(%s)", status.Key())
 	if lookupPendingDestroy(ctx, status.Key()) {
 		log.Infof("MaybeAddWorkDestroy(%s) found", status.Key())
@@ -159,7 +158,7 @@ func MaybeAddWorkDestroy(ctx *volumemgrContext, status *types.OldVolumeStatus) {
 }
 
 // DeleteWorkDestroy is called by user when work is done
-func DeleteWorkDestroy(ctx *volumemgrContext, status *types.OldVolumeStatus) {
+func DeleteWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Infof("DeleteWorkDestroy(%s)", status.Key())
 	if !lookupPendingDestroy(ctx, status.Key()) {
 		log.Infof("DeleteWorkDestroy(%s) NOT found", status.Key())

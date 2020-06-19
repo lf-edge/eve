@@ -59,6 +59,8 @@ type getconfigContext struct {
 	pubCipherContext         pubsub.Publication
 	subContentTreeStatus     pubsub.Subscription
 	pubContentTreeConfig     pubsub.Publication
+	subVolumeStatus          pubsub.Subscription
+	pubVolumeConfig          pubsub.Publication
 	rebootFlag               bool
 }
 

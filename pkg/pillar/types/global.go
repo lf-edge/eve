@@ -27,6 +27,13 @@ const (
 	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
 )
 
+const (
+	// MinuteInSec is number of seconds in a minute
+	MinuteInSec = 60
+	// HourInSec is number of seconds in a minute
+	HourInSec = 60 * MinuteInSec
+)
+
 // ConfigItemStatus - Status of Config Items
 type ConfigItemStatus struct {
 	// Value - Current value of the item
@@ -689,11 +696,21 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
 
-	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, 0xFFFFFFFF)
+	// timer.config.interval(seconds)
+	// MaxValue needs to be limited. If configured too high, the device will wait
+	// too long to get next config and is practically unreachable for any config
+	// changes or reboot through cloud.
+	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	// timer.metric.interval (seconds)
+	// Need to be careful about max value. Controller may use metric message to
+	// update status of device (online / suspect etc ).
+	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
+	// Max designed to allow the option of never rebooting even if device
+	//  can't connect to the cloud
 	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
 	configItemSpecMap.AddIntItem(StaleConfigTime, 600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadGCTime, 600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
@@ -706,7 +723,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,

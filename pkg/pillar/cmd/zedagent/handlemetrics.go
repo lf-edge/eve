@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -639,6 +640,44 @@ func getDiskInfo(ss types.StorageStatus, appDiskDetails *metrics.AppDiskMetric) 
 		appDiskDetails.Dirty = imgInfo.DirtyFlag
 	}
 	return nil
+}
+
+func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
+	volumeResourcesDetails *info.VolumeResources) error {
+
+	if volStatus.IsContainer() {
+		// XXX For container volumes, max size is coming zero
+		// from the controller. So for now, we are setting up
+		// max size and the current size equal to the downloaded size
+		size, err := dirSize(volStatus.FileLocation)
+		if err != nil {
+			return err
+		}
+		volumeResourcesDetails.MaxSizeBytes = size
+		volumeResourcesDetails.CurSizeBytes = size
+	} else {
+		imgInfo, err := diskmetrics.GetImgInfo(volStatus.FileLocation)
+		if err != nil {
+			return err
+		}
+		volumeResourcesDetails.MaxSizeBytes = imgInfo.VirtualSize
+		volumeResourcesDetails.CurSizeBytes = imgInfo.ActualSize
+	}
+	return nil
+}
+
+func dirSize(path string) (uint64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+	return uint64(size), err
 }
 
 func RoundToMbytes(byteCount uint64) uint64 {
@@ -1550,6 +1589,10 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportContentInfo.Err = errInfo
 		}
 
+		ContentResourcesInfo := new(info.ContentResources)
+		ContentResourcesInfo.CurSizeBytes = ctStatus.MaxDownloadSize
+		ReportContentInfo.Resources = ContentResourcesInfo
+
 		ReportContentInfo.Sha256 = ctStatus.ContentSha256
 		ReportContentInfo.ProgressPercentage = uint32(ctStatus.Progress)
 		ReportContentInfo.GenerationCount = ctStatus.GenerationCounter
@@ -1577,6 +1620,81 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	err = SendProtobuf(statusURL, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishContentInfoToZedCloud failed: %s", err)
+		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
+		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+			true)
+	}
+}
+
+// PublishVolumeToZedCloud is called per change, hence needs to try over all management ports
+// When volume status is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
+func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
+	volStatus *types.VolumeStatus, iteration int) {
+
+	log.Infof("PublishVolumeToZedCloud uuid %s", uuid)
+	var ReportInfo = &info.ZInfoMsg{}
+
+	volumeType := new(info.ZInfoTypes)
+	*volumeType = info.ZInfoTypes_ZiVolume
+	ReportInfo.Ztype = *volumeType
+	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+
+	ReportVolumeInfo := new(info.ZInfoVolume)
+
+	ReportVolumeInfo.Uuid = uuid
+	ReportVolumeInfo.State = info.ZSwState_INITIAL
+	if volStatus != nil {
+		ReportVolumeInfo.DisplayName = volStatus.DisplayName
+		ReportVolumeInfo.State = volStatus.State.ZSwState()
+
+		if !volStatus.ErrorTime.IsZero() {
+			errInfo := encodeErrorInfo(
+				volStatus.ErrorAndTimeWithSource.ErrorAndTime())
+			ReportVolumeInfo.VolumeErr = errInfo
+		}
+
+		VolumeResourcesInfo := new(info.VolumeResources)
+		err := getVolumeResourcesInfo(volStatus, VolumeResourcesInfo)
+		if err != nil {
+			log.Errorf("getVolumeResourceInfo(%s) failed %v",
+				volStatus.VolumeID, err)
+		} else {
+			ReportVolumeInfo.Resources = VolumeResourcesInfo
+		}
+
+		ReportVolumeInfo.ProgressPercentage = uint32(volStatus.Progress)
+		ReportVolumeInfo.GenerationCount = volStatus.GenerationCounter
+	}
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Vinfo)
+	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Vinfo); ok {
+		x.Vinfo = ReportVolumeInfo
+	}
+
+	log.Infof("PublishVolumeToZedCloud sending %v", ReportInfo)
+
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishVolumeToZedCloud proto marshaling error: ", err)
+	}
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	zedcloud.RemoveDeferred(uuid)
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+	err = SendProtobuf(statusURL, buf, size, iteration)
+	if err != nil {
+		log.Errorf("PublishVolumeToZedCloud failed: %s", err)
 		// Try sending later
 		// The buf might have been consumed
 		buf := bytes.NewBuffer(data)

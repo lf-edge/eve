@@ -116,7 +116,7 @@ func doCertObjStatusUpdate(ctx *volumemgrContext, uuidStr string, config types.C
 			if !vs.WaitingForCerts {
 				continue
 			}
-			doUpdate(ctx, &vs)
+			doUpdateOld(ctx, &vs)
 		}
 	}
 	log.Infof("doCertObjStatusUdate(%s) done %v", uuidStr, changed)
