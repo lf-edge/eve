@@ -22,11 +22,12 @@ import (
 )
 
 const (
-	agentName        = "volumemgr"
-	runDirname       = "/var/run/" + agentName
-	ciDirname        = runDirname + "/cloudinit" // For cloud-init volumes XXX change?
-	rwImgDirname     = types.RWImgDirname        // We store volumes here
-	roContImgDirname = types.ROContImgDirname    // We store container bootable disks here
+	agentName              = "volumemgr"
+	runDirname             = "/var/run/" + agentName
+	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
+	rwImgDirname           = types.RWImgDirname           // We store old VM volumes here
+	roContImgDirname       = types.ROContImgDirname       // We store old OCI volumes here
+	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store VM and OCI volumes here
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -322,8 +323,7 @@ func Run(ps *pubsub.PubSub) {
 	// to look up a Volume.
 	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
 	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
-	populateInitialVolumeStatus(&ctx, rwImgDirname)
-	populateInitialVolumeStatus(&ctx, roContImgDirname)
+	populateInitialVolumeStatus(&ctx, volumeEncryptedDirName)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -650,8 +650,7 @@ func Run(ps *pubsub.PubSub) {
 				// Update the LastUse here to be now
 				gcResetOldObjectsLastUse(&ctx, rwImgDirname)
 				gcResetOldObjectsLastUse(&ctx, roContImgDirname)
-				gcResetObjectsLastUse(&ctx, rwImgDirname)
-				gcResetObjectsLastUse(&ctx, roContImgDirname)
+				gcResetObjectsLastUse(&ctx, volumeEncryptedDirName)
 				gcResetPersistObjectLastUse(&ctx)
 				ctx.gcRunning = true
 			}
@@ -699,8 +698,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			gcOldObjects(&ctx, rwImgDirname)
 			gcOldObjects(&ctx, roContImgDirname)
-			gcObjects(&ctx, rwImgDirname)
-			gcObjects(&ctx, roContImgDirname)
+			gcObjects(&ctx, volumeEncryptedDirName)
 			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)

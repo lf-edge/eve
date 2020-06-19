@@ -41,7 +41,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		return created, srcLocation, nil
 	}
 
-	filelocation := fmt.Sprintf("%s/%s#%d", rwImgDirname,
+	filelocation := fmt.Sprintf("%s/%s#%d", status.VolumeDir,
 		status.VolumeID.String(), status.GenerationCounter)
 	if _, err := os.Stat(filelocation); err == nil {
 		errStr := fmt.Sprintf("Can not create %s for %s: exists",
@@ -74,7 +74,7 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	srcLocation string) (bool, string, error) {
 
 	created := false
-	filelocation := fmt.Sprintf("%s/%s#%d", roContImgDirname,
+	filelocation := fmt.Sprintf("%s/%s#%d", status.VolumeDir,
 		status.VolumeID.String(), status.GenerationCounter)
 	if err := containerd.SnapshotPrepare(filelocation, srcLocation); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)

@@ -22,6 +22,7 @@ type VolumeConfig struct {
 	ReadOnly                bool
 	RefCount                uint
 	GenerationCounter       int64
+	VolumeDir               string
 	DisplayName             string
 }
 
@@ -90,6 +91,7 @@ type VolumeStatus struct {
 	MaxVolSize              uint64
 	ReadOnly                bool
 	GenerationCounter       int64
+	VolumeDir               string
 	DisplayName             string
 	State                   SwState
 	RefCount                uint

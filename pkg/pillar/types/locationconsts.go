@@ -21,6 +21,8 @@ const (
 	RWImgDirname = PersistDir + "/img"
 	// ROContImgDirname - Location of read only images used by containerd
 	ROContImgDirname = PersistDir + "/runx/pods/prepared"
+	// VolumeEncryptedDirName - Encrypted directory used to store volumes
+	VolumeEncryptedDirName = PersistDir + "/vault/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// AppImgDirname - location of downloaded app images. Read-only images
