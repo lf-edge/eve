@@ -18,13 +18,14 @@ package nodeagent
 import (
 	"bytes"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -281,7 +282,7 @@ func Run(ps *pubsub.PubSub) {
 		AgentName:     "baseosmgr",
 		TopicImpl:     types.ZbootStatus{},
 		Activate:      false,
-		Ctx:           &nodeagentCtxPtr,
+		Ctx:           nodeagentCtxPtr,
 		ModifyHandler: handleZbootStatusModify,
 		DeleteHandler: handleZbootStatusDelete,
 		WarningTime:   warningTime,
