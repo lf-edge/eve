@@ -24,9 +24,6 @@ type Hypervisor interface {
 	Delete(string, int) error
 	Info(string, int) (int, types.SwState, error)
 
-	IsDomainPotentiallyShuttingDown(string) bool
-	IsDeviceModelAlive(int) bool
-
 	PCIReserve(string) error
 	PCIRelease(string) error
 
