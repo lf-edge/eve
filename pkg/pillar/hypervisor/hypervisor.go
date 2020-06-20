@@ -42,9 +42,6 @@ type Hypervisor interface {
 	Delete(string, int) error
 	Info(string, int) (int, DomState, error)
 
-	IsDomainPotentiallyShuttingDown(string) bool
-	IsDeviceModelAlive(int) bool
-
 	PCIReserve(string) error
 	PCIRelease(string) error
 

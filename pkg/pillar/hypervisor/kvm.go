@@ -662,7 +662,7 @@ func (ctx kvmContext) Info(domainName string, domainID int) (int, DomState, erro
 	if !matched {
 		effectiveDomainState = Unknown
 	}
-	
+
 	return effectiveDomainID, effectiveDomainState, nil
 }
 
@@ -732,21 +732,6 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	}
 
 	return nil
-}
-
-//IsDomainPotentiallyShuttingDown: returns false if domain's status is healthy (i.e. 'running')
-func (ctx kvmContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
-	if status, err := getQemuStatus(getQmpExecutorSocket(domainName)); err != nil || status != "running" {
-		log.Errorf("IsDomainPotentiallyShuttingDown: domain %s is not healthy. domainState: %s", domainName, status)
-		return true
-	}
-	log.Debugf("IsDomainPotentiallyShuttingDown: domain %s is healthy", domainName)
-	return false
-}
-
-func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
-	_, err := os.Stat(fmt.Sprintf("/proc/%d", domid))
-	return err == nil
 }
 
 func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {

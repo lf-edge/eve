@@ -149,16 +149,6 @@ func (ctx ctrdContext) PCIRelease(long string) error {
 	}
 }
 
-func (ctx ctrdContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
-	_, status, err := containerd.CtrContainerInfo(domainName)
-	return err == nil && status == "pausing"
-}
-
-func (ctx ctrdContext) IsDeviceModelAlive(id int) bool {
-	_, err := os.Stat("/proc/" + strconv.Itoa(id))
-	return err == nil
-}
-
 func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
