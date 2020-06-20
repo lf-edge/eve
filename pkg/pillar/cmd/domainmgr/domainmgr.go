@@ -780,13 +780,10 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
-		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
-		if configActivate && status.Activated && hasQemu && !hyper.IsDomainPotentiallyShuttingDown(status.DomainName) &&
-			!hyper.IsDeviceModelAlive(status.DomainId) {
-			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
-				status.Key())
+		if configActivate && status.Activated && domainStatus == types.BROKEN {
+			errStr := fmt.Sprintf("verifyStatus(%s) device model process crashed", status.Key())
 			log.Errorf(errStr)
-			status.SetErrorNow("qemu crashed - please restart application instance")
+			status.SetErrorNow("device model process crashed - please restart application instance")
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
