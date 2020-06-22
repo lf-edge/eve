@@ -107,7 +107,7 @@ func handleVolumeStatusModify(ctxArg interface{},
 
 	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.Key()
+	uuidStr := status.VolumeID.String()
 	PublishVolumeToZedCloud(ctx, uuidStr, &status, ctx.iteration)
 	ctx.iteration++
 }
@@ -115,8 +115,9 @@ func handleVolumeStatusModify(ctxArg interface{},
 func handleVolumeStatusDelete(ctxArg interface{},
 	key string, statusArg interface{}) {
 
+	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := key
+	uuidStr := status.VolumeID.String()
 	PublishVolumeToZedCloud(ctx, uuidStr, nil, ctx.iteration)
 	ctx.iteration++
 }
