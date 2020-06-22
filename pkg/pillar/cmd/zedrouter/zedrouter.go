@@ -1341,6 +1341,10 @@ func appNetworkDoActivateUnderlayNetwork(
 	networkInstanceInfo.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
 		networkInstanceInfo.BridgeName)
+
+	// Check App Container Stats ACL need to be reinstalled
+	appStatsMayNeedReinstallACL(ctx, config)
+
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -1545,7 +1549,7 @@ func appNetworkDoCopyNetworksToStatus(
 
 	// during doActive, copy the collect stats IP to status and
 	// check to see if need to launch the process
-	appCheckStatsCollect(ctx, config, status)
+	appCheckStatsCollect(ctx, &config, status)
 
 	olcount := len(config.OverlayNetworkList)
 	if olcount > 0 {
@@ -2015,7 +2019,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	if status.Activated {
 		// during modify, copy the collect stats IP to status and
 		// check to see if need to launch the process
-		appCheckStatsCollect(ctx, config, status)
+		appCheckStatsCollect(ctx, &config, status)
 
 		// Look for ACL changes in overlay
 		doAppNetworkModifyAllOverlayNetworks(ctx, config, status, ipsets)
@@ -2368,6 +2372,9 @@ func doInactivateAppNetwork(ctx *zedrouterContext,
 		doInactivateAppNetworkWithMgmtLisp(ctx, status)
 		return
 	}
+
+	// remove app container stats collection items
+	appCheckStatsCollect(ctx, nil, status)
 
 	// Note that with IPv4/IPv6/LISP interfaces the domU can do
 	// dns lookups on either IPv4 and IPv6 on any interface, hence should

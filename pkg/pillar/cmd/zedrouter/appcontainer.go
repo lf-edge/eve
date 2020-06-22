@@ -17,18 +17,27 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// DOCKERAPIPORT - constant define of docker API TCP port value
+const DOCKERAPIPORT int = 2375
+
 // check if we need to launch the goroutine to collect App container stats
-func appCheckStatsCollect(ctx *zedrouterContext, config types.AppNetworkConfig,
+func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
 	oldIPAddr := status.GetStatsIPAddr
-	status.GetStatsIPAddr = config.GetStatsIPAddr
+	if config != nil {
+		status.GetStatsIPAddr = config.GetStatsIPAddr
+	} else {
+		status.GetStatsIPAddr = nil
+	}
 	publishAppNetworkStatus(ctx, status)
-	if !config.GetStatsIPAddr.Equal(oldIPAddr) {
-		log.Infof("appCheckStatsCollect: config ip %s, status ip %s", config.GetStatsIPAddr.String(), oldIPAddr.String())
-		if oldIPAddr == nil && config.GetStatsIPAddr != nil {
+	if status.GetStatsIPAddr == nil && oldIPAddr != nil ||
+		status.GetStatsIPAddr != nil && !status.GetStatsIPAddr.Equal(oldIPAddr) {
+		log.Infof("appCheckStatsCollect: config ip %v, status ip %v", status.GetStatsIPAddr, oldIPAddr)
+		if oldIPAddr == nil && status.GetStatsIPAddr != nil {
 			ensureStatsCollectRunning(ctx)
 		}
+		appChangeContainerStatsACL(status.GetStatsIPAddr, oldIPAddr)
 	}
 }
 
@@ -100,4 +109,33 @@ func appContainerGetStats(ipAddr net.IP) (types.AppContainerMetrics, error) {
 	var acMetrics types.AppContainerMetrics
 	// XXX collect container stats for each container with the docker API endpoint ipAddr
 	return acMetrics, nil
+}
+
+func appChangeContainerStatsACL(newIPAddr, oldIPAddr net.IP) {
+	if oldIPAddr != nil {
+		// remove the previous installed blocking ACL
+		appConfigContainerStatsACL(oldIPAddr, true)
+	}
+	if newIPAddr != nil {
+		// install the App Container blocking ACL
+		appConfigContainerStatsACL(newIPAddr, false)
+	}
+}
+
+// reinstall the App Container blocking ACL to place in the top
+func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkConfig) {
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, item := range items {
+		cfg := item.(types.AppNetworkConfig)
+		if cfg.Key() == config.Key() {
+			log.Infof("appStatsMayNeedReinstallACL: same app, skip")
+			continue
+		}
+		if cfg.GetStatsIPAddr != nil {
+			appConfigContainerStatsACL(cfg.GetStatsIPAddr, true)
+			appConfigContainerStatsACL(cfg.GetStatsIPAddr, false)
+			log.Infof("appStatsMayNeedReinstallACL: reinstall %s\n", cfg.GetStatsIPAddr.String())
+		}
+	}
 }

@@ -24,7 +24,7 @@ import (
 // Really a constant
 var nilUUID = uuid.UUID{}
 
-// parseAppRwVolumeName - Returns rwImgDirname, volume uuid, generationCounter
+// parseAppRwVolumeName - Returns volumeDirname, volume uuid, generationCounter
 func parseAppRwVolumeName(image string) (string, string, uint32) {
 	re1 := regexp.MustCompile(`(.+)/([0-9a-fA-F\-]+)#([0-9]+)`)
 	if !re1.MatchString(image) {
@@ -45,12 +45,6 @@ func parseAppRwVolumeName(image string) (string, string, uint32) {
 func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
 	log.Infof("populateInitialVolumeStatus(%s)", dirName)
-	var isContainer bool
-	if dirName == rwImgDirname {
-		isContainer = false
-	} else if dirName == roContImgDirname {
-		isContainer = true
-	}
 
 	// Record host boot time for comparisons
 	hinfo, err := host.Info()
@@ -68,10 +62,6 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 
 	for _, location := range locations {
 		filelocation := dirName + "/" + location.Name()
-		if location.IsDir() && !isContainer {
-			log.Debugf("populateInitialVolumeStatus: directory %s ignored", filelocation)
-			continue
-		}
 		info, err := os.Stat(filelocation)
 		if err != nil {
 			log.Errorf("Error in getting file information. Err: %s. "+
@@ -86,8 +76,9 @@ func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
 		volumeUUID, err := uuid.FromString(volumeID)
 		if err != nil {
 			log.Errorf("populateInitialVolumeStatus: Invalid volume UUIDStr(%s) in "+
-				"filename (%s). err: %s. XXX ignoring the File",
+				"filename (%s). err: %s. Deleting the File",
 				volumeID, filelocation, err)
+			deleteFile(filelocation)
 			continue
 		}
 
