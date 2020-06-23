@@ -31,7 +31,7 @@ type cipherContext struct {
 	zedagentCtx *zedagentContext // Cross link
 
 	// post and get certs triggers
-	triggerEveNodeCerts    chan struct{}
+	triggerEdgeNodeCerts   chan struct{}
 	triggerControllerCerts chan struct{}
 
 	cfgControllerCertHash []byte
@@ -139,23 +139,23 @@ func unpublishControllerCert(ctx *getconfigContext, key string) {
 	pub.Unpublish(key)
 }
 
-func handleEveNodeCertModify(ctxArg interface{}, key string,
+func handleEdgeNodeCertModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	status := configArg.(types.EveNodeCert)
-	log.Infof("handleEveNodeCertModify for %s", status.Key())
-	triggerEveNodeCertEvent(ctx)
+	status := configArg.(types.EdgeNodeCert)
+	log.Infof("handleEdgeNodeCertModify for %s", status.Key())
+	triggerEdgeNodeCertEvent(ctx)
 	return
 }
 
-func handleEveNodeCertDelete(ctxArg interface{}, key string,
+func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	status := configArg.(types.EveNodeCert)
-	log.Infof("handleEveNodeCertDelete for %s", status.Key())
-	triggerEveNodeCertEvent(ctx)
+	status := configArg.(types.EdgeNodeCert)
+	log.Infof("handleEdgeNodeCertDelete for %s", status.Key())
+	triggerEdgeNodeCertEvent(ctx)
 	return
 }
 
@@ -238,22 +238,22 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	return true
 }
 
-// eve node certificate post task, on change trigger
-func eveNodeCertsTask(ctx *zedagentContext, triggerEveNodeCerts chan struct{}) {
-	log.Infoln("starting eve node certificates publish task")
+// edge node certificate post task, on change trigger
+func edgeNodeCertsTask(ctx *zedagentContext, triggerEdgeNodeCerts chan struct{}) {
+	log.Infoln("starting edge node certificates publish task")
 
-	publishEveNodeCertsToController(ctx)
+	publishEdgeNodeCertsToController(ctx)
 
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	for {
 		select {
-		case <-triggerEveNodeCerts:
+		case <-triggerEdgeNodeCerts:
 			start := time.Now()
-			publishEveNodeCertsToController(ctx)
+			publishEdgeNodeCertsToController(ctx)
 			pubsub.CheckMaxTimeTopic(agentName+"attest",
-				"publishEveNodeCertsToController", start,
+				"publishEdgeNodeCertsToController", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -262,8 +262,8 @@ func eveNodeCertsTask(ctx *zedagentContext, triggerEveNodeCerts chan struct{}) {
 	}
 }
 
-// prepare the eve node certs list proto message
-func publishEveNodeCertsToController(ctx *zedagentContext) {
+// prepare the edge node certs list proto message
+func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 	var attestReq = &attest.ZAttestReq{}
 
 	// not V2API
@@ -276,10 +276,10 @@ func publishEveNodeCertsToController(ctx *zedagentContext) {
 	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_CERT
 	// no quotes
 
-	sub := ctx.subEveNodeCert
+	sub := ctx.subEdgeNodeCert
 	items := sub.GetAll()
 	for _, item := range items {
-		config := item.(types.EveNodeCert)
+		config := item.(types.EdgeNodeCert)
 		certMsg := zcert.ZCert{
 			HashAlgo: convertLocalToApiHashAlgo(config.HashAlgo),
 			Type:     convertLocalToApiCertType(config.CertType),
@@ -289,9 +289,9 @@ func publishEveNodeCertsToController(ctx *zedagentContext) {
 		attestReq.Certs = append(attestReq.Certs, &certMsg)
 	}
 
-	log.Debugf("publishEveNodeCertsToController, sending %s", attestReq)
-	sendEveNodeCertsProtobuf(attestReq, ctx.cipherCtx.iteration)
-	log.Debugf("publishEveNodeCertsToController: after send, total elapse sec %v",
+	log.Debugf("publishEdgeNodeCertsToController, sending %s", attestReq)
+	sendAttestReqProtobuf(attestReq, ctx.cipherCtx.iteration)
+	log.Debugf("publishEdgeNodeCertsToController: after send, total elapse sec %v",
 		time.Since(startPubTime).Seconds())
 	ctx.cipherCtx.iteration++
 }
@@ -299,7 +299,7 @@ func publishEveNodeCertsToController(ctx *zedagentContext) {
 // Try all (first free, then rest) until it gets through.
 // Each iteration we try a different port for load spreading.
 // For each port we try all its local IP addresses until we get a success.
-func sendEveNodeCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
+func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	data, err := proto.Marshal(attestReq)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
@@ -318,10 +318,10 @@ func sendEveNodeCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		if rtf == types.SenderStatusRemTempFail {
-			log.Errorf("sendEveNodeCertsProtobuf remoteTemporaryFailure: %s",
+			log.Errorf("sendAttestReqProtobuf remoteTemporaryFailure: %s",
 				err)
 		} else {
-			log.Errorf("sendEveNodeCertsProtobuf failed: %s", err)
+			log.Errorf("sendAttestReqProtobuf failed: %s", err)
 		}
 		zedcloud.SetDeferred(deferKey, buf, size, attestURL,
 			zedcloudCtx, true)
@@ -332,7 +332,7 @@ func sendEveNodeCertsProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 func cipherModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) {
 
 	// create the trigger channels
-	ctx.cipherCtx.triggerEveNodeCerts = make(chan struct{}, 1)
+	ctx.cipherCtx.triggerEdgeNodeCerts = make(chan struct{}, 1)
 	ctx.cipherCtx.triggerControllerCerts = make(chan struct{}, 1)
 }
 
@@ -342,8 +342,8 @@ func cipherModuleStart(ctx *zedagentContext) {
 		log.Infof("V2 APIs are still not enabled")
 		// we will run the tasks for watchdog
 	}
-	// start the eve node certificate push task
-	go eveNodeCertsTask(ctx, ctx.cipherCtx.triggerEveNodeCerts)
+	// start the edge node certificate push task
+	go edgeNodeCertsTask(ctx, ctx.cipherCtx.triggerEdgeNodeCerts)
 
 	// start the controller certificate fetch task
 	go controllerCertsTask(ctx, ctx.cipherCtx.triggerControllerCerts)
@@ -376,15 +376,15 @@ func triggerControllerCertEvent(ctxPtr *zedagentContext) {
 	}
 }
 
-//  eve node certificate post trigger function
-func triggerEveNodeCertEvent(ctxPtr *zedagentContext) {
+//  edge node certificate post trigger function
+func triggerEdgeNodeCertEvent(ctxPtr *zedagentContext) {
 
-	log.Info("Trigger Eve Node Certs publish")
+	log.Info("Trigger Edge Node Certs publish")
 	select {
-	case ctxPtr.cipherCtx.triggerEveNodeCerts <- struct{}{}:
+	case ctxPtr.cipherCtx.triggerEdgeNodeCerts <- struct{}{}:
 		// Do nothing more
 	default:
-		log.Warnf("triggerEveNodeCertEvent(): already triggered, still not processed")
+		log.Warnf("triggerEdgeNodeCertEvent(): already triggered, still not processed")
 	}
 }
 

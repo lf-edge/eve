@@ -34,8 +34,8 @@ func (status *CipherContext) ControllerCertKey() string {
 	return hex.EncodeToString(status.ControllerCertHash)
 }
 
-// EveNodeCertKey :
-func (status *CipherContext) EveNodeCertKey() string {
+// EdgeNodeCertKey :
+func (status *CipherContext) EdgeNodeCertKey() string {
 	return hex.EncodeToString(status.DeviceCertHash)
 }
 

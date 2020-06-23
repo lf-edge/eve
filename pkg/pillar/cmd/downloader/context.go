@@ -52,10 +52,10 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
-	// Look for eve node certs which will be used for decryption
-	subEveNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Look for edge node certs which will be used for decryption
+	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "tpmmgr",
-		TopicImpl:   types.EveNodeCert{},
+		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
 		Ctx:         ctx,
 		WarningTime: warningTime,
@@ -64,8 +64,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.decryptCipherContext.SubEveNodeCert = subEveNodeCert
-	subEveNodeCert.Activate()
+	ctx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	subEdgeNodeCert.Activate()
 
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{

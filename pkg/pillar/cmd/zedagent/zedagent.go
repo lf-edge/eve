@@ -97,7 +97,7 @@ type zedagentContext struct {
 	subAppVifIPTrig           pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
-	subEveNodeCert            pubsub.Subscription
+	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -630,21 +630,21 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
 
-	subEveNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
-		TopicImpl:     types.EveNodeCert{},
+		TopicImpl:     types.EdgeNodeCert{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		ModifyHandler: handleEveNodeCertModify,
-		DeleteHandler: handleEveNodeCertDelete,
+		ModifyHandler: handleEdgeNodeCertModify,
+		DeleteHandler: handleEdgeNodeCertDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subEveNodeCert = subEveNodeCert
-	subEveNodeCert.Activate()
+	zedagentCtx.subEdgeNodeCert = subEdgeNodeCert
+	subEdgeNodeCert.Activate()
 
 	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
@@ -1181,8 +1181,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subAppVifIPTrig.MsgChan():
 			subAppVifIPTrig.ProcessChange(change)
 
-		case change := <-subEveNodeCert.MsgChan():
-			subEveNodeCert.ProcessChange(change)
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)

@@ -251,10 +251,10 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
-	// Look for eve node certs which will be used for decryption
-	subEveNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Look for edge node certs which will be used for decryption
+	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "tpmmgr",
-		TopicImpl:   types.EveNodeCert{},
+		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
 		Ctx:         &domainCtx,
 		WarningTime: warningTime,
@@ -263,8 +263,8 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.decryptCipherContext.SubEveNodeCert = subEveNodeCert
-	subEveNodeCert.Activate()
+	domainCtx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	subEdgeNodeCert.Activate()
 
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -414,8 +414,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
 
-		case change := <-subEveNodeCert.MsgChan():
-			subEveNodeCert.ProcessChange(change)
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
 
 		case change := <-subCipherContext.MsgChan():
 			subCipherContext.ProcessChange(change)

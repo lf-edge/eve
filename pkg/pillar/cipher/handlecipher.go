@@ -26,7 +26,7 @@ import (
 type DecryptCipherContext struct {
 	SubControllerCert pubsub.Subscription
 	SubCipherContext  pubsub.Subscription
-	SubEveNodeCert    pubsub.Subscription
+	SubEdgeNodeCert   pubsub.Subscription
 }
 
 // look up controller cert
@@ -57,17 +57,17 @@ func lookupCipherContext(ctx *DecryptCipherContext, key string) *types.CipherCon
 	return &status
 }
 
-// look up eve node cert
-func lookupEveNodeCert(ctx *DecryptCipherContext, key string) *types.EveNodeCert {
-	log.Infof("lookupEveNodeCert(%s)\n", key)
-	sub := ctx.SubEveNodeCert
+// look up edge node cert
+func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCert {
+	log.Infof("lookupEdgeNodeCert(%s)\n", key)
+	sub := ctx.SubEdgeNodeCert
 	item, err := sub.Get(key)
 	if err != nil {
-		log.Errorf("lookupEveNodeCert(%s) not found\n", key)
+		log.Errorf("lookupEdgeNodeCert(%s) not found\n", key)
 		return nil
 	}
-	status := item.(types.EveNodeCert)
-	log.Infof("lookupEveNodeCert(%s) Done\n", key)
+	status := item.(types.EdgeNodeCert)
+	log.Infof("lookupEdgeNodeCert(%s) Done\n", key)
 	return &status
 }
 
@@ -161,14 +161,14 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 		log.Errorf("ECDH Certificate Key Information get fail")
 		return []byte{}, err
 	}
-	eveNodeCert := lookupEveNodeCert(ctx, cipherContext.EveNodeCertKey())
-	if eveNodeCert == nil {
-		log.Errorf("Eve Node Certificate get fail")
+	edgeNodeCert := lookupEdgeNodeCert(ctx, cipherContext.EdgeNodeCertKey())
+	if edgeNodeCert == nil {
+		log.Errorf("Edge Node Certificate get fail")
 		return []byte{}, err
 	}
-	if eveNodeCert.HasError() {
-		errStr := fmt.Sprintf("eve node certificate has error: %v",
-			eveNodeCert.Error)
+	if edgeNodeCert.HasError() {
+		errStr := fmt.Sprintf("edge node certificate has error: %v",
+			edgeNodeCert.Error)
 		log.Error(errStr)
 		return nil, errors.New(errStr)
 	}
@@ -182,7 +182,7 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 		}
 		clearData := make([]byte, len(cipherBlock.CipherData))
 		err = tpmmgr.DecryptSecretWithEcdhKey(cert.X, cert.Y,
-			eveNodeCert, cipherBlock.InitialValue, cipherBlock.CipherData, clearData)
+			edgeNodeCert, cipherBlock.InitialValue, cipherBlock.CipherData, clearData)
 		if err != nil {
 			errStr := fmt.Sprintf("Decryption failed with error %v\n", err)
 			log.Error(errStr)
