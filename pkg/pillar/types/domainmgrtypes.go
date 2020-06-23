@@ -294,7 +294,6 @@ type DiskConfig struct {
 	FileLocation string    // Where to find the volume
 	ReadOnly     bool
 	Format       zconfig.Format
-	Devtype      string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
@@ -303,7 +302,7 @@ type DiskStatus struct {
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
-	Devtype      string // From config
+	Devtype      string // XXX used internally by hypervisor; deprecate?
 	Vdev         string // Allocated
 }
 
