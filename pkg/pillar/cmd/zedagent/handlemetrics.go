@@ -342,7 +342,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			&metric)
 	}
 
-	disks := findDisksPartitions()
+	disks := diskmetrics.FindDisksPartitions()
 	for _, d := range disks {
 		size, _ := diskmetrics.PartitionSize(d)
 		log.Debugf("Disk/partition %s size %d", d, size)
@@ -804,7 +804,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
 	// Find all disks and partitions
-	disks := findDisksPartitions()
+	disks := diskmetrics.FindDisksPartitions()
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
 		size, _ := diskmetrics.PartitionSize(disk)
@@ -1777,19 +1777,6 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	} else {
 		writeSentMetricsProtoMessage(data)
 	}
-}
-
-// Return an array of names like "sda", "sdb1"
-func findDisksPartitions() []string {
-	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
-	if err != nil {
-		log.Errorf("lsblk -nlo NAME failed %s", err)
-		return nil
-	}
-	res := strings.Split(string(out), "\n")
-	// Remove blank/empty string after last CR
-	res = res[:len(res)-1]
-	return res
 }
 
 func getDefaultRouters(ifname string) []string {
