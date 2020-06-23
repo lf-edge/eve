@@ -64,8 +64,10 @@ const (
 	CertHashTypeSha256First16 = 1 // hash with sha256, the 1st 16 bytes of result in 'certHash'
 )
 
-// EveNodeCert : contains attest signing certificate published by tpmmgr
-type EveNodeCert struct {
+// EdgeNodeCert : contains additional device certificates such as
+// - attest signing certificate published by tpmmgr
+// - ECDH certificate published by tpmmgr
+type EdgeNodeCert struct {
 	HashAlgo CertHashType //hash method used to arrive at certHash
 	CertID   []byte       //Hash of the cert, computed using hashAlgo
 	CertType CertType     //type of the certificate
@@ -76,6 +78,6 @@ type EveNodeCert struct {
 }
 
 //Key uniquely identifies the certificate
-func (cert EveNodeCert) Key() string {
+func (cert EdgeNodeCert) Key() string {
 	return hex.EncodeToString(cert.CertID)
 }

@@ -42,7 +42,7 @@ type tpmMgrContext struct {
 	subNodeAgentStatus pubsub.Subscription
 	subAttestNonce     pubsub.Subscription
 	pubAttestQuote     pubsub.Publication
-	pubEveNodeCert     pubsub.Publication
+	pubEdgeNodeCert    pubsub.Publication
 	globalConfig       *types.ConfigItemValueMap
 	GCInitialized      bool // GlobalConfig initialized
 	DeviceReboot       bool //is the device rebooting?
@@ -715,9 +715,9 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 }
 
 //DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
-func DecryptSecretWithEcdhKey(X, Y *big.Int, eveNodeCert *types.EveNodeCert,
+func DecryptSecretWithEcdhKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
 	iv, ciphertext, plaintext []byte) error {
-	decryptKey, err := getDecryptKey(X, Y, eveNodeCert)
+	decryptKey, err := getDecryptKey(X, Y, edgeNodeCert)
 	if err != nil {
 		log.Errorf("getDecryptKey failed: %v", err)
 		return err
@@ -725,21 +725,22 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, eveNodeCert *types.EveNodeCert,
 	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
 }
 
-// This function takes the eveNodeCert as an argument. This value can be nil.
-// The eveNodeCert value nil indicates, it is called from Test Routine.
-// For nil value case, the key is determined based on, whether the device
-// is non-TPM( pickup the device key), or, TPm (pick up the software ecdh key)
 // getDecryptKey : uses the ECC params to construct the AES decryption Key
-func getDecryptKey(X, Y *big.Int, eveNodeCert *types.EveNodeCert) ([32]byte, error) {
+// This function takes the EdgeNodeCert as an argument. This value can be nil.
+// The EdgeNodeCert value nil indicates it is called from Test Routine.
+// For nil value case, the key is determined based on, whether the device
+// is non-TPM (pickup the device key), or, TPM (pick up the software ecdh key)
+func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
 	// check whether this is a software certificate
-	if !etpm.IsTpmEnabled() || !eveNodeCert.IsTpm {
+	if !etpm.IsTpmEnabled() || !edgeNodeCert.IsTpm {
 		isDeviceKey := false
-		if !etpm.IsTpmEnabled() && eveNodeCert == nil {
+		if !etpm.IsTpmEnabled() && edgeNodeCert == nil {
+			// Test case
 			isDeviceKey = true
 		}
 		privateKey, err := getDevicePrivateKey(isDeviceKey)
 		if err != nil {
-			log.Errorf("getEveNodePrivateKeyfailed: %v", err)
+			log.Errorf("getDevicePrivateKeyfailed: %v", err)
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
@@ -755,7 +756,7 @@ func getDecryptKey(X, Y *big.Int, eveNodeCert *types.EveNodeCert) ([32]byte, err
 
 	p := tpm2.ECPoint{X: X, Y: Y}
 
-	//Recover the key, and decrypt the message (EVE node Part)
+	//Recover the key, and decrypt the message (edge node part)
 	z, err := tpm2.RecoverSharedECCSecret(rw, TpmEcdhKeyHdl, "", p)
 	if err != nil {
 		log.Errorf("recovering Shared Secret failed: %v", err)
@@ -861,20 +862,20 @@ func tpmKeyToEccKey(p tpm2.Public) (crypto.PublicKey, error) {
 	return pubKey, nil
 }
 
-func createEveNodeEcdhCert() error {
+func createEcdhCert() error {
 	// certificate is already created
 	if etpm.FileExists(ecdhCertFile) {
 		return nil
 	}
 	// try TPM
 	if etpm.IsTpmEnabled() {
-		return createEveNodeEcdhCertOnTpm()
+		return createEcdhCertOnTpm()
 	}
 	// create soft certficate
-	return createEveNodeEcdhCertSoft()
+	return createEcdhCertSoft()
 }
 
-func createEveNodeEcdhCertOnTpm() error {
+func createEcdhCertOnTpm() error {
 	//Check if we already have the certificate in /config
 	if !etpm.FileExists(ecdhCertFile) {
 		//Cert is not present in /config, generate new one
@@ -970,7 +971,7 @@ func createEcdhSoftTemplate() x509.Certificate {
 
 // generate the software ECDH key and certificate,
 // the certificate is signed using the device private key
-func createEveNodeEcdhCertSoft() error {
+func createEcdhCertSoft() error {
 
 	// get the device software private key
 	devicePrivKey, err := getDevicePrivateKey(true)
@@ -1045,12 +1046,12 @@ func writeEcdhCertToFile(certBytes, keyBytes []byte) error {
 	return nil
 }
 
-func publishEveNodeCert(ctx *tpmMgrContext, config types.EveNodeCert) {
+func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
 	key := config.Key()
-	log.Debugf("publishEveNodeCert %s", key)
-	pub := ctx.pubEveNodeCert
+	log.Debugf("publishEdgeNodeCert %s", key)
+	pub := ctx.pubEdgeNodeCert
 	pub.Publish(key, config)
-	log.Debugf("publishEveNodeCert %s Done", key)
+	log.Debugf("publishEdgeNodeCert %s Done", key)
 }
 
 func getECDHCert(certPath string) ([]byte, error) {
@@ -1096,14 +1097,14 @@ func publishECDHCertToController(ctx *tpmMgrContext) {
 	if !etpm.IsTpmEnabled() || etpm.FileExists(ecdhKeyFile) {
 		isTpm = false
 	}
-	attestCert := types.EveNodeCert{
+	ecdhCert := types.EdgeNodeCert{
 		HashAlgo: types.CertHashTypeSha256First16,
 		CertID:   certHash,
 		CertType: types.CertTypeEcdhXchange,
 		Cert:     certBytes,
 		IsTpm:    isTpm,
 	}
-	publishEveNodeCert(ctx, attestCert)
+	publishEdgeNodeCert(ctx, ecdhCert)
 	log.Infof("publishECDHCertToController Done")
 }
 
@@ -1243,15 +1244,15 @@ func Run(ps *pubsub.PubSub) {
 		ctx.subAttestNonce = subAttestNonce
 		//subAttestNonce.Activate()
 
-		pubEveNodeCert, err := ps.NewPublication(
+		pubEdgeNodeCert, err := ps.NewPublication(
 			pubsub.PublicationOptions{
 				AgentName: agentName,
-				TopicType: types.EveNodeCert{},
+				TopicType: types.EdgeNodeCert{},
 			})
 		if err != nil {
 			log.Fatal(err)
 		}
-		ctx.pubEveNodeCert = pubEveNodeCert
+		ctx.pubEdgeNodeCert = pubEdgeNodeCert
 		publishECDHCertToController(&ctx)
 
 		// Pick up debug aka log level before we start real work
@@ -1315,7 +1316,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Errorf("Error in creating Ecdh key: %v ", err)
 			os.Exit(1)
 		}
-		if err := createEveNodeEcdhCert(); err != nil {
+		if err := createEcdhCert(); err != nil {
 			log.Errorf("Error in creating Ecdh Certificate: %v", err)
 			os.Exit(1)
 		}
