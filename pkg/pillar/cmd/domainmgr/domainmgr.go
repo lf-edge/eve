@@ -1332,7 +1332,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
-		ds.Devtype = dc.Devtype
+		// Generate Devtype for hypervisor package
+		// XXX can hypervisor look at something different?
+		if dc.Format == zconfig.Format_CONTAINER {
+			ds.Devtype = "container"
+		} else {
+			ds.Devtype = "hdd"
+		}
 		var xv string
 		if status.IsContainer {
 			// map from i=1 to xvdb, 2 to xvdc etc
@@ -1889,6 +1895,9 @@ func createCloudInitISO(ctx *domainContext,
 	ds.Format = zconfig.Format_RAW
 	ds.Vdev = "hdc:cdrom"
 	ds.ReadOnly = false
+	// Generate Devtype for hypervisor package
+	// XXX can hypervisor look at something different?
+	ds.Devtype = "cdrom"
 	return ds, nil
 }
 

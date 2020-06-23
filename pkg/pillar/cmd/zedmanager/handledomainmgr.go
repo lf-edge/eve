@@ -81,7 +81,6 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			disk.FileLocation = location
 			disk.ReadOnly = sc.ReadOnly
 			disk.Format = sc.Format
-			disk.Devtype = sc.Devtype
 			dc.DiskConfigList = append(dc.DiskConfigList, disk)
 		case "kernel":
 			if dc.Kernel != "" {
