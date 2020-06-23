@@ -1024,7 +1024,6 @@ func parseStorageConfigList(objType string,
 		image.ReadOnly = drive.Readonly
 		image.MaxVolSize = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
-		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
 		storageList[idx] = *image
 		idx++
