@@ -216,6 +216,8 @@ func Run(ps *pubsub.PubSub) {
 	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"ccert", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
