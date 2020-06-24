@@ -10,7 +10,7 @@ A "Vault" refers to a directory, where files under that directory are stored in 
 
 ## Default Vaults
 
-By default, vaultmgr creates two vaults on the EVE node: `persist/img` and `/persist/config`. They are created when an EVE device is booting for the first time, after an USB installation.
+By default, vaultmgr creates two vaults on the device: `persist/img` and `/persist/config`. They are created when a device is booting for the first time, after an USB installation.
 
 ## Encryption Tool
 

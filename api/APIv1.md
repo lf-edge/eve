@@ -248,7 +248,7 @@ The response MUST contain a message with a list of certificates Controller is us
 
 ### Attestation
 
-This API anchors all operations related to attestation and trust of an EVE node
+This API anchors all operations related to attestation and trust of a device
 
 POST /api/v1/edgeDevice/id/{uuid}/attest
 
