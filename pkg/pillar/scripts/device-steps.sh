@@ -171,6 +171,11 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
     if ! $BINDIR/tpmmgr createCerts; then
         echo "$(date -Ins -u) device-steps: createCerts failed"
     fi
+else
+    echo "$(date -Ins -u) device-steps: NOT TPM device, creating additional security certificates"
+    if ! $BINDIR/tpmmgr createSoftCerts; then
+        echo "$(date -Ins -u) device-steps: createSoftCerts failed"
+    fi
 fi
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
