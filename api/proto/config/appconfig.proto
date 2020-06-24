@@ -96,7 +96,9 @@ message AppInstanceConfig {
   // The order here is critical because they are presented to the VM or
   // container in the order they are listed, e.g., the first VM image
   // will be the root disk.
-  repeated VolumeRef volumeRefs = 16;
+  // Note that since the name volumeRef was used before and deprecated
+  // python protobuf seems to require that we use a different name.
+  repeated VolumeRef volumeRefList = 16;
 }
 
 // Reference to a Volume specified separately in the API
