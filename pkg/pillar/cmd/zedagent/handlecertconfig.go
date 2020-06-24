@@ -8,6 +8,7 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -72,10 +73,12 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 		configHash := config.CertHash
 		found := false
 		for _, cfgConfig := range cfgCerts {
-			cfgConfigHash := cfgConfig.GetCertHash()
-			if bytes.Equal(configHash, cfgConfigHash) {
-				found = true
-				break
+			if cfgConfig.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE {
+				cfgConfigHash := cfgConfig.GetCertHash()
+				if bytes.Equal(configHash, cfgConfigHash) {
+					found = true
+					break
+				}
 			}
 		}
 		if !found {
@@ -84,21 +87,68 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 		}
 	}
 
+	// get itermediate certificates
+	interim := x509.NewCertPool()
 	for _, cfgConfig := range cfgCerts {
-		certKey := hex.EncodeToString(cfgConfig.GetCertHash())
-		cert := lookupControllerCert(ctx.getconfigCtx, certKey)
-		if cert == nil {
-			log.Infof("parseControllerCerts: not found %s", certKey)
-			cert = &types.ControllerCert{
+		if cfgConfig.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_INTERMEDIATE {
+			ok := interim.AppendCertsFromPEM(cfgConfig.GetCert())
+			if !ok {
+				errStr := fmt.Sprintf("intermediate cert append fail")
+				log.Errorf("parseControllerCerts: " + errStr)
+				return
+			}
+		}
+	}
+
+	// verify and update ECDH certificates
+	for _, cfgConfig := range cfgCerts {
+		if cfgConfig.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE {
+			cert := &types.ControllerCert{
 				HashAlgo: cfgConfig.GetHashAlgo(),
 				Type:     cfgConfig.GetType(),
 				Cert:     cfgConfig.GetCert(),
 				CertHash: cfgConfig.GetCertHash(),
 			}
+			interim0 := interim
+			if err := zedcloud.VerifySignature(cert.Cert, interim0); err != nil {
+				errStr := fmt.Sprintf("%v", err)
+				log.Errorf("parseControllerCerts: " + errStr)
+				cert.ErrorAndTime.SetError(errStr, time.Now())
+			}
 			publishControllerCert(ctx.getconfigCtx, *cert)
 		}
 	}
-	log.Infof("parsing controller certs done")
+
+	// verify and update signing certificate
+	signingCertCount := 0
+	for _, cfgConfig := range cfgCerts {
+		if cfgConfig.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING {
+			signingCertCount++
+			if signingCertCount > 1 {
+				errStr := fmt.Sprintf("more than one signing certificate")
+				log.Errorf("parseControllerCerts: " + errStr)
+				return
+			}
+			interim0 := interim
+			if err := zedcloud.VerifySignature(cfgConfig.GetCert(), interim0); err != nil {
+				errStr := fmt.Sprintf("%v", err)
+				log.Errorf("parseControllerCerts: " + errStr)
+				return
+			}
+			if err := zedcloud.UpdateServerCert(&zedcloudCtx, cfgConfig.GetCert()); err != nil {
+				errStr := fmt.Sprintf("%v", err)
+				log.Errorf("parseControllerCerts: " + errStr)
+				return
+			}
+			fileutils.WriteRename(types.ServerSigningCertFileName, cfgConfig.GetCert())
+		}
+	}
+	if signingCertCount == 0 {
+		errStr := fmt.Sprintf("no signing certificate")
+		log.Errorf("parseControllerCerts: " + errStr)
+		return
+	}
+	log.Infof("parseControllerCerts(%d): done", len(cfgCerts))
 }
 
 // look up controller cert
@@ -219,20 +269,8 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	// for cipher object handling
+	// parse and update the controller certificates
 	parseControllerCerts(ctx, contents)
-
-	// TBD:XXX needed for MITM, accordingly refactor
-	certBytes, err := zedcloud.VerifySigningCertChain(&zedcloudCtx, contents)
-	if err != nil {
-		log.Errorf("getCertsFromController: verify err %v", err)
-		return false
-	}
-	err = fileutils.WriteRename(types.ServerSigningCertFileName, certBytes)
-	if err != nil {
-		log.Errorf("getCertsFromController: file save err %v", err)
-		return false
-	}
 
 	log.Infof("getCertsFromController: success")
 	return true
