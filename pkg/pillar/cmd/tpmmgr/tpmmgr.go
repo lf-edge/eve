@@ -733,14 +733,16 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
 func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
 	// check whether this is a software certificate
 	if !etpm.IsTpmEnabled() || !edgeNodeCert.IsTpm {
-		isDeviceKey := false
+		var err error
+		var privateKey *ecdsa.PrivateKey
 		if !etpm.IsTpmEnabled() && edgeNodeCert == nil {
-			// Test case
-			isDeviceKey = true
+			// Test cases use Device Key
+			privateKey, err = getDevicePrivateKey()
+		} else {
+			privateKey, err = getECDHPrivateKey()
 		}
-		privateKey, err := getDevicePrivateKey(isDeviceKey)
 		if err != nil {
-			log.Errorf("getDevicePrivateKeyfailed: %v", err)
+			log.Errorf("getDevice Key failed: %v", err)
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
@@ -812,12 +814,17 @@ func testEcdhAES() error {
 	return nil
 }
 
-// device with no TPM, get the file based key
-func getDevicePrivateKey(isDeviceKey bool) (*ecdsa.PrivateKey, error) {
-	keyFile := ecdhKeyFile
-	if isDeviceKey {
-		keyFile = types.DeviceKeyName
-	}
+// device with no TPM, get the file based device key
+func getDevicePrivateKey() (*ecdsa.PrivateKey, error) {
+	return getPrivateKeyFromFile(types.DeviceKeyName)
+}
+
+// device with no TPM, get the file based ECDH key
+func getECDHPrivateKey() (*ecdsa.PrivateKey, error) {
+	return getPrivateKeyFromFile(ecdhKeyFile)
+}
+
+func getPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	keyPEMBlock, err := ioutil.ReadFile(keyFile)
 	if err != nil {
 		errStr := fmt.Sprintf("No valid PEM block found, %v", err)
@@ -913,9 +920,9 @@ func createEcdhCertOnTpm() error {
 
 		tpmPrivKey := etpm.TpmPrivateKey{}
 		template := *deviceCert
-
 		tpmPrivKey.PublicKey = tpmPrivKey.Public()
 		template.SerialNumber = big.NewInt(123456789)
+
 		cert, err := x509.CreateCertificate(rand.Reader,
 			&template, deviceCert, publicKey, tpmPrivKey)
 		if err != nil {
@@ -943,7 +950,7 @@ func createEcdhCertOnTpm() error {
 }
 
 // create Ecdh Template
-func createEcdhSoftTemplate() x509.Certificate {
+func createEcdhTemplate() x509.Certificate {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
 	notBefore := time.Now()
@@ -971,10 +978,11 @@ func createEcdhSoftTemplate() x509.Certificate {
 
 // generate the software ECDH key and certificate,
 // the certificate is signed using the device private key
+// Assumes no TPM hence device private key is in a file
 func createEcdhCertSoft() error {
 
 	// get the device software private key
-	devicePrivKey, err := getDevicePrivateKey(true)
+	devicePrivKey, err := getDevicePrivateKey()
 	if err != nil {
 		errStr := fmt.Sprintf("device key file is absent")
 		log.Errorf(errStr)
@@ -990,7 +998,7 @@ func createEcdhCertSoft() error {
 	}
 
 	// get the ecdh template
-	template := createEcdhSoftTemplate()
+	template := createEcdhTemplate()
 
 	// create the certificate and sign with device private key
 	derBytes, err := x509.CreateCertificate(rand.Reader,
