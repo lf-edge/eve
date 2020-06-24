@@ -476,6 +476,64 @@ func VerifySigningCertChain(ctx *ZedCloudContext, content []byte) ([]byte, error
 	return certByte, nil
 }
 
+func VerifySignature(certByte []byte, interim *x509.CertPool) error {
+	block, _ := pem.Decode(certByte)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		errStr := fmt.Sprintf("VerifySignature: certificate parse fail, %v\n", err)
+		return errors.New(errStr)
+	}
+
+	// append to intermediate certificate
+	if interim != nil {
+		ok := interim.AppendCertsFromPEM(certByte)
+		if !ok {
+			errStr := fmt.Sprintf("VerifySignature: certificate append fail")
+			return errors.New(errStr)
+		}
+	}
+
+	// Get the root certificate from file
+	signingRoots := x509.NewCertPool()
+	caCert, err := ioutil.ReadFile(types.RootCertFileName)
+	if err != nil {
+		return err
+	}
+	if !signingRoots.AppendCertsFromPEM(caCert) {
+		errStr := fmt.Sprintf("VerifySignature: root certificate append fail, %s",
+			types.RootCertFileName)
+		return errors.New(errStr)
+	}
+
+	opts := x509.VerifyOptions{
+		Roots: signingRoots,
+		// for signing, not to verify the server name
+		Intermediates: interim,
+	}
+	if _, err := cert.Verify(opts); err != nil {
+		errStr := fmt.Sprintf("VerifySignature: certificate verification fail, %v\n", err)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func UpdateServerCert(ctx *ZedCloudContext, certByte []byte) error {
+	// store the certificate
+	ctx.serverSigningCertHash = ComputeSha(certByte)
+	block, _ := pem.Decode(certByte)
+	if block == nil {
+		err := fmt.Errorf("VerifySigningCertChain: can not get client Cert")
+		return err
+	}
+	sCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		log.Errorf("UpdateServerCert: certificate parse fail, %v", err)
+		return err
+	}
+	ctx.serverSigningCert = sCert
+	return nil
+}
+
 // UseV2API - check the controller cert file and use V2 api if it exist
 // by default it is running V2, unless /config/Force-API-V1 file exists
 func UseV2API() bool {
