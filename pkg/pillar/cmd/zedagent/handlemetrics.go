@@ -341,6 +341,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			urlMet.SentByteCount = um.SentByteCount
 			urlMet.RecvMsgCount = um.RecvMsgCount
 			urlMet.RecvByteCount = um.RecvByteCount
+			if !um.LastUse.IsZero() {
+				lu, _ := ptypes.TimestampProto(um.LastUse)
+				urlMet.LastUse = lu
+			}
 			metric.UrlMetrics = append(metric.UrlMetrics, urlMet)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
