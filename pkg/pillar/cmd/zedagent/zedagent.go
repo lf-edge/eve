@@ -216,7 +216,7 @@ func Run(ps *pubsub.PubSub) {
 	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"ccert", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
@@ -860,7 +860,7 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccert", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 
@@ -925,7 +925,7 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccert", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -1049,7 +1049,7 @@ func Run(ps *pubsub.PubSub) {
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccert", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// start the config fetch tasks, when zboot status is ready
