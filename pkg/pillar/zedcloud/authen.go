@@ -30,6 +30,7 @@ import (
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -383,69 +384,97 @@ func VerifySigningCertChain(ctx *ZedCloudContext, content []byte) ([]byte, error
 	sm := &zcert.ZControllerCert{}
 	err := proto.Unmarshal(content, sm)
 	if err != nil {
-		log.Errorf("SaveCertsToFile: Unmarshal err %v\n", err)
-		return nil, err
+		errStr := fmt.Sprintf("unmarshal error, %v", err)
+		log.Errorln("VerifySigningCertChain: " + errStr)
+		return nil, errors.New(errStr)
 	}
 
-	var block *pem.Block
-	var leafcert *x509.Certificate
-	var certByte []byte
-	var keyCnt int
+	// prepare intermediate certs and validate the payload
+	var sigCertBytes []byte
+	var keyCnt, signKeyCnt int
 	interm := x509.NewCertPool()
 	for _, cert := range sm.GetCerts() {
 		keyCnt++
-		if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_INTERMEDIATE {
+		switch cert.Type {
+		case zcert.ZCertType_CERT_TYPE_CONTROLLER_INTERMEDIATE:
 			ok := interm.AppendCertsFromPEM(cert.GetCert())
 			if !ok {
-				err := fmt.Errorf("VerifySigningCertChain: fail to append intermediate certs")
-				return nil, err
+				errStr := fmt.Sprintf("intermediate cert append fail")
+				log.Errorln("VerifySigningCertChain: " + errStr)
+				return nil, errors.New(errStr)
 			}
-			log.Debugf("VerifySigningCertChain: get intermediate cert %d, len %d\n",
-				keyCnt, len(cert.GetCert()))
-		} else if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING {
-			if len(certByte) > 0 {
-				err := fmt.Errorf("VerifySigningCertChain: received more than one leaf cert")
-				return nil, err
+
+		case zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING:
+			signKeyCnt++
+			if signKeyCnt > 1 {
+				errStr := fmt.Sprintf("received more than one signing cert")
+				log.Errorln("VerifySigningCertChain: " + errStr)
+				return nil, errors.New(errStr)
 			}
-			certByte = cert.GetCert()
-			block, _ = pem.Decode(certByte)
-			if block == nil {
-				err := fmt.Errorf("VerifySigningCertChain: can not get cert block")
-				return nil, err
-			}
-			leafcert, err = x509.ParseCertificate(block.Bytes)
-			if err != nil {
-				log.Errorf("VerifySigningCertChain: fail to parse certificate %v\n", err)
-				return nil, err
-			}
-			log.Debugf("VerifySigningCertChain: get signing cert %d, len %d\n",
-				keyCnt, len(cert.GetCert()))
-		} else if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE {
-			// skip for the CONTROLLER_ECDH_EXECHANGE cert type here, not for signing purpose
-			log.Debugf("VerifySigningCertChain: ECDH_EXCHANGE type, ignore cert %d, len %d\n",
-				keyCnt, len(cert.GetCert()))
-		} else {
-			err := fmt.Errorf("VerifySigningCertChain: received cert with unknown type %d", cert.Type)
-			return nil, err
+			sigCertBytes = cert.GetCert()
+
+		case zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE:
+			// nothing to do
+
+		default:
+			errStr := fmt.Sprintf("unknown certificate type(%d) received", cert.Type)
+			log.Errorln("VerifySigningCertChain: " + errStr)
+			return nil, errors.New(errStr)
 		}
 	}
 
 	log.Debugf("VerifySigningCertChain: key count %d\n", keyCnt)
-	if leafcert == nil {
-		err := fmt.Errorf("VerifySigningCertChain: fail to acquire leaf cert")
-		return nil, err
+	if signKeyCnt == 0 {
+		errStr := fmt.Sprintf("failed to acquire signing cert")
+		log.Errorln("VerifySigningCertChain: " + errStr)
+		return nil, errors.New(errStr)
+	}
+
+	// verify signature of certificates
+	for _, cert := range sm.GetCerts() {
+		if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING ||
+			cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE {
+			certByte := cert.GetCert()
+			if err := verifySignature(certByte, interm); err != nil {
+				errStr := fmt.Sprintf("signature verification fail")
+				log.Errorln("VerifySigningCertChain: " + errStr)
+				return nil, err
+			}
+		}
+	}
+	log.Debugf("VerifySigningCertChain: success\n")
+	return sigCertBytes, nil
+}
+
+func verifySignature(certByte []byte, interm *x509.CertPool) error {
+
+	block, _ := pem.Decode(certByte)
+	if block == nil {
+		errStr := fmt.Sprintf("certificate block decode fail")
+		log.Errorln("verifySignature: " + errStr)
+		return errors.New(errStr)
+	}
+
+	leafcert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		errStr := fmt.Sprintf("certificate parse fail, %v", err)
+		log.Errorln("verifySignature: " + errStr)
+		return errors.New(errStr)
 	}
 
 	// Get the root certificate from file
 	signingRoots := x509.NewCertPool()
-	caCert1, err := ioutil.ReadFile(types.RootCertFileName)
+	caCert, err := ioutil.ReadFile(types.RootCertFileName)
 	if err != nil {
-		return nil, err
+		errStr := fmt.Sprintf("root certificate read fail, %v", err)
+		log.Errorln("verifySignature: " + errStr)
+		return err
 	}
-	if !signingRoots.AppendCertsFromPEM(caCert1) {
-		errStr := fmt.Sprintf("Failed to append certs from %s", types.RootCertFileName)
-		log.Errorf(errStr)
-		return nil, errors.New(errStr)
+	if !signingRoots.AppendCertsFromPEM(caCert) {
+		errStr := fmt.Sprintf("root certificate append fail, %s",
+			types.RootCertFileName)
+		log.Errorln("verifySignature: " + errStr)
+		return errors.New(errStr)
 	}
 
 	opts := x509.VerifyOptions{
@@ -454,26 +483,45 @@ func VerifySigningCertChain(ctx *ZedCloudContext, content []byte) ([]byte, error
 		Intermediates: interm,
 	}
 	if _, err := leafcert.Verify(opts); err != nil {
-		log.Errorf("VerifySigningCertChain: fail to verify the cert chain %v\n", err)
-		return nil, err
+		errStr := fmt.Sprintf("signature verification fail, %v", err)
+		log.Errorln("verifySignature: " + errStr)
+		return errors.New(errStr)
 	}
+	return nil
+}
 
-	// save this cert and hash to serverSigningCert and serverSigingCertHash
-	ctx.serverSigningCertHash = ComputeSha(certByte)
-	block, _ = pem.Decode(certByte)
+func UpdateServerCert(ctx *ZedCloudContext, certByte []byte) error {
+
+	// decode the certificate
+	block, _ := pem.Decode(certByte)
 	if block == nil {
-		err := fmt.Errorf("VerifySigningCertChain: can not get client Cert")
-		return nil, err
+		errStr := fmt.Sprintf("certificate decode fail")
+		log.Errorln("UpdateServerCert: " + errStr)
+		return errors.New(errStr)
 	}
-	sCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		log.Errorf("VerifySigningCertChain: can not parse cert %v", err)
-		return nil, err
-	}
-	ctx.serverSigningCert = sCert
 
-	log.Debugf("VerifySigningCertChain: success\n")
-	return certByte, nil
+	// parse the certificate
+	leafCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		errStr := fmt.Sprintf("certificate parse fail, %v", err)
+		log.Errorln("UpdateServerCert: " + errStr)
+		return errors.New(errStr)
+	}
+
+	// write to the file
+	if err := fileutils.WriteRename(types.ServerSigningCertFileName,
+		certByte); err != nil {
+		errStr := fmt.Sprintf("file write err %v", err)
+		log.Errorln("UpdateServerCert: " + errStr)
+		return errors.New(errStr)
+	}
+
+	// store the certificate
+	ctx.serverSigningCert = leafCert
+
+	// store the certificate hash
+	ctx.serverSigningCertHash = ComputeSha(certByte)
+	return nil
 }
 
 // UseV2API - check the controller cert file and use V2 api if it exist
