@@ -919,9 +919,8 @@ func createEcdhCertOnTpm() error {
 		}
 
 		tpmPrivKey := etpm.TpmPrivateKey{}
-		template := *deviceCert
 		tpmPrivKey.PublicKey = tpmPrivKey.Public()
-		template.SerialNumber = big.NewInt(123456789)
+		template := createEcdhTemplate(*deviceCert)
 
 		cert, err := x509.CreateCertificate(rand.Reader,
 			&template, deviceCert, publicKey, tpmPrivKey)
@@ -949,13 +948,11 @@ func createEcdhCertOnTpm() error {
 	return nil
 }
 
-// create Ecdh Template
-func createEcdhTemplate() x509.Certificate {
+// create Ecdh Template using the deviceCert for lifetimes
+// Use a CommonName to differentiate from the device cert itself
+func createEcdhTemplate(deviceCert x509.Certificate) x509.Certificate {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
-	notBefore := time.Now()
-	// twenty years
-	notAfter := notBefore.AddDate(20, 0, 0)
 
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
@@ -966,8 +963,8 @@ func createEcdhTemplate() x509.Certificate {
 			Organization: []string{"Zededa, Inc"},
 			CommonName:   "Device ECDH certificate",
 		},
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
+		NotBefore: deviceCert.NotBefore,
+		NotAfter:  deviceCert.NotAfter,
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -997,12 +994,29 @@ func createEcdhCertSoft() error {
 		return errors.New(errStr)
 	}
 
+	clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	if err != nil {
+		errStr := fmt.Sprintf("read device cert failed: %v", err)
+		log.Errorf(errStr)
+		return errors.New(errStr)
+	}
+
+	block, _ := pem.Decode(clientCertBytes)
+	if block == nil {
+		return fmt.Errorf("error in parsing clientCertBytes")
+	}
+
+	deviceCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return err
+	}
+
 	// get the ecdh template
-	template := createEcdhTemplate()
+	template := createEcdhTemplate(*deviceCert)
 
 	// create the certificate and sign with device private key
 	derBytes, err := x509.CreateCertificate(rand.Reader,
-		&template, &template, certPrivKey.Public(), devicePrivKey)
+		&template, deviceCert, certPrivKey.Public(), devicePrivKey)
 	if err != nil {
 		errStr := fmt.Sprintf("certificate create fail, %v", err)
 		log.Errorf(errStr)
@@ -1324,6 +1338,8 @@ func Run(ps *pubsub.PubSub) {
 			log.Errorf("Error in creating Ecdh key: %v ", err)
 			os.Exit(1)
 		}
+		fallthrough
+	case "createSoftCerts":
 		if err := createEcdhCert(); err != nil {
 			log.Errorf("Error in creating Ecdh Certificate: %v", err)
 			os.Exit(1)
