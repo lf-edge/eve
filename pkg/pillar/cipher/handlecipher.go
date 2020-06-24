@@ -166,12 +166,6 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 		log.Errorf("Edge Node Certificate get fail")
 		return []byte{}, err
 	}
-	if edgeNodeCert.HasError() {
-		errStr := fmt.Sprintf("edge node certificate has error: %v",
-			edgeNodeCert.Error)
-		log.Error(errStr)
-		return nil, errors.New(errStr)
-	}
 	switch cipherContext.EncryptionScheme {
 	case zconfig.EncryptionScheme_SA_NONE:
 		return []byte{}, errors.New("No Encryption")
@@ -197,12 +191,6 @@ func getControllerCertEcdhKey(ctx *DecryptCipherContext, key string) (*ecdsa.Pub
 	config := lookupControllerCert(ctx, key)
 	if config == nil {
 		errStr := fmt.Sprintf("Controller Certificate get fail")
-		log.Error(errStr)
-		return nil, errors.New(errStr)
-	}
-	if config.HasError() {
-		errStr := fmt.Sprintf("controller certificate has error: %v",
-			config.Error)
 		log.Error(errStr)
 		return nil, errors.New(errStr)
 	}
