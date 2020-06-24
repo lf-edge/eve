@@ -73,8 +73,6 @@ type EdgeNodeCert struct {
 	CertType CertType     //type of the certificate
 	Cert     []byte       //PEM encoded
 	IsTpm    bool         //TPM generated or, not
-	// ErrorAndTime provides SetErrorNow() and ClearError()
-	ErrorAndTime
 }
 
 //Key uniquely identifies the certificate
