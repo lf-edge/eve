@@ -56,7 +56,6 @@ func AddOrRefcountVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 			MaxVolSize:     ss.MaxVolSize,
 			ReadOnly:       ss.ReadOnly,
 			Format:         ss.Format,
-			Devtype:        ss.Devtype,
 			Target:         ss.Target,
 			RefCount:       1,
 		}

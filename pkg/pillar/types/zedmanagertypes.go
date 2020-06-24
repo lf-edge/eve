@@ -352,7 +352,6 @@ type StorageConfig struct {
 	ReadOnly    bool
 	MaxVolSize  uint64         // Resize filesystem to this size if set (In bytes)
 	Format      zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype     string         // Default ""; could be e.g. "cdrom"
 	Target      string         // Default "" is interpreted as "disk"
 }
 
@@ -375,7 +374,6 @@ type StorageStatus struct {
 	ReadOnly           bool
 	MaxVolSize         uint64 // Resize filesystem to this size if set (In bytes)
 	Format             zconfig.Format
-	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
 	Progress           uint    // In percent i.e., 0-100
@@ -409,7 +407,6 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.ReadOnly = sc.ReadOnly
 	ss.MaxVolSize = sc.MaxVolSize
 	ss.Format = sc.Format
-	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
 	ss.State = 0
 	ss.Progress = 0

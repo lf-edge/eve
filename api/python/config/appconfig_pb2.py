@@ -24,7 +24,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x16\x63onfig/appconfig.proto\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xa8\x03\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\x12 \n\x07restart\x18\t \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x1e\n\x05purge\x18\n \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12 \n\ncipherData\x18\r \x01(\x0b\x32\x0c.CipherBlock\x12\x1a\n\x12\x63ollectStatsIPAddr\x18\x0f \x01(\t\x12\x1e\n\nvolumeRefs\x18\x10 \x03(\x0b\x32\n.VolumeRef\"2\n\tVolumeRef\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x17\n\x0fgenerationCount\x18\x02 \x01(\x03\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x16\x63onfig/appconfig.proto\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xab\x03\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\x12 \n\x07restart\x18\t \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x1e\n\x05purge\x18\n \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12 \n\ncipherData\x18\r \x01(\x0b\x32\x0c.CipherBlock\x12\x1a\n\x12\x63ollectStatsIPAddr\x18\x0f \x01(\t\x12!\n\rvolumeRefList\x18\x10 \x03(\x0b\x32\n.VolumeRef\"2\n\tVolumeRef\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x17\n\x0fgenerationCount\x18\x02 \x01(\x03\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,config_dot_vm__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,])
 
@@ -168,7 +168,7 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='volumeRefs', full_name='AppInstanceConfig.volumeRefs', index=13,
+      name='volumeRefList', full_name='AppInstanceConfig.volumeRefList', index=13,
       number=16, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -187,7 +187,7 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=192,
-  serialized_end=616,
+  serialized_end=619,
 )
 
 
@@ -224,8 +224,8 @@ _VOLUMEREF = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=618,
-  serialized_end=668,
+  serialized_start=621,
+  serialized_end=671,
 )
 
 _APPINSTANCECONFIG.fields_by_name['uuidandversion'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION
@@ -236,7 +236,7 @@ _APPINSTANCECONFIG.fields_by_name['adapters'].message_type = config_dot_devcommo
 _APPINSTANCECONFIG.fields_by_name['restart'].message_type = _INSTANCEOPSCMD
 _APPINSTANCECONFIG.fields_by_name['purge'].message_type = _INSTANCEOPSCMD
 _APPINSTANCECONFIG.fields_by_name['cipherData'].message_type = config_dot_acipherinfo__pb2._CIPHERBLOCK
-_APPINSTANCECONFIG.fields_by_name['volumeRefs'].message_type = _VOLUMEREF
+_APPINSTANCECONFIG.fields_by_name['volumeRefList'].message_type = _VOLUMEREF
 DESCRIPTOR.message_types_by_name['InstanceOpsCmd'] = _INSTANCEOPSCMD
 DESCRIPTOR.message_types_by_name['AppInstanceConfig'] = _APPINSTANCECONFIG
 DESCRIPTOR.message_types_by_name['VolumeRef'] = _VOLUMEREF

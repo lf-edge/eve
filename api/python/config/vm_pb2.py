@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x0f\x63onfig/vm.proto\"\xd0\x02\n\x08VmConfig\x12\x0e\n\x06kernel\x18\x01 \x01(\t\x12\x0f\n\x07ramdisk\x18\x02 \x01(\t\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0e\n\x06maxmem\x18\x04 \x01(\r\x12\r\n\x05vcpus\x18\x05 \x01(\r\x12\x0f\n\x07maxcpus\x18\x06 \x01(\r\x12\x0f\n\x07rootdev\x18\x07 \x01(\t\x12\x11\n\textraargs\x18\x08 \x01(\t\x12\x12\n\nbootloader\x18\t \x01(\t\x12\x0c\n\x04\x63pus\x18\n \x01(\t\x12\x12\n\ndevicetree\x18\x0b \x01(\t\x12\r\n\x05\x64tdev\x18\x0c \x03(\t\x12\x0c\n\x04irqs\x18\r \x03(\r\x12\r\n\x05iomem\x18\x0e \x03(\t\x12#\n\x12virtualizationMode\x18\x0f \x01(\x0e\x32\x07.VmMode\x12\x11\n\tenableVnc\x18\x10 \x01(\x08\x12\x12\n\nvncDisplay\x18\x11 \x01(\r\x12\x11\n\tvncPasswd\x18\x12 \x01(\t*.\n\x06VmMode\x12\x06\n\x02PV\x10\x00\x12\x07\n\x03HVM\x10\x01\x12\n\n\x06\x46iller\x10\x02\x12\x07\n\x03\x46ML\x10\x03\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x0f\x63onfig/vm.proto\"\xd0\x02\n\x08VmConfig\x12\x0e\n\x06kernel\x18\x01 \x01(\t\x12\x0f\n\x07ramdisk\x18\x02 \x01(\t\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0e\n\x06maxmem\x18\x04 \x01(\r\x12\r\n\x05vcpus\x18\x05 \x01(\r\x12\x0f\n\x07maxcpus\x18\x06 \x01(\r\x12\x0f\n\x07rootdev\x18\x07 \x01(\t\x12\x11\n\textraargs\x18\x08 \x01(\t\x12\x12\n\nbootloader\x18\t \x01(\t\x12\x0c\n\x04\x63pus\x18\n \x01(\t\x12\x12\n\ndevicetree\x18\x0b \x01(\t\x12\r\n\x05\x64tdev\x18\x0c \x03(\t\x12\x0c\n\x04irqs\x18\r \x03(\r\x12\r\n\x05iomem\x18\x0e \x03(\t\x12#\n\x12virtualizationMode\x18\x0f \x01(\x0e\x32\x07.VmMode\x12\x11\n\tenableVnc\x18\x10 \x01(\x08\x12\x12\n\nvncDisplay\x18\x11 \x01(\r\x12\x11\n\tvncPasswd\x18\x12 \x01(\t*;\n\x06VmMode\x12\x06\n\x02PV\x10\x00\x12\x07\n\x03HVM\x10\x01\x12\n\n\x06\x46iller\x10\x02\x12\x07\n\x03\x46ML\x10\x03\x12\x0b\n\x07NOHYPER\x10\x04\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _VMMODE = _descriptor.EnumDescriptor(
@@ -45,11 +45,15 @@ _VMMODE = _descriptor.EnumDescriptor(
       name='FML', index=3, number=3,
       serialized_options=None,
       type=None),
+    _descriptor.EnumValueDescriptor(
+      name='NOHYPER', index=4, number=4,
+      serialized_options=None,
+      type=None),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=358,
-  serialized_end=404,
+  serialized_end=417,
 )
 _sym_db.RegisterEnumDescriptor(_VMMODE)
 
@@ -58,6 +62,7 @@ PV = 0
 HVM = 1
 Filler = 2
 FML = 3
+NOHYPER = 4
 
 
 

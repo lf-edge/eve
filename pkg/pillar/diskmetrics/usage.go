@@ -48,11 +48,51 @@ func PartitionSize(part string) (uint64, bool) {
 		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
 		return 0, false
 	}
-	out, err = exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
+	isPart := strings.EqualFold(diskType(part), "part")
+	return val, isPart
+}
+
+// diskType returns a string like "disk", "part", "loop"
+func diskType(part string) string {
+	out, err := exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
 	if err != nil {
 		log.Errorf("lsblk -nbdo TYPE %s failed %s\n", "/dev/"+part, err)
-		return 0, false
+		return ""
 	}
-	isPart := strings.EqualFold(strings.TrimSpace(string(out)), "part")
-	return val, isPart
+	return strings.TrimSpace(string(out))
+}
+
+// FindDisksPartitions returns the names of all disks and all partitions
+// Return an array of names like "sda", "sdb1"
+func FindDisksPartitions() []string {
+	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
+	if err != nil {
+		log.Errorf("lsblk -nlo NAME failed %s", err)
+		return nil
+	}
+	res := strings.Split(string(out), "\n")
+	// Remove blank/empty string after last CR
+	res = res[:len(res)-1]
+	return res
+}
+
+// FindLargestDisk determines the name of the largest disk
+// The assumption is that this is not a removalable disk like a USB disk
+// with the installer image
+func FindLargestDisk() string {
+
+	var maxsize uint64
+	var maxdisk string
+	disksAndPartitions := FindDisksPartitions()
+	for _, part := range disksAndPartitions {
+		if !strings.EqualFold(diskType(part), "disk") {
+			continue
+		}
+		size, _ := PartitionSize(part)
+		if size > maxsize {
+			maxsize = size
+			maxdisk = part
+		}
+	}
+	return maxdisk
 }

@@ -105,9 +105,8 @@ type OldVolumeConfig struct {
 	Format     zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
 	// XXX add "directory" to format?  enum?
 
-	// XXX if these are not needed in Status they are not needed in Config
-	Devtype string // Default ""; could be e.g. "cdrom"
-	Target  string // Default "" is interpreted as "disk"
+	// XXX if this is not needed in Status it is not needed in Config
+	Target string // Default "" is interpreted as "disk"
 
 	// XXX RefCount? free handshake? Will this ever be different than 1?
 	RefCount uint

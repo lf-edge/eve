@@ -16,6 +16,7 @@ enum VmMode {
   HVM = 1;
   Filler = 2; // PVH = 2;
   FML = 3; // Experimental machine learning mode
+  NOHYPER = 4; // Do not use a hypervisor
 }
 
 message VmConfig {

@@ -78,6 +78,7 @@ type DNSContext struct {
 type zedagentContext struct {
 	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
+	cipherCtx                 *cipherContext    // Cross link
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
@@ -96,7 +97,7 @@ type zedagentContext struct {
 	subAppVifIPTrig           pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
-	subEveNodeCert            pubsub.Subscription
+	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -123,7 +124,6 @@ type zedagentContext struct {
 	globalConfig            types.ConfigItemValueMap
 	specMap                 types.ConfigItemSpecMap
 	globalStatus            types.GlobalStatus
-	getCertsTimer           *time.Timer
 	appContainerStatsTime   time.Time // last time the App Container stats uploaded
 }
 
@@ -216,6 +216,8 @@ func Run(ps *pubsub.PubSub) {
 	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -223,6 +225,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
+	cipherCtx := cipherContext{}
 
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
@@ -232,6 +235,9 @@ func Run(ps *pubsub.PubSub) {
 	// Cross link
 	getconfigCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.getconfigCtx = &getconfigCtx
+
+	cipherCtx.zedagentCtx = &zedagentCtx
+	zedagentCtx.cipherCtx = &cipherCtx
 
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.InitDeferred()
@@ -626,21 +632,21 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
 
-	subEveNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
-		TopicImpl:     types.EveNodeCert{},
+		TopicImpl:     types.EdgeNodeCert{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		ModifyHandler: handleEveNodeCertModify,
-		DeleteHandler: handleEveNodeCertDelete,
+		ModifyHandler: handleEdgeNodeCertModify,
+		DeleteHandler: handleEdgeNodeCertDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subEveNodeCert = subEveNodeCert
-	subEveNodeCert.Activate()
+	zedagentCtx.subEdgeNodeCert = subEdgeNodeCert
+	subEdgeNodeCert.Activate()
 
 	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
@@ -810,6 +816,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subLogMetrics = subLogMetrics
 
+	//initialize cipher processing block
+	cipherModuleInitialize(&zedagentCtx, ps)
+
 	// Pick up debug aka log level before we start real work
 
 	for !zedagentCtx.GCInitialized {
@@ -851,6 +860,8 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses")
@@ -889,9 +900,6 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			subNodeAgentStatus.ProcessChange(change)
 
-		case change := <-subEveNodeCert.MsgChan():
-			subEveNodeCert.ProcessChange(change)
-
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
@@ -916,6 +924,8 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -1019,9 +1029,6 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subDevicePortConfigList.MsgChan():
 			subDevicePortConfigList.ProcessChange(change)
 
-		case change := <-subEveNodeCert.MsgChan():
-			subEveNodeCert.ProcessChange(change)
-
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
@@ -1041,6 +1048,8 @@ func Run(ps *pubsub.PubSub) {
 		}
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// start the config fetch tasks, when zboot status is ready
@@ -1049,11 +1058,8 @@ func Run(ps *pubsub.PubSub) {
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
 
-	// let zedagent get the certs for encryption/decryption at least once if V2
-	zedagentCtx.getCertsTimer = time.NewTimer(1 * time.Second)
-	if !zedcloud.UseV2API() {
-		zedagentCtx.getCertsTimer.Stop()
-	}
+	// start cipher module tasks
+	cipherModuleStart(&zedagentCtx)
 
 	for {
 		select {
@@ -1177,21 +1183,14 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subAppVifIPTrig.MsgChan():
 			subAppVifIPTrig.ProcessChange(change)
 
-		case change := <-subEveNodeCert.MsgChan():
-			subEveNodeCert.ProcessChange(change)
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
 		case change := <-subAppContainerMetrics.MsgChan():
 			subAppContainerMetrics.ProcessChange(change)
-
-		case <-zedagentCtx.getCertsTimer.C:
-			start := time.Now()
-			ok := getCloudCertChain(&zedagentCtx)
-			log.Infof("zedagent Run: getCertsTimer get cloud cert ok %v", ok)
-			pubsub.CheckMaxTimeTopic(agentName, "getCertsTimer", start,
-				warningTime, errorTime)
 
 		case <-stillRunning.C:
 			// Fault injection

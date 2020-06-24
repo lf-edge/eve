@@ -143,6 +143,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
 			ctx.decryptCipherContext.SubControllerCert.ProcessChange(change)
 
+		case change := <-ctx.decryptCipherContext.SubEdgeNodeCert.MsgChan():
+			ctx.decryptCipherContext.SubEdgeNodeCert.ProcessChange(change)
+
 		case change := <-ctx.decryptCipherContext.SubCipherContext.MsgChan():
 			ctx.decryptCipherContext.SubCipherContext.ProcessChange(change)
 

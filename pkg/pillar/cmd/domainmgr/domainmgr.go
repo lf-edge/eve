@@ -251,6 +251,21 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
+	// Look for edge node certs which will be used for decryption
+	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "tpmmgr",
+		TopicImpl:   types.EdgeNodeCert{},
+		Activate:    false,
+		Ctx:         &domainCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	subEdgeNodeCert.Activate()
+
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
@@ -398,6 +413,9 @@ func Run(ps *pubsub.PubSub) {
 		select {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
+
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
 
 		case change := <-subCipherContext.MsgChan():
 			subCipherContext.ProcessChange(change)
@@ -1332,7 +1350,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
-		ds.Devtype = dc.Devtype
+		// Generate Devtype for hypervisor package
+		// XXX can hypervisor look at something different?
+		if dc.Format == zconfig.Format_CONTAINER {
+			ds.Devtype = "container"
+		} else {
+			ds.Devtype = "hdd"
+		}
 		var xv string
 		if status.IsContainer {
 			// map from i=1 to xvdb, 2 to xvdc etc
@@ -1889,6 +1913,9 @@ func createCloudInitISO(ctx *domainContext,
 	ds.Format = zconfig.Format_RAW
 	ds.Vdev = "hdc:cdrom"
 	ds.ReadOnly = false
+	// Generate Devtype for hypervisor package
+	// XXX can hypervisor look at something different?
+	ds.Devtype = "cdrom"
 	return ds, nil
 }
 

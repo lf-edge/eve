@@ -17,8 +17,6 @@ type ControllerCert struct {
 	Type     zcert.ZCertType
 	Cert     []byte
 	CertHash []byte
-	// ErrorAndTime provides SetErrorNow() and ClearError()
-	ErrorAndTime
 }
 
 // Key :

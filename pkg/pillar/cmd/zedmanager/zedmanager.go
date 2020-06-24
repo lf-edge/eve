@@ -830,13 +830,6 @@ func quantifyChanges(config types.AppInstanceConfig,
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if ss.Devtype != sc.Devtype {
-				str := fmt.Sprintf("storage Devtype changed from %v to %v for %s",
-					ss.Devtype, sc.Devtype, ss.ImageID)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
 		}
 	}
 	// Compare networks without comparing ACLs

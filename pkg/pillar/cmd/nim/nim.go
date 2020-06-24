@@ -177,6 +177,21 @@ func Run(ps *pubsub.PubSub) {
 	nimCtx.deviceNetworkContext.DecryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
+	// Look for edge node certs which will be used for decryption
+	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "tpmmgr",
+		TopicImpl:   types.EdgeNodeCert{},
+		Activate:    false,
+		Ctx:         &nimCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nimCtx.deviceNetworkContext.DecryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	subEdgeNodeCert.Activate()
+
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
@@ -555,6 +570,9 @@ func Run(ps *pubsub.PubSub) {
 		select {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
+
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
 
 		case change := <-subCipherContext.MsgChan():
 			subCipherContext.ProcessChange(change)
