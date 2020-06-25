@@ -10,6 +10,7 @@ package zedcloud
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
+	"strings"
 	"sync"
 	"time"
 )
@@ -87,6 +88,32 @@ func GetCloudMetrics() types.MetricsMap {
 // the metrics from a previous run of the agent/device
 func SetCloudMetrics(m types.MetricsMap) {
 	metrics = m
+}
+
+// CloudMetricsExcludeURL returns a map without the entries containing
+// the substring
+func CloudMetricsExcludeURL(m types.MetricsMap, substring string) types.MetricsMap {
+	resCms := make(types.MetricsMap)
+	for agentName, cm := range m {
+		resCm := types.ZedcloudMetric{
+			FailureCount:  cm.FailureCount,
+			SuccessCount:  cm.SuccessCount,
+			LastFailure:   cm.LastFailure,
+			LastSuccess:   cm.LastSuccess,
+			URLCounters:   make(map[string]types.UrlcloudMetrics),
+			AuthFailCount: cm.AuthFailCount,
+		}
+		for u, ucm := range cm.URLCounters {
+			if strings.Index(u, substring) != -1 {
+				log.Infof("CloudMetricsExcludeURL dropping %s",
+					u)
+				continue
+			}
+			resCm.URLCounters[u] = ucm
+		}
+		resCms[agentName] = resCm
+	}
+	return resCms
 }
 
 // Concatenate different interfaces and URLs into a union map

@@ -187,6 +187,9 @@ func Run(ps *pubsub.PubSub) {
 	item, err := pub.Get("global")
 	if err == nil {
 		cms := item.(types.MetricsMap)
+		// Purge any pre-reboot metrics for app instance logs
+		// to avoid unbounded growth in the metrics message.
+		cms = zedcloud.CloudMetricsExcludeURL(cms, "apps/instanceid")
 		zedcloud.SetCloudMetrics(cms)
 	}
 
