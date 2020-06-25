@@ -47,13 +47,19 @@ var (
 // InitContainerdClient initializes CtrdClient and ctrdCtx
 func InitContainerdClient() error {
 	var err error
-	ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
-	CtrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
-	if err != nil {
-		log.Errorf("InitContainerdClient: could not create containerd client. %v", err.Error())
-		return fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
+	if ctrdCtx == nil {
+		ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
 	}
-	contentStore = CtrdClient.ContentStore()
+	if CtrdClient == nil {
+		CtrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
+		if err != nil {
+			log.Errorf("InitContainerdClient: could not create containerd client. %v", err.Error())
+			return fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
+		}
+	}
+	if contentStore == nil {
+		contentStore = CtrdClient.ContentStore()
+	}
 	if err := verifyCtr(); err != nil {
 		return fmt.Errorf("InitContainerdClient: exception while verifying ctrd client: %s", err.Error())
 	}
@@ -210,6 +216,9 @@ func CtrMountSnapshot(snapshotID, targetPath string) error {
 	mounts, err := snapshotter.Mounts(ctrdCtx, snapshotID)
 	if err != nil {
 		return fmt.Errorf("CtrMountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
+	}
+	if err := os.MkdirAll(targetPath, 0766); err != nil {
+		return fmt.Errorf("CtrMountSnapshot: Exception while creating targetPath dir. %v", err)
 	}
 	return mounts[0].Mount(targetPath)
 }

@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,8 +47,9 @@ const (
 	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
 	rwImgDirname = types.PersistDir + "/img" // We store images here
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime           = 3 * time.Minute
+	warningTime         = 40 * time.Second
+	containerRootfsPath = "rootfs/"
 )
 
 // Really a constant
@@ -318,6 +321,11 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	if err := containerd.InitContainerdClient(); err != nil {
+		log.Fatal(err)
+	}
+	defer containerd.CtrdClient.Close()
 
 	// Pick up debug aka log level before we start real work
 	for !domainCtx.GCInitialized {
@@ -1048,6 +1056,16 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		if ds.Format != zconfig.Format_CONTAINER {
 			continue
 		}
+
+		snapshotID := getCtrdSnapshotID(ds.FileLocation)
+		if err := containerd.CtrMountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
+			err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+				snapshotID, config.UUIDandVersion.UUID, err)
+			log.Error(err.Error())
+			status.SetErrorNow(err.Error())
+			return
+		}
+
 		// XXX apparently this is under the appInstID and not under
 		// the ImageID aka VolumeID
 		if err := containerd.PrepareMount(config.UUIDandVersion.UUID,
@@ -2427,4 +2445,12 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 		}
 	}
 	return false
+}
+
+func getRoofFsPath(rootPath string) string {
+	return path.Join(rootPath, containerRootfsPath)
+}
+
+func getCtrdSnapshotID(rootPath string) string {
+	return filepath.Base(rootPath)
 }
