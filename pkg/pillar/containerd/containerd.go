@@ -151,21 +151,14 @@ func SnapshotPrepare(rootPath string, ociFilename string) error {
 		}
 	}
 
-	// final step is to mount the snapshot into rootPath/containerRootfsPath and unpack
-	// image config OCI json into rootPath/imageConfigFilename
-	rootFsDir := path.Join(rootPath, containerRootfsPath)
-	if err := os.MkdirAll(rootFsDir, 0766); err != nil {
-		return fmt.Errorf("SnapshotPrepare: Exception while creating rootFS dir. %v", err)
-	}
-	if err = mounts[0].Mount(rootFsDir); err != nil {
-		return fmt.Errorf("SnapshotPrepare: Exception while mounting rootfs %v via %v. Error: %v", rootFsDir, mounts, err)
-	}
-
 	// final step is to deposit OCI image config json
 	imageConfigJSON, err := getImageInfoJSON(ctrdCtx, ctrdImage)
 	if err != nil {
 		log.Errorf("SnapshotPrepare: Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
 		return fmt.Errorf("SnapshotPrepare: Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
+	}
+	if err := os.MkdirAll(rootPath, 0766); err != nil {
+		return fmt.Errorf("SnapshotPrepare: Exception while creating rootPath dir. %v", err)
 	}
 	if err := ioutil.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(imageConfigJSON), 0666); err != nil {
 		return fmt.Errorf("SnapshotPrepare: Exception while writing image info to %v/%v. %v", rootPath, imageConfigFilename, err)
