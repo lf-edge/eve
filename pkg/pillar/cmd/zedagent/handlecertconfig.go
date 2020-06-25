@@ -353,13 +353,17 @@ func cipherModuleStart(ctx *zedagentContext) {
 // to trigger the post request
 func handleControllerCertsSha(ctx *zedagentContext,
 	config *zconfig.EdgeDevConfig) {
-	// still sha is not getting populated in the configuration
-	if len(ctx.cipherCtx.cfgControllerCertHash) == 0 {
+
+	certHash := config.GetControllercertConfighash()
+	// In case sha is not getting populated by the controller
+	if len(certHash) == 0 {
+		log.Infof("handleControllerCertsSha not set by controller")
 		return
 	}
 	sumHash := hex.EncodeToString(ctx.cipherCtx.cfgControllerCertHash)
-	certHash := config.GetControllercertConfighash()
 	if sumHash != certHash {
+		log.Infof("handleControllerCertsSha trigger due to controller %v vs current %v",
+			certHash, sumHash)
 		triggerControllerCertEvent(ctx)
 	}
 }
