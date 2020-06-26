@@ -83,7 +83,6 @@ func runHandlers(ctxPtr *ucContext) {
 
 // Run - runs the main upgradeconverter process
 func Run(ps *pubsub.PubSub) {
-	log.Infof("upgradeconverter.Run")
 	ctx := &ucContext{agentName: "upgradeconverter",
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
