@@ -476,6 +476,8 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			}
 			pciPTContext.Xvga = false
 		}
+	}
+	if len(serialAssignments) != 0 {
 		serialPortContext := struct {
 			SerialPortName string
 			ID             int
