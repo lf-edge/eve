@@ -6,6 +6,7 @@ package logmanager
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -93,6 +94,7 @@ type logEntry struct {
 	filename  string // file name that generated the logmsg
 	function  string // function name that generated the log msg
 	timestamp time.Time
+	appUUID   string
 	isAppLog  bool
 }
 
@@ -395,6 +397,8 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		}
 		timestamp := logParts["timestamp"].(time.Time)
 		logSource := logInfo.Source
+		appUUID := ""
+		logContent := logParts["content"].(string)
 		appLog := false
 		if strings.HasPrefix(logSource, "guest_vm-") {
 			splitArr := strings.SplitN(logSource, "guest_vm-", 2)
@@ -404,14 +408,22 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 					logSource = splitArr[1]
 				}
 			}
+		} else if logInfo.Containername != "" {
+			logSource = logInfo.Containername
+			appUUID = logInfo.Appuuid
+			logContent = appContainerMsg(logInfo)
+			appLog = true
+			log.Debugf("parseAndSendSyslogEntries: container-name %s, app-UUID %s, content %s",
+				logInfo.Containername, appUUID, logContent)
 		}
 		logMsg := logEntry{
 			source:    logSource,
-			content:   logParts["content"].(string),
+			content:   logContent,
 			severity:  logInfo.Level,
 			timestamp: timestamp,
 			function:  logInfo.Function,
 			filename:  logInfo.Filename,
+			appUUID:   appUUID,
 			isAppLog:  appLog,
 		}
 		ctx.logChan <- logMsg
@@ -541,11 +553,13 @@ func processEvents(image string, logChan <-chan logEntry,
 				return
 			}
 			if event.isAppLog {
-				appUUID = lookupDomainName(ctx, event.source)
-				if appUUID == "" {
-					log.Errorf("processEvents(%s): UUID for App instance %s not found",
-						image, event.source)
-					break
+				if event.appUUID == "" {
+					appUUID = lookupDomainName(ctx, event.source)
+					if appUUID == "" {
+						log.Errorf("processEvents(%s): UUID for App instance %s not found",
+							image, event.source)
+						break
+					}
 				}
 				var ok bool
 				appLogBundle, ok = appLogBundles[appUUID]
@@ -1129,4 +1143,10 @@ func parseLogLevel(logLevel string) log.Level {
 		}
 	}
 	return level
+}
+
+func appContainerMsg(logInfo agentlog.Loginfo) string {
+	mapLog := map[string]string{"container": logInfo.Containername, "log-time": logInfo.Eventtime, "message": logInfo.Msg}
+	mapJmsg, _ := json.Marshal(mapLog)
+	return string(mapJmsg)
 }
