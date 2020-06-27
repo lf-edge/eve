@@ -122,13 +122,14 @@ func (etsPtr *ErrorAndTimeWithSource) ErrorAndTime() ErrorAndTime {
 
 // Disallow leaf types and pointers, since pointers
 // and their struct types do not compare as equal
+// Allow string in case passed from another ErrorSourceType
 func allowedSourceType(source interface{}) bool {
 	// Catch common mistakes like a string
 	switch source.(type) {
 	case int:
 		return false
 	case string:
-		return false
+		return true
 	case bool:
 		return false
 	}
