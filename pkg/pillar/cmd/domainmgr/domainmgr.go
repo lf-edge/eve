@@ -16,7 +16,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1057,7 +1056,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			continue
 		}
 
-		snapshotID := getCtrdSnapshotID(ds.FileLocation)
+		snapshotID := containerd.GetSnapshotID(ds.FileLocation)
 		if err := containerd.CtrMountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
 			err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
 				snapshotID, config.UUIDandVersion.UUID, err)
@@ -2449,8 +2448,4 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 
 func getRoofFsPath(rootPath string) string {
 	return path.Join(rootPath, containerRootfsPath)
-}
-
-func getCtrdSnapshotID(rootPath string) string {
-	return filepath.Base(rootPath)
 }

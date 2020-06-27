@@ -50,11 +50,31 @@ func GetContainerPath(containerDir string) string {
 	return path.Join(containersRoot, containerDir)
 }
 
+// GetSnapshotID handles the upgrade scenario when the snapshotID needs to be
+// extracted from a file created by upgradeconverter
+// Assumes that rootpath is a complete pathname
+func GetSnapshotID(rootpath string) string {
+	filename := filepath.Join(rootpath, "snapshotid.txt")
+	if _, err := os.Stat(filename); err == nil {
+		cont, err := ioutil.ReadFile(filename)
+		if err == nil {
+			snapshotID := string(cont)
+			log.Infof("GetSnapshotID read %s from %s",
+				snapshotID, filename)
+			return snapshotID
+		}
+		log.Errorf("GetSnapshotID read %s failed: %s", filename, err)
+	}
+	snapshotID := filepath.Base(rootpath)
+	log.Infof("GetSnapshotID basename %s from %s", snapshotID, rootpath)
+	return snapshotID
+}
+
 // SnapshotRm removes existing snapshot. If silent is true, then operation failures are ignored and no error is returned
 func SnapshotRm(rootPath string, silent bool) error {
 	log.Infof("SnapshotRm %s\n", rootPath)
 
-	snapshotID := filepath.Base(rootPath)
+	snapshotID := GetSnapshotID(rootPath)
 
 	if err := syscall.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
 		err = fmt.Errorf("SnapshotRm: exception while unmounting: %v/%v. %v", rootPath, containerRootfsPath, err)
@@ -138,7 +158,7 @@ func SnapshotPrepare(rootPath string, ociFilename string) error {
 			return fmt.Errorf("SnapshotPrepare: unable to unpack image: %v config: %v", ctrdImage.Name(), err)
 		}
 	}
-	snapshotID := filepath.Base(rootPath)
+	snapshotID := GetSnapshotID(rootPath)
 	mounts, err := CtrPrepareSnapshot(snapshotID, ctrdImage)
 	if err != nil {
 		log.Errorf("SnapshotPrepare: Could not create snapshot %s. %v", snapshotID, err)
