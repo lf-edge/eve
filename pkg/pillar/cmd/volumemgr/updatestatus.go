@@ -261,23 +261,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			// Work is done
 			DeleteWorkCreate(ctx, status)
 			if status.MaxVolSize == 0 {
+				var err error
 				log.Infof("doUpdateVol: MaxVolSize is 0 for %s. Filling it up.",
 					status.FileLocation)
-				if status.IsContainer() {
-					size, err := utils.DirSize(status.FileLocation)
-					if err != nil {
-						log.Errorf("doUpdateVol: Computing size of %s failed: %v",
-							status.FileLocation, err)
-					} else {
-						status.MaxVolSize = uint64(size)
-					}
-				} else {
-					info, err := os.Stat(status.FileLocation)
-					if err != nil {
-						log.Errorf("doUpdateVol: Computing size of %s failed: %v",
-							status.FileLocation, err)
-					}
-					status.MaxVolSize = uint64(info.Size())
+				_, status.MaxVolSize, err = utils.GetVolumeSize(status.FileLocation)
+				if err != nil {
+					log.Error(err)
 				}
 			}
 			return changed, true

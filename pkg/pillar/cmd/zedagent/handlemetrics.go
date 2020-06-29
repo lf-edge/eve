@@ -625,49 +625,35 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 }
 
 func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
-	if vrs.IsContainer() {
-		appDiskDetails.Disk = vrs.ActiveFileLocation
-		// XXX For container images, max size is coming zero
-		// from the controller. So for now, we are setting up
-		// total size equal to the used size.
-		appDiskDetails.Provisioned = RoundToMbytes(vrs.MaxVolSize)
-		appDiskDetails.Used = RoundToMbytes(vrs.MaxVolSize)
-		appDiskDetails.DiskType = "CONTAINER"
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(vrs.ActiveFileLocation)
-		if err != nil {
-			return err
-		}
-		appDiskDetails.Disk = vrs.ActiveFileLocation
-		appDiskDetails.Provisioned = RoundToMbytes(imgInfo.VirtualSize)
-		appDiskDetails.Used = RoundToMbytes(imgInfo.ActualSize)
-		appDiskDetails.DiskType = imgInfo.Format
-		appDiskDetails.Dirty = imgInfo.DirtyFlag
+	actualSize, maxSize, err := utils.GetVolumeSize(vrs.ActiveFileLocation)
+	if err != nil {
+		return err
 	}
+	appDiskDetails.Disk = vrs.ActiveFileLocation
+	appDiskDetails.Used = RoundToMbytes(actualSize)
+	appDiskDetails.Provisioned = RoundToMbytes(maxSize)
+	if vrs.IsContainer() {
+		appDiskDetails.DiskType = "CONTAINER"
+		return nil
+	}
+	imgInfo, err := diskmetrics.GetImgInfo(vrs.ActiveFileLocation)
+	if err != nil {
+		return err
+	}
+	appDiskDetails.DiskType = imgInfo.Format
+	appDiskDetails.Dirty = imgInfo.DirtyFlag
 	return nil
 }
 
 func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 	volumeResourcesDetails *info.VolumeResources) error {
 
-	if volStatus.IsContainer() {
-		// XXX For container volumes, max size is coming zero
-		// from the controller. So for now, we are setting up
-		// max size and the current size equal to the downloaded size
-		size, err := utils.DirSize(volStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeResourcesDetails.MaxSizeBytes = size
-		volumeResourcesDetails.CurSizeBytes = size
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(volStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeResourcesDetails.MaxSizeBytes = imgInfo.VirtualSize
-		volumeResourcesDetails.CurSizeBytes = imgInfo.ActualSize
+	actualSize, maxSize, err := utils.GetVolumeSize(volStatus.FileLocation)
+	if err != nil {
+		return err
 	}
+	volumeResourcesDetails.CurSizeBytes = actualSize
+	volumeResourcesDetails.MaxSizeBytes = maxSize
 	return nil
 }
 

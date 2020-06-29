@@ -12,7 +12,6 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/metrics"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
@@ -144,30 +143,20 @@ func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.Z
 		volumeMetric := new(metrics.ZMetricVolume)
 		volumeMetric.Uuid = volumeStatus.VolumeID.String()
 		volumeMetric.DisplayName = volumeStatus.DisplayName
-		getVolumeResourcesMetrics(volumeStatus, volumeMetric)
+		getVolumeResourcesMetrics(volumeStatus.FileLocation, volumeMetric)
 		reportMetrics.Vm = append(reportMetrics.Vm, volumeMetric)
 	}
 	log.Debugf("Volume instance metrics done: %v", reportMetrics.Vm)
 }
 
-func getVolumeResourcesMetrics(volumeStatus types.VolumeStatus,
-	volumeMetric *metrics.ZMetricVolume) error {
+func getVolumeResourcesMetrics(name string, volumeMetric *metrics.ZMetricVolume) error {
 
-	if volumeStatus.IsContainer() {
-		size, err := utils.DirSize(volumeStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeMetric.TotalBytes = size
-		volumeMetric.UsedBytes = size
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(volumeStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeMetric.TotalBytes = imgInfo.VirtualSize
-		volumeMetric.UsedBytes = imgInfo.ActualSize
-		volumeMetric.FreeBytes = imgInfo.VirtualSize - imgInfo.ActualSize
+	actualSize, maxSize, err := utils.GetVolumeSize(name)
+	if err != nil {
+		return err
 	}
+	volumeMetric.UsedBytes = actualSize
+	volumeMetric.TotalBytes = maxSize
+	volumeMetric.FreeBytes = maxSize - actualSize
 	return nil
 }

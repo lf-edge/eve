@@ -38,22 +38,16 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 	}
 	updateVolumeStatusRefCount(ctx, status)
 	status.ContentFormat = volumeFormat[status.Key()]
-	if info, err := os.Stat(status.PathName()); err == nil {
+	if _, err := os.Stat(status.PathName()); err == nil {
 		status.State = types.CREATED_VOLUME
 		status.Progress = 100
 		status.FileLocation = status.PathName()
 		status.VolumeCreated = true
 		if status.MaxVolSize == 0 {
-			if info.IsDir() {
-				size, err := utils.DirSize(status.FileLocation)
-				if err != nil {
-					log.Errorf("handleVolumeCreate: Computing size of %s failed: %v",
-						status.FileLocation, err)
-				} else {
-					status.MaxVolSize = uint64(size)
-				}
-			} else {
-				status.MaxVolSize = uint64(info.Size())
+			var err error
+			_, status.MaxVolSize, err = utils.GetVolumeSize(status.FileLocation)
+			if err != nil {
+				log.Error(err)
 			}
 		}
 		publishVolumeStatus(ctx, status)
