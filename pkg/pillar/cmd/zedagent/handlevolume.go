@@ -11,7 +11,10 @@ import (
 	"fmt"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/api/go/metrics"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -127,4 +130,44 @@ func handleVolumeStatusDelete(ctxArg interface{},
 	uuidStr := status.VolumeID.String()
 	PublishVolumeToZedCloud(ctx, uuidStr, nil, ctx.iteration)
 	ctx.iteration++
+}
+
+func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.ZMetricMsg) {
+	log.Debugf("Volume instance metrics started")
+	sub := ctx.subVolumeStatus
+	volumelist := sub.GetAll()
+	if volumelist == nil || len(volumelist) == 0 {
+		return
+	}
+	for _, volume := range volumelist {
+		volumeStatus := volume.(types.VolumeStatus)
+		volumeMetric := new(metrics.ZMetricVolume)
+		volumeMetric.Uuid = volumeStatus.VolumeID.String()
+		volumeMetric.DisplayName = volumeStatus.DisplayName
+		getVolumeResourcesMetrics(volumeStatus, volumeMetric)
+		reportMetrics.Vm = append(reportMetrics.Vm, volumeMetric)
+	}
+	log.Debugf("Volume instance metrics done: %v", reportMetrics.Vm)
+}
+
+func getVolumeResourcesMetrics(volumeStatus types.VolumeStatus,
+	volumeMetric *metrics.ZMetricVolume) error {
+
+	if volumeStatus.IsContainer() {
+		size, err := utils.DirSize(volumeStatus.FileLocation)
+		if err != nil {
+			return err
+		}
+		volumeMetric.TotalBytes = size
+		volumeMetric.UsedBytes = size
+	} else {
+		imgInfo, err := diskmetrics.GetImgInfo(volumeStatus.FileLocation)
+		if err != nil {
+			return err
+		}
+		volumeMetric.TotalBytes = imgInfo.VirtualSize
+		volumeMetric.UsedBytes = imgInfo.ActualSize
+		volumeMetric.FreeBytes = imgInfo.VirtualSize - imgInfo.ActualSize
+	}
+	return nil
 }
