@@ -8,7 +8,6 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -289,14 +288,12 @@ type VifInfo struct {
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
-	ImageID      uuid.UUID // UUID of the image
-	FileLocation string    // Where to find the volume
+	FileLocation string // Location of the volume
 	ReadOnly     bool
 	Format       zconfig.Format
 }
 
 type DiskStatus struct {
-	ImageID      uuid.UUID // UUID of immutable image
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
