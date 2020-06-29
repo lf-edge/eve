@@ -567,11 +567,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 		for _, vrs := range aiStatus.VolumeRefStatusList {
 			appDiskDetails := new(metrics.AppDiskMetric)
-			err := getDiskInfo(vrs, appDiskDetails)
-			if err != nil {
-				log.Errorf("getDiskInfo(%s) failed %v",
-					vrs.ActiveFileLocation, err)
-				continue
+			if vrs.ActiveFileLocation == "" {
+				log.Infof("ActiveFileLocation is empty for %s", vrs.Key())
+			} else {
+				err := getDiskInfo(vrs, appDiskDetails)
+				if err != nil {
+					log.Warnf("getDiskInfo(%s) failed %v",
+						vrs.ActiveFileLocation, err)
+					continue
+				}
 			}
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
 				appDiskDetails)
