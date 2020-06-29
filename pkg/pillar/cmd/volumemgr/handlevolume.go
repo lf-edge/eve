@@ -201,7 +201,6 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Infof("maybeDeleteVolume for %v", status.Key())
 	if status.RefCount != 0 {
 		publishVolumeStatus(ctx, status)
-		updateVolumeStatusRefCount(ctx, status) // XXX needed?
 		log.Infof("maybeDeleteVolume for %v Done", status.Key())
 		return
 	}

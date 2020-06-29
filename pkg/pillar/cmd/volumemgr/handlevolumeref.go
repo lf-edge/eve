@@ -80,6 +80,7 @@ func handleVolumeRefDelete(ctxArg interface{}, key string,
 	vs := lookupVolumeStatus(ctx, config.VolumeKey())
 	if vs != nil {
 		updateVolumeStatusRefCount(ctx, vs)
+		publishVolumeStatus(ctx, vs)
 		maybeDeleteVolume(ctx, vs)
 	}
 	log.Infof("handleVolumeRefDelete(%s) Done", key)
