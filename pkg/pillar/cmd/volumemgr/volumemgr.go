@@ -28,7 +28,8 @@ const (
 	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
 	rwImgDirname           = types.RWImgDirname           // We store old VM volumes here
 	roContImgDirname       = types.ROContImgDirname       // We store old OCI volumes here
-	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store VM and OCI volumes here
+	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
+	volumeDecryptedDirName = types.VolumeDecryptedDirName // We store decrypted VM and OCI volumes here
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -337,6 +338,7 @@ func Run(ps *pubsub.PubSub) {
 	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
 	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
 	populateExistingVolumesFormat(volumeEncryptedDirName)
+	populateExistingVolumesFormat(volumeDecryptedDirName)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -711,6 +713,7 @@ func Run(ps *pubsub.PubSub) {
 			gcOldObjects(&ctx, rwImgDirname)
 			gcOldObjects(&ctx, roContImgDirname)
 			gcObjects(&ctx, volumeEncryptedDirName)
+			gcObjects(&ctx, volumeDecryptedDirName)
 			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
