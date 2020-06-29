@@ -75,7 +75,7 @@ func (config ContentTreeConfig) LogModify(old interface{}) {
 			AddField("old-format", oldConfig.Format).
 			AddField("old-content-sha256", oldConfig.ContentSha256).
 			AddField("old-max-download-size-int64", oldConfig.MaxDownloadSize).
-			Infof("ContentTree config modify")
+			Infof("Content tree config modify")
 	}
 }
 
@@ -88,7 +88,7 @@ func (config ContentTreeConfig) LogDelete() {
 		AddField("format", config.Format).
 		AddField("content-sha256", config.ContentSha256).
 		AddField("max-download-size-int64", config.MaxDownloadSize).
-		Infof("ContentTree config delete")
+		Infof("Content tree config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -184,7 +184,7 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-progress", oldStatus.Progress).
 			AddField("old-filelocation", oldStatus.FileLocation).
-			Infof("ContentTree status modify")
+			Infof("Content tree status modify")
 	}
 }
 
@@ -197,7 +197,7 @@ func (status ContentTreeStatus) LogDelete() {
 		AddField("state", status.State.String()).
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
-		Infof("ContentTree status delete")
+		Infof("Content tree status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
