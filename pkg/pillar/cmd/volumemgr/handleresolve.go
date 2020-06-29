@@ -10,7 +10,7 @@ import (
 
 // MaybeAddResolveConfig will publish the resolve config for
 // container images for which resolution of tags to sha requires
-func MaybeAddResolveConfig(ctx *volumemgrContext, cs *types.ContentTreeStatus) {
+func MaybeAddResolveConfig(ctx *volumemgrContext, cs types.ContentTreeStatus) {
 
 	log.Infof("MaybeAddResolveConfig for %s", cs.ContentID)
 	resolveConfig := types.ResolveConfig{

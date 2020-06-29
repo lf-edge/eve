@@ -32,7 +32,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				log.Infof("Resolve status not found for %s",
 					status.ContentID)
 				status.HasResolverRef = true
-				MaybeAddResolveConfig(ctx, status)
+				MaybeAddResolveConfig(ctx, *status)
 				status.State = types.RESOLVING_TAG
 				changed = true
 				return changed, false
@@ -186,6 +186,11 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 		if status.Progress != ctStatus.Progress {
 			status.Progress = ctStatus.Progress
+			changed = true
+		}
+		if status.State != ctStatus.State {
+			status.State = ctStatus.State
+			changed = true
 		}
 		if ctStatus.State < types.VERIFIED {
 			// Waiting for content tree to be processed
