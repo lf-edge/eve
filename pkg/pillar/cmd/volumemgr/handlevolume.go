@@ -252,7 +252,13 @@ func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) {
 	} else {
 		vrcRefCount = vrc.RefCount
 	}
-	vs.RefCount = vcRefCount + vrcRefCount
+	old := vs.RefCount
+	new := vcRefCount + vrcRefCount
+	if new != old {
+		vs.RefCount = new
+		log.Infof("updateVolumeStatusRefCount(%s) updated from %d to %d",
+			vs.Key(), old, new)
+	}
 	log.Debugf("updateVolumeStatusRefCount(%s) Done", vs.Key())
 }
 
