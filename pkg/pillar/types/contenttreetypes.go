@@ -43,7 +43,10 @@ func (config ContentTreeConfig) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("datastore-id", config.DatastoreID).
+		AddField("relativeURL", config.RelativeURL).
 		AddField("format", config.Format).
+		AddField("contentSha256", config.ContentSha256).
+		AddField("maxDownloadSize", config.MaxDownloadSize).
 		Infof("Content tree config create")
 }
 
@@ -81,7 +84,10 @@ func (config ContentTreeConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.ContentTreeConfigLogType, config.DisplayName,
 		config.ContentID, config.LogKey())
 	logObject.CloneAndAddField("datastore-id", config.DatastoreID).
+		AddField("relativeURL", config.RelativeURL).
 		AddField("format", config.Format).
+		AddField("contentSha256", config.ContentSha256).
+		AddField("maxDownloadSize", config.MaxDownloadSize).
 		Infof("ContentTree config delete")
 
 	base.DeleteLogObject(config.LogKey())
@@ -147,7 +153,7 @@ func (status ContentTreeStatus) LogCreate() {
 	}
 	logObject.CloneAndAddField("contentSha256", status.ContentSha256).
 		AddField("maxDownloadSize", status.MaxDownloadSize).
-		AddField("state", status.State).
+		AddField("state", status.State.String()).
 		AddField("progress", status.Progress).
 		AddField("fileLocation", status.FileLocation).
 		Infof("Content tree status create")
@@ -170,12 +176,12 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("contentSha256", status.ContentSha256).
 			AddField("maxDownloadSize", status.MaxDownloadSize).
-			AddField("state", status.State).
+			AddField("state", status.State.String()).
 			AddField("progress", status.Progress).
 			AddField("fileLocation", status.FileLocation).
 			AddField("old-contentSha256", oldStatus.ContentSha256).
 			AddField("old-maxDownloadSize", oldStatus.MaxDownloadSize).
-			AddField("old-state", oldStatus.State).
+			AddField("old-state", oldStatus.State.String()).
 			AddField("old-progress", oldStatus.Progress).
 			AddField("old-fileLocation", oldStatus.FileLocation).
 			Infof("ContentTree status modify")
@@ -188,6 +194,9 @@ func (status ContentTreeStatus) LogDelete() {
 		status.ContentID, status.LogKey())
 	logObject.CloneAndAddField("contentSha256", status.ContentSha256).
 		AddField("maxDownloadSize", status.MaxDownloadSize).
+		AddField("state", status.State.String()).
+		AddField("progress", status.Progress).
+		AddField("fileLocation", status.FileLocation).
 		Infof("ContentTree status delete")
 
 	base.DeleteLogObject(status.LogKey())
