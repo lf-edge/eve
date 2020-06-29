@@ -613,6 +613,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 
 	createNetworkInstanceMetrics(ctx, ReportMetrics)
+	createVolumeInstanceMetrics(ctx.getconfigCtx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
