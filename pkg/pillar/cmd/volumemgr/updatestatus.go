@@ -10,6 +10,7 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -259,6 +260,26 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			changed = true
 			// Work is done
 			DeleteWorkCreate(ctx, status)
+			if status.MaxVolSize == 0 {
+				log.Infof("doUpdateVol: MaxVolSize is 0 for %s. Filling it up.",
+					status.FileLocation)
+				if status.IsContainer() {
+					size, err := utils.DirSize(status.FileLocation)
+					if err != nil {
+						log.Errorf("doUpdateVol: Computing size of %s failed: %v",
+							status.FileLocation, err)
+					} else {
+						status.MaxVolSize = uint64(size)
+					}
+				} else {
+					info, err := os.Stat(status.FileLocation)
+					if err != nil {
+						log.Errorf("doUpdateVol: Computing size of %s failed: %v",
+							status.FileLocation, err)
+					}
+					status.MaxVolSize = uint64(info.Size())
+				}
+			}
 			return changed, true
 		}
 	default:
