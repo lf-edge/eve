@@ -81,9 +81,9 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 	var errorList []error
 	remoteTemporaryFailure := types.SenderStatusNone
 
+	var numFreeIntf int
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
-		var numFreeIntf int
 		if try == 0 {
 			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
 				iteration)
