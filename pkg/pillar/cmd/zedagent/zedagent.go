@@ -103,7 +103,6 @@ type zedagentContext struct {
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
 	subAppContainerMetrics    pubsub.Subscription
-	pubMetrics                pubsub.Publication
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -940,52 +939,34 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
+	cms := zedcloud.GetCloudMetrics()
 	subClientMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  "zedclient",
-		TopicImpl:  types.MetricsMap{},
-		Activate:   true,
-		Ctx:        &zedagentCtx,
-		Persistent: true,
+		AgentName: "zedclient",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subLogmanagerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  "logmanager",
-		TopicImpl:  types.MetricsMap{},
-		Activate:   true,
-		Ctx:        &zedagentCtx,
-		Persistent: true,
+		AgentName: "logmanager",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subDownloaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  "downloader",
-		TopicImpl:  types.MetricsMap{},
-		Activate:   true,
-		Ctx:        &zedagentCtx,
-		Persistent: true,
+		AgentName: "downloader",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Make our own metrics persistent across reboots
-	pub, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		TopicType:  types.MetricsMap{},
-		Persistent: true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Load and set metrics from previous run of agent/device
-	item, err := pub.Get("global")
-	if err == nil {
-		cms := item.(types.MetricsMap)
-		zedcloud.SetCloudMetrics(cms)
-	}
-	zedagentCtx.pubMetrics = pub
 
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
