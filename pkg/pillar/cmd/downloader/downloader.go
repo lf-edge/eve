@@ -69,19 +69,13 @@ func Run(ps *pubsub.PubSub) {
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
+	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		TopicType:  types.MetricsMap{},
-		Persistent: true,
+		AgentName: agentName,
+		TopicType: cms,
 	})
 	if err != nil {
 		log.Fatal(err)
-	}
-	// Load and set metrics from previous run of agent/device
-	item, err := pub.Get("global")
-	if err == nil {
-		cms := item.(types.MetricsMap)
-		zedcloud.SetCloudMetrics(cms)
 	}
 
 	// Publish send metrics for zedagent every 10 seconds

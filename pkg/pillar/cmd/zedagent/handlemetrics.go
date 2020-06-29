@@ -302,11 +302,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	// Persist our own metrics
-	err = ctx.pubMetrics.Publish("global", cms)
-	if err != nil {
-		log.Errorln(err)
-	}
 	if clientMetrics != nil {
 		cms = zedcloud.Append(cms, clientMetrics)
 	}
