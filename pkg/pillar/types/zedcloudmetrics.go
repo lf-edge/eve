@@ -28,5 +28,4 @@ type UrlcloudMetrics struct {
 	SentByteCount int64
 	RecvMsgCount  int64
 	RecvByteCount int64 // Based on content-length which could be off
-	LastUse       time.Time
 }

@@ -51,7 +51,6 @@ func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64, aut
 			u.RecvMsgCount++
 			u.RecvByteCount += respLen
 		}
-		u.LastUse = time.Now()
 		m.URLCounters[url] = u
 	}
 	metrics[ifname] = m
@@ -73,7 +72,6 @@ func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	u.SentByteCount += reqLen
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
-	u.LastUse = time.Now()
 	m.URLCounters[url] = u
 	metrics[ifname] = m
 	mutex.Unlock()
