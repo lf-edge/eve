@@ -20,7 +20,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 	}
 	vs := lookupVolumeStatus(ctx, config.VolumeKey())
 	if vs != nil {
-		vs = updateVolumeStatusRefCount(ctx, vs)
+		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
 		status = &types.VolumeRefStatus{
 			VolumeID:           config.VolumeID,
@@ -64,7 +64,7 @@ func handleVolumeRefModify(ctxArg interface{}, key string,
 	publishVolumeRefStatus(ctx, status)
 	vs := lookupVolumeStatus(ctx, config.VolumeKey())
 	if vs != nil {
-		vs = updateVolumeStatusRefCount(ctx, vs)
+		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
 	}
 	log.Infof("handleVolumeRefModify(%s) Done", key)
@@ -79,8 +79,8 @@ func handleVolumeRefDelete(ctxArg interface{}, key string,
 	unpublishVolumeRefStatus(ctx, config.Key())
 	vs := lookupVolumeStatus(ctx, config.VolumeKey())
 	if vs != nil {
-		vs = updateVolumeStatusRefCount(ctx, vs)
-		deleteVolume(ctx, vs)
+		updateVolumeStatusRefCount(ctx, vs)
+		maybeDeleteVolume(ctx, vs)
 	}
 	log.Infof("handleVolumeRefDelete(%s) Done", key)
 }
@@ -137,7 +137,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 	for _, st := range items {
 		config := st.(types.VolumeRefConfig)
 		if config.Key() == vs.Key() {
-			vs = updateVolumeStatusRefCount(ctx, vs)
+			updateVolumeStatusRefCount(ctx, vs)
 			publishVolumeStatus(ctx, vs)
 			status := lookupVolumeRefStatus(ctx, config.Key())
 			if status != nil {
