@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1926,8 +1927,14 @@ func createCloudInitISO(ctx *domainContext,
 	ds := new(types.DiskStatus)
 	ds.FileLocation = fileName
 	ds.Format = zconfig.Format_RAW
-	ds.Vdev = "hdc:cdrom"
-	ds.ReadOnly = false
+	switch runtime.GOARCH {
+	case "arm64":
+		ds.Vdev = "xvdz"
+		ds.ReadOnly = true
+	case "amd64":
+		ds.Vdev = "hdc:cdrom"
+		ds.ReadOnly = false
+	}
 	// Generate Devtype for hypervisor package
 	// XXX can hypervisor look at something different?
 	ds.Devtype = "cdrom"
