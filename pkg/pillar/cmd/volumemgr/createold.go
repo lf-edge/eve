@@ -94,7 +94,7 @@ func createOldContainerVolume(ctx *volumemgrContext, status types.OldVolumeStatu
 	}
 	log.Infof("ociFilename %s sha %s", ociFilename, status.BlobSha256)
 	created = true
-	if err := containerd.SnapshotPrepare(filelocation, ociFilename); err != nil {
+	if err := prepareContainerVolume(filelocation, ociFilename); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}
@@ -160,7 +160,7 @@ func destroyOldContainerVolume(ctx *volumemgrContext, status types.OldVolumeStat
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
 	log.Infof("Removing container volume %s", filelocation)
-	if err := containerd.SnapshotRm(filelocation, true); err != nil {
+	if err := removeContainerVolume(filelocation, true); err != nil {
 		return created, filelocation, err
 	}
 	filelocation = ""

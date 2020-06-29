@@ -10,7 +10,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -74,7 +73,7 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 
 	created := false
 	filelocation := status.PathName()
-	if err := containerd.SnapshotPrepare(filelocation, srcLocation); err != nil {
+	if err := prepareContainerVolume(filelocation, srcLocation); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}
@@ -135,7 +134,7 @@ func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (b
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
 	log.Infof("Removing container volume %s", filelocation)
-	if err := containerd.SnapshotRm(filelocation, true); err != nil {
+	if err := removeContainerVolume(filelocation, true); err != nil {
 		return created, filelocation, err
 	}
 	filelocation = ""
