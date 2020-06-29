@@ -8,6 +8,8 @@
 package volumemgr
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -54,14 +57,12 @@ func populateExistingVolumesFormat(dirName string) {
 		return
 	}
 	for _, location := range locations {
-		volumeName := strings.Split(location.Name(), ".")
-		if len(volumeName) > 1 {
-			volumeKey := volumeName[0]
-			format := strings.ToUpper(volumeName[1])
-			volumeFormat[volumeKey] = zconfig.Format(zconfig.Format_value[format])
-		} else {
-			log.Errorf("populateExistingVolumesFormat: Found bad volume %s in %s", location.Name(), dirName)
+		key, format, err := getVolumeKeyAndFormat(dirName, location.Name())
+		if err != nil {
+			log.Error(err)
+			continue
 		}
+		volumeFormat[key] = zconfig.Format(zconfig.Format_value[format])
 	}
 	log.Infof("populateExistingVolumesFormat(%s) Done", dirName)
 }
@@ -113,19 +114,21 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 		return
 	}
 	for _, location := range locations {
-		volumeName := strings.Split(location.Name(), ".")
-		if len(volumeName) > 1 {
-			volumeKey := volumeName[0]
-			vs := lookupVolumeStatus(ctx, volumeKey)
-			if vs == nil {
-				log.Errorf("gcObjects: Found unused volume %s in %s. Deleting it.",
-					location.Name(), dirName)
-				deleteFile(path.Join(dirName, location.Name()))
+		filelocation := path.Join(dirName, location.Name())
+		key, format, err := getVolumeKeyAndFormat(dirName, location.Name())
+		if err != nil {
+			log.Error(err)
+			deleteFile(filelocation)
+			continue
+		}
+		vs := lookupVolumeStatus(ctx, key)
+		if vs == nil {
+			log.Infof("gcObjects: Found unused volume %s. Deleting it.",
+				filelocation)
+			if format == "CONTAINER" {
+				_ = containerd.SnapshotRm(filelocation, true)
 			}
-		} else {
-			log.Errorf("gcObjects: Found bad volume %s in %s. Deleting it.",
-				location.Name(), dirName)
-			deleteFile(path.Join(dirName, location.Name()))
+			deleteFile(filelocation)
 		}
 	}
 	log.Debugf("gcObjects(%s) Done", dirName)
@@ -183,7 +186,19 @@ func gcResetPersistObjectLastUse(ctx *volumemgrContext) {
 	}
 }
 
+func getVolumeKeyAndFormat(dirName, name string) (string, string, error) {
+	filelocation := path.Join(dirName, name)
+	keyAndFormat := strings.Split(name, ".")
+	if len(keyAndFormat) != 2 {
+		errStr := fmt.Sprintf("getVolumeKeyAndFormat: Found unknown format volume %s.",
+			filelocation)
+		return "", "", errors.New(errStr)
+	}
+	return keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), nil
+}
+
 func deleteFile(filelocation string) {
+	log.Infof("deleteFile: Deleting %s", filelocation)
 	if err := os.RemoveAll(filelocation); err != nil {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())
