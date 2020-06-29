@@ -55,7 +55,8 @@ func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
 // goroutine for App container stats collection
 func appStatsAndLogCollect(ctx *zedrouterContext) {
 	log.Infof("appStatsAndLogCollect: containerStats, started")
-	lastLogTime := make(map[string]string)
+	// cache the container last timestamp of log entries of the batch
+	lastLogTime := make(map[string]time.Time)
 	appStatsCollectTimer := time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 	for {
 		select {
@@ -154,7 +155,7 @@ func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkC
 	}
 }
 
-func getAppContainerLogs(status types.AppNetworkStatus, last map[string]string) {
+func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Time) {
 	var buf bytes.Buffer
 	cli, containers, err := getAppContainers(status)
 	if err != nil {
@@ -165,7 +166,7 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]string) 
 		var lasttime, newtime, message string
 		containerName := strings.Trim(container.Names[0], "/")
 		if lt, ok := last[containerName]; ok {
-			lasttime = lt
+			lasttime = lt.Format(time.RFC3339Nano)
 		}
 		out, err := cli.ContainerLogs(context.Background(), container.ID, apitypes.ContainerLogsOptions{
 			ShowStdout: true,
@@ -184,10 +185,6 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]string) 
 		for _, line := range logLines {
 			sline := strings.SplitN(line, " ", 2)
 			time := sline[0]
-			if time == lasttime {
-				log.Debugf("getAppContainerLogs: time same %s, skip", time)
-				continue
-			}
 			if len(time) > 0 && len(sline) == 2 {
 				newtime = time
 				// some message has timestamp like: [\u003c6\u003e 2020-06-23 22:29:01.871 +00:00 [INF] - ]
@@ -208,7 +205,12 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]string) 
 		}
 		// remember the last entry time by a container
 		if newtime != "" {
-			last[containerName] = newtime
+			t, err := time.Parse(time.RFC3339Nano, newtime)
+			if err != nil {
+				log.Errorf("getAppContainerLogs: time parse error %v", err)
+				t = time.Now()
+			}
+			last[containerName] = t.Add(2 * time.Nanosecond) // skip the last timestamp next round
 		}
 	}
 
