@@ -68,6 +68,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 				err)
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
+			updateVolumeRefStatus(ctx, status)
 			return
 		} else if remaining < status.MaxVolSize {
 			errStr := fmt.Sprintf("Remaining disk space %d volume needs %d\n"+
@@ -75,6 +76,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 				remaining, status.MaxVolSize, volumeDiskSizeList)
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
+			updateVolumeRefStatus(ctx, status)
 			return
 		}
 	}
@@ -103,6 +105,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 		log.Errorf("handleVolumeModify(%s) failed: %s", status.Key(), errStr)
 		status.SetError(errStr, time.Now())
 		publishVolumeStatus(ctx, status)
+		updateVolumeRefStatus(ctx, status)
 		return
 	}
 	if config.DisplayName != status.DisplayName {
@@ -117,6 +120,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 	}
 	status = updateVolumeStatusRefCount(ctx, status)
 	publishVolumeStatus(ctx, status)
+	updateVolumeRefStatus(ctx, status)
 	log.Infof("handleVolumeModify(%s) Done", key)
 }
 
@@ -196,6 +200,7 @@ func deleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	log.Infof("deleteVolume for %v", status.Key())
 	if status.RefCount != 0 {
 		publishVolumeStatus(ctx, status)
+		updateVolumeRefStatus(ctx, status)
 		log.Infof("deleteVolume for %v Done", status.Key())
 		return
 	}
