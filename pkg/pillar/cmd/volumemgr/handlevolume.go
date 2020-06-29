@@ -34,9 +34,9 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		DisplayName:             config.DisplayName,
 		RefCount:                config.RefCount,
 		LastUse:                 time.Now(),
+		State:                   types.INITIAL,
 	}
 	updateVolumeStatusRefCount(ctx, status)
-	publishVolumeStatus(ctx, status)
 	status.ContentFormat = volumeFormat[status.Key()]
 	if info, err := os.Stat(status.PathName()); err == nil {
 		status.State = types.CREATED_VOLUME
@@ -60,6 +60,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		updateVolumeRefStatus(ctx, status)
 		return
 	}
+	publishVolumeStatus(ctx, status)
 	if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
 		// Check disk usage
 		remaining, volumeDiskSizeList, err := getRemainingVolumeDiskSpace(ctx)

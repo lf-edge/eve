@@ -251,11 +251,13 @@ func doInstall(ctx *zedmanagerContext,
 			status.SetError(errString, time.Now())
 			return true, false
 		}
-		newVrs := types.VolumeRefStatus{}
-		newVrs.VolumeID = vrc.VolumeID
-		newVrs.GenerationCounter = vrc.GenerationCounter
-		newVrs.RefCount = vrc.RefCount
-		newVrs.PendingAdd = true
+		newVrs := types.VolumeRefStatus{
+			VolumeID:          vrc.VolumeID,
+			GenerationCounter: vrc.GenerationCounter,
+			RefCount:          vrc.RefCount,
+			PendingAdd:        true,
+			State:             types.INITIAL,
+		}
 		log.Infof("Adding new VolumeRefStatus %v", newVrs)
 		status.VolumeRefStatusList = append(status.VolumeRefStatusList, newVrs)
 		changed = true

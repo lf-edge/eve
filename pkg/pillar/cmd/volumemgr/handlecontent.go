@@ -108,6 +108,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 			CertificateChain:  config.CertificateChain,
 			DisplayName:       config.DisplayName,
 			ObjType:           types.AppImgObj,
+			State:             types.INITIAL,
 		}
 	}
 	publishContentTreeStatus(ctx, status)

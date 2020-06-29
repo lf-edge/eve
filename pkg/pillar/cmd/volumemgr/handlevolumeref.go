@@ -43,7 +43,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			VolumeID:          config.VolumeID,
 			GenerationCounter: config.GenerationCounter,
 			RefCount:          config.RefCount,
-			State:             types.INITIAL,
+			State:             types.INITIAL, // Waiting for VolumeConfig from zedagent
 		}
 	}
 	publishVolumeRefStatus(ctx, status)
