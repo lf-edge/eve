@@ -209,6 +209,50 @@ func (config VolumeRefConfig) VolumeKey() string {
 	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
 }
 
+// LogCreate :
+func (config VolumeRefConfig) LogCreate() {
+	logObject := base.NewLogObject(base.VolumeRefConfigLogType, "",
+		config.VolumeID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("generation-counter-int64", config.GenerationCounter).
+		Infof("Volume ref config create")
+}
+
+// LogModify :
+func (config VolumeRefConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.VolumeRefConfigLogType, "",
+		config.VolumeID, config.LogKey())
+
+	oldConfig, ok := old.(VolumeRefConfig)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of VolumeRefConfig type")
+	}
+	if oldConfig.RefCount != config.RefCount {
+
+		logObject.CloneAndAddField("refcount-int64", config.RefCount).
+			AddField("old-refcount-int64", oldConfig.RefCount).
+			Infof("Volume ref config modify")
+	}
+}
+
+// LogDelete :
+func (config VolumeRefConfig) LogDelete() {
+	logObject := base.EnsureLogObject(base.VolumeRefConfigLogType, "",
+		config.VolumeID, config.LogKey())
+	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		Infof("Volume ref config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config VolumeRefConfig) LogKey() string {
+	return string(base.VolumeRefConfigLogType) + "-" + config.Key()
+}
+
 // VolumeRefStatus : Reference to a Volume specified separately in the API
 // If a volume is purged (re-created from scratch) it will either have a new
 // UUID or a new generationCount
@@ -244,4 +288,76 @@ func (status VolumeRefStatus) IsContainer() bool {
 		return true
 	}
 	return false
+}
+
+// LogCreate :
+func (status VolumeRefStatus) LogCreate() {
+	logObject := base.NewLogObject(base.VolumeRefStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("refcount-int64", status.RefCount).
+		AddField("generation-counter-int64", status.GenerationCounter).
+		AddField("state", status.State).
+		AddField("filelocation", status.ActiveFileLocation).
+		AddField("content-format", status.ContentFormat).
+		AddField("read-only-bool", status.ReadOnly).
+		AddField("displayname", status.DisplayName).
+		AddField("max-vol-size-int64", status.MaxVolSize).
+		AddField("pending-add-bool", status.PendingAdd).
+		Infof("Volume ref status create")
+}
+
+// LogModify :
+func (status VolumeRefStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.VolumeRefStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+
+	oldStatus, ok := old.(VolumeRefStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of VolumeRefStatus type")
+	}
+	if oldStatus.RefCount != status.RefCount ||
+		oldStatus.State != status.State ||
+		oldStatus.ActiveFileLocation != status.ActiveFileLocation ||
+		oldStatus.ContentFormat != status.ContentFormat ||
+		oldStatus.ReadOnly != status.ReadOnly ||
+		oldStatus.DisplayName != status.DisplayName ||
+		oldStatus.MaxVolSize != status.MaxVolSize ||
+		oldStatus.PendingAdd != status.PendingAdd {
+
+		logObject.CloneAndAddField("refcount-int64", status.RefCount).
+			AddField("state", status.State).
+			AddField("filelocation", status.ActiveFileLocation).
+			AddField("content-format", status.ContentFormat).
+			AddField("read-only-bool", status.ReadOnly).
+			AddField("displayname", status.DisplayName).
+			AddField("max-vol-size-int64", status.MaxVolSize).
+			AddField("pending-add-bool", status.PendingAdd).
+			AddField("refcount-int64", oldStatus.RefCount).
+			AddField("old-state", oldStatus.State).
+			AddField("old-filelocation", oldStatus.ActiveFileLocation).
+			AddField("content-format", oldStatus.ContentFormat).
+			AddField("read-only-bool", oldStatus.ReadOnly).
+			AddField("displayname", oldStatus.DisplayName).
+			AddField("old-max-vol-size-int64", oldStatus.MaxVolSize).
+			AddField("Pending-add-bool", oldStatus.PendingAdd).
+			Infof("Volume ref status modify")
+	}
+}
+
+// LogDelete :
+func (status VolumeRefStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.VolumeRefStatusLogType, status.DisplayName,
+		status.VolumeID, status.LogKey())
+	logObject.CloneAndAddField("refcount-int64", status.RefCount).
+		Infof("Volume ref status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status VolumeRefStatus) LogKey() string {
+	return string(base.VolumeRefStatusLogType) + "-" + status.Key()
 }
