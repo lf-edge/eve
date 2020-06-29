@@ -1362,7 +1362,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			numOfContainerDisks++
 		}
 		ds := &status.DiskStatusList[i]
-		ds.ImageID = dc.ImageID
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
