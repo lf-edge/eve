@@ -40,6 +40,9 @@ func (config VolumeConfig) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("content-id", config.ContentID).
+		AddField("max-vol-size-int64", config.MaxVolSize).
+		AddField("refcount-int64", config.RefCount).
+		AddField("generation-counter-int64", config.GenerationCounter).
 		Infof("Volume config create")
 }
 
@@ -74,6 +77,9 @@ func (config VolumeConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.VolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("content-id", config.ContentID).
+		AddField("max-vol-size-int64", config.MaxVolSize).
+		AddField("refcount-int64", config.RefCount).
+		AddField("generation-counter-int64", config.GenerationCounter).
 		Infof("Volume config delete")
 
 	base.DeleteLogObject(config.LogKey())
@@ -102,6 +108,7 @@ type VolumeStatus struct {
 	ContentFormat           zconfig.Format
 	LastUse                 time.Time
 	PreReboot               bool // Was volume last use prior to device reboot?
+	ReferenceName           string
 
 	ErrorAndTimeWithSource
 }
@@ -135,7 +142,7 @@ func (status VolumeStatus) LogCreate() {
 	}
 	logObject.CloneAndAddField("content-id", status.ContentID).
 		AddField("max-vol-size-int64", status.MaxVolSize).
-		AddField("state", status.State).
+		AddField("state", status.State.String()).
 		AddField("progress-int64", status.Progress).
 		AddField("refcount-int64", status.RefCount).
 		AddField("filelocation", status.FileLocation).
@@ -160,13 +167,13 @@ func (status VolumeStatus) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("content-id", status.ContentID).
 			AddField("max-vol-size-int64", status.MaxVolSize).
-			AddField("state", status.State).
+			AddField("state", status.State.String()).
 			AddField("progress-int64", status.Progress).
 			AddField("refcount-int64", status.RefCount).
 			AddField("filelocation", status.FileLocation).
 			AddField("old-content-id", oldStatus.ContentID).
 			AddField("old-max-vol-size-int64", oldStatus.MaxVolSize).
-			AddField("old-state", oldStatus.State).
+			AddField("old-state", oldStatus.State.String()).
 			AddField("old-progress-int64", oldStatus.Progress).
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-filelocation", oldStatus.FileLocation).
@@ -180,6 +187,10 @@ func (status VolumeStatus) LogDelete() {
 		status.VolumeID, status.LogKey())
 	logObject.CloneAndAddField("content-id", status.ContentID).
 		AddField("max-vol-size-int64", status.MaxVolSize).
+		AddField("state", status.State.String()).
+		AddField("progress-int64", status.Progress).
+		AddField("refcount-int64", status.RefCount).
+		AddField("filelocation", status.FileLocation).
 		Infof("Volume status delete")
 
 	base.DeleteLogObject(status.LogKey())
@@ -231,7 +242,6 @@ func (config VolumeRefConfig) LogModify(old interface{}) {
 		log.Errorf("LogModify: Old object interface passed is not of VolumeRefConfig type")
 	}
 	if oldConfig.RefCount != config.RefCount {
-
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			Infof("Volume ref config modify")
@@ -299,7 +309,7 @@ func (status VolumeRefStatus) LogCreate() {
 	}
 	logObject.CloneAndAddField("refcount-int64", status.RefCount).
 		AddField("generation-counter-int64", status.GenerationCounter).
-		AddField("state", status.State).
+		AddField("state", status.State.String()).
 		AddField("filelocation", status.ActiveFileLocation).
 		AddField("content-format", status.ContentFormat).
 		AddField("read-only-bool", status.ReadOnly).
@@ -328,7 +338,7 @@ func (status VolumeRefStatus) LogModify(old interface{}) {
 		oldStatus.PendingAdd != status.PendingAdd {
 
 		logObject.CloneAndAddField("refcount-int64", status.RefCount).
-			AddField("state", status.State).
+			AddField("state", status.State.String()).
 			AddField("filelocation", status.ActiveFileLocation).
 			AddField("content-format", status.ContentFormat).
 			AddField("read-only-bool", status.ReadOnly).
@@ -352,6 +362,14 @@ func (status VolumeRefStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.VolumeRefStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 	logObject.CloneAndAddField("refcount-int64", status.RefCount).
+		AddField("generation-counter-int64", status.GenerationCounter).
+		AddField("state", status.State.String()).
+		AddField("filelocation", status.ActiveFileLocation).
+		AddField("content-format", status.ContentFormat).
+		AddField("read-only-bool", status.ReadOnly).
+		AddField("displayname", status.DisplayName).
+		AddField("max-vol-size-int64", status.MaxVolSize).
+		AddField("pending-add-bool", status.PendingAdd).
 		Infof("Volume ref status delete")
 
 	base.DeleteLogObject(status.LogKey())
