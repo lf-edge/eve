@@ -23,8 +23,8 @@ const (
 	ROContImgDirname = PersistDir + "/runx/pods/prepared"
 	// VolumeEncryptedDirName - Encrypted directory used to store volumes
 	VolumeEncryptedDirName = PersistDir + "/vault/volumes"
-	// VolumeDecryptedDirName - Decrypted directory used to store volumes
-	VolumeDecryptedDirName = PersistDir + "/clear/volumes"
+	// VolumeClearDirName - Not encrypted directory used to store volumes
+	VolumeClearDirName = PersistDir + "/clear/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// AppImgDirname - location of downloaded app images. Read-only images
