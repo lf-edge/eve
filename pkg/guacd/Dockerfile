@@ -23,4 +23,4 @@ COPY --from=build /usr/sbin/guacd /usr/sbin/guacd
 COPY --from=build /usr/lib/libguac.so.* /usr/lib/libuuid.so.* /usr/lib/libguac-client-vnc* /usr/lib/
 
 ENTRYPOINT []
-CMD ["/usr/sbin/guacd", "-l", "4822", "-b", "0.0.0.0", "-L", "trace", "-f"]
+CMD ["/usr/sbin/guacd", "-l", "4822", "-b", "0.0.0.0", "-L", "info", "-f"]
