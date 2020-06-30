@@ -11,6 +11,24 @@ import (
 	"os"
 )
 
+// A hypervisor managed domain can be in one of the following states.
+// Note that this is a superset of all the states from all the hypervisors
+// we support, which means that some hypervisors may only returns a subset
+// of these values.
+type DomState int
+
+const (
+	// domain is...
+	Running DomState = iota // ...currently running
+	Blocked                 // ...blocked, and not running or runnable
+	Paused                  // ...paused
+	Exiting                 // ...shutting down (a shutdown command has been sent, but the domain isn't dying yet)
+	Crashed                 // ...crashed
+	Dying                   // ...dying, but hasn't properly shut down or crashed
+	Broken                  // ...without supporting device model
+	Unknown                 // ...unknown (typically associated with an error condition)
+)
+
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
 	Name() string
@@ -22,8 +40,7 @@ type Hypervisor interface {
 	Start(string, int) error
 	Stop(string, int, bool) error
 	Delete(string, int) error
-	Info(string, int) error
-	LookupByName(string, int) (int, error)
+	Info(string, int) (int, DomState, error)
 
 	IsDomainPotentiallyShuttingDown(string) bool
 	IsDeviceModelAlive(int) bool

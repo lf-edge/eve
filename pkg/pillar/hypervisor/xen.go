@@ -450,56 +450,81 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx xenContext) Info(domainName string, domainID int) error {
+func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, error) {
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
-	// XXX xl list -l domainName returns json. XXX but state not included!
-	// Note that state is not very useful anyhow
+
+	domainState := ""
 	cmd := "xl"
 	args := []string{
 		"list",
-		"-l",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		log.Errorln("xl list failed ", err)
-		log.Errorln("xl list output ", string(stdoutStderr))
-		return fmt.Errorf("xl list failed: %s\n",
-			string(stdoutStderr))
+		//domain is not present
+		log.Errorln("Info: xl list failed ", err)
+		log.Errorln("Info: xl list output ", string(stdoutStderr))
+		return 0, Unknown, fmt.Errorf("info: xl list failed: %v", err)
+	} else {
+		log.Infof("xl list done. Result %s\n", string(stdoutStderr))
 	}
-	// XXX parse json to look at state? Not currently included
-	// XXX note that there is a warning at the top of the combined
-	// output. If we want to parse the json we need to get Output()
-	log.Infof("xl list done. Result %s\n", string(stdoutStderr))
-	return nil
-}
 
-func (ctx xenContext) LookupByName(domainName string, domainID int) (int, error) {
-	log.Debugf("xlDomid %s %d\n", domainName, domainID)
-	cmd := "xl"
-	args := []string{
-		"domid",
-		domainName,
+	//stdoutStderr should have 2 rows separated by '\n'. Where 1st row will be column names and 2nd row will be domain details
+	cmdResponse := strings.Split(string(stdoutStderr), "\n")
+	if len(cmdResponse) < 2 {
+		log.Errorln("Info: domain not present in xl list output", string(stdoutStderr))
+		return 0, Unknown, fmt.Errorf("info: domain not present in xl list output %s", string(stdoutStderr))
 	}
-	// Avoid wrap since we are called periodically
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorln("xl domid failed ", err)
-		log.Errorln("xl domid output ", string(stdoutStderr))
-		return domainID, fmt.Errorf("xl domid failed: %s\n",
-			string(stdoutStderr))
+	//Removing all extra space between column result and split the result as array.
+	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(cmdResponse[1], " ")
+	//Domain's status is 5th column in xl list <domain> result
+	domainState = strings.Split(xlDomainResult, " ")[4]
+	//Removing all unset state bits represented by "-"
+	domainState = strings.ReplaceAll(domainState, "-", "")
+	//Domain's ID is the 2nd columd in xl list <domain> result
+	effectiveDomainID, err := strconv.Atoi(strings.Split(xlDomainResult, " ")[1])
+	if len(domainState) < 1 || err != nil {
+		log.Infof("Info: domain %s in undetermined state with ID %d", domainName, effectiveDomainID)
+		return effectiveDomainID, Unknown, nil
+	} else {
+		if effectiveDomainID != domainID {
+			log.Warningf("Info: domainid changed from %d to %d for %s\n",
+				domainID, effectiveDomainID, domainName)
+		}
 	}
-	res := strings.TrimSpace(string(stdoutStderr))
-	domainID2, err := strconv.Atoi(res)
-	if err != nil {
-		log.Errorf("xl domid not integer %s: failed %s\n", res, err)
-		return domainID, err
+	log.Debugf("Info: domain: %s domainState: %s domainID: %d", domainName, domainState, effectiveDomainID)
+	//In case of more that 1 (logically possible) domain state, will consider the last state.
+	lastState := domainState[len(domainState)-1:]
+	log.Debugf("Info: domain: %s lastState: %s", domainName, lastState)
+	//if domainState is not 'r' or 'b' then the domain is not healthy.
+	stateMap := map[string]DomState{
+		"r": Running,
+		"b": Blocked,
+		"p": Paused,
+		"s": Exiting,
+		"c": Crashed,
+		"d": Dying,
 	}
-	if domainID2 != domainID {
-		log.Warningf("domainid changed from %d to %d for %s\n",
-			domainID, domainID2, domainName)
+	effectiveDomainState, matched := stateMap[lastState]
+	if !matched {
+		effectiveDomainState = Unknown
 	}
-	return domainID2, nil
+
+	// if we are in one of the states that may require a device model -- check for it
+	if effectiveDomainState == Running || effectiveDomainState == Blocked || effectiveDomainState == Paused {
+		// create pgrep command to see if dataplane is running
+		match := fmt.Sprintf("domid %d", effectiveDomainID)
+		cmd := wrap.Command("pgrep", "-f", match)
+
+		// pgrep returns 0 when there is atleast one matching program running
+		// cmd.Output returns nil when pgrep returns 0, otherwise pids.
+		if _, err := cmd.Output(); err != nil {
+			log.Infof("Info: device model %s process is not running: %s", match, err)
+			effectiveDomainState = Broken
+		}
+	}
+
+	return effectiveDomainID, effectiveDomainState, nil
 }
 
 // Perform xenstore write to disable all of these for all VIFs

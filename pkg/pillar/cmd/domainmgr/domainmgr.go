@@ -648,7 +648,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		configActivate = true
 	}
 
-	domainID, err := hyper.LookupByName(status.DomainName, status.DomainId)
+	domainID, domainStatus, err := hyper.Info(status.DomainName, status.DomainId)
 	if err != nil {
 		if status.Activated && configActivate {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
@@ -1144,10 +1144,8 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	// XXX dumping status to log
-	hyper.Info(status.DomainName, status.DomainId)
+	domainID, _, err = hyper.Info(status.DomainName, status.DomainId)
 
-	domainID, err = hyper.LookupByName(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1165,7 +1163,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Infof("doInactivate(%v) for %s",
 		status.UUIDandVersion, status.DisplayName)
-	domainID, err := hyper.LookupByName(status.DomainName, status.DomainId)
+	domainID, _, err := hyper.Info(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1623,7 +1621,8 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			time.Sleep(delay)
 			waited += delay
 		}
-		if err := hyper.Info(status.DomainName, status.DomainId); err != nil {
+		_, _, err := hyper.Info(status.DomainName, status.DomainId)
+		if err != nil {
 			log.Infof("waitForDomainGone(%v) for %s: domain is gone",
 				status.UUIDandVersion, status.DisplayName)
 			gone = true

@@ -104,19 +104,15 @@ serial = ['pty']
 		t.Errorf("Couldn't stop a domain %v", err)
 	}
 
-	if id, err := hyper.LookupByName("test.1", domID); err != nil || id != domID {
-		t.Errorf("LookupByName domain failed %d %v", id, err)
-	}
-
-	if err := hyper.Info("", 0); err == nil {
+	if _, _, err := hyper.Info("", 0); err == nil {
 		t.Errorf("Info domain should've failed for a domain that is empty")
 	}
 
-	if err := hyper.Info("foo-bar-baz", 0); err == nil {
+	if _, _, err := hyper.Info("foo-bar-baz", 0); err == nil {
 		t.Errorf("Info domain should've failed for a domain that is non-existent")
 	}
 
-	if err := hyper.Info("test.1", domID); err != nil {
+	if _, _, err := hyper.Info("test.1", domID); err != nil {
 		t.Errorf("Info domain failed %v", err)
 	}
 
