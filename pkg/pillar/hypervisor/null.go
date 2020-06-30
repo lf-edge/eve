@@ -15,7 +15,7 @@ import (
 type domState struct {
 	id     int
 	config string
-	state  string
+	state  DomState
 }
 
 type nullContext struct {
@@ -70,14 +70,14 @@ func (ctx nullContext) Create(domainName string, cfgFilename string, config *typ
 
 	// calls to Create are serialized in the consumer: no need to worry about locking
 	ctx.domCounter++
-	ctx.doms[domainName] = &domState{id: ctx.domCounter, config: string(configContent), state: "stopped"}
+	ctx.doms[domainName] = &domState{id: ctx.domCounter, config: string(configContent), state: Paused}
 
 	return ctx.domCounter, nil
 }
 
 func (ctx nullContext) Start(domainName string, domainID int) error {
-	if dom, found := ctx.doms[domainName]; found && dom.state == "stopped" {
-		dom.state = "running"
+	if dom, found := ctx.doms[domainName]; found && dom.state == Paused {
+		dom.state = Running
 		return nil
 	} else {
 		return fmt.Errorf("null domain %s doesn't exist or is not stopped", domainName)
@@ -85,8 +85,8 @@ func (ctx nullContext) Start(domainName string, domainID int) error {
 }
 
 func (ctx nullContext) Stop(domainName string, domainID int, force bool) error {
-	if dom, found := ctx.doms[domainName]; found && dom.state == "running" {
-		dom.state = "stopped"
+	if dom, found := ctx.doms[domainName]; found && dom.state == Running {
+		dom.state = Paused
 		return nil
 	} else {
 		return fmt.Errorf("null domain %s doesn't exist or is not running", domainName)
@@ -100,21 +100,13 @@ func (ctx nullContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx nullContext) Info(domainName string, domainID int) error {
+func (ctx nullContext) Info(domainName string, domainID int) (int, DomState, error) {
 	if dom, found := ctx.doms[domainName]; found {
-		log.Infof("Null Domain %s is %s and has the following config %s\n", domainName, dom.state, dom.config)
-		return nil
+		log.Infof("Null Domain %s is %v and has the following config %s\n", domainName, dom.state, dom.config)
+		return dom.id, dom.state, nil
 	} else {
 		log.Errorf("Null Domain %s doesn't exist", domainName)
-		return fmt.Errorf("null domain %s doesn't exist", domainName)
-	}
-}
-
-func (ctx nullContext) LookupByName(domainName string, domainID int) (int, error) {
-	if dom, found := ctx.doms[domainName]; found {
-		return dom.id, nil
-	} else {
-		return 0, fmt.Errorf("null domain %s doesn't exist", domainName)
+		return 0, Unknown, fmt.Errorf("null domain %s doesn't exist", domainName)
 	}
 }
 
