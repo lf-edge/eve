@@ -20,7 +20,6 @@ type Hypervisor interface {
 	Create(string, string, *types.DomainConfig) (int, error)
 
 	Start(string, int) error
-	Tune(string, int, int) error
 	Stop(string, int, bool) error
 	Delete(string, int) error
 	Info(string, int) error

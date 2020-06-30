@@ -54,11 +54,6 @@ func (ctx acrnContext) LookupByName(domainName string, domainID int) (int, error
 	return 0, nil
 }
 
-// Tune allows for additional performance tweaks on a stopped domain
-func (ctx acrnContext) Tune(domainName string, domainID int, vifCount int) error {
-	return nil
-}
-
 // PCIReserve takes a PCI device away from the host kernel and makes it available for Domain assignments
 func (ctx acrnContext) PCIReserve(long string) error {
 	return nil
