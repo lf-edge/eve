@@ -45,13 +45,8 @@ func (ctx acrnContext) Delete(domainName string, domainID int) error {
 }
 
 // Info outputs domain info via logging
-func (ctx acrnContext) Info(domainName string, domainID int) error {
-	return nil
-}
-
-// LookupByName returns domain ID for a domain with a given symbolic name
-func (ctx acrnContext) LookupByName(domainName string, domainID int) (int, error) {
-	return 0, nil
+func (ctx acrnContext) Info(domainName string, domainID int) (int, DomState, error) {
+	return 0, Running, nil
 }
 
 // PCIReserve takes a PCI device away from the host kernel and makes it available for Domain assignments

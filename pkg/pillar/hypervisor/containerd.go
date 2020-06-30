@@ -105,36 +105,30 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 	return err
 }
 
-func (ctx ctrdContext) Info(domainName string, domainID int) error {
-	pid, status, err := containerd.CtrContainerInfo(domainName)
-	if err == nil {
-		if pid == domainID {
-			log.Infof("containerd domain %s with PID %d is %s\n", domainName, domainID, status)
-			return nil
-		} else {
-			log.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
-				domainName, pid, domainID, status)
-			return nil
-		}
-	} else {
-		return logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
+func (ctx ctrdContext) Info(domainName string, domainID int) (int, DomState, error) {
+	effectiveDomainID, status, err := containerd.CtrContainerInfo(domainName)
+	if err != nil {
+		return 0, Unknown, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
 	}
-}
 
-func (ctx ctrdContext) LookupByName(domainName string, domainID int) (int, error) {
-	pid, status, err := containerd.CtrContainerInfo(domainName)
-	if err == nil {
-		if pid == domainID {
-			log.Infof("containerd domain %s with PID %d is %s\n", domainName, domainID, status)
-		} else {
-			log.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
-				domainName, pid, domainID, status)
-		}
-		return pid, nil
-	} else {
-		return 0, logError("containerd looking up domain by name %s with PID %d resulted in %v",
-			domainName, domainID, err)
+	if effectiveDomainID != domainID {
+		log.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
+			domainName, effectiveDomainID, domainID, status)
 	}
+
+	stateMap := map[string]DomState{
+		"running": Running,
+		"created": Blocked,
+		"paused":  Paused,
+		"stopped": Exiting,
+		"pausing": Running,
+	}
+	effectiveDomainState, matched := stateMap[status]
+	if _, err := os.Stat("/proc/" + strconv.Itoa(effectiveDomainID)); err != nil || !matched {
+		effectiveDomainState = Unknown
+	}
+
+	return effectiveDomainID, effectiveDomainState, nil
 }
 
 func (ctx ctrdContext) PCIReserve(long string) error {

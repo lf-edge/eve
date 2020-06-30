@@ -636,17 +636,51 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx kvmContext) Info(domainName string, domainID int) error {
-	res, err := execQueryCLIOptions(getQmpExecutorSocket(domainName))
-	log.Infof("KVM Info for domain %s %d %s (%v)", domainName, domainID, res, err)
-	return err
-}
-
-func (ctx kvmContext) LookupByName(domainName string, domainID int) (int, error) {
-	if id, found := ctx.domains[domainName]; !found || id != domainID {
-		return id, logError("couldn't find domain %s or new id %d != old one %d", domainName, id, domainID)
+func (ctx kvmContext) Info(domainName string, domainID int) (int, DomState, error) {
+	effectiveDomainID, matched := ctx.domains[domainName]
+	if !matched {
+		return 0, Unknown, logError("couldn't find domain %s", domainName)
 	}
-	return domainID, nil
+
+	if effectiveDomainID != domainID {
+		log.Warnf("assumed domainID %d is different from effective domainID %d", domainID, effectiveDomainID)
+	}
+
+	// lets see if qemu process is still running
+	if _, err := os.Stat(fmt.Sprintf("/proc/%d", effectiveDomainID)); err != nil {
+		return 0, Broken, logError("qemu process %d for domain %s seems to have exited", effectiveDomainID, domainName)
+	}
+
+	// lets parse the status according to https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
+	stateMap := map[string]DomState{
+		"finish-migrate": Paused,
+		"inmigrate":      Paused,
+		"internal-error": Broken,
+		"io-error":       Broken,
+		"paused":         Paused,
+		"postmigrate":    Paused,
+		"prelaunch":      Paused,
+		"restore-vm":     Paused,
+		"running":        Running,
+		"save-vm":        Paused,
+		"shutdown":       Exiting,
+		"suspended":      Paused,
+		"watchdog":       Paused,
+		"guest-panicked": Dying,
+		"colo":           Paused,
+		"preconfig":      Paused,
+	}
+	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
+	if err != nil {
+		return 0, Unknown, logError("couldn't retrieve status for domain %s: %v", domainName, err)
+	}
+
+	effectiveDomainState, matched := stateMap[res]
+	if !matched {
+		effectiveDomainState = Unknown
+	}
+	
+	return effectiveDomainID, effectiveDomainState, nil
 }
 
 func (ctx kvmContext) PCIReserve(long string) error {
