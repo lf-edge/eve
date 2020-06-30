@@ -632,10 +632,6 @@ func (ctx kvmContext) LookupByName(domainName string, domainID int) (int, error)
 	return domainID, nil
 }
 
-func (ctx kvmContext) Tune(domainName string, domainID int, vifCount int) error {
-	return nil
-}
-
 func (ctx kvmContext) PCIReserve(long string) error {
 	log.Infof("PCIReserve long addr is %s", long)
 
