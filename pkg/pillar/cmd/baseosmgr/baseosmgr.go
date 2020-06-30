@@ -32,20 +32,20 @@ const (
 var Version = "No version specified"
 
 type baseOsMgrContext struct {
-	pubBaseOsStatus pubsub.Publication
+	pubBaseOsStatus      pubsub.Publication
 	pubContentTreeConfig pubsub.Publication
-	pubZbootStatus  pubsub.Publication
+	pubZbootStatus       pubsub.Publication
 
-	subGlobalConfig    pubsub.Subscription
-	globalConfig       *types.ConfigItemValueMap
-	GCInitialized      bool
-	subBaseOsConfig    pubsub.Subscription
-	subZbootConfig     pubsub.Subscription
-	subContentTreeStatus    pubsub.Subscription
-	subNodeAgentStatus pubsub.Subscription
-	rebootReason       string    // From last reboot
-	rebootTime         time.Time // From last reboot
-	rebootImage        string    // Image from which the last reboot happened
+	subGlobalConfig      pubsub.Subscription
+	globalConfig         *types.ConfigItemValueMap
+	GCInitialized        bool
+	subBaseOsConfig      pubsub.Subscription
+	subZbootConfig       pubsub.Subscription
+	subContentTreeStatus pubsub.Subscription
+	subNodeAgentStatus   pubsub.Subscription
+	rebootReason         string    // From last reboot
+	rebootTime           time.Time // From last reboot
+	rebootImage          string    // Image from which the last reboot happened
 }
 
 var debug = false
@@ -159,12 +159,12 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 		ConfigSha256:   config.ConfigSha256,
 	}
 
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
+	status.ContentTreeStatusList = make([]types.ContentTreeStatus,
+		len(config.ContentTreeConfigList))
 
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.UpdateFromStorageConfig(sc)
+	for i, ctc := range config.ContentTreeConfigList {
+		cts := &status.ContentTreeStatusList[i]
+		cts.UpdateFromContentTreeConfig(ctc)
 	}
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)

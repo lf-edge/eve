@@ -145,6 +145,20 @@ func (status ContentTreeStatus) IsContainer() bool {
 	return false
 }
 
+func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeConfig) {
+	status.ContentID = config.ContentID
+	status.DatastoreID = config.DatastoreID
+	status.RelativeURL = config.RelativeURL
+	status.Format = config.Format
+	status.ContentSha256 = config.ContentSha256
+	status.MaxDownloadSize = config.MaxDownloadSize
+	status.GenerationCounter = config.GenerationCounter
+	status.ImageSignature = config.ImageSignature
+	status.SignatureKey = config.SignatureKey
+	status.CertificateChain = config.CertificateChain
+	status.DisplayName = config.DisplayName
+}
+
 // LogCreate :
 func (status ContentTreeStatus) LogCreate() {
 	logObject := base.NewLogObject(base.ContentTreeStatusLogType, status.DisplayName,
