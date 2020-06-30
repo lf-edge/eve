@@ -1,0 +1,27 @@
+#!/bin/sh
+set -ex
+
+FEATURES="feature-sg feature-gso-tcpv4 feature-gso-tcpv6 feature-ipv4-csum-offload feature-ipv6-csum-offload"
+
+bail() {
+   echo "$@"
+   exit 1
+}
+
+# pre-flight checks
+[ $# -ne 1 ] && bail "Usage: $0 <domain ID>"
+
+# we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
+for i in 1 2 3; do
+  ID=$(echo $(($(xl domid "$1") + 0))) ||:
+  sleep 8
+  [ -z "$ID" ] || break
+done
+[ -z "$ID" ] && bail "Couldn't find domain $1"
+
+for vif in $(xenstore list /local/domain/$ID/device/vif); do
+  for f in $FEATURES; do
+    xenstore write "/local/domain/$ID/device/vif/$vif/$f" 0
+    xenstore write "/local/domain/0/backend/vif/$ID/$vif/$f" 0
+  done
+done

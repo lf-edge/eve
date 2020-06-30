@@ -377,13 +377,24 @@ func (ctx xenContext) Create(domainName string, xenCfgFilename string, config *t
 }
 
 func (ctx xenContext) Start(domainName string, domainID int) error {
+	// Disable offloads for all vifs
+	stdoutStderr, err := wrap.Command("/etc/xen/scripts/disable-vif-features",
+		domainName).CombinedOutput()
+	if err != nil {
+		// XXX continuing even if we get a failure?
+		log.Errorln("disable-vif-features write failed, continuing anyway", err)
+		log.Errorln("disable-vif-features write output", string(stdoutStderr))
+	} else {
+		log.Debugf("xenstore write done. Result %s\n", string(stdoutStderr))
+	}
+
 	log.Infof("xlUnpause %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
 		"unpause",
 		domainName,
 	}
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Errorln("xl unpause failed ", err)
 		log.Errorln("xl unpause output ", string(stdoutStderr))
@@ -493,7 +504,7 @@ func (ctx xenContext) LookupByName(domainName string, domainID int) (int, error)
 
 // Perform xenstore write to disable all of these for all VIFs
 // feature-sg, feature-gso-tcpv4, feature-gso-tcpv6, feature-ipv6-csum-offload
-func (ctx xenContext) Tune(domainName string, domainID int, vifCount int) error {
+func disableVifOffload(domainName string, domainID int, vifCount int) error {
 	log.Infof("xlDisableVifOffload %s %d %d\n",
 		domainName, domainID, vifCount)
 	pref := "/local/domain"

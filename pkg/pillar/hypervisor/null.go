@@ -118,10 +118,6 @@ func (ctx nullContext) LookupByName(domainName string, domainID int) (int, error
 	}
 }
 
-func (ctx nullContext) Tune(string, int, int) error {
-	return nil
-}
-
 func (ctx nullContext) PCIReserve(long string) error {
 	if ctx.PCI[long] {
 		return fmt.Errorf("PCI %s is already reserved", long)

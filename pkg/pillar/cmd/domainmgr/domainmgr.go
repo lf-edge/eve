@@ -1225,15 +1225,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.State = types.BOOTING
 	publishDomainStatus(ctx, status)
 
-	// Disable offloads for all vifs
-	err := hyper.Tune(status.DomainName, domainID,
-		len(status.VifList))
-	if err != nil {
-		// XXX continuing even if we get a failure?
-		log.Errorf("Tuning domain %s failed: %s",
-			status.DomainName, err)
-	}
-	err = hyper.Start(status.DomainName, domainID)
+	err := hyper.Start(status.DomainName, domainID)
 	if err != nil {
 		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
