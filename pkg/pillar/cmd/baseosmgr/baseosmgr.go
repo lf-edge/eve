@@ -33,7 +33,7 @@ var Version = "No version specified"
 
 type baseOsMgrContext struct {
 	pubBaseOsStatus pubsub.Publication
-	pubVolumeConfig pubsub.Publication
+	pubContentTreeConfig pubsub.Publication
 	pubZbootStatus  pubsub.Publication
 
 	subGlobalConfig    pubsub.Subscription
@@ -41,7 +41,7 @@ type baseOsMgrContext struct {
 	GCInitialized      bool
 	subBaseOsConfig    pubsub.Subscription
 	subZbootConfig     pubsub.Subscription
-	subVolumeStatus    pubsub.Subscription
+	subContentTreeStatus    pubsub.Subscription
 	subNodeAgentStatus pubsub.Subscription
 	rebootReason       string    // From last reboot
 	rebootTime         time.Time // From last reboot
@@ -121,8 +121,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subZbootConfig.MsgChan():
 			ctx.subZbootConfig.ProcessChange(change)
 
-		case change := <-ctx.subVolumeStatus.MsgChan():
-			ctx.subVolumeStatus.ProcessChange(change)
+		case change := <-ctx.subContentTreeStatus.MsgChan():
+			ctx.subContentTreeStatus.ProcessChange(change)
 
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
@@ -265,16 +265,16 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	pubBaseOsStatus.ClearRestarted()
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubVolumeConfig, err := ps.NewPublication(
+	pubContentTreeConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			AgentScope: types.BaseOsObj,
-			TopicType:  types.OldVolumeConfig{},
+			TopicType:  types.ContentTreeConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubVolumeConfig = pubVolumeConfig
+	ctx.pubContentTreeConfig = pubContentTreeConfig
 
 	pubZbootStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -372,24 +372,24 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for BaseOs OldVolumeStatus from volumemgr
-	subVolumeStatus, err := ps.NewSubscription(
+	subContentTreeStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
 			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.OldVolumeStatus{},
+			TopicImpl:     types.ContentTreeStatus{},
 			Activate:      false,
 			Ctx:           ctx,
-			CreateHandler: handleVolumeStatusModify,
-			ModifyHandler: handleVolumeStatusModify,
-			DeleteHandler: handleVolumeStatusDelete,
+			CreateHandler: handleContentTreeStatusModify,
+			ModifyHandler: handleContentTreeStatusModify,
+			DeleteHandler: handleContentTreeStatusDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subVolumeStatus = subVolumeStatus
-	subVolumeStatus.Activate()
+	ctx.subContentTreeStatus = subContentTreeStatus
+	subContentTreeStatus.Activate()
 }
 
 // This handles both the create and modify events

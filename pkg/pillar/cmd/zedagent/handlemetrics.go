@@ -824,9 +824,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.Status = bos.State.ZSwState()
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
-			if len(bos.StorageStatusList) > 0 {
-				// Assume one - pick first StorageStatus
-				swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+			if len(bos.ContentTreeStatusList) > 0 {
+				// Assume one - pick first ContentTreeStatus
+				swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 			}
 			if !bos.ErrorTime.IsZero() {
 				log.Debugf("reportMetrics sending error time %v error %v for %s",
@@ -877,9 +877,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		swInfo.Status = bos.State.ZSwState()
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
-		if len(bos.StorageStatusList) > 0 {
-			// Assume one - pick first StorageStatus
-			swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+		if len(bos.ContentTreeStatusList) > 0 {
+			// Assume one - pick first ContentTreeStatus
+			swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 		}
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s",

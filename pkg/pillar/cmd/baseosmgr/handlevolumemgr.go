@@ -11,16 +11,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// AddOrRefcountVolumeConfig makes sure we have a VolumeConfig with a non-zero
-// RefCount
-// We use the baseos object UUID as appInstID here
-func AddOrRefcountVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
+// AddOrRefcountContentTreeConfig makes sure we have a ContentTreeConfig
+// with a non-zero refCount
+func AddOrRefcountContentTreeConfig(ctx *baseOsMgrContext, blobSha256 string,
 	appInstID uuid.UUID, volumeID uuid.UUID, ss types.StorageStatus) {
 
 	// No PurgeCounter for baseos
 	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, 0)
 	log.Infof("AddOrRefcountVolumeConfig for %s", key)
-	m := lookupVolumeConfig(ctx, key)
+	m := lookupContentTreeConfig(ctx, key)
 	if m != nil {
 		m.RefCount++
 		log.Infof("VolumeConfig exists for %s to refcount %d",
@@ -93,15 +92,15 @@ func MaybeRemoveVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
 	}
 }
 
-func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.OldVolumeConfig {
+func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.ContentTreeConfig {
 
-	pub := ctx.pubVolumeConfig
+	pub := ctx.pubContentTreeConfig
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Infof("lookupVolumeConfig(%s) not found", key)
 		return nil
 	}
-	config := c.(types.OldVolumeConfig)
+	config := c.(types.ContentTreeConfig)
 	return &config
 }
 
@@ -127,7 +126,7 @@ func publishVolumeConfig(ctx *baseOsMgrContext,
 
 	key := status.Key()
 	log.Infof("publishVolumeConfig(%s)", key)
-	pub := ctx.pubVolumeConfig
+	pub := ctx.pubContentTreeConfig
 	pub.Publish(key, *status)
 }
 
