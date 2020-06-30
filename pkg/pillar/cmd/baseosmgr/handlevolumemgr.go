@@ -7,169 +7,77 @@ package baseosmgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-// AddOrRefcountContentTreeConfig makes sure we have a ContentTreeConfig
-// with a non-zero refCount
-func AddOrRefcountContentTreeConfig(ctx *baseOsMgrContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID, ss types.StorageStatus) {
-
-	// No PurgeCounter for baseos
-	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, 0)
-	log.Infof("AddOrRefcountVolumeConfig for %s", key)
-	m := lookupContentTreeConfig(ctx, key)
-	if m != nil {
-		m.RefCount++
-		log.Infof("VolumeConfig exists for %s to refcount %d",
-			key, m.RefCount)
-		publishVolumeConfig(ctx, m)
-	} else {
-		log.Debugf("AddOrRefcountVolumeConfig: add for %s", key)
-		// XXX hard-coded for OriginTypeDownload for now
-		d := types.DownloadOriginConfig{
-			ImageID:     ss.ImageID,
-			DatastoreID: ss.DatastoreID,
-			Name:        ss.Name,
-			NameIsURL:   ss.NameIsURL,
-			ImageSha256: ss.ImageSha256,
-			IsContainer: ss.IsContainer,
-			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-				types.AppImgObj),
-			MaxDownSize: ss.MaxDownSize,
-			FinalObjDir: ss.FinalObjDir,
-
-			CertificateChain: ss.CertificateChain,
-			ImageSignature:   ss.ImageSignature,
-			SignatureKey:     ss.SignatureKey,
-		}
-		n := types.OldVolumeConfig{
-			BlobSha256:     blobSha256,
-			AppInstID:      appInstID,
-			VolumeID:       volumeID,
-			PurgeCounter:   0,
-			DisplayName:    ss.Name,
-			Origin:         types.OriginTypeDownload,
-			DownloadOrigin: &d,
-			MaxVolSize:     ss.MaxVolSize,
-			ReadOnly:       ss.ReadOnly,
-			Format:         ss.Format,
-			Target:         ss.Target,
-			RefCount:       1,
-		}
-		publishVolumeConfig(ctx, &n)
-	}
-	log.Infof("AddOrRefcountVolumeConfig done for %s", key)
-}
-
-// MaybeRemoveVolumeConfig decreases the RefCount and deletes the VolumeConfig
-// when the RefCount reaches zero
-// We use the baseos object UUID as appInstID here
-func MaybeRemoveVolumeConfig(ctx *baseOsMgrContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID) {
-
-	// No PurgeCounter for baseos
-	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, 0)
-	log.Infof("MaybeRemoveVolumeConfig for %s", key)
-	m := lookupVolumeConfig(ctx, key)
-	if m == nil {
-		log.Infof("MaybeRemoveVolumeConfig: config missing for %s", key)
-		return
-	}
-	if m.RefCount == 0 {
-		log.Fatalf("MaybeRemoveVolumeConfig: Attempting to reduce "+
-			"0 RefCount for %s", key)
-	}
-	m.RefCount--
-	if m.RefCount == 0 {
-		log.Infof("MaybeRemoveVolumeConfig deleting %s", key)
-		unpublishVolumeConfig(ctx, key)
-	} else {
-		log.Infof("MaybeRemoveVolumeConfig remaining RefCount %d for %s",
-			m.RefCount, key)
-		publishVolumeConfig(ctx, m)
-	}
-}
-
-func lookupVolumeConfig(ctx *baseOsMgrContext, key string) *types.ContentTreeConfig {
+func lookupContentTreeConfig(ctx *baseOsMgrContext, key string) *types.ContentTreeConfig {
 
 	pub := ctx.pubContentTreeConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeConfig(%s) not found", key)
+		log.Infof("lookupContentTreeConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.ContentTreeConfig)
 	return &config
 }
 
-// Note that this function returns the entry even if Pending* is set.
-// We use the baseos object UUID as appInstID here
-func lookupVolumeStatus(ctx *baseOsMgrContext, blobSha256 string,
-	appInstID uuid.UUID, volumeID uuid.UUID) *types.OldVolumeStatus {
+func lookupContentTreeStatus(ctx *baseOsMgrContext, key string) *types.ContentTreeStatus {
 
-	// No PurgeCounter for baseos
-	key := types.VolumeKeyFromParts(blobSha256, appInstID, volumeID, 0)
-	sub := ctx.subVolumeStatus
+	sub := ctx.subContentTreeStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupVolumeStatus(%s) not found", key)
+		log.Infof("lookupContentTreeStatus(%s) not found", key)
 		return nil
 	}
-	status := st.(types.OldVolumeStatus)
+	status := st.(types.ContentTreeStatus)
 	return &status
 }
 
-func publishVolumeConfig(ctx *baseOsMgrContext,
-	status *types.OldVolumeConfig) {
+func publishContentTreeConfig(ctx *baseOsMgrContext, config *types.ContentTreeConfig) {
 
-	key := status.Key()
-	log.Infof("publishVolumeConfig(%s)", key)
+	key := config.Key()
+	log.Infof("publishContentTreeConfig(%s)", key)
 	pub := ctx.pubContentTreeConfig
-	pub.Publish(key, *status)
+	pub.Publish(key, *config)
 }
 
-func unpublishVolumeConfig(ctx *baseOsMgrContext, uuidStr string) {
+func unpublishContentTreeConfig(ctx *baseOsMgrContext, key string) {
 
-	key := uuidStr
-	log.Infof("unpublishVolumeConfig(%s)", key)
-	pub := ctx.pubVolumeConfig
+	log.Infof("unpublishContentTreeConfig(%s)", key)
+	pub := ctx.pubContentTreeConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishVolumeConfig(%s) not found", key)
+		log.Errorf("unpublishContentTreeConfig(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
 }
 
-func handleVolumeStatusModify(ctxArg interface{}, key string,
+func handleContentTreeStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(types.OldVolumeStatus)
+	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVolumeStatusModify: key:%s, name:%s",
+	log.Infof("handleContentTreeStatusModify: key:%s, name:%s",
 		key, status.DisplayName)
-	// Process even if a Pending* flag is set to update progress
-	if status.BlobSha256 != "" {
-		baseOsHandleStatusUpdateImageSha(ctx, status.BlobSha256)
+	if status.ContentSha256 != "" {
+		baseOsHandleStatusUpdateImageSha(ctx, status.ContentSha256)
 	} else {
-		log.Warnf("Unknown volume: appinstid %s volume %s",
-			status.AppInstID, status.VolumeID)
+		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}
-	log.Infof("handleVolumeStatusModify done for %s", key)
+	log.Infof("handleContentTreeStatusModify done for %s", key)
 }
 
-func handleVolumeStatusDelete(ctxArg interface{}, key string,
+func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleVolumeStatusDelete for %s", key)
+	log.Infof("handleContentTreeStatusDelete for %s", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-	status := statusArg.(types.OldVolumeStatus)
-	if status.BlobSha256 != "" {
-		baseOsHandleStatusUpdateImageSha(ctx, status.BlobSha256)
+	status := statusArg.(types.ContentTreeStatus)
+	if status.ContentSha256 != "" {
+		baseOsHandleStatusUpdateImageSha(ctx, status.ContentSha256)
 	} else {
-		log.Warnf("Unknown volume: appinstid %s volume %s",
-			status.AppInstID, status.VolumeID)
+		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}
-	log.Infof("handleVolumeStatusDelete done for %s", key)
+	log.Infof("handleContentTreeStatusDelete done for %s", key)
 }
