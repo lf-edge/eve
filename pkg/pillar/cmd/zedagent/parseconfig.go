@@ -164,7 +164,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 			baseOs.OsParams[jdx] = *param
 		}
 
-		baseOs.StorageConfigList = make([]types.StorageConfig,
+		baseOs.ContentTreeConfigList = make([]types.StorageConfig,
 			len(cfgOs.Drives))
 		parseStorageConfigList(types.BaseOsObj, baseOs.StorageConfigList,
 			cfgOs.Drives)

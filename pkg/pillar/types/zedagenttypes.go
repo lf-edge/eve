@@ -20,18 +20,18 @@ type OsVerParams struct {
 // This is what we assume will come from the ZedControl for base OS.
 // Note that we can have different versions  configured for the
 // same UUID, hence the key is the UUIDandVersion  We assume the
-// elements in StorageConfig should be installed, but activation
+// elements in ContentTreeConfig should be installed, but activation
 // is driven by the Activate attribute.
 
 type BaseOsConfig struct {
-	UUIDandVersion    UUIDandVersion
-	BaseOsVersion     string // From GetShortVersion
-	ConfigSha256      string
-	ConfigSignature   string
-	OsParams          []OsVerParams // From GetLongVersion
-	StorageConfigList []StorageConfig
-	RetryCount        int32
-	Activate          bool
+	UUIDandVersion        UUIDandVersion
+	BaseOsVersion         string // From GetShortVersion
+	ConfigSha256          string
+	ConfigSignature       string
+	OsParams              []OsVerParams // From GetLongVersion
+	ContentTreeConfigList []ContentTreeConfig
+	RetryCount            int32
+	Activate              bool
 }
 
 func (config BaseOsConfig) Key() string {
@@ -94,17 +94,17 @@ func (config BaseOsConfig) LogKey() string {
 
 // Indexed by UUIDandVersion as above
 type BaseOsStatus struct {
-	UUIDandVersion    UUIDandVersion
-	BaseOsVersion     string
-	ConfigSha256      string
-	Activated         bool
-	Reboot            bool
-	TooEarly          bool // Failed since previous was inprogress/test
-	OsParams          []OsVerParams
-	StorageStatusList []StorageStatus
-	PartitionLabel    string
-	PartitionDevice   string // From zboot
-	PartitionState    string // From zboot
+	UUIDandVersion        UUIDandVersion
+	BaseOsVersion         string
+	ConfigSha256          string
+	Activated             bool
+	Reboot                bool
+	TooEarly              bool // Failed since previous was inprogress/test
+	OsParams              []OsVerParams
+	ContentTreeStatusList []ContentTreeStatus
+	PartitionLabel        string
+	PartitionDevice       string // From zboot
+	PartitionState        string // From zboot
 
 	// Mininum state across all steps/StorageStatus.
 	// Error* set implies error.
