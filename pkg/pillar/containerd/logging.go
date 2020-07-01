@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	logDumpCommand byte = iota
+	fifoDir        string = "/var/run/tasks/fifos"
+	logDumpCommand byte   = iota
 )
 
 type logio struct {
@@ -52,7 +53,7 @@ type Log interface {
 func GetLog() Log {
 	if _, err := os.Stat(logWriteSocket); !os.IsNotExist(err) {
 		return &remoteLog{
-			fifoDir: "/var/run",
+			fifoDir: fifoDir,
 		}
 	}
 	return &nullLog{}
