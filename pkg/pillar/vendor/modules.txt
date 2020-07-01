@@ -212,7 +212,7 @@ github.com/google/go-containerregistry/pkg/v1/partial
 github.com/google/go-containerregistry/pkg/v1/remote/transport
 github.com/google/go-containerregistry/pkg/v1/v1util
 github.com/google/go-containerregistry/pkg/internal/retry/wait
-# github.com/google/go-tpm v0.1.1 => github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3
+# github.com/google/go-tpm v0.1.2-0.20190725015402-ae6dd98980d4 => github.com/cshari-zededa/go-tpm v0.0.0-20200701063353-bf25d5482637
 github.com/google/go-tpm/tpm2
 github.com/google/go-tpm/tpmutil
 github.com/google/go-tpm/tpmutil/tbs

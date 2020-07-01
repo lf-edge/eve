@@ -4,13 +4,11 @@
 package tpmmgr
 
 import (
-	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -105,7 +103,6 @@ var (
 			tpm2.FlagUserWithAuth,
 		ECCParameters: &tpm2.ECCParams{
 			CurveID: tpm2.CurveNISTP256,
-			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	//Default Ek Template as per
@@ -179,7 +176,6 @@ var (
 				Hash: tpm2.AlgSHA256,
 			},
 			CurveID: tpm2.CurveNISTP256,
-			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	defaultEcdhKeyTemplate = tpm2.Public{
@@ -190,7 +186,6 @@ var (
 			tpm2.FlagUserWithAuth,
 		ECCParameters: &tpm2.ECCParams{
 			CurveID: tpm2.CurveNISTP256,
-			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	debug         = false
@@ -756,7 +751,7 @@ func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, e
 	}
 	defer rw.Close()
 
-	p := tpm2.ECPoint{X: X, Y: Y}
+	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
 
 	//Recover the key, and decrypt the message (edge node part)
 	z, err := tpm2.RecoverSharedECCSecret(rw, TpmEcdhKeyHdl, "", p)
@@ -764,7 +759,7 @@ func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, e
 		log.Errorf("recovering Shared Secret failed: %v", err)
 		return [32]byte{}, err
 	}
-	decryptKey := sha256FromECPoint(z.X, z.Y)
+	decryptKey := sha256FromECPoint(z.X(), z.Y())
 	return decryptKey, nil
 }
 
@@ -847,28 +842,6 @@ func getPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
-func tpmKeyToRsa(p tpm2.Public) (crypto.PublicKey, error) {
-	pubKey := &rsa.PublicKey{N: p.RSAParameters.Modulus, E: int(p.RSAParameters.Exponent)}
-	return pubKey, nil
-}
-
-func tpmKeyToEccKey(p tpm2.Public) (crypto.PublicKey, error) {
-	curve, ok := toGoCurve[p.ECCParameters.CurveID]
-	if !ok {
-		log.Errorf("Unknown curveID: %v", curve)
-		return nil, fmt.Errorf("unknown curve id 0x%x",
-			p.ECCParameters.CurveID)
-	}
-
-	pubKey := &ecdsa.PublicKey{
-		X:     p.ECCParameters.Point.X,
-		Y:     p.ECCParameters.Point.Y,
-		Curve: curve,
-	}
-
-	return pubKey, nil
-}
-
 func createEcdhCert() error {
 	// certificate is already created
 	if etpm.FileExists(ecdhCertFile) {
@@ -913,7 +886,7 @@ func createEcdhCertOnTpm() error {
 			return err
 		}
 
-		publicKey, err := tpmKeyToEccKey(ecdhKey)
+		publicKey, err := ecdhKey.Key()
 		if err != nil {
 			return err
 		}
