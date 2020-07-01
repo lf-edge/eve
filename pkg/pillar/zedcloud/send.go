@@ -572,7 +572,10 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			log.Errorln(errStr)
+			// zedrouter probing sends 'http' to zedcloud server, expect to get status of 404, not an error
+			if resp.StatusCode != http.StatusNotFound || ctx.AgentName != "zedrouter" {
+				log.Errorln(errStr)
+			}
 			log.Debugf("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
 			return resp, nil, types.SenderStatusNone, errors.New(errStr)
