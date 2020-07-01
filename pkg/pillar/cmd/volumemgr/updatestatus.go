@@ -307,7 +307,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		changed = true
 		return changed, false
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
-		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String())
+		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
 		if ctStatus == nil {
 			// Content tree not available
 			log.Errorf("doUpdateVol(%s) name %s: waiting for content tree status %v",
@@ -442,27 +442,9 @@ func updateStatus(ctx *volumemgrContext, objType, sha string) {
 
 	log.Infof("updateStatus(%s) objType %s", sha, objType)
 	found := false
-	volPub := ctx.publication(types.OldVolumeStatus{}, objType)
-	volItems := volPub.GetAll()
-	for _, st := range volItems {
-		status := st.(types.OldVolumeStatus)
-		var hasSha bool
-		for _, blobSha := range status.Blobs {
-			if blobSha == sha {
-				log.Infof("Found blob %s on VolumeStatus %s", sha, status.Key())
-				hasSha = true
-			}
-		}
-		if hasSha {
-			found = true
-			if changed, _ := doUpdateOld(ctx, &status); changed {
-				publishOldVolumeStatus(ctx, &status)
-			}
-		}
-	}
-	ctPub := ctx.pubContentTreeStatus
-	ctItems := ctPub.GetAll()
-	for _, st := range ctItems {
+	pub := ctx.publication(types.ContentTreeStatus{}, objType)
+	items := pub.GetAll()
+	for _, st := range items {
 		status := st.(types.ContentTreeStatus)
 		var hasSha bool
 		for _, blobSha := range status.Blobs {

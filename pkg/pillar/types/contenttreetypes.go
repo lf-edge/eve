@@ -28,6 +28,7 @@ type ContentTreeConfig struct {
 	SignatureKey      string   //certificate containing public key
 	CertificateChain  []string //name of intermediate certificates
 	DisplayName       string
+	ObjType           string
 }
 
 // Key is content info UUID which will be unique
@@ -145,6 +146,7 @@ func (status ContentTreeStatus) IsContainer() bool {
 	return false
 }
 
+// UpdateFromContentTreeConfig sets up ContentTreeStatus based on ContentTreeConfig struct
 func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeConfig) {
 	status.ContentID = config.ContentID
 	status.DatastoreID = config.DatastoreID
@@ -157,6 +159,7 @@ func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeC
 	status.SignatureKey = config.SignatureKey
 	status.CertificateChain = config.CertificateChain
 	status.DisplayName = config.DisplayName
+	status.ObjType = config.ObjType
 }
 
 // LogCreate :

@@ -267,9 +267,8 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 
 	pubContentTreeConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.BaseOsObj,
-			TopicType:  types.ContentTreeConfig{},
+			AgentName: agentName,
+			TopicType: types.ContentTreeConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)

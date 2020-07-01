@@ -41,12 +41,12 @@ var Version = "No version specified"
 var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
-	pubAppVolumeStatus        pubsub.Publication
-	subBaseOsVolumeConfig     pubsub.Subscription
-	pubBaseOsVolumeStatus     pubsub.Publication
-	pubUnknownOldVolumeStatus pubsub.Publication
-	subGlobalConfig           pubsub.Subscription
-	subZedAgentStatus         pubsub.Subscription
+	pubAppVolumeStatus         pubsub.Publication
+	subBaseOsContentTreeConfig pubsub.Subscription
+	pubBaseOsContentTreeStatus pubsub.Publication
+	pubUnknownOldVolumeStatus  pubsub.Publication
+	subGlobalConfig            pubsub.Subscription
+	subZedAgentStatus          pubsub.Subscription
 
 	subCertObjConfig         pubsub.Subscription
 	pubCertObjStatus         pubsub.Publication
@@ -261,15 +261,15 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubAppVolumeStatus = pubAppVolumeStatus
 
-	pubBaseOsVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubBaseOsContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.BaseOsObj,
-		TopicType:  types.OldVolumeStatus{},
+		TopicType:  types.ContentTreeStatus{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubBaseOsVolumeStatus = pubBaseOsVolumeStatus
+	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
 
 	pubUnknownOldVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -524,22 +524,21 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subVolumeRefConfig = subVolumeRefConfig
 	subVolumeRefConfig.Activate()
 
-	subBaseOsVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleBaseOsCreate,
-		ModifyHandler: handleBaseOsModify,
-		DeleteHandler: handleBaseOsDelete,
+	subBaseOsContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleContentTreeCreate,
+		ModifyHandler: handleContentTreeModify,
+		DeleteHandler: handleContentTreeDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "baseosmgr",
-		AgentScope:    types.BaseOsObj,
-		TopicImpl:     types.OldVolumeConfig{},
+		TopicImpl:     types.ContentTreeConfig{},
 		Ctx:           &ctx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subBaseOsVolumeConfig = subBaseOsVolumeConfig
-	subBaseOsVolumeConfig.Activate()
+	ctx.subBaseOsContentTreeConfig = subBaseOsContentTreeConfig
+	subBaseOsContentTreeConfig.Activate()
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
@@ -645,8 +644,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subVolumeRefConfig.MsgChan():
 			ctx.subVolumeRefConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsVolumeConfig.MsgChan():
-			ctx.subBaseOsVolumeConfig.ProcessChange(change)
+		case change := <-ctx.subBaseOsContentTreeConfig.MsgChan():
+			ctx.subBaseOsContentTreeConfig.ProcessChange(change)
 
 		case <-ctx.gc.C:
 			start := time.Now()

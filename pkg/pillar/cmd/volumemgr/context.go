@@ -18,10 +18,12 @@ func (ctx *volumemgrContext) subscription(topicType interface{}, objType string)
 		log.Fatalf("subscription got a pointer type: %T", topicType)
 	}
 	switch typeName := topicType.(type) {
-	case types.OldVolumeConfig:
+	case types.ContentTreeConfig:
 		switch objType {
+		case types.AppImgObj:
+			sub = ctx.subContentTreeConfig
 		case types.BaseOsObj:
-			sub = ctx.subBaseOsVolumeConfig
+			sub = ctx.subBaseOsContentTreeConfig
 		default:
 			log.Fatalf("subscription: Unknown ObjType %s for %T",
 				objType, typeName)
@@ -66,10 +68,18 @@ func (ctx *volumemgrContext) publication(topicType interface{}, objType string) 
 		switch objType {
 		case types.AppImgObj:
 			pub = ctx.pubAppVolumeStatus
-		case types.BaseOsObj:
-			pub = ctx.pubBaseOsVolumeStatus
 		case types.UnknownObj:
 			pub = ctx.pubUnknownOldVolumeStatus
+		default:
+			log.Fatalf("publication: Unknown ObjType %s for %T",
+				objType, typeName)
+		}
+	case types.ContentTreeStatus:
+		switch objType {
+		case types.AppImgObj:
+			pub = ctx.pubContentTreeStatus
+		case types.BaseOsObj:
+			pub = ctx.pubBaseOsContentTreeStatus
 		default:
 			log.Fatalf("publication: Unknown ObjType %s for %T",
 				objType, typeName)
