@@ -63,9 +63,7 @@ type verifierContext struct {
 	pubAppImgStatus        pubsub.Publication
 	subBaseOsConfig        pubsub.Subscription
 	pubBaseOsStatus        pubsub.Publication
-	pubBaseOsPersistStatus pubsub.Publication
 	subBaseOsPersistStatus pubsub.Subscription
-	pubAppImgPersistStatus pubsub.Publication
 	subAppImgPersistStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
 
@@ -119,7 +117,6 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
-	pubAppImgStatus.ClearRestarted()
 
 	pubBaseOsStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -131,29 +128,6 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsStatus = pubBaseOsStatus
-	pubBaseOsStatus.ClearRestarted()
-
-	pubAppImgPersistStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.AppImgObj,
-			TopicType:  types.PersistImageStatus{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppImgPersistStatus = pubAppImgPersistStatus
-
-	pubBaseOsPersistStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.BaseOsObj,
-			TopicType:  types.PersistImageStatus{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -209,7 +183,7 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	// Look for PersistImageStatus from verifier
+	// Look for PersistImageStatus from volumemgr
 	subBaseOsPersistStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
@@ -257,16 +231,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	// Publish status for any objects that were verified before reboot
-	// The signatures and shas can re-checked during handleCreate
-	// by inserting code.
-	handleInit(&ctx)
-
-	// Report to volumemgr that init is done
-	pubAppImgStatus.SignalRestarted()
-	pubBaseOsStatus.SignalRestarted()
-	log.Infof("SignalRestarted done")
-
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -287,63 +251,6 @@ func Run(ps *pubsub.PubSub) {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-}
-
-func handleInit(ctx *verifierContext) {
-
-	log.Infoln("handleInit")
-
-	// mark all status file to PendingDelete
-	handleInitWorkinProgressObjects(ctx)
-
-	// Recreate status for objects that were verified before reboot
-	handleInitVerifiedObjects(ctx)
-
-	// delete status files marked PendingDelete
-	handleInitMarkedDeletePendingObjects(ctx)
-
-	log.Infoln("handleInit done")
-}
-
-// Mark all existing Status as PendingDelete.
-// If they correspond to verified files then in the handleInitVerifiedObjects
-// function PendingDelete will be reset. Finally, in
-// handleInitMarkedDeletePendingObjects we will delete anything which still
-// has PendingDelete set.
-func handleInitWorkinProgressObjects(ctx *verifierContext) {
-
-	publications := []pubsub.Publication{
-		ctx.pubAppImgStatus,
-		ctx.pubBaseOsStatus,
-	}
-	for _, pub := range publications {
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.VerifyImageStatus)
-			log.Debugf("Marking with PendingDelete: %s", status.Key())
-			status.PendingDelete = true
-			publishVerifyImageStatus(ctx, &status)
-		}
-	}
-}
-
-// remove the status files marked as pending delete
-func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
-	publications := []pubsub.Publication{
-		ctx.pubAppImgStatus,
-		ctx.pubBaseOsStatus,
-	}
-	for _, pub := range publications {
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.VerifyImageStatus)
-			if status.PendingDelete {
-				log.Infof("still PendingDelete; delete %s",
-					status.Key())
-				unpublishVerifyImageStatus(ctx, &status)
-			}
-		}
 	}
 }
 
@@ -408,20 +315,6 @@ func verifierSubscription(ctx *verifierContext, objType string) pubsub.Subscript
 			objType)
 	}
 	return sub
-}
-
-func verifierPersistStatusPublication(ctx *verifierContext, objType string) pubsub.Publication {
-	var pub pubsub.Publication
-	switch objType {
-	case types.AppImgObj:
-		pub = ctx.pubAppImgPersistStatus
-	case types.BaseOsObj:
-		pub = ctx.pubBaseOsPersistStatus
-	default:
-		log.Fatalf("verifierPersistStatusPublication: Unknown ObjType %s",
-			objType)
-	}
-	return pub
 }
 
 func verifierPersistStatusSubscription(ctx *verifierContext, objType string) pubsub.Subscription {
@@ -999,90 +892,6 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 	}
 	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s",
 		verifierFilename, verifiedFilename)
-}
-
-// Recreate status files for verified objects as types.DOWNLOADED
-// except containers which we mark as types.VERIFIED
-func handleInitVerifiedObjects(ctx *verifierContext) {
-
-	for _, objType := range verifierObjTypes {
-
-		verifiedDirname := getVerifiedDir(objType)
-		if _, err := os.Stat(verifiedDirname); err == nil {
-			populateInitialStatusFromVerified(ctx, objType,
-				verifiedDirname, "")
-		}
-	}
-}
-
-func persistImageStatusFromImageFile(
-	objType, objDirname, parentDirname, imageFileName string,
-	size int64, filename string) *types.PersistImageStatus {
-
-	status := types.PersistImageStatus{
-		VerifyStatus: types.VerifyStatus{
-			Name:         imageFileName,
-			ObjType:      objType,
-			FileLocation: filename,
-			ImageSha256:  parentDirname,
-			Size:         size,
-		},
-		LastUse:  time.Now(),
-		RefCount: 0,
-	}
-
-	log.Debugf("persistImageStatusFromImageFile: objType: %s, "+
-		"objDirname: %s, parentDirname: %s, imageFileName: %s",
-		objType, objDirname, parentDirname, imageFileName)
-
-	log.Debugf("persistImageStatusFromImageFile: status: %+v", status)
-	return &status
-}
-
-// Recursive scanning for verified objects,
-// to recreate the VerifyImageStatus.
-func populateInitialStatusFromVerified(ctx *verifierContext,
-	objType string, objDirname string, parentDirname string) {
-
-	log.Infof("populateInitialStatusFromVerified(%s, %s)", objDirname,
-		parentDirname)
-
-	locations, err := ioutil.ReadDir(objDirname)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Debugf("populateInitialStatusFromVerified: processing locations %v", locations)
-
-	for _, location := range locations {
-
-		filename := objDirname + "/" + location.Name()
-
-		if location.IsDir() {
-			log.Debugf("populateInitialStatusFromVerified: Looking in %s", filename)
-			if _, err := os.Stat(filename); err == nil {
-				populateInitialStatusFromVerified(ctx,
-					objType, filename, location.Name())
-			}
-		} else {
-			size := int64(0)
-			info, err := os.Stat(filename)
-			if err != nil {
-				// XXX Delete file?
-				log.Error(err)
-			} else {
-				size = info.Size()
-			}
-			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes",
-				filename, size/(1024*1024))
-			status := persistImageStatusFromImageFile(objType, objDirname,
-				parentDirname, location.Name(), size, filename)
-			if status != nil {
-				publishPersistImageStatus(ctx, status)
-			}
-		}
-	}
 }
 
 func getVerifierDir(objType string) string {

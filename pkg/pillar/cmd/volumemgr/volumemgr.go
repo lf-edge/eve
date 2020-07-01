@@ -81,9 +81,8 @@ type volumemgrContext struct {
 	workerOld *worker.Worker // For background work
 	worker    *worker.Worker // For background work
 
-	verifierRestarted uint // Count to two for appimg and baseos
-	usingConfig       bool // From zedagent
-	gcRunning         bool
+	usingConfig bool // From zedagent
+	gcRunning   bool
 
 	globalConfig  *types.ConfigItemValueMap
 	GCInitialized bool
@@ -200,7 +199,6 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubContentTreeResolveConfig.ClearRestarted()
 	ctx.pubContentTreeResolveConfig = pubContentTreeResolveConfig
 
 	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -292,7 +290,6 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubCertObjStatus.ClearRestarted()
 	ctx.pubCertObjStatus = pubCertObjStatus
 
 	pubCertObjDownloadConfig, err := ps.NewPublication(
@@ -304,7 +301,6 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubCertObjDownloadConfig.ClearRestarted()
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
 	// Set up our publications before the subscriptions so ctx is set
@@ -337,6 +333,9 @@ func Run(ps *pubsub.PubSub) {
 	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
 	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
 	populateExistingVolumesFormat(volumeEncryptedDirName)
+	// Publish PersistImageStatus for ourselves and so that we
+	// can later tell verifier to delete unused content
+	populatePersistImageStatus(&ctx)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -376,17 +375,16 @@ func Run(ps *pubsub.PubSub) {
 
 	// Look for VerifyImageStatus from verifier
 	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "verifier",
-		AgentScope:     types.AppImgObj,
-		TopicImpl:      types.VerifyImageStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		CreateHandler:  handleVerifyImageStatusModify,
-		ModifyHandler:  handleVerifyImageStatusModify,
-		DeleteHandler:  handleVerifyImageStatusDelete,
-		RestartHandler: handleVerifierRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
+		AgentName:     "verifier",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.VerifyImageStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVerifyImageStatusModify,
+		ModifyHandler: handleVerifyImageStatusModify,
+		DeleteHandler: handleVerifyImageStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -451,17 +449,16 @@ func Run(ps *pubsub.PubSub) {
 
 	// Look for VerifyImageStatus from verifier
 	subBaseOsVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "verifier",
-		AgentScope:     types.BaseOsObj,
-		TopicImpl:      types.VerifyImageStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		CreateHandler:  handleVerifyImageStatusModify,
-		ModifyHandler:  handleVerifyImageStatusModify,
-		DeleteHandler:  handleVerifyImageStatusDelete,
-		RestartHandler: handleVerifierRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
+		AgentName:     "verifier",
+		AgentScope:    types.BaseOsObj,
+		TopicImpl:     types.VerifyImageStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVerifyImageStatusModify,
+		ModifyHandler: handleVerifyImageStatusModify,
+		DeleteHandler: handleVerifyImageStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -608,36 +605,6 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	defer containerd.CtrdClient.Close()
-
-	// First we process the verifierStatus to avoid triggering a download
-	// of an image we already have in place.
-	for ctx.verifierRestarted != 2 {
-		log.Infof("Waiting for verifierRestarted: is %d",
-			ctx.verifierRestarted)
-
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgPersistStatus.MsgChan():
-			subAppImgPersistStatus.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.MsgChan():
-			subBaseOsVerifierStatus.ProcessChange(change)
-
-		case res := <-ctx.workerOld.MsgChan():
-			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
-
-		case res := <-ctx.worker.MsgChan():
-			HandleWorkResult(&ctx, ctx.worker.Process(res))
-
-		case <-stillRunning.C:
-		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
 	log.Infof("Handling all inputs")
 
 	// We will cleanup zero RefCount objects after a while
@@ -724,17 +691,6 @@ func Run(ps *pubsub.PubSub) {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-}
-
-// We could since we get a separate out-of-order notification for
-// each objType
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*volumemgrContext)
-
-	log.Infof("handleVerifierRestarted(%v)", done)
-	if done {
-		ctx.verifierRestarted++
 	}
 }
 
