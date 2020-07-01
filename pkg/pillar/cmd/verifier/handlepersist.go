@@ -30,8 +30,8 @@ func lookupPersistImageStatus(ctx *verifierContext, objType string,
 func handlePersistImageStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.PersistImageStatus)
-	log.Infof("handlePersistImageStatusDelete for %s refcount %d expired %t",
-		key, status.RefCount, status.Expired)
+	log.Infof("handlePersistImageStatusDelete for %s refcount %d",
+		key, status.RefCount)
 
 	_, err := os.Stat(status.FileLocation)
 	if err == nil {

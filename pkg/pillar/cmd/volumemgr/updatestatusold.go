@@ -261,7 +261,7 @@ func lookForVerifiedOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (*
 	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.BlobSha256)
 	if vs == nil {
 		ps := lookupPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
-		if ps == nil || ps.Expired {
+		if ps == nil {
 			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
 				status.VolumeID, status.BlobSha256)
 		} else {

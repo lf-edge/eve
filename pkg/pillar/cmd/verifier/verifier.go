@@ -71,8 +71,7 @@ type verifierContext struct {
 }
 
 var debug = false
-var debugOverride bool                                // From command line arg
-var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var debugOverride bool // From command line arg
 
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -734,9 +733,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
-			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
-		}
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s", key)

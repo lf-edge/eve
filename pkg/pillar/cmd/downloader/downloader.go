@@ -33,14 +33,13 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	debug          = false
-	debugOverride  bool                               // From command line arg
-	downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
-	retryTime      = time.Duration(600) * time.Second // Unless from GlobalConfig
-	Version        = "No version specified"           // Set from Makefile
-	nilUUID        uuid.UUID                          // should be a const, just the default nil value of uuid.UUID
-	dHandler       = makeDownloadHandler()
-	resHandler     = makeResolveHandler()
+	debug         = false
+	debugOverride bool                               // From command line arg
+	retryTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
+	Version       = "No version specified"           // Set from Makefile
+	nilUUID       uuid.UUID                          // should be a const, just the default nil value of uuid.UUID
+	dHandler      = makeDownloadHandler()
+	resHandler    = makeResolveHandler()
 )
 
 func Run(ps *pubsub.PubSub) {
@@ -134,10 +133,6 @@ func Run(ps *pubsub.PubSub) {
 
 	ctx.dCtx = downloaderInit(&ctx)
 
-	// We will cleanup zero RefCount objects after a while
-	// We run timer 10 times more often than the limit on LastUse
-	gc := time.NewTicker(downloadGCTime / 10)
-
 	for {
 		select {
 		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
@@ -183,12 +178,6 @@ func Run(ps *pubsub.PubSub) {
 				log.Errorln(err)
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
-				warningTime, errorTime)
-
-		case <-gc.C:
-			start := time.Now()
-			gcObjects(&ctx)
-			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -378,7 +367,8 @@ func handleCreate(ctx *downloaderContext, objType string,
 // XXX Allow to cancel by setting RefCount = 0? Such a change
 // would have to be detected outside of handler since the download is
 // single-threaded.
-// RefCount 0->1 means download. Ignore other changes?
+// RefCount 0->1 means download.
+// RefCount -> 0 means set Expired to delete
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
@@ -406,7 +396,7 @@ func handleModify(ctx *downloaderContext, key string,
 		status.RefCount = config.RefCount
 	}
 	status.LastUse = time.Now()
-	status.Expired = false
+	status.Expired = (status.RefCount == 0) // Start delete handshake
 	status.ClearPendingStatus()
 	publishDownloaderStatus(ctx, status)
 	log.Infof("handleModify done for %s", config.Name)
@@ -498,43 +488,6 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	}
 
 	return dCtx
-}
-
-// If an object has a zero RefCount and dropped to zero more than
-// downloadGCTime ago, then we delete the Status. That will result in the
-// user (volumemgr) deleting the Config, unless a RefCount
-// increase is underway.
-// XXX Note that this runs concurrently with the handler.
-// XXX needed for downloader?
-func gcObjects(ctx *downloaderContext) {
-	log.Debugf("gcObjects()")
-	publications := []pubsub.Publication{
-		ctx.pubAppImgStatus,
-		ctx.pubBaseOsStatus,
-		ctx.pubCertObjStatus,
-	}
-	for _, pub := range publications {
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.DownloaderStatus)
-			if status.RefCount != 0 {
-				log.Debugf("gcObjects: skipping RefCount %d: %s",
-					status.RefCount, status.Key())
-				continue
-			}
-			timePassed := time.Since(status.LastUse)
-			if timePassed < downloadGCTime {
-				log.Debugf("gcObjects: skipping recently used %s remains %d seconds",
-					status.Key(),
-					(timePassed-downloadGCTime)/time.Second)
-				continue
-			}
-			log.Infof("gcObjects: expiring status for %s; LastUse %v now %v",
-				status.Key(), status.LastUse, time.Now())
-			status.Expired = true
-			publishDownloaderStatus(ctx, &status)
-		}
-	}
 }
 
 func publishDownloaderStatus(ctx *downloaderContext,

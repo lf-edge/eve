@@ -6,8 +6,6 @@
 package types
 
 import (
-	"time"
-
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -201,8 +199,6 @@ func (status VerifyImageStatus) LogKey() string {
 type PersistImageStatus struct {
 	VerifyStatus
 	RefCount uint
-	LastUse  time.Time // When RefCount dropped to zero
-	Expired  bool      // Handshake to client to ask for permission to delete
 }
 
 // Key returns the pubsub Key

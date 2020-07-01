@@ -3,7 +3,6 @@ package volumemgr
 import (
 	"io/ioutil"
 	"os"
-	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -85,7 +84,6 @@ func persistImageStatusFromVerifiedFile(objType, imageFileName, sha256 string,
 			ImageSha256:  sha256,
 			Size:         size,
 		},
-		LastUse:  time.Now(),
 		RefCount: 0,
 	}
 	return &status
@@ -153,7 +151,6 @@ func AddOrRefCountPersistImageStatus(ctx *volumemgrContext, name, objType, fileL
 				ImageSha256:  imageSha,
 				Size:         size,
 			},
-			LastUse:  time.Now(),
 			RefCount: 1,
 		}
 	}
@@ -162,7 +159,8 @@ func AddOrRefCountPersistImageStatus(ctx *volumemgrContext, name, objType, fileL
 }
 
 // ReduceRefCountPersistImageStatus decreases the refcount and if it
-// reaches zero the volumeMgr might start a GC and will inform verifier to delete the verified file.
+// reaches zero then volumemgr will tell the verifier to delete the file
+// by unpublishing.
 func ReduceRefCountPersistImageStatus(ctx *volumemgrContext, objType, imageSha string) {
 
 	log.Infof("ReduceRefCountPersistImageStatus(%s) for %s", imageSha, objType)
@@ -176,10 +174,6 @@ func ReduceRefCountPersistImageStatus(ctx *volumemgrContext, objType, imageSha s
 		log.Errorf("ReduceRefCountPersistImageStatus: Attempting to reduce "+
 			"0 RefCount. Status Details - Name: %s, ImageSha256:%s",
 			persistImageStatus.Name, persistImageStatus.ImageSha256)
-		// GC timer will clean up by marking status Expired
-		// and some point in time.
-		// Then verifier will delete status.
-		persistImageStatus.LastUse = time.Now()
 		return
 	}
 	persistImageStatus.RefCount--
@@ -187,19 +181,8 @@ func ReduceRefCountPersistImageStatus(ctx *volumemgrContext, objType, imageSha s
 		persistImageStatus.RefCount, imageSha)
 
 	if persistImageStatus.RefCount == 0 {
-		// GC timer will clean up by marking status Expired
-		// and some point in time.
-		// Then verifier will delete status.
-		persistImageStatus.LastUse = time.Now()
+		unpublishPersistImageStatus(ctx, persistImageStatus)
+	} else {
+		publishPersistImageStatus(ctx, persistImageStatus)
 	}
-	publishPersistImageStatus(ctx, persistImageStatus)
-}
-
-func handlePersistImageStatusCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(types.PersistImageStatus)
-	ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handlePersistImageStatusCreate for %s refcount %d expired %t",
-		key, status.RefCount, status.Expired)
-	publishPersistImageStatus(ctx, &status)
 }

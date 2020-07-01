@@ -152,7 +152,6 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		FallbackIfCloudGoneTime,
 		MintimeUpdateSuccess,
 		StaleConfigTime,
-		DownloadGCTime,
 		VdiskGCTime,
 		DownloadRetryTime,
 		DomainBootRetryTime,

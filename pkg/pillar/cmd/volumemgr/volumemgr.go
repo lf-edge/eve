@@ -36,7 +36,7 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
-var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+
 var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
@@ -61,9 +61,7 @@ type volumemgrContext struct {
 	pubBaseOsVerifierConfig pubsub.Publication
 	subBaseOsVerifierStatus pubsub.Subscription
 	pubAppImgPersistStatus  pubsub.Publication
-	subAppImgPersistStatus  pubsub.Subscription
 	pubBaseOsPersistStatus  pubsub.Publication
-	subBaseOsPersistStatus  pubsub.Subscription
 
 	subContentTreeResolveStatus pubsub.Subscription
 	pubContentTreeResolveConfig pubsub.Publication
@@ -86,7 +84,7 @@ type volumemgrContext struct {
 
 	globalConfig  *types.ConfigItemValueMap
 	GCInitialized bool
-	vdiskGCTime   uint32 // In seconds
+	vdiskGCTime   uint32 // In seconds; XXX delete when OldVolumeStatus is deleted
 }
 
 var debug = false
@@ -392,42 +390,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
-	// Look for PersistImageStatus from verifier
-	subAppImgPersistStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "verifier",
-			AgentScope:    types.AppImgObj,
-			TopicImpl:     types.PersistImageStatus{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handlePersistImageStatusCreate,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subAppImgPersistStatus = subAppImgPersistStatus
-	subAppImgPersistStatus.Activate()
-
-	// Look for PersistImageStatus from verifier
-	subBaseOsPersistStatus, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "verifier",
-			AgentScope:    types.BaseOsObj,
-			TopicImpl:     types.PersistImageStatus{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handlePersistImageStatusCreate,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
-	subBaseOsPersistStatus.Activate()
-
 	// Look for DownloaderStatus from downloader
 	subBaseOsDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "downloader",
@@ -630,7 +592,6 @@ func Run(ps *pubsub.PubSub) {
 				// Update the LastUse here to be now
 				gcResetOldObjectsLastUse(&ctx, rwImgDirname)
 				gcResetOldObjectsLastUse(&ctx, roContImgDirname)
-				gcResetPersistObjectLastUse(&ctx)
 				ctx.gcRunning = true
 			}
 
@@ -667,18 +628,11 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subBaseOsVolumeConfig.MsgChan():
 			ctx.subBaseOsVolumeConfig.ProcessChange(change)
 
-		case change := <-subAppImgPersistStatus.MsgChan():
-			subAppImgPersistStatus.ProcessChange(change)
-
-		case change := <-subBaseOsPersistStatus.MsgChan():
-			subBaseOsPersistStatus.ProcessChange(change)
-
 		case <-ctx.gc.C:
 			start := time.Now()
 			gcOldObjects(&ctx, rwImgDirname)
 			gcOldObjects(&ctx, roContImgDirname)
 			gcObjects(&ctx, volumeEncryptedDirName)
-			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
@@ -709,9 +663,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
 			ctx.vdiskGCTime = gcp.GlobalValueInt(types.VdiskGCTime)
-		}
-		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
-			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
 		}
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
@@ -744,7 +695,6 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 		ctx.usingConfig = true
 		duration := time.Duration(ctx.vdiskGCTime / 10)
 		ctx.gc = time.NewTicker(duration * time.Second)
-		gcResetPersistObjectLastUse(ctx)
 	}
 }
 

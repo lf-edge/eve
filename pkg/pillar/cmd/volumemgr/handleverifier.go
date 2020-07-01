@@ -95,7 +95,7 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 }
 
 // MaybeRemoveVerifyImageConfig decreases the refcount and if it
-// reaches zero the verifier might start a GC using the Expired exchange
+// reaches zero it unpublishes
 func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha string) {
 
 	log.Infof("MaybeRemoveVerifyImageConfig(%s) for %s", imageSha, objType)
@@ -161,12 +161,5 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleVerifyImageStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
-	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupVerifyImageConfig(ctx, status.ObjType, status.ImageSha256)
-	if config != nil && config.RefCount == 0 {
-		log.Infof("handleVerifyImageStatusDelete delete config for %s",
-			key)
-		unpublishVerifyImageConfig(ctx, status.ObjType, config.Key())
-	}
 	log.Infof("handleVerifyImageStatusDelete done for %s", key)
 }

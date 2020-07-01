@@ -298,7 +298,7 @@ func doDownload(ctx *volumemgrContext, status *types.ContentTreeStatus) bool {
 		status.HasDownloaderRef = true
 		changed = true
 	}
-	// Check if we have a DownloadStatus if not put a DownloadConfig
+	// Check if we have a DownloaderStatus if not put a DownloadConfig
 	// in place
 	ds := lookupDownloaderStatus(ctx, status.ObjType, status.ContentSha256)
 	if ds == nil || ds.Expired || ds.RefCount == 0 {
@@ -405,7 +405,7 @@ func lookForVerified(ctx *volumemgrContext, status *types.ContentTreeStatus) (*t
 	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.ContentSha256)
 	if vs == nil {
 		ps := lookupPersistImageStatus(ctx, status.ObjType, status.ContentSha256)
-		if ps == nil || ps.Expired {
+		if ps == nil {
 			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
 				status.ContentID, status.ContentSha256)
 		} else {

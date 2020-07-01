@@ -128,7 +128,6 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 
 	// Handling even if Pending is set to process Progress updates
 
-	// XXX still need this downloader handshake?
 	// We handle two special cases in the handshake here
 	// 1. downloader added a status with RefCount=0 based on
 	// an existing file. We echo that with a config with RefCount=0
