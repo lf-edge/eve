@@ -288,7 +288,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			publishBaseOsStatus(ctx, status)
 			return changed
 		}
-		// move the state from CREATED_VOLUME to INSTALLED
+		// move the state from VERIFIED to INSTALLED
 		setProgressDone(status, types.INSTALLED)
 		publishZbootPartitionStatus(ctx, status.PartitionLabel)
 		baseOsSetPartitionInfoInStatus(ctx, status,
@@ -462,7 +462,6 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		status.PartitionLabel = otherPartName
 		status.PartitionState = otherPartStatus.PartitionState
 		status.PartitionDevice = otherPartStatus.PartitionDevname
-
 		changed = true
 	}
 	proceed = true
@@ -488,7 +487,7 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 		return ret.Changed, false
 	}
 
-	if ret.MinState < types.CREATED_VOLUME {
+	if ret.MinState < types.VERIFIED {
 		log.Infof("checkBaseOsVolumeStatus(%s) for %s, Waiting for volumemgr",
 			config.BaseOsVersion, uuidStr)
 		return ret.Changed, false
@@ -604,8 +603,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		cts := &status.ContentTreeStatusList[i]
 		log.Infof("doBaseOsUninstall(%s) for %s",
 			status.BaseOsVersion, uuidStr)
-		unpublishContentTreeConfig(ctx, cts.Key())
-		changed = true
+		c := MaybeRemoveContentTreeConfig(ctx, cts.Key())
+		if c {
+			changed = true
+		}
 
 		contentStatus := lookupContentTreeStatus(ctx, cts.Key())
 		if contentStatus != nil {

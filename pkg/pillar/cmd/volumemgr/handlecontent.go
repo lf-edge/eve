@@ -45,7 +45,7 @@ func publishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeSt
 
 	key := status.Key()
 	log.Debugf("publishContentTreeStatus(%s)", key)
-	pub := ctx.pubContentTreeStatus
+	pub := ctx.publication(types.ContentTreeStatus{}, status.ObjType)
 	pub.Publish(key, *status)
 	log.Debugf("publishContentTreeStatus(%s) Done", key)
 }
@@ -54,7 +54,7 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 
 	key := status.Key()
 	log.Debugf("unpublishContentTreeStatus(%s)", key)
-	pub := ctx.pubContentTreeStatus
+	pub := ctx.publication(types.ContentTreeStatus{}, status.ObjType)
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Errorf("unpublishContentTreeStatus(%s) not found", key)
@@ -65,10 +65,10 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 }
 
 func lookupContentTreeStatus(ctx *volumemgrContext,
-	key string) *types.ContentTreeStatus {
+	key, objType string) *types.ContentTreeStatus {
 
 	log.Infof("lookupContentTreeStatus(%s)", key)
-	pub := ctx.pubContentTreeStatus
+	pub := ctx.publication(types.ContentTreeStatus{}, objType)
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Infof("lookupContentTreeStatus(%s) not found", key)
@@ -80,10 +80,10 @@ func lookupContentTreeStatus(ctx *volumemgrContext,
 }
 
 func lookupContentTreeConfig(ctx *volumemgrContext,
-	key string) *types.ContentTreeConfig {
+	key, objType string) *types.ContentTreeConfig {
 
 	log.Infof("lookupContentTreeConfig(%s)", key)
-	sub := ctx.subContentTreeConfig
+	sub := ctx.subscription(types.ContentTreeConfig{}, objType)
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupContentTreeConfig(%s) not found", key)
@@ -96,7 +96,7 @@ func lookupContentTreeConfig(ctx *volumemgrContext,
 
 func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 	log.Infof("updateContentTree for %v", config.ContentID)
-	status := lookupContentTreeStatus(ctx, config.Key())
+	status := lookupContentTreeStatus(ctx, config.Key(), config.ObjType)
 	if status == nil {
 		status = &types.ContentTreeStatus{
 			ContentID:         config.ContentID,
@@ -110,7 +110,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 			SignatureKey:      config.SignatureKey,
 			CertificateChain:  config.CertificateChain,
 			DisplayName:       config.DisplayName,
-			ObjType:           types.AppImgObj,
+			ObjType:           config.ObjType,
 			State:             types.INITIAL,
 			Blobs:             []string{},
 		}
@@ -136,7 +136,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 					Size:        config.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    blobType,
-					ObjType:     types.AppImgObj,
+					ObjType:     config.ObjType,
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}
@@ -153,7 +153,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 
 func deleteContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 	log.Infof("deleteContentTree for %v", config.ContentID)
-	status := lookupContentTreeStatus(ctx, config.Key())
+	status := lookupContentTreeStatus(ctx, config.Key(), config.ObjType)
 	if status == nil {
 		log.Infof("deleteContentTree for %v, ContentTreeStatus not found", config.ContentID)
 		return

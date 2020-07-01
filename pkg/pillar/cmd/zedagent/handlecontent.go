@@ -66,6 +66,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.ContentSha256 = strings.ToLower(cfgContentTree.GetSha256())
 		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
+		contentConfig.ObjType = types.AppImgObj
 		contentConfig.ImageSignature = cfgContentTree.Siginfo.Signature
 		contentConfig.SignatureKey = cfgContentTree.Siginfo.Signercerturl
 

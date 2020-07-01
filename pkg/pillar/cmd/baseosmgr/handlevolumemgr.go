@@ -10,6 +10,32 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// MaybeAddContentTreeConfig makes sure we have a ContentTreeConfig
+func MaybeAddContentTreeConfig(ctx *baseOsMgrContext, ctc *types.ContentTreeConfig) bool {
+	log.Infof("MaybeAddContentTreeConfig for %s", ctc.Key())
+	m := lookupContentTreeConfig(ctx, ctc.Key())
+	if m != nil {
+		log.Infof("Content tree config exists for %s", ctc.Key())
+		return false
+	}
+	publishContentTreeConfig(ctx, ctc)
+	log.Infof("MaybeAddContentTreeConfig for %s Done", ctc.Key())
+	return true
+}
+
+// MaybeRemoveContentTreeConfig deletes the ContentTreeConfig
+func MaybeRemoveContentTreeConfig(ctx *baseOsMgrContext, key string) bool {
+	log.Infof("MaybeRemoveContentTreeConfig for %s", key)
+	m := lookupContentTreeConfig(ctx, key)
+	if m == nil {
+		log.Infof("MaybeRemoveContentTreeConfig: config doesn't exist for %s", key)
+		return false
+	}
+	unpublishContentTreeConfig(ctx, key)
+	log.Infof("MaybeRemoveContentTreeConfig for %s Done", key)
+	return true
+}
+
 func lookupContentTreeConfig(ctx *baseOsMgrContext, key string) *types.ContentTreeConfig {
 
 	pub := ctx.pubContentTreeConfig

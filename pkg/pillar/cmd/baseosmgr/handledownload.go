@@ -46,8 +46,10 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 			continue
 		}
 
-		publishContentTreeConfig(ctx, &ctc)
-		ret.Changed = true
+		c := MaybeAddContentTreeConfig(ctx, &ctc)
+		if c {
+			ret.Changed = true
+		}
 		contentStatus := lookupContentTreeStatus(ctx, ctc.Key())
 		if contentStatus == nil {
 			log.Infof("Content tree status not found. name: %s", ctc.RelativeURL)
@@ -98,7 +100,7 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 }
 
 // Note: can not do this in volumemgr since it is triggered by Activate=true
-func installDownloadedObjects(uuidStr, FinalObjDir string,
+func installDownloadedObjects(uuidStr, finalObjDir string,
 	status *[]types.ContentTreeStatus) bool {
 
 	ret := true
@@ -108,7 +110,8 @@ func installDownloadedObjects(uuidStr, FinalObjDir string,
 		ctsPtr := &(*status)[i]
 
 		if ctsPtr.State == types.VERIFIED {
-			err := installDownloadedObject(ctsPtr.ContentID, FinalObjDir, ctsPtr)
+			err := installDownloadedObject(ctsPtr.ContentID,
+				finalObjDir, ctsPtr)
 			if err != nil {
 				log.Error(err)
 			}
@@ -124,7 +127,7 @@ func installDownloadedObjects(uuidStr, FinalObjDir string,
 }
 
 // If the final installation directory is known, move the object there
-func installDownloadedObject(contentID uuid.UUID, FinalObjDir string,
+func installDownloadedObject(contentID uuid.UUID, finalObjDir string,
 	ctsPtr *types.ContentTreeStatus) error {
 
 	var ret error
@@ -150,9 +153,8 @@ func installDownloadedObject(contentID uuid.UUID, FinalObjDir string,
 	}
 
 	// Move to final installation point
-	if FinalObjDir != "" {
-		var dstFilename string = FinalObjDir
-		ret = installBaseOsObject(srcFilename, dstFilename)
+	if finalObjDir != "" {
+		ret = installBaseOsObject(srcFilename, finalObjDir)
 	} else {
 		errStr := fmt.Sprintf("installDownloadedObject %s, final dir not set",
 			contentID)
