@@ -716,9 +716,6 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 			status.ImageID)
 	}
 
-	// When the refcount on PersistImageConfig drops and we do
-	// the Expire dance we will delete the actual verified file.
-
 	unpublishVerifyImageStatus(ctx, status)
 	log.Infof("handleDelete done for %s", status.ImageID)
 }

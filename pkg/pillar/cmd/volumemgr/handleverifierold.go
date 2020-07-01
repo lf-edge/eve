@@ -42,17 +42,15 @@ func MaybeAddVerifyImageConfigOld(ctx *volumemgrContext,
 		log.Infof("MaybeAddVerifyImageConfigOld: add for %s, IsContainer: %t",
 			status.BlobSha256, status.DownloadOrigin.IsContainer)
 		n := types.VerifyImageConfig{
-			ImageID: status.VolumeID,
-			VerifyConfig: types.VerifyConfig{
-				Name:             status.DisplayName,
-				ImageSha256:      status.BlobSha256,
-				CertificateChain: status.DownloadOrigin.CertificateChain,
-				ImageSignature:   status.DownloadOrigin.ImageSignature,
-				SignatureKey:     status.DownloadOrigin.SignatureKey,
-				FileLocation:     status.FileLocation,
-			},
-			IsContainer: status.DownloadOrigin.IsContainer,
-			RefCount:    1,
+			ImageID:          status.VolumeID,
+			Name:             status.DisplayName,
+			ImageSha256:      status.BlobSha256,
+			CertificateChain: status.DownloadOrigin.CertificateChain,
+			ImageSignature:   status.DownloadOrigin.ImageSignature,
+			SignatureKey:     status.DownloadOrigin.SignatureKey,
+			FileLocation:     status.FileLocation,
+			IsContainer:      status.DownloadOrigin.IsContainer,
+			RefCount:         1,
 		}
 		publishVerifyImageConfig(ctx, status.ObjType, &n)
 		log.Debugf("MaybeAddVerifyImageConfigOld - config: %+v", n)

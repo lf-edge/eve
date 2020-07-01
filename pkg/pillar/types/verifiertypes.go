@@ -25,21 +25,16 @@ import (
 // VerifyImageConfig captures the verifications which have been requested.
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type VerifyImageConfig struct {
-	VerifyConfig
-	ImageID     uuid.UUID // Used for logging
-	IsContainer bool      // Is this image for a Container?
-	RefCount    uint
-}
-
-// VerifyConfig is shared between VerifyImageConfig and PersistImageConfig
-type VerifyConfig struct {
 	ImageSha256      string // sha256 of immutable image
 	Name             string
-	CertificateChain []string //name of intermediate certificates
-	ImageSignature   []byte   //signature of image
-	SignatureKey     string   //certificate containing public key
-	FileLocation     string   // Current location; should be info about file
-	Size             int64    //FileLocation size
+	CertificateChain []string  //name of intermediate certificates
+	ImageSignature   []byte    //signature of image
+	SignatureKey     string    //certificate containing public key
+	FileLocation     string    // Current location; should be info about file
+	Size             int64     //FileLocation size
+	ImageID          uuid.UUID // Used for logging
+	IsContainer      bool      // Is this image for a Container?
+	RefCount         uint
 }
 
 // Key returns the pubsub Key
@@ -98,65 +93,6 @@ func (config VerifyImageConfig) LogDelete() {
 // LogKey :
 func (config VerifyImageConfig) LogKey() string {
 	return string(base.VerifyImageConfigLogType) + "-" + config.Key()
-}
-
-// PersistImageConfig captures the images which already exists in /persist
-// e.g., from before a reboot. Normally these become requested with a
-// VerifyImageConfig, or are garbage collected.
-// The key is the ImageSha256. The existence of a VerifyImageConfig means
-// the client does not want to to be garbage collected. See handshake using
-// the Expired boolean in PersistImageStatus
-type PersistImageConfig struct {
-	VerifyConfig
-	RefCount uint
-}
-
-// Key returns the pubsub Key
-func (config PersistImageConfig) Key() string {
-	return config.ImageSha256
-}
-
-// LogCreate :
-func (config PersistImageConfig) LogCreate() {
-	logObject := base.NewLogObject(base.PersistImageConfigLogType, config.Name,
-		nilUUID, config.LogKey())
-	if logObject == nil {
-		return
-	}
-	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Infof("PersistImage config create")
-}
-
-// LogModify :
-func (config PersistImageConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.PersistImageConfigLogType, config.Name,
-		nilUUID, config.LogKey())
-
-	oldConfig, ok := old.(PersistImageConfig)
-	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of PersistImageConfig type")
-	}
-	if oldConfig.RefCount != config.RefCount {
-
-		logObject.CloneAndAddField("refcount-int64", config.RefCount).
-			AddField("old-refcount-int64", oldConfig.RefCount).
-			Infof("PersistImage config modify")
-	}
-}
-
-// LogDelete :
-func (config PersistImageConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.PersistImageConfigLogType, config.Name,
-		nilUUID, config.LogKey())
-	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Infof("PersistImage config delete")
-
-	base.DeleteLogObject(config.LogKey())
-}
-
-// LogKey :
-func (config PersistImageConfig) LogKey() string {
-	return string(base.PersistImageConfigLogType) + "-" + config.Key()
 }
 
 // VerifyImageStatus captures the verifications which have been requested.
