@@ -76,7 +76,6 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
-	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
 	assignableAdapters        *types.AssignableAdapters
@@ -701,16 +700,15 @@ func Run(ps *pubsub.PubSub) {
 	// Look for VerifyBaseOsImageStatus from verifier
 	// used only for verifier storage stats collection
 	subBaseOsVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "verifier",
-		TopicImpl:      types.VerifyImageStatus{},
-		Activate:       false,
-		Ctx:            &zedagentCtx,
-		AgentScope:     types.BaseOsObj,
-		ModifyHandler:  handleVerifierStatusModify,
-		DeleteHandler:  handleVerifierStatusDelete,
-		RestartHandler: handleVerifierRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
+		AgentName:     "verifier",
+		TopicImpl:     types.VerifyImageStatus{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		AgentScope:    types.BaseOsObj,
+		ModifyHandler: handleVerifierStatusModify,
+		DeleteHandler: handleVerifierStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -981,77 +979,6 @@ func Run(ps *pubsub.PubSub) {
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	// Process the verifierStatus to avoid downloading an image we
-	// already have in place
-	log.Infof("Handling initial verifier Status")
-	for !zedagentCtx.verifierRestarted {
-		select {
-		case change := <-subZbootStatus.MsgChan():
-			subZbootStatus.ProcessChange(change)
-
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.MsgChan():
-			subBaseOsVerifierStatus.ProcessChange(change)
-			if zedagentCtx.verifierRestarted {
-				log.Infof("Verifier reported restarted")
-				break
-			}
-
-		case change := <-subBaseOsDownloadStatus.MsgChan():
-			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgDownloadStatus.MsgChan():
-			subAppImgDownloadStatus.ProcessChange(change)
-
-		case change := <-subCertObjDownloadStatus.MsgChan():
-			subCertObjDownloadStatus.ProcessChange(change)
-
-		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
-			subNodeAgentStatus.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
-			if DNSctx.triggerDeviceInfo {
-				// IP/DNS in device info could have changed
-				log.Infof("NetworkStatus triggered PublishDeviceInfo")
-				triggerPublishDevInfo(&zedagentCtx)
-				DNSctx.triggerDeviceInfo = false
-			}
-
-		case change := <-subAssignableAdapters.MsgChan():
-			subAssignableAdapters.ProcessChange(change)
-
-		case change := <-subDevicePortConfigList.MsgChan():
-			subDevicePortConfigList.ProcessChange(change)
-
-		case change := <-subVaultStatus.MsgChan():
-			subVaultStatus.ProcessChange(change)
-
-		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-
-		case <-stillRunning.C:
-			// Fault injection
-			if fatalFlag {
-				log.Fatal("Requested fault injection to cause watchdog")
-			}
-		}
-		if hangFlag {
-			log.Infof("Requested to not touch to cause watchdog")
-		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
-		}
-		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
-	}
-
 	// start the config fetch tasks, when zboot status is ready
 	go configTimerTask(handleChannel, &getconfigCtx)
 	configTickerHandle := <-handleChannel
@@ -1238,14 +1165,6 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-	}
-}
-
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleVerifierRestarted(%v)", done)
-	if done {
-		ctx.verifierRestarted = true
 	}
 }
 
