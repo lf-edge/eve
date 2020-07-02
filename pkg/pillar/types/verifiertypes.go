@@ -6,10 +6,7 @@
 package types
 
 import (
-	"time"
-
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -25,14 +22,6 @@ import (
 // VerifyImageConfig captures the verifications which have been requested.
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type VerifyImageConfig struct {
-	VerifyConfig
-	ImageID     uuid.UUID // Used for logging
-	IsContainer bool      // Is this image for a Container?
-	RefCount    uint
-}
-
-// VerifyConfig is shared between VerifyImageConfig and PersistImageConfig
-type VerifyConfig struct {
 	ImageSha256      string // sha256 of immutable image
 	Name             string
 	CertificateChain []string //name of intermediate certificates
@@ -40,6 +29,9 @@ type VerifyConfig struct {
 	SignatureKey     string   //certificate containing public key
 	FileLocation     string   // Current location; should be info about file
 	Size             int64    //FileLocation size
+	IsContainer      bool     // Is this image for a Container?
+	RefCount         uint
+	Expired          bool // Used in delete handshake
 }
 
 // Key returns the pubsub Key
@@ -47,40 +39,34 @@ func (config VerifyImageConfig) Key() string {
 	return config.ImageSha256
 }
 
-func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (config VerifyImageConfig) LogCreate() {
 	logObject := base.NewLogObject(base.VerifyImageConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("expired-bool", config.Expired).
 		Infof("VerifyImage config create")
 }
 
 // LogModify :
 func (config VerifyImageConfig) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(VerifyImageConfig)
 	if !ok {
 		log.Errorf("LogModify: Old object interface passed is not of VerifyImageConfig type")
 	}
-	if oldConfig.RefCount != config.RefCount {
+	if oldConfig.RefCount != config.RefCount ||
+		oldConfig.Expired != config.Expired {
 
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
+			AddField("expired-bool", config.Expired).
 			AddField("old-refcount-int64", oldConfig.RefCount).
+			AddField("old-expired-bool", oldConfig.Expired).
 			Infof("VerifyImage config modify")
 	}
 }
@@ -88,8 +74,9 @@ func (config VerifyImageConfig) LogModify(old interface{}) {
 // LogDelete :
 func (config VerifyImageConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("expired-bool", config.Expired).
 		Infof("VerifyImage config delete")
 
 	base.DeleteLogObject(config.LogKey())
@@ -100,70 +87,14 @@ func (config VerifyImageConfig) LogKey() string {
 	return string(base.VerifyImageConfigLogType) + "-" + config.Key()
 }
 
-// PersistImageConfig captures the images which already exists in /persist
-// e.g., from before a reboot. Normally these become requested with a
-// VerifyImageConfig, or are garbage collected.
-// The key is the ImageSha256. The existence of a VerifyImageConfig means
-// the client does not want to to be garbage collected. See handshake using
-// the Expired boolean in PersistImageStatus
-type PersistImageConfig struct {
-	VerifyConfig
-	RefCount uint
-}
-
-// Key returns the pubsub Key
-func (config PersistImageConfig) Key() string {
-	return config.ImageSha256
-}
-
-// LogCreate :
-func (config PersistImageConfig) LogCreate() {
-	logObject := base.NewLogObject(base.PersistImageConfigLogType, config.Name,
-		nilUUID, config.LogKey())
-	if logObject == nil {
-		return
-	}
-	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Infof("PersistImage config create")
-}
-
-// LogModify :
-func (config PersistImageConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.PersistImageConfigLogType, config.Name,
-		nilUUID, config.LogKey())
-
-	oldConfig, ok := old.(PersistImageConfig)
-	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of PersistImageConfig type")
-	}
-	if oldConfig.RefCount != config.RefCount {
-
-		logObject.CloneAndAddField("refcount-int64", config.RefCount).
-			AddField("old-refcount-int64", oldConfig.RefCount).
-			Infof("PersistImage config modify")
-	}
-}
-
-// LogDelete :
-func (config PersistImageConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.PersistImageConfigLogType, config.Name,
-		nilUUID, config.LogKey())
-	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Infof("PersistImage config delete")
-
-	base.DeleteLogObject(config.LogKey())
-}
-
-// LogKey :
-func (config PersistImageConfig) LogKey() string {
-	return string(base.PersistImageConfigLogType) + "-" + config.Key()
-}
-
 // VerifyImageStatus captures the verifications which have been requested.
 // The key/index to this is the ImageSha256
 type VerifyImageStatus struct {
-	VerifyStatus
-	ImageID       uuid.UUID // Used for logging
+	ImageSha256   string // sha256 of immutable image
+	Name          string
+	ObjType       string
+	FileLocation  string // Current location
+	Size          int64
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool
@@ -172,15 +103,7 @@ type VerifyImageStatus struct {
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RefCount uint
-}
-
-// The VerifyStatus is shared between VerifyImageStatus and PersistImageStatus
-type VerifyStatus struct {
-	ImageSha256  string // sha256 of immutable image
-	Name         string
-	ObjType      string
-	FileLocation string // Current location; should be info about file
-	Size         int64  // XXX used?
+	Expired  bool // Used in delete handshake
 }
 
 // Key returns the pubsub Key
@@ -188,33 +111,26 @@ func (status VerifyImageStatus) Key() string {
 	return status.ImageSha256
 }
 
-func (status VerifyImageStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (status VerifyImageStatus) LogCreate() {
 	logObject := base.NewLogObject(base.VerifyImageStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
+		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
+		AddField("objtype", status.ObjType).
+		AddField("filelocation", status.FileLocation).
 		Infof("VerifyImage status create")
 }
 
 // LogModify :
 func (status VerifyImageStatus) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(base.VerifyImageStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(VerifyImageStatus)
 	if !ok {
@@ -222,14 +138,21 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RefCount != status.RefCount ||
-		oldStatus.Size != status.Size {
+		oldStatus.Expired != status.Expired ||
+		oldStatus.Size != status.Size ||
+		oldStatus.FileLocation != status.FileLocation {
 
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("refcount-int64", status.RefCount).
+			AddField("expired-bool", status.Expired).
 			AddField("size-int64", status.Size).
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-refcount-int64", oldStatus.RefCount).
+			AddField("old-expired-bool", oldStatus.Expired).
 			AddField("old-size-int64", oldStatus.Size).
+			AddField("objtype", status.ObjType).
+			AddField("filelocation", status.FileLocation).
+			AddField("old-filelocation", oldStatus.FileLocation).
 			Infof("VerifyImage status modify")
 	}
 
@@ -245,10 +168,13 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 // LogDelete :
 func (status VerifyImageStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.VerifyImageStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
+		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
+		AddField("objtype", status.ObjType).
+		AddField("filelocation", status.FileLocation).
 		Infof("VerifyImage status delete")
 
 	base.DeleteLogObject(status.LogKey())
@@ -257,69 +183,6 @@ func (status VerifyImageStatus) LogDelete() {
 // LogKey :
 func (status VerifyImageStatus) LogKey() string {
 	return string(base.VerifyImageStatusLogType) + "-" + status.Key()
-}
-
-// PersistImageStatus captures the images which already exists in /persist
-// The key/index to this is the ImageSha256
-// The sha comes from the verified filename
-type PersistImageStatus struct {
-	VerifyStatus
-	RefCount uint
-	LastUse  time.Time // When RefCount dropped to zero
-	Expired  bool      // Handshake to client to ask for permission to delete
-}
-
-// Key returns the pubsub Key
-func (status PersistImageStatus) Key() string {
-	return status.ImageSha256
-}
-
-// LogCreate :
-func (status PersistImageStatus) LogCreate() {
-	logObject := base.NewLogObject(base.PersistImageStatusLogType, status.Name,
-		nilUUID, status.LogKey())
-	if logObject == nil {
-		return
-	}
-	logObject.CloneAndAddField("refcount-int64", status.RefCount).
-		AddField("size-int64", status.Size).
-		Infof("PersistImage status create")
-}
-
-// LogModify :
-func (status PersistImageStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.PersistImageStatusLogType, status.Name,
-		nilUUID, status.LogKey())
-
-	oldStatus, ok := old.(PersistImageStatus)
-	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of PersistImageStatus type")
-	}
-	if oldStatus.RefCount != status.RefCount ||
-		oldStatus.Size != status.Size {
-
-		logObject.CloneAndAddField("refcount-int64", status.RefCount).
-			AddField("size-int64", status.Size).
-			AddField("old-refcount-int64", oldStatus.RefCount).
-			AddField("old-size-int64", oldStatus.Size).
-			Infof("PersistImage status modify")
-	}
-}
-
-// LogDelete :
-func (status PersistImageStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.PersistImageStatusLogType, status.Name,
-		nilUUID, status.LogKey())
-	logObject.CloneAndAddField("refcount-int64", status.RefCount).
-		AddField("size-int64", status.Size).
-		Infof("PersistImage status delete")
-
-	base.DeleteLogObject(status.LogKey())
-}
-
-// LogKey :
-func (status PersistImageStatus) LogKey() string {
-	return string(base.PersistImageStatusLogType) + "-" + status.Key()
 }
 
 func (status VerifyImageStatus) CheckPendingAdd() bool {
@@ -336,11 +199,4 @@ func (status VerifyImageStatus) CheckPendingDelete() bool {
 
 func (status VerifyImageStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
-}
-
-// ImageDownloadDirName - Returns verifiedDirname
-// for the image.
-func (status PersistImageStatus) ImageDownloadDirName() string {
-	downloadDirname := DownloadDirname + "/" + status.ObjType
-	return downloadDirname + "/verified/" + status.ImageSha256
 }

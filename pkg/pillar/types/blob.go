@@ -1,8 +1,9 @@
+// Copyright (c) 2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package types
 
 import (
-	"time"
-
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -29,12 +30,8 @@ type BlobStatus struct {
 	HasDownloaderRef bool
 	// HasVerifierRef whether or not we have started a verifier for this blob
 	HasVerifierRef bool
-	// HasPersistRef whether or not we have a reference to data that was persisted
-	HasPersistRef bool
 	// RefCount number of consumers of this blob
 	RefCount uint
-	// LastUse when RefCount dropped to zero
-	LastUse time.Time
 	// WaitingForCerts waiting for certificates and so cannot continue verifying
 	WaitingForCerts bool
 	TotalSize       int64 // expected size as reported by the downloader, if any

@@ -89,12 +89,6 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		initStatus.LastUse = time.Now()
 		initStatus.PreReboot = false
 		if !initStatus.HasError() {
-			if lookupPersistImageStatus(ctx, objType, initStatus.BlobSha256) != nil && !initStatus.DownloadOrigin.HasPersistRef {
-				log.Infof("vcCreate: Adding PersistImageStatus reference for VolumeStatus: %s", initStatus.BlobSha256)
-				AddOrRefCountPersistImageStatus(ctx, initStatus.DisplayName, objType, "", initStatus.BlobSha256, 0)
-				initStatus.DownloadOrigin.HasPersistRef = true
-			}
-			publishOldVolumeStatus(ctx, initStatus)
 			log.Infof("vcCreate(%s) DONE objType %s for %s",
 				config.Key(), objType, config.DisplayName)
 			return

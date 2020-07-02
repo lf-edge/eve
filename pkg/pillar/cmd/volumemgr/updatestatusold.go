@@ -252,11 +252,6 @@ func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 			status.DownloadOrigin.HasVerifierRef = false
 			changed = true
 		}
-		if status.DownloadOrigin.HasPersistRef {
-			ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
-			status.DownloadOrigin.HasPersistRef = false
-			changed = true
-		}
 	}
 
 	if status.VolumeCreated {

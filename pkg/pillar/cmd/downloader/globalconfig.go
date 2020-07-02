@@ -22,9 +22,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
-			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
-		}
 		if gcp.GlobalValueInt(types.DownloadRetryTime) != 0 {
 			retryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
 		}

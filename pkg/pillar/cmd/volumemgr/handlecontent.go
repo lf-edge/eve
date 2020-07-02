@@ -171,11 +171,6 @@ func deleteContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 		status.HasVerifierRef = false
 		changed = true
 	}
-	if status.HasPersistRef {
-		ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.ContentSha256)
-		status.HasPersistRef = false
-		changed = true
-	}
 	if changed {
 		publishContentTreeStatus(ctx, status)
 	}
