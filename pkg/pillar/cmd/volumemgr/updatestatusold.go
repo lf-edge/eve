@@ -270,7 +270,6 @@ func lookForVerifiedOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (*
 		}
 		return vs, changed
 	}
-	return vs, changed
 }
 
 // doDelete returns changed boolean

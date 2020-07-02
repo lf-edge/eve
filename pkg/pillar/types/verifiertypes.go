@@ -102,7 +102,11 @@ func (config VerifyImageConfig) LogKey() string {
 // VerifyImageStatus captures the verifications which have been requested.
 // The key/index to this is the ImageSha256
 type VerifyImageStatus struct {
-	VerifyStatus
+	ImageSha256  string // sha256 of immutable image
+	Name         string
+	ObjType      string
+	FileLocation string // Current location
+	Size         int64
 	ImageID       uuid.UUID // Used for logging
 	PendingAdd    bool
 	PendingModify bool
@@ -113,15 +117,6 @@ type VerifyImageStatus struct {
 	ErrorAndTime
 	RefCount uint
 	Expired  bool // Used in delete handshake
-}
-
-// The VerifyStatus is shared between VerifyImageStatus and PersistImageStatus
-type VerifyStatus struct {
-	ImageSha256  string // sha256 of immutable image
-	Name         string
-	ObjType      string
-	FileLocation string // Current location; should be info about file
-	Size         int64
 }
 
 // Key returns the pubsub Key
@@ -203,67 +198,6 @@ func (status VerifyImageStatus) LogDelete() {
 // LogKey :
 func (status VerifyImageStatus) LogKey() string {
 	return string(base.VerifyImageStatusLogType) + "-" + status.Key()
-}
-
-// PersistImageStatus captures the images which already exists in /persist
-// The key/index to this is the ImageSha256
-// The sha comes from the verified filename
-type PersistImageStatus struct {
-	VerifyStatus
-	RefCount uint
-}
-
-// Key returns the pubsub Key
-func (status PersistImageStatus) Key() string {
-	return status.ImageSha256
-}
-
-// LogCreate :
-func (status PersistImageStatus) LogCreate() {
-	logObject := base.NewLogObject(base.PersistImageStatusLogType, status.Name,
-		nilUUID, status.LogKey())
-	if logObject == nil {
-		return
-	}
-	logObject.CloneAndAddField("refcount-int64", status.RefCount).
-		AddField("size-int64", status.Size).
-		Infof("PersistImage status create")
-}
-
-// LogModify :
-func (status PersistImageStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.PersistImageStatusLogType, status.Name,
-		nilUUID, status.LogKey())
-
-	oldStatus, ok := old.(PersistImageStatus)
-	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of PersistImageStatus type")
-	}
-	if oldStatus.RefCount != status.RefCount ||
-		oldStatus.Size != status.Size {
-
-		logObject.CloneAndAddField("refcount-int64", status.RefCount).
-			AddField("size-int64", status.Size).
-			AddField("old-refcount-int64", oldStatus.RefCount).
-			AddField("old-size-int64", oldStatus.Size).
-			Infof("PersistImage status modify")
-	}
-}
-
-// LogDelete :
-func (status PersistImageStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.PersistImageStatusLogType, status.Name,
-		nilUUID, status.LogKey())
-	logObject.CloneAndAddField("refcount-int64", status.RefCount).
-		AddField("size-int64", status.Size).
-		Infof("PersistImage status delete")
-
-	base.DeleteLogObject(status.LogKey())
-}
-
-// LogKey :
-func (status PersistImageStatus) LogKey() string {
-	return string(base.PersistImageStatusLogType) + "-" + status.Key()
 }
 
 func (status VerifyImageStatus) CheckPendingAdd() bool {

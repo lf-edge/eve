@@ -65,8 +65,6 @@ const (
 	VerifyImageConfigLogType LogObjectType = "verifyimage_config"
 	// VerifyImageStatusLogType :
 	VerifyImageStatusLogType LogObjectType = "verifyimage_status"
-	// PersistImageStatusLogType :
-	PersistImageStatusLogType LogObjectType = "persistimage_status"
 	// ContentTreeConfigLogType :
 	ContentTreeConfigLogType LogObjectType = "contenttree_config"
 	// ContentTreeStatusLogType :

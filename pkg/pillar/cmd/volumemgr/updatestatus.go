@@ -414,7 +414,6 @@ func lookForVerified(ctx *volumemgrContext, status *types.ContentTreeStatus) (*t
 		}
 		return vs, changed
 	}
-	return vs, changed
 }
 
 // Find all the VolumeStatus/ContentTreeStatus which refer to this Sha256
