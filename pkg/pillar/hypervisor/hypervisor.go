@@ -15,18 +15,27 @@ import (
 // Note that this is a superset of all the states from all the hypervisors
 // we support, which means that some hypervisors may only returns a subset
 // of these values.
+
+// DomState represents a state of the hypervisor domain
 type DomState int
 
 const (
-	// domain is...
-	Running DomState = iota // ...currently running
-	Blocked                 // ...blocked, and not running or runnable
-	Paused                  // ...paused
-	Exiting                 // ...shutting down (a shutdown command has been sent, but the domain isn't dying yet)
-	Crashed                 // ...crashed
-	Dying                   // ...dying, but hasn't properly shut down or crashed
-	Broken                  // ...without supporting device model
-	Unknown                 // ...unknown (typically associated with an error condition)
+	// Running in a normal fashion
+	Running DomState = iota
+	// Blocked and not running or runnable
+	Blocked
+	// Paused and can be resumed
+	Paused
+	// Exiting indicates that a shutdown command has been sent, but the domain isn't dying yet
+	Exiting
+	// Crashed indicates that the domain has hit an invalid condition while running
+	Crashed
+	// Dying indicates that the domain is being cleaned up, but it hasn't properly shut down or crashed
+	Dying
+	// Broken indicates that domain is alive, but support for it (e.g. device model) has crashed
+	Broken
+	// Unknown is a catch-all state for when a state of the domain can't even be retrieved from the hypervisor
+	Unknown
 )
 
 // Hypervisor provides methods for manipulating domains on the host
