@@ -225,12 +225,17 @@ type OldVolumeStatus struct {
 
 	WaitingForCerts bool
 
-	State    SwState // DOWNLOADED etc
-	Progress uint    // In percent i.e., 0-100
+	State       SwState // DOWNLOADED etc
+	TotalSize   int64   // expected size as reported by the downloader, if any
+	CurrentSize int64   // current total downloaded size as reported by the downloader
+	Progress    uint    // In percent i.e., 0-100
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
 
 	FileLocation string // Current location; should be info about file
+
+	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
+	Blobs []string
 
 	Format zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
 

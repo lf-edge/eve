@@ -42,7 +42,8 @@ async pubsub messages.
 Volume Manager interacts with the Cloud controller (e.g. zedcontrol) indirectly through zedmanager and baseosmgr using two key messages:
 
 - VolumeConfig from baseosmgr and zedmanager is subscribed to by volumemgr. This contains requests that particular volumes should exist, and how to create them (e.g., by downloading stuff) if they do not. VolumeConfig is defined in `pillar/types/volumes.go`
-- VolumeStatus is published by volumemgr and subscribed to by baseosmgr and zedmanager. This contains the current state of the volumes. VolumeStatus is defined in `pillar/types/volumes.go`
+- VolumeStatus is published by volumemgr and subscribed to by baseosmgr and zedmanager. This contains the current state of the
+ volumes. VolumeStatus is defined in `pillar/types/volumes.go`. `VolumeStatus` has a property, `Content`, which contains all of the parts of the image that drives the individual volume, and their download and verification status.
 
 Both VolumeStatus and VolumeConfig use the agentScope mechanism to keep the baseosmgr and zedmanager use separately.
 
@@ -86,7 +87,8 @@ Once there is a `VerifyImageStatus` indicating a successful verification, it is 
 ### Downloading blobs
 
 If no existing volume nor verified image exists, then volumemgr will manage the
-download and verification of images.This happens in two phases, using async messages.
+download and verification of images.This happens in two phases, for each content element
+that makes up the content tree for the image, using async messages.
 
 As described earlier in this document, for security reasons, volumemgr itself
 does not perform the download, and the part that can perform the download cannot
@@ -96,18 +98,18 @@ do the verification. Thus, the process must be:
 1. Instruct a non-network-connected process to verify the bits
 1. Use the bits
 
-The download and verification flow is:
+The download and verification flow for each content blob that makes up the tree is:
 
 * volumemgr requests that downloader download blobs through `DownloaderConfig` messages
 * downloader informs volumemgr of the state of a download via `DownloaderStatus` messages
 
-Once a download is complete, volumemgr can request verification.
+Once download of an individual blob is complete, volumemgr can request verification.
 
 * volumemgr requests that verifier verify hashes and signatures for a blob on the filesystem via `VerifyImageConfig` messages
 * verifier informs volumemgr of the success of failure of verification, and final location of the verified file, via `VerifyImageStatus` messages
 
-Once there is a `VerifyImageStatus` indicating a successful verification, volumemgr
-can use it to construct the volume.
+Once there is a `VerifyImageStatus` indicating a successful verification for every element of the
+content tree, volumemgr can use it to construct the volume.
 
 A later section in this document describes the download process in detail.
 
@@ -152,13 +154,22 @@ yet exist, it creates the `appImgObj`. This triggers the handler `handleAppImgCr
 1. `handleAppImgCreate()` is triggered. This is just a handler for the event.
    1. `handleAppImgCreate()` calls `vcCreate()`
 1. `vcCreate()`:
-   1. creates a `VolumeStatus{}` and publishes it.
-   1. `vcCreate()` calls `doUpdate()`
+   1. creates a `VolumeStatus{}`
+   1. Adds the base content reference to `VolumeStatus.Content`
+   1. If the image is a container, indicates that the base content reference has children
+   1. Publishes the `VolumeStatus`
+   1. Calls `doUpdate()`
 1. `doUpdate()` is called by `vcCreate()` as well as any time `updateVolumeStatus()` is called. `doUpdate()` is responsible for checking the status of a volume, based on its `VolumeStatus`, and then taking next steps, if needed. It is like a "switchboard" for `VolumeStatus` updates.
    * If the image is verified and the volume is created, we are done
-   * If the image is verified, create the volume
-   * If the image is downloaded, start verifying (see below)
-   * If the image is not yet downloaded, start the downloader (see below)
+   * If the image is verified and the volume is not created, create the volume
+   * If the image is not verified, loop through each element in `VolumeStatus.Content`:
+     * If `VERIFYING`, wait for next loop
+     * If `DOWNLOADING`, wait for next loop
+     * If `DOWNLOADED`, start verification for this blob (see below)
+     * If `VERIFIED`, and has children, loop through each child and begin download+verification loop
+  * If the image is not verified and all of the children are verified:
+     1. Mark the image as `VERIFIED`
+     1. Create the volume
 
 ### Downloads
 
@@ -174,7 +185,7 @@ The downloader indicates its status, including completion, by publishing
 
 The verification is started by calling `kickVerifier()` which calls
 `MaybeAddVerifyImageConfig()`, which creates and publishes
-`types.VerifyImageConfig`; The verifier is lisenting for this message to verify
+`types.VerifyImageConfig`; The verifier is listening for this message to verify
 a file.
 
 The verifier indicates its status, including completion, by publishing
@@ -203,13 +214,14 @@ handleAppImgCreate
              |
              |----> doUpdate
                       |
-                      |----> AddOrRefcountDownloaderConfig
-                               |
-                               |----> publish(DownloaderConfig) --> downloader event handler
+                      |----> downloadBlob (foreach blob)
+                               |----> AddOrRefcountDownloaderConfig
+                                       |
+                                       |----> publish(DownloaderConfig) --> downloader event handler
 
 handleDownloaderStatusModify
    |
-   |---> updateVolumeStatus
+   |---> updateStatus
             |
             |----> doUpdate
                      |

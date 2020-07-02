@@ -4,6 +4,9 @@
 package volumemgr
 
 import (
+	"strings"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -76,6 +79,21 @@ func lookupContentTreeStatus(ctx *volumemgrContext,
 	return &status
 }
 
+func lookupContentTreeConfig(ctx *volumemgrContext,
+	key string) *types.ContentTreeConfig {
+
+	log.Infof("lookupContentTreeConfig(%s)", key)
+	sub := ctx.subContentTreeConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Infof("lookupContentTreeConfig(%s) not found", key)
+		return nil
+	}
+	config := c.(types.ContentTreeConfig)
+	log.Infof("lookupContentTreeConfig(%s) Done", key)
+	return &config
+}
+
 func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 	log.Infof("updateContentTree for %v", config.ContentID)
 	status := lookupContentTreeStatus(ctx, config.Key())
@@ -93,13 +111,42 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 			CertificateChain:  config.CertificateChain,
 			DisplayName:       config.DisplayName,
 			ObjType:           types.AppImgObj,
+			State:             types.INITIAL,
+			Blobs:             []string{},
+		}
+
+		// we only publish the BlobStatus if we have the hash for it; this
+		// might come later
+		if config.ContentSha256 != "" {
+			status.Blobs = append(status.Blobs, config.ContentSha256)
+			sv := SignatureVerifier{
+				Signature:        config.ImageSignature,
+				PublicKey:        config.SignatureKey,
+				CertificateChain: config.CertificateChain,
+			}
+			if lookupOrCreateBlobStatus(ctx, sv, status.ObjType, config.ContentSha256) == nil {
+				blobType := types.BlobBinary
+				if config.Format == zconfig.Format_CONTAINER {
+					blobType = types.BlobUnknown
+				}
+				rootBlob := &types.BlobStatus{
+					DatastoreID: config.DatastoreID,
+					RelativeURL: config.RelativeURL,
+					Sha256:      strings.ToLower(config.ContentSha256),
+					Size:        config.MaxDownloadSize,
+					State:       types.INITIAL,
+					BlobType:    blobType,
+				}
+				publishBlobStatus(ctx, rootBlob)
+			}
 		}
 	}
 	publishContentTreeStatus(ctx, status)
-	changed, _ := doUpdateContentTree(ctx, status)
-	if changed {
+	if changed, _ := doUpdateContentTree(ctx, status); changed {
 		publishContentTreeStatus(ctx, status)
 	}
+	updateVolumeStatusFromContentID(ctx, status.ContentID)
+
 	log.Infof("updateContentTree for %v Done", config.ContentID)
 }
 

@@ -21,7 +21,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
@@ -162,7 +161,7 @@ func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
 // Run a task certificate post task, on change trigger
 func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 
-	log.Infoln("starting controller fetch task")
+	log.Infoln("starting controller certificate fetch task")
 	getCertsFromController(ctx)
 
 	// Run a periodic timer so we always update StillRunning
@@ -213,26 +212,27 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	err = validateProtoMessage(certURL, resp)
-	if err != nil {
+	if err := validateProtoMessage(certURL, resp); err != nil {
 		log.Errorf("getCertsFromController: resp header error")
 		return false
 	}
 
-	// for cipher object handling
-	parseControllerCerts(ctx, contents)
+	// validate the certificate message payload
+	certBytes, ret := zedcloud.VerifySigningCertChain(&zedcloudCtx, contents)
+	if ret != nil {
+		log.Errorf("getCertsFromController: verify err %v", ret)
+		return false
+	}
 
-	// TBD:XXX needed for MITM, accordingly refactor
-	certBytes, err := zedcloud.VerifySigningCertChain(&zedcloudCtx, contents)
-	if err != nil {
-		log.Errorf("getCertsFromController: verify err %v", err)
+	// write the signing cert to file
+	if err := zedcloud.UpdateServerCert(&zedcloudCtx, certBytes); err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Errorf("getCertsFromController: " + errStr)
 		return false
 	}
-	err = fileutils.WriteRename(types.ServerSigningCertFileName, certBytes)
-	if err != nil {
-		log.Errorf("getCertsFromController: file save err %v", err)
-		return false
-	}
+
+	// manage the certificates through pubsub
+	parseControllerCerts(ctx, contents)
 
 	log.Infof("getCertsFromController: success")
 	return true
@@ -305,7 +305,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	deferKey := "attest:%s" + zcdevUUID.String()
+	deferKey := "attest:" + zcdevUUID.String()
 	zedcloud.RemoveDeferred(deferKey)
 
 	buf := bytes.NewBuffer(data)
@@ -353,13 +353,17 @@ func cipherModuleStart(ctx *zedagentContext) {
 // to trigger the post request
 func handleControllerCertsSha(ctx *zedagentContext,
 	config *zconfig.EdgeDevConfig) {
-	// still sha is not getting populated in the configuration
-	if len(ctx.cipherCtx.cfgControllerCertHash) == 0 {
+
+	certHash := config.GetControllercertConfighash()
+	// In case sha is not getting populated by the controller
+	if len(certHash) == 0 {
+		log.Infof("handleControllerCertsSha not set by controller")
 		return
 	}
 	sumHash := hex.EncodeToString(ctx.cipherCtx.cfgControllerCertHash)
-	certHash := config.GetControllercertConfighash()
 	if sumHash != certHash {
+		log.Infof("handleControllerCertsSha trigger due to controller %v vs current %v",
+			certHash, sumHash)
 		triggerControllerCertEvent(ctx)
 	}
 }

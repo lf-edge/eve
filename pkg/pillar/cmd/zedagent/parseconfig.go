@@ -22,7 +22,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -70,9 +70,9 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
-		parseAppInstanceConfig(config, getconfigCtx)
 		parseContentInfoConfig(getconfigCtx, config)
 		parseVolumeConfig(getconfigCtx, config)
+		parseAppInstanceConfig(config, getconfigCtx)
 	}
 	return false
 }
@@ -509,10 +509,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
 		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
 
-		appInstance.StorageConfigList = make([]types.StorageConfig,
-			len(cfgApp.Drives))
-		parseStorageConfigList(types.AppImgObj, appInstance.StorageConfigList,
-			cfgApp.Drives)
+		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
+			len(cfgApp.VolumeRefList))
+		parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList())
 
 		// fill in the collect stats IP address of the App
 		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
@@ -549,27 +548,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
 			cfgApp.GetCipherData())
-		// get the certs for image sha verification
-		certInstance := getCertObjects(appInstance.UUIDandVersion,
-			appInstance.ConfigSha256, appInstance.StorageConfigList)
-
-		// Pretend that the controller specified purgeCounter for the first
-		// disk. Then StorageStatus will start with that value below.
-		if len(appInstance.StorageConfigList) > 0 &&
-			appInstance.StorageConfigList[0].PurgeCounter != appInstance.PurgeCmd.Counter {
-			sc := &appInstance.StorageConfigList[0]
-			log.Infof("Setting purgeCounter to %d for %s",
-				appInstance.PurgeCmd.Counter, appInstance.Key())
-			sc.PurgeCounter = appInstance.PurgeCmd.Counter
-		}
 
 		// write to zedmanager config directory
-		uuidStr := cfgApp.Uuidandversion.Uuid
 		publishAppInstanceConfig(getconfigCtx, appInstance)
-		if certInstance != nil {
-			publishCertObjConfig(getconfigCtx, certInstance,
-				uuidStr)
-		}
 	}
 }
 
@@ -1025,8 +1006,22 @@ func parseStorageConfigList(objType string,
 		image.ReadOnly = drive.Readonly
 		image.MaxVolSize = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
-		image.ImageSha256 = drive.Image.Sha256
+		image.ImageSha256 = strings.ToLower(drive.Image.Sha256)
 		storageList[idx] = *image
+		idx++
+	}
+}
+
+func parseVolumeRefList(volumeRefConfigList []types.VolumeRefConfig,
+	volumeRefs []*zconfig.VolumeRef) {
+
+	var idx int
+	for _, volumeRef := range volumeRefs {
+		volume := new(types.VolumeRefConfig)
+		volume.VolumeID, _ = uuid.FromString(volumeRef.Uuid)
+		volume.GenerationCounter = volumeRef.GenerationCount
+		volume.RefCount = 1
+		volumeRefConfigList[idx] = *volume
 		idx++
 	}
 }

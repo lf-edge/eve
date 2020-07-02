@@ -11,15 +11,14 @@ import (
 )
 
 // AddOrRefcountDownloaderConfig used to publish the downloader config
-func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.ContentTreeStatus) {
+func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob types.BlobStatus) {
 
-	log.Infof("AddOrRefcountDownloaderConfig for %s", status.ContentSha256)
+	log.Infof("AddOrRefcountDownloaderConfig for %s", blob.Sha256)
 
 	refCount := uint(1)
-	m := lookupDownloaderConfig(ctx, status.ObjType, status.ContentSha256)
+	m := lookupDownloaderConfig(ctx, objType, blob.Sha256)
 	if m != nil {
-		log.Infof("downloader config exists for %s to refcount %d",
-			status.ContentSha256, m.RefCount)
+		log.Infof("downloader config exists for %s to refcount %d", blob.Sha256, m.RefCount)
 		refCount = m.RefCount + 1
 		// We need to update datastore id before publishing the
 		// datastore config because datastore id can be updated
@@ -39,33 +38,27 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, status types.ContentTr
 		// in the downloader config before publishing
 		// Same is true for other fields
 	} else {
-		log.Debugf("AddOrRefcountDownloaderConfig: add for %s",
-			status.ContentSha256)
+		log.Debugf("AddOrRefcountDownloaderConfig: add for %s", blob.Sha256)
 	}
-	name := status.RelativeURL
 
 	// where should the final downloaded file be?
-	locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.ContentID.String(), path.Base(name))
+	locFilename := path.Join(types.DownloadDirname, "pending", blob.Sha256)
 	// try to reserve storage, must be released on error
-	size := status.MaxDownloadSize
+	size := blob.Size
 
 	n := types.DownloaderConfig{
-		ImageID:     status.ContentID,
-		DatastoreID: status.DatastoreID,
+		DatastoreID: blob.DatastoreID,
 		// XXX StorageConfig.Name is what?
-		Name:        name, // XXX URL? DisplayName?
-		NameIsURL:   status.NameIsURL,
-		ImageSha256: status.ContentSha256,
-		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-			types.AppImgObj),
-		Size:     size,
-		Target:   locFilename,
-		RefCount: refCount,
+		Name:             blob.RelativeURL, // XXX URL? DisplayName?
+		ImageSha256:      blob.Sha256,
+		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig, objType),
+		Size:             size,
+		Target:           locFilename,
+		RefCount:         refCount,
 	}
 	log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
-	publishDownloaderConfig(ctx, status.ObjType, &n)
-	log.Infof("AddOrRefcountDownloaderConfig done for %s",
-		status.ContentSha256)
+	publishDownloaderConfig(ctx, objType, &n)
+	log.Infof("AddOrRefcountDownloaderConfig done for %s", blob.Sha256)
 }
 
 func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha string) {
@@ -122,9 +115,9 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d"+
-		"status.Expired: %+v",
-		status.ImageSha256, status.RefCount, status.Expired)
+	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d "+
+		"status.Expired: %+v ENTIRE: %+v",
+		status.ImageSha256, status.RefCount, status.Expired, status)
 
 	// Handling even if Pending is set to process Progress updates
 
@@ -167,7 +160,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update case
-	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	log.Infof("handleDownloaderStatusModify done for %s", status.ImageSha256)
 }
 
@@ -204,7 +197,8 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloaderStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.DownloaderStatus)
-	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	// update the status - do not change the sizes
+	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {

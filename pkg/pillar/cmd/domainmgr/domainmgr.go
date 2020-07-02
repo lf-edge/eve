@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,8 +47,9 @@ const (
 	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
 	rwImgDirname = types.PersistDir + "/img" // We store images here
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime           = 3 * time.Minute
+	warningTime         = 40 * time.Second
+	containerRootfsPath = "rootfs/"
 )
 
 // Really a constant
@@ -318,6 +321,11 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	if err := containerd.InitContainerdClient(); err != nil {
+		log.Fatal(err)
+	}
+	defer containerd.CtrdClient.Close()
 
 	// Pick up debug aka log level before we start real work
 	for !domainCtx.GCInitialized {
@@ -1048,6 +1056,16 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		if ds.Format != zconfig.Format_CONTAINER {
 			continue
 		}
+
+		snapshotID := containerd.GetSnapshotID(ds.FileLocation)
+		if err := containerd.CtrMountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
+			err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+				snapshotID, config.UUIDandVersion.UUID, err)
+			log.Error(err.Error())
+			status.SetErrorNow(err.Error())
+			return
+		}
+
 		// XXX apparently this is under the appInstID and not under
 		// the ImageID aka VolumeID
 		if err := containerd.PrepareMount(config.UUIDandVersion.UUID,
@@ -1345,8 +1363,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			numOfContainerDisks++
 		}
 		ds := &status.DiskStatusList[i]
-		ds.ImageID = dc.ImageID
-		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
@@ -1911,8 +1927,14 @@ func createCloudInitISO(ctx *domainContext,
 	ds := new(types.DiskStatus)
 	ds.FileLocation = fileName
 	ds.Format = zconfig.Format_RAW
-	ds.Vdev = "hdc:cdrom"
-	ds.ReadOnly = false
+	switch runtime.GOARCH {
+	case "arm64":
+		ds.Vdev = "xvdz"
+		ds.ReadOnly = true
+	case "amd64":
+		ds.Vdev = "hdc:cdrom"
+		ds.ReadOnly = false
+	}
 	// Generate Devtype for hypervisor package
 	// XXX can hypervisor look at something different?
 	ds.Devtype = "cdrom"
@@ -2427,4 +2449,8 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 		}
 	}
 	return false
+}
+
+func getRoofFsPath(rootPath string) string {
+	return path.Join(rootPath, containerRootfsPath)
 }

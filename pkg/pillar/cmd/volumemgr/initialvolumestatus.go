@@ -8,16 +8,21 @@
 package volumemgr
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	"github.com/shirou/gopsutil/host"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -40,61 +45,26 @@ func parseAppRwVolumeName(image string) (string, string, uint32) {
 	return parsedStrings[1], parsedStrings[2], uint32(count)
 }
 
-// recursive scanning for verified objects,
-// to recreate the status files
-func populateInitialVolumeStatus(ctx *volumemgrContext, dirName string) {
+// populateExistingVolumesFormat iterates over the directory and takes format
+// from the name of the volume and prepares map of it
+func populateExistingVolumesFormat(dirName string) {
 
-	log.Infof("populateInitialVolumeStatus(%s)", dirName)
-
-	// Record host boot time for comparisons
-	hinfo, err := host.Info()
-	if err != nil {
-		log.Fatalf("host.Info(): %s", err)
-	}
-	deviceBootTime := time.Unix(int64(hinfo.BootTime), 0).UTC()
-
+	log.Infof("populateExistingVolumesFormat(%s)", dirName)
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
-		log.Errorf("populateInitialVolumeStatus: read directory '%s' failed: %v",
+		log.Errorf("populateExistingVolumesFormat: read directory '%s' failed: %v",
 			dirName, err)
 		return
 	}
-
 	for _, location := range locations {
-		filelocation := dirName + "/" + location.Name()
-		info, err := os.Stat(filelocation)
+		key, format, err := getVolumeKeyAndFormat(dirName, location.Name())
 		if err != nil {
-			log.Errorf("Error in getting file information. Err: %s. "+
-				"Deleting file %s", err, filelocation)
-			deleteFile(filelocation)
+			log.Error(err)
 			continue
 		}
-		_, volumeID, generationCounter := parseAppRwVolumeName(filelocation)
-		log.Infof("populateInitialVolumeStatus: Processing volume uuid: %s, fileLocation:%s",
-			volumeID, filelocation)
-
-		volumeUUID, err := uuid.FromString(volumeID)
-		if err != nil {
-			log.Errorf("populateInitialVolumeStatus: Invalid volume UUIDStr(%s) in "+
-				"filename (%s). err: %s. Deleting the File",
-				volumeID, filelocation, err)
-			deleteFile(filelocation)
-			continue
-		}
-
-		status := types.VolumeStatus{
-			VolumeID:          volumeUUID,
-			GenerationCounter: int64(generationCounter),
-			DisplayName:       "Found in /persist/img",
-			FileLocation:      filelocation,
-			State:             types.CREATED_VOLUME,
-			VolumeCreated:     true,
-			LastUse:           info.ModTime(),
-			PreReboot:         info.ModTime().Before(deviceBootTime),
-		}
-
-		publishInitialVolumeStatus(ctx, &status)
+		volumeFormat[key] = zconfig.Format(zconfig.Format_value[format])
 	}
+	log.Infof("populateExistingVolumesFormat(%s) Done", dirName)
 }
 
 func publishInitialVolumeStatus(ctx *volumemgrContext,
@@ -136,36 +106,32 @@ func lookupInitVolumeStatus(ctx *volumemgrContext, volumeKey string) *types.Volu
 // Others have their delete handler.
 func gcObjects(ctx *volumemgrContext, dirName string) {
 
-	log.Debugf("gcObjects()")
-
-	pub := ctx.pubUnknownVolumeStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.VolumeStatus)
-		if status.RefCount != 0 {
-			log.Debugf("gcObjects: skipping RefCount %d: %s",
-				status.RefCount, status.Key())
-			continue
-		}
-		timePassed := time.Since(status.LastUse)
-		timeLimit := time.Duration(ctx.vdiskGCTime) * time.Second
-		if timePassed < timeLimit {
-			log.Debugf("gcObjects: skipping recently used %s remains %d seconds",
-				status.Key(), (timePassed-timeLimit)/time.Second)
-			continue
-		}
-		filelocation := status.FileLocation
-		if filelocation == "" {
-			log.Errorf("No filelocation to remove for %s", status.Key())
-		} else {
-			log.Infof("gcObjects: removing %s LastUse %v now %v: %s",
-				filelocation, status.LastUse, time.Now(), status.Key())
-			if err := os.Remove(filelocation); err != nil {
-				log.Errorln(err)
-			}
-		}
-		unpublishInitialVolumeStatus(ctx, status.Key())
+	log.Debugf("gcObjects(%s)", dirName)
+	locations, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Errorf("gcObjects: read directory '%s' failed: %v",
+			dirName, err)
+		return
 	}
+	for _, location := range locations {
+		filelocation := path.Join(dirName, location.Name())
+		key, format, err := getVolumeKeyAndFormat(dirName, location.Name())
+		if err != nil {
+			log.Error(err)
+			deleteFile(filelocation)
+			continue
+		}
+		vs := lookupVolumeStatus(ctx, key)
+		if vs == nil {
+			log.Infof("gcObjects: Found unused volume %s. Deleting it.",
+				filelocation)
+			if format == "CONTAINER" {
+				_ = containerd.SnapshotRm(filelocation, true)
+			}
+			deleteFile(filelocation)
+		}
+	}
+	log.Debugf("gcObjects(%s) Done", dirName)
 }
 
 // If an object has a zero RefCount and dropped to zero more than
@@ -194,9 +160,14 @@ func gcVerifiedObjects(ctx *volumemgrContext) {
 					(timePassed-downloadGCTime)/time.Second)
 				continue
 			}
-			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v",
-				status.Key(), status.LastUse, time.Now())
-			unpublishPersistImageStatus(ctx, &status)
+			log.Infof("gcVerifiedObjects: expiring status for %s at %s; LastUse %v now %v",
+				status.Key(), status.FileLocation, status.LastUse, time.Now())
+			if pub == ctx.pubAppImgPersistStatus {
+				log.Infof("gcVerifiedObjects: temporarily disabled unpublish for appImg for %s at %s",
+					status.Key(), status.FileLocation)
+			} else {
+				unpublishPersistImageStatus(ctx, &status)
+			}
 		}
 	}
 }
@@ -220,22 +191,19 @@ func gcResetPersistObjectLastUse(ctx *volumemgrContext) {
 	}
 }
 
-// gc timer just started, reset the LastUse timestamp
-func gcResetObjectsLastUse(ctx *volumemgrContext, dirName string) {
-	log.Debugf("gcResetObjectsLastUse()")
-	pub := ctx.pubUnknownVolumeStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.VolumeStatus)
-		if status.RefCount == 0 {
-			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now", status.Key())
-			status.LastUse = time.Now()
-			publishInitialVolumeStatus(ctx, &status)
-		}
+func getVolumeKeyAndFormat(dirName, name string) (string, string, error) {
+	filelocation := path.Join(dirName, name)
+	keyAndFormat := strings.Split(name, ".")
+	if len(keyAndFormat) != 2 {
+		errStr := fmt.Sprintf("getVolumeKeyAndFormat: Found unknown format volume %s.",
+			filelocation)
+		return "", "", errors.New(errStr)
 	}
+	return keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), nil
 }
 
 func deleteFile(filelocation string) {
+	log.Infof("deleteFile: Deleting %s", filelocation)
 	if err := os.RemoveAll(filelocation); err != nil {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())

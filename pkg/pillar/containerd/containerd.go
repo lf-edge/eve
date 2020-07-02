@@ -4,10 +4,11 @@
 package containerd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/sys/unix"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -15,12 +16,15 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	digest "github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -36,6 +40,8 @@ const (
 	logWriteSocket = "/var/run/linuxkit-external-logging.sock"
 	// default socket to read from memlogd
 	logReadSocket = "/var/run/memlogdq.sock"
+	// start of containerd gc ref label for children in content store
+	containerdGCRef = "containerd.io/gc.ref.content"
 )
 
 const (
@@ -50,11 +56,201 @@ func GetContainerPath(containerDir string) string {
 	return path.Join(containersRoot, containerDir)
 }
 
+// GetSnapshotID handles the upgrade scenario when the snapshotID needs to be
+// extracted from a file created by upgradeconverter
+// Assumes that rootpath is a complete pathname
+func GetSnapshotID(rootpath string) string {
+	filename := filepath.Join(rootpath, "snapshotid.txt")
+	if _, err := os.Stat(filename); err == nil {
+		cont, err := ioutil.ReadFile(filename)
+		if err == nil {
+			snapshotID := string(cont)
+			log.Infof("GetSnapshotID read %s from %s",
+				snapshotID, filename)
+			return snapshotID
+		}
+		log.Errorf("GetSnapshotID read %s failed: %s", filename, err)
+	}
+	snapshotID := filepath.Base(rootpath)
+	log.Infof("GetSnapshotID basename %s from %s", snapshotID, rootpath)
+	return snapshotID
+}
+
+// LoadBlobs load multiple blobs and reference via an image name
+func LoadBlobs(blobs []*types.BlobStatus, ref string) error {
+	// load the content into the containerd content store
+	log.Infof("loadBlobs(%s)", ref)
+
+	var (
+		root           *types.BlobStatus
+		rootDescriptor ocispec.Descriptor
+		index          *ocispec.Index
+		indexHash      string
+		manifests      = make([]*ocispec.Manifest, 0)
+		manifestHashes = make([]string, 0)
+	)
+
+	if CtrdClient == nil {
+		return fmt.Errorf("LoadBlobs: Container client is nil")
+	}
+
+	if ctrdCtx == nil {
+		return fmt.Errorf("LoadBlobs: Container context is nil")
+	}
+
+	cs := CtrdClient.ContentStore()
+
+	for i, blob := range blobs {
+		var (
+			r        io.Reader
+			filepath = blob.Path
+			// the sha MUST be lower-case for it to work with the ocispec utils
+			sha  = fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blob.Sha256))
+			size = blob.TotalSize
+		)
+		log.Infof("LoadBlobs: processing blob %+v", blob)
+		fileReader, err := os.Open(filepath)
+		if err != nil {
+			log.Errorf("could not open blob file for reading at %s: %+s", filepath, err.Error())
+			return err
+		}
+		defer fileReader.Close()
+		// if this is a manifest or index, we will need to process it as well, so read it
+		switch blob.BlobType {
+		case types.BlobIndex:
+			// read it in so we can process it
+			data, err := ioutil.ReadAll(fileReader)
+			if err != nil {
+				log.Errorf("could not read data at %s: %+s", filepath, err.Error())
+				return err
+			}
+			fileReader.Close()
+			// create a new reader for the content.WriteBlob
+			r = bytes.NewReader(data)
+			// try to parse the index
+			if err := json.Unmarshal(data, index); err != nil {
+				log.Errorf("could not parse index at %s: %+s", filepath, err.Error())
+				return err
+			}
+			indexHash = sha
+		case types.BlobManifest:
+			// read it in so we can process it
+			data, err := ioutil.ReadAll(fileReader)
+			if err != nil {
+				log.Errorf("could not read data at %s: %+s", filepath, err.Error())
+				return err
+			}
+			fileReader.Close()
+			// create a new reader for the content.WriteBlob
+			r = bytes.NewReader(data)
+			// try to parse the index
+			mfst := ocispec.Manifest{}
+			if err := json.Unmarshal(data, &mfst); err != nil {
+				log.Errorf("could not parse manifest at %s: %+s", filepath, err.Error())
+				return err
+			}
+			manifests = append(manifests, &mfst)
+			manifestHashes = append(manifestHashes, sha)
+		default:
+			// do nothing special, just pass it on
+			r = fileReader
+		}
+		expectedDigest := digest.Digest(sha)
+		if err := expectedDigest.Validate(); err != nil {
+			return fmt.Errorf("invalid digest: %v", err)
+		}
+		desc := ocispec.Descriptor{Size: size, Digest: expectedDigest}
+		if err := content.WriteBlob(ctrdCtx, cs, ref, r, desc); err != nil {
+			log.Errorf("could not load blob file into containerd at %s: %+s", filepath, err.Error())
+			return err
+		}
+		// first one always is root
+		if i == 0 {
+			root = blob
+			rootDescriptor = desc
+		}
+	}
+
+	// add the image pointing to the root
+	// and walk the tree from the root to add the necessary labels
+	var mediaType string
+
+	if index != nil {
+		mediaType = ocispec.MediaTypeImageIndex
+		info := content.Info{
+			Digest: digest.Digest(indexHash),
+			Labels: map[string]string{},
+		}
+		// add all of the labels to the blob
+		fields := []string{}
+		for i, m := range index.Manifests {
+			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Digest.String()
+			fields = append(fields, fmt.Sprintf("labels.%s.%d", containerdGCRef, i))
+		}
+		_, err := cs.Update(ctrdCtx, info, fields...)
+		if err != nil {
+			log.Errorf("could not update labels on index: %v", err.Error())
+			return err
+		}
+	}
+
+	if len(manifests) > 0 {
+		if mediaType == "" {
+			mediaType = ocispec.MediaTypeImageManifest
+		}
+		for j, m := range manifests {
+			info := content.Info{
+				Digest: digest.Digest(manifestHashes[j]),
+				Labels: map[string]string{},
+			}
+			// add all of the labels to the blob
+			fields := []string{}
+			for i, l := range m.Layers {
+				info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = l.Digest.String()
+				fields = append(fields, fmt.Sprintf("labels.%s.%d", containerdGCRef, i))
+			}
+			i := len(m.Layers)
+			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Config.Digest.String()
+			fields = append(fields, fmt.Sprintf("labels.%s.%d", containerdGCRef, i))
+			_, err := cs.Update(ctrdCtx, info, fields...)
+			if err != nil {
+				log.Errorf("could not update labels on manifest: %v", err.Error())
+				return err
+			}
+		}
+
+	}
+	rootDescriptor.MediaType = mediaType
+
+	if root != nil {
+		is := CtrdClient.ImageService()
+		image := images.Image{
+			Name:   ref,
+			Target: rootDescriptor,
+		}
+		// if it already exists, update it rather than creating it
+		existingImage, err := is.Get(ctrdCtx, ref)
+		if err != nil || existingImage.Name == "" {
+			if _, err := is.Create(ctrdCtx, image); err != nil {
+				log.Errorf("could not create image for %+v: %v", image, err.Error())
+				return err
+			}
+		} else {
+			if _, err := is.Update(ctrdCtx, image); err != nil {
+				log.Errorf("could not update image for %+v: %v", image, err.Error())
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // SnapshotRm removes existing snapshot. If silent is true, then operation failures are ignored and no error is returned
 func SnapshotRm(rootPath string, silent bool) error {
 	log.Infof("SnapshotRm %s\n", rootPath)
 
-	snapshotID := filepath.Base(rootPath)
+	snapshotID := GetSnapshotID(rootPath)
 
 	if err := syscall.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
 		err = fmt.Errorf("SnapshotRm: exception while unmounting: %v/%v. %v", rootPath, containerRootfsPath, err)
@@ -84,15 +280,15 @@ func SnapshotRm(rootPath string, silent bool) error {
 
 // SnapshotPrepare prepares a writable snapshot from an OCI layers bundle
 // We always do it from scratch all the way, ignoring any existing state
-// that may have accumulated (like existing snapshots being avilable, etc.)
+// that may have accumulated (like existing snapshots being available, etc.)
 // This effectively voids any kind of caching, but on the flip side frees us
 // from cache invalidation. Additionally we deposit an OCI config json file
 // next to the rootfs so that the effective structure becomes:
 //    rootPath/rootfs, rootPath/image-config.json
 // We also expect rootPath to end in a basename that becomes containerd's
 // snapshotID
-func SnapshotPrepare(rootPath string, ociFilename string) error {
-	log.Infof("SnapshotPrepare(%s, %s)", rootPath, ociFilename)
+func SnapshotPrepare(rootPath string, ref string) error {
+	log.Infof("snapshotPrepare(%s, %s)", rootPath, ref)
 	// On device restart, the existing bundle is not deleted, we need to delete the
 	// existing bundle of the container and recreate it. This is safe to run even
 	// when bundle doesn't exist
@@ -100,22 +296,11 @@ func SnapshotPrepare(rootPath string, ociFilename string) error {
 		log.Infof("SnapshotPrepare: tried to clean up any existing state, hopefully it worked")
 	}
 
-	loadedImages, err := containerdLoadImageTar(ociFilename)
-	if err != nil {
-		log.Errorf("SnapshotPrepare: failed to load Image File at %s into containerd: %+s", ociFilename, err.Error())
-		return err
-	}
-
-	// we currently only support one image per file; will change eventually
-	if len(loadedImages) != 1 {
-		log.Errorf("SnapshotPrepare: loaded %d images, expected just 1", len(loadedImages))
-	}
-	var image images.Image
-	for _, imgObj := range loadedImages {
-		image = imgObj
-	}
 	// doing this step as we need the image in containerd.Image structure for container create.
-	ctrdImage := containerd.NewImage(CtrdClient, image)
+	ctrdImage, err := CtrdClient.GetImage(ctrdCtx, ref)
+	if err != nil {
+		return fmt.Errorf("SnapshotPrepare: unable to get image from ref %s", ref)
+	}
 	imageInfo, err := getImageInfo(ctrdCtx, ctrdImage)
 	if err != nil {
 		return fmt.Errorf("SnapshotPrepare: unable to get image: %v config: %v", ctrdImage.Name(), err)
@@ -138,7 +323,7 @@ func SnapshotPrepare(rootPath string, ociFilename string) error {
 			return fmt.Errorf("SnapshotPrepare: unable to unpack image: %v config: %v", ctrdImage.Name(), err)
 		}
 	}
-	snapshotID := filepath.Base(rootPath)
+	snapshotID := GetSnapshotID(rootPath)
 	mounts, err := CtrPrepareSnapshot(snapshotID, ctrdImage)
 	if err != nil {
 		log.Errorf("SnapshotPrepare: Could not create snapshot %s. %v", snapshotID, err)
@@ -151,21 +336,14 @@ func SnapshotPrepare(rootPath string, ociFilename string) error {
 		}
 	}
 
-	// final step is to mount the snapshot into rootPath/containerRootfsPath and unpack
-	// image config OCI json into rootPath/imageConfigFilename
-	rootFsDir := path.Join(rootPath, containerRootfsPath)
-	if err := os.MkdirAll(rootFsDir, 0766); err != nil {
-		return fmt.Errorf("SnapshotPrepare: Exception while creating rootFS dir. %v", err)
-	}
-	if err = mounts[0].Mount(rootFsDir); err != nil {
-		return fmt.Errorf("SnapshotPrepare: Exception while mounting rootfs %v via %v. Error: %v", rootFsDir, mounts, err)
-	}
-
 	// final step is to deposit OCI image config json
 	imageConfigJSON, err := getImageInfoJSON(ctrdCtx, ctrdImage)
 	if err != nil {
 		log.Errorf("SnapshotPrepare: Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
 		return fmt.Errorf("SnapshotPrepare: Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
+	}
+	if err := os.MkdirAll(rootPath, 0766); err != nil {
+		return fmt.Errorf("SnapshotPrepare: Exception while creating rootPath dir. %v", err)
 	}
 	if err := ioutil.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(imageConfigJSON), 0666); err != nil {
 		return fmt.Errorf("SnapshotPrepare: Exception while writing image info to %v/%v. %v", rootPath, imageConfigFilename, err)
@@ -362,7 +540,7 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 // - working directory
 // - env var key/value pairs
 // this can change based on the config format
-func getContainerConfigs(imageInfo v1.Image, userEnvVars map[string]string) (map[string]struct{}, []string, string, []string, error) {
+func getContainerConfigs(imageInfo ocispec.Image, userEnvVars map[string]string) (map[string]struct{}, []string, string, []string, error) {
 
 	mountpoints := imageInfo.Config.Volumes
 	execpath := imageInfo.Config.Entrypoint
@@ -431,14 +609,14 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 	return nil
 }
 
-func getImageInfo(ctrdCtx context.Context, image containerd.Image) (v1.Image, error) {
-	var ociimage v1.Image
+func getImageInfo(ctrdCtx context.Context, image containerd.Image) (ocispec.Image, error) {
+	var ociimage ocispec.Image
 	ic, err := image.Config(ctrdCtx)
 	if err != nil {
 		return ociimage, fmt.Errorf("getImageConfig: ubable to fetch image: %v config. %v", image.Name(), err.Error())
 	}
 	switch ic.MediaType {
-	case v1.MediaTypeImageConfig, images.MediaTypeDockerSchema2Config:
+	case ocispec.MediaTypeImageConfig, images.MediaTypeDockerSchema2Config:
 		p, err := content.ReadBlob(ctrdCtx, image.ContentStore(), ic)
 		if err != nil {
 			return ociimage, fmt.Errorf("getImageConfig: ubable to read cotentStore of image: %v config. %v", image.Name(), err.Error())
@@ -487,8 +665,8 @@ func getContainerPath(containerID string) string {
 	}
 }
 
-func getSavedImageInfo(containerPath string) (v1.Image, error) {
-	var image v1.Image
+func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
+	var image ocispec.Image
 
 	appDir := getContainerPath(containerPath)
 	data, err := ioutil.ReadFile(filepath.Join(appDir, imageConfigFilename))

@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	log "github.com/sirupsen/logrus"
 )
@@ -79,7 +80,95 @@ func Manifest(registry, repo, username, apiKey string, client *http.Client, prgc
 	return manifestDirect, manifestResolved, size, err
 }
 
-// Pull downloads the a repo from a registry and saves it as a tar file at the provided location.
+// PullBlob downloads a blob from a registry and save it as a file as-is.
+func PullBlob(registry, repo, hash, localFile, username, apiKey string, client *http.Client, prgchan NotifChan) (int64, error) {
+	log.Infof("PullBlob(%s, %s, %s) to %s", registry, repo, hash, localFile)
+
+	var (
+		w io.Writer
+		r io.Reader
+	)
+
+	opts := options(username, apiKey, client)
+
+	// The OCI distribution spec only uses /blobs/ endpoint for layers or config, not index or manifest.
+	// I have no idea why you cannot get a manifest or index from the /blobs endpoint, but so be it.
+	image := repo
+	if hash != "" {
+		image = fmt.Sprintf("%s@%s", repo, hash)
+	}
+
+	ref, err := name.ParseReference(image)
+	if err != nil {
+		return 0, fmt.Errorf("parsing reference %q: %v", image, err)
+	}
+
+	// if we have only a tag, we know it is a manifest
+	if _, ok := ref.(name.Tag); ok {
+		log.Infof("PullBlob: requested manifest or had tag without hash, so just pulling root for %s", image)
+		r, err = ociGetManifest(ref, opts)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		// we had a hash, so get the actual layer, but fall back to manifest
+		d, ok := ref.(name.Digest)
+		if !ok {
+			return 0, fmt.Errorf("ref %s wasn't a tag or digest", image)
+		}
+		log.Infof("PullBlob: had hash, so pulling blob for %s", image)
+		layer, err := remote.Layer(d, opts...)
+		if err != nil {
+			return 0, fmt.Errorf("could not pull layer %s: %v", ref.String(), err)
+		}
+		// write the layer out to the file
+		lr, err := layer.Compressed()
+		if err != nil {
+			// anything other than a 404 should return
+			terr, ok := err.(*transport.Error)
+			if !ok || terr.StatusCode != 404 {
+				return 0, fmt.Errorf("could not get layer reader %s: %v", ref.String(), err)
+			}
+			// a 404 should try a manifest
+			r, err = ociGetManifest(ref, opts)
+			if err != nil {
+				return 0, fmt.Errorf("could not retrieve as blob or manifest %s: %v", ref.String(), err)
+			}
+		} else {
+			defer lr.Close()
+			r = lr
+		}
+	}
+
+	if localFile != "" {
+		f, err := os.Create(localFile)
+		if err != nil {
+			return 0, fmt.Errorf("could not open local file %s for writing from %s: %v", localFile, ref.String(), err)
+		}
+		defer f.Close()
+		w = f
+	} else {
+		w = os.Stdout
+	}
+	size, err := io.Copy(w, r)
+	if err != nil {
+		return 0, fmt.Errorf("could not write to local file %s from %s: %v", localFile, ref.String(), err)
+	}
+	log.Infof("PullBlob(%s): download complete to %s size %d", image, localFile, size)
+
+	return size, nil
+}
+
+// ociGetManifest get an OCI manifest
+func ociGetManifest(ref name.Reference, opts []remote.Option) (io.Reader, error) {
+	desc, err := remote.Get(ref, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("error getting manifest: %v", err)
+	}
+	return bytes.NewReader(desc.Manifest), nil
+}
+
+// Pull downloads an entire image from a registry and saves it as a tar file at the provided location.
 // Optionally, can use authentication of username and apiKey as provided, else defaults
 // to the local user config. Also can use a given http client, else uses the default.
 // Returns the manifest of the repo passed to it, the manifest of the resolved image,

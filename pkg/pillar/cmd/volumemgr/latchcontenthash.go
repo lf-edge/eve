@@ -100,6 +100,7 @@ func lookupLatchContentTreeHash(ctx *volumemgrContext,
 	return aih.Hash
 }
 
+// Can update status
 func maybeLatchContentTreeHash(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 
 	imageSha := lookupLatchContentTreeHash(ctx, status.ContentID, uint32(status.GenerationCounter))

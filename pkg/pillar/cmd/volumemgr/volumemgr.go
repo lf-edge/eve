@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -27,7 +28,8 @@ const (
 	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
 	rwImgDirname           = types.RWImgDirname           // We store old VM volumes here
 	roContImgDirname       = types.ROContImgDirname       // We store old OCI volumes here
-	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store VM and OCI volumes here
+	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
+	volumeClearDirName     = types.VolumeClearDirName     // We store un-encrypted VM and OCI volumes here
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -36,9 +38,9 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
-	subAppVolumeConfig        pubsub.Subscription
 	pubAppVolumeStatus        pubsub.Publication
 	subBaseOsVolumeConfig     pubsub.Subscription
 	pubBaseOsVolumeStatus     pubsub.Publication
@@ -70,8 +72,12 @@ type volumemgrContext struct {
 	pubContentTreeStatus        pubsub.Publication
 	subVolumeConfig             pubsub.Subscription
 	pubVolumeStatus             pubsub.Publication
+	subVolumeRefConfig          pubsub.Subscription
+	pubVolumeRefStatus          pubsub.Publication
 	pubUnknownVolumeStatus      pubsub.Publication
 	pubContentTreeToHash        pubsub.Publication
+
+	pubBlobStatus pubsub.Publication
 
 	gc *time.Ticker
 
@@ -220,6 +226,16 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubVolumeStatus = pubVolumeStatus
 
+	pubVolumeRefStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.VolumeRefStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumeRefStatus = pubVolumeRefStatus
+
 	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.UnknownObj,
@@ -317,13 +333,25 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
 
+	pubBlobStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.BlobStatus{},
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBlobStatus = pubBlobStatus
+
 	// Publish existing volumes with RefCount zero in the "unknown"
 	// agentScope
 	// Note that nobody subscribes to this. Used internally
 	// to look up a Volume.
 	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
 	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
-	populateInitialVolumeStatus(&ctx, volumeEncryptedDirName)
+	populateExistingVolumesFormat(volumeEncryptedDirName)
+	populateExistingVolumesFormat(volumeClearDirName)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -545,22 +573,22 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subVolumeConfig = subVolumeConfig
 	subVolumeConfig.Activate()
 
-	subAppVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleAppImgCreate,
-		ModifyHandler: handleAppImgModify,
-		DeleteHandler: handleAppImgDelete,
+	subVolumeRefConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleVolumeRefCreate,
+		ModifyHandler: handleVolumeRefModify,
+		DeleteHandler: handleVolumeRefDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "zedmanager",
 		AgentScope:    types.AppImgObj,
-		TopicImpl:     types.OldVolumeConfig{},
+		TopicImpl:     types.VolumeRefConfig{},
 		Ctx:           &ctx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAppVolumeConfig = subAppVolumeConfig
-	subAppVolumeConfig.Activate()
+	ctx.subVolumeRefConfig = subVolumeRefConfig
+	subVolumeRefConfig.Activate()
 
 	subBaseOsVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleBaseOsCreate,
@@ -650,7 +678,6 @@ func Run(ps *pubsub.PubSub) {
 				// Update the LastUse here to be now
 				gcResetOldObjectsLastUse(&ctx, rwImgDirname)
 				gcResetOldObjectsLastUse(&ctx, roContImgDirname)
-				gcResetObjectsLastUse(&ctx, volumeEncryptedDirName)
 				gcResetPersistObjectLastUse(&ctx)
 				ctx.gcRunning = true
 			}
@@ -682,8 +709,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subVolumeConfig.MsgChan():
 			ctx.subVolumeConfig.ProcessChange(change)
 
-		case change := <-ctx.subAppVolumeConfig.MsgChan():
-			ctx.subAppVolumeConfig.ProcessChange(change)
+		case change := <-ctx.subVolumeRefConfig.MsgChan():
+			ctx.subVolumeRefConfig.ProcessChange(change)
 
 		case change := <-ctx.subBaseOsVolumeConfig.MsgChan():
 			ctx.subBaseOsVolumeConfig.ProcessChange(change)
@@ -699,6 +726,7 @@ func Run(ps *pubsub.PubSub) {
 			gcOldObjects(&ctx, rwImgDirname)
 			gcOldObjects(&ctx, roContImgDirname)
 			gcObjects(&ctx, volumeEncryptedDirName)
+			gcObjects(&ctx, volumeClearDirName)
 			gcVerifiedObjects(&ctx)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)

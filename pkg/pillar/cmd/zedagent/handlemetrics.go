@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -32,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
@@ -565,13 +565,17 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 				networkDetails)
 		}
 
-		for _, ss := range aiStatus.StorageStatusList {
+		for _, vrs := range aiStatus.VolumeRefStatusList {
 			appDiskDetails := new(metrics.AppDiskMetric)
-			err := getDiskInfo(ss, appDiskDetails)
-			if err != nil {
-				log.Errorf("getDiskInfo(%s) failed %v",
-					ss.ActiveFileLocation, err)
-				continue
+			if vrs.ActiveFileLocation == "" {
+				log.Infof("ActiveFileLocation is empty for %s", vrs.Key())
+			} else {
+				err := getDiskInfo(vrs, appDiskDetails)
+				if err != nil {
+					log.Warnf("getDiskInfo(%s) failed %v",
+						vrs.ActiveFileLocation, err)
+					continue
+				}
 			}
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
 				appDiskDetails)
@@ -613,71 +617,44 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 
 	createNetworkInstanceMetrics(ctx, ReportMetrics)
+	createVolumeInstanceMetrics(ctx.getconfigCtx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
 	log.Debugf("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
 }
 
-func getDiskInfo(ss types.StorageStatus, appDiskDetails *metrics.AppDiskMetric) error {
-	if ss.IsContainer {
-		appDiskDetails.Disk = ss.ActiveFileLocation
-		// XXX For container images, max size is coming zero
-		// from the controller. So for now, we are setting up
-		// total size equal to the used size.
-		appDiskDetails.Provisioned = RoundToMbytes(ss.MaxDownSize)
-		appDiskDetails.Used = RoundToMbytes(ss.MaxDownSize)
-		appDiskDetails.DiskType = "CONTAINER"
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(ss.ActiveFileLocation)
-		if err != nil {
-			return err
-		}
-		appDiskDetails.Disk = ss.ActiveFileLocation
-		appDiskDetails.Provisioned = RoundToMbytes(imgInfo.VirtualSize)
-		appDiskDetails.Used = RoundToMbytes(imgInfo.ActualSize)
-		appDiskDetails.DiskType = imgInfo.Format
-		appDiskDetails.Dirty = imgInfo.DirtyFlag
+func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
+	actualSize, maxSize, err := utils.GetVolumeSize(vrs.ActiveFileLocation)
+	if err != nil {
+		return err
 	}
+	appDiskDetails.Disk = vrs.ActiveFileLocation
+	appDiskDetails.Used = RoundToMbytes(actualSize)
+	appDiskDetails.Provisioned = RoundToMbytes(maxSize)
+	if vrs.IsContainer() {
+		appDiskDetails.DiskType = "CONTAINER"
+		return nil
+	}
+	imgInfo, err := diskmetrics.GetImgInfo(vrs.ActiveFileLocation)
+	if err != nil {
+		return err
+	}
+	appDiskDetails.DiskType = imgInfo.Format
+	appDiskDetails.Dirty = imgInfo.DirtyFlag
 	return nil
 }
 
 func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 	volumeResourcesDetails *info.VolumeResources) error {
 
-	if volStatus.IsContainer() {
-		// XXX For container volumes, max size is coming zero
-		// from the controller. So for now, we are setting up
-		// max size and the current size equal to the downloaded size
-		size, err := dirSize(volStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeResourcesDetails.MaxSizeBytes = size
-		volumeResourcesDetails.CurSizeBytes = size
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(volStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeResourcesDetails.MaxSizeBytes = imgInfo.VirtualSize
-		volumeResourcesDetails.CurSizeBytes = imgInfo.ActualSize
-	}
-	return nil
-}
-
-func dirSize(path string) (uint64, error) {
-	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
+	actualSize, maxSize, err := utils.GetVolumeSize(volStatus.FileLocation)
+	if err != nil {
 		return err
-	})
-	return uint64(size), err
+	}
+	volumeResourcesDetails.CurSizeBytes = actualSize
+	volumeResourcesDetails.MaxSizeBytes = maxSize
+	return nil
 }
 
 func RoundToMbytes(byteCount uint64) uint64 {
@@ -1446,24 +1423,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				errInfo)
 		}
 
-		if len(aiStatus.StorageStatusList) == 0 {
-			log.Infof("storage status detail is empty so ignoring")
-		} else {
-			ReportAppInfo.SoftwareList = make([]*info.ZInfoSW, len(aiStatus.StorageStatusList))
-			for idx, ss := range aiStatus.StorageStatusList {
-				ReportSoftwareInfo := new(info.ZInfoSW)
-				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
-				ReportSoftwareInfo.ImageName = ss.Name
-				ReportSoftwareInfo.SwHash = ss.ImageSha256
-				ReportSoftwareInfo.State = ss.State.ZSwState()
-				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
-
-				ReportSoftwareInfo.Target = ss.Target
-				ReportSoftwareInfo.Vdev = ss.Vdev
-
-				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
-			}
-		}
 		if aiStatus.BootTime.IsZero() {
 			// If never booted
 			log.Infoln("BootTime is empty")

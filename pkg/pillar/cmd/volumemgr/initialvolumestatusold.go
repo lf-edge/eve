@@ -146,6 +146,8 @@ func populateInitialOldVolumeStatus(ctx *volumemgrContext, dirName string) {
 			RefCount:      0,
 			LastUse:       info.ModTime(),
 			PreReboot:     info.ModTime().Before(deviceBootTime),
+			// set the root of the content tree
+			Blobs: []string{sha256},
 		}
 
 		publishOldVolumeStatus(ctx, &status)

@@ -83,6 +83,10 @@ const (
 	VolumeConfigLogType LogObjectType = "volume_config"
 	// VolumeStatusLogType:
 	VolumeStatusLogType LogObjectType = "volume_status"
+	// VolumeRefConfigLogType:
+	VolumeRefConfigLogType LogObjectType = "volume_ref_config"
+	// VolumeRefStatusLogType:
+	VolumeRefStatusLogType LogObjectType = "volume_ref_status"
 )
 
 // RelationObjectType :

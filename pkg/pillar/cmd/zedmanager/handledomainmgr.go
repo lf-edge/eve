@@ -46,66 +46,25 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		CipherBlockStatus: aiConfig.CipherBlockStatus,
 	}
 
-	// Determine number of "disk" targets in list
-	numDisks := 0
-	for _, sc := range aiConfig.StorageConfigList {
-		if sc.Target == "" || sc.Target == "disk" || sc.Target == "tgtunknown" {
-			numDisks++
-		} else {
-			log.Infof("Not allocating disk for Target %s",
-				sc.Target)
-		}
-	}
-	dc.DiskConfigList = make([]types.DiskConfig, 0, numDisks)
-	for _, sc := range aiConfig.StorageConfigList {
-		ssPtr := lookupStorageStatus(&aiStatus, sc)
-		if ssPtr == nil {
-			log.Errorf("Missing StorageStatus for (Name: %s, "+
-				"ImageSha256: %s, ImageID: %s, PurgeCounter: %d)",
-				sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
+	dc.DiskConfigList = make([]types.DiskConfig, 0, len(aiStatus.VolumeRefStatusList))
+	for _, vrc := range aiConfig.VolumeRefConfigList {
+		vrs := getVolumeRefStatusFromAIStatus(&aiStatus, vrc)
+		if vrs == nil {
+			log.Errorf("Missing VolumeRefStatus for (VolumeID: %s, GenerationCounter: %d)",
+				vrc.VolumeID, vrc.GenerationCounter)
 			continue
 		}
-		location := ssPtr.ActiveFileLocation
+		location := vrs.ActiveFileLocation
 		if location == "" {
-			errStr := "No ActiveFileLocation"
+			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
 			return errors.New(errStr)
 		}
-
-		switch sc.Target {
-		case "", "disk", "tgtunknown":
-			disk := types.DiskConfig{}
-			disk.ImageID = sc.ImageID
-			// Pick up sha and FileLocation from volumemgr
-			disk.ImageSha256 = ssPtr.ImageSha256
-			disk.FileLocation = location
-			disk.ReadOnly = sc.ReadOnly
-			disk.Format = sc.Format
-			dc.DiskConfigList = append(dc.DiskConfigList, disk)
-		case "kernel":
-			if dc.Kernel != "" {
-				log.Infof("Overriding kernel %s with location %s",
-					dc.Kernel, location)
-			}
-			dc.Kernel = location
-		case "ramdisk":
-			if dc.Ramdisk != "" {
-				log.Infof("Overriding ramdisk %s with location %s",
-					dc.Ramdisk, location)
-			}
-			dc.Ramdisk = location
-		case "device_tree":
-			if dc.DeviceTree != "" {
-				log.Infof("Overriding device_tree %s with location %s",
-					dc.DeviceTree, location)
-			}
-			dc.DeviceTree = location
-		default:
-			errStr := fmt.Sprintf("Unknown target %s for %s",
-				sc.Target, displayName)
-			log.Errorln(errStr)
-			return errors.New(errStr)
-		}
+		disk := types.DiskConfig{}
+		disk.FileLocation = location
+		disk.ReadOnly = vrs.ReadOnly
+		disk.Format = vrs.ContentFormat
+		dc.DiskConfigList = append(dc.DiskConfigList, disk)
 	}
 	if ns != nil {
 		olNum := len(ns.OverlayNetworkList)

@@ -16,6 +16,7 @@ require (
 	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
+	github.com/docker/docker v1.4.2-0.20190924003213-a8608b5b67c7
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
@@ -26,7 +27,7 @@ require (
 	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
 	github.com/google/go-cmp v0.4.0
 	github.com/google/go-containerregistry v0.0.0-20200430153450-5cbd060f5c92
-	github.com/google/go-tpm v0.1.1
+	github.com/google/go-tpm v0.1.2-0.20190725015402-ae6dd98980d4
 	github.com/google/gopacket v1.1.17
 	github.com/gorilla/websocket v1.4.0
 	github.com/jackwakefield/gopac v1.0.2
@@ -66,7 +67,7 @@ replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 
 //Till we upstream ECDH TPM APIs
-replace github.com/google/go-tpm => github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3
+replace github.com/google/go-tpm => github.com/cshari-zededa/go-tpm v0.0.0-20200701063353-bf25d5482637
 
 // because containerd
 replace github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154

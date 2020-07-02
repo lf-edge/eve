@@ -20,8 +20,6 @@ func (ctx *volumemgrContext) subscription(topicType interface{}, objType string)
 	switch typeName := topicType.(type) {
 	case types.OldVolumeConfig:
 		switch objType {
-		case types.AppImgObj:
-			sub = ctx.subAppVolumeConfig
 		case types.BaseOsObj:
 			sub = ctx.subBaseOsVolumeConfig
 		default:

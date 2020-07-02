@@ -8,14 +8,22 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 var volumeHash []byte
+
+// volumeKey returns the key of the VM and OCI volumes
+func volumeKey(volumeID string, generationCounter int64) string {
+	return fmt.Sprintf("%s#%d", volumeID, generationCounter)
+}
 
 // volume parsing routine
 func parseVolumeConfig(ctx *getconfigContext,
@@ -44,7 +52,8 @@ func parseVolumeConfig(ctx *getconfigContext,
 	for idStr := range items {
 		found := false
 		for _, cfgVolume := range cfgVolumeList {
-			if cfgVolume.GetUuid() == idStr {
+			vKey := volumeKey(cfgVolume.GetUuid(), cfgVolume.GetGenerationCount())
+			if vKey == idStr {
 				found = true
 				break
 			}
@@ -66,7 +75,11 @@ func parseVolumeConfig(ctx *getconfigContext,
 		}
 		volumeConfig.MaxVolSize = uint64(cfgVolume.GetMaxsizebytes())
 		volumeConfig.GenerationCounter = cfgVolume.GetGenerationCount()
-		volumeConfig.VolumeDir = types.VolumeEncryptedDirName
+		if cfgVolume.GetClearText() {
+			volumeConfig.VolumeDir = types.VolumeClearDirName
+		} else {
+			volumeConfig.VolumeDir = types.VolumeEncryptedDirName
+		}
 		volumeConfig.DisplayName = cfgVolume.GetDisplayName()
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
 		volumeConfig.RefCount = 1
@@ -120,4 +133,34 @@ func handleVolumeStatusDelete(ctxArg interface{},
 	uuidStr := status.VolumeID.String()
 	PublishVolumeToZedCloud(ctx, uuidStr, nil, ctx.iteration)
 	ctx.iteration++
+}
+
+func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.ZMetricMsg) {
+	log.Debugf("Volume instance metrics started")
+	sub := ctx.subVolumeStatus
+	volumelist := sub.GetAll()
+	if volumelist == nil || len(volumelist) == 0 {
+		return
+	}
+	for _, volume := range volumelist {
+		volumeStatus := volume.(types.VolumeStatus)
+		volumeMetric := new(metrics.ZMetricVolume)
+		volumeMetric.Uuid = volumeStatus.VolumeID.String()
+		volumeMetric.DisplayName = volumeStatus.DisplayName
+		getVolumeResourcesMetrics(volumeStatus.FileLocation, volumeMetric)
+		reportMetrics.Vm = append(reportMetrics.Vm, volumeMetric)
+	}
+	log.Debugf("Volume instance metrics done: %v", reportMetrics.Vm)
+}
+
+func getVolumeResourcesMetrics(name string, volumeMetric *metrics.ZMetricVolume) error {
+
+	actualSize, maxSize, err := utils.GetVolumeSize(name)
+	if err != nil {
+		return err
+	}
+	volumeMetric.UsedBytes = actualSize
+	volumeMetric.TotalBytes = maxSize
+	volumeMetric.FreeBytes = maxSize - actualSize
+	return nil
 }

@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -589,16 +588,18 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 	}
 
 	zedcloudCtx.TlsConfig = tlsConfig
-	// verify the certificate chain and write the siging cert to file
+	// verify the certificate chain
 	certBytes, err := zedcloud.VerifySigningCertChain(zedcloudCtx, contents)
 	if err != nil {
-		log.Errorf("client fetchCertChain: verify err %v", err)
+		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
+		log.Errorln("fetchCertChain: " + errStr)
 		return false
 	}
 
-	err = fileutils.WriteRename(types.ServerSigningCertFileName, certBytes)
-	if err != nil {
-		log.Errorf("client fetchCertChain: file save err %v", err)
+	// write the signing cert to file
+	if err := zedcloud.UpdateServerCert(zedcloudCtx, certBytes); err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Errorln("fetchCertChain: " + errStr)
 		return false
 	}
 

@@ -61,7 +61,7 @@ func NewErrorAndTimeNow(errStr string) ErrorAndTime {
 // which is used to selectively clear errors by calling IsErrorSource before
 // calling ClearErrorWithSource. See zedmanager and volumemgr for example use.
 type ErrorAndTimeWithSource struct {
-	ErrorSourceType interface{}
+	ErrorSourceType string
 	Error           string
 	ErrorTime       time.Time
 }
@@ -72,7 +72,7 @@ func (etsPtr *ErrorAndTimeWithSource) SetError(errStr string, errTime time.Time)
 		log.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
-	etsPtr.ErrorSourceType = nil
+	etsPtr.ErrorSourceType = ""
 	etsPtr.ErrorTime = errTime
 }
 
@@ -87,7 +87,7 @@ func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 		log.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
-	etsPtr.ErrorSourceType = source
+	etsPtr.ErrorSourceType = reflect.TypeOf(source).String()
 	etsPtr.ErrorTime = errTime
 }
 
@@ -99,13 +99,13 @@ func (etsPtr *ErrorAndTimeWithSource) IsErrorSource(source interface{}) bool {
 	if !etsPtr.HasError() {
 		return false
 	}
-	return reflect.TypeOf(source) == reflect.TypeOf(etsPtr.ErrorSourceType)
+	return reflect.TypeOf(source).String() == etsPtr.ErrorSourceType
 }
 
 // ClearErrorWithSource - Clears error state
 func (etsPtr *ErrorAndTimeWithSource) ClearErrorWithSource() {
 	etsPtr.Error = ""
-	etsPtr.ErrorSourceType = nil
+	etsPtr.ErrorSourceType = ""
 	etsPtr.ErrorTime = time.Time{}
 }
 
@@ -122,14 +122,18 @@ func (etsPtr *ErrorAndTimeWithSource) ErrorAndTime() ErrorAndTime {
 
 // Disallow leaf types and pointers, since pointers
 // and their struct types do not compare as equal
+// Allow string in case passed from another ErrorSourceType
 func allowedSourceType(source interface{}) bool {
 	// Catch common mistakes like a string
 	switch source.(type) {
 	case int:
 		return false
 	case string:
-		return false
+		return true
 	case bool:
+		return false
+	}
+	if _, ok := source.(map[string]interface{}); ok {
 		return false
 	}
 	val := reflect.ValueOf(source)
