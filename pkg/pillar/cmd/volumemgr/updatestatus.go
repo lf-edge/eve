@@ -162,13 +162,24 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	changed := false
 	switch status.VolumeContentOriginType {
 	case zconfig.VolumeContentOriginType_VCOT_BLANK:
-		// XXX TBD
-		errStr := fmt.Sprintf("doUpdateVol(%s) name %s: Volume content origin type %v is not implemeted yet.",
-			status.Key(), status.DisplayName, status.VolumeContentOriginType)
-		status.SetErrorWithSource(errStr,
-			types.VolumeStatus{}, time.Now())
+		status.State = types.CREATING_VOLUME
+		// Creating blank volumes of type QCOW2
+		status.ContentFormat = zconfig.Format_QCOW2
+		status.FileLocation = status.PathName()
+		err := utils.Create9PAccessibleBlankVolume(status.FileLocation,
+			status.ContentFormat.String(), status.MaxVolSize)
+		if err != nil {
+			log.Error(err)
+			status.SetErrorWithSource(err.Error(),
+				types.VolumeStatus{}, time.Now())
+			changed = true
+			return changed, false
+		}
+		status.State = types.CREATED_VOLUME
+		status.Progress = 100
+		status.VolumeCreated = true
 		changed = true
-		return changed, false
+		return changed, true
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
 		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String())
 		if ctStatus == nil {

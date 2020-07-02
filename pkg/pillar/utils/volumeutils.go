@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 )
@@ -51,4 +53,22 @@ func GetVolumeSize(name string) (uint64, uint64, error) {
 		return 0, 0, errors.New(errStr)
 	}
 	return imgInfo.ActualSize, imgInfo.VirtualSize, nil
+}
+
+// Create9PAccessibleBlankVolume will create blank volume of given format and size
+func Create9PAccessibleBlankVolume(volumePath, format string, maxSize uint64) error {
+	if _, err := os.Stat(volumePath); err == nil {
+		errStr := fmt.Sprintf("CreateBlankVolume failed for %s: volume already exists",
+			volumePath)
+		return errors.New(errStr)
+	}
+	output, err := exec.Command("/usr/bin/qemu-img", "create",
+		"-f", strings.ToLower(format), "-o", fmt.Sprintf("size=%d", maxSize),
+		volumePath).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("CreateBlankVolume failed for %s: %s, %s",
+			volumePath, err, output)
+		return errors.New(errStr)
+	}
+	return nil
 }
