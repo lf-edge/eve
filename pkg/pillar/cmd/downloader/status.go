@@ -18,9 +18,9 @@ type PublishStatus struct {
 }
 
 // Progress report progress as a percentage of completeness
-func (d *PublishStatus) Progress(p uint, osize, asize int64) {
+func (d *PublishStatus) Progress(p uint, currentSize, totalSize int64) {
 	d.status.Progress = p
-	d.status.CurrentSize = osize
-	d.status.TotalSize = asize
+	d.status.CurrentSize = currentSize
+	d.status.TotalSize = totalSize
 	publishDownloaderStatus(d.ctx, d.status)
 }
