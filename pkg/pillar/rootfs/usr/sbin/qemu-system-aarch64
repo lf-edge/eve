@@ -1,2 +1,0 @@
-#!/bin/sh
-exec chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / --exec-id "$(uuidgen)" xen-tools /usr/lib/xen/bin/qemu-system-aarch64 "$@"
