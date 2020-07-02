@@ -9,7 +9,7 @@ config:
   binds:
     - /dev:/dev
     - /var:/var:rshared,rbind
-    - /:/hostfs
+    - /containers:/containers:rshared,rbind
   rootfsPropagation: shared
   net: host
   capabilities:
