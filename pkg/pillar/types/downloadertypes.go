@@ -14,7 +14,7 @@ import (
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type DownloaderConfig struct {
 	ImageSha256      string
-	ImageID          uuid.UUID // Used for logging
+	ImageID          uuid.UUID // Used for logging XXX remove
 	DatastoreID      uuid.UUID
 	Name             string
 	Target           string // file path where to download the file

@@ -1173,7 +1173,8 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVerifierStatusModify for %s", status.ImageID)
+	log.Infof("handleVeriferStatusModify RefCount %d for %s",
+		status.RefCount, key)
 	// Nothing to do
 }
 

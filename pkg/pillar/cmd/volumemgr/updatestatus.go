@@ -417,9 +417,9 @@ func lookForVerified(ctx *volumemgrContext, status *types.ContentTreeStatus) (*t
 }
 
 // Find all the VolumeStatus/ContentTreeStatus which refer to this Sha256
-func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
+func updateStatus(ctx *volumemgrContext, objType, sha string) {
 
-	log.Infof("updateStatus(%s) objType %s", uuid, objType)
+	log.Infof("updateStatus(%s) objType %s", sha, objType)
 	found := false
 	volPub := ctx.publication(types.OldVolumeStatus{}, objType)
 	volItems := volPub.GetAll()
@@ -451,7 +451,7 @@ func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
 	}
 	if !found {
 		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND",
-			uuid, objType)
+			sha, objType)
 	}
 }
 

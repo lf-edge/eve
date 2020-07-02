@@ -7,7 +7,6 @@ package types
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -25,13 +24,12 @@ import (
 type VerifyImageConfig struct {
 	ImageSha256      string // sha256 of immutable image
 	Name             string
-	CertificateChain []string  //name of intermediate certificates
-	ImageSignature   []byte    //signature of image
-	SignatureKey     string    //certificate containing public key
-	FileLocation     string    // Current location; should be info about file
-	Size             int64     //FileLocation size
-	ImageID          uuid.UUID // Used for logging
-	IsContainer      bool      // Is this image for a Container?
+	CertificateChain []string //name of intermediate certificates
+	ImageSignature   []byte   //signature of image
+	SignatureKey     string   //certificate containing public key
+	FileLocation     string   // Current location; should be info about file
+	Size             int64    //FileLocation size
+	IsContainer      bool     // Is this image for a Container?
 	RefCount         uint
 	Expired          bool // Used in delete handshake
 }
@@ -54,7 +52,7 @@ func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
 // LogCreate :
 func (config VerifyImageConfig) LogCreate() {
 	logObject := base.NewLogObject(base.VerifyImageConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -66,7 +64,7 @@ func (config VerifyImageConfig) LogCreate() {
 // LogModify :
 func (config VerifyImageConfig) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(VerifyImageConfig)
 	if !ok {
@@ -86,7 +84,7 @@ func (config VerifyImageConfig) LogModify(old interface{}) {
 // LogDelete :
 func (config VerifyImageConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		AddField("expired-bool", config.Expired).
 		Infof("VerifyImage config delete")
@@ -107,7 +105,6 @@ type VerifyImageStatus struct {
 	ObjType       string
 	FileLocation  string // Current location
 	Size          int64
-	ImageID       uuid.UUID // Used for logging
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool
@@ -137,7 +134,7 @@ func (status VerifyImageStatus) VerifyFilename(fileName string) bool {
 // LogCreate :
 func (status VerifyImageStatus) LogCreate() {
 	logObject := base.NewLogObject(base.VerifyImageStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -151,7 +148,7 @@ func (status VerifyImageStatus) LogCreate() {
 // LogModify :
 func (status VerifyImageStatus) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(base.VerifyImageStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(VerifyImageStatus)
 	if !ok {
@@ -185,7 +182,7 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 // LogDelete :
 func (status VerifyImageStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.VerifyImageStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("expired-bool", status.Expired).

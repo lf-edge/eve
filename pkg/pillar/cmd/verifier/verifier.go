@@ -38,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -241,7 +242,7 @@ func publishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
 	log.Debugf("publishVerifyImageStatus(%s, %s)",
-		status.ObjType, status.ImageID)
+		status.ObjType, status.ImageSha256)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
@@ -252,7 +253,7 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
 	log.Debugf("publishVerifyImageStatus(%s, %s)",
-		status.ObjType, status.ImageID)
+		status.ObjType, status.ImageSha256)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
@@ -349,14 +350,13 @@ func handleCreate(ctx *verifierContext, objType string,
 	config *types.VerifyImageConfig) {
 
 	log.Infof("handleCreate(%s) objType %s for %s",
-		config.ImageID, objType, config.Name)
+		config.ImageSha256, objType, config.Name)
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s",
-			config.ImageID)
+			config.ImageSha256)
 	}
 
 	status := types.VerifyImageStatus{
-		ImageID:     config.ImageID,
 		Name:        config.Name,
 		ObjType:     objType,
 		ImageSha256: config.ImageSha256,
@@ -375,7 +375,11 @@ func handleCreate(ctx *verifierContext, objType string,
 		return
 	}
 
-	ok, size := markObjectAsVerifying(ctx, config, &status)
+	// We generate a temporary UUID to avoid conflicts
+	// where multiple different objects can have a different claimed sha256
+	// Of course, only one of those will pass the verification.
+	tmpID := uuid.NewV4()
+	ok, size := markObjectAsVerifying(ctx, config, &status, tmpID)
 	if !ok {
 		log.Errorf("handleCreate: markObjectAsVerifying failed for %s", config.Name)
 		return
@@ -389,7 +393,7 @@ func handleCreate(ctx *verifierContext, objType string,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
-	markObjectAsVerified(config, &status)
+	markObjectAsVerified(config, &status, tmpID)
 	if status.FileLocation == "" {
 		log.Fatalf("handleCreate: Verified but no FileLocation for %s", status.Key())
 	}
@@ -626,12 +630,12 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	log.Infof("handleModify(%s) objType %s for %s, config.RefCount: %d, "+
 		"status.RefCount: %d, isContainer: %t",
-		status.ImageID, status.ObjType, config.Name, config.RefCount,
+		status.ImageSha256, status.ObjType, config.Name, config.RefCount,
 		status.RefCount, config.IsContainer)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s",
-			status.ImageID)
+			status.ImageSha256)
 	}
 
 	// Always update RefCount and Expired
@@ -661,11 +665,11 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
 	log.Infof("handleDelete(%s) objType %s refcount %d",
-		status.ImageID, status.ObjType, status.RefCount)
+		status.ImageSha256, status.ObjType, status.RefCount)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s",
-			status.ImageID)
+			status.ImageSha256)
 	}
 	_, err := os.Stat(status.FileLocation)
 	if err == nil {
@@ -680,7 +684,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 	}
 
 	unpublishVerifyImageStatus(ctx, status)
-	log.Infof("handleDelete done for %s", status.ImageID)
+	log.Infof("handleDelete done for %s", status.ImageSha256)
 }
 
 // Handles both create and modify events
@@ -718,21 +722,21 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 // ImageVerifierDirNames - Returns pendingDirname, verifierDirname, verifiedDirname
 // for the image.
-func ImageVerifierDirNames(objType, ImageID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
+func ImageVerifierDirNames(objType, tmpID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
 
 	var pendingDirname, verifierDirname, verifiedDirname string
 	pendingDirname = path.Dir(config.FileLocation)
-	verifierDirname = getVerifierDir(objType) + "/" + ImageID
+	verifierDirname = getVerifierDir(objType) + "/" + tmpID
 	verifiedDirname = getVerifiedDir(objType) + "/" + ImageSha256
 	return pendingDirname, verifierDirname, verifiedDirname
 }
 
 // ImageVerifierFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
 // for the image
-func ImageVerifierFilenames(objType, ImageID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
+func ImageVerifierFilenames(objType, tmpID, ImageSha256 string, config *types.VerifyImageConfig) (string, string, string) {
 	var pendingFilename, verifierFilename, verifiedFilename string
 
-	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(objType, ImageID, ImageSha256, config)
+	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(objType, tmpID, ImageSha256, config)
 	// Handle names which are paths
 	filename := path.Base(config.FileLocation)
 	pendingFilename = config.FileLocation
@@ -744,10 +748,10 @@ func ImageVerifierFilenames(objType, ImageID, ImageSha256 string, config *types.
 // Returns ok, size of object
 func markObjectAsVerifying(ctx *verifierContext,
 	config *types.VerifyImageConfig,
-	status *types.VerifyImageStatus) (bool, int64) {
+	status *types.VerifyImageStatus, tmpID uuid.UUID) (bool, int64) {
 
-	pendingDirname, verifierDirname, _ := ImageVerifierDirNames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
-	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	pendingDirname, verifierDirname, _ := ImageVerifierDirNames(status.ObjType, tmpID.String(), status.ImageSha256, config)
+	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(status.ObjType, tmpID.String(), status.ImageSha256, config)
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -801,10 +805,10 @@ func markObjectAsVerifying(ctx *verifierContext,
 	return true, info.Size()
 }
 
-func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyImageStatus) {
+func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyImageStatus, tmpID uuid.UUID) {
 
-	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
-	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(status.ObjType, status.ImageID.String(), status.ImageSha256, config)
+	_, verifierDirname, verifiedDirname := ImageVerifierDirNames(status.ObjType, tmpID.String(), status.ImageSha256, config)
+	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(status.ObjType, tmpID.String(), status.ImageSha256, config)
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts

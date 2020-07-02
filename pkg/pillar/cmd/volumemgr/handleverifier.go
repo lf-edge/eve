@@ -90,7 +90,6 @@ func MaybeAddVerifyImageConfig(ctx *volumemgrContext,
 		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
 			status.ContentSha256, status.IsContainer())
 		n := types.VerifyImageConfig{
-			ImageID:          status.ContentID,
 			Name:             status.DisplayName,
 			ImageSha256:      status.ContentSha256,
 			CertificateChain: status.CertificateChain,
@@ -122,9 +121,9 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha strin
 	}
 	if m.RefCount == 0 {
 		log.Fatalf("MaybeRemoveVerifyImageConfig: Attempting to reduce "+
-			"0 RefCount. Image Details - Name: %s, ImageID: %s, "+
+			"0 RefCount. Image Details - Name: %s, "+
 			"ImageSha256:%s, IsContainer: %t",
-			m.Name, m.ImageID, m.ImageSha256, m.IsContainer)
+			m.Name, m.ImageSha256, m.IsContainer)
 	}
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s",
@@ -171,9 +170,9 @@ func MaybeDeleteVerifyImageConfig(ctx *volumemgrContext, objType, imageSha strin
 	}
 	if m.RefCount != 0 {
 		log.Warnf("MaybeDeleteVerifyImageConfig: Attempting to delete but not zero "+
-			"RefCount %d. Image Details - Name: %s, ImageID: %s, "+
+			"RefCount %d. Image Details - Name: %s, "+
 			"ImageSha256:%s, IsContainer: %t",
-			m.RefCount, m.Name, m.ImageID, m.ImageSha256, m.IsContainer)
+			m.RefCount, m.Name, m.ImageSha256, m.IsContainer)
 		return
 	}
 	m.Expired = true
@@ -204,7 +203,6 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		// Note: signature-related fields are filled in when
 		// RefCount increases from zero in MaybeAddVerifyImageConfig
 		n := types.VerifyImageConfig{
-			ImageID:      status.ImageID, // XXX delete? empty
 			Name:         status.Name,
 			ImageSha256:  status.ImageSha256,
 			Size:         status.Size,
@@ -233,7 +231,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
-	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }
 
@@ -259,6 +257,6 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
-	updateStatus(ctx, status.ObjType, status.ImageSha256, status.ImageID)
+	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusDelete done for %s", key)
 }
