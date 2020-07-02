@@ -356,12 +356,10 @@ func handleCreate(ctx *verifierContext, objType string,
 	}
 
 	status := types.VerifyImageStatus{
-		ImageID: config.ImageID,
-		VerifyStatus: types.VerifyStatus{
-			Name:        config.Name,
-			ObjType:     objType,
-			ImageSha256: config.ImageSha256,
-		},
+		ImageID:     config.ImageID,
+		Name:        config.Name,
+		ObjType:     objType,
+		ImageSha256: config.ImageSha256,
 		PendingAdd:  true,
 		State:       types.VERIFYING,
 		RefCount:    config.RefCount,
@@ -871,14 +869,12 @@ func verifyImageStatusFromImageFile(
 	size int64, filename string) *types.VerifyImageStatus {
 
 	status := types.VerifyImageStatus{
-		VerifyStatus: types.VerifyStatus{
-			Name:         imageFileName,
-			ObjType:      objType,
-			FileLocation: filename,
-			ImageSha256:  parentDirname,
-			Size:         size,
-		},
-		RefCount: 0,
+		Name:         imageFileName,
+		ObjType:      objType,
+		FileLocation: filename,
+		ImageSha256:  parentDirname,
+		Size:         size,
+		RefCount:     0,
 	}
 
 	log.Debugf("verifyImageStatusFromImageFile: objType: %s, "+

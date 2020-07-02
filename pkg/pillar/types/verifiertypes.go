@@ -102,11 +102,11 @@ func (config VerifyImageConfig) LogKey() string {
 // VerifyImageStatus captures the verifications which have been requested.
 // The key/index to this is the ImageSha256
 type VerifyImageStatus struct {
-	ImageSha256  string // sha256 of immutable image
-	Name         string
-	ObjType      string
-	FileLocation string // Current location
-	Size         int64
+	ImageSha256   string // sha256 of immutable image
+	Name          string
+	ObjType       string
+	FileLocation  string // Current location
+	Size          int64
 	ImageID       uuid.UUID // Used for logging
 	PendingAdd    bool
 	PendingModify bool
@@ -214,11 +214,4 @@ func (status VerifyImageStatus) CheckPendingDelete() bool {
 
 func (status VerifyImageStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
-}
-
-// ImageDownloadDirName - Returns verifiedDirname
-// for the image.
-func (status PersistImageStatus) ImageDownloadDirName() string {
-	downloadDirname := DownloadDirname + "/" + status.ObjType
-	return downloadDirname + "/verified/" + status.ImageSha256
 }
