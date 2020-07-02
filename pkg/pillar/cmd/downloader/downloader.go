@@ -325,16 +325,15 @@ func handleCreate(ctx *downloaderContext, objType string,
 	config types.DownloaderConfig, status *types.DownloaderStatus, key string) {
 
 	log.Infof("handleCreate(%s) objType %s for %s",
-		config.ImageID, objType, config.Name)
+		config.ImageSha256, objType, config.Name)
 
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s",
-			config.ImageID)
+			config.ImageSha256)
 	}
 	if status == nil {
 		// Start by marking with PendingAdd
 		status0 := types.DownloaderStatus{
-			ImageID:          config.ImageID,
 			DatastoreID:      config.DatastoreID,
 			Name:             config.Name,
 			ImageSha256:      config.ImageSha256,
@@ -350,7 +349,6 @@ func handleCreate(ctx *downloaderContext, objType string,
 	} else {
 		// when refcount moves from 0 to a non-zero number,
 		// should trigger a fresh download of the object
-		status.ImageID = config.ImageID
 		status.DatastoreID = config.DatastoreID
 		status.ImageSha256 = config.ImageSha256
 		status.State = types.DOWNLOADING
@@ -373,18 +371,18 @@ func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
 	log.Infof("handleModify(%s) objType %s for %s",
-		status.ImageID, status.ObjType, status.Name)
+		status.ImageSha256, status.ObjType, status.Name)
 
 	status.PendingModify = true
 	publishDownloaderStatus(ctx, status)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s",
-			status.ImageID)
+			status.ImageSha256)
 	}
 
 	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s",
-		status.ImageID, status.RefCount, config.RefCount,
+		status.ImageSha256, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
 
 	// If RefCount from zero to non-zero and status has error
@@ -405,7 +403,7 @@ func handleModify(ctx *downloaderContext, key string,
 func doDelete(ctx *downloaderContext, key string, filename string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("doDelete(%s) for %s", status.ImageID, status.Name)
+	log.Infof("doDelete(%s) for %s", status.ImageSha256, status.Name)
 
 	if _, err := os.Stat(filename); err == nil {
 		log.Infof("Deleting %s", filename)
@@ -454,12 +452,12 @@ func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
 	log.Infof("handleDelete(%s) objType %s for %s RefCount %d LastUse %v Expired %v",
-		status.ImageID, status.ObjType, status.Name,
+		status.ImageSha256, status.ObjType, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s",
-			status.ImageID)
+			status.ImageSha256)
 	}
 
 	status.PendingDelete = true

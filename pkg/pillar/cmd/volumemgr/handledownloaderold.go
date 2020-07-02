@@ -50,10 +50,8 @@ func AddOrRefcountDownloaderConfigOld(ctx *volumemgrContext, status types.OldVol
 	size := status.DownloadOrigin.MaxDownSize
 
 	n := types.DownloaderConfig{
-		ImageID:     status.VolumeID,
 		DatastoreID: status.DownloadOrigin.DatastoreID,
-		// XXX StorageConfig.Name is what?
-		Name:        name, // XXX URL? DisplayName?
+		Name:        name,
 		NameIsURL:   status.DownloadOrigin.NameIsURL,
 		ImageSha256: status.DownloadOrigin.ImageSha256,
 		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,

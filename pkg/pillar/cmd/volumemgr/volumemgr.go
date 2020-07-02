@@ -845,10 +845,9 @@ func handleCertObjDelete(ctx *volumemgrContext, key string,
 func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := statusArg.(types.DownloaderStatus)
+	// XXX status := statusArg.(types.DownloaderStatus)
 	// XXX ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleDownloadStatusModify for %s",
-		status.ImageID)
+	log.Infof("handleDownloadStatusModify for %s", key)
 	// XXX updateDownloaderStatus(ctx, &status)
 	// XXX do we need to walk all certObj to find imageID, and call:
 	// XXX certObjHandleStatusUpdate(ctx, &config, &status)
