@@ -114,7 +114,6 @@ type ContentTreeStatus struct {
 	HasResolverRef    bool
 	HasDownloaderRef  bool
 	HasVerifierRef    bool
-	HasPersistRef     bool
 	WaitingForCerts   bool
 	State             SwState
 	TotalSize         int64  // expected size as reported by the downloader, if any
@@ -160,6 +159,7 @@ func (status ContentTreeStatus) LogCreate() {
 		AddField("state", status.State.String()).
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
+		AddField("objtype", status.ObjType).
 		Infof("Content tree status create")
 }
 
@@ -188,6 +188,7 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-progress", oldStatus.Progress).
 			AddField("old-filelocation", oldStatus.FileLocation).
+			AddField("objtype", status.ObjType).
 			Infof("Content tree status modify")
 	}
 }
@@ -201,6 +202,7 @@ func (status ContentTreeStatus) LogDelete() {
 		AddField("state", status.State.String()).
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
+		AddField("objtype", status.ObjType).
 		Infof("Content tree status delete")
 
 	base.DeleteLogObject(status.LogKey())

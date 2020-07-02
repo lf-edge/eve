@@ -31,7 +31,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s",
-			status.ImageID)
+			status.ImageSha256)
 	}
 
 	// the target filename, where to place the download, is provided in config.
@@ -250,7 +250,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOpResponse: No ObjType for %s",
-			status.ImageID)
+			status.ImageSha256)
 	}
 
 	if errStr != "" {

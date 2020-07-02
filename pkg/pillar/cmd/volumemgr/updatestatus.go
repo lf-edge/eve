@@ -166,14 +166,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					blob.State, blob.Sha256)
 			} else {
 				log.Infof("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
-				if !blob.HasPersistRef {
-					log.Infof("doUpdateContentTree: Adding PersistImageStatus reference for blob: %s",
-						blob.Sha256)
-					AddOrRefCountPersistImageStatus(ctx, "",
-						blob.ObjType, blob.Path,
-						blob.Sha256, int64(blob.Size))
-					blob.HasPersistRef = true
-				}
 				// if verified, check for any children and start them off
 				// resolve any unknown types and get manifests of index, or children of manifest
 				blobType, err := resolveBlobType(blob)
@@ -442,7 +434,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	return changed, false
 }
 
-// updateStatus update all VolumeStatus/ContentTreeStatus which include a blob
+// updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
 // that has this Sha256
 func updateStatus(ctx *volumemgrContext, objType, sha string) {
 
@@ -489,7 +481,8 @@ func updateStatus(ctx *volumemgrContext, objType, sha string) {
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND", sha, objType)
+		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND",
+			sha, objType)
 	}
 }
 

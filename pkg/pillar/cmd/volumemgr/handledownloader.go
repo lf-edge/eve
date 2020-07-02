@@ -47,9 +47,8 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 	size := blob.Size
 
 	n := types.DownloaderConfig{
-		DatastoreID: blob.DatastoreID,
-		// XXX StorageConfig.Name is what?
-		Name:             blob.RelativeURL, // XXX URL? DisplayName?
+		DatastoreID:      blob.DatastoreID,
+		Name:             blob.RelativeURL,
 		ImageSha256:      blob.Sha256,
 		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig, objType),
 		Size:             size,
@@ -121,36 +120,14 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 
 	// Handling even if Pending is set to process Progress updates
 
-	// XXX still need this downloader handshake?
-	// We handle two special cases in the handshake here
-	// 1. downloader added a status with RefCount=0 based on
-	// an existing file. We echo that with a config with RefCount=0
-	// 2. downloader set Expired in status when garbage collecting.
+	// We handle one special case in the handshake here, which is when
+	// downloader sets Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
+	// If we have a config with non-zero RefCount it means there was
+	// a race and downloader will see the RefCount increase and clear the
+	// Expired flag (and not delete the file).
 
 	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
-	if config == nil && status.RefCount == 0 {
-		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s",
-			key)
-
-		// where should the final downloaded file be?
-		locFilename := path.Join(types.DownloadDirname, status.ObjType, "pending", status.ImageID.String(), path.Base(status.Name))
-
-		n := types.DownloaderConfig{
-			ImageID:     status.ImageID,
-			DatastoreID: status.DatastoreID,
-			Name:        status.Name,
-			NameIsURL:   status.NameIsURL,
-			ImageSha256: status.ImageSha256,
-			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-				types.AppImgObj),
-			Size:     status.Size,
-			RefCount: 0,
-			Target:   locFilename,
-		}
-		publishDownloaderConfig(ctx, status.ObjType, &n)
-		return
-	}
 	if config != nil && config.RefCount == 0 && status.Expired {
 		log.Infof("handleDownloaderStatusModify expired - deleting config %s",
 			key)
@@ -197,7 +174,6 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloaderStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.DownloaderStatus)
-	// update the status - do not change the sizes
 	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
