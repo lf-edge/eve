@@ -259,7 +259,7 @@ func kickVerifierOld(ctx *volumemgrContext, status *types.OldVolumeStatus, check
 func lookForVerifiedOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (*types.VerifyImageStatus, bool) {
 	changed := false
 	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.BlobSha256)
-	if vs == nil {
+	if vs == nil || vs.Expired {
 		ps := lookupPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
 		if ps == nil {
 			log.Infof("Verify/PersistImageStatus for %s sha %s not found",

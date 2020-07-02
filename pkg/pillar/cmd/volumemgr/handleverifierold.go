@@ -33,7 +33,7 @@ func MaybeAddVerifyImageConfigOld(ctx *volumemgrContext,
 	}
 
 	m := lookupVerifyImageConfig(ctx, status.ObjType, status.BlobSha256)
-	if m != nil {
+	if m != nil || m.Expired {
 		m.RefCount++
 		log.Infof("MaybeAddVerifyImageConfigOld: refcnt to %d for %s",
 			m.RefCount, status.BlobSha256)

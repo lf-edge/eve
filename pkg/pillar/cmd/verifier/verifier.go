@@ -59,11 +59,11 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
-	subAppImgConfig        pubsub.Subscription
-	pubAppImgStatus        pubsub.Publication
-	subBaseOsConfig        pubsub.Subscription
-	pubBaseOsStatus        pubsub.Publication
-	subGlobalConfig        pubsub.Subscription
+	subAppImgConfig pubsub.Subscription
+	pubAppImgStatus pubsub.Publication
+	subBaseOsConfig pubsub.Subscription
+	pubBaseOsStatus pubsub.Publication
+	subGlobalConfig pubsub.Subscription
 
 	GCInitialized bool
 }
@@ -617,7 +617,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	return ""
 }
 
-// This merely updates the RefCount in the status 
+// This merely updates the RefCount and Expired in the status
 // Note that verifier will retain the file even if RefCount in VerifyImageConfig
 // is set to zero.
 func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
@@ -636,11 +636,17 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 			status.ImageID)
 	}
 
-	// Always update RefCount
+	// Always update RefCount and Expired
 	if status.RefCount != config.RefCount {
 		log.Infof("handleModify RefCount change %s from %d to %d",
 			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
+		changed = true
+	}
+	if status.Expired != config.Expired {
+		log.Infof("handleModify Expired change %s from %t to %t",
+			config.Name, status.Expired, config.Expired)
+		status.Expired = config.Expired
 		changed = true
 	}
 

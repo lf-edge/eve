@@ -33,6 +33,7 @@ type VerifyImageConfig struct {
 	ImageID          uuid.UUID // Used for logging
 	IsContainer      bool      // Is this image for a Container?
 	RefCount         uint
+	Expired          bool // Used in delete handshake
 }
 
 // Key returns the pubsub Key
@@ -58,6 +59,7 @@ func (config VerifyImageConfig) LogCreate() {
 		return
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("expired-bool", config.Expired).
 		Infof("VerifyImage config create")
 }
 
@@ -70,10 +72,13 @@ func (config VerifyImageConfig) LogModify(old interface{}) {
 	if !ok {
 		log.Errorf("LogModify: Old object interface passed is not of VerifyImageConfig type")
 	}
-	if oldConfig.RefCount != config.RefCount {
+	if oldConfig.RefCount != config.RefCount ||
+		oldConfig.Expired != config.Expired {
 
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
+			AddField("expired-bool", config.Expired).
 			AddField("old-refcount-int64", oldConfig.RefCount).
+			AddField("old-expired-bool", oldConfig.Expired).
 			Infof("VerifyImage config modify")
 	}
 }
@@ -83,6 +88,7 @@ func (config VerifyImageConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
 		config.ImageID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("expired-bool", config.Expired).
 		Infof("VerifyImage config delete")
 
 	base.DeleteLogObject(config.LogKey())
@@ -106,6 +112,7 @@ type VerifyImageStatus struct {
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RefCount uint
+	Expired  bool // Used in delete handshake
 }
 
 // The VerifyStatus is shared between VerifyImageStatus and PersistImageStatus
@@ -114,7 +121,7 @@ type VerifyStatus struct {
 	Name         string
 	ObjType      string
 	FileLocation string // Current location; should be info about file
-	Size         int64  // XXX used?
+	Size         int64
 }
 
 // Key returns the pubsub Key
@@ -141,6 +148,7 @@ func (status VerifyImageStatus) LogCreate() {
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
+		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
 		Infof("VerifyImage status create")
 }
@@ -156,13 +164,16 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RefCount != status.RefCount ||
+		oldStatus.Expired != status.Expired ||
 		oldStatus.Size != status.Size {
 
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("refcount-int64", status.RefCount).
+			AddField("expired-bool", status.Expired).
 			AddField("size-int64", status.Size).
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-refcount-int64", oldStatus.RefCount).
+			AddField("old-expired-bool", oldStatus.Expired).
 			AddField("old-size-int64", oldStatus.Size).
 			Infof("VerifyImage status modify")
 	}
@@ -182,6 +193,7 @@ func (status VerifyImageStatus) LogDelete() {
 		status.ImageID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
+		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
 		Infof("VerifyImage status delete")
 
