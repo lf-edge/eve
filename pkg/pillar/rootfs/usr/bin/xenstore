@@ -1,3 +1,0 @@
-#!/bin/sh
-# shellcheck disable=SC2046,SC2086
-exec chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / --exec-id "$(uuidgen)" xen-tools xenstore "$@"
