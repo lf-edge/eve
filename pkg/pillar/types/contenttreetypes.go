@@ -114,7 +114,6 @@ type ContentTreeStatus struct {
 	HasResolverRef    bool
 	HasDownloaderRef  bool
 	HasVerifierRef    bool
-	HasPersistRef     bool
 	WaitingForCerts   bool
 	State             SwState
 	Progress          uint   // In percent i.e., 0-100
