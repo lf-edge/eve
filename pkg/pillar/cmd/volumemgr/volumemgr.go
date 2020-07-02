@@ -60,8 +60,6 @@ type volumemgrContext struct {
 	subBaseOsDownloadStatus pubsub.Subscription
 	pubBaseOsVerifierConfig pubsub.Publication
 	subBaseOsVerifierStatus pubsub.Subscription
-	pubAppImgPersistStatus  pubsub.Publication
-	pubBaseOsPersistStatus  pubsub.Publication
 
 	subContentTreeResolveStatus pubsub.Subscription
 	pubContentTreeResolveConfig pubsub.Publication
@@ -302,29 +300,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
-	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgPersistStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.AppImgObj,
-			TopicType:  types.PersistImageStatus{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppImgPersistStatus = pubAppImgPersistStatus
-
-	pubBaseOsPersistStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			AgentScope: types.BaseOsObj,
-			TopicType:  types.PersistImageStatus{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
-
 	// Publish existing volumes with RefCount zero in the "unknown"
 	// agentScope
 	// Note that nobody subscribes to this. Used internally
@@ -332,9 +307,6 @@ func Run(ps *pubsub.PubSub) {
 	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
 	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
 	populateExistingVolumesFormat(volumeEncryptedDirName)
-	// Publish PersistImageStatus for ourselves and so that we
-	// can later tell verifier to delete unused content
-	populatePersistImageStatus(&ctx)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{

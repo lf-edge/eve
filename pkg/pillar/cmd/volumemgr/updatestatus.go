@@ -80,12 +80,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			log.Infof("doUpdateContentTree: Found %s based on ContentID %s sha %s",
 				status.DisplayName, status.ContentID, status.ContentSha256)
 			if status.State != vs.State {
-				if vs.State == types.VERIFIED && !status.HasPersistRef {
-					log.Infof("doUpdateContentTree: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
-					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
-					status.HasPersistRef = true
-					changed = true
-				}
 				log.Infof("doUpdateContentTree: Update State of %s from %d to %d", status.ContentSha256, status.State, vs.State)
 				status.State = vs.State
 				changed = true
@@ -396,6 +390,7 @@ func kickVerifier(ctx *volumemgrContext, status *types.ContentTreeStatus, checkC
 	return changed
 }
 
+// XXX fix comment
 // lookForVerified handles the split between PersistImageStatus and
 // VerifyImageStatus. If it only finds the Persist it returns nil but
 // sets up a VerifyImageConfig.
@@ -404,42 +399,10 @@ func lookForVerified(ctx *volumemgrContext, status *types.ContentTreeStatus) (*t
 	changed := false
 	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.ContentSha256)
 	if vs == nil || vs.Expired {
-		ps := lookupPersistImageStatus(ctx, status.ObjType, status.ContentSha256)
-		if ps == nil {
-			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
-				status.ContentID, status.ContentSha256)
-		} else {
-			log.Infof("lookForVerified: Found PersistImageStatus: %s based on ImageSha256 %s ContentID %s",
-				status.DisplayName, status.ContentSha256, status.ContentID)
-			if !status.HasPersistRef {
-				log.Infof("lookForVerified: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
-				AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
-				status.HasPersistRef = true
-				changed = true
-			}
-			//Marking the ContentTreeStatus state as VERIFIED as we already have a PersistImageStatus for the content tree
-			if status.State != types.VERIFIED {
-				status.State = types.VERIFIED
-				status.Progress = 100
-				changed = true
-			}
-			if status.FileLocation != ps.FileLocation {
-				status.FileLocation = ps.FileLocation
-				log.Infof("lookForVerified: Update FileLocation for %s: %s",
-					status.Key(), status.FileLocation)
-				changed = true
-			}
-			// If we don't already have a RefCount add one
-			if !status.HasVerifierRef {
-				log.Infof("!HasVerifierRef")
-				// We don't need certs since Status already exists
-				MaybeAddVerifyImageConfig(ctx, *status, false)
-				status.HasVerifierRef = true
-				changed = true
-			}
-			//Wait for VerifyImageStatus to appear
-			return nil, changed
-		}
+		log.Infof("VerifyImageStatus for %s sha %s not found",
+			status.ContentID, status.ContentSha256)
+		//Wait for VerifyImageStatus to appear
+		return nil, changed
 	} else {
 		log.Infof("Found %s based on ContentID %s sha %s",
 			status.DisplayName, status.ContentID, status.ContentSha256)

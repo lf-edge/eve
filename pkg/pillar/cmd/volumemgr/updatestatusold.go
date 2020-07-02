@@ -33,12 +33,6 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 			log.Infof("doUpdateOld: Found %s based on VolumeID %s sha %s",
 				status.DisplayName, status.VolumeID, status.BlobSha256)
 			if status.State != vs.State {
-				if vs.State == types.VERIFIED && !status.DownloadOrigin.HasPersistRef {
-					log.Infof("doUpdateOld: Adding PersistImageStatus reference for VolumeStatus: %s", status.BlobSha256)
-					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
-					status.DownloadOrigin.HasPersistRef = true
-					changed = true
-				}
 				log.Infof("doUpdateOld: Update State of %s from %d to %d", status.BlobSha256, status.State, vs.State)
 				status.State = vs.State
 				changed = true
@@ -252,6 +246,7 @@ func kickVerifierOld(ctx *volumemgrContext, status *types.OldVolumeStatus, check
 	return changed
 }
 
+// XXX update comment?
 // lookForVerifiedOld handles the split between PersistImageStatus and
 // VerifyImageStatus. If it only finds the Persist it returns nil but
 // sets up a VerifyImageConfig.
@@ -260,42 +255,10 @@ func lookForVerifiedOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (*
 	changed := false
 	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.BlobSha256)
 	if vs == nil || vs.Expired {
-		ps := lookupPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
-		if ps == nil {
-			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
-				status.VolumeID, status.BlobSha256)
-		} else {
-			log.Infof("lookForVerifiedOld: Found PersistImageStatus: %s based on ImageSha256 %s VolumeID %s",
-				status.DisplayName, status.BlobSha256, status.VolumeID)
-			if !status.DownloadOrigin.HasPersistRef {
-				log.Infof("lookForVerifiedOld: Adding PersistImageStatus reference for VolumeStatus: %s", status.BlobSha256)
-				AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
-				status.DownloadOrigin.HasPersistRef = true
-				changed = true
-			}
-			//Marking the VolumeStatus state as VERIFIED as we already have a PersistImageStatus for the volume
-			if status.State != types.VERIFIED {
-				status.State = types.VERIFIED
-				status.Progress = 100
-				changed = true
-			}
-			if status.FileLocation != ps.FileLocation {
-				status.FileLocation = ps.FileLocation
-				log.Infof("lookForVerifiedOld: Update FileLocation for %s: %s",
-					status.Key(), status.FileLocation)
-				changed = true
-			}
-			// If we don't already have a RefCount add one
-			if !status.DownloadOrigin.HasVerifierRef {
-				log.Infof("!HasVerifierRef")
-				// We don't need certs since Status already exists
-				MaybeAddVerifyImageConfigOld(ctx, *status, false)
-				status.DownloadOrigin.HasVerifierRef = true
-				changed = true
-			}
-			//Wait for VerifyImageStatus to appear
-			return nil, changed
-		}
+		log.Infof("VerifyImageStatus for %s sha %s not found",
+			status.VolumeID, status.BlobSha256)
+		//Wait for VerifyImageStatus to appear
+		return nil, changed
 	} else {
 		log.Infof("Found %s based on VolumeID %s sha %s",
 			status.DisplayName, status.VolumeID, status.BlobSha256)
@@ -327,11 +290,6 @@ func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 			MaybeRemoveVerifyImageConfig(ctx, status.ObjType,
 				status.BlobSha256)
 			status.DownloadOrigin.HasVerifierRef = false
-			changed = true
-		}
-		if status.DownloadOrigin.HasPersistRef {
-			ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
-			status.DownloadOrigin.HasPersistRef = false
 			changed = true
 		}
 	}
