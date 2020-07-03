@@ -270,6 +270,14 @@ run-live-gcp: $(LINUXKIT) | $(LIVE).img.tar.gz
 	fi
 	$^ run gcp $(CLOUD_PROJECT) $(CLOUD_INSTANCE) $(CLOUD_IMG_NAME)
 
+live-gcp-upload: $(LINUXKIT) | $(LIVE).img.tar.gz
+	if gcloud compute images list -$(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
+	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $|                          ;\
+		echo "Uploaded $(CLOUD_IMG_NAME)"; \
+	else \
+		echo "Image $(CLOUD_IMG_NAME) already exists in GCP" ;\
+	fi
+
 # ensure the dist directory exists
 $(DIST) $(INSTALLER):
 	mkdir -p $@
