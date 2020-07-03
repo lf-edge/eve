@@ -112,8 +112,6 @@ type ContentTreeStatus struct {
 	CertificateChain  []string //name of intermediate certificates
 	DisplayName       string
 	HasResolverRef    bool
-	HasDownloaderRef  bool
-	HasVerifierRef    bool
 	WaitingForCerts   bool
 	State             SwState
 	TotalSize         int64  // expected size as reported by the downloader, if any
