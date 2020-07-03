@@ -425,6 +425,10 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 			Path:           vs.FileLocation,
 			HasVerifierRef: true,
 			ObjType:        objType,
+			Size:           uint64(vs.Size),
+			CurrentSize:    vs.Size,
+			TotalSize:      vs.Size,
+			Progress:       100,
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
 		startBlobVerification(ctx, objType, sv, blob)
