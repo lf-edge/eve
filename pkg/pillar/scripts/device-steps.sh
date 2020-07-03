@@ -120,8 +120,10 @@ P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
     #It is a device with TPM, and formatted with ext4, setup fscrypt
     echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
-    #Initialize fscrypt algorithm, hash length etc.
-    $BINDIR/vaultmgr setupVaults
+    #Initialize fscrypt algorithm, hash length etc
+    if ! $BINDIR/vaultmgr setupVaults; then
+        echo "$(date -Ins -u) device-steps: vaultmgr setupVaults failed"
+    fi
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
@@ -165,18 +167,6 @@ fi
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter"
 status=$($BINDIR/upgradeconverter)
 echo "$(date -Ins -u) device-steps: upgradeconverter Completed. Status: $status"
-
-if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
-    echo "$(date -Ins -u) device-steps: TPM device, creating additional security certificates"
-    if ! $BINDIR/tpmmgr createCerts; then
-        echo "$(date -Ins -u) device-steps: createCerts failed"
-    fi
-else
-    echo "$(date -Ins -u) device-steps: NOT TPM device, creating additional security certificates"
-    if ! $BINDIR/tpmmgr createSoftCerts; then
-        echo "$(date -Ins -u) device-steps: createSoftCerts failed"
-    fi
-fi
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -360,6 +350,18 @@ fi
 if [ ! -f $CONFIGDIR/server ] || [ ! -f $CONFIGDIR/root-certificate.pem ]; then
     echo "$(date -Ins -u) No server or root-certificate to connect to. Done"
     exit 0
+fi
+
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+    echo "$(date -Ins -u) device-steps: TPM device, creating additional security certificates"
+    if ! $BINDIR/tpmmgr createCerts; then
+        echo "$(date -Ins -u) device-steps: createCerts failed"
+    fi
+else
+    echo "$(date -Ins -u) device-steps: NOT TPM device, creating additional security certificates"
+    if ! $BINDIR/tpmmgr createSoftCerts; then
+        echo "$(date -Ins -u) device-steps: createSoftCerts failed"
+    fi
 fi
 
 # Deposit any diag information from nim and onboarding
