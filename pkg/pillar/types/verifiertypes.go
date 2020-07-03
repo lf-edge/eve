@@ -29,7 +29,6 @@ type VerifyImageConfig struct {
 	SignatureKey     string   //certificate containing public key
 	FileLocation     string   // Current location; should be info about file
 	Size             int64    //FileLocation size
-	IsContainer      bool     // Is this image for a Container?
 	RefCount         uint
 	Expired          bool // Used in delete handshake
 }
@@ -98,7 +97,6 @@ type VerifyImageStatus struct {
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool
-	IsContainer   bool    // Is this image for a Container?
 	State         SwState // DELIVERED; LastErr* set if failed
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

@@ -362,7 +362,6 @@ func handleCreate(ctx *verifierContext, objType string,
 		PendingAdd:  true,
 		State:       types.VERIFYING,
 		RefCount:    config.RefCount,
-		IsContainer: config.IsContainer,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
@@ -446,17 +445,11 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 
 	log.Infof("Sha validation successful for %s", config.Name)
 
-	// we only do this for non-OCI images for now, as we do not have hash signing
-	// XXX we can remove this check and all of IsContainer in verifier
-	// if we assume that the signatures will only be set when they
-	// can be verified.
-	if !status.IsContainer {
-		if cerr := verifyObjectShaSignature(status, config, imageHashB); cerr != "" {
-			updateVerifyErrStatus(ctx, status, cerr)
-			log.Errorf("Signature validation failed for %s, %s",
-				config.Name, cerr)
-			return false
-		}
+	if cerr := verifyObjectShaSignature(status, config, imageHashB); cerr != "" {
+		updateVerifyErrStatus(ctx, status, cerr)
+		log.Errorf("Signature validation failed for %s, %s",
+			config.Name, cerr)
+		return false
 	}
 	return true
 }
@@ -622,9 +615,9 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	changed := false
 
 	log.Infof("handleModify(%s) objType %s for %s, config.RefCount: %d, "+
-		"status.RefCount: %d, isContainer: %t",
+		"status.RefCount: %d",
 		status.ImageSha256, status.ObjType, config.Name, config.RefCount,
-		status.RefCount, config.IsContainer)
+		status.RefCount)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s",
