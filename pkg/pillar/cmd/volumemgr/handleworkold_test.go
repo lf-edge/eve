@@ -67,9 +67,10 @@ func TestHandleWorkCreate(t *testing.T) {
 				test.BlobSha256,
 			}
 			ctx.pubBlobStatus.Publish(test.BlobSha256, types.BlobStatus{
-				State:  types.VERIFIED,
-				Path:   test.SrcLocation,
-				Sha256: strings.ToLower(test.BlobSha256),
+				State:   types.VERIFIED,
+				Path:    test.SrcLocation,
+				Sha256:  strings.ToLower(test.BlobSha256),
+				ObjType: types.AppImgObj,
 			})
 
 			MaybeAddWorkCreateOld(&ctx, &status)

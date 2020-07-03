@@ -136,6 +136,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 					Size:        config.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    blobType,
+					ObjType:     types.AppImgObj,
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}

@@ -115,31 +115,6 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
-
-	// update the BlobStatus
-	if blob := lookupBlobStatus(ctx, status.ImageSha256); blob != nil {
-		log.Infof("handleVerifyImageStatusModify(%s): Update State %d to %d, Path %s to %s", blob.Sha256, blob.State, status.State, blob.Path, status.FileLocation)
-		blob.State = status.State
-		blob.Path = status.FileLocation
-		if status.HasError() {
-			log.Errorf("handleVerifyImageStatusModify(%s): Received error from verifier: %s", blob.Sha256, status.Error)
-			blob.SetErrorWithSource(status.Error,
-				types.VerifyImageStatus{}, status.ErrorTime)
-		} else if blob.IsErrorSource(types.VerifyImageStatus{}) {
-			log.Infof("handleVerifyImageStatusModify(%s): Clearing verifier error %s", blob.Sha256, blob.Error)
-			blob.ClearErrorWithSource()
-		}
-		// also persist, if needed
-		if blob.State == types.VERIFIED && !blob.HasPersistRef {
-			log.Infof("handleVerifyImageStatusModify: Adding PersistImageStatus reference for blob: %s", blob.Sha256)
-			AddOrRefCountPersistImageStatus(ctx, status.Name, status.ObjType, status.FileLocation, status.ImageSha256, status.Size)
-			blob.HasPersistRef = true
-		}
-
-		publishBlobStatus(ctx, blob)
-	}
-
-	// update the status - do not change the sizes
 	updateStatus(ctx, status.ObjType, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }

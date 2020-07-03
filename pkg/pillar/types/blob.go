@@ -43,6 +43,8 @@ type BlobStatus struct {
 	Progress uint
 	// ErrorAndTimeWithSource provide common error handling capabilities
 	ErrorAndTimeWithSource
+	// XXX remove ObjType as part of cleanup of ObjType
+	ObjType string
 }
 
 // BlobType what kind of blob this is. Usually we use the MediaType,
@@ -67,13 +69,13 @@ func (status BlobStatus) Key() string {
 
 // LogCreate :
 func (status BlobStatus) LogCreate() {
-	logObject := base.NewLogObject(base.BlobStatusLogType, status.Sha256, uuid.UUID{}, status.LogKey())
+	logObject := base.NewLogObject(base.BlobStatusLogType, status.RelativeURL,
+		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("sha256", status.Sha256).
+	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("datastoreid-uuid", status.DatastoreID).
-		AddField("relative-URL", status.RelativeURL).
 		AddField("size-int64", status.Size).
 		AddField("blobtype-int64", status.BlobType).
 		AddField("refcount-int64", status.RefCount).
@@ -82,30 +84,39 @@ func (status BlobStatus) LogCreate() {
 
 // LogModify :
 func (status BlobStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.BlobStatusLogType, status.Sha256, uuid.UUID{}, status.LogKey())
+	logObject := base.EnsureLogObject(base.BlobStatusLogType, status.RelativeURL,
+		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(BlobStatus)
 	if !ok {
 		log.Errorf("LogModify: Old object interface passed is not of BlobStatus type")
 	}
-	if oldStatus.RefCount != status.RefCount ||
+	if oldStatus.State != status.State ||
+		oldStatus.RefCount != status.RefCount ||
 		oldStatus.Size != status.Size {
 
-		logObject.CloneAndAddField("sha256", status.Sha256).
-			AddField("datastoreid-uuid", status.DatastoreID).
-			AddField("relative-URL", status.RelativeURL).
-			AddField("size-int64", status.Size).
-			AddField("state", status.State).
-			AddField("blobtype-int64", status.BlobType).
+		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("refcount-int64", status.RefCount).
+			AddField("size-int64", status.Size).
+			AddField("old-state", oldStatus.State.String()).
+			AddField("old-refcount-int64", oldStatus.RefCount).
+			AddField("old-size-int64", oldStatus.Size).
 			Infof("Blob status modify")
+	}
+
+	if status.HasError() {
+		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("error", status.Error).
+			AddField("error-time", status.ErrorTime).
+			Errorf("Blob status modify")
 	}
 }
 
 // LogDelete :
 func (status BlobStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.BlobStatusLogType, status.Sha256, uuid.UUID{}, status.LogKey())
-	logObject.CloneAndAddField("sha256", status.Sha256).
+	logObject := base.EnsureLogObject(base.BlobStatusLogType, status.RelativeURL,
+		nilUUID, status.LogKey())
+	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
 		Infof("Blob status delete")
