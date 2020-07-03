@@ -79,7 +79,7 @@ const (
 	DevicePortConfigListLogType LogObjectType = "deviceportconfig_list"
 	// DeviceNetworkStatus :
 	DeviceNetworkStatusLogType LogObjectType = "devicenetwork_status"
-	// BlobStatus :
+	// BlobStatusType:
 	BlobStatusLogType LogObjectType = "blob_status"
 	// VolumeConfigLogType:
 	VolumeConfigLogType LogObjectType = "volume_config"

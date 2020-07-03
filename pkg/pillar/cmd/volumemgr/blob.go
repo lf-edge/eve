@@ -250,6 +250,7 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 				Size:        uint64(manifest.Size),
 				State:       types.INITIAL,
 				BlobType:    types.BlobManifest,
+				ObjType:     blob.ObjType,
 			},
 		}
 	case types.BlobManifest:
@@ -270,6 +271,7 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 					Sha256:      strings.ToLower(child.Digest.Hex),
 					Size:        uint64(child.Size),
 					State:       types.INITIAL,
+					ObjType:     blob.ObjType,
 				})
 			}
 		}
@@ -445,6 +447,7 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 			State:          vs.State,
 			Path:           vs.FileLocation,
 			HasVerifierRef: true,
+			ObjType:        objType,
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
 		startBlobVerification(ctx, objType, sv, blob)
@@ -460,6 +463,7 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 			Sha256:   blobSha,
 			State:    types.VERIFIED,
 			Path:     ps.FileLocation,
+			ObjType:  objType,
 		}
 		AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
 		startBlobVerification(ctx, objType, sv, blob)
@@ -505,12 +509,30 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		key := blob.Sha256
 		log.Infof("unpublishBlobStatus(%s)", key)
 
+		// drop references
+		if blob.HasDownloaderRef {
+			MaybeRemoveDownloaderConfig(ctx, blob.ObjType,
+				blob.Sha256)
+			blob.HasDownloaderRef = false
+		}
+		if blob.HasVerifierRef {
+			MaybeRemoveVerifyImageConfig(ctx, blob.ObjType,
+				blob.Sha256)
+			blob.HasVerifierRef = false
+		}
+		if blob.HasPersistRef {
+			ReduceRefCountPersistImageStatus(ctx, blob.ObjType,
+				blob.Sha256)
+			blob.HasPersistRef = false
+		}
+
 		pub := ctx.pubBlobStatus
 		st, _ := pub.Get(key)
 		if st == nil {
 			errs = append(errs, fmt.Errorf("unpublishBlobStatus(%s) not found", key))
 			continue
 		}
+
 		pub.Unpublish(key)
 	}
 	for _, err := range errs {

@@ -103,6 +103,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					Size:        status.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    types.BlobUnknown,
+					ObjType:     status.ObjType,
 				}
 				log.Infof("doUpdateContentTree: publishing root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
@@ -169,6 +170,14 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					blob.State, blob.Sha256)
 			} else {
 				log.Infof("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
+				if !blob.HasPersistRef {
+					log.Infof("doUpdateContentTree: Adding PersistImageStatus reference for blob: %s",
+						blob.Sha256)
+					AddOrRefCountPersistImageStatus(ctx, "",
+						blob.ObjType, blob.Path,
+						blob.Sha256, int64(blob.Size))
+					blob.HasPersistRef = true
+				}
 				// if verified, check for any children and start them off
 				// resolve any unknown types and get manifests of index, or children of manifest
 				blobType, err := resolveBlobType(blob)

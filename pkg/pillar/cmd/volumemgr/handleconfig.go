@@ -124,6 +124,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 			Size:        dos.MaxDownSize,
 			State:       types.INITIAL,
 			BlobType:    blobType,
+			ObjType:     objType,
 		}
 		publishBlobStatus(ctx, rootBlob)
 	}
