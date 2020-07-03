@@ -150,7 +150,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 		changed = updateBlobFromVerifyImageStatus(vs, blob)
 
 		// if we do not reference it, increment the refcount
-		if !blob.HasVerifierRef && startBlobVerification(ctx, objType, sv, blob) {
+		if startBlobVerification(ctx, objType, sv, blob) {
 			changed = true
 		}
 
@@ -176,7 +176,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 		blob.Progress = 100
 		// if we got here, there was no VerifyImageStatus, so we should add it
 		log.Infof("verifyBlob(%s): adding VerifyImageConfig", blob.Sha256)
-		MaybeAddVerifyImageConfigBlob(ctx, objType, *blob, sv)
+		startBlobVerification(ctx, objType, sv, blob)
 		blob.HasVerifierRef = true
 		// Wait for VerifyImageStatus to appear
 		return true
@@ -198,6 +198,9 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 // Used only in verifyBlob, but repetitive, so a separate utility function
 func startBlobVerification(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
+	if blob.HasVerifierRef {
+		return false
+	}
 	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, objType, *blob, sv)
 	if done {
 		blob.HasVerifierRef = true
@@ -453,12 +456,10 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 	if ps := lookupPersistImageStatus(ctx, objType, blobSha); ps != nil && !ps.Expired {
 		log.Infof("lookupOrCreateBlobStatus(%s) PersistImageStatus found, creating and publishing BlobStatus", blobSha)
 		blob := &types.BlobStatus{
-			BlobType:       types.BlobUnknown,
-			Sha256:         blobSha,
-			State:          types.VERIFIED,
-			Path:           ps.FileLocation,
-			HasVerifierRef: true,
-			HasPersistRef:  true,
+			BlobType: types.BlobUnknown,
+			Sha256:   blobSha,
+			State:    types.VERIFIED,
+			Path:     ps.FileLocation,
 		}
 		AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
 		startBlobVerification(ctx, objType, sv, blob)
