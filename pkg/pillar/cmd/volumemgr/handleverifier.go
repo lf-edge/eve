@@ -100,8 +100,7 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, objType, imageSha strin
 	if m.RefCount == 0 {
 		log.Fatalf("MaybeRemoveVerifyImageConfig: Attempting to reduce "+
 			"0 RefCount. Image Details - Name: %s, "+
-			"ImageSha256:%s, IsContainer: %t",
-			m.Name, m.ImageSha256, m.IsContainer)
+			"ImageSha256:%s", m.Name, m.ImageSha256)
 	}
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s",
@@ -149,8 +148,8 @@ func MaybeDeleteVerifyImageConfig(ctx *volumemgrContext, objType, imageSha strin
 	if m.RefCount != 0 {
 		log.Warnf("MaybeDeleteVerifyImageConfig: Attempting to delete but not zero "+
 			"RefCount %d. Image Details - Name: %s, "+
-			"ImageSha256:%s, IsContainer: %t",
-			m.RefCount, m.Name, m.ImageSha256, m.IsContainer)
+			"ImageSha256:%s",
+			m.RefCount, m.Name, m.ImageSha256)
 		return
 	}
 	m.Expired = true
@@ -185,7 +184,6 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			ImageSha256:  status.ImageSha256,
 			Size:         status.Size,
 			FileLocation: status.FileLocation,
-			IsContainer:  status.IsContainer,
 			RefCount:     0,
 		}
 		publishVerifyImageConfig(ctx, status.ObjType, &n)
