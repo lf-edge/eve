@@ -1619,13 +1619,17 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 			ReportVolumeInfo.VolumeErr = errInfo
 		}
 
-		VolumeResourcesInfo := new(info.VolumeResources)
-		err := getVolumeResourcesInfo(volStatus, VolumeResourcesInfo)
-		if err != nil {
-			log.Errorf("getVolumeResourceInfo(%s) failed %v",
-				volStatus.VolumeID, err)
+		if volStatus.FileLocation == "" {
+			log.Infof("FileLocation is empty for %s", volStatus.Key())
 		} else {
-			ReportVolumeInfo.Resources = VolumeResourcesInfo
+			VolumeResourcesInfo := new(info.VolumeResources)
+			err := getVolumeResourcesInfo(volStatus, VolumeResourcesInfo)
+			if err != nil {
+				log.Errorf("getVolumeResourceInfo(%s) failed %v",
+					volStatus.VolumeID, err)
+			} else {
+				ReportVolumeInfo.Resources = VolumeResourcesInfo
+			}
 		}
 
 		ReportVolumeInfo.ProgressPercentage = uint32(volStatus.Progress)

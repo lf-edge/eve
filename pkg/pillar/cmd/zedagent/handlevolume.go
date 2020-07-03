@@ -147,7 +147,11 @@ func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.Z
 		volumeMetric := new(metrics.ZMetricVolume)
 		volumeMetric.Uuid = volumeStatus.VolumeID.String()
 		volumeMetric.DisplayName = volumeStatus.DisplayName
-		getVolumeResourcesMetrics(volumeStatus.FileLocation, volumeMetric)
+		if volumeStatus.FileLocation == "" {
+			log.Infof("FileLocation is empty for %s", volumeStatus.Key())
+		} else {
+			getVolumeResourcesMetrics(volumeStatus.FileLocation, volumeMetric)
+		}
 		reportMetrics.Vm = append(reportMetrics.Vm, volumeMetric)
 	}
 	log.Debugf("Volume instance metrics done: %v", reportMetrics.Vm)
