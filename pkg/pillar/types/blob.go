@@ -3,7 +3,9 @@ package types
 import (
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 // BlobStatus status of a downloaded blob
@@ -29,7 +31,7 @@ type BlobStatus struct {
 	HasVerifierRef bool
 	// HasPersistRef whether or not we have a reference to data that was persisted
 	HasPersistRef bool
-	// RefCount number of consumers of this lbob
+	// RefCount number of consumers of this blob
 	RefCount uint
 	// LastUse when RefCount dropped to zero
 	LastUse time.Time
@@ -57,3 +59,69 @@ const (
 	// BlobUnknown an unknown status
 	BlobUnknown
 )
+
+// Key returns the pubsub Key
+func (status BlobStatus) Key() string {
+	return status.Sha256
+}
+
+// LogCreate :
+func (status BlobStatus) LogCreate() {
+	logObject := base.NewLogObject(base.BlobStatusLogType, status.Sha256, uuid.UUID{}, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("sha256", status.Sha256).
+		AddField("datastoreid-uuid", status.DatastoreID).
+		AddField("relative-URL", status.RelativeURL).
+		AddField("size-int64", status.Size).
+		AddField("blobtype-int64", status.BlobType).
+		AddField("refcount-int64", status.RefCount).
+		Infof("Blob status create")
+}
+
+// LogModify :
+func (status BlobStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(base.BlobStatusLogType, status.Sha256, uuid.UUID{}, status.LogKey())
+
+	oldStatus, ok := old.(BlobStatus)
+	if !ok {
+		log.Errorf("LogModify: Old object interface passed is not of BlobStatus type")
+	}
+	if oldStatus.RefCount != status.RefCount ||
+		oldStatus.Size != status.Size {
+
+		logObject.CloneAndAddField("sha256", status.Sha256).
+			AddField("datastoreid-uuid", status.DatastoreID).
+			AddField("relative-URL", status.RelativeURL).
+			AddField("size-int64", status.Size).
+			AddField("state", status.State).
+			AddField("blobtype-int64", status.BlobType).
+			AddField("refcount-int64", status.RefCount).
+			Infof("Blob status modify")
+	}
+}
+
+// LogDelete :
+func (status BlobStatus) LogDelete() {
+	logObject := base.EnsureLogObject(base.BlobStatusLogType, status.Sha256, uuid.UUID{}, status.LogKey())
+	logObject.CloneAndAddField("sha256", status.Sha256).
+		AddField("refcount-int64", status.RefCount).
+		AddField("size-int64", status.Size).
+		Infof("Blob status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status BlobStatus) LogKey() string {
+	return string(base.BlobStatusLogType) + "-" + status.Key()
+}
+
+//GetDownloadedPercentage returns blob's downloaded %
+func (status BlobStatus) GetDownloadedPercentage() uint32 {
+	if status.CurrentSize > 0 && status.TotalSize > 0 {
+		return uint32((status.CurrentSize / status.TotalSize) * 100)
+	}
+	return 0
+}
