@@ -158,22 +158,6 @@ func deleteContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 		log.Infof("deleteContentTree for %v, ContentTreeStatus not found", config.ContentID)
 		return
 	}
-	changed := false
-	if status.HasDownloaderRef {
-		MaybeRemoveDownloaderConfig(ctx, status.ObjType,
-			status.ContentSha256)
-		status.HasDownloaderRef = false
-		changed = true
-	}
-	if status.HasVerifierRef {
-		MaybeRemoveVerifyImageConfig(ctx, status.ObjType,
-			status.ContentSha256)
-		status.HasVerifierRef = false
-		changed = true
-	}
-	if changed {
-		publishContentTreeStatus(ctx, status)
-	}
 	unpublishContentTreeStatus(ctx, status)
 	deleteLatchContentTreeHash(ctx, config.ContentID, uint32(config.GenerationCounter))
 	log.Infof("deleteContentTree for %v Done", config.ContentID)
