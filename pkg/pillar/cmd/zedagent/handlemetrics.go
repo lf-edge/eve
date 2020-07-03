@@ -410,37 +410,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportDeviceMetric.RuntimeStorageOverheadMB = runtimeStorageOverhead
 	ReportDeviceMetric.AppRunTimeStorageMB = appRunTimeStorage
 
-	// Walk all verified downloads and report their size (faked
-	// as disks)
-	verifierStatusMap := verifierGetAll(ctx)
-	for _, st := range verifierStatusMap {
-		vs := st.(types.VerifyImageStatus)
-		log.Debugf("verifierStatusMap %s size %d",
-			vs.Name, vs.Size)
-		metric := metrics.DiskMetric{
-			Disk:  vs.Name,
-			Total: RoundToMbytes(uint64(vs.Size)),
-			Used:  RoundToMbytes(uint64(vs.Size)),
-		}
-		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-	}
-	downloaderStatusMap := downloaderGetAll(ctx)
-	for _, st := range downloaderStatusMap {
-		ds := st.(types.DownloaderStatus)
-		log.Debugf("downloaderStatusMap %s size %d",
-			ds.Name, ds.Size)
-		if _, found := verifierStatusMap[ds.Key()]; found {
-			log.Debugf("Found verifierStatusMap for %s", ds.Key())
-			continue
-		}
-		metric := metrics.DiskMetric{
-			Disk:  ds.Name,
-			Total: RoundToMbytes(uint64(ds.Size)),
-			Used:  RoundToMbytes(uint64(ds.Size)),
-		}
-		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-	}
-
 	// Note that these are associated with the device and not with a
 	// device name like ppp0 or wwan0
 	lte := readLTEMetrics()
