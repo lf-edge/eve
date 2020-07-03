@@ -228,7 +228,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		usedPercent = float64(100) * float64(used) / float64(totalMemory)
 	}
 	ReportDeviceMetric.Memory.UsedPercentage = usedPercent
-	ReportDeviceMetric.Memory.AvailPercentage = (100.0 - (usedPercent))
+	ReportDeviceMetric.Memory.AvailPercentage = 100.0 - (usedPercent)
 	log.Debugf("Device Memory from xl info: %v %v %v %v",
 		ReportDeviceMetric.Memory.UsedMem,
 		ReportDeviceMetric.Memory.AvailMem,
@@ -463,7 +463,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = dm.UsedMemory
 		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = dm.AvailableMemory
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = dm.UsedMemoryPercent
-		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (dm.UsedMemoryPercent))
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = 100.0 - (dm.UsedMemoryPercent)
 		log.Debugf("host Memory: %v %v %v %v",
 			ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
 			ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
@@ -1661,6 +1661,64 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 			log.Fatal("malloc error")
 		}
 		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+			true)
+	}
+}
+
+// PublishBlobInfoToZedCloud is called per change, hence needs to try over all management ports
+// When blob Status is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
+func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus *types.BlobStatus, iteration int) {
+	log.Infof("PublishBlobInfoToZedCloud blobSha %v", blobSha)
+	var ReportInfo = &info.ZInfoMsg{}
+
+	contentType := new(info.ZInfoTypes)
+	*contentType = info.ZInfoTypes_ZiBlobList
+	ReportInfo.Ztype = *contentType
+	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+
+	ReportBlobInfoList := new(info.ZInfoBlobList)
+
+	ReportBlobInfo := new(info.ZInfoBlob)
+
+	ReportBlobInfo.Sha256 = blobSha
+	if blobStatus != nil {
+		ReportBlobInfo.State = blobStatus.State.ZSwState()
+		ReportBlobInfo.ProgressPercentage = blobStatus.GetDownloadedPercentage()
+		ReportBlobInfo.Usage = &info.UsageInfo{RefCount: uint32(blobStatus.RefCount)}
+	}
+	ReportBlobInfoList.Blob = append(ReportBlobInfoList.Blob, ReportBlobInfo)
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Binfo)
+	if blobInfoList, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Binfo); ok {
+		blobInfoList.Binfo = ReportBlobInfoList
+	}
+
+	log.Infof("PublishBlobInfoToZedCloud sending %v", ReportInfo)
+
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishBlobInfoToZedCloud proto marshaling error: ", err)
+	}
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	zedcloud.RemoveDeferred(blobSha)
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+	err = SendProtobuf(statusURL, buf, size, iteration)
+	if err != nil {
+		log.Errorf("PublishBlobInfoToZedCloud failed: %s", err)
+		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
+		zedcloud.SetDeferred(blobSha, buf, size, statusURL, zedcloudCtx,
 			true)
 	}
 }

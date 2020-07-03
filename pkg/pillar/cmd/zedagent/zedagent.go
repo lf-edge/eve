@@ -57,7 +57,7 @@ const (
 var Version = "No version specified"
 
 // XXX move to a context? Which? Used in handleconfig and handlemetrics!
-var deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
+var deviceNetworkStatus = &types.DeviceNetworkStatus{}
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
@@ -100,6 +100,7 @@ type zedagentContext struct {
 	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
+	subBlobStatus             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
 	subAppContainerMetrics    pubsub.Subscription
@@ -804,6 +805,23 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
+	subBlobStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		TopicImpl:     types.BlobStatus{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleBlobStatusModify,
+		ModifyHandler: handleBlobStatusModify,
+		DeleteHandler: handleBlobDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subBlobStatus = subBlobStatus
+	subBlobStatus.Activate()
+
 	// Subscribe to Log metrics from logmanager
 	subLogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "logmanager",
@@ -1101,6 +1119,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subCertObjDownloadStatus.MsgChan():
 			subCertObjDownloadStatus.ProcessChange(change)
+
+		case change := <-subBlobStatus.MsgChan():
+			subBlobStatus.ProcessChange(change)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			subNodeAgentStatus.ProcessChange(change)
