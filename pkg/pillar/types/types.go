@@ -39,6 +39,8 @@ const (
 	HALTED
 	RESTARTING // Restarting due to config change or zcli
 	PURGING    // Purging due to config change
+	BROKEN     // Domain is still alive, but its device model has failed
+	UNKNOWN    // State of the domain can't be determined
 	MAXSTATE
 )
 

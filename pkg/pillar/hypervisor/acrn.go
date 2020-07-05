@@ -45,8 +45,8 @@ func (ctx acrnContext) Delete(domainName string, domainID int) error {
 }
 
 // Info outputs domain info via logging
-func (ctx acrnContext) Info(domainName string, domainID int) (int, DomState, error) {
-	return 0, Running, nil
+func (ctx acrnContext) Info(domainName string, domainID int) (int, types.SwState, error) {
+	return 0, types.RUNNING, nil
 }
 
 // PCIReserve takes a PCI device away from the host kernel and makes it available for Domain assignments

@@ -105,10 +105,10 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 	return err
 }
 
-func (ctx ctrdContext) Info(domainName string, domainID int) (int, DomState, error) {
+func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	effectiveDomainID, status, err := containerd.CtrContainerInfo(domainName)
 	if err != nil {
-		return 0, Unknown, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
+		return 0, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
 	}
 
 	if effectiveDomainID != domainID {
@@ -116,16 +116,16 @@ func (ctx ctrdContext) Info(domainName string, domainID int) (int, DomState, err
 			domainName, effectiveDomainID, domainID, status)
 	}
 
-	stateMap := map[string]DomState{
-		"running": Running,
-		"created": Blocked,
-		"paused":  Paused,
-		"stopped": Exiting,
-		"pausing": Running,
+	stateMap := map[string]types.SwState{
+		"running": types.RUNNING,
+		"created": types.INSTALLED,
+		"paused":  types.HALTED,
+		"stopped": types.HALTED,
+		"pausing": types.HALTING,
 	}
 	effectiveDomainState, matched := stateMap[status]
 	if _, err := os.Stat("/proc/" + strconv.Itoa(effectiveDomainID)); err != nil || !matched {
-		effectiveDomainState = Unknown
+		effectiveDomainState = types.UNKNOWN
 	}
 
 	return effectiveDomainID, effectiveDomainState, nil
