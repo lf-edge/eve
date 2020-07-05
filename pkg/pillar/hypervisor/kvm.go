@@ -636,10 +636,10 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx kvmContext) Info(domainName string, domainID int) (int, DomState, error) {
+func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	effectiveDomainID, matched := ctx.domains[domainName]
 	if !matched {
-		return 0, Unknown, logError("couldn't find domain %s", domainName)
+		return 0, types.UNKNOWN, logError("couldn't find domain %s", domainName)
 	}
 
 	if effectiveDomainID != domainID {
@@ -648,36 +648,36 @@ func (ctx kvmContext) Info(domainName string, domainID int) (int, DomState, erro
 
 	// lets see if qemu process is still running
 	if _, err := os.Stat(fmt.Sprintf("/proc/%d", effectiveDomainID)); err != nil {
-		return 0, Broken, logError("qemu process %d for domain %s seems to have exited", effectiveDomainID, domainName)
+		return 0, types.BROKEN, logError("qemu process %d for domain %s seems to have exited", effectiveDomainID, domainName)
 	}
 
 	// lets parse the status according to https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
-	stateMap := map[string]DomState{
-		"finish-migrate": Paused,
-		"inmigrate":      Paused,
-		"internal-error": Broken,
-		"io-error":       Broken,
-		"paused":         Paused,
-		"postmigrate":    Paused,
-		"prelaunch":      Paused,
-		"restore-vm":     Paused,
-		"running":        Running,
-		"save-vm":        Paused,
-		"shutdown":       Exiting,
-		"suspended":      Paused,
-		"watchdog":       Paused,
-		"guest-panicked": Dying,
-		"colo":           Paused,
-		"preconfig":      Paused,
+	stateMap := map[string]types.SwState{
+		"finish-migrate": types.HALTED,
+		"inmigrate":      types.HALTING,
+		"internal-error": types.BROKEN,
+		"io-error":       types.BROKEN,
+		"paused":         types.HALTED,
+		"postmigrate":    types.HALTED,
+		"prelaunch":      types.BOOTING,
+		"restore-vm":     types.HALTED,
+		"running":        types.RUNNING,
+		"save-vm":        types.HALTED,
+		"shutdown":       types.HALTING,
+		"suspended":      types.HALTED,
+		"watchdog":       types.HALTED,
+		"guest-panicked": types.BROKEN,
+		"colo":           types.HALTED,
+		"preconfig":      types.HALTED,
 	}
 	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
 	if err != nil {
-		return 0, Unknown, logError("couldn't retrieve status for domain %s: %v", domainName, err)
+		return 0, types.UNKNOWN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
 	}
 
 	effectiveDomainState, matched := stateMap[res]
 	if !matched {
-		effectiveDomainState = Unknown
+		effectiveDomainState = types.UNKNOWN
 	}
 	
 	return effectiveDomainID, effectiveDomainState, nil

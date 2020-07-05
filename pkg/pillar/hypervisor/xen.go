@@ -450,7 +450,7 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, error) {
+func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 
 	domainState := ""
@@ -464,7 +464,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, erro
 		//domain is not present
 		log.Errorln("Info: xl list failed ", err)
 		log.Errorln("Info: xl list output ", string(stdoutStderr))
-		return 0, Unknown, fmt.Errorf("info: xl list failed: %v", err)
+		return 0, types.UNKNOWN, fmt.Errorf("info: xl list failed: %v", err)
 	} else {
 		log.Infof("xl list done. Result %s\n", string(stdoutStderr))
 	}
@@ -473,7 +473,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, erro
 	cmdResponse := strings.Split(string(stdoutStderr), "\n")
 	if len(cmdResponse) < 2 {
 		log.Errorln("Info: domain not present in xl list output", string(stdoutStderr))
-		return 0, Unknown, fmt.Errorf("info: domain not present in xl list output %s", string(stdoutStderr))
+		return 0, types.UNKNOWN, fmt.Errorf("info: domain not present in xl list output %s", string(stdoutStderr))
 	}
 	//Removing all extra space between column result and split the result as array.
 	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(cmdResponse[1], " ")
@@ -485,7 +485,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, erro
 	effectiveDomainID, err := strconv.Atoi(strings.Split(xlDomainResult, " ")[1])
 	if len(domainState) < 1 || err != nil {
 		log.Infof("Info: domain %s in undetermined state with ID %d", domainName, effectiveDomainID)
-		return effectiveDomainID, Unknown, nil
+		return effectiveDomainID, types.UNKNOWN, nil
 	} else {
 		if effectiveDomainID != domainID {
 			log.Warningf("Info: domainid changed from %d to %d for %s\n",
@@ -497,21 +497,21 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, erro
 	lastState := domainState[len(domainState)-1:]
 	log.Debugf("Info: domain: %s lastState: %s", domainName, lastState)
 	//if domainState is not 'r' or 'b' then the domain is not healthy.
-	stateMap := map[string]DomState{
-		"r": Running,
-		"b": Blocked,
-		"p": Paused,
-		"s": Exiting,
-		"c": Crashed,
-		"d": Dying,
+	stateMap := map[string]types.SwState{
+		"r": types.RUNNING,
+		"b": types.RUNNING,
+		"p": types.HALTED,
+		"s": types.HALTING,
+		"c": types.BROKEN,
+		"d": types.HALTING,
 	}
 	effectiveDomainState, matched := stateMap[lastState]
 	if !matched {
-		effectiveDomainState = Unknown
+		effectiveDomainState = types.UNKNOWN
 	}
 
 	// if we are in one of the states that may require a device model -- check for it
-	if effectiveDomainState == Running || effectiveDomainState == Blocked || effectiveDomainState == Paused {
+	if effectiveDomainState == types.RUNNING || effectiveDomainState == types.HALTED {
 		// create pgrep command to see if dataplane is running
 		match := fmt.Sprintf("domid %d", effectiveDomainID)
 		cmd := wrap.Command("pgrep", "-f", match)
@@ -520,7 +520,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, DomState, erro
 		// cmd.Output returns nil when pgrep returns 0, otherwise pids.
 		if _, err := cmd.Output(); err != nil {
 			log.Infof("Info: device model %s process is not running: %s", match, err)
-			effectiveDomainState = Broken
+			effectiveDomainState = types.BROKEN
 		}
 	}
 
