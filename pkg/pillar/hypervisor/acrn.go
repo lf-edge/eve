@@ -20,7 +20,7 @@ func (ctx acrnContext) Name() string {
 	return "acrn"
 }
 
-func (ctx acrnContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+func (ctx acrnContext) Setup(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
 	return nil
 }
 

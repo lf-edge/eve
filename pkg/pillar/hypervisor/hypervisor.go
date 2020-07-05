@@ -13,16 +13,9 @@ import (
 
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
+	types.Task
+
 	Name() string
-
-	CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error
-
-	Create(string, string, *types.DomainConfig) (int, error)
-
-	Start(string, int) error
-	Stop(string, int, bool) error
-	Delete(string, int) error
-	Info(string, int) (int, types.SwState, error)
 
 	PCIReserve(string) error
 	PCIRelease(string) error
