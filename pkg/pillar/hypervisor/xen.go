@@ -49,6 +49,7 @@ func addNoDuplicate(list []string, add string) []string {
 }
 
 type xenContext struct {
+	ctrdContext
 }
 
 func newXen() Hypervisor {
@@ -57,6 +58,22 @@ func newXen() Hypervisor {
 
 func (ctx xenContext) Name() string {
 	return "xen"
+}
+
+func (ctx xenContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
+	aa *types.AssignableAdapters, file *os.File) error {
+
+	// first lets build the domain config
+	if err := ctx.CreateDomConfig(domainName, config, diskStatusList, aa, file); err != nil {
+		return logError("failed to build domain config: %v", err)
+	}
+
+	args := []string{"xl", "create", file.Name(), "-p", "-F", "-c"}
+	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, 0, args); err != nil {
+		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
+	}
+
+	return nil
 }
 
 func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
@@ -336,33 +353,11 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	return nil
 }
 
-func (ctx xenContext) Create(domainName string, xenCfgFilename string, config *types.DomainConfig) (int, error) {
-	log.Infof("xlCreate %s %s\n", domainName, xenCfgFilename)
-	_, err := containerd.LKTaskLaunch(domainName, "xen-tools", config,
-		[]string{"xl", "create", xenCfgFilename, "-p", "-F", "-c"})
-	if err != nil {
-		log.Errorln("xl create failed ", err)
-		return 0, fmt.Errorf("xl create failed")
-	}
-	log.Infof("xl create done\n")
-
-	stdOut, stdErr, err := containerd.CtrExec(domainName,
-		[]string{"xl", "domid", domainName})
-	if err != nil {
-		log.Errorln("xl domid failed ", err)
-		log.Errorln("xl domid output ", string(stdOut), string(stdErr))
-		return 0, fmt.Errorf("xl domid failed: %s %s", string(stdOut), string(stdErr))
-	}
-	res := strings.TrimSpace(string(stdOut))
-	domainID, err := strconv.Atoi(res)
-	if err != nil {
-		log.Errorf("Can't extract domainID from %s: %s", res, err)
-		return 0, fmt.Errorf("Can't extract domainID from %s: %s", res, err)
-	}
-	return domainID, nil
-}
-
 func (ctx xenContext) Start(domainName string, domainID int) error {
+	if err := ctx.ctrdContext.Start(domainName, domainID); err != nil {
+		return fmt.Errorf("xl start failed: %v", err)
+	}
+
 	// Disable offloads for all vifs
 	stdOut, stdErr, err := containerd.CtrExec(domainName,
 		[]string{"/etc/xen/scripts/disable-vif-features", domainName})
@@ -416,7 +411,13 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 		return fmt.Errorf("xl destroy failed: %s %s", string(stdOut), string(stdErr))
 	}
 	log.Infof("xl destroy done\n")
-	return nil
+
+	// now lets take care of the task itself
+	if err := ctx.ctrdContext.Stop(domainName, domainID, true); err != nil {
+		return err
+	}
+
+	return ctx.ctrdContext.Delete(domainName, domainID)
 }
 
 func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState, error) {

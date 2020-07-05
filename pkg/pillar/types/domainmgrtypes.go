@@ -4,6 +4,7 @@
 package types
 
 import (
+	"os"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -147,7 +148,17 @@ const (
 	HVM
 	Filler
 	FML
+	NOHYPER
 )
+
+type Task interface {
+	Setup(string, DomainConfig, []DiskStatus, *AssignableAdapters, *os.File) error
+	Create(string, string, *DomainConfig) (int, error)
+	Start(string, int) error
+	Stop(string, int, bool) error
+	Delete(string, int) error
+	Info(string, int) (int, SwState, error)
+}
 
 type DomainStatus struct {
 	UUIDandVersion     UUIDandVersion
@@ -164,6 +175,7 @@ type DomainStatus struct {
 	DiskStatusList     []DiskStatus
 	VifList            []VifInfo
 	IoAdapterList      []IoAdapter
+	Task               Task
 	VirtualizationMode VmMode
 	EnableVnc          bool
 	VncDisplay         uint32

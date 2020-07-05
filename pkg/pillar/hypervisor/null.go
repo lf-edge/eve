@@ -40,7 +40,7 @@ func (ctx nullContext) Name() string {
 	return "null"
 }
 
-func (ctx nullContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+func (ctx nullContext) Setup(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
 	return nil
 }
 

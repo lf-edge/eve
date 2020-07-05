@@ -26,7 +26,6 @@ const eveScript = "/bin/eve"
 
 var vethScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh"}
 
-//revive:disable
 type ociSpec struct {
 	specs.Spec
 	name         string
@@ -34,6 +33,17 @@ type ociSpec struct {
 	volumes      map[string]struct{}
 	labels       map[string]string
 	stopSignal   string
+}
+
+//
+type OCISpec interface {
+	Save(*os.File) error
+	Load(*os.File) error
+	CreateContainer(bool) error
+	AdjustMemLimit(types.DomainConfig, int64)
+	UpdateVifList(types.DomainConfig)
+	UpdateFromDomain(types.DomainConfig)
+	UpdateFromVolume(string) error
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
@@ -52,8 +62,6 @@ func NewOciSpec(name string) (*ociSpec, error) {
 	s.Root.Path = "/"
 	return s, nil
 }
-
-//revive:enable
 
 // Save stores json representation of the oci spec in a file
 func (s *ociSpec) Save(file *os.File) error {
@@ -101,31 +109,32 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 	}
 }
 
-// UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
-func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig, needsNetWorkSetup bool) {
-	if needsNetWorkSetup {
-		// use pre-start and post-stop hooks for networking
-		if s.Hooks == nil {
-			s.Hooks = &specs.Hooks{}
-		}
-		timeout := 60
-		for _, v := range dom.VifList {
-			vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
-			s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
-				Env:     vifSpec,
-				Path:    eveScript,
-				Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
-				Timeout: &timeout,
-			})
-			s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
-				Env:     vifSpec,
-				Path:    eveScript,
-				Args:    append(vethScript, "down", v.Vif),
-				Timeout: &timeout,
-			})
-		}
+// UpdateVifList creates VIF management hooks in OCI spec
+func (s *ociSpec) UpdateVifList(dom types.DomainConfig) {
+	// use pre-start and post-stop hooks for networking
+	if s.Hooks == nil {
+		s.Hooks = &specs.Hooks{}
 	}
+	timeout := 60
+	for _, v := range dom.VifList {
+		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
+		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
+			Env:     vifSpec,
+			Path:    eveScript,
+			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
+			Timeout: &timeout,
+		})
+		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
+			Env:     vifSpec,
+			Path:    eveScript,
+			Args:    append(vethScript, "down", v.Vif),
+			Timeout: &timeout,
+		})
+	}
+}
 
+// UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
+func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig) {
 	// update cgroup resource constraints for CPU and memory
 	if s.Linux != nil {
 		if s.Linux.Resources == nil {

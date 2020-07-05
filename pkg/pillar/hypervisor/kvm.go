@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+//TBD: Have a better way to calculate this number.
+//For now it is based on some trial-and-error experiments
+const qemuOverHead = int64(500 * 1024 * 1024)
+
 // We build device model around PCIe topology according to best practices
 //    https://github.com/qemu/qemu/blob/master/docs/pcie.txt
 // and
@@ -333,6 +337,7 @@ var kvmContainerImpl KvmContainerIntf = &KvmContainerImpl{}
 // have to look things up in the filesystem all the time (this also allows us to filter domains
 // that may be created by others)
 type kvmContext struct {
+	ctrdContext
 	domains map[string]int
 	// for now the following is statically configured and can not be changed per domain
 	devicemodel  string
@@ -376,6 +381,36 @@ func newKvm() Hypervisor {
 
 func (ctx kvmContext) Name() string {
 	return "kvm"
+}
+
+func (ctx kvmContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
+	aa *types.AssignableAdapters, file *os.File) error {
+
+	// first lets build the domain config
+	if err := ctx.CreateDomConfig(domainName, config, diskStatusList, aa, file); err != nil {
+		return logError("failed to build domain config: %v", err)
+	}
+
+	dmArgs := ctx.dmArgs
+	if config.VirtualizationMode == types.FML {
+		dmArgs = append(dmArgs, ctx.dmFmlCPUArgs...)
+	} else {
+		dmArgs = append(dmArgs, ctx.dmCPUArgs...)
+	}
+
+	os.MkdirAll(kvmStateDir+domainName, 0777)
+
+	args := []string{ctx.dmExec}
+	args = append(args, dmArgs...)
+	args = append(args, "-name", domainName,
+		"-readconfig", file.Name(),
+		"-pidfile", kvmStateDir+domainName+"/pid")
+
+	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, qemuOverHead, args); err != nil {
+		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
+	}
+
+	return nil
 }
 
 func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
@@ -549,57 +584,24 @@ func waitForQmp(domainName string) error {
 	}
 }
 
-func (ctx kvmContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
-	log.Infof("starting KVM domain %s with config %s", domainName, cfgFilename)
-	if config == nil {
-		return 0, logError("Empty config supplied for %s, %s", domainName, cfgFilename)
-	}
-
-	os.MkdirAll(kvmStateDir+domainName, 0777)
-
-	pidFile := kvmStateDir + domainName + "/pid"
-
-	dmArgs := ctx.dmArgs
-	if config.VirtualizationMode == types.FML {
-		dmArgs = append(dmArgs, ctx.dmFmlCPUArgs...)
-	} else {
-		dmArgs = append(dmArgs, ctx.dmCPUArgs...)
-	}
-
-	args := []string{ctx.dmExec}
-	args = append(args, dmArgs...)
-	args = append(args, "-name", domainName,
-		"-readconfig", cfgFilename,
-		"-pidfile", pidFile)
-
-	domainID, err := containerd.LKTaskLaunch(domainName,
-		"xen-tools", config, args)
-	if err != nil {
-		return 0, logError("starting LKTaskLaunch failed for %s, (%v)", domainName, err)
-	}
-	pid, status, err := containerd.CtrContainerInfo(domainName)
-	if err != nil {
-		log.Errorf("Error getting status for container %s: %v", domainName, err)
-		return 0, err
-	}
-	if domainID != pid || status != "running" {
-		log.Errorf("domainID(%d) is not matching pid(%d), or status(%s) is not running",
-			domainID, pid, status)
+func (ctx kvmContext) Start(domainName string, domainID int) error {
+	log.Infof("starting KVM domain %s", domainName)
+	if err := ctx.ctrdContext.Start(domainName, domainID); err != nil {
+		log.Errorf("couldn't start task for domain %s: %v", domainName, err)
+		return err
 	}
 	log.Infof("done launching qemu device model")
 	if err := waitForQmp(domainName); err != nil {
 		log.Errorf("Error waiting for Qmp for domain %s: %v", domainName, err)
-		return 0, err
+		return err
 	}
+	log.Infof("done launching qemu device model")
+
+	qmpFile := getQmpExecutorSocket(domainName)
 
 	log.Debugf("starting qmpEventHandler")
 	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
 
-	return domainID, nil
-}
-
-func (ctx kvmContext) Start(domainName string, domainID int) error {
-	qmpFile := getQmpExecutorSocket(domainName)
 	if err := execContinue(qmpFile); err != nil {
 		return logError("failed to start domain that is stopped %v", err)
 	}
@@ -629,11 +631,12 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 	if err := os.RemoveAll(kvmStateDir + domainName); err != nil {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
-	if err := containerd.CtrDeleteContainer(domainName); err != nil {
-		return logError("failed to delete container task for domain %s, %v",
-			domainName, err)
+
+	if err := ctx.ctrdContext.Stop(domainName, domainID, true); err != nil {
+		return err
 	}
-	return nil
+
+	return ctx.ctrdContext.Delete(domainName, domainID)
 }
 
 func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState, error) {

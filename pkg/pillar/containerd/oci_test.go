@@ -82,13 +82,15 @@ func TestOciSpec(t *testing.T) {
 		t.Errorf("failed to write to temp file %s", tmpdir+"/image-config.json")
 	}
 
-	spec.UpdateFromDomain(types.DomainConfig{
+	conf := types.DomainConfig{
 		VmConfig: types.VmConfig{Memory: 1234, VCpus: 4},
 		VifList: []types.VifInfo{
 			{Vif: "vif0", Bridge: "br0", Mac: "52:54:00:12:34:56", VifUsed: "vif0-ctr"},
 			{Vif: "vif1", Bridge: "br0", Mac: "52:54:00:12:34:57", VifUsed: "vif1-ctr"},
 		},
-	}, true)
+	}
+	spec.UpdateFromDomain(conf)
+	spec.UpdateVifList(conf)
 	spec.UpdateFromVolume(tmpdir)
 
 	if err := spec.Save(tmpfile); err != nil {

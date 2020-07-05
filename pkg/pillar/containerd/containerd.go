@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -577,54 +578,44 @@ func CtrDeleteContainer(containerID string) error {
 	return ctr.Delete(ctrdCtx)
 }
 
-// LKTaskLaunch runs a task in a new containter created as per linuxkit runtime OCI spec
-// file and optional bundle of DomainConfig settings and command line options. Because
-// we're expecting a linuxkit produced filesystem layout we expect R/O portion of the
+// LKTaskPrepare creates a new containter based on linuxkit /container/services runtime
+// OCI spec file and optional bundle of DomainConfig settings and command line options.
+// Because we're expecting a linuxkit produced filesystem layout we expect R/O portion of the
 // filesystem to be available under `dirname specFile`/lower and we will be mounting
 // it R/O into the container. On top of that we expect the usual suspects of /run,
 // /persist and /config to be taken care of by the OCI config that lk produced.
-func LKTaskLaunch(name, linuxkit string, domSettings *types.DomainConfig, args []string) (int, error) {
+func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOverhead int64, args []string) error {
 	config := "/containers/services/" + linuxkit + "/config.json"
 	rootfs := "/containers/services/" + linuxkit + "/rootfs"
 
 	log.Infof("Starting LKTaskLaunch for %s", linuxkit)
 	f, err := os.Open("/hostfs" + config)
 	if err != nil {
-		return 0, fmt.Errorf("LKTaskLaunch: can't open spec file %s %v", config, err)
+		return fmt.Errorf("LKTaskLaunch: can't open spec file %s %v", config, err)
 	}
 
 	spec, err := NewOciSpec(name)
 	if err != nil {
-		log.Errorf("LKTaskLaunch: NewOciSpec failed with error %v", err)
-		return 0, err
+		return fmt.Errorf("LKTaskLaunch: NewOciSpec failed with error %v", err)
 	}
 	if err = spec.Load(f); err != nil {
-		return 0, fmt.Errorf("LKTaskLaunch: can't load spec file from %s %v", config, err)
+		return fmt.Errorf("LKTaskLaunch: can't load spec file from %s %v", config, err)
 	}
 
 	spec.Root.Path = rootfs
 	spec.Root.Readonly = true
 	if domSettings != nil {
-		spec.UpdateFromDomain(*domSettings, false)
-		spec.AdjustMemLimit(*domSettings, qemuOverHead)
+		spec.UpdateFromDomain(*domSettings)
+		if memOverhead > 0 {
+			spec.AdjustMemLimit(*domSettings, memOverhead)
+		}
 	}
 
 	if args != nil {
 		spec.Process.Args = args
 	}
 
-	//Delete existing container, if any
-	if err := CtrDeleteContainer(name); err == nil {
-		log.Infof("LKTaskLaunch: Deleted previously existing container %s", name)
-	}
-
-	if err = spec.CreateContainer(true); err == nil {
-		log.Infof("Starting LKTaskLaunch Container %s", name)
-		return CtrStartContainer(name)
-	}
-
-	log.Errorf("LKTaskLaunch: CreateContainer failed with error %v", err)
-	return 0, err
+	return spec.CreateContainer(true)
 }
 
 //CtrCreateLease created a 24 hrs lease for a containerd context.
