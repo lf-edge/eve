@@ -56,6 +56,7 @@ type volumemgrContext struct {
 	pubVerifyImageConfig pubsub.Publication
 	subVerifyImageStatus pubsub.Subscription
 
+	// XXX shorten these names
 	subContentTreeResolveStatus pubsub.Subscription
 	pubContentTreeResolveConfig pubsub.Publication
 	subContentTreeConfig        pubsub.Subscription
@@ -163,11 +164,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubVerifyImageConfig = pubVerifyImageConfig
 
-	// XXX remove agentscope from resolveconfig?
 	pubContentTreeResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.ResolveConfig{},
+		AgentName: agentName,
+		TopicType: types.ResolveConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -186,7 +185,7 @@ func Run(ps *pubsub.PubSub) {
 
 	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
+		AgentScope: types.AppImgObj, // XXX remove? subscribers?
 		TopicType:  types.VolumeStatus{},
 	})
 	if err != nil {
@@ -204,6 +203,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubVolumeRefStatus = pubVolumeRefStatus
 
+	// XXX remove UnknownObj
 	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.UnknownObj,
@@ -224,6 +224,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubContentTreeToHash = pubContentTreeToHash
 
+	// XXX used?
 	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
@@ -244,6 +245,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
 
+	// XXX remove UnknownObj
 	pubUnknownOldVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.UnknownObj,
@@ -361,7 +363,6 @@ func Run(ps *pubsub.PubSub) {
 	// Look for ContentTreeResolveStatus from downloader
 	subContentTreeResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "downloader",
-		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.ResolveStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
