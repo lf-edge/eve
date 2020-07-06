@@ -11,14 +11,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func handleContentTreeCreate(ctxArg interface{}, key string,
+// XXX need parallel function for BaseOsObj
+func handleContentTreeCreateAppImg(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleContentTreeCreate(%s)", key)
+	log.Infof("handleContentTreeCreateAppImg(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+	createContentTreeStatus(ctx, config, types.AppImgObj)
 	updateContentTree(ctx, config)
-	log.Infof("handleContentTreeCreate(%s) Done", key)
+	log.Infof("handleContentTreeCreateAppImg(%s) Done", key)
 }
 
 func handleContentTreeModify(ctxArg interface{}, key string,
@@ -94,9 +96,11 @@ func lookupContentTreeConfig(ctx *volumemgrContext,
 	return &config
 }
 
-func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
-	log.Infof("updateContentTree for %v", config.ContentID)
-	status := lookupContentTreeStatus(ctx, config.Key(), config.ObjType)
+func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConfig,
+	objType string) {
+
+	log.Infof("createContentTreeStatus for %v objType %s", config.ContentID, objType)
+	status := lookupContentTreeStatus(ctx, config.Key())
 	if status == nil {
 		status = &types.ContentTreeStatus{
 			ContentID:         config.ContentID,
@@ -110,7 +114,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 			SignatureKey:      config.SignatureKey,
 			CertificateChain:  config.CertificateChain,
 			DisplayName:       config.DisplayName,
-			ObjType:           config.ObjType,
+			ObjType:           objType,
 			State:             types.INITIAL,
 			Blobs:             []string{},
 		}
@@ -142,6 +146,16 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 		}
 	}
 	publishContentTreeStatus(ctx, status)
+	log.Infof("createContentTreeStatus for %v Done", config.ContentID)
+}
+
+func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
+
+	log.Infof("updateContentTree for %v", config.ContentID)
+	status := lookupContentTreeStatus(ctx, config.Key())
+	if status == nil {
+		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
+	}
 	if changed, _ := doUpdateContentTree(ctx, status); changed {
 		publishContentTreeStatus(ctx, status)
 	}

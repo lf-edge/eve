@@ -377,7 +377,7 @@ func Run(ps *pubsub.PubSub) {
 	subResolveStatus.Activate()
 
 	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeCreate,
+		CreateHandler: handleContentTreeCreateAppImg,
 		ModifyHandler: handleContentTreeModify,
 		DeleteHandler: handleContentTreeDelete,
 		WarningTime:   warningTime,
