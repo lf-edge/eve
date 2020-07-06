@@ -30,8 +30,14 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 	changed := false
 	addedBlobs := false
 	if status.State < types.VERIFIED {
+		// at this point, we at least are downloading
+		if status.State < types.DOWNLOADING {
+			status.State = types.DOWNLOADING
+			changed = true
+		}
+
 		// loop through each blob, see if it is downloaded and verified.
-		// we set the contenttree to verified when all of the blobs are verified
+		// we set the OldVolumeStatus to verified when all of the blobs are verified
 		leftToProcess := false
 		sv := SignatureVerifier{
 			Signature:        status.DownloadOrigin.ImageSignature,
@@ -44,47 +50,42 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 			blobErrors             = []string{}
 			blobErrorTime          time.Time
 		)
-
 		for _, blobSha := range status.Blobs {
 			// get the actual blobStatus
 			blob := lookupOrCreateBlobStatus(ctx, sv, status.ObjType, blobSha)
 			if blob == nil {
 				log.Errorf("doUpdateOld: could not find BlobStatus(%s)", blobSha)
+				leftToProcess = true
 				continue
 			}
 			totalSize += blob.TotalSize
 			currentSize += blob.CurrentSize
 
-			// if any errors, catch them
-			if blob.HasError() {
-				log.Errorf("doUpdateOld: BlobStatus(%s) has error: %s", blobSha, blob.Error)
-				blobErrors = append(blobErrors, blob.Error)
-				if blob.ErrorTime.After(blobErrorTime) {
-					blobErrorTime = blob.ErrorTime
-				}
-				continue
-			}
-
 			// now the type should not be unknown (unless it is in error state)
-			switch blob.State {
-			case types.INITIAL, types.DOWNLOADING:
+			// these calls might update Blob.State hence we check
+			// sequentially
+			if blob.State <= types.DOWNLOADING {
 				// any state less than downloaded, we ask for download;
 				// downloadBlob() is smart enough to look for existing references
 				log.Infof("doUpdateOld: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
-				leftToProcess = true
 				if downloadBlob(ctx, status.ObjType, sv, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
-			case types.DOWNLOADED, types.VERIFYING:
+			}
+			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
 				// downloaded: kick off verifier for this blob
 				log.Infof("doUpdateOld: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
-				leftToProcess = true
 				if verifyBlob(ctx, status.ObjType, sv, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
-			case types.VERIFIED:
+			}
+			if blob.State != types.VERIFIED {
+				leftToProcess = true
+				log.Errorf("doUpdateOld: left to process due to state '%s' for content blob %s",
+					blob.State, blob.Sha256)
+			} else {
 				log.Infof("doUpdateOld: blob sha %s download state VERIFIED", blob.Sha256)
 				// if verified, check for any children and start them off
 				// resolve any unknown types and get manifests of index, or children of manifest
@@ -118,19 +119,31 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 						changed = true
 					}
 				}
-			default:
-				// we do not support any other types; this should not happen; record an error
-				log.Errorf("doUpdateOld: received unknown state '%s' for content blob %s",
-					blob.State, blob.Sha256)
+			}
+			// if any errors, catch them
+			// Note that the downloadBlob above could have cleared
+			// previous errors due to a retry hence we check for
+			// errors here at the end
+			if blob.HasError() {
+				log.Errorf("doUpdateOld: BlobStatus(%s) has error: %s", blobSha, blob.Error)
+				blobErrors = append(blobErrors, blob.Error)
+				if blob.ErrorTime.After(blobErrorTime) {
+					blobErrorTime = blob.ErrorTime
+				}
 				leftToProcess = true
 			}
 		}
 
-		log.Infof("doUpdateOld: updating CurrentSize/TotalSize %d/%d", currentSize, totalSize)
-		status.CurrentSize = currentSize
-		status.TotalSize = totalSize
-		if status.TotalSize > 0 {
-			status.Progress = uint(status.CurrentSize / status.TotalSize * 100)
+		// Check if sizes changed before setting changed
+		if status.CurrentSize != currentSize || status.TotalSize != totalSize {
+			changed = true
+			status.CurrentSize = currentSize
+			status.TotalSize = totalSize
+			if status.TotalSize > 0 {
+				status.Progress = uint(status.CurrentSize / status.TotalSize * 100)
+			}
+			log.Infof("doUpdateOld: updating CurrentSize/TotalSize/Progress %d/%d/%d",
+				currentSize, totalSize, status.Progress)
 		}
 
 		// update errors from blobs to status
@@ -145,6 +158,7 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 
 		// if we added any blobs, we need to reprocess this
 		if addedBlobs {
+			log.Infof("doUpdateOld(%s) rerunning with added blobs: %v", status.Key(), addedBlobs)
 			return doUpdateOld(ctx, status)
 		}
 
@@ -152,6 +166,7 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 		// the rest of this flow should happen only when every part of the content tree
 		// is downloaded and verified
 		if leftToProcess {
+			log.Infof("doUpdateOld(%s) leftToProcess=true, so returning `true,false`", status.Key())
 			return true, false
 		}
 
