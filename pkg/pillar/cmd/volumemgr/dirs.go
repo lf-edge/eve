@@ -66,4 +66,17 @@ func clearInProgressDownloadDirs(objTypes []string) {
 			}
 		}
 	}
+	// Our destination volume directories
+	volumeDirs := []string{
+		types.VolumeEncryptedDirName,
+		types.VolumeClearDirName,
+	}
+	for _, dirName := range volumeDirs {
+		if _, err := os.Stat(dirName); err != nil {
+			log.Infof("Create %s", dirName)
+			if err := os.MkdirAll(dirName, 0700); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 }
