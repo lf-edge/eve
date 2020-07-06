@@ -27,12 +27,6 @@ const (
 	VolumeClearDirName = PersistDir + "/clear/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
-	// AppImgDirname - location of downloaded app images. Read-only images
-	// named based on sha256 hash each in its own directory
-	AppImgDirname = DownloadDirname + "/" + AppImgObj
-	// VerifiedAppImgDirname - Location of verified App images. Read-only images
-	// named based on sha256 hash each in its own directory
-	VerifiedAppImgDirname = AppImgDirname + "/verified"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -63,12 +57,23 @@ const (
 
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
-	// AppImgObj - name of app image obj dir
+
+	// AppImgDirname - location of downloaded app images. Read-only images
+	// named based on sha256 hash each in its own directory
+	// XXX remove
+	AppImgDirname = DownloadDirname + "/" + AppImgObj
+	// VerifiedAppImgDirname - Location of verified App images. Read-only images
+	// named based on sha256 hash each in its own directory
+	// XXX remove
+	VerifiedAppImgDirname = AppImgDirname + "/verified"
+
+	// AppImgObj - name of app image type
 	AppImgObj = "appImg.obj"
-	// BaseOsObj - name of base image obj dir
+	// BaseOsObj - name of base image type
 	BaseOsObj = "baseOs.obj"
-	// CertObj - Name of Certificate obj. dir
+	// CertObj - Name of Certificate type
 	CertObj = "cert.obj"
 	// UnknownObj - Name of unknown obj. dir for what's found in /persist/img
+	// XXX remove?
 	UnknownObj = "unknown.obj"
 )

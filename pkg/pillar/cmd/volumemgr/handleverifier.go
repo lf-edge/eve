@@ -207,7 +207,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
-	updateStatus(ctx, status.ObjType, status.ImageSha256)
+	updateStatus(ctx, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
 }
 
@@ -233,6 +233,6 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
-	updateStatus(ctx, status.ObjType, status.ImageSha256)
+	updateStatus(ctx, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusDelete done for %s", key)
 }

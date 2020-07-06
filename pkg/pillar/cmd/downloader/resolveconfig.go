@@ -12,14 +12,12 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	log "github.com/sirupsen/logrus"
 )
 
-func runResolveHandler(ctx *downloaderContext, key string,
-	isContentTree bool, c <-chan Notify) {
+func runResolveHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 
 	log.Infof("runResolveHandler starting")
 
@@ -32,7 +30,7 @@ func runResolveHandler(ctx *downloaderContext, key string,
 		select {
 		case _, ok := <-c:
 			if ok {
-				rc := lookupResolveConfig(ctx, key, isContentTree)
+				rc := lookupResolveConfig(ctx, key)
 				resolveTagsToHash(ctx, *rc)
 				// XXX if err start timer
 			} else {
@@ -48,15 +46,14 @@ func runResolveHandler(ctx *downloaderContext, key string,
 			log.Debugf("runResolveHandler(%s) timer", key)
 			rs := lookupResolveStatus(ctx, key)
 			if rs != nil {
-				maybeRetryResolve(ctx, rs, isContentTree)
+				maybeRetryResolve(ctx, rs)
 			}
 		}
 	}
 	log.Infof("runResolveHandler(%s) DONE", key)
 }
 
-func maybeRetryResolve(ctx *downloaderContext,
-	status *types.ResolveStatus, isContentTree bool) {
+func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus) {
 
 	// object is either in download progress or,
 	// successfully downloaded, nothing to do
@@ -74,7 +71,7 @@ func maybeRetryResolve(ctx *downloaderContext,
 	log.Infof("maybeRetryResolve(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
-	config := lookupResolveConfig(ctx, status.Key(), isContentTree)
+	config := lookupResolveConfig(ctx, status.Key())
 	if config == nil {
 		log.Infof("maybeRetryResolve(%s) no config",
 			status.Key())
@@ -109,15 +106,9 @@ func unpublishResolveStatus(ctx *downloaderContext,
 	log.Debugf("unpublishResolveStatus(%s) Done", key)
 }
 
-func lookupResolveConfig(ctx *downloaderContext,
-	key string, isContentTree bool) *types.ResolveConfig {
+func lookupResolveConfig(ctx *downloaderContext, key string) *types.ResolveConfig {
 
-	var sub pubsub.Subscription
-	if isContentTree {
-		sub = ctx.subContentTreeResolveConfig
-	} else {
-		sub = ctx.subAppImgResolveConfig
-	}
+	sub := ctx.subContentTreeResolveConfig
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupResolveConfig(%s) not found", key)

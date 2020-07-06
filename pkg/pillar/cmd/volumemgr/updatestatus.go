@@ -438,9 +438,9 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 
 // updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
 // that has this Sha256
-func updateStatus(ctx *volumemgrContext, objType, sha string) {
+func updateStatus(ctx *volumemgrContext, sha string) {
 
-	log.Infof("updateStatus(%s) objType %s", sha, objType)
+	log.Infof("updateStatus(%s)", sha)
 	found := false
 	pub := ctx.publication(types.ContentTreeStatus{}, objType)
 	items := pub.GetAll()
@@ -465,8 +465,7 @@ func updateStatus(ctx *volumemgrContext, objType, sha string) {
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND",
-			sha, objType)
+		log.Warnf("XXX updateStatus(%s) NOT FOUND", sha)
 	}
 }
 
@@ -486,7 +485,7 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 				publishContentTreeStatus(ctx, &status)
 			}
 			// Volume status referring to this content UUID needs to get updated
-			log.Infof("updateStatus(%s) updating volume status from content ID %v", status.Key(), status.ContentID)
+			log.Infof("updateContentTreeStatus(%s) updating volume status from content ID %v", status.Key(), status.ContentID)
 			updateVolumeStatusFromContentID(ctx, status.ContentID)
 		}
 	}

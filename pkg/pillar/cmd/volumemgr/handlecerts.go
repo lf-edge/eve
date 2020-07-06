@@ -248,7 +248,7 @@ func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 			changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, types.CertObj, ss.ImageID.String())
+		ds := lookupDownloaderStatus(ctx, ss.ImageID.String())
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
 			log.Infof("doCertObjUninstall(%s) download %s not yet gone",
