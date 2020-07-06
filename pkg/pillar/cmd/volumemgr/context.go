@@ -11,7 +11,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// XXX remove Downloader/Verifier
 func (ctx *volumemgrContext) subscription(topicType interface{}, objType string) pubsub.Subscription {
 	var sub pubsub.Subscription
 	val := reflect.ValueOf(topicType)
@@ -29,16 +28,6 @@ func (ctx *volumemgrContext) subscription(topicType interface{}, objType string)
 			log.Fatalf("subscription: Unknown ObjType %s for %T",
 				objType, typeName)
 		}
-	case types.VerifyImageStatus:
-		switch objType {
-		case types.AppImgObj:
-			sub = ctx.subAppImgVerifierStatus
-		case types.BaseOsObj:
-			sub = ctx.subBaseOsVerifierStatus
-		default:
-			log.Fatalf("subscription: Unknown ObjType %s for %T",
-				objType, typeName)
-		}
 	default:
 		log.Fatalf("subscription: Unknown typeName %T",
 			typeName)
@@ -46,7 +35,6 @@ func (ctx *volumemgrContext) subscription(topicType interface{}, objType string)
 	return sub
 }
 
-// XXX remove Downloader/Verifier
 func (ctx *volumemgrContext) publication(topicType interface{}, objType string) pubsub.Publication {
 	var pub pubsub.Publication
 	val := reflect.ValueOf(topicType)
@@ -70,16 +58,6 @@ func (ctx *volumemgrContext) publication(topicType interface{}, objType string) 
 			pub = ctx.pubContentTreeStatus
 		case types.BaseOsObj:
 			pub = ctx.pubBaseOsContentTreeStatus
-		default:
-			log.Fatalf("publication: Unknown ObjType %s for %T",
-				objType, typeName)
-		}
-	case types.VerifyImageConfig:
-		switch objType {
-		case types.AppImgObj:
-			pub = ctx.pubAppImgVerifierConfig
-		case types.BaseOsObj:
-			pub = ctx.pubBaseOsVerifierConfig
 		default:
 			log.Fatalf("publication: Unknown ObjType %s for %T",
 				objType, typeName)

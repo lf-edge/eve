@@ -162,16 +162,6 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(types.AppImgDirname); err != nil {
-		if err := os.MkdirAll(types.AppImgDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(types.VerifiedAppImgDirname); err != nil {
-		if err := os.MkdirAll(types.VerifiedAppImgDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 
 	// These settings can be overridden by GlobalConfig
 	domainCtx := domainContext{

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Zededa, Inc.
+// Copyright (c) 2019,2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -18,8 +18,10 @@ const (
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
 	// RWImgDirname - Location of read/write images used by app instances
+	// XXX remove /img
 	RWImgDirname = PersistDir + "/img"
 	// ROContImgDirname - Location of read only images used by containerd
+	// XXX remove /runx/pods/prepared
 	ROContImgDirname = PersistDir + "/runx/pods/prepared"
 	// VolumeEncryptedDirName - Encrypted directory used to store volumes
 	VolumeEncryptedDirName = PersistDir + "/vault/volumes"
@@ -60,12 +62,6 @@ const (
 
 	// AppImgDirname - location of downloaded app images. Read-only images
 	// named based on sha256 hash each in its own directory
-	// XXX remove
-	AppImgDirname = DownloadDirname + "/" + AppImgObj
-	// VerifiedAppImgDirname - Location of verified App images. Read-only images
-	// named based on sha256 hash each in its own directory
-	// XXX remove
-	VerifiedAppImgDirname = AppImgDirname + "/verified"
 
 	// AppImgObj - name of app image type
 	AppImgObj = "appImg.obj"
@@ -73,7 +69,7 @@ const (
 	BaseOsObj = "baseOs.obj"
 	// CertObj - Name of Certificate type
 	CertObj = "cert.obj"
-	// UnknownObj - Name of unknown obj. dir for what's found in /persist/img
+	// UnknownObj - Name of unknown for OldVolumeStatus
 	// XXX remove?
 	UnknownObj = "unknown.obj"
 )
