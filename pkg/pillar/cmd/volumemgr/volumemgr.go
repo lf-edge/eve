@@ -56,17 +56,16 @@ type volumemgrContext struct {
 	pubVerifyImageConfig pubsub.Publication
 	subVerifyImageStatus pubsub.Subscription
 
-	// XXX shorten these names
-	subContentTreeResolveStatus pubsub.Subscription
-	pubContentTreeResolveConfig pubsub.Publication
-	subContentTreeConfig        pubsub.Subscription
-	pubContentTreeStatus        pubsub.Publication
-	subVolumeConfig             pubsub.Subscription
-	pubVolumeStatus             pubsub.Publication
-	subVolumeRefConfig          pubsub.Subscription
-	pubVolumeRefStatus          pubsub.Publication
-	pubUnknownVolumeStatus      pubsub.Publication
-	pubContentTreeToHash        pubsub.Publication
+	subResolveStatus       pubsub.Subscription
+	pubResolveConfig       pubsub.Publication
+	subContentTreeConfig   pubsub.Subscription
+	pubContentTreeStatus   pubsub.Publication
+	subVolumeConfig        pubsub.Subscription
+	pubVolumeStatus        pubsub.Publication
+	subVolumeRefConfig     pubsub.Subscription
+	pubVolumeRefStatus     pubsub.Publication
+	pubUnknownVolumeStatus pubsub.Publication
+	pubContentTreeToHash   pubsub.Publication
 
 	pubBlobStatus pubsub.Publication
 
@@ -164,14 +163,14 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubVerifyImageConfig = pubVerifyImageConfig
 
-	pubContentTreeResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.ResolveConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubContentTreeResolveConfig = pubContentTreeResolveConfig
+	ctx.pubResolveConfig = pubResolveConfig
 
 	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -360,8 +359,8 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
-	// Look for ContentTreeResolveStatus from downloader
-	subContentTreeResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Look for ResolveStatus from downloader
+	subResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "downloader",
 		TopicImpl:     types.ResolveStatus{},
 		Activate:      false,
@@ -374,8 +373,8 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subContentTreeResolveStatus = subContentTreeResolveStatus
-	subContentTreeResolveStatus.Activate()
+	ctx.subResolveStatus = subResolveStatus
+	subResolveStatus.Activate()
 
 	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleContentTreeCreate,
@@ -521,8 +520,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subVerifyImageStatus.MsgChan():
 			subVerifyImageStatus.ProcessChange(change)
 
-		case change := <-subContentTreeResolveStatus.MsgChan():
-			ctx.subContentTreeResolveStatus.ProcessChange(change)
+		case change := <-subResolveStatus.MsgChan():
+			ctx.subResolveStatus.ProcessChange(change)
 
 		case change := <-ctx.subContentTreeConfig.MsgChan():
 			ctx.subContentTreeConfig.ProcessChange(change)

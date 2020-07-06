@@ -91,7 +91,7 @@ func publishResolveStatus(ctx *downloaderContext,
 
 	key := status.Key()
 	log.Debugf("publishResolveStatus(%s)", key)
-	pub := ctx.pubContentTreeResolveStatus
+	pub := ctx.pubResolveStatus
 	pub.Publish(key, *status)
 	log.Debugf("publishResolveStatus(%s) Done", key)
 }
@@ -101,14 +101,14 @@ func unpublishResolveStatus(ctx *downloaderContext,
 
 	key := status.Key()
 	log.Debugf("unpublishResolveStatus(%s)", key)
-	pub := ctx.pubContentTreeResolveStatus
+	pub := ctx.pubResolveStatus
 	pub.Unpublish(key)
 	log.Debugf("unpublishResolveStatus(%s) Done", key)
 }
 
 func lookupResolveConfig(ctx *downloaderContext, key string) *types.ResolveConfig {
 
-	sub := ctx.subContentTreeResolveConfig
+	sub := ctx.subResolveConfig
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupResolveConfig(%s) not found", key)
@@ -121,7 +121,7 @@ func lookupResolveConfig(ctx *downloaderContext, key string) *types.ResolveConfi
 func lookupResolveStatus(ctx *downloaderContext,
 	key string) *types.ResolveStatus {
 
-	pub := ctx.pubContentTreeResolveStatus
+	pub := ctx.pubResolveStatus
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Infof("lookupResolveStatus(%s) not found", key)
