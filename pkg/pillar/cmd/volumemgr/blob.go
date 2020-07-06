@@ -146,7 +146,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 	changed := false
 
 	// A: try to use an existing VerifyImageStatus
-	vs := lookupVerifyImageStatus(ctx, objType, blob.Sha256)
+	vs := lookupVerifyImageStatus(ctx, blob.Sha256)
 	if vs != nil && !vs.Expired {
 		log.Infof("verifyBlob(%s): found VerifyImageStatus", blob.Sha256)
 		changed = updateBlobFromVerifyImageStatus(vs, blob)
@@ -177,7 +177,7 @@ func startBlobVerification(ctx *volumemgrContext, objType string, sv SignatureVe
 	if blob.HasVerifierRef {
 		return false
 	}
-	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, objType, *blob, sv)
+	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, *blob, sv)
 	if done {
 		blob.HasVerifierRef = true
 		return true
@@ -415,7 +415,7 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 
 	// first see if a VerifyImageStatus exists
 	// if it does, then create a BlobStatus with State up to the level of the VerifyImageStatus
-	vs := lookupVerifyImageStatus(ctx, objType, blobSha)
+	vs := lookupVerifyImageStatus(ctx, blobSha)
 	if vs != nil && !vs.Expired {
 		log.Infof("lookupOrCreateBlobStatus(%s) VerifyImageStatus found, creating and publishing BlobStatus", blobSha)
 		blob := &types.BlobStatus{
@@ -480,8 +480,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 			blob.HasDownloaderRef = false
 		}
 		if blob.HasVerifierRef {
-			MaybeRemoveVerifyImageConfig(ctx, blob.ObjType,
-				blob.Sha256)
+			MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
 			blob.HasVerifierRef = false
 		}
 

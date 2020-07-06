@@ -51,12 +51,10 @@ type volumemgrContext struct {
 	subCertObjConfig pubsub.Subscription
 	pubCertObjStatus pubsub.Publication
 
-	pubDownloaderConfig     pubsub.Publication
-	subDownloaderStatus     pubsub.Subscription
-	pubAppImgVerifierConfig pubsub.Publication
-	subAppImgVerifierStatus pubsub.Subscription
-	pubBaseOsVerifierConfig pubsub.Publication
-	subBaseOsVerifierStatus pubsub.Subscription
+	pubDownloaderConfig  pubsub.Publication
+	subDownloaderStatus  pubsub.Subscription
+	pubVerifyImageConfig pubsub.Publication
+	subVerifyImageStatus pubsub.Subscription
 
 	subContentTreeResolveStatus pubsub.Subscription
 	pubContentTreeResolveConfig pubsub.Publication
@@ -76,7 +74,7 @@ type volumemgrContext struct {
 	workerOld *worker.Worker // For background work
 	worker    *worker.Worker // For background work
 
-	verifierRestarted uint // Count to two for appimg and baseos
+	verifierRestarted bool // Wait for verifier to restar
 	usingConfig       bool // From zedagent
 	gcRunning         bool
 
@@ -156,26 +154,16 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubDownloaderConfig = pubDownloaderConfig
 
-	pubAppImgVerifierConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VerifyImageConfig{},
+	pubVerifyImageConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.VerifyImageConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
+	ctx.pubVerifyImageConfig = pubVerifyImageConfig
 
-	pubBaseOsVerifierConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.BaseOsObj,
-		TopicType:  types.VerifyImageConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
-
+	// XXX remove agentscope from resolveconfig?
 	pubContentTreeResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
@@ -333,9 +321,8 @@ func Run(ps *pubsub.PubSub) {
 	subDownloaderStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	subVerifyImageStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "verifier",
-		AgentScope:     types.AppImgObj,
 		TopicImpl:      types.VerifyImageStatus{},
 		Activate:       false,
 		Ctx:            &ctx,
@@ -349,28 +336,8 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
-	subAppImgVerifierStatus.Activate()
-
-	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "verifier",
-		AgentScope:     types.BaseOsObj,
-		TopicImpl:      types.VerifyImageStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		CreateHandler:  handleVerifyImageStatusModify,
-		ModifyHandler:  handleVerifyImageStatusModify,
-		DeleteHandler:  handleVerifyImageStatusDelete,
-		RestartHandler: handleVerifierRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
-	subBaseOsVerifierStatus.Activate()
+	ctx.subVerifyImageStatus = subVerifyImageStatus
+	subVerifyImageStatus.Activate()
 
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := ps.NewSubscription(
@@ -493,19 +460,15 @@ func Run(ps *pubsub.PubSub) {
 
 	// First we process the verifierStatus to avoid triggering a download
 	// of an image we already have in place.
-	for ctx.verifierRestarted != 2 {
-		log.Warnf("Subject to watchdog. Waiting for verifierRestarted: is %d",
-			ctx.verifierRestarted)
+	for !ctx.verifierRestarted {
+		log.Warnf("Subject to watchdog. Waiting for verifierRestarted")
 
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.MsgChan():
-			subBaseOsVerifierStatus.ProcessChange(change)
+		case change := <-subVerifyImageStatus.MsgChan():
+			subVerifyImageStatus.ProcessChange(change)
 
 		case res := <-ctx.workerOld.MsgChan():
 			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
@@ -554,11 +517,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subDownloaderStatus.MsgChan():
 			subDownloaderStatus.ProcessChange(change)
 
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.MsgChan():
-			subBaseOsVerifierStatus.ProcessChange(change)
+		case change := <-subVerifyImageStatus.MsgChan():
+			subVerifyImageStatus.ProcessChange(change)
 
 		case change := <-subContentTreeResolveStatus.MsgChan():
 			ctx.subContentTreeResolveStatus.ProcessChange(change)
@@ -596,14 +556,12 @@ func Run(ps *pubsub.PubSub) {
 	}
 }
 
-// We could since we get a separate out-of-order notification for
-// each objType hence we count to 2 for appImg and baseOs
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*volumemgrContext)
 
 	log.Infof("handleVerifierRestarted(%v)", done)
 	if done {
-		ctx.verifierRestarted++
+		ctx.verifierRestarted = true
 	}
 }
 

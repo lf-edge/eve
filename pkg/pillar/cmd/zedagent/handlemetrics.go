@@ -60,10 +60,13 @@ var reportDirPaths = []string{
 	types.PersistDir + "/checkpoint",
 }
 
-// Application-related files live here; includes downloads and verifications in progress
+// Application-related files live here
+// XXX do we need to exclude the ContentTrees used for eve image update?
+// If so how do we tell them apart
 var appPersistPaths = []string{
-	types.PersistDir + "/img",
-	types.AppImgDirname,
+	types.VolumeEncryptedDirName,
+	types.VolumeClearDirName,
+	types.DownloadDirname,
 }
 
 func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {

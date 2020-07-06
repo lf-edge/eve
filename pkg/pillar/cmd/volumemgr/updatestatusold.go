@@ -246,8 +246,7 @@ func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 			changed = true
 		}
 		if status.DownloadOrigin.HasVerifierRef {
-			MaybeRemoveVerifyImageConfig(ctx, status.ObjType,
-				status.BlobSha256)
+			MaybeRemoveVerifyImageConfig(ctx, status.BlobSha256)
 			status.DownloadOrigin.HasVerifierRef = false
 			changed = true
 		}
