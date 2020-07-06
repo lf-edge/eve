@@ -8,18 +8,18 @@ import (
 )
 
 // for function name consistency
-func handleContentTreeResolveModify(ctxArg interface{}, key string,
+func handleResolveModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleContentTreeResolveModify for %s", key)
+	log.Infof("handleResolveModify for %s", key)
 	resHandler.modify(ctxArg, key, configArg)
-	log.Infof("handleContentTreeResolveModify for %s, done", key)
+	log.Infof("handleResolveModify for %s, done", key)
 }
 
-func handleContentTreeResolveDelete(ctxArg interface{}, key string,
+func handleResolveDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleContentTreeResolveDelete for %s", key)
+	log.Infof("handleResolveDelete for %s", key)
 	resHandler.delete(ctxArg, key, configArg)
-	log.Infof("handleContentTreeResolveDelete for %s, done", key)
+	log.Infof("handleResolveDelete for %s, done", key)
 }

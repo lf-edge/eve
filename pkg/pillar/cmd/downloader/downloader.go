@@ -153,8 +153,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subDownloaderConfig.MsgChan():
 			ctx.subDownloaderConfig.ProcessChange(change)
 
-		case change := <-ctx.subContentTreeResolveConfig.MsgChan():
-			ctx.subContentTreeResolveConfig.ProcessChange(change)
+		case change := <-ctx.subResolveConfig.MsgChan():
+			ctx.subResolveConfig.ProcessChange(change)
 
 		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)

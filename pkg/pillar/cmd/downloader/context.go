@@ -14,23 +14,23 @@ import (
 )
 
 type downloaderContext struct {
-	decryptCipherContext        cipher.DecryptCipherContext
-	dCtx                        *zedUpload.DronaCtx
-	subDeviceNetworkStatus      pubsub.Subscription
-	subDownloaderConfig         pubsub.Subscription
-	pubDownloaderStatus         pubsub.Publication
-	subContentTreeResolveConfig pubsub.Subscription
-	pubContentTreeResolveStatus pubsub.Publication
-	subGlobalDownloadConfig     pubsub.Subscription
-	pubGlobalDownloadStatus     pubsub.Publication
-	pubCipherBlockStatus        pubsub.Publication
-	subDatastoreConfig          pubsub.Subscription
-	deviceNetworkStatus         types.DeviceNetworkStatus
-	globalConfig                types.GlobalDownloadConfig
-	globalStatusLock            sync.Mutex
-	globalStatus                types.GlobalDownloadStatus
-	subGlobalConfig             pubsub.Subscription
-	GCInitialized               bool
+	decryptCipherContext    cipher.DecryptCipherContext
+	dCtx                    *zedUpload.DronaCtx
+	subDeviceNetworkStatus  pubsub.Subscription
+	subDownloaderConfig     pubsub.Subscription
+	pubDownloaderStatus     pubsub.Publication
+	subResolveConfig        pubsub.Subscription
+	pubResolveStatus        pubsub.Publication
+	subGlobalDownloadConfig pubsub.Subscription
+	pubGlobalDownloadStatus pubsub.Publication
+	pubCipherBlockStatus    pubsub.Publication
+	subDatastoreConfig      pubsub.Subscription
+	deviceNetworkStatus     types.DeviceNetworkStatus
+	globalConfig            types.GlobalDownloadConfig
+	globalStatusLock        sync.Mutex
+	globalStatus            types.GlobalDownloadStatus
+	subGlobalConfig         pubsub.Subscription
+	GCInitialized           bool
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
@@ -174,14 +174,14 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	}
 	ctx.pubDownloaderStatus = pubDownloaderStatus
 
-	pubContentTreeResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.ResolveStatus{},
 	})
 	if err != nil {
 		return err
 	}
-	ctx.pubContentTreeResolveStatus = pubContentTreeResolveStatus
+	ctx.pubResolveStatus = pubResolveStatus
 
 	subDownloaderConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleDownloaderConfigCreate,
@@ -199,10 +199,10 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.subDownloaderConfig = subDownloaderConfig
 	subDownloaderConfig.Activate()
 
-	subContentTreeResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeResolveModify,
-		ModifyHandler: handleContentTreeResolveModify,
-		DeleteHandler: handleContentTreeResolveDelete,
+	subResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleResolveModify,
+		ModifyHandler: handleResolveModify,
+		DeleteHandler: handleResolveDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "volumemgr",
@@ -212,11 +212,11 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		return err
 	}
-	ctx.subContentTreeResolveConfig = subContentTreeResolveConfig
-	subContentTreeResolveConfig.Activate()
+	ctx.subResolveConfig = subResolveConfig
+	subResolveConfig.Activate()
 
 	pubDownloaderStatus.SignalRestarted()
-	pubContentTreeResolveStatus.SignalRestarted()
+	pubResolveStatus.SignalRestarted()
 
 	return nil
 }
