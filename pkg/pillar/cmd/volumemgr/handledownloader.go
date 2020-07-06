@@ -7,6 +7,7 @@ import (
 	"path"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -42,7 +43,10 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 	}
 
 	// where should the final downloaded file be?
-	locFilename := path.Join(types.DownloadDirname, "pending", blob.Sha256)
+	// Pick a unique name since the sha has not yet been verified hence
+	// can potentially collide between different concurrent downloads
+	pendingFile := uuid.NewV4().String() + "." + blob.Sha256
+	locFilename := path.Join(types.DownloadDirname, "pending", pendingFile)
 	// try to reserve storage, must be released on error
 	size := blob.Size
 
