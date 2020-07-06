@@ -17,7 +17,7 @@ func MaybeAddResolveConfig(ctx *volumemgrContext, cs types.ContentTreeStatus) {
 		DatastoreID: cs.DatastoreID,
 		Name:        cs.RelativeURL,
 		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-			types.AppImgObj),
+			cs.ObjType),
 		Counter: uint32(cs.GenerationCounter),
 	}
 	publishResolveConfig(ctx, &resolveConfig)
