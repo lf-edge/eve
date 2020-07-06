@@ -52,7 +52,7 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 		)
 		for _, blobSha := range status.Blobs {
 			// get the actual blobStatus
-			blob := lookupOrCreateBlobStatus(ctx, sv, status.ObjType, blobSha)
+			blob := lookupOrCreateBlobStatus(ctx, sv, blobSha)
 			if blob == nil {
 				log.Errorf("doUpdateOld: could not find BlobStatus(%s)", blobSha)
 				leftToProcess = true
@@ -76,7 +76,7 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
 				// downloaded: kick off verifier for this blob
 				log.Infof("doUpdateOld: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
-				if verifyBlob(ctx, status.ObjType, sv, blob) {
+				if verifyBlob(ctx, sv, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
@@ -110,7 +110,7 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 						status.Blobs = append(status.Blobs, blob.Sha256)
 					}
 					// only publish those that do not already exist
-					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, status.ObjType, blobChildren)...)
+					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
 				}
 				if blob.BlobType == types.BlobManifest {
 					size := resolveManifestSize(*blob)

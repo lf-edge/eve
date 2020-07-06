@@ -11,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// XXX remove this function when we remove OldVolumeConfig
 func (ctx *volumemgrContext) subscription(topicType interface{}, objType string) pubsub.Subscription {
 	var sub pubsub.Subscription
 	val := reflect.ValueOf(topicType)
