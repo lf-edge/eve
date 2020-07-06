@@ -32,11 +32,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		auth                                                   *zedUpload.AuthInput
 	)
 
-	if status.ObjType == "" {
-		log.Fatalf("handleSyncOp: No ObjType for %s",
-			status.ImageSha256)
-	}
-
 	// the target filename, where to place the download, is provided in config.
 	// downloader has two options:
 	//  * download the file part by part, filling up the `Target` until it is complete, and then sending status
@@ -250,11 +245,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// have finished the download operation
 	// based on the result, perform some storage
 	// management also
-
-	if status.ObjType == "" {
-		log.Fatalf("handleSyncOpResponse: No ObjType for %s",
-			status.ImageSha256)
-	}
 
 	if errStr != "" {
 		// Delete file, and update the storage

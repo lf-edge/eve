@@ -29,7 +29,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 	}
 	// Check if we have a DownloadStatus if not put a DownloadConfig
 	// in place
-	ds := lookupDownloaderStatus(ctx, objType, blob.Sha256)
+	ds := lookupDownloaderStatus(ctx, blob.Sha256)
 
 	// we do not have one, or it is expired or not referenced, then
 	// the one we just created is it; set our State to DOWNLOADING and return
@@ -476,8 +476,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 
 		// drop references
 		if blob.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(ctx, blob.ObjType,
-				blob.Sha256)
+			MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
 			blob.HasDownloaderRef = false
 		}
 		if blob.HasVerifierRef {

@@ -109,7 +109,6 @@ type DownloaderStatus struct {
 	DatastoreID      uuid.UUID
 	Target           string // file path where we download the file
 	Name             string
-	ObjType          string
 	PendingAdd       bool
 	PendingModify    bool
 	PendingDelete    bool
@@ -186,7 +185,6 @@ func (status DownloaderStatus) LogCreate() {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
-		AddField("objtype", status.ObjType).
 		Infof("Download status create")
 }
 
@@ -209,7 +207,6 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-size-int64", oldStatus.Size).
-			AddField("objtype", status.ObjType).
 			Infof("Download status modify")
 	}
 
@@ -229,7 +226,6 @@ func (status DownloaderStatus) LogDelete() {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
-		AddField("objtype", status.ObjType).
 		Infof("Download status delete")
 
 	base.DeleteLogObject(status.LogKey())

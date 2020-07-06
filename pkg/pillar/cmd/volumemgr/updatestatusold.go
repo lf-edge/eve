@@ -241,8 +241,7 @@ func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 	// XXX support other types
 	if status.Origin == types.OriginTypeDownload {
 		if status.DownloadOrigin.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(ctx, status.ObjType,
-				status.BlobSha256)
+			MaybeRemoveDownloaderConfig(ctx, status.BlobSha256)
 			status.DownloadOrigin.HasDownloaderRef = false
 			changed = true
 		}
