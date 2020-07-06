@@ -18,6 +18,7 @@ import (
 
 // downloadBlob download a blob from a content tree
 // returns whether or not the BlobStatus has changed
+// The objType is only used to check the free vs. non-free policy for downloads
 func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
 
 	changed := false
@@ -95,7 +96,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 		// Nothing to do
 	case types.DOWNLOADED:
 		// signal verifier to start if it hasn't already; add RefCount
-		if verifyBlob(ctx, objType, sv, blob) {
+		if verifyBlob(ctx, sv, blob) {
 			changed = true
 		}
 	}
@@ -142,7 +143,7 @@ func updateBlobFromVerifyImageStatus(vs *types.VerifyImageStatus, blob *types.Bl
 // potentially incrementing creating or incrementing the refcount on a
 // VerifyImageConfig to trigger the generation of a VerifyImageStatus.
 // returns if the BlobStatus was changed, and thus woudl require publishing
-func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func verifyBlob(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
 
 	// A: try to use an existing VerifyImageStatus
@@ -152,7 +153,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 		changed = updateBlobFromVerifyImageStatus(vs, blob)
 
 		// if we do not reference it, increment the refcount
-		if startBlobVerification(ctx, objType, sv, blob) {
+		if startBlobVerification(ctx, sv, blob) {
 			changed = true
 		}
 
@@ -164,7 +165,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 		blob.State = types.VERIFYING
 		changed = true
 	}
-	if startBlobVerification(ctx, objType, sv, blob) {
+	if startBlobVerification(ctx, sv, blob) {
 		changed = true
 	}
 	return changed
@@ -172,7 +173,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 
 // startBlobVerification kick off verification of a blob, or increment the refcount.
 // Used only in verifyBlob, but repetitive, so a separate utility function
-func startBlobVerification(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func startBlobVerification(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
 	if blob.HasVerifierRef {
 		return false
@@ -226,7 +227,6 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 				Size:        uint64(manifest.Size),
 				State:       types.INITIAL,
 				BlobType:    types.BlobManifest,
-				ObjType:     blob.ObjType,
 			},
 		}
 	case types.BlobManifest:
@@ -247,7 +247,6 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 					Sha256:      strings.ToLower(child.Digest.Hex),
 					Size:        uint64(child.Size),
 					State:       types.INITIAL,
-					ObjType:     blob.ObjType,
 				})
 			}
 		}
@@ -349,7 +348,7 @@ func blobsNotInStatus(ctx *volumemgrContext, a []*types.BlobStatus) []*types.Blo
 
 // blobsNotInStatusOrCreate find any in the slice that do not already have a BlobStatus,
 // but first check if the BlobStatus can be recreated from VerifyImageStatus
-func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, objType string, a []*types.BlobStatus) []*types.BlobStatus {
+func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, a []*types.BlobStatus) []*types.BlobStatus {
 	// if we have none, return none
 	if len(a) < 1 {
 		return a
@@ -359,7 +358,7 @@ func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, objTy
 	ret := make([]*types.BlobStatus, 0)
 	// go through each one, and try to find or create it
 	for _, blob := range a {
-		found := lookupOrCreateBlobStatus(ctx, sv, objType, blob.Sha256)
+		found := lookupOrCreateBlobStatus(ctx, sv, blob.Sha256)
 		if found == nil {
 			ret = append(ret, blob)
 		}
@@ -400,7 +399,7 @@ func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 
 // lookupOrCreateBlobStatus tries to lookup a BlobStatus. If one is not found,
 // and a VerifyImageStatus exists, use that to create the BlobStatus.
-func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objType, blobSha string) *types.BlobStatus {
+func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, blobSha string) *types.BlobStatus {
 	if blobSha == "" {
 		return nil
 	}
@@ -424,14 +423,13 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 			State:          vs.State,
 			Path:           vs.FileLocation,
 			HasVerifierRef: true,
-			ObjType:        objType,
 			Size:           uint64(vs.Size),
 			CurrentSize:    vs.Size,
 			TotalSize:      vs.Size,
 			Progress:       100,
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
-		startBlobVerification(ctx, objType, sv, blob)
+		startBlobVerification(ctx, sv, blob)
 		publishBlobStatus(ctx, blob)
 		return blob
 	}

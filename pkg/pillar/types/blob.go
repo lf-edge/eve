@@ -40,8 +40,6 @@ type BlobStatus struct {
 	Progress uint
 	// ErrorAndTimeWithSource provide common error handling capabilities
 	ErrorAndTimeWithSource
-	// XXX remove ObjType as part of cleanup of ObjType
-	ObjType string
 }
 
 // BlobType what kind of blob this is. Usually we use the MediaType,

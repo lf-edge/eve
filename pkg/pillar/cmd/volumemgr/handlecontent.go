@@ -124,7 +124,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 				PublicKey:        config.SignatureKey,
 				CertificateChain: config.CertificateChain,
 			}
-			if lookupOrCreateBlobStatus(ctx, sv, status.ObjType, config.ContentSha256) == nil {
+			if lookupOrCreateBlobStatus(ctx, sv, config.ContentSha256) == nil {
 				blobType := types.BlobBinary
 				if config.Format == zconfig.Format_CONTAINER {
 					blobType = types.BlobUnknown
@@ -136,7 +136,6 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 					Size:        config.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    blobType,
-					ObjType:     config.ObjType,
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}

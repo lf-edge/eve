@@ -95,7 +95,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			// at this point, we will have the hash of the root blob as status.ContentSha256,
 			// so we need to create the BlobStatus, if it does not exist
 			// if it does not already exist
-			if lookupOrCreateBlobStatus(ctx, sv, status.ObjType, status.ContentSha256) == nil {
+			if lookupOrCreateBlobStatus(ctx, sv, status.ContentSha256) == nil {
 				rootBlob := &types.BlobStatus{
 					DatastoreID: status.DatastoreID,
 					RelativeURL: status.RelativeURL,
@@ -103,7 +103,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					Size:        status.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    types.BlobUnknown,
-					ObjType:     status.ObjType,
 				}
 				log.Infof("doUpdateContentTree: publishing root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
@@ -131,7 +130,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		)
 		for _, blobSha := range status.Blobs {
 			// get the actual blobStatus
-			blob := lookupOrCreateBlobStatus(ctx, sv, status.ObjType, blobSha)
+			blob := lookupOrCreateBlobStatus(ctx, sv, blobSha)
 			if blob == nil {
 				log.Errorf("doUpdateContentTree: could not find BlobStatus(%s)", blobSha)
 				leftToProcess = true
@@ -155,7 +154,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
 				// downloaded: kick off verifier for this blob
 				log.Infof("doUpdateContentTree: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
-				if verifyBlob(ctx, status.ObjType, sv, blob) {
+				if verifyBlob(ctx, sv, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
@@ -189,7 +188,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					}
 					status.Blobs = append(status.Blobs, addedBlobs...)
 					// only publish those that do not already exist
-					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, status.ObjType, blobChildren)...)
+					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
 				}
 				if blob.BlobType == types.BlobManifest {
 					size := resolveManifestSize(*blob)

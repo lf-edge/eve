@@ -67,10 +67,9 @@ func TestHandleWorkCreate(t *testing.T) {
 				test.BlobSha256,
 			}
 			ctx.pubBlobStatus.Publish(test.BlobSha256, types.BlobStatus{
-				State:   types.VERIFIED,
-				Path:    test.SrcLocation,
-				Sha256:  strings.ToLower(test.BlobSha256),
-				ObjType: types.AppImgObj,
+				State:  types.VERIFIED,
+				Path:   test.SrcLocation,
+				Sha256: strings.ToLower(test.BlobSha256),
 			})
 
 			MaybeAddWorkCreateOld(&ctx, &status)
@@ -222,5 +221,12 @@ func initCtx(t *testing.T) volumemgrContext {
 	})
 	assert.Nil(t, err)
 	ctx.pubBlobStatus = pubBlobStatus
+	pubBaseOsVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.BaseOsObj,
+		TopicType:  types.OldVolumeStatus{},
+	})
+	assert.Nil(t, err)
+	ctx.pubBaseOsVolumeStatus = pubBaseOsVolumeStatus
 	return ctx
 }

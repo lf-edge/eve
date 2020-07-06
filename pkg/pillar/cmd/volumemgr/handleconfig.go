@@ -107,7 +107,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		PublicKey:        config.DownloadOrigin.SignatureKey,
 		CertificateChain: config.DownloadOrigin.CertificateChain,
 	}
-	if lookupOrCreateBlobStatus(ctx, sv, objType, dos.ImageSha256) == nil {
+	if lookupOrCreateBlobStatus(ctx, sv, dos.ImageSha256) == nil {
 		blobType := types.BlobBinary
 		if config.Format == zconfig.Format_CONTAINER {
 			blobType = types.BlobUnknown
@@ -119,7 +119,6 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 			Size:        dos.MaxDownSize,
 			State:       types.INITIAL,
 			BlobType:    blobType,
-			ObjType:     objType,
 		}
 		publishBlobStatus(ctx, rootBlob)
 	}
@@ -129,7 +128,6 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		VolumeID:       config.VolumeID,
 		PurgeCounter:   config.PurgeCounter,
 		DisplayName:    config.DisplayName,
-		ObjType:        objType,
 		Origin:         config.Origin,
 		DownloadOrigin: dos,
 		MaxVolSize:     config.MaxVolSize,
