@@ -122,10 +122,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// loop through each blob, see if it is downloaded and verified.
 		// we set the contenttree to verified when all of the blobs are verified
-		if status.State < types.DOWNLOADING {
-			status.State = types.DOWNLOADING
-			changed = true
-		}
 		leftToProcess := false
 
 		var (
