@@ -78,6 +78,7 @@ message EdgeDevConfig {
 
 message ConfigRequest {
   string configHash = 1;
+  bytes  integrity_token = 2; // value provided by controller during remote attestation
 }
 
 message ConfigResponse {
