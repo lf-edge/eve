@@ -3,9 +3,6 @@
 
 // Process input in the form of collections of VerifyImageConfig structs
 // and publish the results as collections of VerifyImageStatus structs.
-// Process input changes from a config directory containing json encoded files
-// with VerifyImageConfig and compare against VerifyImageStatus in the status
-// dir.
 //
 // Move the file from DownloadDirname/pending/<sha> to
 // to DownloadDirname/verifier/<sha> and make RO,
@@ -45,7 +42,7 @@ const (
 	// Time limits for event loop handlers
 	errorTime        = 3 * time.Minute
 	warningTime      = 40 * time.Second
-	verifierBasePath = types.DownloadDirname
+	verifierBasePath = types.SealedDirName + "/" + agentName
 )
 
 // Go doesn't like this as a constant
@@ -719,7 +716,6 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 }
 
 // Recreate VerifyImageStatus for verified files as types.VERIFIED
-// XXX should we also look in old verified directory and move? In upgradeconverter if so.
 func handleInitVerifiedObjects(ctx *verifierContext) {
 
 	verifiedDirname := getVerifiedDir()

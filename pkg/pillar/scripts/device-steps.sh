@@ -142,8 +142,8 @@ if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
 
-echo "$(date -Ins -u) Current downloaded files:"
-ls -lt $PERSISTDIR/downloads/*/*
+echo "$(date -Ins -u) Current downloaded/verified files:"
+ls -lt $PERSISTDIR/vault/verifier/verified/
 echo
 
 echo "$(date -Ins -u) Preserved volumes:"

@@ -47,7 +47,9 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 	// Pick a unique name since the sha has not yet been verified hence
 	// can potentially collide between different concurrent downloads
 	pendingFile := uuid.NewV4().String() + "." + blob.Sha256
-	locFilename := path.Join(types.DownloadDirname, "pending", pendingFile)
+	locFilename := path.Join(types.SealedDirName, "downloader", "pending",
+		pendingFile)
+
 	// try to reserve storage, must be released on error
 	size := blob.Size
 

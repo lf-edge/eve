@@ -27,8 +27,9 @@ import (
 const (
 	agentName = "downloader"
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime          = 3 * time.Minute
+	warningTime        = 40 * time.Second
+	downloaderBasePath = types.SealedDirName + "/" + agentName
 )
 
 // Go doesn't like this as a constant
@@ -450,39 +451,6 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	clearInProgressDownloadDirs()
 	createDownloadDirs()
 	return dCtx
-}
-
-// Create the object download directories we own
-func createDownloadDirs() {
-
-	workingDirTypes := []string{"pending"}
-
-	// now create the download dirs
-	for _, dirType := range workingDirTypes {
-		dirName := types.DownloadDirname + "/" + dirType
-		if _, err := os.Stat(dirName); err != nil {
-			log.Debugf("Create %s", dirName)
-			if err := os.MkdirAll(dirName, 0700); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
-}
-
-// clear in-progress object download directories
-func clearInProgressDownloadDirs() {
-
-	// Now remove the in-progress dirs
-	workingDirTypes := []string{"pending"}
-
-	for _, dirType := range workingDirTypes {
-		dirName := types.DownloadDirname + "/" + dirType
-		if _, err := os.Stat(dirName); err == nil {
-			if err := os.RemoveAll(dirName); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
 }
 
 func publishDownloaderStatus(ctx *downloaderContext,

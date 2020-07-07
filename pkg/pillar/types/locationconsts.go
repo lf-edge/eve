@@ -13,8 +13,6 @@ const (
 	PersistConfigDir = PersistDir + "/config"
 	// PersistStatusDir is where we keep some configuration across reboots
 	PersistStatusDir = PersistDir + "/status"
-	// DownloadDirname - Location of downloaded images / objects
-	DownloadDirname = PersistDir + "/downloads"
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
 	// RWImgDirname - Location of read/write images used by app instances
@@ -23,10 +21,14 @@ const (
 	// ROContImgDirname - Location of read only images used by containerd
 	// XXX remove /runx/pods/prepared
 	ROContImgDirname = PersistDir + "/runx/pods/prepared"
-	// VolumeEncryptedDirName - Encrypted directory used to store volumes
-	VolumeEncryptedDirName = PersistDir + "/vault/volumes"
+	// SealedDirName - directory sealed under TPM PCRs
+	SealedDirName = PersistDir + "/vault"
+	// VolumeEncryptedDirName - sealed directory used to store volumes
+	VolumeEncryptedDirName = SealedDirName + "/volumes"
+	// ClearDirName - directory which is not encrypted
+	ClearDirName = PersistDir + "/clear"
 	// VolumeClearDirName - Not encrypted directory used to store volumes
-	VolumeClearDirName = PersistDir + "/clear/volumes"
+	VolumeClearDirName = ClearDirName + "/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
 
