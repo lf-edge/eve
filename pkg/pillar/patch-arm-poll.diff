@@ -1,0 +1,103 @@
+From a30841aab1efa2517f5fb4777cad622c7f8b2817 Mon Sep 17 00:00:00 2001
+From: Ryan O'Leary <ryanoleary@google.com>
+Date: Thu, 17 Oct 2019 19:22:33 -0700
+Subject: [PATCH 1/2] Fix tpmtool.poll function to build on arm64
+X-Origin: https://github.com/google/go-tpm/pull/147
+
+To achieve this, the unix.Poll function is used which is implemented for
+more architectures.
+
+Signed-off-by: Ryan O'Leary <ryanoleary@google.com>
+---
+ tpmutil/poll_unix.go | 41 ++++++++++++++++-------------------------
+ 3 files changed, 21 insertions(+), 26 deletions(-)
+
+diff --git a/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go b/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
+index 92e8270..e611c9a 100644
+--- a/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
++++ b/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
+@@ -5,38 +5,29 @@ package tpmutil
+ import (
+ 	"fmt"
+ 	"os"
+-	"syscall"
+-	"unsafe"
+-)
+ 
+-type pollFD struct {
+-	fd      int32
+-	events  int16
+-	revents int16
+-}
++	"golang.org/x/sys/unix"
++)
+ 
+-// poll blocks until the file descriptior is ready for reading or an error occurs.
++// poll blocks until the file descriptor is ready for reading or an error occurs.
+ func poll(f *os.File) error {
+ 	var (
+-		fd = &pollFD{
+-			fd:     int32(f.Fd()),
+-			events: 0x1, // POLLIN
+-		}
+-		numFD     = 1
+-		timeoutMS = -1 // Do not set a timeout
++		fds = []unix.PollFd{{
++			Fd:     int32(f.Fd()),
++			Events: 0x1, // POLLIN
++		}}
++		timeout = 0 // No timeout
+ 	)
+-	_, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(fd)), uintptr(numFD), uintptr(timeoutMS))
+-	// Convert errno into an error, otherwise err != nil checks up the stack
+-	// will hit unexpectedly on 0 errno.
+-	var err error
+-	if errno != 0 {
+-		err = errno
++
++	_, err := unix.Poll(fds, timeout)
++	if err != nil {
+ 		return err
+ 	}
+-	// revents is filled in by the kernel.
+-	// If the expected event happened, revents should match events.
+-	if fd.revents != fd.events {
+-		return fmt.Errorf("unexpected poll revents 0x%x", fd.revents)
++
++	// Revents is filled in by the kernel.
++	// If the expected event happened, Revents should match events.
++	if fds[0].Revents != fds[0].Events {
++		return fmt.Errorf("unexpected poll Revents 0x%x", fds[0].Revents)
+ 	}
+ 	return nil
+ }
+
+From a3323bed98ba3788fe4ba34425d7ea01cf01c3e5 Mon Sep 17 00:00:00 2001
+From: Joe Richey <joerichey@google.com>
+Date: Sat, 19 Oct 2019 17:56:16 -0700
+Subject: [PATCH 2/2] Style nits
+
+---
+ vendor/github.com/google/go-tpm/poll_unix.go | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go b/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
+index e611c9a..89d3927 100644
+--- a/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
++++ b/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
+@@ -19,13 +19,12 @@ func poll(f *os.File) error {
+ 		timeout = 0 // No timeout
+ 	)
+ 
+-	_, err := unix.Poll(fds, timeout)
+-	if err != nil {
++	if _, err := unix.Poll(fds, timeout); err != nil {
+ 		return err
+ 	}
+ 
+ 	// Revents is filled in by the kernel.
+-	// If the expected event happened, Revents should match events.
++	// If the expected event happened, Revents should match Events.
+ 	if fds[0].Revents != fds[0].Events {
+ 		return fmt.Errorf("unexpected poll Revents 0x%x", fds[0].Revents)
+ 	}
