@@ -1101,12 +1101,6 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(types.DownloadDirname); err != nil {
-		log.Debugf("Create %s", types.DownloadDirname)
-		if err := os.MkdirAll(types.DownloadDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 }
 
 // handleAppInstanceStatusCreate - Handle AIS create. Publish ZInfoApp

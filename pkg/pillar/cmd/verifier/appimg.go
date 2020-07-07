@@ -3,8 +3,6 @@
 
 package verifier
 
-// wrappers to add objType for create. The Delete wrappers are merely
-// for function name consistency
 func handleVerifyImageConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	vHandler.modify(ctxArg, key, configArg)
 }

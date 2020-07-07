@@ -3,7 +3,6 @@
 
 package downloader
 
-// for function name consistency
 func handleDownloaderConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 

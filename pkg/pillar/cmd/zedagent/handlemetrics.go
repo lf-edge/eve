@@ -66,7 +66,8 @@ var reportDirPaths = []string{
 var appPersistPaths = []string{
 	types.VolumeEncryptedDirName,
 	types.VolumeClearDirName,
-	types.DownloadDirname,
+	types.SealedDirName + "/downloader",
+	types.SealedDirName + "/verifier",
 }
 
 func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
