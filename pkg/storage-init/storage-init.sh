@@ -12,8 +12,8 @@ CONFIGDIR=/var/config
 # that the system comes up somehow)
 init_containerd() {
     mkdir -p "$PERSISTDIR/containerd"
-    mkdir -p /hostfs/var/lib
-    ln -s "$PERSISTDIR/containerd" /hostfs/var/lib/containerd
+    mkdir -p /var/lib
+    ln -s "$PERSISTDIR/containerd" /var/lib/containerd
 }
 
 mkdir -p $PERSISTDIR
@@ -21,7 +21,7 @@ chmod 700 $PERSISTDIR
 mkdir -p $CONFIGDIR
 chmod 700 $CONFIGDIR
 
-if CONFIG=$(/hostfs/sbin/findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
+if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
     fi
@@ -48,9 +48,9 @@ FSCK_FAILED=0
 # manipulate partition table. The logic here is simple: if we're missing
 # both IMGB and P3 the following code is probably the *least* risky thing
 # we can do.
-P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
-IMGA=$(/hostfs/sbin/findfs PARTLABEL=IMGA)
-IMGB=$(/hostfs/sbin/findfs PARTLABEL=IMGB)
+P3=$(findfs PARTLABEL=P3)
+IMGA=$(findfs PARTLABEL=IMGA)
+IMGB=$(findfs PARTLABEL=IMGB)
 if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    DEV=$(echo /sys/block/*/"${IMGA#/dev/}")
    DEV="/dev/$(echo "$DEV" | cut -f4 -d/)"
@@ -93,7 +93,7 @@ fi
 #For systems with ext3 filesystem, try not to change to ext4, since it will brick
 #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
 #when we do usb install, this way the transition is more controlled.
-if P3=$(/hostfs/sbin/findfs PARTLABEL=P3) && [ -n "$P3" ]; then
+if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
@@ -150,3 +150,12 @@ for BLK_DEVICE in $BLK_DEVICES; do
         ln -s "/dev/$BLK_DEVICE" "$UUID_SYMLINK_PATH/$BLK_UUID"
     fi
 done
+
+# Uncomment the following block if you want storage-init to replace
+# rootfs of service containers with a copy under /persist/services/X
+# each of these is considered to be a proper lowerFS
+# for s in "$PERSISTDIR"/services/* ; do
+#   if [ -d "$s" ]; then
+#      mount --bind "$s" "/containers/services/$(basename "$s")/lower"
+#   fi
+# done

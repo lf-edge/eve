@@ -324,7 +324,6 @@ func (config OldGlobalConfig) MoveBetweenConfigs() *ConfigItemValueMap {
 	newConfig.SetGlobalValueInt(FallbackIfCloudGoneTime, config.FallbackIfCloudGoneTime)
 	newConfig.SetGlobalValueInt(MintimeUpdateSuccess, config.MintimeUpdateSuccess)
 	newConfig.SetGlobalValueInt(StaleConfigTime, config.StaleConfigTime)
-	newConfig.SetGlobalValueInt(DownloadGCTime, config.DownloadGCTime)
 	newConfig.SetGlobalValueInt(VdiskGCTime, config.VdiskGCTime)
 	newConfig.SetGlobalValueInt(DownloadRetryTime, config.DownloadRetryTime)
 	newConfig.SetGlobalValueInt(DomainBootRetryTime, config.DomainBootRetryTime)

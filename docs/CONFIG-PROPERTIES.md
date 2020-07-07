@@ -10,7 +10,6 @@
 | timer.update.fallback.no.network | integer in seconds | 300 | fallback after no cloud connectivity |
 | timer.test.baseimage.update | integer in seconds | 600 | commit to update |
 | timer.use.config.checkpoint | integer in seconds | 600 | use checkpointed config if no cloud connectivity |
-| timer.gc.download | integer in seconds |  600 | garbage collect unused downloaded objects |
 | timer.gc.vdisk | integer in seconds | 1 hour | garbage collect unused instance virtual disk |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
 | timer.boot.retry | integer in seconds | 600 | retry a failed domain boot |

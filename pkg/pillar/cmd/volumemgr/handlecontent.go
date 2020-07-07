@@ -136,6 +136,7 @@ func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 					Size:        config.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    blobType,
+					ObjType:     types.AppImgObj,
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}
@@ -156,27 +157,6 @@ func deleteContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
 	if status == nil {
 		log.Infof("deleteContentTree for %v, ContentTreeStatus not found", config.ContentID)
 		return
-	}
-	changed := false
-	if status.HasDownloaderRef {
-		MaybeRemoveDownloaderConfig(ctx, status.ObjType,
-			status.ContentSha256)
-		status.HasDownloaderRef = false
-		changed = true
-	}
-	if status.HasVerifierRef {
-		MaybeRemoveVerifyImageConfig(ctx, status.ObjType,
-			status.ContentSha256)
-		status.HasVerifierRef = false
-		changed = true
-	}
-	if status.HasPersistRef {
-		ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.ContentSha256)
-		status.HasPersistRef = false
-		changed = true
-	}
-	if changed {
-		publishContentTreeStatus(ctx, status)
 	}
 	unpublishContentTreeStatus(ctx, status)
 	deleteLatchContentTreeHash(ctx, config.ContentID, uint32(config.GenerationCounter))

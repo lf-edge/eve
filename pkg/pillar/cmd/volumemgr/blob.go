@@ -1,3 +1,6 @@
+// Copyright (c) 2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package volumemgr
 
 import (
@@ -135,55 +138,28 @@ func updateBlobFromVerifyImageStatus(vs *types.VerifyImageStatus, blob *types.Bl
 }
 
 // verifyBlob verify a blob, or latch onto an existing VerifyImageStatus.
-// First, check if a VerifyImageStatus exists. If so, check HasVerifierRef, potentially incrementing
-// the refcount.
-// Second, check if a PersistImageStatus exists. If so, check HasPersistRef, potentially incrementing
-// the refcount. Once it is done, create a VerifyImageConfig to generate a VerifyImageStatus.
-// Third, if neither exists, create one.
+// First, check if a VerifyImageStatus exists. If so, check HasVerifierRef,
+// potentially incrementing creating or incrementing the refcount on a
+// VerifyImageConfig to trigger the generation of a VerifyImageStatus.
 // returns if the BlobStatus was changed, and thus woudl require publishing
 func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
 
 	// A: try to use an existing VerifyImageStatus
-	if vs := lookupVerifyImageStatus(ctx, objType, blob.Sha256); vs != nil {
+	vs := lookupVerifyImageStatus(ctx, objType, blob.Sha256)
+	if vs != nil && !vs.Expired {
 		log.Infof("verifyBlob(%s): found VerifyImageStatus", blob.Sha256)
 		changed = updateBlobFromVerifyImageStatus(vs, blob)
 
 		// if we do not reference it, increment the refcount
-		if !blob.HasVerifierRef && startBlobVerification(ctx, objType, sv, blob) {
+		if startBlobVerification(ctx, objType, sv, blob) {
 			changed = true
 		}
 
 		return changed
 	}
 
-	// B: no VerifyImageStatus, so try to use a PersistImageStatus
-	ps := lookupPersistImageStatus(ctx, objType, blob.Sha256)
-	if ps != nil && !ps.Expired {
-		log.Infof("verifyBlob(%s): Found PersistImageStatus", blob.Sha256)
-		if !blob.HasPersistRef {
-			log.Infof("verifyBlob(%s): Adding PersistImageStatus reference", blob.Sha256)
-			AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
-			blob.HasPersistRef = true
-			changed = true
-		}
-		// mark the BlobStatus state as VERIFIED as we already have a PersistImageStatus for the blob
-		log.Infof("verifyBlob(%s): Update State from %s to %s, FileLocation to %s", blob.Sha256, blob.State, types.VERIFIED, blob.Path)
-		blob.State = types.VERIFIED
-		blob.Path = ps.FileLocation
-		blob.TotalSize = ps.Size
-		blob.CurrentSize = ps.Size
-		blob.Progress = 100
-		// if we got here, there was no VerifyImageStatus, so we should add it
-		log.Infof("verifyBlob(%s): adding VerifyImageConfig", blob.Sha256)
-		MaybeAddVerifyImageConfigBlob(ctx, objType, *blob, sv)
-		blob.HasVerifierRef = true
-		// Wait for VerifyImageStatus to appear
-		return true
-	}
-
-	// C: No VerifyImageStatus or PersistImageStatus, so just create it
-	// if we found none, or we do not have a ref, create it
+	// B: No VerifyImageStatus so just create it
 	if blob.State < types.VERIFYING {
 		blob.State = types.VERIFYING
 		changed = true
@@ -198,6 +174,9 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 // Used only in verifyBlob, but repetitive, so a separate utility function
 func startBlobVerification(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
+	if blob.HasVerifierRef {
+		return false
+	}
 	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, objType, *blob, sv)
 	if done {
 		blob.HasVerifierRef = true
@@ -247,6 +226,7 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 				Size:        uint64(manifest.Size),
 				State:       types.INITIAL,
 				BlobType:    types.BlobManifest,
+				ObjType:     blob.ObjType,
 			},
 		}
 	case types.BlobManifest:
@@ -267,6 +247,7 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 					Sha256:      strings.ToLower(child.Digest.Hex),
 					Size:        uint64(child.Size),
 					State:       types.INITIAL,
+					ObjType:     blob.ObjType,
 				})
 			}
 		}
@@ -367,7 +348,7 @@ func blobsNotInStatus(ctx *volumemgrContext, a []*types.BlobStatus) []*types.Blo
 }
 
 // blobsNotInStatusOrCreate find any in the slice that do not already have a BlobStatus,
-// but first check if the BlobStatus can be recreated from VerifyImageStatus/PersistImageStatus
+// but first check if the BlobStatus can be recreated from VerifyImageStatus
 func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, objType string, a []*types.BlobStatus) []*types.BlobStatus {
 	// if we have none, return none
 	if len(a) < 1 {
@@ -401,7 +382,7 @@ func resolveManifestSize(blob types.BlobStatus) int64 {
 }
 
 // lookupBlobStatus look for a BlobStatus. Does not attempt to recreate one
-// from VerifyImageStatus or PersistImageStatus
+// from VerifyImageStatus
 func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 
 	if blobSha == "" {
@@ -418,23 +399,24 @@ func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 }
 
 // lookupOrCreateBlobStatus tries to lookup a BlobStatus. If one is not found,
-// and a VerifyImageStatus or PersistImageStatus exists, use that to create
-// the BlobStatus.
+// and a VerifyImageStatus exists, use that to create the BlobStatus.
 func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objType, blobSha string) *types.BlobStatus {
 	if blobSha == "" {
 		return nil
 	}
+	// Does it already exist?
 	blob := lookupBlobStatus(ctx, blobSha)
 	if blob != nil {
 		return blob
 	}
-	// need to look for VerifyImageStatus/BlobImageStatus that matches
-	log.Infof("lookupOrCreateBlobStatus(%s) not found, trying VerifyImageStatus/PersistImageStatus", blobSha)
+	// need to look for VerifyImageStatus that matches
+	log.Infof("lookupOrCreateBlobStatus(%s) not found, trying VerifyImageStatus",
+		blobSha)
 
-	// A: try to use an existing VerifyImageStatus
 	// first see if a VerifyImageStatus exists
 	// if it does, then create a BlobStatus with State up to the level of the VerifyImageStatus
-	if vs := lookupVerifyImageStatus(ctx, objType, blobSha); vs != nil {
+	vs := lookupVerifyImageStatus(ctx, objType, blobSha)
+	if vs != nil && !vs.Expired {
 		log.Infof("lookupOrCreateBlobStatus(%s) VerifyImageStatus found, creating and publishing BlobStatus", blobSha)
 		blob := &types.BlobStatus{
 			BlobType:       types.BlobUnknown,
@@ -442,25 +424,13 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 			State:          vs.State,
 			Path:           vs.FileLocation,
 			HasVerifierRef: true,
+			ObjType:        objType,
+			Size:           uint64(vs.Size),
+			CurrentSize:    vs.Size,
+			TotalSize:      vs.Size,
+			Progress:       100,
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
-		startBlobVerification(ctx, objType, sv, blob)
-		publishBlobStatus(ctx, blob)
-		return blob
-	}
-
-	// B: no VerifyImageStatus, so try to use a PersistImageStatus
-	if ps := lookupPersistImageStatus(ctx, objType, blobSha); ps != nil && !ps.Expired {
-		log.Infof("lookupOrCreateBlobStatus(%s) PersistImageStatus found, creating and publishing BlobStatus", blobSha)
-		blob := &types.BlobStatus{
-			BlobType:       types.BlobUnknown,
-			Sha256:         blobSha,
-			State:          types.VERIFIED,
-			Path:           ps.FileLocation,
-			HasVerifierRef: true,
-			HasPersistRef:  true,
-		}
-		AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
 		startBlobVerification(ctx, objType, sv, blob)
 		publishBlobStatus(ctx, blob)
 		return blob
@@ -504,12 +474,25 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		key := blob.Sha256
 		log.Infof("unpublishBlobStatus(%s)", key)
 
+		// drop references
+		if blob.HasDownloaderRef {
+			MaybeRemoveDownloaderConfig(ctx, blob.ObjType,
+				blob.Sha256)
+			blob.HasDownloaderRef = false
+		}
+		if blob.HasVerifierRef {
+			MaybeRemoveVerifyImageConfig(ctx, blob.ObjType,
+				blob.Sha256)
+			blob.HasVerifierRef = false
+		}
+
 		pub := ctx.pubBlobStatus
 		st, _ := pub.Get(key)
 		if st == nil {
 			errs = append(errs, fmt.Errorf("unpublishBlobStatus(%s) not found", key))
 			continue
 		}
+
 		pub.Unpublish(key)
 	}
 	for _, err := range errs {

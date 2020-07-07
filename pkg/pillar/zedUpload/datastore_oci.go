@@ -142,12 +142,9 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) 
 	}
 
 	// Pull down the blob as is and save it to a file named for the hash
-	size, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256, req.objloc, ep.uname, ep.apiKey, ep.hClient, prgChan)
-	if err != nil {
-		return size, err
-	}
+	size, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256, req.objloc, ep.uname, ep.apiKey, req.sizelimit, ep.hClient, prgChan)
 	// zedUpload's job is to download a blob from an OCI registry. Done.
-	return size, nil
+	return size, err
 }
 
 // processDelete Artifact delete from OCI registry

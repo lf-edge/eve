@@ -81,13 +81,20 @@ func Manifest(registry, repo, username, apiKey string, client *http.Client, prgc
 }
 
 // PullBlob downloads a blob from a registry and save it as a file as-is.
-func PullBlob(registry, repo, hash, localFile, username, apiKey string, client *http.Client, prgchan NotifChan) (int64, error) {
+func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize int64, client *http.Client, prgchan NotifChan) (int64, error) {
 	log.Infof("PullBlob(%s, %s, %s) to %s", registry, repo, hash, localFile)
 
 	var (
-		w io.Writer
-		r io.Reader
+		w        io.Writer
+		r        io.Reader
+		stats    UpdateStats
+		size     int64
+		finalErr error
 	)
+
+	// send out the maximum size as we understand it
+	stats.Size = maxsize
+	sendStats(prgchan, stats)
 
 	opts := options(username, apiKey, client)
 
@@ -150,13 +157,55 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, client *
 	} else {
 		w = os.Stdout
 	}
-	size, err := io.Copy(w, r)
-	if err != nil {
-		return 0, fmt.Errorf("could not write to local file %s from %s: %v", localFile, ref.String(), err)
-	}
-	log.Infof("PullBlob(%s): download complete to %s size %d", image, localFile, size)
 
-	return size, nil
+	// get updates on downloads, convert and pass them to sendStats
+	c := make(chan Update, 200)
+	defer close(c)
+
+	// copy from the readstream over the network to the writestream to the local file
+	// we do this in a goroutine so we can catch the updates
+	pw := &ProgressWriter{
+		w:       w,
+		updates: c,
+		size:    maxsize,
+	}
+
+	go func() {
+		// copy all of the data
+		size, err := io.Copy(pw, r)
+		if err != nil && err != io.EOF {
+			log.Errorf("could not write to local file %s from %s: %v", localFile, ref.String(), err)
+		}
+		if err == nil {
+			err = io.EOF
+		}
+		c <- Update{
+			Total:    pw.size,
+			Complete: size,
+			Error:    err,
+		}
+	}()
+
+	for update := range c {
+		atomic.StoreInt64(&stats.Asize, update.Complete)
+		atomic.StoreInt64(&stats.Size, update.Total)
+		sendStats(prgchan, stats)
+		size = update.Complete
+		// any error means to stop
+		if update.Error != nil {
+			// EOF means we are at the end cleanly
+			if update.Error == io.EOF {
+				log.Infof("PullBlob(%s): download complete to %s size %d", image, localFile, size)
+				finalErr = nil
+			} else {
+				log.Errorf("PullBlob(%s): error saving to %s: %v", image, localFile, update.Error)
+				finalErr = update.Error
+			}
+			break
+		}
+	}
+
+	return size, finalErr
 }
 
 // ociGetManifest get an OCI manifest

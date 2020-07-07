@@ -121,8 +121,6 @@ const (
 	MintimeUpdateSuccess GlobalSettingKey = "timer.test.baseimage.update"
 	// StaleConfigTime global setting key
 	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
-	// DownloadGCTime global setting key
-	DownloadGCTime GlobalSettingKey = "timer.gc.download"
 	// VdiskGCTime global setting key
 	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
 	// DownloadRetryTime global setting key
@@ -712,7 +710,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
 	configItemSpecMap.AddIntItem(StaleConfigTime, 600, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DownloadGCTime, 600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)

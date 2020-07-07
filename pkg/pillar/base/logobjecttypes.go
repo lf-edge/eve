@@ -65,10 +65,6 @@ const (
 	VerifyImageConfigLogType LogObjectType = "verifyimage_config"
 	// VerifyImageStatusLogType :
 	VerifyImageStatusLogType LogObjectType = "verifyimage_status"
-	// PersistImageConfigLogType :
-	PersistImageConfigLogType LogObjectType = "persistimage_config"
-	// PersistImageStatusLogType :
-	PersistImageStatusLogType LogObjectType = "persistimage_status"
 	// ContentTreeConfigLogType :
 	ContentTreeConfigLogType LogObjectType = "contenttree_config"
 	// ContentTreeStatusLogType :
@@ -79,6 +75,8 @@ const (
 	DevicePortConfigListLogType LogObjectType = "deviceportconfig_list"
 	// DeviceNetworkStatus :
 	DeviceNetworkStatusLogType LogObjectType = "devicenetwork_status"
+	// BlobStatusType:
+	BlobStatusLogType LogObjectType = "blob_status"
 	// VolumeConfigLogType:
 	VolumeConfigLogType LogObjectType = "volume_config"
 	// VolumeStatusLogType:

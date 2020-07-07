@@ -103,6 +103,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					Size:        status.MaxDownloadSize,
 					State:       types.INITIAL,
 					BlobType:    types.BlobUnknown,
+					ObjType:     status.ObjType,
 				}
 				log.Infof("doUpdateContentTree: publishing root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
@@ -121,10 +122,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// loop through each blob, see if it is downloaded and verified.
 		// we set the contenttree to verified when all of the blobs are verified
-		if status.State < types.DOWNLOADING {
-			status.State = types.DOWNLOADING
-			changed = true
-		}
 		leftToProcess := false
 
 		var (
@@ -437,7 +434,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	return changed, false
 }
 
-// updateStatus update all VolumeStatus/ContentTreeStatus which include a blob
+// updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
 // that has this Sha256
 func updateStatus(ctx *volumemgrContext, objType, sha string) {
 
@@ -484,7 +481,8 @@ func updateStatus(ctx *volumemgrContext, objType, sha string) {
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND", sha, objType)
+		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND",
+			sha, objType)
 	}
 }
 

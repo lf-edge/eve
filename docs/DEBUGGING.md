@@ -2,6 +2,20 @@
 
 This document describes various scenarios and how to debug them. It is a living document to which elements will be added.
 
+## Live updates of system containers
+
+In order to aid rapid edit/compile/debug cycle EVE's storage-init container can be instructed to dynamically
+substitute systems containers with a copy under `/persist/service`. This requires building a special EVE image
+with the code block at the bottom of [storage-init.sh](../pkg/storage-init/storage-init.sh) uncommented. Once
+that image is ready, content of the `/persist/service/<service name>` will be made available as a rootfs of
+the `<service name>`. For example, in order to rapidly iterate on pillar services one can:
+
+```
+cp -r /containers/services/pillar/lower /persist/service/pillar
+# edit content under /persist/service/pillar
+# reboot and enjoy updates to the pillar container
+``` 
+
 ## Reboots
 
 EVE is architected in such a way that if any service is unresponsive for a period of time, the entire device will reboot. To track
