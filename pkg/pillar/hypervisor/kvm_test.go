@@ -45,7 +45,7 @@ func init() {
 		panic(fmt.Sprintf("Requested kvm hypervisor, got %s (with error %v) instead", hyperKvm.Name(), err))
 	}
 
-	// these ones are ver much handcrafted just for the tests
+	// these ones are very much handcrafted just for the tests
 	kvmIntel = kvmContext{
 		domains:     map[string]int{},
 		devicemodel: "pc-q35-3.1",
@@ -189,13 +189,22 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   cores = "2"
   threads = "1"
 
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
 [chardev "charserial0"]
-  backend = "pty"
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
 
-[device "serial0"]
-  driver = "isa-serial"
+[device]
+  driver = "virtconsole"
   chardev = "charserial0"
-
+  name = "org.lfedge.eve.console.0"
 
 
 #[device "video0"]
@@ -233,12 +242,12 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "1"
 
 
-[device "pci.3"]
+[device "pci.4"]
   driver = "pcie-root-port"
-  port = "13"
-  chassis = "3"
+  port = "14"
+  chassis = "4"
   bus = "pcie.0"
-  addr = "3"
+  addr = "4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -248,7 +257,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.3"
+  bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
@@ -263,15 +272,15 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
-  addr = "4"
-
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "15"
-  chassis = "5"
-  bus = "pcie.0"
   addr = "5"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -281,7 +290,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.5"
+  bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
@@ -299,13 +308,13 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "ide.0"
   drive = "drive-sata0-3"
 
-[device "pci.6"]
+[device "pci.7"]
   driver = "pcie-root-port"
-  port = "16"
-  chassis = "6"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "6"
+  addr = "7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -318,16 +327,16 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 
-[device "pci.7"]
+[device "pci.8"]
   driver = "pcie-root-port"
-  port = "17"
-  chassis = "7"
+  port = "18"
+  chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -340,7 +349,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
 [chardev "charserial-usr0"]
@@ -439,13 +448,22 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   cores = "2"
   threads = "1"
 
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
 [chardev "charserial0"]
-  backend = "pty"
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
 
-[device "serial0"]
-  driver = "isa-serial"
+[device]
+  driver = "virtconsole"
   chardev = "charserial0"
-
+  name = "org.lfedge.eve.console.0"
 
 
 #[device "video0"]
@@ -483,12 +501,12 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "1"
 
 
-[device "pci.3"]
+[device "pci.4"]
   driver = "pcie-root-port"
-  port = "13"
-  chassis = "3"
+  port = "14"
+  chassis = "4"
   bus = "pcie.0"
-  addr = "3"
+  addr = "4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -498,7 +516,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.3"
+  bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
@@ -513,15 +531,15 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
-  addr = "4"
-
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "15"
-  chassis = "5"
-  bus = "pcie.0"
   addr = "5"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -531,7 +549,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.5"
+  bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
@@ -549,13 +567,13 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "ide.0"
   drive = "drive-sata0-3"
 
-[device "pci.6"]
+[device "pci.7"]
   driver = "pcie-root-port"
-  port = "16"
-  chassis = "6"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "6"
+  addr = "7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -568,16 +586,16 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 
-[device "pci.7"]
+[device "pci.8"]
   driver = "pcie-root-port"
-  port = "17"
-  chassis = "7"
+  port = "18"
+  chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -590,7 +608,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
 [chardev "charserial-usr0"]
@@ -665,6 +683,22 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   cores = "2"
   threads = "1"
 
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
+[chardev "charserial0"]
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
+
+[device]
+  driver = "virtconsole"
+  chardev = "charserial0"
+  name = "org.lfedge.eve.console.0"
 
 
 #[device "video0"]
@@ -702,12 +736,12 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "1"
 
 
-[device "pci.3"]
+[device "pci.4"]
   driver = "pcie-root-port"
-  port = "13"
-  chassis = "3"
+  port = "14"
+  chassis = "4"
   bus = "pcie.0"
-  addr = "3"
+  addr = "4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -717,7 +751,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.3"
+  bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
@@ -732,15 +766,15 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
-  addr = "4"
-
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "15"
-  chassis = "5"
-  bus = "pcie.0"
   addr = "5"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -750,7 +784,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.5"
+  bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
@@ -768,13 +802,13 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "ide.0"
   drive = "drive-sata0-3"
 
-[device "pci.6"]
+[device "pci.7"]
   driver = "pcie-root-port"
-  port = "16"
-  chassis = "6"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "6"
+  addr = "7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -787,16 +821,16 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 
-[device "pci.7"]
+[device "pci.8"]
   driver = "pcie-root-port"
-  port = "17"
-  chassis = "7"
+  port = "18"
+  chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -809,7 +843,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
 [chardev "charserial-usr0"]
@@ -962,13 +996,22 @@ func TestCreateDomConfig(t *testing.T) {
   cores = "2"
   threads = "1"
 
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
 [chardev "charserial0"]
-  backend = "pty"
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
 
-[device "serial0"]
-  driver = "isa-serial"
+[device]
+  driver = "virtconsole"
   chardev = "charserial0"
-
+  name = "org.lfedge.eve.console.0"
 
 
 #[device "video0"]
@@ -1006,12 +1049,12 @@ func TestCreateDomConfig(t *testing.T) {
   port = "1"
 
 
-[device "pci.3"]
+[device "pci.4"]
   driver = "pcie-root-port"
-  port = "13"
-  chassis = "3"
+  port = "14"
+  chassis = "4"
   bus = "pcie.0"
-  addr = "3"
+  addr = "4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1021,7 +1064,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.3"
+  bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
@@ -1036,15 +1079,15 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
-  addr = "4"
-
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "15"
-  chassis = "5"
-  bus = "pcie.0"
   addr = "5"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1054,7 +1097,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.5"
+  bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
@@ -1072,13 +1115,13 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "ide.0"
   drive = "drive-sata0-3"
 
-[device "pci.6"]
+[device "pci.7"]
   driver = "pcie-root-port"
-  port = "16"
-  chassis = "6"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "6"
+  addr = "7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1091,16 +1134,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 
-[device "pci.7"]
+[device "pci.8"]
   driver = "pcie-root-port"
-  port = "17"
-  chassis = "7"
+  port = "18"
+  chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1113,7 +1156,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
 [device]
@@ -1215,13 +1258,22 @@ func TestCreateDomConfig(t *testing.T) {
   cores = "2"
   threads = "1"
 
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
 [chardev "charserial0"]
-  backend = "pty"
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
 
-[device "serial0"]
-  driver = "isa-serial"
+[device]
+  driver = "virtconsole"
   chardev = "charserial0"
-
+  name = "org.lfedge.eve.console.0"
 
 
 #[device "video0"]
@@ -1259,12 +1311,12 @@ func TestCreateDomConfig(t *testing.T) {
   port = "1"
 
 
-[device "pci.3"]
+[device "pci.4"]
   driver = "pcie-root-port"
-  port = "13"
-  chassis = "3"
+  port = "14"
+  chassis = "4"
   bus = "pcie.0"
-  addr = "3"
+  addr = "4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1274,7 +1326,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.3"
+  bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
@@ -1289,15 +1341,15 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
-  addr = "4"
-
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "15"
-  chassis = "5"
-  bus = "pcie.0"
   addr = "5"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1307,7 +1359,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.5"
+  bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
@@ -1325,13 +1377,13 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "ide.0"
   drive = "drive-sata0-3"
 
-[device "pci.6"]
+[device "pci.7"]
   driver = "pcie-root-port"
-  port = "16"
-  chassis = "6"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "6"
+  addr = "7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1344,16 +1396,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 
-[device "pci.7"]
+[device "pci.8"]
   driver = "pcie-root-port"
-  port = "17"
-  chassis = "7"
+  port = "18"
+  chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1366,7 +1418,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
 [device]
@@ -1444,6 +1496,22 @@ func TestCreateDomConfig(t *testing.T) {
   cores = "2"
   threads = "1"
 
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
+[chardev "charserial0"]
+  backend = "socket"
+  path = "/var/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
+
+[device]
+  driver = "virtconsole"
+  chardev = "charserial0"
+  name = "org.lfedge.eve.console.0"
 
 
 #[device "video0"]
@@ -1481,12 +1549,12 @@ func TestCreateDomConfig(t *testing.T) {
   port = "1"
 
 
-[device "pci.3"]
+[device "pci.4"]
   driver = "pcie-root-port"
-  port = "13"
-  chassis = "3"
+  port = "14"
+  chassis = "4"
   bus = "pcie.0"
-  addr = "3"
+  addr = "4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1496,7 +1564,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.3"
+  bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
@@ -1511,15 +1579,15 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
-  addr = "4"
-
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "15"
-  chassis = "5"
-  bus = "pcie.0"
   addr = "5"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1529,7 +1597,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.5"
+  bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
@@ -1547,13 +1615,13 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "ide.0"
   drive = "drive-sata0-3"
 
-[device "pci.6"]
+[device "pci.7"]
   driver = "pcie-root-port"
-  port = "16"
-  chassis = "6"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "6"
+  addr = "7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1566,16 +1634,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 
-[device "pci.7"]
+[device "pci.8"]
   driver = "pcie-root-port"
-  port = "17"
-  chassis = "7"
+  port = "18"
+  chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1588,7 +1656,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
 [device]
