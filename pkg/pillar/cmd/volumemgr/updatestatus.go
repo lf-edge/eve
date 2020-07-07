@@ -225,6 +225,19 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				currentSize, totalSize, status.Progress)
 		}
 
+		rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.ObjType, status.Blobs[0])
+		if rootBlob == nil {
+			log.Errorf("doUpdateContentTree(%s) name %s: could not find BlobStatus(%s)",
+				status.Key(), status.DisplayName, status.Blobs[0])
+			return changed, false
+		}
+		if status.FileLocation != rootBlob.Path {
+			log.Infof("doUpdateContentTree(%s) name %s: updating file location to %s",
+				status.Key(), status.DisplayName, rootBlob.Path)
+			status.FileLocation = rootBlob.Path
+			changed = true
+		}
+
 		// update errors from blobs to status
 		if len(blobErrors) != 0 {
 			status.SetError(strings.Join(blobErrors, " / "), blobErrorTime)
@@ -347,18 +360,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName)
 				return changed, false
 			}
-			sv := SignatureVerifier{
-				Signature:        ctStatus.ImageSignature,
-				PublicKey:        ctStatus.SignatureKey,
-				CertificateChain: ctStatus.CertificateChain,
-			}
-			rootBlob := lookupOrCreateBlobStatus(ctx, sv, ctStatus.ObjType, ctStatus.Blobs[0])
-			if rootBlob == nil {
-				log.Errorf("doUpdateVol(%s) name %s: could not find BlobStatus(%s)",
-					status.Key(), status.DisplayName, ctStatus.Blobs[0])
-				return changed, false
-			}
-			status.FileLocation = rootBlob.Path
+			status.FileLocation = ctStatus.FileLocation
 			status.ReferenceName = ctStatus.RelativeURL
 			status.ContentFormat = ctStatus.Format
 			changed = true
