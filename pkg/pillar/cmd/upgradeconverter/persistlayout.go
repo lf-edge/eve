@@ -8,13 +8,11 @@ package upgradeconverter
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -95,6 +93,7 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 
 // If newPath doesn't exist, then move.
 // Otherwise we replace/move if the old file has a more recent modtime
+// XXX incorrect if fallback plus move forward. Never replace?
 // If noFlag is set we just log and no file system modifications.
 func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool) {
 	info, err := os.Stat(newPath)
@@ -148,6 +147,7 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 					snapshotID, filename)
 			}
 		} else {
+			// XXX copy to tmpfile in new dir then rename
 			if err := CopyFile(oldPath, newPath); err != nil {
 				log.Errorf("cp old to new failed: %s", err)
 			} else {
@@ -158,28 +158,6 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 			}
 		}
 	}
-}
-
-func cp(dst, src string) error {
-	if strings.Compare(dst, src) == 0 {
-		log.Fatalf("Same src and dst: %s", src)
-	}
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	// no need to check errors on read only file, we already got everything
-	// we need from the filesystem, so nothing can go wrong now.
-	defer s.Close()
-	d, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(d, s); err != nil {
-		d.Close()
-		return err
-	}
-	return d.Close()
 }
 
 // From the AppInstanceConfig protbuf message.
