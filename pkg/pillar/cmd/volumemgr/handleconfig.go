@@ -89,6 +89,7 @@ func vcCreate(ctx *volumemgrContext, objType string, key string,
 		initStatus.LastUse = time.Now()
 		initStatus.PreReboot = false
 		if !initStatus.HasError() {
+			publishOldVolumeStatus(ctx, initStatus)
 			log.Infof("vcCreate(%s) DONE objType %s for %s",
 				config.Key(), objType, config.DisplayName)
 			return
