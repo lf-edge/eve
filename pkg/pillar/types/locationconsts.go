@@ -62,9 +62,6 @@ const (
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
 
-	// AppImgDirname - location of downloaded app images. Read-only images
-	// named based on sha256 hash each in its own directory
-
 	// AppImgObj - name of app image type
 	AppImgObj = "appImg.obj"
 	// BaseOsObj - name of base image type
