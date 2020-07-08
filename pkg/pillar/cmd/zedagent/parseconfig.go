@@ -983,7 +983,6 @@ func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drive
 			contentTree.ContentSha256 = strings.ToLower(drive.Image.Sha256)
 			contentTree.MaxDownloadSize = uint64(drive.Image.SizeBytes)
 			contentTree.DisplayName = drive.Image.Name
-			contentTree.ObjType = types.BaseOsObj
 			contentTree.ImageSignature = drive.Image.Siginfo.Signature
 			contentTree.SignatureKey = drive.Image.Siginfo.Signercerturl
 

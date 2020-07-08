@@ -214,6 +214,14 @@ func initCtx(t *testing.T) volumemgrContext {
 	assert.Nil(t, err)
 	ctx.pubContentTreeStatus = pubContentTreeStatus
 
+	pubBaseOsContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.BaseOsObj,
+		TopicType:  types.ContentTreeStatus{},
+	})
+	assert.Nil(t, err)
+	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
+
 	pubBlobStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.AppImgObj,
@@ -221,12 +229,5 @@ func initCtx(t *testing.T) volumemgrContext {
 	})
 	assert.Nil(t, err)
 	ctx.pubBlobStatus = pubBlobStatus
-	pubBaseOsVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.BaseOsObj,
-		TopicType:  types.OldVolumeStatus{},
-	})
-	assert.Nil(t, err)
-	ctx.pubBaseOsVolumeStatus = pubBaseOsVolumeStatus
 	return ctx
 }
