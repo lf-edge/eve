@@ -165,6 +165,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	for i, ctc := range config.ContentTreeConfigList {
 		cts := &status.ContentTreeStatusList[i]
 		cts.UpdateFromContentTreeConfig(ctc)
+		cts.ObjType = types.BaseOsObj
 	}
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)

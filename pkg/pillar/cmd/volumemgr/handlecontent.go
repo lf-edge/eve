@@ -11,35 +11,81 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// XXX need parallel function for BaseOsObj
 func handleContentTreeCreateAppImg(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleContentTreeCreateAppImg(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	createContentTreeStatus(ctx, config, types.AppImgObj)
-	updateContentTree(ctx, config)
+	status := createContentTreeStatus(ctx, config, types.AppImgObj)
+	updateContentTree(ctx, status)
 	log.Infof("handleContentTreeCreateAppImg(%s) Done", key)
 }
 
-func handleContentTreeModify(ctxArg interface{}, key string,
+func handleContentTreeModifyAppImg(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleContentTreeModify(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	updateContentTree(ctx, config)
+	status := lookupContentTreeStatus(ctx, config.Key(), types.AppImgObj)
+	if status == nil {
+		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
+	}
+	updateContentTree(ctx, status)
 	log.Infof("handleContentTreeModify(%s) Done", key)
 }
 
-func handleContentTreeDelete(ctxArg interface{}, key string,
+func handleContentTreeDeleteAppImg(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleContentTreeDelete(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	deleteContentTree(ctx, config)
+	status := lookupContentTreeStatus(ctx, config.Key(), types.AppImgObj)
+	if status == nil {
+		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
+	}
+	deleteContentTree(ctx, status)
+	log.Infof("handleContentTreeModify(%s) Done", key)
+}
+
+func handleContentTreeCreateBaseOs(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Infof("handleContentTreeCreateBaseOs(%s)", key)
+	config := configArg.(types.ContentTreeConfig)
+	ctx := ctxArg.(*volumemgrContext)
+	status := createContentTreeStatus(ctx, config, types.BaseOsObj)
+	updateContentTree(ctx, status)
+	log.Infof("handleContentTreeCreateBaseOs(%s) Done", key)
+}
+
+func handleContentTreeModifyBaseOs(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Infof("handleContentTreeModify(%s)", key)
+	config := configArg.(types.ContentTreeConfig)
+	ctx := ctxArg.(*volumemgrContext)
+	status := lookupContentTreeStatus(ctx, config.Key(), types.BaseOsObj)
+	if status == nil {
+		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
+	}
+	updateContentTree(ctx, status)
+	log.Infof("handleContentTreeModify(%s) Done", key)
+}
+
+func handleContentTreeDeleteBaseOs(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Infof("handleContentTreeDelete(%s)", key)
+	config := configArg.(types.ContentTreeConfig)
+	ctx := ctxArg.(*volumemgrContext)
+	status := lookupContentTreeStatus(ctx, config.Key(), types.BaseOsObj)
+	if status == nil {
+		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
+	}
+	deleteContentTree(ctx, status)
 	log.Infof("handleContentTreeModify(%s) Done", key)
 }
 
@@ -69,38 +115,38 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 func lookupContentTreeStatus(ctx *volumemgrContext,
 	key, objType string) *types.ContentTreeStatus {
 
-	log.Infof("lookupContentTreeStatus(%s)", key)
+	log.Infof("lookupContentTreeStatus(%s/%s)", key, objType)
 	pub := ctx.publication(types.ContentTreeStatus{}, objType)
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupContentTreeStatus(%s) not found", key)
+		log.Infof("lookupContentTreeStatus(%s/%s) not found", key, objType)
 		return nil
 	}
 	status := c.(types.ContentTreeStatus)
-	log.Infof("lookupContentTreeStatus(%s) Done", key)
+	log.Infof("lookupContentTreeStatus(%s/%s) Done", key, objType)
 	return &status
 }
 
 func lookupContentTreeConfig(ctx *volumemgrContext,
 	key, objType string) *types.ContentTreeConfig {
 
-	log.Infof("lookupContentTreeConfig(%s)", key)
+	log.Infof("lookupContentTreeConfig(%s/%s)", key, objType)
 	sub := ctx.subscription(types.ContentTreeConfig{}, objType)
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupContentTreeConfig(%s) not found", key)
+		log.Infof("lookupContentTreeConfig(%s/%s) not found", key, objType)
 		return nil
 	}
 	config := c.(types.ContentTreeConfig)
-	log.Infof("lookupContentTreeConfig(%s) Done", key)
+	log.Infof("lookupContentTreeConfig(%s/%s) Done", key, objType)
 	return &config
 }
 
 func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConfig,
-	objType string) {
+	objType string) *types.ContentTreeStatus {
 
 	log.Infof("createContentTreeStatus for %v objType %s", config.ContentID, objType)
-	status := lookupContentTreeStatus(ctx, config.Key())
+	status := lookupContentTreeStatus(ctx, config.Key(), objType)
 	if status == nil {
 		status = &types.ContentTreeStatus{
 			ContentID:         config.ContentID,
@@ -147,31 +193,23 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 	}
 	publishContentTreeStatus(ctx, status)
 	log.Infof("createContentTreeStatus for %v Done", config.ContentID)
+	return status
 }
 
-func updateContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
+func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 
-	log.Infof("updateContentTree for %v", config.ContentID)
-	status := lookupContentTreeStatus(ctx, config.Key())
-	if status == nil {
-		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
-	}
+	log.Infof("updateContentTree for %v", status.ContentID)
 	if changed, _ := doUpdateContentTree(ctx, status); changed {
 		publishContentTreeStatus(ctx, status)
 	}
 	updateVolumeStatusFromContentID(ctx, status.ContentID)
 
-	log.Infof("updateContentTree for %v Done", config.ContentID)
+	log.Infof("updateContentTree for %v Done", status.ContentID)
 }
 
-func deleteContentTree(ctx *volumemgrContext, config types.ContentTreeConfig) {
-	log.Infof("deleteContentTree for %v", config.ContentID)
-	status := lookupContentTreeStatus(ctx, config.Key(), config.ObjType)
-	if status == nil {
-		log.Infof("deleteContentTree for %v, ContentTreeStatus not found", config.ContentID)
-		return
-	}
+func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
+	log.Infof("deleteContentTree for %v", status.ContentID)
 	unpublishContentTreeStatus(ctx, status)
-	deleteLatchContentTreeHash(ctx, config.ContentID, uint32(config.GenerationCounter))
-	log.Infof("deleteContentTree for %v Done", config.ContentID)
+	deleteLatchContentTreeHash(ctx, status.ContentID, uint32(status.GenerationCounter))
+	log.Infof("deleteContentTree for %v Done", status.ContentID)
 }

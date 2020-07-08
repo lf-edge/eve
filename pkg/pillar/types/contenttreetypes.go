@@ -28,7 +28,6 @@ type ContentTreeConfig struct {
 	SignatureKey      string   //certificate containing public key
 	CertificateChain  []string //name of intermediate certificates
 	DisplayName       string
-	ObjType           string
 }
 
 // Key is content info UUID which will be unique
@@ -159,7 +158,6 @@ func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeC
 	status.SignatureKey = config.SignatureKey
 	status.CertificateChain = config.CertificateChain
 	status.DisplayName = config.DisplayName
-	status.ObjType = config.ObjType
 }
 
 // LogCreate :

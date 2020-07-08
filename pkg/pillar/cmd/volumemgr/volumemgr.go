@@ -378,8 +378,8 @@ func Run(ps *pubsub.PubSub) {
 
 	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleContentTreeCreateAppImg,
-		ModifyHandler: handleContentTreeModify,
-		DeleteHandler: handleContentTreeDelete,
+		ModifyHandler: handleContentTreeModifyAppImg,
+		DeleteHandler: handleContentTreeDeleteAppImg,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "zedagent",
@@ -426,9 +426,9 @@ func Run(ps *pubsub.PubSub) {
 	subVolumeRefConfig.Activate()
 
 	subBaseOsContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeCreate,
-		ModifyHandler: handleContentTreeModify,
-		DeleteHandler: handleContentTreeDelete,
+		CreateHandler: handleContentTreeCreateBaseOs,
+		ModifyHandler: handleContentTreeModifyBaseOs,
+		DeleteHandler: handleContentTreeDeleteBaseOs,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "baseosmgr",

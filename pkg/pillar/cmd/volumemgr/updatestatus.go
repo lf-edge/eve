@@ -224,7 +224,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				currentSize, totalSize, status.Progress)
 		}
 
-		rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.ObjType, status.Blobs[0])
+		rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.Blobs[0])
 		if rootBlob == nil {
 			log.Errorf("doUpdateContentTree(%s) name %s: could not find BlobStatus(%s)",
 				status.Key(), status.DisplayName, status.Blobs[0])
@@ -306,6 +306,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		changed = true
 		return changed, false
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
+		// XXX why do we need to hard-code AppImgObj?
 		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
 		if ctStatus == nil {
 			// Content tree not available
@@ -435,32 +436,41 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	return changed, false
 }
 
+// Really a constant
+var ctObjTypes = []string{types.AppImgObj, types.BaseOsObj}
+
 // updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
 // that has this Sha256
 func updateStatus(ctx *volumemgrContext, sha string) {
 
 	log.Infof("updateStatus(%s)", sha)
 	found := false
-	pub := ctx.publication(types.ContentTreeStatus{}, objType)
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.ContentTreeStatus)
-		var hasSha bool
-		for _, blobSha := range status.Blobs {
-			if blobSha == sha {
-				log.Infof("Found blob %s on ContentTreeStatus %s", sha, status.Key())
-				hasSha = true
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.ContentTreeStatus)
+			var hasSha bool
+			for _, blobSha := range status.Blobs {
+				if blobSha == sha {
+					log.Infof("Found blob %s on ContentTreeStatus %s",
+						sha, status.Key())
+					hasSha = true
+				}
 			}
-		}
-		if hasSha {
-			found = true
-			if changed, _ := doUpdateContentTree(ctx, &status); changed {
-				log.Infof("updateStatus(%s) publishing ContentTreeStatus", status.Key())
-				publishContentTreeStatus(ctx, &status)
+			if hasSha {
+				found = true
+				if changed, _ := doUpdateContentTree(ctx, &status); changed {
+					log.Infof("updateStatus(%s) publishing ContentTreeStatus",
+						status.Key())
+					publishContentTreeStatus(ctx, &status)
+				}
+				// Volume status referring to this content UUID needs to get updated
+				log.Infof("updateStatus(%s) updating volume status from content ID %v",
+					status.Key(), status.ContentID)
+				updateVolumeStatusFromContentID(ctx,
+					status.ContentID)
 			}
-			// Volume status referring to this content UUID needs to get updated
-			log.Infof("updateStatus(%s) updating volume status from content ID %v", status.Key(), status.ContentID)
-			updateVolumeStatusFromContentID(ctx, status.ContentID)
 		}
 	}
 	if !found {
@@ -472,20 +482,25 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 
 	log.Infof("updateContentTreeStatus(%s)", contentID)
 	found := false
-	pub := ctx.pubContentTreeStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.ContentTreeStatus)
-		if status.ContentSha256 == contentSha256 {
-			log.Infof("Found ContentTreeStatus %s", status.Key())
-			found = true
-			changed, _ := doUpdateContentTree(ctx, &status)
-			if changed {
-				publishContentTreeStatus(ctx, &status)
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.ContentTreeStatus)
+			if status.ContentSha256 == contentSha256 {
+				log.Infof("Found ContentTreeStatus %s",
+					status.Key())
+				found = true
+				changed, _ := doUpdateContentTree(ctx, &status)
+				if changed {
+					publishContentTreeStatus(ctx, &status)
+				}
+				// Volume status referring to this content UUID needs to get updated
+				log.Infof("updateContentTreeStatus(%s) updating volume status from content ID %v",
+					status.Key(), status.ContentID)
+				updateVolumeStatusFromContentID(ctx,
+					status.ContentID)
 			}
-			// Volume status referring to this content UUID needs to get updated
-			log.Infof("updateContentTreeStatus(%s) updating volume status from content ID %v", status.Key(), status.ContentID)
-			updateVolumeStatusFromContentID(ctx, status.ContentID)
 		}
 	}
 	if !found {
