@@ -124,6 +124,11 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE"
     if ! $BINDIR/vaultmgr setupVaults; then
         echo "$(date -Ins -u) device-steps: vaultmgr setupVaults failed"
     fi
+else
+    if [ ! -d $PERSISTDIR/vault ]; then
+        echo "$(date -Ins -u) Creating $PERSISTDIR/vault"
+        mkdir $PERSISTDIR/vault
+    fi
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
@@ -141,8 +146,8 @@ echo "$(date -Ins -u) Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
-echo "$(date -Ins -u) Preserved images:"
-ls -lt $PERSISTDIR/img/
+echo "$(date -Ins -u) Preserved volumes:"
+ls -lt $PERSISTDIR/vault/volumes/
 echo
 
 # Copy any GlobalConfig from /config
