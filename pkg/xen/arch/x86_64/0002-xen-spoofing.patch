@@ -2,17 +2,15 @@ diff --git a/arch/x86/hvm/hvm.c b/xen/arch/x86/hvm/hvm.c
 index 4723f5d..311e8a5 100644
 --- a/arch/x86/hvm/hvm.c
 +++ b/arch/x86/hvm/hvm.c
-@@ -4274,6 +4274,14 @@ static int hvmop_set_param(
+@@ -4256,6 +4256,12 @@
      case HVM_PARAM_IOREQ_SERVER_PFN:
-         d->arch.hvm.ioreq_gfn.base = a.value;
+         d->arch.hvm.ioreq_gfn.base = value;
          break;
 +    case HVM_PARAM_SPOOF_XEN:
-+        printk("spoof_xen %" PRId64 " - curr dom %d, dom %d\n", a.value, curr_d->domain_id, d->domain_id);
-+        d->arch.hvm.spoof_xen = a.value;
++        d->arch.hvm.spoof_xen = value;
 +        break;
 +    case HVM_PARAM_SPOOF_VIRIDIAN:
-+        printk("spoof_vir %" PRId64 " - curr dom %d, dom %d\n", a.value, curr_d->domain_id, d->domain_id);
-+        d->arch.hvm.spoof_viridian = a.value;
++        d->arch.hvm.spoof_viridian = value;
 +        break;
      case HVM_PARAM_NR_IOREQ_SERVER_PAGES:
      {
@@ -21,17 +19,13 @@ diff --git a/arch/x86/hvm/viridian/viridian.c b/xen/arch/x86/hvm/viridian/viridi
 index 44c8e6c..b45bdbf 100644
 --- a/arch/x86/hvm/viridian/viridian.c
 +++ b/arch/x86/hvm/viridian/viridian.c
-@@ -121,9 +121,13 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
+@@ -121,9 +121,9 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
      {
      case 0:
          res->a = 0x40000006; /* Maximum leaf */
 -        memcpy(&res->b, "Micr", 4);
 -        memcpy(&res->c, "osof", 4);
 -        memcpy(&res->d, "t Hv", 4);
-+	printk("wetware cpuid_viridian_leaves spoof_vir\n"); // "Wetware Labs"
-+        //memcpy(&res->b, "Micr", 4);
-+        //memcpy(&res->c, "osof", 4);
-+        //memcpy(&res->d, "t Hv", 4);
 +        memcpy(&res->b, "Wetw", 4);
 +        memcpy(&res->c, "era ", 4);
 +        memcpy(&res->d, "Labs", 4);
@@ -42,7 +36,7 @@ diff --git a/arch/x86/traps.c b/xen/arch/x86/traps.c
 index 97499a0..b500095 100644
 --- a/arch/x86/traps.c
 +++ b/arch/x86/traps.c
-@@ -892,9 +892,19 @@ void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
+@@ -892,9 +892,17 @@ void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
      {
      case 0:
          res->a = base + limit; /* Largest leaf */
@@ -50,13 +44,11 @@ index 97499a0..b500095 100644
 -        res->c = XEN_CPUID_SIGNATURE_ECX;
 -        res->d = XEN_CPUID_SIGNATURE_EDX;
 +        if (!d->arch.hvm.spoof_xen ) {
-+            printk("cpuid_hypervisor_leaves - real id. domid %d\n",d->domain_id);
 +               res->b = XEN_CPUID_SIGNATURE_EBX;
 +               res->c = XEN_CPUID_SIGNATURE_ECX;
 +               res->d = XEN_CPUID_SIGNATURE_EDX;
 +        } else
 +        {
-+            printk("cpuid_hypervisor_leaves - spoofed id. domid %d\n",d->domain_id);
 +               res->b = ZEN_CPUID_SIGNATURE_EBX;
 +               res->c = ZEN_CPUID_SIGNATURE_ECX;
 +               res->d = ZEN_CPUID_SIGNATURE_EDX;
@@ -69,8 +61,8 @@ diff --git a/include/asm-x86/hvm/domain.h b/xen/include/asm-x86/hvm/domain.h
 index bcc5621..a506710 100644
 --- a/include/asm-x86/hvm/domain.h
 +++ b/include/asm-x86/hvm/domain.h
-@@ -159,6 +159,8 @@ struct hvm_domain {
-     bool_t                 mem_sharing_enabled;
+@@ -166,6 +166,8 @@
+ 
      bool_t                 qemu_mapcache_invalidate;
      bool_t                 is_s3_suspended;
 +    bool_t                 spoof_xen;

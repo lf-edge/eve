@@ -16,10 +16,10 @@ FROM alpine:3.8 as kernel-build
 ENV GIT_HTTP=y
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
-    gcc make libc-dev dev86 xz-dev perl bash python-dev \
+    gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
-    linux-headers git patch texinfo curl tar libcap-dev \
+    linux-headers git patch texinfo curl tar libcap-ng-dev \
     attr-dev flex bison cmake
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
@@ -31,7 +31,7 @@ WORKDIR /
 COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
-ENV XEN_VERSION 4.13.0
+ENV XEN_VERSION 4.14.0-rc5
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
@@ -43,10 +43,7 @@ RUN \
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches
 WORKDIR /xen
-RUN set -e && for patch in /patches/*.patch /patches/"$(uname -m)"/*.patch; do \
-        echo "Applying $patch"; \
-        patch -p1 < "$patch"; \
-    done
+RUN cat /patches/*.patch /patches/"$(uname -m)"/*.patch | patch -p1
 
 RUN mkdir -p /out
 
@@ -63,11 +60,8 @@ RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run
 # FIXME: this is a workaround for Xen on ARM still requiring qemu-system-i386
 #   https://wiki.xenproject.org/wiki/Xen_ARM_with_Virtualization_Extensions#Use_of_qemu-system-i386_on_ARM
 WORKDIR /out/usr/lib/xen/bin/
-RUN if [ "$(uname -m)" = "aarch64" ]; then strip qemu-system-*; else rm -f qemu-system-i386 && ln -s "qemu-system-$(uname -m)" qemu-system-i386 ;fi
-
-# this tiny C code is there to replace a perl dependency
-COPY rightfile.c /tmp
-RUN gcc -o /out/usr/bin/rightfile /tmp/rightfile.c
+RUN strip * || :
+RUN if [ "$(uname -m)" = "x86_64" ]; then rm -f qemu-system-i386 && ln -s "qemu-system-$(uname -m)" qemu-system-i386 ;fi
 
 FROM alpine:3.8
 RUN apk add --no-cache \
@@ -88,7 +82,7 @@ COPY init.sh /
 COPY qemu-ifup /etc/xen/scripts/qemu-ifup
 
 # We need to keep a slim profile, which means removing things we don't need
-RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python2.7
+RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
 
 # Adjust /var/run to be shared
 RUN rm -rf /var/run && ln -s /run /var/run
