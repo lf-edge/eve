@@ -321,16 +321,6 @@ func Run(ps *pubsub.PubSub) {
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
 
-	pubCertObjConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.CertObjConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCertObjConfig.ClearRestarted()
-	getconfigCtx.pubCertObjConfig = pubCertObjConfig
-
 	pubBaseOsConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.BaseOsConfig{},

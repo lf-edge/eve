@@ -50,7 +50,6 @@ type getconfigContext struct {
 	pubZedAgentStatus        pubsub.Publication
 	pubAppInstanceConfig     pubsub.Publication
 	pubAppNetworkConfig      pubsub.Publication
-	pubCertObjConfig         pubsub.Publication
 	pubBaseOsConfig          pubsub.Publication
 	pubDatastoreConfig       pubsub.Publication
 	pubNetworkInstanceConfig pubsub.Publication

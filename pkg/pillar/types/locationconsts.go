@@ -15,12 +15,6 @@ const (
 	PersistStatusDir = PersistDir + "/status"
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
-	// RWImgDirname - Location of read/write images used by app instances
-	// XXX remove /img
-	RWImgDirname = PersistDir + "/img"
-	// ROContImgDirname - Location of read only images used by containerd
-	// XXX remove /runx/pods/prepared
-	ROContImgDirname = PersistDir + "/runx/pods/prepared"
 	// SealedDirName - directory sealed under TPM PCRs
 	SealedDirName = PersistDir + "/vault"
 	// VolumeEncryptedDirName - sealed directory used to store volumes
@@ -68,7 +62,4 @@ const (
 	BaseOsObj = "baseOs.obj"
 	// CertObj - Name of Certificate type
 	CertObj = "cert.obj"
-	// UnknownObj - Name of unknown for OldVolumeStatus
-	// XXX remove?
-	UnknownObj = "unknown.obj"
 )
