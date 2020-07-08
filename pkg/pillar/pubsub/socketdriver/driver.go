@@ -115,6 +115,15 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			}
 		}
 		if _, err := os.Stat(sockName); err == nil {
+			// This could either be a left-over in the filesystem
+			// or some other process (or ourselves) using the same
+			// name to publish. Try connect to see if it is the latter.
+			sock, err := net.Dial("unixpacket", sockName)
+			if err == nil {
+				sock.Close()
+				log.Fatalf("Can not publish %s since it it already used",
+					sockName)
+			}
 			if err := os.Remove(sockName); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)
