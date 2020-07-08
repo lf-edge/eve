@@ -271,7 +271,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if err := containerd.LoadBlobs(lookupBlobStatuses(ctx, status.Blobs...), status.RelativeURL); err != nil {
 				log.Errorf("doUpdateContentTree(%s) unable to load blobs into containerd: %v", status.Key(), err)
 				status.SetErrorWithSource(fmt.Sprintf("unable to load blobs into containerd: %v", err),
-					types.OldVolumeStatus{}, time.Now())
+					types.ContentTreeStatus{}, time.Now())
 				return changed, false
 			}
 			log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into containerd", status.Key())

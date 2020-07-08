@@ -26,8 +26,6 @@ const (
 	agentName              = "volumemgr"
 	runDirname             = "/var/run/" + agentName
 	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
-	rwImgDirname           = types.RWImgDirname           // We store old VM volumes here
-	roContImgDirname       = types.ROContImgDirname       // We store old OCI volumes here
 	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
 	volumeClearDirName     = types.VolumeClearDirName     // We store un-encrypted VM and OCI volumes here
 	// Time limits for event loop handlers
@@ -41,38 +39,31 @@ var Version = "No version specified"
 var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
-	pubAppVolumeStatus         pubsub.Publication
 	subBaseOsContentTreeConfig pubsub.Subscription
 	pubBaseOsContentTreeStatus pubsub.Publication
-	pubUnknownOldVolumeStatus  pubsub.Publication
 	subGlobalConfig            pubsub.Subscription
 	subZedAgentStatus          pubsub.Subscription
-
-	subCertObjConfig pubsub.Subscription
-	pubCertObjStatus pubsub.Publication
 
 	pubDownloaderConfig  pubsub.Publication
 	subDownloaderStatus  pubsub.Subscription
 	pubVerifyImageConfig pubsub.Publication
 	subVerifyImageStatus pubsub.Subscription
 
-	subResolveStatus       pubsub.Subscription
-	pubResolveConfig       pubsub.Publication
-	subContentTreeConfig   pubsub.Subscription
-	pubContentTreeStatus   pubsub.Publication
-	subVolumeConfig        pubsub.Subscription
-	pubVolumeStatus        pubsub.Publication
-	subVolumeRefConfig     pubsub.Subscription
-	pubVolumeRefStatus     pubsub.Publication
-	pubUnknownVolumeStatus pubsub.Publication
-	pubContentTreeToHash   pubsub.Publication
+	subResolveStatus     pubsub.Subscription
+	pubResolveConfig     pubsub.Publication
+	subContentTreeConfig pubsub.Subscription
+	pubContentTreeStatus pubsub.Publication
+	subVolumeConfig      pubsub.Subscription
+	pubVolumeStatus      pubsub.Publication
+	subVolumeRefConfig   pubsub.Subscription
+	pubVolumeRefStatus   pubsub.Publication
+	pubContentTreeToHash pubsub.Publication
 
 	pubBlobStatus pubsub.Publication
 
 	gc *time.Ticker
 
-	workerOld *worker.Worker // For background work
-	worker    *worker.Worker // For background work
+	worker *worker.Worker // For background work
 
 	verifierRestarted bool // Wait for verifier to restar
 	usingConfig       bool // From zedagent
@@ -141,7 +132,6 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	// Create the background worker
-	ctx.workerOld = InitHandleWorkOld(&ctx)
 	ctx.worker = InitHandleWork(&ctx)
 
 	// Set up our publications before the subscriptions so ctx is set
@@ -202,17 +192,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubVolumeRefStatus = pubVolumeRefStatus
 
-	// XXX remove UnknownObj
-	pubUnknownVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.UnknownObj,
-		TopicType:  types.VolumeStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubUnknownVolumeStatus = pubUnknownVolumeStatus
-
 	pubContentTreeToHash, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		Persistent: true,
@@ -223,17 +202,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubContentTreeToHash = pubContentTreeToHash
 
-	// XXX used?
-	pubAppVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.OldVolumeStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppVolumeStatus = pubAppVolumeStatus
-
 	pubBaseOsContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		AgentScope: types.BaseOsObj,
@@ -243,28 +211,6 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
-
-	// XXX remove UnknownObj
-	pubUnknownOldVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.UnknownObj,
-		TopicType:  types.OldVolumeStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubUnknownOldVolumeStatus = pubUnknownOldVolumeStatus
-
-	pubCertObjStatus, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.CertObjStatus{},
-		})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubCertObjStatus = pubCertObjStatus
 
 	pubBlobStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -277,12 +223,8 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubBlobStatus = pubBlobStatus
 
-	// Publish existing volumes with RefCount zero in the "unknown"
-	// agentScope
-	// Note that nobody subscribes to this. Used internally
-	// to look up a Volume.
-	populateInitialOldVolumeStatus(&ctx, rwImgDirname)
-	populateInitialOldVolumeStatus(&ctx, roContImgDirname)
+	// Iterate over volume directory and prepares map of
+	// volume's content format with the volume key
 	populateExistingVolumesFormat(volumeEncryptedDirName)
 	populateExistingVolumesFormat(volumeClearDirName)
 
@@ -339,25 +281,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.subVerifyImageStatus = subVerifyImageStatus
 	subVerifyImageStatus.Activate()
-
-	// Look for CertObjConfig, from zedagent
-	subCertObjConfig, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			TopicImpl:     types.CertObjConfig{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleCertObjCreate,
-			ModifyHandler: handleCertObjModify,
-			DeleteHandler: handleCertObjConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subCertObjConfig = subCertObjConfig
-	subCertObjConfig.Activate()
 
 	// Look for ResolveStatus from downloader
 	subResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -470,9 +393,6 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subVerifyImageStatus.MsgChan():
 			subVerifyImageStatus.ProcessChange(change)
 
-		case res := <-ctx.workerOld.MsgChan():
-			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
-
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
 
@@ -501,18 +421,6 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
-			if ctx.usingConfig && !ctx.gcRunning {
-				log.Infof("Starting gc timer")
-				duration := time.Duration(ctx.vdiskGCTime / 10)
-				ctx.gc = time.NewTicker(duration * time.Second)
-				// Update the LastUse here to be now
-				gcResetOldObjectsLastUse(&ctx, rwImgDirname)
-				gcResetOldObjectsLastUse(&ctx, roContImgDirname)
-				ctx.gcRunning = true
-			}
-
-		case change := <-ctx.subCertObjConfig.MsgChan():
-			ctx.subCertObjConfig.ProcessChange(change)
 
 		case change := <-subDownloaderStatus.MsgChan():
 			subDownloaderStatus.ProcessChange(change)
@@ -537,15 +445,10 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-ctx.gc.C:
 			start := time.Now()
-			gcOldObjects(&ctx, rwImgDirname)
-			gcOldObjects(&ctx, roContImgDirname)
 			gcObjects(&ctx, volumeEncryptedDirName)
 			gcObjects(&ctx, volumeClearDirName)
 			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
-
-		case res := <-ctx.workerOld.MsgChan():
-			HandleWorkResultOld(&ctx, ctx.workerOld.Process(res))
 
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
@@ -613,126 +516,4 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 		duration := time.Duration(ctx.vdiskGCTime / 10)
 		ctx.gc = time.NewTicker(duration * time.Second)
 	}
-}
-
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleBaseOsModify(%s)", key)
-	config := configArg.(types.OldVolumeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	vcModify(ctx, types.BaseOsObj, key, config)
-}
-
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleBaseOsCreate(%s)", key)
-	config := configArg.(types.OldVolumeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	vcCreate(ctx, types.BaseOsObj, key, config)
-}
-
-func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Infof("handleAppImageDelete(%s)", key)
-	config := configArg.(types.OldVolumeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	vcDelete(ctx, types.BaseOsObj, key, config)
-}
-
-func handleCertObjConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleCertObjConfigDelete(%s)", key)
-	ctx := ctxArg.(*volumemgrContext)
-	status := lookupCertObjStatus(ctx, key)
-	if status == nil {
-		log.Infof("handleCertObjConfigDelete: unknown %s", key)
-		return
-	}
-	handleCertObjDelete(ctx, key, status)
-	log.Infof("handleCertObjConfigDelete(%s) done", key)
-}
-
-// certificate config/status event handlers
-// certificate config create event
-func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*volumemgrContext)
-	config := configArg.(types.CertObjConfig)
-	log.Infof("handleCertObjCreate for %s", key)
-
-	status := types.CertObjStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		ConfigSha256:   config.ConfigSha256,
-	}
-
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
-
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageID = sc.ImageID
-		ss.FinalObjDir = types.CertificateDirname
-	}
-
-	publishCertObjStatus(ctx, &status)
-
-	certObjHandleStatusUpdate(ctx, &config, &status)
-}
-
-// certificate config modify event
-func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*volumemgrContext)
-	config := configArg.(types.CertObjConfig)
-	status := lookupCertObjStatus(ctx, key)
-	uuidStr := config.Key()
-	log.Infof("handleCertObjModify for %s", uuidStr)
-
-	if config.UUIDandVersion.Version != status.UUIDandVersion.Version {
-		log.Infof("handleCertObjModify(%s), New config version %v", key,
-			config.UUIDandVersion.Version)
-		status.UUIDandVersion = config.UUIDandVersion
-		publishCertObjStatus(ctx, status)
-
-	}
-
-	// on storage config change, purge and recreate
-	if certObjCheckConfigModify(ctx, key, &config, status) {
-		removeCertObjConfig(ctx, key)
-		handleCertObjCreate(ctx, key, config)
-	}
-}
-
-// certificate config delete event
-func handleCertObjDelete(ctx *volumemgrContext, key string,
-	status *types.CertObjStatus) {
-
-	uuidStr := status.Key()
-	log.Infof("handleCertObjDelete for %s", uuidStr)
-	removeCertObjConfig(ctx, uuidStr)
-}
-
-// certs download status modify event
-// Handles both create and modify events
-func handleDownloadStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	// XXX status := statusArg.(types.DownloaderStatus)
-	// XXX ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleDownloadStatusModify for %s", key)
-	// XXX updateDownloaderStatus(ctx, &status)
-	// XXX do we need to walk all certObj to find imageID, and call:
-	// XXX certObjHandleStatusUpdate(ctx, &config, &status)
-}
-
-// certs download status delete event
-func handleDownloadStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.DownloaderStatus)
-	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s",
-		status.RefCount, status.Expired, key)
-	// Nothing to do
 }

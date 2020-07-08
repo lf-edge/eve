@@ -11,7 +11,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// XXX remove this function when we remove OldVolumeConfig
 func (ctx *volumemgrContext) subscription(topicType interface{}, objType string) pubsub.Subscription {
 	var sub pubsub.Subscription
 	val := reflect.ValueOf(topicType)
@@ -43,16 +42,6 @@ func (ctx *volumemgrContext) publication(topicType interface{}, objType string) 
 		log.Fatalf("publication got a pointer type: %T", topicType)
 	}
 	switch typeName := topicType.(type) {
-	case types.OldVolumeStatus:
-		switch objType {
-		case types.AppImgObj:
-			pub = ctx.pubAppVolumeStatus
-		case types.UnknownObj:
-			pub = ctx.pubUnknownOldVolumeStatus
-		default:
-			log.Fatalf("publication: Unknown ObjType %s for %T",
-				objType, typeName)
-		}
 	case types.ContentTreeStatus:
 		switch objType {
 		case types.AppImgObj:

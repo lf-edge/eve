@@ -134,8 +134,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		if !found {
 			log.Infof("parseBaseOsConfig: deleting %s", uuidStr)
 			getconfigCtx.pubBaseOsConfig.Unpublish(uuidStr)
-
-			unpublishCertObjConfig(getconfigCtx, uuidStr)
 		}
 	}
 
@@ -474,8 +472,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if !found {
 			log.Infof("Remove app config %s", uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
-
-			unpublishCertObjConfig(getconfigCtx, uuidStr)
 		}
 	}
 
@@ -1809,98 +1805,6 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
 	pub.Publish(key, *config)
-}
-
-func getCertObjects(uuidAndVersion types.UUIDandVersion,
-	sha256 string, drives []types.StorageConfig) *types.CertObjConfig {
-
-	var cidx int = 0
-
-	// count the number of cerificates in this object
-	for _, image := range drives {
-		if image.SignatureKey != "" {
-			cidx++
-		}
-		for _, certUrl := range image.CertificateChain {
-			if certUrl != "" {
-				cidx++
-			}
-		}
-	}
-
-	// if no cerificates, return
-	if cidx == 0 {
-		return nil
-	}
-
-	// using the holder object UUID for
-	// cert config json, and also the config sha
-	var config = &types.CertObjConfig{}
-
-	// certs object holder
-	// each storageConfigList entry is a
-	// certificate object
-	config.UUIDandVersion = uuidAndVersion
-	config.ConfigSha256 = sha256
-	config.StorageConfigList = make([]types.StorageConfig, cidx)
-
-	cidx = 0
-	for _, image := range drives {
-		if image.SignatureKey != "" {
-			getCertObjConfig(config, image, image.SignatureKey, cidx)
-			cidx++
-		}
-
-		for _, certUrl := range image.CertificateChain {
-			if certUrl != "" {
-				getCertObjConfig(config, image, certUrl, cidx)
-				cidx++
-			}
-		}
-	}
-
-	return config
-}
-
-func getCertObjConfig(config *types.CertObjConfig,
-	image types.StorageConfig, certUrl string, idx int) {
-
-	if certUrl == "" {
-		return
-	}
-
-	// XXX the sha for the cert should be set
-	// XXX:FIXME hardcoding Size as 100KB
-	var drive = &types.StorageConfig{
-		DatastoreID: image.DatastoreID,
-		Name:        certUrl, // XXX FIXME use??
-		NameIsURL:   true,
-		MaxDownSize: 100 * 1024,
-		ImageSha256: "",
-	}
-	config.StorageConfigList[idx] = *drive
-}
-
-func publishCertObjConfig(getconfigCtx *getconfigContext,
-	config *types.CertObjConfig, uuidStr string) {
-
-	key := uuidStr // XXX vs. config.Key()?
-	log.Debugf("publishCertObjConfig(%s) key %s", uuidStr, config.Key())
-	pub := getconfigCtx.pubCertObjConfig
-	pub.Publish(key, *config)
-}
-
-func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
-
-	key := uuidStr
-	log.Debugf("unpublishCertObjConfig(%s)", key)
-	pub := getconfigCtx.pubCertObjConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Errorf("unpublishCertObjConfig(%s) not found", key)
-		return
-	}
-	pub.Unpublish(key)
 }
 
 // Get sha256 for a subset of the protobuf message.

@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -30,8 +29,6 @@ import (
 )
 
 const (
-	// root path to all containers
-	containersRoot = types.ROContImgDirname
 	// relative path to rootfs for an individual container
 	containerRootfsPath = "rootfs/"
 	// container config file name
@@ -49,12 +46,6 @@ const (
 	//For now it is based on some trial-and-error experiments
 	qemuOverHead = int64(500 * 1024 * 1024)
 )
-
-// GetContainerPath return the path to the root of the container. This is *not*
-// necessarily the rootfs, which may be a layer below
-func GetContainerPath(containerDir string) string {
-	return path.Join(containersRoot, containerDir)
-}
 
 // GetSnapshotID handles the upgrade scenario when the snapshotID needs to be
 // extracted from a file created by upgradeconverter
@@ -655,21 +646,10 @@ func isContainerNotFound(e error) bool {
 	return strings.HasSuffix(e.Error(), ": not found")
 }
 
-// getContainerPath return the path to the root of the container. This is *not*
-// necessarily the rootfs, which may be a layer below.
-func getContainerPath(containerID string) string {
-	if filepath.IsAbs(containerID) {
-		return containerID
-	} else {
-		return path.Join(containersRoot, containerID)
-	}
-}
-
 func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
 	var image ocispec.Image
 
-	appDir := getContainerPath(containerPath)
-	data, err := ioutil.ReadFile(filepath.Join(appDir, imageConfigFilename))
+	data, err := ioutil.ReadFile(filepath.Join(containerPath, imageConfigFilename))
 	if err != nil {
 		return image, err
 	}
