@@ -410,6 +410,16 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 				wifi.SSID, err)
 			decBlock.WifiUserName = wifi.Identity
 			decBlock.WifiPassword = wifi.Password
+			// We assume IsCipher is only set when there was some
+			// data. Hence this is a fallback if there is
+			// some cleartext.
+			if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
+				cipher.RecordFailure(ctx.AgentName,
+					types.CleartextFallback)
+			} else {
+				cipher.RecordFailure(ctx.AgentName,
+					types.MissingFallback)
+			}
 			return decBlock, nil
 		}
 		log.Infof("%s, wifi config cipherblock decryption successful\n", wifi.SSID)
@@ -419,6 +429,11 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.WifiUserName = wifi.Identity
 	decBlock.WifiPassword = wifi.Password
+	if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
+		cipher.RecordFailure(ctx.AgentName, types.NoCipher)
+	} else {
+		cipher.RecordFailure(ctx.AgentName, types.NoData)
+	}
 	return decBlock, nil
 }
 

@@ -115,6 +115,7 @@ func Run(ps *pubsub.PubSub) {
 		pacContents:  *pacContentsPtr,
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
+	ctx.AgentName = agentName
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 

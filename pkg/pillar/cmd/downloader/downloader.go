@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -70,7 +71,7 @@ func Run(ps *pubsub.PubSub) {
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+	metricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: cms,
 	})
@@ -78,7 +79,15 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
-	// Publish send metrics for zedagent every 10 seconds
+	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CipherMetricsMap{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Publish metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
 	max := float64(interval)
 	min := max * 0.3
@@ -165,7 +174,11 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := metricsPub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Errorln(err)
+			}
+			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}

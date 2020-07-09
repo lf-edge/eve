@@ -330,6 +330,16 @@ func getDatastoreCredential(ctx *downloaderContext,
 				dst.Key(), err)
 			decBlock.DsAPIKey = dst.ApiKey
 			decBlock.DsPassword = dst.Password
+			// We assume IsCipher is only set when there was some
+			// data. Hence this is a fallback if there is
+			// some cleartext.
+			if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
+				cipher.RecordFailure(agentName,
+					types.CleartextFallback)
+			} else {
+				cipher.RecordFailure(agentName,
+					types.MissingFallback)
+			}
 			return decBlock, nil
 		}
 		log.Infof("%s, datastore config cipherblock decryption successful", dst.Key())
@@ -339,5 +349,10 @@ func getDatastoreCredential(ctx *downloaderContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password
+	if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
+		cipher.RecordFailure(agentName, types.NoCipher)
+	} else {
+		cipher.RecordFailure(agentName, types.NoData)
+	}
 	return decBlock, nil
 }

@@ -65,6 +65,9 @@ var clientMetrics types.MetricsMap
 var logmanagerMetrics types.MetricsMap
 var downloaderMetrics types.MetricsMap
 var networkMetrics types.NetworkMetrics
+var cipherMetricsDL types.CipherMetricsMap
+var cipherMetricsDM types.CipherMetricsMap
+var cipherMetricsNim types.CipherMetricsMap
 
 // Context for handleDNSModify
 type DNSContext struct {
@@ -877,6 +880,34 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
+	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "downloader",
+		TopicImpl: types.CipherMetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subCipherMetricsDM, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "domainmgr",
+		TopicImpl: types.CipherMetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subCipherMetricsNim, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "nim",
+		TopicImpl: types.CipherMetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
@@ -992,6 +1023,36 @@ func Run(ps *pubsub.PubSub) {
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
+
+		case change := <-subCipherMetricsDL.MsgChan():
+			subCipherMetricsDL.ProcessChange(change)
+			m, err := subCipherMetricsDL.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsDL.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsDL = m.(types.CipherMetricsMap)
+			}
+
+		case change := <-subCipherMetricsDM.MsgChan():
+			subCipherMetricsDM.ProcessChange(change)
+			m, err := subCipherMetricsDM.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsDM.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsDM = m.(types.CipherMetricsMap)
+			}
+
+		case change := <-subCipherMetricsNim.MsgChan():
+			subCipherMetricsNim.ProcessChange(change)
+			m, err := subCipherMetricsNim.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsNim.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsNim = m.(types.CipherMetricsMap)
+			}
 
 		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
