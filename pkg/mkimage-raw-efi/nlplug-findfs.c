@@ -79,10 +79,10 @@ extern char *argv0;
 					(&argv[0][1]) :\
 					(argc--, argv++, argv[0])))
 
-#define MAX_EVENT_TIMEOUT	5000
+#define MAX_EVENT_TIMEOUT	30000
 #define DEFAULT_EVENT_TIMEOUT	250
 /* usb mass storage needs 1 sec to settle */
-#define USB_STORAGE_TIMEOUT	1000
+#define USB_STORAGE_TIMEOUT	5000
 
 #define FOUND_DEVICE	0x1
 #define FOUND_BOOTREPO	0x2
