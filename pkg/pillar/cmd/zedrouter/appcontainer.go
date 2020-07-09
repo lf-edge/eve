@@ -23,6 +23,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -32,8 +33,8 @@ const DOCKERAPIPORT int = 2375
 // DOCKERAPIVERSION - docker API version used
 const DOCKERAPIVERSION string = "1.40"
 
-// convert from bytes to Mbytes in stats
-const byteToMbyte uint64 = 1 << 20
+// convert from nanoSeconds to Seconds
+const nanoSecToSec uint64 = 1000000000
 
 // check if we need to launch the goroutine to collect App container stats
 func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
@@ -96,7 +97,9 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 					getAppContainerLogs(status, lastLogTime, cli, containers)
 				}
 			}
+			// log output every 5 min, see this goroutine running status and number of containers from App
 			log.Infof("appStatsAndLogCollect: containerStats, %d processed. reset timer", acNum)
+
 			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 		}
 	}
@@ -180,13 +183,13 @@ func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.
 	acStats.Pids = uint32(v.PidsStats.Current)
 
 	// Container CPU stats, convert from nano-seconds to seconds
-	acStats.CPUTotal = v.CPUStats.CPUUsage.TotalUsage / uint64(time.Second)
-	acStats.SystemCPUTotal = v.CPUStats.SystemUsage / uint64(time.Second)
+	acStats.CPUTotal = v.CPUStats.CPUUsage.TotalUsage / nanoSecToSec
+	acStats.SystemCPUTotal = v.CPUStats.SystemUsage / nanoSecToSec
 	acStats.Uptime = startTime.UnixNano()
 
 	// Container memory stats, convert bytes to Mbytes
-	acStats.UsedMem = uint32(v.MemoryStats.Usage / byteToMbyte)
-	acStats.AvailMem = uint32(v.MemoryStats.Limit / byteToMbyte)
+	acStats.UsedMem = uint32(utils.RoundToMbytes(v.MemoryStats.Usage))
+	acStats.AvailMem = uint32(utils.RoundToMbytes(v.MemoryStats.Limit))
 
 	// Container network stats, in bytes
 	networks := v.Networks
@@ -205,8 +208,8 @@ func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.
 			acStats.WriteBytes += bioEntry.Value
 		}
 	}
-	acStats.ReadBytes /= byteToMbyte
-	acStats.WriteBytes /= byteToMbyte
+	acStats.ReadBytes = utils.RoundToMbytes(acStats.ReadBytes)
+	acStats.WriteBytes = utils.RoundToMbytes(acStats.WriteBytes)
 
 	return acStats, nil
 }

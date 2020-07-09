@@ -350,12 +350,12 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	for _, d := range disks {
 		size, _ := diskmetrics.PartitionSize(d)
 		log.Debugf("Disk/partition %s size %d", d, size)
-		size = RoundToMbytes(size)
+		size = utils.RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
 		stat, err := disk.IOCounters(d)
 		if err == nil {
-			metric.ReadBytes = RoundToMbytes(stat[d].ReadBytes)
-			metric.WriteBytes = RoundToMbytes(stat[d].WriteBytes)
+			metric.ReadBytes = utils.RoundToMbytes(stat[d].ReadBytes)
+			metric.WriteBytes = utils.RoundToMbytes(stat[d].WriteBytes)
 			metric.ReadCount = stat[d].ReadCount
 			metric.WriteCount = stat[d].WriteCount
 		}
@@ -379,9 +379,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
 		metric := metrics.DiskMetric{MountPath: path,
-			Total: RoundToMbytes(u.Total),
-			Used:  RoundToMbytes(u.Used),
-			Free:  RoundToMbytes(u.Free),
+			Total: utils.RoundToMbytes(u.Total),
+			Used:  utils.RoundToMbytes(u.Used),
+			Free:  utils.RoundToMbytes(u.Free),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -391,7 +391,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		usage := diskmetrics.SizeFromDir(path)
 		log.Debugf("Path %s usage %d", path, usage)
 		metric := metrics.DiskMetric{MountPath: path,
-			Used: RoundToMbytes(usage),
+			Used: utils.RoundToMbytes(usage),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -603,8 +603,8 @@ func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetri
 		return err
 	}
 	appDiskDetails.Disk = vrs.ActiveFileLocation
-	appDiskDetails.Used = RoundToMbytes(actualSize)
-	appDiskDetails.Provisioned = RoundToMbytes(maxSize)
+	appDiskDetails.Used = utils.RoundToMbytes(actualSize)
+	appDiskDetails.Provisioned = utils.RoundToMbytes(maxSize)
 	if vrs.IsContainer() {
 		appDiskDetails.DiskType = "CONTAINER"
 		return nil
@@ -628,12 +628,6 @@ func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 	volumeResourcesDetails.CurSizeBytes = actualSize
 	volumeResourcesDetails.MaxSizeBytes = maxSize
 	return nil
-}
-
-func RoundToMbytes(byteCount uint64) uint64 {
-	const mbyte = 1024 * 1024
-
-	return (byteCount + mbyte/2) / mbyte
 }
 
 //getDataSecAtRestInfo prepares status related to Data security at Rest
@@ -759,7 +753,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	for _, disk := range disks {
 		size, _ := diskmetrics.PartitionSize(disk)
 		log.Debugf("Disk/partition %s size %d", disk, size)
-		size = RoundToMbytes(size)
+		size = utils.RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
@@ -774,7 +768,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
-		size := RoundToMbytes(u.Total)
+		size := utils.RoundToMbytes(u.Total)
 		is := info.ZInfoStorage{MountPath: path, Total: size}
 		// We know this is where we store images and keep
 		// domU virtual disks.
