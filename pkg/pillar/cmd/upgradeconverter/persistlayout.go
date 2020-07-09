@@ -147,15 +147,9 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 					snapshotID, filename)
 			}
 		} else {
-			// XXX copy to tmpfile in new dir then rename
-			if err := CopyFile(oldPath, newPath); err != nil {
-				log.Errorf("cp old to new failed: %s", err)
-			} else {
-				err := os.Remove(oldPath)
-				if err != nil {
-					log.Errorf("Remove old failed: %s", err)
-				}
-			}
+			// Must copy due to fscrypt
+			// Use atomic rename
+			copyRenameDelete(oldPath, newPath)
 		}
 	}
 }
