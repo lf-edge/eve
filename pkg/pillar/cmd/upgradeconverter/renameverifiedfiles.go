@@ -85,7 +85,7 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 			continue
 		}
 		if noFlag {
-			log.Infof("renameFiles dryrun from %s to %s",
+			log.Infof("renameFiles: dryrun from %s to %s",
 				srcFile, dstFile)
 		} else {
 			// Must copy due to fscrypt
