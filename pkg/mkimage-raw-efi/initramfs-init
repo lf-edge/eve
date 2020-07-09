@@ -479,6 +479,13 @@ if [ -n "$KOPT_setup_loops" ]; then
 		-n -r /tmp/rootfs
 	eend $?
 
+        # see if we found anything
+        if [ ! -e /tmp/rootfs ]; then
+           echo "Failed to find rootfs (which is weird). Try to re-run nlplug-findfs manually to see what's wrong:"
+           echo "  nlplug-findfs -p /sbin/mdev -d -t 30000 -n -r /tmp/rootfs.txt ; cat /tmp/rootfs.txt"
+           sh
+        fi
+
         # now add loops
 	ebegin "Setting up loopback block devices"
 	for l in $(cat /tmp/rootfs); do
