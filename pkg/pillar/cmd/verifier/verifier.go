@@ -618,12 +618,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 // ImageVerifierFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
 // for the image
-func ImageVerifierFilenames(infile, tmpID string) (string, string, string) {
+func ImageVerifierFilenames(infile, sha256, tmpID string) (string, string, string) {
 	verifierDirname, verifiedDirname := getVerifierDir(), getVerifiedDir()
 	// Handle names which are paths
-	filename := path.Base(infile)
-	verified := tmpID + "." + filename
-	return infile, path.Join(verifierDirname, verified), path.Join(verifiedDirname, filename)
+	verified := tmpID + "." + sha256
+	return infile, path.Join(verifierDirname, verified), path.Join(verifiedDirname, sha256)
 }
 
 // Returns ok, size of object
@@ -632,7 +631,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 	status *types.VerifyImageStatus, tmpID uuid.UUID) (bool, int64) {
 
 	verifierDirname := getVerifierDir()
-	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(config.FileLocation, tmpID.String())
+	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(config.FileLocation, config.ImageSha256, tmpID.String())
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -679,7 +678,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyImageStatus, tmpID uuid.UUID) {
 
 	verifiedDirname := getVerifiedDir()
-	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(config.FileLocation, tmpID.String())
+	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(config.FileLocation, config.ImageSha256, tmpID.String())
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
