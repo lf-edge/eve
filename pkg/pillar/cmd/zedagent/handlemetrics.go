@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -343,6 +344,43 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			metric.UrlMetrics = append(metric.UrlMetrics, urlMet)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
+			&metric)
+	}
+
+	// collect CipherMetric from agents and report
+	// Collect zedcloud metrics from ourselves and other agents
+	cipherMetrics := cipher.GetCipherMetrics()
+	if cipherMetricsDL != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDL)
+	}
+	if cipherMetricsDM != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDM)
+	}
+	if cipherMetricsNim != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsNim)
+	}
+	for agentName, cm := range cipherMetrics {
+		log.Debugf("Cipher metrics for %s: %+v", agentName, cm)
+		metric := metrics.CipherMetric{AgentName: agentName,
+			FailureCount: cm.FailureCount,
+			SuccessCount: cm.SuccessCount,
+		}
+		if !cm.LastFailure.IsZero() {
+			lf, _ := ptypes.TimestampProto(cm.LastFailure)
+			metric.LastFailure = lf
+		}
+		if !cm.LastSuccess.IsZero() {
+			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
+			metric.LastSuccess = ls
+		}
+		for i := range cm.TypeCounters {
+			tc := metrics.TypeCounter{
+				ErrorCode: metrics.CipherError(i),
+				Count:     cm.TypeCounters[i],
+			}
+			metric.Tc = append(metric.Tc, &tc)
+		}
+		ReportDeviceMetric.Cipher = append(ReportDeviceMetric.Cipher,
 			&metric)
 	}
 
