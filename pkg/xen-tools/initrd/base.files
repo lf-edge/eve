@@ -8,3 +8,4 @@
 /mnt
 /bin/sh
 /sbin/poweroff
+/etc/acpi/PWRF/00000080
