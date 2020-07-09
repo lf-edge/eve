@@ -48,7 +48,7 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 	}
 	locations, err := ioutil.ReadDir(srcDir)
 	if err != nil {
-		log.Errorf("renameFiles read directory '%s' failed: %v",
+		log.Errorf("renameFiles read: directory '%s' failed: %v",
 			srcDir, err)
 		return
 	}
@@ -59,24 +59,29 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 		innerDir := srcDir + "/" + location.Name()
 		files, err := ioutil.ReadDir(innerDir)
 		if err != nil {
-			log.Errorf("renameFiles read directory '%s' failed: %v",
+			log.Errorf("renameFiles: read directory '%s' failed: %v",
 				innerDir, err)
 			continue
 		}
 		if len(files) == 0 {
-			log.Errorf("renameFiles read directory '%s' no file",
+			log.Errorf("renameFiles: read directory '%s' no file",
 				innerDir)
 			continue
 		}
 		if len(files) > 1 {
-			log.Errorf("renameFiles read directory '%s' more than one file: %d",
+			log.Errorf("renameFiles: read directory '%s' more than one file: %d",
 				innerDir, len(files))
 			continue
 		}
 		srcFile := innerDir + "/" + files[0].Name()
 		if _, err := os.Stat(srcFile); err != nil {
-			log.Errorf("renameFiles srcFile %s disappeared?: %s",
+			log.Errorf("renameFiles: srcFile %s disappeared?: %s",
 				srcFile, err)
+			continue
+		}
+		if _, err := os.Stat(dstFile); err == nil {
+			log.Warnf("renameFiles: dst %s already exists hence skipped",
+				dstFile)
 			continue
 		}
 		if noFlag {
@@ -84,15 +89,28 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 				srcFile, dstFile)
 		} else {
 			// Must copy due to fscrypt
-			// XXX copy to tmpfile in new dir then rename
-			if err := CopyFile(srcFile, dstFile); err != nil {
-				log.Errorf("cp old to new failed: %s", err)
-			} else {
-				err := os.Remove(srcFile)
-				if err != nil {
-					log.Errorf("Remove old failed: %s", err)
-				}
-			}
+			// Use atomic rename
+			copyRenameDelete(srcFile, dstFile)
+		}
+	}
+}
+
+// If there are any failures we leave the srcFile in place
+func copyRenameDelete(srcFile, dstFile string) {
+	dstTmpFile := dstFile + ".tmp"
+	if _, err := os.Stat(dstTmpFile); err == nil {
+		if err := os.Remove(dstTmpFile); err != nil {
+			log.Errorf("Remove tmp file failed: %s", err)
+			return
+		}
+	}
+	if err := CopyFile(srcFile, dstTmpFile); err != nil {
+		log.Errorf("Copy failed: %s", err)
+	} else if err := os.Rename(dstTmpFile, dstFile); err != nil {
+		log.Errorf("Rename to %s failed: %s", dstFile, err)
+	} else {
+		if err := os.Remove(srcFile); err != nil {
+			log.Errorf("Remove source failed: %s", err)
 		}
 	}
 }
