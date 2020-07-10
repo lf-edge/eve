@@ -71,6 +71,37 @@ message urlcloudMetric {
   int64 recvByteCount = 7;
 }
 
+// Failures and successes for the object decryption
+message CipherMetric {
+  string agent_name = 1;
+  uint64 failure_count = 2;
+  uint64 success_count = 3;
+  google.protobuf.Timestamp last_failure = 4;
+  google.protobuf.Timestamp last_success = 5;
+  repeated TypeCounter tc = 6;
+}
+
+// Various error codes
+// Note that CIPHER_ERROR_NO_DATA isn't really an error; means that there
+// was no encrypted nor cleartext data.
+// Must match CipherError in pkg/pillar/types
+enum CipherError {
+  CIPHER_ERROR_INVALID = 0;
+  CIPHER_ERROR_NOT_READY = 1;          // Not yet received ECDH controller cert
+  CIPHER_ERROR_DECRYPT_FAILED = 2;     // ECDH decrypt failed
+  CIPHER_ERROR_UNMARSHAL_FAILED = 3;   // Failed protobuf decode post decryption
+  CIPHER_ERROR_CLEARTEXT_FALLBACK = 4; // Failure then using cleartext
+  CIPHER_ERROR_MISSING_FALLBACK = 5;   // Failed and no cleartext to fall back to
+  CIPHER_ERROR_NO_CIPHER = 6;          // Only cleartext received
+  CIPHER_ERROR_NO_DATA = 7;            // No data to encrypt/decrypt
+}
+
+// Counters for each of the different CipherError codes
+message TypeCounter {
+  CipherError error_code = 1;
+  uint64 count = 2;
+}
+
 message appCpuMetric {
   // deprecated = 2;
   // deprecated = 3;
@@ -92,6 +123,7 @@ message deviceMetric {
   uint64 appRunTimeStorageMB = 10;         // In MB
   memoryMetric systemServicesMemoryMB = 11;  // In MB
   logMetric log = 12;
+  repeated CipherMetric cipher = 13;  // Object decryption
 }
 
 message appContainerMetric {
