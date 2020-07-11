@@ -33,9 +33,11 @@ type cipherContext struct {
 	triggerEdgeNodeCerts   chan struct{}
 	triggerControllerCerts chan struct{}
 
-	cfgControllerCertHash []byte
+	cfgControllerCertHash string // Last controllercert_confighash received from controller
 	iteration             int
 }
+
+var controllerCertHash []byte
 
 // parse and update controller certs
 func parseControllerCerts(ctx *zedagentContext, contents []byte) {
@@ -53,16 +55,16 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 		computeConfigElementSha(h, cfgCert)
 	}
 	newHash := h.Sum(nil)
-	if bytes.Equal(newHash, ctx.cipherCtx.cfgControllerCertHash) {
+	if bytes.Equal(newHash, controllerCertHash) {
 		return
 	}
 	log.Infof("parseControllerCerts: Applying updated config "+
 		"Last Sha: % x, "+
 		"New  Sha: % x, "+
 		"Num of cfgCert: %d",
-		ctx.cipherCtx.cfgControllerCertHash, newHash, len(cfgCerts))
+		controllerCertHash, newHash, len(cfgCerts))
 
-	ctx.cipherCtx.cfgControllerCertHash = newHash
+	controllerCertHash = newHash
 
 	// First look for deleted ones
 	items := ctx.getconfigCtx.pubControllerCert.GetAll()
@@ -305,7 +307,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	deferKey := "attest:%s" + zcdevUUID.String()
+	deferKey := "attest:" + zcdevUUID.String()
 	zedcloud.RemoveDeferred(deferKey)
 
 	buf := bytes.NewBuffer(data)
@@ -355,15 +357,10 @@ func handleControllerCertsSha(ctx *zedagentContext,
 	config *zconfig.EdgeDevConfig) {
 
 	certHash := config.GetControllercertConfighash()
-	// In case sha is not getting populated by the controller
-	if len(certHash) == 0 {
-		log.Infof("handleControllerCertsSha not set by controller")
-		return
-	}
-	sumHash := hex.EncodeToString(ctx.cipherCtx.cfgControllerCertHash)
-	if sumHash != certHash {
+	if certHash != ctx.cipherCtx.cfgControllerCertHash {
 		log.Infof("handleControllerCertsSha trigger due to controller %v vs current %v",
-			certHash, sumHash)
+			certHash, ctx.cipherCtx.cfgControllerCertHash)
+		ctx.cipherCtx.cfgControllerCertHash = certHash
 		triggerControllerCertEvent(ctx)
 	}
 }

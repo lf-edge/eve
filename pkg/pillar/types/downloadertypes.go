@@ -14,7 +14,6 @@ import (
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type DownloaderConfig struct {
 	ImageSha256      string
-	ImageID          uuid.UUID // Used for logging
 	DatastoreID      uuid.UUID
 	Name             string
 	Target           string // file path where to download the file
@@ -42,7 +41,7 @@ func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 // LogCreate :
 func (config DownloaderConfig) LogCreate() {
 	logObject := base.NewLogObject(base.DownloaderConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -56,7 +55,7 @@ func (config DownloaderConfig) LogCreate() {
 // LogModify :
 func (config DownloaderConfig) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(base.DownloaderConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DownloaderConfig)
 	if !ok {
@@ -82,7 +81,7 @@ func (config DownloaderConfig) LogModify(old interface{}) {
 // LogDelete :
 func (config DownloaderConfig) LogDelete() {
 	logObject := base.EnsureLogObject(base.DownloaderConfigLogType, config.Name,
-		config.ImageID, config.LogKey())
+		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("target", config.Target).
 		AddField("datastore-id", config.DatastoreID).
 		AddField("refcount-int64", config.RefCount).
@@ -107,11 +106,9 @@ type CertConfig struct {
 // The key/index to this is the ImageSha256 which comes from DownloaderConfig.
 type DownloaderStatus struct {
 	ImageSha256      string
-	ImageID          uuid.UUID // Used for logging
 	DatastoreID      uuid.UUID
 	Target           string // file path where we download the file
 	Name             string
-	ObjType          string
 	PendingAdd       bool
 	PendingModify    bool
 	PendingDelete    bool
@@ -181,7 +178,7 @@ func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
 // LogCreate :
 func (status DownloaderStatus) LogCreate() {
 	logObject := base.NewLogObject(base.DownloaderStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -194,7 +191,7 @@ func (status DownloaderStatus) LogCreate() {
 // LogModify :
 func (status DownloaderStatus) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(base.DownloaderStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(DownloaderStatus)
 	if !ok {
@@ -225,7 +222,7 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 // LogDelete :
 func (status DownloaderStatus) LogDelete() {
 	logObject := base.EnsureLogObject(base.DownloaderStatusLogType, status.Name,
-		status.ImageID, status.LogKey())
+		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).

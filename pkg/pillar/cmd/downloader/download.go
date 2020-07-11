@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package downloader
 
 import (
@@ -62,19 +65,19 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	req.Post()
 	for resp := range respChan {
 		if resp.IsDnUpdate() {
-			asize, osize, progress := resp.Progress()
+			currentSize, totalSize, progress := resp.Progress()
 			log.Infof("Update progress for %v: %v/%v",
-				resp.GetLocalName(), asize, osize)
+				resp.GetLocalName(), currentSize, totalSize)
 			// sometime, the download goes to an infinite loop,
 			// showing it has downloaded, more than it is supposed to
 			// aborting download, marking it as an error
-			if asize > osize {
+			if currentSize > totalSize {
 				errStr := fmt.Sprintf("Size '%v' provided in image config of '%s' is incorrect.\nDownload status (%v / %v). Aborting the download",
-					osize, resp.GetLocalName(), asize, osize)
+					totalSize, resp.GetLocalName(), currentSize, totalSize)
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
-			status.Progress(progress, osize, asize)
+			status.Progress(progress, currentSize, totalSize)
 			continue
 		}
 		if syncOp == zedUpload.SyncOpDownload {

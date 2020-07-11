@@ -8,13 +8,11 @@ package upgradeconverter
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -94,7 +92,13 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 }
 
 // If newPath doesn't exist, then move.
-// Otherwise we replace/move if the old file has a more recent modtime
+// If newPath exists, then this could be due to a downgrade followed by an upgrade
+// and this get called on the upgrade.
+// When the device was downgraded to code which uses the old directories, then
+// if would have recreated the volumes in the old directories. Our assumption
+// is that such a downgrade was a mistake or failure, and that we want to use
+// the file which was originally placed in the new directory.
+//
 // If noFlag is set we just log and no file system modifications.
 func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool) {
 	info, err := os.Stat(newPath)
@@ -107,18 +111,19 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 				newModTime.Format(time.RFC3339Nano))
 			return
 		}
-		log.Warnf("New file %s newer than old %s: %s vs. %s. Replacing %t",
+		// This happens since the raw/qcow2 image would have been
+		// modified by the app instance when booting in the downgraded state.
+		log.Warnf("New file %s newer than old %s: %s vs. %s. Not replaced",
 			newPath, oldPath,
 			oldModTime.Format(time.RFC3339Nano),
-			newModTime.Format(time.RFC3339Nano), !noFlag)
-		if !noFlag {
-			if err := os.RemoveAll(newPath); err != nil {
-				log.Errorf("Removing new: %s", err)
-			}
-		}
+			newModTime.Format(time.RFC3339Nano))
+		return
 	}
-	log.Infof("Moving %s to %s: %t", oldPath, newPath, !noFlag)
-	if !noFlag {
+	if noFlag {
+		log.Infof("Persist layout dryrun from %s to %s",
+			oldPath, newPath)
+	} else {
+		log.Infof("Moving %s to %s: %t", oldPath, newPath, !noFlag)
 		// Can not rename between vault directories so we
 		// have to copy and delete.
 		fi, err := os.Stat(oldPath)
@@ -148,38 +153,11 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 					snapshotID, filename)
 			}
 		} else {
-			if err := CopyFile(oldPath, newPath); err != nil {
-				log.Errorf("cp old to new failed: %s", err)
-			} else {
-				err := os.Remove(oldPath)
-				if err != nil {
-					log.Errorf("Remove old failed: %s", err)
-				}
-			}
+			// Must copy due to fscrypt
+			// Use atomic rename
+			copyRenameDelete(oldPath, newPath)
 		}
 	}
-}
-
-func cp(dst, src string) error {
-	if strings.Compare(dst, src) == 0 {
-		log.Fatalf("Same src and dst: %s", src)
-	}
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	// no need to check errors on read only file, we already got everything
-	// we need from the filesystem, so nothing can go wrong now.
-	defer s.Close()
-	d, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(d, s); err != nil {
-		d.Close()
-		return err
-	}
-	return d.Close()
 }
 
 // From the AppInstanceConfig protbuf message.

@@ -57,7 +57,7 @@ const (
 var Version = "No version specified"
 
 // XXX move to a context? Which? Used in handleconfig and handlemetrics!
-var deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
+var deviceNetworkStatus = &types.DeviceNetworkStatus{}
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
@@ -76,7 +76,6 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
-	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
 	assignableAdapters        *types.AssignableAdapters
@@ -87,11 +86,6 @@ type zedagentContext struct {
 	TriggerDeviceInfo         chan<- struct{}
 	zbootRestarted            bool // published by baseosmgr
 	subBaseOsStatus           pubsub.Subscription
-	subBaseOsDownloadStatus   pubsub.Subscription
-	subCertObjDownloadStatus  pubsub.Subscription
-	subBaseOsVerifierStatus   pubsub.Subscription
-	subAppImgDownloadStatus   pubsub.Subscription
-	subAppImgVerifierStatus   pubsub.Subscription
 	subNetworkInstanceMetrics pubsub.Subscription
 	subAppFlowMonitor         pubsub.Subscription
 	subAppVifIPTrig           pubsub.Subscription
@@ -100,10 +94,10 @@ type zedagentContext struct {
 	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
+	subBlobStatus             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
 	subAppContainerMetrics    pubsub.Subscription
-	pubMetrics                pubsub.Publication
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -665,94 +659,6 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.subVaultStatus = subVaultStatus
 	subVaultStatus.Activate()
 
-	// Look for DownloaderStatus from downloader
-	// used only for downloader storage stats collection
-	subBaseOsDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "downloader",
-		AgentScope:  types.BaseOsObj,
-		TopicImpl:   types.DownloaderStatus{},
-		Activate:    false,
-		Ctx:         &zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
-	subBaseOsDownloadStatus.Activate()
-
-	// Look for DownloaderStatus from downloader
-	// used only for downloader storage stats collection
-	subCertObjDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "downloader",
-		AgentScope:  types.CertObj,
-		TopicImpl:   types.DownloaderStatus{},
-		Activate:    false,
-		Ctx:         &zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subCertObjDownloadStatus = subCertObjDownloadStatus
-	subCertObjDownloadStatus.Activate()
-
-	// Look for VerifyBaseOsImageStatus from verifier
-	// used only for verifier storage stats collection
-	subBaseOsVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "verifier",
-		TopicImpl:      types.VerifyImageStatus{},
-		Activate:       false,
-		Ctx:            &zedagentCtx,
-		AgentScope:     types.BaseOsObj,
-		ModifyHandler:  handleVerifierStatusModify,
-		DeleteHandler:  handleVerifierStatusDelete,
-		RestartHandler: handleVerifierRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
-	subBaseOsVerifierStatus.Activate()
-
-	// Look for VerifyImageStatus from verifier
-	// used only for verifier storage stats collection
-	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "verifier",
-		AgentScope:  types.AppImgObj,
-		TopicImpl:   types.VerifyImageStatus{},
-		Activate:    false,
-		Ctx:         &zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subAppImgVerifierStatus = subAppImgVerifierStatus
-	subAppImgVerifierStatus.Activate()
-
-	// Look for DownloaderStatus from downloader for metric reporting
-	// used only for downloader storage stats collection
-	subAppImgDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "downloader",
-		AgentScope:  types.AppImgObj,
-		TopicImpl:   types.DownloaderStatus{},
-		Activate:    false,
-		Ctx:         &zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
-	subAppImgDownloadStatus.Activate()
-
 	// Look for nodeagent status
 	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nodeagent",
@@ -804,6 +710,23 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
+
+	subBlobStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		TopicImpl:     types.BlobStatus{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleBlobStatusModify,
+		ModifyHandler: handleBlobStatusModify,
+		DeleteHandler: handleBlobDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subBlobStatus = subBlobStatus
+	subBlobStatus.Activate()
 
 	// Subscribe to Log metrics from logmanager
 	subLogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -874,21 +797,6 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-zedagentCtx.subBaseOsVerifierStatus.MsgChan():
-			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
-
-		case change := <-subBaseOsDownloadStatus.MsgChan():
-			subBaseOsDownloadStatus.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgDownloadStatus.MsgChan():
-			subAppImgDownloadStatus.ProcessChange(change)
-
-		case change := <-subCertObjDownloadStatus.MsgChan():
-			subCertObjDownloadStatus.ProcessChange(change)
-
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -940,52 +848,34 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
+	cms := zedcloud.GetCloudMetrics()
 	subClientMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  "zedclient",
-		TopicImpl:  types.MetricsMap{},
-		Activate:   true,
-		Ctx:        &zedagentCtx,
-		Persistent: true,
+		AgentName: "zedclient",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subLogmanagerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  "logmanager",
-		TopicImpl:  types.MetricsMap{},
-		Activate:   true,
-		Ctx:        &zedagentCtx,
-		Persistent: true,
+		AgentName: "logmanager",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subDownloaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  "downloader",
-		TopicImpl:  types.MetricsMap{},
-		Activate:   true,
-		Ctx:        &zedagentCtx,
-		Persistent: true,
+		AgentName: "downloader",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Make our own metrics persistent across reboots
-	pub, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		TopicType:  types.MetricsMap{},
-		Persistent: true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Load and set metrics from previous run of agent/device
-	item, err := pub.Get("global")
-	if err == nil {
-		cms := item.(types.MetricsMap)
-		zedcloud.SetCloudMetrics(cms)
-	}
-	zedagentCtx.pubMetrics = pub
 
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
@@ -999,77 +889,6 @@ func Run(ps *pubsub.PubSub) {
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
-
-	// Process the verifierStatus to avoid downloading an image we
-	// already have in place
-	log.Infof("Handling initial verifier Status")
-	for !zedagentCtx.verifierRestarted {
-		select {
-		case change := <-subZbootStatus.MsgChan():
-			subZbootStatus.ProcessChange(change)
-
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.MsgChan():
-			subBaseOsVerifierStatus.ProcessChange(change)
-			if zedagentCtx.verifierRestarted {
-				log.Infof("Verifier reported restarted")
-				break
-			}
-
-		case change := <-subBaseOsDownloadStatus.MsgChan():
-			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgDownloadStatus.MsgChan():
-			subAppImgDownloadStatus.ProcessChange(change)
-
-		case change := <-subCertObjDownloadStatus.MsgChan():
-			subCertObjDownloadStatus.ProcessChange(change)
-
-		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
-			subNodeAgentStatus.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
-			if DNSctx.triggerDeviceInfo {
-				// IP/DNS in device info could have changed
-				log.Infof("NetworkStatus triggered PublishDeviceInfo")
-				triggerPublishDevInfo(&zedagentCtx)
-				DNSctx.triggerDeviceInfo = false
-			}
-
-		case change := <-subAssignableAdapters.MsgChan():
-			subAssignableAdapters.ProcessChange(change)
-
-		case change := <-subDevicePortConfigList.MsgChan():
-			subDevicePortConfigList.ProcessChange(change)
-
-		case change := <-subVaultStatus.MsgChan():
-			subVaultStatus.ProcessChange(change)
-
-		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-
-		case <-stillRunning.C:
-			// Fault injection
-			if fatalFlag {
-				log.Fatal("Requested fault injection to cause watchdog")
-			}
-		}
-		if hangFlag {
-			log.Infof("Requested to not touch to cause watchdog")
-		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
-		}
-		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
-	}
 
 	// start the config fetch tasks, when zboot status is ready
 	go configTimerTask(handleChannel, &getconfigCtx)
@@ -1106,20 +925,8 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subBaseOsStatus.MsgChan():
 			subBaseOsStatus.ProcessChange(change)
 
-		case change := <-subBaseOsVerifierStatus.MsgChan():
-			subBaseOsVerifierStatus.ProcessChange(change)
-
-		case change := <-subBaseOsDownloadStatus.MsgChan():
-			subBaseOsDownloadStatus.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.MsgChan():
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgDownloadStatus.MsgChan():
-			subAppImgDownloadStatus.ProcessChange(change)
-
-		case change := <-subCertObjDownloadStatus.MsgChan():
-			subCertObjDownloadStatus.ProcessChange(change)
+		case change := <-subBlobStatus.MsgChan():
+			subBlobStatus.ProcessChange(change)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			subNodeAgentStatus.ProcessChange(change)
@@ -1260,33 +1067,6 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 	}
 }
 
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleVerifierRestarted(%v)", done)
-	if done {
-		ctx.verifierRestarted = true
-	}
-}
-
-// base os verifier status modify event
-func handleVerifierStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVerifierStatusModify for %s", status.ImageID)
-	// Nothing to do
-}
-
-// base os verifier status delete event
-func handleVerifierStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVeriferStatusDelete RefCount %d for %s",
-		status.RefCount, key)
-	// Nothing to do
-}
-
 func handleZbootRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedagentContext)
 	log.Infof("handleZbootRestarted(%v)", done)
@@ -1318,12 +1098,6 @@ func initializeDirs() {
 	if _, err := os.Stat(checkpointDirname); err != nil {
 		log.Debugf("Create %s", checkpointDirname)
 		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(types.DownloadDirname); err != nil {
-		log.Debugf("Create %s", types.DownloadDirname)
-		if err := os.MkdirAll(types.DownloadDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}

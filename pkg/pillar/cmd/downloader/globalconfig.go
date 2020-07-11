@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package downloader
 
 import (
@@ -22,9 +25,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.GlobalValueInt(types.DownloadGCTime) != 0 {
-			downloadGCTime = time.Duration(gcp.GlobalValueInt(types.DownloadGCTime)) * time.Second
-		}
 		if gcp.GlobalValueInt(types.DownloadRetryTime) != 0 {
 			retryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
 		}

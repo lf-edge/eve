@@ -1,53 +1,44 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package verifier
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"os"
-)
 
-var (
-	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
+	log "github.com/sirupsen/logrus"
 )
 
 func initializeDirs() {
 	// Remove any files which didn't make it past the verifier.
-	// useful for calculating total available space in
-	// downloader context
-	// XXX when does downloader calculate space?
-	clearInProgressDownloadDirs(verifierObjTypes)
-
+	clearInProgressDownloadDirs()
 	// create the object download directories
-	createDownloadDirs(verifierObjTypes)
+	createDownloadDirs()
 }
 
 // Create the object download directories we own
-func createDownloadDirs(objTypes []string) {
+func createDownloadDirs() {
 	// now create the download dirs
-	for _, objType := range objTypes {
-		workingDirTypes := []string{getVerifierDir(objType), getVerifiedDir(objType)}
-		for _, dirName := range workingDirTypes {
-			if _, err := os.Stat(dirName); err != nil {
-				log.Debugf("Create %s", dirName)
-				if err := os.MkdirAll(dirName, 0700); err != nil {
-					log.Fatal(err)
-				}
+	workingDirTypes := []string{getVerifierDir(), getVerifiedDir()}
+	for _, dirName := range workingDirTypes {
+		if _, err := os.Stat(dirName); err != nil {
+			log.Infof("Create %s", dirName)
+			if err := os.MkdirAll(dirName, 0700); err != nil {
+				log.Fatal(err)
 			}
 		}
 	}
 }
 
 // clear in-progress object download directories
-func clearInProgressDownloadDirs(objTypes []string) {
+func clearInProgressDownloadDirs() {
 
 	// Now remove the in-progress dirs
-	for _, objType := range objTypes {
-		inProgressDirTypes := []string{getVerifierDir(objType)}
-		for _, dirName := range inProgressDirTypes {
-			if _, err := os.Stat(dirName); err == nil {
-				if err := os.RemoveAll(dirName); err != nil {
-					log.Fatal(err)
-				}
+	workingDirTypes := []string{getVerifierDir()}
+	for _, dirName := range workingDirTypes {
+		if _, err := os.Stat(dirName); err == nil {
+			if err := os.RemoveAll(dirName); err != nil {
+				log.Fatal(err)
 			}
 		}
 	}

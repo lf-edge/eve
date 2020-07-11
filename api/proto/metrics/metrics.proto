@@ -69,7 +69,6 @@ message urlcloudMetric {
   int64 sentByteCount = 5;
   int64 recvMsgCount = 6;
   int64 recvByteCount = 7;
-  google.protobuf.Timestamp lastUse = 8; // Success or failure
 }
 
 message appCpuMetric {

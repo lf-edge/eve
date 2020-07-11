@@ -10,7 +10,6 @@ package zedcloud
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"strings"
 	"sync"
 	"time"
 )
@@ -52,7 +51,6 @@ func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64, aut
 			u.RecvMsgCount++
 			u.RecvByteCount += respLen
 		}
-		u.LastUse = time.Now()
 		m.URLCounters[url] = u
 	}
 	metrics[ifname] = m
@@ -74,7 +72,6 @@ func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	u.SentByteCount += reqLen
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
-	u.LastUse = time.Now()
 	m.URLCounters[url] = u
 	metrics[ifname] = m
 	mutex.Unlock()
@@ -82,38 +79,6 @@ func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 
 func GetCloudMetrics() types.MetricsMap {
 	return metrics
-}
-
-// SetCloudMetrics is used on agent startups e.g., to preserve
-// the metrics from a previous run of the agent/device
-func SetCloudMetrics(m types.MetricsMap) {
-	metrics = m
-}
-
-// CloudMetricsExcludeURL returns a map without the entries containing
-// the substring
-func CloudMetricsExcludeURL(m types.MetricsMap, substring string) types.MetricsMap {
-	resCms := make(types.MetricsMap)
-	for agentName, cm := range m {
-		resCm := types.ZedcloudMetric{
-			FailureCount:  cm.FailureCount,
-			SuccessCount:  cm.SuccessCount,
-			LastFailure:   cm.LastFailure,
-			LastSuccess:   cm.LastSuccess,
-			URLCounters:   make(map[string]types.UrlcloudMetrics),
-			AuthFailCount: cm.AuthFailCount,
-		}
-		for u, ucm := range cm.URLCounters {
-			if strings.Index(u, substring) != -1 {
-				log.Infof("CloudMetricsExcludeURL dropping %s",
-					u)
-				continue
-			}
-			resCm.URLCounters[u] = ucm
-		}
-		resCms[agentName] = resCm
-	}
-	return resCms
 }
 
 // Concatenate different interfaces and URLs into a union map

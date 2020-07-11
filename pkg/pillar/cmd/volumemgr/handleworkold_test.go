@@ -6,14 +6,16 @@ package volumemgr
 // Interface to worker to run the create and destroy in separate goroutines
 
 import (
-	"github.com/stretchr/testify/assert"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 func TestHandleWorkCreate(t *testing.T) {
@@ -61,6 +63,14 @@ func TestHandleWorkCreate(t *testing.T) {
 			status.ReadOnly = test.ReadOnly
 			status.FileLocation = test.SrcLocation
 			status.BlobSha256 = test.BlobSha256
+			status.Blobs = []string{
+				test.BlobSha256,
+			}
+			ctx.pubBlobStatus.Publish(test.BlobSha256, types.BlobStatus{
+				State:  types.VERIFIED,
+				Path:   test.SrcLocation,
+				Sha256: strings.ToLower(test.BlobSha256),
+			})
 
 			MaybeAddWorkCreateOld(&ctx, &status)
 			assert.Equal(t, ctx.workerOld.NumPending(), 1)
@@ -203,5 +213,21 @@ func initCtx(t *testing.T) volumemgrContext {
 	})
 	assert.Nil(t, err)
 	ctx.pubContentTreeStatus = pubContentTreeStatus
+
+	pubBaseOsContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.BaseOsObj,
+		TopicType:  types.ContentTreeStatus{},
+	})
+	assert.Nil(t, err)
+	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
+
+	pubBlobStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.BlobStatus{},
+	})
+	assert.Nil(t, err)
+	ctx.pubBlobStatus = pubBlobStatus
 	return ctx
 }

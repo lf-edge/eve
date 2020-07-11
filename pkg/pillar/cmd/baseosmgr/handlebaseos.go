@@ -30,8 +30,8 @@ func lookupBaseOsImageSha(ctx *baseOsMgrContext, imageSha string) *types.BaseOsC
 	items := ctx.subBaseOsConfig.GetAll()
 	for _, c := range items {
 		config := c.(types.BaseOsConfig)
-		for _, sc := range config.StorageConfigList {
-			if sc.ImageSha256 == imageSha {
+		for _, ctc := range config.ContentTreeConfigList {
+			if ctc.ContentSha256 == imageSha {
 				return &config
 			}
 		}
@@ -209,10 +209,10 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 
 func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
 	status.State = state
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		ss.Progress = 100
-		ss.State = state
+	for i := range status.ContentTreeStatusList {
+		cts := &status.ContentTreeStatusList[i]
+		cts.Progress = 100
+		cts.State = state
 	}
 }
 
@@ -272,7 +272,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
-	if installDownloadedObjects(uuidStr, &status.StorageStatusList) {
+	if installDownloadedObjects(uuidStr, status.PartitionLabel,
+		&status.ContentTreeStatusList) {
 
 		changed = true
 		// Match the version string inside image?
@@ -287,7 +288,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			publishBaseOsStatus(ctx, status)
 			return changed
 		}
-		// move the state from CREATED_VOLUME to INSTALLED
+		// move the state from VERIFIED to INSTALLED
 		setProgressDone(status, types.INSTALLED)
 		publishZbootPartitionStatus(ctx, status.PartitionLabel)
 		baseOsSetPartitionInfoInStatus(ctx, status,
@@ -337,14 +338,14 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 	changed := false
 	proceed := false
 
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		if ss.Name != sc.Name || !uuid.Equal(ss.ImageID, sc.ImageID) {
+	for i, ctc := range config.ContentTreeConfigList {
+		cts := &status.ContentTreeStatusList[i]
+		if cts.RelativeURL != ctc.RelativeURL || !uuid.Equal(cts.ContentID, ctc.ContentID) {
 			// Report to zedcloud
-			errString := fmt.Sprintf("%s, for %s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
+			errString := fmt.Sprintf("%s, for %s, Content tree config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				config.BaseOsVersion,
-				sc.Name, ss.Name,
-				sc.ImageID, ss.ImageID)
+				ctc.RelativeURL, cts.RelativeURL,
+				ctc.ContentID, cts.ContentID)
 			log.Error(errString)
 			status.SetErrorNow(errString)
 			changed = true
@@ -461,12 +462,6 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		status.PartitionLabel = otherPartName
 		status.PartitionState = otherPartStatus.PartitionState
 		status.PartitionDevice = otherPartStatus.PartitionDevname
-
-		// List has only one element but ...
-		for idx := range status.StorageStatusList {
-			ss := &status.StorageStatusList[idx]
-			ss.FinalObjDir = status.PartitionLabel
-		}
 		changed = true
 	}
 	proceed = true
@@ -480,8 +475,8 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 	uuidStr := baseOsUUID.String()
 	log.Infof("checkBaseOsVolumeStatus(%s) for %s",
 		config.BaseOsVersion, uuidStr)
-	ret := checkVolumeStatus(ctx, baseOsUUID, config.StorageConfigList,
-		status.StorageStatusList)
+	ret := checkContentTreeStatus(ctx, baseOsUUID, config.ContentTreeConfigList,
+		status.ContentTreeStatusList)
 
 	status.State = ret.MinState
 
@@ -492,7 +487,7 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 		return ret.Changed, false
 	}
 
-	if ret.MinState < types.CREATED_VOLUME {
+	if ret.MinState < types.VERIFIED {
 		log.Infof("checkBaseOsVolumeStatus(%s) for %s, Waiting for volumemgr",
 			config.BaseOsVersion, uuidStr)
 		return ret.Changed, false
@@ -604,30 +599,19 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		status.PartitionLabel = ""
 		changed = true
 	}
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		// Decrease refcount if we had increased it
-		if ss.HasVolumemgrRef {
-			log.Infof("doBaseOsUninstall(%s) for %s, HasVolumemgrRef %s",
-				status.BaseOsVersion, uuidStr, ss.ImageID)
-
-			// We use the baseos object UUID as appInstID here
-			MaybeRemoveVolumeConfig(ctx, ss.ImageSha256,
-				status.UUIDandVersion.UUID, ss.ImageID)
-			ss.HasVolumemgrRef = false
+	for i := range status.ContentTreeStatusList {
+		cts := &status.ContentTreeStatusList[i]
+		log.Infof("doBaseOsUninstall(%s) for %s",
+			status.BaseOsVersion, uuidStr)
+		c := MaybeRemoveContentTreeConfig(ctx, cts.Key())
+		if c {
 			changed = true
-		} else {
-			log.Infof("doBaseOsUninstall(%s) for %s, NO HasVolumemgrRef",
-				status.BaseOsVersion, uuidStr)
 		}
 
-		// We use the baseos object UUID as appInstID here
-		vs := lookupVolumeStatus(ctx, ss.ImageSha256,
-			status.UUIDandVersion.UUID, ss.ImageID)
-		if vs != nil {
-			log.Infof("doBaseOsUninstall(%s) for %s, Volume %s not yet gone; RefCount %d",
-				status.BaseOsVersion, uuidStr, ss.ImageID,
-				vs.RefCount)
+		contentStatus := lookupContentTreeStatus(ctx, cts.Key())
+		if contentStatus != nil {
+			log.Infof("doBaseOsUninstall(%s) for %s, Content %s not yet gone;",
+				status.BaseOsVersion, uuidStr, cts.ContentID)
 			removedAll = false
 			continue
 		}
@@ -753,7 +737,7 @@ func unpublishBaseOsStatus(ctx *baseOsMgrContext, key string) {
 // Check the number of image in this config
 func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) error {
 
-	imageCount := len(config.StorageConfigList)
+	imageCount := len(config.ContentTreeConfigList)
 	if imageCount > BaseOsImageCount {
 		errStr := fmt.Sprintf("baseOs(%s) invalid image count %d",
 			config.BaseOsVersion, imageCount)
@@ -871,12 +855,6 @@ func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsS
 		status.PartitionLabel = partName
 		status.PartitionState = partStatus.PartitionState
 		status.PartitionDevice = partStatus.PartitionDevname
-
-		// List has only one element but ...
-		for idx := range status.StorageStatusList {
-			ss := &status.StorageStatusList[idx]
-			ss.FinalObjDir = status.PartitionLabel
-		}
 	}
 }
 

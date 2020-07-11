@@ -10,14 +10,14 @@ import (
 
 // MaybeAddResolveConfig will publish the resolve config for
 // container images for which resolution of tags to sha requires
-func MaybeAddResolveConfig(ctx *volumemgrContext, cs *types.ContentTreeStatus) {
+func MaybeAddResolveConfig(ctx *volumemgrContext, cs types.ContentTreeStatus) {
 
 	log.Infof("MaybeAddResolveConfig for %s", cs.ContentID)
 	resolveConfig := types.ResolveConfig{
 		DatastoreID: cs.DatastoreID,
 		Name:        cs.RelativeURL,
 		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-			types.AppImgObj),
+			cs.ObjType),
 		Counter: uint32(cs.GenerationCounter),
 	}
 	publishResolveConfig(ctx, &resolveConfig)
@@ -29,7 +29,7 @@ func publishResolveConfig(ctx *volumemgrContext,
 
 	key := config.Key()
 	log.Debugf("publishResolveConfig(%s)", key)
-	pub := ctx.pubContentTreeResolveConfig
+	pub := ctx.pubResolveConfig
 	pub.Publish(key, *config)
 	log.Debugf("publishResolveConfig(%s) Done", key)
 }
@@ -39,7 +39,7 @@ func unpublishResolveConfig(ctx *volumemgrContext,
 
 	key := config.Key()
 	log.Debugf("unpublishResolveConfig(%s)", key)
-	pub := ctx.pubContentTreeResolveConfig
+	pub := ctx.pubResolveConfig
 	pub.Unpublish(key)
 	log.Debugf("unpublishResolveConfig(%s) Done", key)
 }
@@ -48,7 +48,7 @@ func lookupResolveConfig(ctx *volumemgrContext,
 	key string) *types.ResolveConfig {
 
 	log.Infof("lookupResolveConfig(%s)", key)
-	pub := ctx.pubContentTreeResolveConfig
+	pub := ctx.pubResolveConfig
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Infof("lookupResolveConfig(%s) not found", key)
@@ -63,7 +63,7 @@ func lookupResolveStatus(ctx *volumemgrContext,
 	key string) *types.ResolveStatus {
 
 	log.Infof("lookupResolveStatus(%s)", key)
-	sub := ctx.subContentTreeResolveStatus
+	sub := ctx.subResolveStatus
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupResolveStatus(%s) not found", key)
@@ -107,6 +107,7 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 				status.DisplayName, status.ContentID)
 			publishContentTreeStatus(ctx, &status)
 		}
+		updateVolumeStatusFromContentID(ctx, status.ContentID)
 	}
 	log.Infof("handleResolveStatusModify done for %s", key)
 }

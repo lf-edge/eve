@@ -4,13 +4,11 @@
 package tpmmgr
 
 import (
-	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -77,13 +75,6 @@ const (
 	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
 
-	//location of the ecdh certificate
-	ecdhCertFile = types.IdentityDirname + "/ecdh.cert.pem"
-
-	//location of the ecdh private key
-	//on devices without a TPM
-	ecdhKeyFile = types.IdentityDirname + "/ecdh.key.pem"
-
 	emptyPassword  = ""
 	tpmLockName    = types.TmpDirname + "/tpm.lock"
 	vaultKeyLength = 32 //Bytes
@@ -94,6 +85,13 @@ const (
 )
 
 var (
+	//location of the ecdh certificate
+	ecdhCertFile = types.IdentityDirname + "/ecdh.cert.pem"
+
+	//location of the ecdh private key
+	//on devices without a TPM
+	ecdhKeyFile = types.IdentityDirname + "/ecdh.key.pem"
+
 	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
 	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
@@ -105,7 +103,6 @@ var (
 			tpm2.FlagUserWithAuth,
 		ECCParameters: &tpm2.ECCParams{
 			CurveID: tpm2.CurveNISTP256,
-			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	//Default Ek Template as per
@@ -179,7 +176,6 @@ var (
 				Hash: tpm2.AlgSHA256,
 			},
 			CurveID: tpm2.CurveNISTP256,
-			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	defaultEcdhKeyTemplate = tpm2.Public{
@@ -190,7 +186,6 @@ var (
 			tpm2.FlagUserWithAuth,
 		ECCParameters: &tpm2.ECCParams{
 			CurveID: tpm2.CurveNISTP256,
-			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	debug         = false
@@ -714,9 +709,17 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 	return sha256.Sum256(bytes)
 }
 
-//DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
+//DecryptSecretWithEcdhKey recovers plaintext from the given ciphertext
+//X, Y are the Z point co-ordinates in Ellyptic Curve Diffie Hellman(ECDH) Exchange
+//edgeNodeCert points to the certificate that Controller used to calculate the shared secret
+//iv is the Initial Value used in the ECDH exchange.
+//sha256FromECPoint() is used as KDF on the shared secret, and the derived key is used
+//in aesDecrypt(), to apply the cipher on ciphertext, and recover plaintext
 func DecryptSecretWithEcdhKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
 	iv, ciphertext, plaintext []byte) error {
+	if (X == nil) || (Y == nil) || (edgeNodeCert == nil) {
+		return errors.New("DecryptSecretWithEcdhKey needs non-empty X, Y and edgeNodeCert")
+	}
 	decryptKey, err := getDecryptKey(X, Y, edgeNodeCert)
 	if err != nil {
 		log.Errorf("getDecryptKey failed: %v", err)
@@ -725,24 +728,14 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
 	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
 }
 
-// getDecryptKey : uses the ECC params to construct the AES decryption Key
-// This function takes the EdgeNodeCert as an argument. This value can be nil.
-// The EdgeNodeCert value nil indicates it is called from Test Routine.
-// For nil value case, the key is determined based on, whether the device
-// is non-TPM (pickup the device key), or, TPM (pick up the software ecdh key)
+//getDecryptKey : uses the given params to construct the AES decryption Key
 func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
-	// check whether this is a software certificate
 	if !etpm.IsTpmEnabled() || !edgeNodeCert.IsTpm {
-		var err error
-		var privateKey *ecdsa.PrivateKey
-		if !etpm.IsTpmEnabled() && edgeNodeCert == nil {
-			// Test cases use Device Key
-			privateKey, err = getDevicePrivateKey()
-		} else {
-			privateKey, err = getECDHPrivateKey()
-		}
+		//Either TPM is not enabled, or for some reason we are not using TPM for ECDH
+		//Look for soft cert/key
+		privateKey, err := getECDHPrivateKey()
 		if err != nil {
-			log.Errorf("getDevice Key failed: %v", err)
+			log.Errorf("getECDHPrivateKey failed: %v", err)
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
@@ -756,15 +749,15 @@ func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, e
 	}
 	defer rw.Close()
 
-	p := tpm2.ECPoint{X: X, Y: Y}
+	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
 
-	//Recover the key, and decrypt the message (edge node part)
+	//Recover the key, and decrypt the message
 	z, err := tpm2.RecoverSharedECCSecret(rw, TpmEcdhKeyHdl, "", p)
 	if err != nil {
 		log.Errorf("recovering Shared Secret failed: %v", err)
 		return [32]byte{}, err
 	}
-	decryptKey := sha256FromECPoint(z.X, z.Y)
+	decryptKey := sha256FromECPoint(z.X(), z.Y())
 	return decryptKey, nil
 }
 
@@ -777,15 +770,15 @@ func testEcdhAES() error {
 	}
 
 	//read public key from ecdh certificate
-	certBytes, err := ioutil.ReadFile("/config/ecdh.cert.pem")
+	certBytes, err := ioutil.ReadFile(ecdhCertFile)
 	if err != nil {
-		fmt.Printf("error in reading device cert file: %v", err)
+		fmt.Printf("error in reading ecdh cert file: %v", err)
 		return err
 	}
 	block, _ := pem.Decode(certBytes)
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		fmt.Printf("error in parsing device cert file: %v", err)
+		fmt.Printf("error in parsing ecdh cert file: %v", err)
 		return err
 	}
 	publicB := cert.PublicKey.(*ecdsa.PublicKey)
@@ -805,13 +798,34 @@ func testEcdhAES() error {
 	aesEncrypt(ciphertext, msg, encryptKey[:], iv)
 
 	recoveredMsg := make([]byte, len(ciphertext))
-	err = DecryptSecretWithEcdhKey(publicAX, publicAY, nil, iv, ciphertext, recoveredMsg)
+	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
+	if err != nil {
+		fmt.Printf("publishECDHCertToController failed with error: %v", err)
+		return err
+	}
+
+	isTpm := true
+	if !etpm.IsTpmEnabled() || etpm.FileExists(ecdhKeyFile) {
+		isTpm = false
+	}
+
+	ecdhCert := &types.EdgeNodeCert{
+		HashAlgo: types.CertHashTypeSha256First16,
+		CertID:   certHash,
+		CertType: types.CertTypeEcdhXchange,
+		Cert:     certBytes,
+		IsTpm:    isTpm,
+	}
+	err = DecryptSecretWithEcdhKey(publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
 	if err != nil {
 		fmt.Printf("Decryption failed with error %v\n", err)
 		return err
 	}
-	fmt.Println(reflect.DeepEqual(msg, recoveredMsg))
-	return nil
+	if reflect.DeepEqual(msg, recoveredMsg) == true {
+		return nil
+	} else {
+		return fmt.Errorf("want %v, but got %v", msg, recoveredMsg)
+	}
 }
 
 // device with no TPM, get the file based device key
@@ -827,46 +841,29 @@ func getECDHPrivateKey() (*ecdsa.PrivateKey, error) {
 func getPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	keyPEMBlock, err := ioutil.ReadFile(keyFile)
 	if err != nil {
-		errStr := fmt.Sprintf("No valid PEM block found, %v", err)
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
+		return nil, err
 	}
 	var keyDERBlock *pem.Block
 	keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
 	if keyDERBlock == nil {
-		errStr := fmt.Sprintf("No valid private key found")
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
+		return nil, errors.New("No valid private key found")
 	}
+	//Expect it to be "EC PRIVATE KEY" format
 	privateKey, err := x509.ParseECPrivateKey(keyDERBlock.Bytes)
-	if err != nil {
-		errStr := fmt.Sprintf("Unable to parse private key, %v", err)
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
+	if err == nil {
+		return privateKey, nil
 	}
-	return privateKey, nil
-}
-
-func tpmKeyToRsa(p tpm2.Public) (crypto.PublicKey, error) {
-	pubKey := &rsa.PublicKey{N: p.RSAParameters.Modulus, E: int(p.RSAParameters.Exponent)}
-	return pubKey, nil
-}
-
-func tpmKeyToEccKey(p tpm2.Public) (crypto.PublicKey, error) {
-	curve, ok := toGoCurve[p.ECCParameters.CurveID]
-	if !ok {
-		log.Errorf("Unknown curveID: %v", curve)
-		return nil, fmt.Errorf("unknown curve id 0x%x",
-			p.ECCParameters.CurveID)
+	//Try "PRIVATE KEY" format, as a fallback
+	parsedKey, err := x509.ParsePKCS8PrivateKey(keyDERBlock.Bytes)
+	if err == nil {
+		var pkey *ecdsa.PrivateKey
+		var ok bool
+		if pkey, ok = parsedKey.(*ecdsa.PrivateKey); !ok {
+			return nil, errors.New("Private key is not ecdsa type")
+		}
+		return pkey, nil
 	}
-
-	pubKey := &ecdsa.PublicKey{
-		X:     p.ECCParameters.Point.X,
-		Y:     p.ECCParameters.Point.Y,
-		Curve: curve,
-	}
-
-	return pubKey, nil
+	return nil, err
 }
 
 func createEcdhCert() error {
@@ -876,7 +873,12 @@ func createEcdhCert() error {
 	}
 	// try TPM
 	if etpm.IsTpmEnabled() {
-		return createEcdhCertOnTpm()
+		if err := createEcdhCertOnTpm(); err == nil {
+			return nil
+		} else {
+			// some issue with TPM. Fall back to soft cert
+			log.Errorf("createEcdhCertOnTpm failed with err (%v), trying software certificate", err)
+		}
 	}
 	// create soft certficate
 	return createEcdhCertSoft()
@@ -913,7 +915,7 @@ func createEcdhCertOnTpm() error {
 			return err
 		}
 
-		publicKey, err := tpmKeyToEccKey(ecdhKey)
+		publicKey, err := ecdhKey.Key()
 		if err != nil {
 			return err
 		}
@@ -1037,7 +1039,7 @@ func createEcdhCertSoft() error {
 	}
 
 	// private cert bytes
-	privBytes, err := x509.MarshalPKCS8PrivateKey(certPrivKey)
+	privBytes, err := x509.MarshalECPrivateKey(certPrivKey)
 	if err != nil {
 		errStr := fmt.Sprintf("certificate marshal fail, %v", err)
 		log.Errorf(errStr)
@@ -1315,7 +1317,11 @@ func Run(ps *pubsub.PubSub) {
 	case "testTpmEcdhSupport":
 		testTpmEcdhSupport()
 	case "testEcdhAES":
-		testEcdhAES()
+		if err = testEcdhAES(); err != nil {
+			fmt.Printf("failed with error %v", err)
+		} else {
+			fmt.Printf("test passed")
+		}
 	case "createCerts":
 		//Create additional security keys if already not created, followed by any certificates
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {

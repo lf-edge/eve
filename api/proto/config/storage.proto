@@ -184,4 +184,5 @@ message Volume {
   int64 maxsizebytes = 5;
   bool readonly = 6;       // Will be offered to tasks as read-only
   string displayName = 7;  // Optional friendly name echo'ed in info message
+  bool clear_text = 8;  // Flag to indicate the volume encryption needed or not
 }

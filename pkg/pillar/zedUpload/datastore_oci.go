@@ -4,14 +4,11 @@
 package zedUpload
 
 import (
-	"archive/tar"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -118,9 +115,8 @@ func (ep *OCITransportMethod) processUpload(req *DronaRequest) (int64, error) {
 // processDownload Artifact download from OCI registry
 func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) {
 	var (
-		err           error
-		size          int64
-		imageManifest []byte
+		err  error
+		size int64
 	)
 	if ep.registry == "" {
 		return size, fmt.Errorf("cannot download from blank registry")
@@ -145,21 +141,10 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) 
 		}(req, prgChan)
 	}
 
-	// Pull down the image in the standard tar format
-	_, imageManifest, size, err = ociutil.Pull(ep.registry, ep.path, req.objloc, ep.uname, ep.apiKey, ep.hClient, prgChan)
-	if err != nil {
-		return size, err
-	}
-
-	// add the imageManifest to the tar file
-	err = appendImageManifest(req.objloc, imageManifest)
-	if err != nil {
-		return size, fmt.Errorf("unable to append image manifest to tar at %s: %v", req.objloc, err)
-	}
-	err = appendImageRepositories(req.objloc, ep.registry, ep.path, imageManifest)
-
-	// zedUpload's job is to download an OCI image as a v1 tar file. Done.
-	return size, nil
+	// Pull down the blob as is and save it to a file named for the hash
+	size, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256, req.objloc, ep.uname, ep.apiKey, req.sizelimit, ep.hClient, prgChan)
+	// zedUpload's job is to download a blob from an OCI registry. Done.
+	return size, err
 }
 
 // processDelete Artifact delete from OCI registry
@@ -251,84 +236,4 @@ func (ep *OCITransportMethod) NewRequest(opType SyncOpType, objname, objloc stri
 	dR.result = reply
 
 	return dR
-}
-
-// appendToTarfile add the given bytes to the tarfile with the given filename
-func appendToTarfile(tarfile, filename string, content []byte) error {
-	var (
-		f   *os.File
-		err error
-	)
-	// open the existing file
-	if f, err = os.OpenFile(tarfile, os.O_RDWR, os.ModePerm); err != nil {
-		return err
-	}
-	defer f.Close()
-	// there always is padding at the end of a tar archive, so skip to the end
-	// of the actual archive, so it will be read
-	if _, err = f.Seek(-2<<9, os.SEEK_END); err != nil {
-		return err
-	}
-
-	tw := tar.NewWriter(f)
-
-	hdr := &tar.Header{
-		Name: filename,
-		Size: int64(len(content)),
-	}
-
-	if err := tw.WriteHeader(hdr); err != nil {
-		return fmt.Errorf("failed to write %s tar header: %v", filename, err)
-	}
-
-	if _, err := tw.Write(content); err != nil {
-		return fmt.Errorf("failed to write %s tar body: %v", filename, err)
-	}
-
-	if err := tw.Close(); err != nil {
-		return fmt.Errorf("failed to close tar writer: %v", err)
-	}
-	return nil
-}
-
-// appendImageManifest add the given manifest to the given tar file. Opinionated
-// about the name of the file to "imagemanifest-<hash>.json"
-func appendImageManifest(tarfile string, manifest []byte) error {
-	hash := sha256.Sum256(manifest)
-	return appendToTarfile(tarfile, fmt.Sprintf("%s-%x.json", "imagemanifest", hash), manifest)
-}
-
-func appendImageRepositories(tarfile, registry, path string, imageManifest []byte) error {
-	// get the top layer for the manifest bytes
-	layerHash, err := ociutil.DockerHashFromManifest(imageManifest)
-	if err != nil {
-		return fmt.Errorf("unable to get top layer hash: %v", err)
-	}
-	// need to take out the tag
-	parts := strings.Split(path, ":")
-	var tag, repo string
-	switch len(parts) {
-	case 0:
-		return fmt.Errorf("malformed repository path %s", path)
-	case 1:
-		repo = parts[0]
-		tag = "latest"
-	case 2:
-		repo = parts[0]
-		tag = parts[1]
-	default:
-		return fmt.Errorf("malformed repository path has too many ':' %s", path)
-	}
-	fullRepo := fmt.Sprintf("%s/%s", registry, repo)
-	// now build the tag we are after
-	var data = map[string]map[string]string{}
-	data[fullRepo] = map[string]string{}
-	data[fullRepo][tag] = layerHash
-
-	j, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("unable to convert repositories data to json: %v", err)
-	}
-
-	return appendToTarfile(tarfile, "repositories", j)
 }

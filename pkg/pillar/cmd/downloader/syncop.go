@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package downloader
 
 import (
@@ -28,11 +31,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		trType                                                 zedUpload.SyncTransportType
 		auth                                                   *zedUpload.AuthInput
 	)
-
-	if status.ObjType == "" {
-		log.Fatalf("handleSyncOp: No ObjType for %s",
-			status.ImageID)
-	}
 
 	// the target filename, where to place the download, is provided in config.
 	// downloader has two options:
@@ -247,11 +245,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// have finished the download operation
 	// based on the result, perform some storage
 	// management also
-
-	if status.ObjType == "" {
-		log.Fatalf("handleSyncOpResponse: No ObjType for %s",
-			status.ImageID)
-	}
 
 	if errStr != "" {
 		// Delete file, and update the storage

@@ -60,10 +60,14 @@ var reportDirPaths = []string{
 	types.PersistDir + "/checkpoint",
 }
 
-// Application-related files live here; includes downloads and verifications in progress
+// Application-related files live here
+// XXX do we need to exclude the ContentTrees used for eve image update?
+// If so how do we tell them apart
 var appPersistPaths = []string{
-	types.PersistDir + "/img",
-	types.AppImgDirname,
+	types.VolumeEncryptedDirName,
+	types.VolumeClearDirName,
+	types.SealedDirName + "/downloader",
+	types.SealedDirName + "/verifier",
 }
 
 func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
@@ -228,7 +232,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		usedPercent = float64(100) * float64(used) / float64(totalMemory)
 	}
 	ReportDeviceMetric.Memory.UsedPercentage = usedPercent
-	ReportDeviceMetric.Memory.AvailPercentage = (100.0 - (usedPercent))
+	ReportDeviceMetric.Memory.AvailPercentage = 100.0 - (usedPercent)
 	log.Debugf("Device Memory from xl info: %v %v %v %v",
 		ReportDeviceMetric.Memory.UsedMem,
 		ReportDeviceMetric.Memory.AvailMem,
@@ -302,11 +306,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	// Persist our own metrics
-	err = ctx.pubMetrics.Publish("global", cms)
-	if err != nil {
-		log.Errorln(err)
-	}
 	if clientMetrics != nil {
 		cms = zedcloud.Append(cms, clientMetrics)
 	}
@@ -341,10 +340,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			urlMet.SentByteCount = um.SentByteCount
 			urlMet.RecvMsgCount = um.RecvMsgCount
 			urlMet.RecvByteCount = um.RecvByteCount
-			if !um.LastUse.IsZero() {
-				lu, _ := ptypes.TimestampProto(um.LastUse)
-				urlMet.LastUse = lu
-			}
 			metric.UrlMetrics = append(metric.UrlMetrics, urlMet)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
@@ -355,12 +350,12 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	for _, d := range disks {
 		size, _ := diskmetrics.PartitionSize(d)
 		log.Debugf("Disk/partition %s size %d", d, size)
-		size = RoundToMbytes(size)
+		size = utils.RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
 		stat, err := disk.IOCounters(d)
 		if err == nil {
-			metric.ReadBytes = RoundToMbytes(stat[d].ReadBytes)
-			metric.WriteBytes = RoundToMbytes(stat[d].WriteBytes)
+			metric.ReadBytes = utils.RoundToMbytes(stat[d].ReadBytes)
+			metric.WriteBytes = utils.RoundToMbytes(stat[d].WriteBytes)
 			metric.ReadCount = stat[d].ReadCount
 			metric.WriteCount = stat[d].WriteCount
 		}
@@ -384,9 +379,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
 		metric := metrics.DiskMetric{MountPath: path,
-			Total: RoundToMbytes(u.Total),
-			Used:  RoundToMbytes(u.Used),
-			Free:  RoundToMbytes(u.Free),
+			Total: utils.RoundToMbytes(u.Total),
+			Used:  utils.RoundToMbytes(u.Used),
+			Free:  utils.RoundToMbytes(u.Free),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -396,7 +391,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		usage := diskmetrics.SizeFromDir(path)
 		log.Debugf("Path %s usage %d", path, usage)
 		metric := metrics.DiskMetric{MountPath: path,
-			Used: RoundToMbytes(usage),
+			Used: utils.RoundToMbytes(usage),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -418,37 +413,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		runtimeStorageOverhead, appRunTimeStorage)
 	ReportDeviceMetric.RuntimeStorageOverheadMB = runtimeStorageOverhead
 	ReportDeviceMetric.AppRunTimeStorageMB = appRunTimeStorage
-
-	// Walk all verified downloads and report their size (faked
-	// as disks)
-	verifierStatusMap := verifierGetAll(ctx)
-	for _, st := range verifierStatusMap {
-		vs := st.(types.VerifyImageStatus)
-		log.Debugf("verifierStatusMap %s size %d",
-			vs.Name, vs.Size)
-		metric := metrics.DiskMetric{
-			Disk:  vs.Name,
-			Total: RoundToMbytes(uint64(vs.Size)),
-			Used:  RoundToMbytes(uint64(vs.Size)),
-		}
-		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-	}
-	downloaderStatusMap := downloaderGetAll(ctx)
-	for _, st := range downloaderStatusMap {
-		ds := st.(types.DownloaderStatus)
-		log.Debugf("downloaderStatusMap %s size %d",
-			ds.Name, ds.Size)
-		if _, found := verifierStatusMap[ds.Key()]; found {
-			log.Debugf("Found verifierStatusMap for %s", ds.Key())
-			continue
-		}
-		metric := metrics.DiskMetric{
-			Disk:  ds.Name,
-			Total: RoundToMbytes(uint64(ds.Size)),
-			Used:  RoundToMbytes(uint64(ds.Size)),
-		}
-		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-	}
 
 	// Note that these are associated with the device and not with a
 	// device name like ppp0 or wwan0
@@ -472,7 +436,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = dm.UsedMemory
 		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = dm.AvailableMemory
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = dm.UsedMemoryPercent
-		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (dm.UsedMemoryPercent))
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = 100.0 - (dm.UsedMemoryPercent)
 		log.Debugf("host Memory: %v %v %v %v",
 			ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
 			ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
@@ -576,11 +540,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 		for _, vrs := range aiStatus.VolumeRefStatusList {
 			appDiskDetails := new(metrics.AppDiskMetric)
-			err := getDiskInfo(vrs, appDiskDetails)
-			if err != nil {
-				log.Errorf("getDiskInfo(%s) failed %v",
-					vrs.ActiveFileLocation, err)
-				continue
+			if vrs.ActiveFileLocation == "" {
+				log.Infof("ActiveFileLocation is empty for %s", vrs.Key())
+			} else {
+				err := getDiskInfo(vrs, appDiskDetails)
+				if err != nil {
+					log.Warnf("getDiskInfo(%s) failed %v",
+						vrs.ActiveFileLocation, err)
+					continue
+				}
 			}
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
 				appDiskDetails)
@@ -622,6 +590,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 
 	createNetworkInstanceMetrics(ctx, ReportMetrics)
+	createVolumeInstanceMetrics(ctx.getconfigCtx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
@@ -629,56 +598,36 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 }
 
 func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
-	if vrs.IsContainer() {
-		appDiskDetails.Disk = vrs.ActiveFileLocation
-		// XXX For container images, max size is coming zero
-		// from the controller. So for now, we are setting up
-		// total size equal to the used size.
-		appDiskDetails.Provisioned = RoundToMbytes(vrs.MaxVolSize)
-		appDiskDetails.Used = RoundToMbytes(vrs.MaxVolSize)
-		appDiskDetails.DiskType = "CONTAINER"
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(vrs.ActiveFileLocation)
-		if err != nil {
-			return err
-		}
-		appDiskDetails.Disk = vrs.ActiveFileLocation
-		appDiskDetails.Provisioned = RoundToMbytes(imgInfo.VirtualSize)
-		appDiskDetails.Used = RoundToMbytes(imgInfo.ActualSize)
-		appDiskDetails.DiskType = imgInfo.Format
-		appDiskDetails.Dirty = imgInfo.DirtyFlag
+	actualSize, maxSize, err := utils.GetVolumeSize(vrs.ActiveFileLocation)
+	if err != nil {
+		return err
 	}
+	appDiskDetails.Disk = vrs.ActiveFileLocation
+	appDiskDetails.Used = utils.RoundToMbytes(actualSize)
+	appDiskDetails.Provisioned = utils.RoundToMbytes(maxSize)
+	if vrs.IsContainer() {
+		appDiskDetails.DiskType = "CONTAINER"
+		return nil
+	}
+	imgInfo, err := diskmetrics.GetImgInfo(vrs.ActiveFileLocation)
+	if err != nil {
+		return err
+	}
+	appDiskDetails.DiskType = imgInfo.Format
+	appDiskDetails.Dirty = imgInfo.DirtyFlag
 	return nil
 }
 
 func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 	volumeResourcesDetails *info.VolumeResources) error {
 
-	if volStatus.IsContainer() {
-		// XXX For container volumes, max size is coming zero
-		// from the controller. So for now, we are setting up
-		// max size and the current size equal to the downloaded size
-		size, err := utils.DirSize(volStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeResourcesDetails.MaxSizeBytes = size
-		volumeResourcesDetails.CurSizeBytes = size
-	} else {
-		imgInfo, err := diskmetrics.GetImgInfo(volStatus.FileLocation)
-		if err != nil {
-			return err
-		}
-		volumeResourcesDetails.MaxSizeBytes = imgInfo.VirtualSize
-		volumeResourcesDetails.CurSizeBytes = imgInfo.ActualSize
+	actualSize, maxSize, err := utils.GetVolumeSize(volStatus.FileLocation)
+	if err != nil {
+		return err
 	}
+	volumeResourcesDetails.CurSizeBytes = actualSize
+	volumeResourcesDetails.MaxSizeBytes = maxSize
 	return nil
-}
-
-func RoundToMbytes(byteCount uint64) uint64 {
-	const mbyte = 1024 * 1024
-
-	return (byteCount + mbyte/2) / mbyte
 }
 
 //getDataSecAtRestInfo prepares status related to Data security at Rest
@@ -804,7 +753,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	for _, disk := range disks {
 		size, _ := diskmetrics.PartitionSize(disk)
 		log.Debugf("Disk/partition %s size %d", disk, size)
-		size = RoundToMbytes(size)
+		size = utils.RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
@@ -819,7 +768,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
-		size := RoundToMbytes(u.Total)
+		size := utils.RoundToMbytes(u.Total)
 		is := info.ZInfoStorage{MountPath: path, Total: size}
 		// We know this is where we store images and keep
 		// domU virtual disks.
@@ -873,9 +822,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.Status = bos.State.ZSwState()
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
-			if len(bos.StorageStatusList) > 0 {
-				// Assume one - pick first StorageStatus
-				swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+			if len(bos.ContentTreeStatusList) > 0 {
+				// Assume one - pick first ContentTreeStatus
+				swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 			}
 			if !bos.ErrorTime.IsZero() {
 				log.Debugf("reportMetrics sending error time %v error %v for %s",
@@ -926,9 +875,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		swInfo.Status = bos.State.ZSwState()
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
-		if len(bos.StorageStatusList) > 0 {
-			// Assume one - pick first StorageStatus
-			swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+		if len(bos.ContentTreeStatusList) > 0 {
+			// Assume one - pick first ContentTreeStatus
+			swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 		}
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s",
@@ -1637,13 +1586,17 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 			ReportVolumeInfo.VolumeErr = errInfo
 		}
 
-		VolumeResourcesInfo := new(info.VolumeResources)
-		err := getVolumeResourcesInfo(volStatus, VolumeResourcesInfo)
-		if err != nil {
-			log.Errorf("getVolumeResourceInfo(%s) failed %v",
-				volStatus.VolumeID, err)
+		if volStatus.FileLocation == "" {
+			log.Infof("FileLocation is empty for %s", volStatus.Key())
 		} else {
-			ReportVolumeInfo.Resources = VolumeResourcesInfo
+			VolumeResourcesInfo := new(info.VolumeResources)
+			err := getVolumeResourcesInfo(volStatus, VolumeResourcesInfo)
+			if err != nil {
+				log.Errorf("getVolumeResourceInfo(%s) failed %v",
+					volStatus.VolumeID, err)
+			} else {
+				ReportVolumeInfo.Resources = VolumeResourcesInfo
+			}
 		}
 
 		ReportVolumeInfo.ProgressPercentage = uint32(volStatus.Progress)
@@ -1679,6 +1632,64 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 			log.Fatal("malloc error")
 		}
 		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+			true)
+	}
+}
+
+// PublishBlobInfoToZedCloud is called per change, hence needs to try over all management ports
+// When blob Status is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
+func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus *types.BlobStatus, iteration int) {
+	log.Infof("PublishBlobInfoToZedCloud blobSha %v", blobSha)
+	var ReportInfo = &info.ZInfoMsg{}
+
+	contentType := new(info.ZInfoTypes)
+	*contentType = info.ZInfoTypes_ZiBlobList
+	ReportInfo.Ztype = *contentType
+	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+
+	ReportBlobInfoList := new(info.ZInfoBlobList)
+
+	ReportBlobInfo := new(info.ZInfoBlob)
+
+	ReportBlobInfo.Sha256 = blobSha
+	if blobStatus != nil {
+		ReportBlobInfo.State = blobStatus.State.ZSwState()
+		ReportBlobInfo.ProgressPercentage = blobStatus.GetDownloadedPercentage()
+		ReportBlobInfo.Usage = &info.UsageInfo{RefCount: uint32(blobStatus.RefCount)}
+	}
+	ReportBlobInfoList.Blob = append(ReportBlobInfoList.Blob, ReportBlobInfo)
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Binfo)
+	if blobInfoList, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Binfo); ok {
+		blobInfoList.Binfo = ReportBlobInfoList
+	}
+
+	log.Infof("PublishBlobInfoToZedCloud sending %v", ReportInfo)
+
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishBlobInfoToZedCloud proto marshaling error: ", err)
+	}
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	zedcloud.RemoveDeferred(blobSha)
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+	err = SendProtobuf(statusURL, buf, size, iteration)
+	if err != nil {
+		log.Errorf("PublishBlobInfoToZedCloud failed: %s", err)
+		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
+		zedcloud.SetDeferred(blobSha, buf, size, statusURL, zedcloudCtx,
 			true)
 	}
 }

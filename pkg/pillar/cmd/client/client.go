@@ -129,19 +129,13 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	enterpriseFileName := types.IdentityDirname + "/enterprise"
 	nameFileName := types.IdentityDirname + "/name"
 
+	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		TopicType:  types.MetricsMap{},
-		Persistent: true,
+		AgentName: agentName,
+		TopicType: cms,
 	})
 	if err != nil {
 		log.Fatal(err)
-	}
-	// Load and set metrics from previous run of agent/device
-	item, err := pub.Get("global")
-	if err == nil {
-		cms := item.(types.MetricsMap)
-		zedcloud.SetCloudMetrics(cms)
 	}
 
 	pubOnboardStatus, err := ps.NewPublication(pubsub.PublicationOptions{

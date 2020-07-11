@@ -1,4 +1,4 @@
-// Copyright (c) 2018, Google Inc. All rights reserved.
+// Copyright (c) 2018, Google LLC All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,9 +25,10 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 )
 
-func init() {
-	tpmutil.UseTPM20LengthPrefixSize()
-}
+// MAX_DIGEST_BUFFER is the maximum size of []byte request or response fields.
+// Typically used for chunking of big blobs of data (such as for hashing or
+// encryption).
+const maxDigestBuffer = 1024
 
 // Algorithm represents a TPM_ALG_ID value.
 type Algorithm uint16
@@ -40,6 +41,11 @@ func (a Algorithm) IsNull() bool {
 // UsesCount returns true if a signature algorithm uses count value.
 func (a Algorithm) UsesCount() bool {
 	return a == AlgECDAA
+}
+
+// UsesHash returns true if the algorithm requires the use of a hash.
+func (a Algorithm) UsesHash() bool {
+	return a == AlgOAEP
 }
 
 // HashConstructor returns a function that can be used to make a
@@ -58,8 +64,10 @@ const (
 	AlgUnknown   Algorithm = 0x0000
 	AlgRSA       Algorithm = 0x0001
 	AlgSHA1      Algorithm = 0x0004
+	AlgHMAC      Algorithm = 0x0005
 	AlgAES       Algorithm = 0x0006
 	AlgKeyedHash Algorithm = 0x0008
+	AlgXOR       Algorithm = 0x000A
 	AlgSHA256    Algorithm = 0x000B
 	AlgSHA384    Algorithm = 0x000C
 	AlgSHA512    Algorithm = 0x000D
@@ -73,6 +81,7 @@ const (
 	AlgECDAA     Algorithm = 0x001A
 	AlgKDF2      Algorithm = 0x0021
 	AlgECC       Algorithm = 0x0023
+	AlgSymCipher Algorithm = 0x0025
 	AlgCTR       Algorithm = 0x0040
 	AlgOFB       Algorithm = 0x0041
 	AlgCBC       Algorithm = 0x0042
@@ -109,6 +118,7 @@ const (
 // SessionAttributes represents an attribute of a session.
 type SessionAttributes byte
 
+// Session Attributes (Structures 8.4 TPMA_SESSION)
 const (
 	AttrContinueSession SessionAttributes = 1 << iota
 	AttrAuditExclusive
@@ -149,9 +159,57 @@ const (
 // TPMProp represents the index of a TPM property in a call to GetCapability().
 type TPMProp uint32
 
-// TPM Capability Properties.
+// TPM Capability Properties, see TPM 2.0 Spec, Rev 1.38, Table 23
 const (
-	NVMaxBufferSize    TPMProp = 0x100 + 44
+	// Fixed TPM Properties (PT_FIXED)
+	FamilyIndicator TPMProp = 0x100 + iota
+	SpecLevel
+	SpecRevision
+	SpecDayOfYear
+	SpecYear
+	Manufacturer
+	VendorString1
+	VendorString2
+	VendorString3
+	VendorString4
+	VendorTPMType
+	FirmwareVersion1
+	FirmwareVersion2
+	InputMaxBufferSize
+	TransientObjectsMin
+	PersistentObjectsMin
+	LoadedObjectsMin
+	ActiveSessionsMax
+	PCRCount
+	PCRSelectMin
+	ContextGapMax
+	_ // (PT_FIXED + 21) is skipped
+	NVCountersMax
+	NVIndexMax
+	MemoryMethod
+	ClockUpdate
+	ContextHash
+	ContextSym
+	ContextSymSize
+	OrderlyCount
+	CommandMaxSize
+	ResponseMaxSize
+	DigestMaxSize
+	ObjectContextMaxSize
+	SessionContextMaxSize
+	PSFamilyIndicator
+	PSSpecLevel
+	PSSpecRevision
+	PSSpecDayOfYear
+	PSSpecYear
+	SplitSigningMax
+	TotalCommands
+	LibraryCommands
+	VendorCommands
+	NVMaxBufferSize
+	TPMModes
+	CapabilityMaxBufferSize
+
 	PCRFirst           TPMProp = 0x00000000
 	HMACSessionFirst   TPMProp = 0x02000000
 	LoadedSessionFirst TPMProp = 0x02000000
@@ -250,16 +308,13 @@ var toGoCurve = map[EllipticCurve]elliptic.Curve{
 const (
 	cmdEvictControl       tpmutil.Command = 0x00000120
 	cmdUndefineSpace      tpmutil.Command = 0x00000122
-	cmdClockSet           tpmutil.Command = 0x00000128
 	cmdDefineSpace        tpmutil.Command = 0x0000012A
-	cmdPCRAllocate        tpmutil.Command = 0x0000012B
 	cmdCreatePrimary      tpmutil.Command = 0x00000131
 	cmdIncrementNVCounter tpmutil.Command = 0x00000134
 	cmdWriteNV            tpmutil.Command = 0x00000137
 	cmdPCREvent           tpmutil.Command = 0x0000013C
 	cmdStartup            tpmutil.Command = 0x00000144
 	cmdShutdown           tpmutil.Command = 0x00000145
-	cmdStirRandom         tpmutil.Command = 0x00000146
 	cmdActivateCredential tpmutil.Command = 0x00000147
 	cmdCertify            tpmutil.Command = 0x00000148
 	cmdCertifyCreation    tpmutil.Command = 0x0000014A
@@ -271,16 +326,19 @@ const (
 	cmdEcdhZgen         tpmutil.Command = 0x00000154
 	cmdLoad             tpmutil.Command = 0x00000157
 	cmdQuote            tpmutil.Command = 0x00000158
+	cmdRSADecrypt       tpmutil.Command = 0x00000159
 	cmdSign             tpmutil.Command = 0x0000015D
 	cmdUnseal           tpmutil.Command = 0x0000015E
 	cmdContextLoad      tpmutil.Command = 0x00000161
 	cmdContextSave      tpmutil.Command = 0x00000162
 	cmdEcdhKeyGen       tpmutil.Command = 0x00000163
+	cmdEncryptDecrypt   tpmutil.Command = 0x00000164
 	cmdFlushContext     tpmutil.Command = 0x00000165
 	cmdLoadExternal     tpmutil.Command = 0x00000167
 	cmdMakeCredential   tpmutil.Command = 0x00000168
 	cmdReadPublicNV     tpmutil.Command = 0x00000169
 	cmdReadPublic       tpmutil.Command = 0x00000173
+	cmdRSAEncrypt       tpmutil.Command = 0x00000174
 	cmdStartAuthSession tpmutil.Command = 0x00000176
 	cmdGetCapability    tpmutil.Command = 0x0000017A
 	cmdGetRandom        tpmutil.Command = 0x0000017B
@@ -293,6 +351,7 @@ const (
 	cmdPCRExtend       tpmutil.Command = 0x00000182
 	cmdPolicyGetDigest tpmutil.Command = 0x00000189
 	cmdPolicyPassword  tpmutil.Command = 0x0000018C
+	cmdEncryptDecrypt2 tpmutil.Command = 0x00000193
 )
 
 // Regular TPM 2.0 devices use 24-bit mask (3 bytes) for PCR selection.

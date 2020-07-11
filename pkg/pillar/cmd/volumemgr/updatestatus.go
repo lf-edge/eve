@@ -5,145 +5,282 @@ package volumemgr
 
 import (
 	"fmt"
-	"os"
+	"strings"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
+// doUpdate handles any updates to a VolumeStatus, called by any event handlers
+// that either capture a VolumeStatus change or create one and want it processed.
 // Returns changed
 // XXX remove "done" boolean return?
 func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, bool) {
 
-	log.Infof("doUpdateContentTree(%s) name %s", status.Key(), status.DisplayName)
+	log.Infof("doUpdateContentTree(%s) name %s state %s", status.Key(), status.DisplayName, status.State)
 	status.WaitingForCerts = false
 
 	changed := false
+	addedBlobs := []string{}
+	sv := SignatureVerifier{
+		Signature:        status.ImageSignature,
+		PublicKey:        status.SignatureKey,
+		CertificateChain: status.CertificateChain,
+	}
+
 	if status.State < types.VERIFIED {
+
 		if status.IsContainer() {
 			maybeLatchContentTreeHash(ctx, status)
-		}
-		if status.IsContainer() && status.ContentSha256 == "" {
-			rs := lookupResolveStatus(ctx, status.ResolveKey())
-			if rs == nil {
-				log.Infof("Resolve status not found for %s",
-					status.ContentID)
-				status.HasResolverRef = true
-				MaybeAddResolveConfig(ctx, status)
-				status.State = types.RESOLVING_TAG
+			if status.ContentSha256 == "" {
+				rs := lookupResolveStatus(ctx, status.ResolveKey())
+				if rs == nil {
+					log.Infof("Resolve status not found for %s",
+						status.ContentID)
+					status.HasResolverRef = true
+					MaybeAddResolveConfig(ctx, *status)
+					status.State = types.RESOLVING_TAG
+					changed = true
+					return changed, false
+				}
+				log.Infof("Processing ResolveStatus for content tree (%v)", status.ContentID)
+				status.State = types.RESOLVED_TAG
 				changed = true
-				return changed, false
-			}
-			log.Infof("Processing ResolveStatus for content tree (%v)", status.ContentID)
-			status.State = types.RESOLVED_TAG
-			changed = true
-			if rs.HasError() {
-				errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
-					status.ResolveKey(), rs.ImageSha256, rs.Error)
-				log.Error(errStr)
-				status.SetErrorWithSource(errStr, types.ResolveStatus{},
-					rs.ErrorTime)
-				changed = true
-				return changed, false
-			} else if rs.ImageSha256 == "" {
-				errStr := fmt.Sprintf("Received empty SHA from resolver for %s, SHA (%s): %s",
-					status.ResolveKey(), rs.ImageSha256, rs.Error)
-				log.Error(errStr)
-				status.SetErrorWithSource(errStr, types.ResolveStatus{},
-					rs.ErrorTime)
-				changed = true
-				return changed, false
-			} else if status.IsErrorSource(types.ResolveStatus{}) {
-				log.Infof("Clearing resolver error %s", status.Error)
-				status.ClearErrorWithSource()
-				changed = true
-			}
-			log.Infof("Added Image SHA (%s) for content tree (%s)",
-				rs.ImageSha256, status.ContentID)
-			status.ContentSha256 = rs.ImageSha256
-			status.HasResolverRef = false
-			status.RelativeURL = maybeInsertSha(status.RelativeURL, status.ContentSha256)
-			latchContentTreeHash(ctx, status.ContentID,
-				status.ContentSha256, uint32(status.GenerationCounter))
-			maybeLatchContentTreeHash(ctx, status)
-			deleteResolveConfig(ctx, rs.Key())
-			changed = true
-		}
-		// Check if Verified Status already exists.
-		var vs *types.VerifyImageStatus
-		vs, changed = lookForVerified(ctx, status)
-		if vs != nil {
-			log.Infof("doUpdateContentTree: Found %s based on ContentID %s sha %s",
-				status.DisplayName, status.ContentID, status.ContentSha256)
-			if status.State != vs.State {
-				if vs.State == types.VERIFIED && !status.HasPersistRef {
-					log.Infof("doUpdateContentTree: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
-					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
-					status.HasPersistRef = true
+				if rs.HasError() {
+					errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
+						status.ResolveKey(), rs.ImageSha256, rs.Error)
+					log.Error(errStr)
+					status.SetErrorWithSource(errStr, types.ResolveStatus{},
+						rs.ErrorTime)
+					changed = true
+					return changed, false
+				} else if rs.ImageSha256 == "" {
+					errStr := fmt.Sprintf("Received empty SHA from resolver for %s, SHA (%s): %s",
+						status.ResolveKey(), rs.ImageSha256, rs.Error)
+					log.Error(errStr)
+					status.SetErrorWithSource(errStr, types.ResolveStatus{},
+						rs.ErrorTime)
+					changed = true
+					return changed, false
+				} else if status.IsErrorSource(types.ResolveStatus{}) {
+					log.Infof("Clearing resolver error %s", status.Error)
+					status.ClearErrorWithSource()
 					changed = true
 				}
-				log.Infof("doUpdateContentTree: Update State of %s from %d to %d", status.ContentSha256, status.State, vs.State)
-				status.State = vs.State
+				foundSha := strings.ToLower(rs.ImageSha256)
+				log.Infof("Added Image SHA (%s) for content tree (%s)",
+					foundSha, status.ContentID)
+				status.ContentSha256 = foundSha
+				status.HasResolverRef = false
+				status.RelativeURL = maybeInsertSha(status.RelativeURL, status.ContentSha256)
+				latchContentTreeHash(ctx, status.ContentID,
+					status.ContentSha256, uint32(status.GenerationCounter))
+				maybeLatchContentTreeHash(ctx, status)
+				deleteResolveConfig(ctx, rs.Key())
 				changed = true
-			}
-			if vs.Pending() {
-				log.Infof("doUpdateContentTree: lookupVerifyImageStatus %s Pending",
-					status.ContentID)
-				return changed, false
-			}
-			if vs.HasError() {
-				log.Errorf("doUpdateContentTree: Received error from verifier for %s: %s",
-					status.ContentID, vs.Error)
-				status.SetErrorWithSource(vs.Error,
-					types.VerifyImageStatus{}, vs.ErrorTime)
-				changed = true
-				return changed, false
-			} else if status.IsErrorSource(types.VerifyImageStatus{}) {
-				log.Infof("doUpdateContentTree: Clearing verifier error %s", status.Error)
-				status.ClearErrorWithSource()
-				changed = true
-			}
-			if status.FileLocation != vs.FileLocation {
-				status.FileLocation = vs.FileLocation
-				log.Infof("doUpdateContentTree: Update FileLocation for %s: %s",
-					status.Key(), status.FileLocation)
-				changed = true
-			}
-		} else if status.State <= types.DOWNLOADED {
-			log.Infof("doUpdateContentTree: VerifyImageStatus %s for %s sha %s not found",
-				status.DisplayName, status.ContentID,
-				status.ContentSha256)
-			c := doDownload(ctx, status)
-			if c {
-				changed = true
-			}
-			return changed, false
-		} else {
-			log.Infof("doUpdateContentTree: VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
-				status.DisplayName, status.ContentID,
-				status.ContentSha256)
-			return changed, false
-		}
-	}
-	// If maximum download size is 0 then we are updating the
-	// downloaded size of an image in MaxSizeBytes
-	if status.MaxDownloadSize == 0 {
 
-		info, err := os.Stat(status.FileLocation)
-		if err != nil {
-			errStr := fmt.Sprintf("Calculating size of container image failed: %v", err)
-			log.Error(errStr)
-		} else {
-			status.MaxDownloadSize = uint64(info.Size())
+			}
+
+			// at this point, we have a resolved tag
+			if status.State < types.RESOLVED_TAG {
+				status.State = types.RESOLVED_TAG
+				changed = true
+			}
+
+			// at this point, we will have the hash of the root blob as status.ContentSha256,
+			// so we need to create the BlobStatus, if it does not exist
+			// if it does not already exist
+			if lookupOrCreateBlobStatus(ctx, sv, status.ContentSha256) == nil {
+				rootBlob := &types.BlobStatus{
+					DatastoreID: status.DatastoreID,
+					RelativeURL: status.RelativeURL,
+					Sha256:      status.ContentSha256,
+					Size:        status.MaxDownloadSize,
+					State:       types.INITIAL,
+					BlobType:    types.BlobUnknown,
+				}
+				log.Infof("doUpdateContentTree: publishing root BlobStatus (%s) for content tree (%s)",
+					status.ContentSha256, status.ContentID)
+				publishBlobStatus(ctx, rootBlob)
+			}
+			if len(status.Blobs) == 0 {
+				status.Blobs = append(status.Blobs, status.ContentSha256)
+			}
 		}
+
+		// at this point, we at least are downloading
+		if status.State < types.DOWNLOADING {
+			status.State = types.DOWNLOADING
+			changed = true
+		}
+
+		// loop through each blob, see if it is downloaded and verified.
+		// we set the contenttree to verified when all of the blobs are verified
+		leftToProcess := false
+
+		var (
+			currentSize, totalSize int64
+			blobErrors             = []string{}
+			blobErrorTime          time.Time
+		)
+		for _, blobSha := range status.Blobs {
+			// get the actual blobStatus
+			blob := lookupOrCreateBlobStatus(ctx, sv, blobSha)
+			if blob == nil {
+				log.Errorf("doUpdateContentTree: could not find BlobStatus(%s)", blobSha)
+				leftToProcess = true
+				continue
+			}
+			totalSize += blob.TotalSize
+			currentSize += blob.CurrentSize
+
+			// now the type should not be unknown (unless it is in error state)
+			// these calls might update Blob.State hence we check
+			// sequentially
+			if blob.State <= types.DOWNLOADING {
+				// any state less than downloaded, we ask for download, so that we have the refcount;
+				// downloadBlob() is smart enough to look for existing references
+				log.Infof("doUpdateContentTree: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
+				if downloadBlob(ctx, status.ObjType, sv, blob) {
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
+			}
+			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
+				// downloaded: kick off verifier for this blob
+				log.Infof("doUpdateContentTree: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
+				if verifyBlob(ctx, sv, blob) {
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
+			}
+			if blob.State != types.VERIFIED {
+				leftToProcess = true
+				log.Errorf("doUpdateContentTree: left to process due to state '%s' for content blob %s",
+					blob.State, blob.Sha256)
+			} else {
+				log.Infof("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
+				// if verified, check for any children and start them off
+				// resolve any unknown types and get manifests of index, or children of manifest
+				blobType, err := resolveBlobType(blob)
+				if blobType != blob.BlobType || err != nil {
+					blob.BlobType = blobType
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
+				if err != nil {
+					log.Infof("doUpdateContentTree(%s): error resolving blob type: %v", blob.Sha256, err)
+					blob.SetError(err.Error(), time.Now())
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
+				blobChildren := blobsNotInList(getBlobChildren(blob), status.Blobs)
+				if len(blobChildren) > 0 {
+					log.Infof("doUpdateContentTree: adding %d children", len(blobChildren))
+					// add all of the children
+					for _, blob := range blobChildren {
+						addedBlobs = append(addedBlobs, blob.Sha256)
+					}
+					status.Blobs = append(status.Blobs, addedBlobs...)
+					// only publish those that do not already exist
+					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
+				}
+				if blob.BlobType == types.BlobManifest {
+					size := resolveManifestSize(*blob)
+					if size != status.TotalSize {
+						status.TotalSize = size
+						changed = true
+					}
+				}
+			}
+			// if any errors, catch them
+			// Note that the downloadBlob above could have cleared
+			// previous errors due to a retry hence we check for
+			// errors here at the end
+			if blob.HasError() {
+				log.Errorf("doUpdateContentTree: BlobStatus(%s) has error: %s", blobSha, blob.Error)
+				blobErrors = append(blobErrors, blob.Error)
+				if blob.ErrorTime.After(blobErrorTime) {
+					blobErrorTime = blob.ErrorTime
+				}
+				leftToProcess = true
+			}
+		}
+
+		// Check if sizes changed before setting changed
+		if status.CurrentSize != currentSize || status.TotalSize != totalSize {
+			changed = true
+			status.CurrentSize = currentSize
+			status.TotalSize = totalSize
+			if status.TotalSize > 0 {
+				status.Progress = uint(status.CurrentSize / status.TotalSize * 100)
+			}
+			log.Infof("doUpdateContentTree: updating CurrentSize/TotalSize/Progress %d/%d/%d",
+				currentSize, totalSize, status.Progress)
+		}
+
+		rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.Blobs[0])
+		if rootBlob == nil {
+			log.Errorf("doUpdateContentTree(%s) name %s: could not find BlobStatus(%s)",
+				status.Key(), status.DisplayName, status.Blobs[0])
+			return changed, false
+		}
+		if status.FileLocation != rootBlob.Path {
+			log.Infof("doUpdateContentTree(%s) name %s: updating file location to %s",
+				status.Key(), status.DisplayName, rootBlob.Path)
+			status.FileLocation = rootBlob.Path
+			changed = true
+		}
+
+		// update errors from blobs to status
+		if len(blobErrors) != 0 {
+			status.SetError(strings.Join(blobErrors, " / "), blobErrorTime)
+			log.Infof("doUpdateContentTree(%s) had errors: %v", status.Key(), status.Error)
+			changed = true
+		} else if status.HasError() {
+			log.Infof("doUpdateContentTree(%s) clearing errors", status.Key())
+			status.ClearErrorWithSource()
+			changed = true
+		}
+
+		// if we added any blobs, we need to reprocess this
+		if len(addedBlobs) > 0 {
+			log.Infof("doUpdateContentTree(%s) rerunning with added blobs: %v", status.Key(), addedBlobs)
+			return doUpdateContentTree(ctx, status)
+		}
+
+		// if there are any left to process, do not do anything else
+		// the rest of this flow should happen only when every part of the content tree
+		// is downloaded and verified
+		if leftToProcess {
+			log.Infof("doUpdateContentTree(%s) leftToProcess=true, so returning `true,false`", status.Key())
+			return true, false
+		}
+
+		// if we made it this far, the entire tree has been verified
+		// before we mark it as verified, load it into the CAS store
+		// for now, we only load containers into containerd
+		// TODO: next stage, load disk images as well
+		if status.Format == zconfig.Format_CONTAINER {
+			// get all of the blobs
+			if err := containerd.LoadBlobs(lookupBlobStatuses(ctx, status.Blobs...), status.RelativeURL); err != nil {
+				log.Errorf("doUpdateContentTree(%s) unable to load blobs into containerd: %v", status.Key(), err)
+				status.SetErrorWithSource(fmt.Sprintf("unable to load blobs into containerd: %v", err),
+					types.OldVolumeStatus{}, time.Now())
+				return changed, false
+			}
+			log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into containerd", status.Key())
+		}
+		status.State = types.VERIFIED
+		changed = true
 	}
-	if status.State == types.VERIFIED {
-		return changed, true
-	}
-	return changed, false
+
+	return changed, status.State == types.VERIFIED
 }
 
 // Returns changed
@@ -169,7 +306,8 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		changed = true
 		return changed, false
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
-		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String())
+		// XXX why do we need to hard-code AppImgObj?
+		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
 		if ctStatus == nil {
 			// Content tree not available
 			log.Errorf("doUpdateVol(%s) name %s: waiting for content tree status %v",
@@ -184,8 +322,17 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.ClearErrorWithSource()
 			changed = true
 		}
-		if status.Progress != ctStatus.Progress {
+		if status.Progress != ctStatus.Progress ||
+			status.TotalSize != ctStatus.TotalSize ||
+			status.CurrentSize != ctStatus.CurrentSize {
 			status.Progress = ctStatus.Progress
+			status.TotalSize = ctStatus.TotalSize
+			status.CurrentSize = ctStatus.CurrentSize
+			changed = true
+		}
+		if status.State != ctStatus.State {
+			status.State = ctStatus.State
+			changed = true
 		}
 		if ctStatus.State < types.VERIFIED {
 			// Waiting for content tree to be processed
@@ -207,7 +354,14 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			!status.VolumeCreated {
 
 			status.State = types.CREATING_VOLUME
+			// first blob is always the root
+			if len(ctStatus.Blobs) < 1 {
+				log.Errorf("doUpdateVol(%s) name %s: content tree status has no blobs",
+					status.Key(), status.DisplayName)
+				return changed, false
+			}
 			status.FileLocation = ctStatus.FileLocation
+			status.ReferenceName = ctStatus.RelativeURL
 			status.ContentFormat = ctStatus.Format
 			changed = true
 			// Asynch creation; ensure we have requested it
@@ -231,7 +385,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					changed = true
 				}
 				if status.FileLocation != vr.FileLocation {
-					log.Infof("doUpdate: From vr set FileLocation to %s for %s",
+					log.Infof("doUpdateContentTree: From vr set FileLocation to %s for %s",
 						vr.FileLocation, status.VolumeID)
 					status.FileLocation = vr.FileLocation
 					changed = true
@@ -244,7 +398,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					changed = true
 					return changed, false
 				} else if status.IsErrorSource(types.VolumeStatus{}) {
-					log.Infof("doUpdate: Clearing volume error %s", status.Error)
+					log.Infof("doUpdateContentTree: Clearing volume error %s", status.Error)
 					status.ClearErrorWithSource()
 					changed = true
 				}
@@ -259,6 +413,15 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			changed = true
 			// Work is done
 			DeleteWorkCreate(ctx, status)
+			if status.MaxVolSize == 0 {
+				var err error
+				log.Infof("doUpdateVol: MaxVolSize is 0 for %s. Filling it up.",
+					status.FileLocation)
+				_, status.MaxVolSize, err = utils.GetVolumeSize(status.FileLocation)
+				if err != nil {
+					log.Error(err)
+				}
+			}
 			return changed, true
 		}
 	default:
@@ -273,208 +436,45 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	return changed, false
 }
 
-// Returns changed
-func doDownload(ctx *volumemgrContext, status *types.ContentTreeStatus) bool {
+// Really a constant
+var ctObjTypes = []string{types.AppImgObj, types.BaseOsObj}
 
-	changed := false
-	// Make sure we kick the downloader and have a refcount
-	if !status.HasDownloaderRef {
-		AddOrRefcountDownloaderConfig(ctx, *status)
-		status.HasDownloaderRef = true
-		changed = true
-	}
-	// Check if we have a DownloadStatus if not put a DownloadConfig
-	// in place
-	ds := lookupDownloaderStatus(ctx, status.ObjType, status.ContentSha256)
-	if ds == nil || ds.Expired || ds.RefCount == 0 {
-		if ds == nil {
-			log.Infof("downloadStatus not found. name: %s", status.ContentID)
-		} else if ds.Expired {
-			log.Infof("downloadStatus Expired set. name: %s", status.ContentID)
-		} else {
-			log.Infof("downloadStatus RefCount=0. name: %s", status.ContentID)
-		}
-		status.State = types.DOWNLOADING
-		changed = true
-		return changed
-	}
-	if ds.Target != "" && status.FileLocation == "" {
-		status.FileLocation = ds.Target
-		changed = true
-		log.Infof("From ds set FileLocation to %s for %s",
-			ds.Target, status.ContentID)
-	}
-	if status.State != ds.State {
-		status.State = ds.State
-		changed = true
-	}
-	if status.MaxDownloadSize != ds.Size {
-		status.MaxDownloadSize = ds.Size
-	}
-	if ds.Progress != status.Progress {
-		status.Progress = ds.Progress
-		changed = true
-	}
-	if ds.Pending() {
-		log.Infof("lookupDownloaderStatus %s Pending",
-			status.ContentID)
-		return changed
-	}
-	if ds.HasError() {
-		log.Errorf("Received error from downloader for %s: %s",
-			status.ContentID, ds.Error)
-		status.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
-			ds.ErrorTime)
-		changed = true
-		return changed
-	}
-	if status.IsErrorSource(types.DownloaderStatus{}) {
-		log.Infof("Clearing downloader error %s", status.Error)
-		status.ClearErrorWithSource()
-		changed = true
-	}
-	switch ds.State {
-	case types.INITIAL:
-		// Nothing to do
-	case types.DOWNLOADING:
-		// Nothing to do
-	case types.DOWNLOADED:
-		// Kick verifier to start if it hasn't already; add RefCount
-		c := kickVerifier(ctx, status, true)
-		if c {
-			changed = true
-		}
-	}
-	if status.WaitingForCerts {
-		log.Infof("Waiting for certs for %s", status.Key())
-		return changed
-	}
-	log.Infof("Waiting for download for %s", status.Key())
-	return changed
-}
+// updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
+// that has this Sha256
+func updateStatus(ctx *volumemgrContext, sha string) {
 
-// Returns changed
-// Updates status with WaitingForCerts if checkCerts is set
-func kickVerifier(ctx *volumemgrContext, status *types.ContentTreeStatus, checkCerts bool) bool {
-	changed := false
-	if !status.HasVerifierRef {
-		if status.State == types.DOWNLOADED {
-			status.State = types.VERIFYING
-			changed = true
-		}
-		done, errorAndTime := MaybeAddVerifyImageConfig(ctx, *status, checkCerts)
-		if done {
-			status.HasVerifierRef = true
-			changed = true
-			return changed
-		}
-		// if errors, set the certError flag
-		// otherwise, mark as waiting for certs
-		if errorAndTime.HasError() {
-			status.SetError(errorAndTime.Error, errorAndTime.ErrorTime)
-			changed = true
-		} else if !status.WaitingForCerts {
-			status.WaitingForCerts = true
-			changed = true
-		}
-	}
-	return changed
-}
-
-// lookForVerified handles the split between PersistImageStatus and
-// VerifyImageStatus. If it only finds the Persist it returns nil but
-// sets up a VerifyImageConfig.
-// Also returns changed=true if the VolumeStatus is changed
-func lookForVerified(ctx *volumemgrContext, status *types.ContentTreeStatus) (*types.VerifyImageStatus, bool) {
-	changed := false
-	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.ContentSha256)
-	if vs == nil {
-		ps := lookupPersistImageStatus(ctx, status.ObjType, status.ContentSha256)
-		if ps == nil || ps.Expired {
-			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
-				status.ContentID, status.ContentSha256)
-		} else {
-			log.Infof("lookForVerified: Found PersistImageStatus: %s based on ImageSha256 %s ContentID %s",
-				status.DisplayName, status.ContentSha256, status.ContentID)
-			if !status.HasPersistRef {
-				log.Infof("lookForVerified: Adding PersistImageStatus reference for ContentTreeStatus: %s", status.ContentSha256)
-				AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
-				status.HasPersistRef = true
-				changed = true
-			}
-			//Marking the ContentTreeStatus state as VERIFIED as we already have a PersistImageStatus for the content tree
-			if status.State != types.VERIFIED {
-				status.State = types.VERIFIED
-				status.Progress = 100
-				changed = true
-			}
-			if status.FileLocation != ps.FileLocation {
-				status.FileLocation = ps.FileLocation
-				log.Infof("lookForVerified: Update FileLocation for %s: %s",
-					status.Key(), status.FileLocation)
-				changed = true
-			}
-			// If we don't already have a RefCount add one
-			if !status.HasVerifierRef {
-				log.Infof("!HasVerifierRef")
-				// We don't need certs since Status already exists
-				MaybeAddVerifyImageConfig(ctx, *status, false)
-				status.HasVerifierRef = true
-				changed = true
-			}
-			//Wait for VerifyImageStatus to appear
-			return nil, changed
-		}
-	} else {
-		log.Infof("Found %s based on ContentID %s sha %s",
-			status.DisplayName, status.ContentID, status.ContentSha256)
-		// If we don't already have a RefCount add one
-		// No need to checkCerts since we have a VerifyImageStatus
-		c := kickVerifier(ctx, status, false)
-		if c {
-			changed = true
-		}
-		return vs, changed
-	}
-	return vs, changed
-}
-
-// Find all the VolumeStatus/ContentTreeStatus which refer to this Sha256
-func updateStatus(ctx *volumemgrContext, objType, sha string, uuid uuid.UUID) {
-
-	log.Infof("updateStatus(%s) objType %s", uuid, objType)
+	log.Infof("updateStatus(%s)", sha)
 	found := false
-	volPub := ctx.publication(types.OldVolumeStatus{}, objType)
-	volItems := volPub.GetAll()
-	for _, st := range volItems {
-		status := st.(types.OldVolumeStatus)
-		if status.BlobSha256 == sha {
-			log.Infof("Found VolumeStatus %s", status.Key())
-			found = true
-			changed, _ := doUpdateOld(ctx, &status)
-			if changed {
-				publishOldVolumeStatus(ctx, &status)
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.ContentTreeStatus)
+			var hasSha bool
+			for _, blobSha := range status.Blobs {
+				if blobSha == sha {
+					log.Infof("Found blob %s on ContentTreeStatus %s",
+						sha, status.Key())
+					hasSha = true
+				}
 			}
-		}
-	}
-	ctPub := ctx.pubContentTreeStatus
-	ctItems := ctPub.GetAll()
-	for _, st := range ctItems {
-		status := st.(types.ContentTreeStatus)
-		if status.ContentSha256 == sha {
-			log.Infof("Found ContentTreeStatus %s", status.Key())
-			found = true
-			changed, _ := doUpdateContentTree(ctx, &status)
-			if changed {
-				publishContentTreeStatus(ctx, &status)
+			if hasSha {
+				found = true
+				if changed, _ := doUpdateContentTree(ctx, &status); changed {
+					log.Infof("updateStatus(%s) publishing ContentTreeStatus",
+						status.Key())
+					publishContentTreeStatus(ctx, &status)
+				}
+				// Volume status referring to this content UUID needs to get updated
+				log.Infof("updateStatus(%s) updating volume status from content ID %v",
+					status.Key(), status.ContentID)
+				updateVolumeStatusFromContentID(ctx,
+					status.ContentID)
 			}
-			// Volume status referring to this content UUID needs to get updated
-			updateVolumeStatusFromContentID(ctx, status.ContentID)
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateStatus(%s) objType %s NOT FOUND",
-			uuid, objType)
+		log.Warnf("XXX updateStatus(%s) NOT FOUND", sha)
 	}
 }
 
@@ -482,16 +482,24 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 
 	log.Infof("updateContentTreeStatus(%s)", contentID)
 	found := false
-	pub := ctx.pubContentTreeStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.ContentTreeStatus)
-		if status.ContentSha256 == contentSha256 {
-			log.Infof("Found ContentTreeStatus %s", status.Key())
-			found = true
-			changed, _ := doUpdateContentTree(ctx, &status)
-			if changed {
-				publishContentTreeStatus(ctx, &status)
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.ContentTreeStatus)
+			if status.ContentSha256 == contentSha256 {
+				log.Infof("Found ContentTreeStatus %s",
+					status.Key())
+				found = true
+				changed, _ := doUpdateContentTree(ctx, &status)
+				if changed {
+					publishContentTreeStatus(ctx, &status)
+				}
+				// Volume status referring to this content UUID needs to get updated
+				log.Infof("updateContentTreeStatus(%s) updating volume status from content ID %v",
+					status.Key(), status.ContentID)
+				updateVolumeStatusFromContentID(ctx,
+					status.ContentID)
 			}
 		}
 	}

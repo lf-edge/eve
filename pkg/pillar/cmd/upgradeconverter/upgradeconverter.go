@@ -22,6 +22,10 @@ var conversionHandlers = []ConversionHandler{
 		description: "Move volumes to /persist/vault",
 		handlerFunc: convertPersistVolumes,
 	},
+	{
+		description: "Move verified files to /persist/vault/verifier/verified",
+		handlerFunc: renameVerifiedFiles,
+	},
 }
 
 type ucContext struct {

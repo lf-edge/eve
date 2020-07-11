@@ -93,26 +93,6 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	}
 }
 
-// If we have an AIConfig we update it - the image might have disappeared.
-// Otherwise we proceeed with remove.
-func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
-	uuidStr := status.Key()
-	log.Infof("updateOrRemove(%s)", uuidStr)
-	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil || (status.PurgeInprogress == types.BringDown) {
-		log.Infof("updateOrRemove: remove for %s", uuidStr)
-		removeAIStatus(ctx, &status)
-	} else {
-		log.Infof("updateOrRemove: update for %s", uuidStr)
-		changed := doUpdate(ctx, *config, &status)
-		if changed {
-			log.Infof("updateOrRemove status change for %s",
-				uuidStr)
-			publishAppInstanceStatus(ctx, &status)
-		}
-	}
-}
-
 func doUpdate(ctx *zedmanagerContext,
 	config types.AppInstanceConfig,
 	status *types.AppInstanceStatus) bool {
@@ -251,11 +231,13 @@ func doInstall(ctx *zedmanagerContext,
 			status.SetError(errString, time.Now())
 			return true, false
 		}
-		newVrs := types.VolumeRefStatus{}
-		newVrs.VolumeID = vrc.VolumeID
-		newVrs.GenerationCounter = vrc.GenerationCounter
-		newVrs.RefCount = vrc.RefCount
-		newVrs.PendingAdd = true
+		newVrs := types.VolumeRefStatus{
+			VolumeID:          vrc.VolumeID,
+			GenerationCounter: vrc.GenerationCounter,
+			RefCount:          vrc.RefCount,
+			PendingAdd:        true,
+			State:             types.INITIAL,
+		}
 		log.Infof("Adding new VolumeRefStatus %v", newVrs)
 		status.VolumeRefStatusList = append(status.VolumeRefStatusList, newVrs)
 		changed = true
@@ -408,9 +390,6 @@ func doPrepare(ctx *zedmanagerContext,
 	log.Infof("doPrepare done for %s", uuidStr)
 	return changed, true
 }
-
-// Really a constant
-var nilUUID uuid.UUID
 
 // doActivate - Returns if the status has changed. Doesn't publish any changes.
 // It is caller's responsibility to publish.

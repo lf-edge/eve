@@ -32,8 +32,7 @@ func HandleWorkResultOld(ctx *volumemgrContext, res worker.WorkResult) {
 		VolumeCreated: d.VolumeCreated,
 	}
 	addVolumeWorkResult(ctx, res.Key, vres)
-	updateStatus(ctx, d.status.ObjType, d.status.BlobSha256,
-		d.status.VolumeID)
+	updateStatus(ctx, d.status.BlobSha256)
 }
 
 // The work we feed into the go routine. Only one of create and destroy is set

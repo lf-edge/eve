@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -158,16 +159,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if _, err := os.Stat(ciDirname); err != nil {
 		if err := os.MkdirAll(ciDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(types.AppImgDirname); err != nil {
-		if err := os.MkdirAll(types.AppImgDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(types.VerifiedAppImgDirname); err != nil {
-		if err := os.MkdirAll(types.VerifiedAppImgDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -1362,7 +1353,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			numOfContainerDisks++
 		}
 		ds := &status.DiskStatusList[i]
-		ds.ImageID = dc.ImageID
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
@@ -1927,8 +1917,14 @@ func createCloudInitISO(ctx *domainContext,
 	ds := new(types.DiskStatus)
 	ds.FileLocation = fileName
 	ds.Format = zconfig.Format_RAW
-	ds.Vdev = "hdc:cdrom"
-	ds.ReadOnly = false
+	switch runtime.GOARCH {
+	case "arm64":
+		ds.Vdev = "xvdz"
+		ds.ReadOnly = true
+	case "amd64":
+		ds.Vdev = "hdc:cdrom"
+		ds.ReadOnly = false
+	}
 	// Generate Devtype for hypervisor package
 	// XXX can hypervisor look at something different?
 	ds.Devtype = "cdrom"

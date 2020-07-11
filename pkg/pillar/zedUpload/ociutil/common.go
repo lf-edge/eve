@@ -35,7 +35,7 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("parsing reference %q: %v", image, err)
 	}
 
-	// resolve out platform
+	// resolve our platform
 	options = append(options, remote.WithPlatform(v1.Platform{Architecture: runtime.GOARCH, OS: runtime.GOOS}))
 	log.Debugf("options %#v", options)
 

@@ -81,9 +81,9 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 	var errorList []error
 	remoteTemporaryFailure := types.SenderStatusNone
 
+	var numFreeIntf int
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
-		var numFreeIntf int
 		if try == 0 {
 			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
 				iteration)
@@ -384,13 +384,11 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		if b2 != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
 		}
-		// Add Device UUID to the HTTP Header
-		// for tracability
-		devUuidStr := ctx.DevUUID.String()
-		if devUuidStr != "" && devUuidStr != nilUUID.String() {
-			req.Header.Add("X-Request-Id", devUuidStr)
-		} else {
-			// Add Device Serial Number to the HTTP Header for initial tracability
+		// Add a per-request UUID to the HTTP Header
+		// for tracability in the controller
+		req.Header.Add("X-Request-Id", uuid.NewV4().String())
+		if ctx.DevUUID == nilUUID {
+			// Also add Device Serial Number to the HTTP Header for initial tracability
 			devSerialNum := ctx.DevSerial
 			if devSerialNum != "" {
 				req.Header.Add("X-Serial-Number", devSerialNum)
@@ -401,7 +399,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				req.Header.Add("X-Soft-Serial", devSoftSerial)
 			}
 			log.Debugf("Serial-Numbers, count (%d), serial: %s, soft-serial %s",
-				sendCounter, devSerialNum, devSoftSerial) // XXX change to debug
+				sendCounter, devSerialNum, devSoftSerial)
 			sendCounter++
 		}
 
@@ -572,7 +570,10 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			log.Errorln(errStr)
+			// zedrouter probing sends 'http' to zedcloud server, expect to get status of 404, not an error
+			if resp.StatusCode != http.StatusNotFound || ctx.AgentName != "zedrouter" {
+				log.Errorln(errStr)
+			}
 			log.Debugf("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
 			return resp, nil, types.SenderStatusNone, errors.New(errStr)

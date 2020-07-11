@@ -5,8 +5,11 @@ package volumemgr
 
 import (
 	"fmt"
-	"os"
+	"strings"
+	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -25,80 +28,166 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 		return false, true
 	}
 	changed := false
+	addedBlobs := false
 	if status.State < types.VERIFIED {
-		// Check if Verified Status already exists.
-		var vs *types.VerifyImageStatus
-		vs, changed = lookForVerifiedOld(ctx, status)
-		if vs != nil {
-			log.Infof("doUpdateOld: Found %s based on VolumeID %s sha %s",
-				status.DisplayName, status.VolumeID, status.BlobSha256)
-			if status.State != vs.State {
-				if vs.State == types.VERIFIED && !status.DownloadOrigin.HasPersistRef {
-					log.Infof("doUpdateOld: Adding PersistImageStatus reference for VolumeStatus: %s", status.BlobSha256)
-					AddOrRefCountPersistImageStatus(ctx, vs.Name, vs.ObjType, vs.FileLocation, vs.ImageSha256, vs.Size)
-					status.DownloadOrigin.HasPersistRef = true
+		// at this point, we at least are downloading
+		if status.State < types.DOWNLOADING {
+			status.State = types.DOWNLOADING
+			changed = true
+		}
+
+		// loop through each blob, see if it is downloaded and verified.
+		// we set the OldVolumeStatus to verified when all of the blobs are verified
+		leftToProcess := false
+		sv := SignatureVerifier{
+			Signature:        status.DownloadOrigin.ImageSignature,
+			PublicKey:        status.DownloadOrigin.SignatureKey,
+			CertificateChain: status.DownloadOrigin.CertificateChain,
+		}
+
+		var (
+			currentSize, totalSize int64
+			blobErrors             = []string{}
+			blobErrorTime          time.Time
+		)
+		for _, blobSha := range status.Blobs {
+			// get the actual blobStatus
+			blob := lookupOrCreateBlobStatus(ctx, sv, blobSha)
+			if blob == nil {
+				log.Errorf("doUpdateOld: could not find BlobStatus(%s)", blobSha)
+				leftToProcess = true
+				continue
+			}
+			totalSize += blob.TotalSize
+			currentSize += blob.CurrentSize
+
+			// now the type should not be unknown (unless it is in error state)
+			// these calls might update Blob.State hence we check
+			// sequentially
+			if blob.State <= types.DOWNLOADING {
+				// any state less than downloaded, we ask for download;
+				// downloadBlob() is smart enough to look for existing references
+				log.Infof("doUpdateOld: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
+				if downloadBlob(ctx, status.ObjType, sv, blob) {
+					publishBlobStatus(ctx, blob)
 					changed = true
 				}
-				log.Infof("doUpdateOld: Update State of %s from %d to %d", status.BlobSha256, status.State, vs.State)
-				status.State = vs.State
-				changed = true
 			}
-			if vs.Pending() {
-				log.Infof("doUpdateOld: lookupVerifyImageStatus %s Pending",
-					status.VolumeID)
-				return changed, false
+			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
+				// downloaded: kick off verifier for this blob
+				log.Infof("doUpdateOld: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
+				if verifyBlob(ctx, sv, blob) {
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
 			}
-			if vs.HasError() {
-				log.Errorf("doUpdateOld: Received error from verifier for %s: %s",
-					status.VolumeID, vs.Error)
-				status.SetErrorWithSource(vs.Error,
-					types.VerifyImageStatus{}, vs.ErrorTime)
-				changed = true
-				return changed, false
-			} else if status.IsErrorSource(types.VerifyImageStatus{}) {
-				log.Infof("doUpdateOld: Clearing verifier error %s", status.Error)
-				status.ClearErrorWithSource()
-				changed = true
+			if blob.State != types.VERIFIED {
+				leftToProcess = true
+				log.Errorf("doUpdateOld: left to process due to state '%s' for content blob %s",
+					blob.State, blob.Sha256)
+			} else {
+				log.Infof("doUpdateOld: blob sha %s download state VERIFIED", blob.Sha256)
+				// if verified, check for any children and start them off
+				// resolve any unknown types and get manifests of index, or children of manifest
+				blobType, err := resolveBlobType(blob)
+				if blobType != blob.BlobType || err != nil {
+					blob.BlobType = blobType
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
+				if err != nil {
+					log.Infof("doUpdateOld(%s): error resolving blob type: %v", blob.Sha256, err)
+					blob.SetError(err.Error(), time.Now())
+					publishBlobStatus(ctx, blob)
+					changed = true
+				}
+				blobChildren := blobsNotInList(getBlobChildren(blob), status.Blobs)
+				if len(blobChildren) > 0 {
+					log.Infof("doUpdateOld: adding %d children", len(blobChildren))
+					addedBlobs = true
+					// add all of the children
+					for _, blob := range blobChildren {
+						status.Blobs = append(status.Blobs, blob.Sha256)
+					}
+					// only publish those that do not already exist
+					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
+				}
+				if blob.BlobType == types.BlobManifest {
+					size := resolveManifestSize(*blob)
+					if size != status.TotalSize {
+						status.TotalSize = size
+						changed = true
+					}
+				}
 			}
-			if status.FileLocation != vs.FileLocation {
-				status.FileLocation = vs.FileLocation
-				log.Infof("doUpdateOld: Update FileLocation for %s: %s",
-					status.Key(), status.FileLocation)
-				changed = true
+			// if any errors, catch them
+			// Note that the downloadBlob above could have cleared
+			// previous errors due to a retry hence we check for
+			// errors here at the end
+			if blob.HasError() {
+				log.Errorf("doUpdateOld: BlobStatus(%s) has error: %s", blobSha, blob.Error)
+				blobErrors = append(blobErrors, blob.Error)
+				if blob.ErrorTime.After(blobErrorTime) {
+					blobErrorTime = blob.ErrorTime
+				}
+				leftToProcess = true
 			}
-		} else if status.State <= types.DOWNLOADED {
-			log.Infof("doUpdateOld: VerifyImageStatus %s for %s sha %s not found",
-				status.DisplayName, status.VolumeID,
-				status.BlobSha256)
-			c := doDownloadOld(ctx, status)
-			if c {
-				changed = true
-			}
-			return changed, false
-		} else {
-			log.Infof("doUpdateOld: VerifyImageStatus %s for %s sha %s not found; waiting for DOWNLOADED to VERIFIED",
-				status.DisplayName, status.VolumeID,
-				status.BlobSha256)
-			return changed, false
 		}
+
+		// Check if sizes changed before setting changed
+		if status.CurrentSize != currentSize || status.TotalSize != totalSize {
+			changed = true
+			status.CurrentSize = currentSize
+			status.TotalSize = totalSize
+			if status.TotalSize > 0 {
+				status.Progress = uint(status.CurrentSize / status.TotalSize * 100)
+			}
+			log.Infof("doUpdateOld: updating CurrentSize/TotalSize/Progress %d/%d/%d",
+				currentSize, totalSize, status.Progress)
+		}
+
+		// update errors from blobs to status
+		if len(blobErrors) != 0 {
+			status.SetError(strings.Join(blobErrors, " / "), blobErrorTime)
+			changed = true
+		} else if status.HasError() {
+			log.Infof("doUpdateOld(%s) clearing errors", status.Key())
+			status.ClearErrorWithSource()
+			changed = true
+		}
+
+		// if we added any blobs, we need to reprocess this
+		if addedBlobs {
+			log.Infof("doUpdateOld(%s) rerunning with added blobs: %v", status.Key(), addedBlobs)
+			return doUpdateOld(ctx, status)
+		}
+
+		// if there are any left to process, do not do anything else
+		// the rest of this flow should happen only when every part of the content tree
+		// is downloaded and verified
+		if leftToProcess {
+			log.Infof("doUpdateOld(%s) leftToProcess=true, so returning `true,false`", status.Key())
+			return true, false
+		}
+
+		// if we made it this far, the entire tree has been verified
+		// before we mark it as verified, load it into the CAS store
+		// for now, we only load containers into containerd
+		// TODO: next stage, load disk images as well
+		if status.Format == zconfig.Format_CONTAINER {
+			if err := containerd.LoadBlobs(lookupBlobStatuses(ctx, status.Blobs...), status.DownloadOrigin.Name); err != nil {
+				status.SetErrorWithSource(fmt.Sprintf("unable to load blobs into containerd: %v", err),
+					types.OldVolumeStatus{}, time.Now())
+				return changed, false
+			}
+		}
+		status.State = types.VERIFIED
 	}
 	if status.State == types.VERIFIED && !status.VolumeCreated {
 		status.State = types.CREATING_VOLUME
 		changed = true
 		// Asynch creation; ensure we have requested it
 		MaybeAddWorkCreateOld(ctx, status)
-	}
-	// If maximum download size is 0 then we are updating the
-	// downloaded size of an image in MaxSizeBytes
-	if status.DownloadOrigin.MaxDownSize == 0 {
-
-		info, err := os.Stat(status.FileLocation)
-		if err != nil {
-			errStr := fmt.Sprintf("Calculating size of container image failed: %v", err)
-			log.Error(errStr)
-		} else {
-			status.DownloadOrigin.MaxDownSize = uint64(info.Size())
-		}
 	}
 	if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
 		vr := lookupVolumeWorkResult(ctx, status.Key())
@@ -144,172 +233,6 @@ func doUpdateOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (bool, bo
 	return changed, false
 }
 
-// Returns changed
-func doDownloadOld(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
-
-	changed := false
-	// Make sure we kick the downloader and have a refcount
-	if !status.DownloadOrigin.HasDownloaderRef {
-		AddOrRefcountDownloaderConfigOld(ctx, *status)
-		status.DownloadOrigin.HasDownloaderRef = true
-		changed = true
-	}
-	// Check if we have a DownloadStatus if not put a DownloadConfig
-	// in place
-	ds := lookupDownloaderStatus(ctx, status.ObjType, status.BlobSha256)
-	if ds == nil || ds.Expired || ds.RefCount == 0 {
-		if ds == nil {
-			log.Infof("downloadStatus not found. name: %s", status.VolumeID)
-		} else if ds.Expired {
-			log.Infof("downloadStatus Expired set. name: %s", status.VolumeID)
-		} else {
-			log.Infof("downloadStatus RefCount=0. name: %s", status.VolumeID)
-		}
-		status.State = types.DOWNLOADING
-		changed = true
-		return changed
-	}
-	if ds.Target != "" && status.FileLocation == "" {
-		status.FileLocation = ds.Target
-		changed = true
-		log.Infof("From ds set FileLocation to %s for %s",
-			ds.Target, status.VolumeID)
-	}
-	if status.State != ds.State {
-		status.State = ds.State
-		changed = true
-	}
-	if status.DownloadOrigin.MaxDownSize != ds.Size {
-		status.DownloadOrigin.MaxDownSize = ds.Size
-	}
-	if ds.Progress != status.Progress {
-		status.Progress = ds.Progress
-		changed = true
-	}
-	if ds.Pending() {
-		log.Infof("lookupDownloaderStatus %s Pending",
-			status.VolumeID)
-		return changed
-	}
-	if ds.HasError() {
-		log.Errorf("Received error from downloader for %s: %s",
-			status.VolumeID, ds.Error)
-		status.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
-			ds.ErrorTime)
-		changed = true
-		return changed
-	}
-	if status.IsErrorSource(types.DownloaderStatus{}) {
-		log.Infof("Clearing downloader error %s", status.Error)
-		status.ClearErrorWithSource()
-		changed = true
-	}
-	switch ds.State {
-	case types.INITIAL:
-		// Nothing to do
-	case types.DOWNLOADING:
-		// Nothing to do
-	case types.DOWNLOADED:
-		// Kick verifier to start if it hasn't already; add RefCount
-		c := kickVerifierOld(ctx, status, true)
-		if c {
-			changed = true
-		}
-	}
-	if status.WaitingForCerts {
-		log.Infof("Waiting for certs for %s", status.Key())
-		return changed
-	}
-	log.Infof("Waiting for download for %s", status.Key())
-	return changed
-}
-
-// Returns changed
-// Updates status with WaitingForCerts if checkCerts is set
-func kickVerifierOld(ctx *volumemgrContext, status *types.OldVolumeStatus, checkCerts bool) bool {
-	changed := false
-	if !status.DownloadOrigin.HasVerifierRef {
-		if status.State == types.DOWNLOADED {
-			status.State = types.VERIFYING
-			changed = true
-		}
-		done, errorAndTime := MaybeAddVerifyImageConfigOld(ctx, *status, checkCerts)
-		if done {
-			status.DownloadOrigin.HasVerifierRef = true
-			changed = true
-			return changed
-		}
-		// if errors, set the certError flag
-		// otherwise, mark as waiting for certs
-		if errorAndTime.HasError() {
-			status.SetError(errorAndTime.Error, errorAndTime.ErrorTime)
-			changed = true
-		} else if !status.WaitingForCerts {
-			status.WaitingForCerts = true
-			changed = true
-		}
-	}
-	return changed
-}
-
-// lookForVerifiedOld handles the split between PersistImageStatus and
-// VerifyImageStatus. If it only finds the Persist it returns nil but
-// sets up a VerifyImageConfig.
-// Also returns changed=true if the VolumeStatus is changed
-func lookForVerifiedOld(ctx *volumemgrContext, status *types.OldVolumeStatus) (*types.VerifyImageStatus, bool) {
-	changed := false
-	vs := lookupVerifyImageStatus(ctx, status.ObjType, status.BlobSha256)
-	if vs == nil {
-		ps := lookupPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
-		if ps == nil || ps.Expired {
-			log.Infof("Verify/PersistImageStatus for %s sha %s not found",
-				status.VolumeID, status.BlobSha256)
-		} else {
-			log.Infof("lookForVerifiedOld: Found PersistImageStatus: %s based on ImageSha256 %s VolumeID %s",
-				status.DisplayName, status.BlobSha256, status.VolumeID)
-			if !status.DownloadOrigin.HasPersistRef {
-				log.Infof("lookForVerifiedOld: Adding PersistImageStatus reference for VolumeStatus: %s", status.BlobSha256)
-				AddOrRefCountPersistImageStatus(ctx, ps.Name, ps.ObjType, ps.FileLocation, ps.ImageSha256, ps.Size)
-				status.DownloadOrigin.HasPersistRef = true
-				changed = true
-			}
-			//Marking the VolumeStatus state as VERIFIED as we already have a PersistImageStatus for the volume
-			if status.State != types.VERIFIED {
-				status.State = types.VERIFIED
-				status.Progress = 100
-				changed = true
-			}
-			if status.FileLocation != ps.FileLocation {
-				status.FileLocation = ps.FileLocation
-				log.Infof("lookForVerifiedOld: Update FileLocation for %s: %s",
-					status.Key(), status.FileLocation)
-				changed = true
-			}
-			// If we don't already have a RefCount add one
-			if !status.DownloadOrigin.HasVerifierRef {
-				log.Infof("!HasVerifierRef")
-				// We don't need certs since Status already exists
-				MaybeAddVerifyImageConfigOld(ctx, *status, false)
-				status.DownloadOrigin.HasVerifierRef = true
-				changed = true
-			}
-			//Wait for VerifyImageStatus to appear
-			return nil, changed
-		}
-	} else {
-		log.Infof("Found %s based on VolumeID %s sha %s",
-			status.DisplayName, status.VolumeID, status.BlobSha256)
-		// If we don't already have a RefCount add one
-		// No need to checkCerts since we have a VerifyImageStatus
-		c := kickVerifierOld(ctx, status, false)
-		if c {
-			changed = true
-		}
-		return vs, changed
-	}
-	return vs, changed
-}
-
 // doDelete returns changed boolean
 // XXX need return value?
 func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
@@ -318,20 +241,13 @@ func doDelete(ctx *volumemgrContext, status *types.OldVolumeStatus) bool {
 	// XXX support other types
 	if status.Origin == types.OriginTypeDownload {
 		if status.DownloadOrigin.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(ctx, status.ObjType,
-				status.BlobSha256)
+			MaybeRemoveDownloaderConfig(ctx, status.BlobSha256)
 			status.DownloadOrigin.HasDownloaderRef = false
 			changed = true
 		}
 		if status.DownloadOrigin.HasVerifierRef {
-			MaybeRemoveVerifyImageConfig(ctx, status.ObjType,
-				status.BlobSha256)
+			MaybeRemoveVerifyImageConfig(ctx, status.BlobSha256)
 			status.DownloadOrigin.HasVerifierRef = false
-			changed = true
-		}
-		if status.DownloadOrigin.HasPersistRef {
-			ReduceRefCountPersistImageStatus(ctx, status.ObjType, status.BlobSha256)
-			status.DownloadOrigin.HasPersistRef = false
 			changed = true
 		}
 	}

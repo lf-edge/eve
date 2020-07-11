@@ -34,32 +34,27 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		DisplayName:             config.DisplayName,
 		RefCount:                config.RefCount,
 		LastUse:                 time.Now(),
+		State:                   types.INITIAL,
 	}
-	status = updateVolumeStatusRefCount(ctx, status)
-	publishVolumeStatus(ctx, status)
+	updateVolumeStatusRefCount(ctx, status)
 	status.ContentFormat = volumeFormat[status.Key()]
-	if info, err := os.Stat(status.PathName()); err == nil {
+	if _, err := os.Stat(status.PathName()); err == nil {
 		status.State = types.CREATED_VOLUME
 		status.Progress = 100
 		status.FileLocation = status.PathName()
 		status.VolumeCreated = true
 		if status.MaxVolSize == 0 {
-			if info.IsDir() {
-				size, err := utils.DirSize(status.FileLocation)
-				if err != nil {
-					log.Errorf("handleVolumeCreate: Computing size of %s failed: %v",
-						status.FileLocation, err)
-				} else {
-					status.MaxVolSize = uint64(size)
-				}
-			} else {
-				status.MaxVolSize = uint64(info.Size())
+			var err error
+			_, status.MaxVolSize, err = utils.GetVolumeSize(status.FileLocation)
+			if err != nil {
+				log.Error(err)
 			}
 		}
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 		return
 	}
+	publishVolumeStatus(ctx, status)
 	if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
 		// Check disk usage
 		remaining, volumeDiskSizeList, err := getRemainingVolumeDiskSpace(ctx)
@@ -68,6 +63,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 				err)
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
+			updateVolumeRefStatus(ctx, status)
 			return
 		} else if remaining < status.MaxVolSize {
 			errStr := fmt.Sprintf("Remaining disk space %d volume needs %d\n"+
@@ -75,6 +71,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 				remaining, status.MaxVolSize, volumeDiskSizeList)
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
+			updateVolumeRefStatus(ctx, status)
 			return
 		}
 	}
@@ -103,6 +100,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 		log.Errorf("handleVolumeModify(%s) failed: %s", status.Key(), errStr)
 		status.SetError(errStr, time.Now())
 		publishVolumeStatus(ctx, status)
+		updateVolumeRefStatus(ctx, status)
 		return
 	}
 	if config.DisplayName != status.DisplayName {
@@ -115,8 +113,9 @@ func handleVolumeModify(ctxArg interface{}, key string,
 			status.RefCount, config.RefCount, config.DisplayName)
 		status.RefCount = config.RefCount
 	}
-	status = updateVolumeStatusRefCount(ctx, status)
+	updateVolumeStatusRefCount(ctx, status)
 	publishVolumeStatus(ctx, status)
+	updateVolumeRefStatus(ctx, status)
 	log.Infof("handleVolumeModify(%s) Done", key)
 }
 
@@ -131,8 +130,8 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 		log.Infof("handleVolumeDelete for %v, VolumeStatus not found", key)
 		return
 	}
-	status = updateVolumeStatusRefCount(ctx, status)
-	deleteVolume(ctx, status)
+	updateVolumeStatusRefCount(ctx, status)
+	maybeDeleteVolume(ctx, status)
 	log.Infof("handleVolumeDelete(%s) Done", key)
 }
 
@@ -191,12 +190,12 @@ func lookupVolumeConfig(ctx *volumemgrContext,
 	return &config
 }
 
-func deleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
+func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 
-	log.Infof("deleteVolume for %v", status.Key())
+	log.Infof("maybeDeleteVolume for %v", status.Key())
 	if status.RefCount != 0 {
 		publishVolumeStatus(ctx, status)
-		log.Infof("deleteVolume for %v Done", status.Key())
+		log.Infof("maybeDeleteVolume for %v Done", status.Key())
 		return
 	}
 	if status.VolumeCreated {
@@ -207,7 +206,6 @@ func deleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 			log.Infof("VolumeWorkResult(%s) location %s, created %t",
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
 			deleteVolumeWorkResult(ctx, status.Key())
-			// Compare to set changed?
 			status.VolumeCreated = vr.VolumeCreated
 			status.FileLocation = vr.FileLocation
 			if vr.Error != nil {
@@ -223,16 +221,17 @@ func deleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 			}
 		} else {
 			log.Infof("VolumeWorkResult(%s) not found", status.Key())
+			// XXX what happens when VolumeWork is done?
 		}
 	}
 	publishVolumeStatus(ctx, status)
 	unpublishVolumeStatus(ctx, status)
-	log.Infof("deleteVolume for %v Done", status.Key())
+	log.Infof("maybeDeleteVolume for %v Done", status.Key())
 }
 
 // updateVolumeStatusRefCount updates the refcount in volume status
 // Refcount in volume status is sum of refount in volume config and volume ref config
-func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) *types.VolumeStatus {
+func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) {
 	log.Debugf("updateVolumeStatusRefCount(%s)", vs.Key())
 	var vcRefCount, vrcRefCount uint
 	vc := lookupVolumeConfig(ctx, vs.Key())
@@ -247,9 +246,14 @@ func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) *
 	} else {
 		vrcRefCount = vrc.RefCount
 	}
-	vs.RefCount = vcRefCount + vrcRefCount
+	old := vs.RefCount
+	new := vcRefCount + vrcRefCount
+	if new != old {
+		vs.RefCount = new
+		log.Infof("updateVolumeStatusRefCount(%s) updated from %d to %d",
+			vs.Key(), old, new)
+	}
 	log.Debugf("updateVolumeStatusRefCount(%s) Done", vs.Key())
-	return vs
 }
 
 // Returns needRegeneration, plus a reason string.

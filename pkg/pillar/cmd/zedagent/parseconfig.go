@@ -22,7 +22,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -164,20 +164,13 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 			baseOs.OsParams[jdx] = *param
 		}
 
-		baseOs.StorageConfigList = make([]types.StorageConfig,
+		baseOs.ContentTreeConfigList = make([]types.ContentTreeConfig,
 			len(cfgOs.Drives))
-		parseStorageConfigList(types.BaseOsObj, baseOs.StorageConfigList,
-			cfgOs.Drives)
+		parseContentTreeConfigList(baseOs.ContentTreeConfigList, cfgOs.Drives)
 
-		certInstance := getCertObjects(baseOs.UUIDandVersion,
-			baseOs.ConfigSha256, baseOs.StorageConfigList)
 		log.Debugf("parseBaseOsConfig publishing %v",
 			baseOs)
 		publishBaseOsConfig(getconfigCtx, baseOs)
-		if certInstance != nil {
-			publishCertObjConfig(getconfigCtx, certInstance,
-				baseOs.Key())
-		}
 	}
 }
 
@@ -971,27 +964,27 @@ func publishDatastoreConfig(ctx *getconfigContext,
 	}
 }
 
-func parseStorageConfigList(objType string,
-	storageList []types.StorageConfig, drives []*zconfig.Drive) {
+func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drives []*zconfig.Drive) {
 
 	var idx int = 0
 
 	for _, drive := range drives {
-		image := new(types.StorageConfig)
+		contentTree := new(types.ContentTreeConfig)
 		if drive.Image == nil {
 			log.Errorf("No drive.Image for drive %v",
 				drive)
 			// Pass on for error reporting
-			image.DatastoreID = nilUUID
+			contentTree.ContentID = nilUUID
 		} else {
-			id, _ := uuid.FromString(drive.Image.DsId)
-			image.DatastoreID = id
-			image.Name = drive.Image.Name
-			image.ImageID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
-			image.Format = drive.Image.Iformat
-			image.MaxDownSize = uint64(drive.Image.SizeBytes)
-			image.ImageSignature = drive.Image.Siginfo.Signature
-			image.SignatureKey = drive.Image.Siginfo.Signercerturl
+			contentTree.ContentID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
+			contentTree.DatastoreID, _ = uuid.FromString(drive.Image.DsId)
+			contentTree.RelativeURL = drive.Image.Name
+			contentTree.Format = drive.Image.Iformat
+			contentTree.ContentSha256 = strings.ToLower(drive.Image.Sha256)
+			contentTree.MaxDownloadSize = uint64(drive.Image.SizeBytes)
+			contentTree.DisplayName = drive.Image.Name
+			contentTree.ImageSignature = drive.Image.Siginfo.Signature
+			contentTree.SignatureKey = drive.Image.Siginfo.Signercerturl
 
 			// XXX:FIXME certificates can be many
 			// this list, currently contains the certUrls
@@ -999,15 +992,11 @@ func parseStorageConfigList(objType string,
 			// as proper DataStore Entries
 
 			if drive.Image.Siginfo.Intercertsurl != "" {
-				image.CertificateChain = make([]string, 1)
-				image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
+				contentTree.CertificateChain = make([]string, 1)
+				contentTree.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
 			}
 		}
-		image.ReadOnly = drive.Readonly
-		image.MaxVolSize = uint64(drive.Maxsizebytes)
-		image.Target = strings.ToLower(drive.Target.String())
-		image.ImageSha256 = drive.Image.Sha256
-		storageList[idx] = *image
+		contentTreeList[idx] = *contentTree
 		idx++
 	}
 }
