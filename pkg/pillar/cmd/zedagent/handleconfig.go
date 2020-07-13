@@ -280,6 +280,8 @@ func getLatestConfig(url string, iteration int,
 
 	if !changed {
 		log.Debugf("Configuration from zedcloud is unchanged")
+		// Update modification time since checked by readSavedProtoMessage
+		touchReceivedProtoMessage()
 		return false
 	}
 	writeReceivedProtoMessage(contents)
@@ -316,6 +318,11 @@ func writeReceivedProtoMessage(contents []byte) {
 	writeProtoMessage("lastconfig", contents)
 }
 
+// Update timestamp - no content changes
+func touchReceivedProtoMessage() {
+	touchProtoMessage("lastconfig")
+}
+
 // XXX for debug we track these
 func writeSentMetricsProtoMessage(contents []byte) {
 	writeProtoMessage("lastmetrics", contents)
@@ -335,8 +342,23 @@ func writeProtoMessage(filename string, contents []byte) {
 	filename = checkpointDirname + "/" + filename
 	err := ioutil.WriteFile(filename, contents, 0744)
 	if err != nil {
-		log.Fatal("writeReceiveProtoMessage", err)
+		log.Fatal("writeProtoMessage", err)
 		return
+	}
+}
+
+// Update modification time
+func touchProtoMessage(filename string) {
+	filename = checkpointDirname + "/" + filename
+	_, err := os.Stat(filename)
+	if err != nil {
+		log.Warn("touchProtoMessage", err)
+		return
+	}
+	currentTime := time.Now()
+	err = os.Chtimes(filename, currentTime, currentTime)
+	if err != nil {
+		log.Fatal("touchProtoMessage", err)
 	}
 }
 
