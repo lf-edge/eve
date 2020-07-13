@@ -44,6 +44,9 @@ type volumemgrContext struct {
 	subGlobalConfig            pubsub.Subscription
 	subZedAgentStatus          pubsub.Subscription
 
+	subCertObjConfig pubsub.Subscription
+	pubCertObjStatus pubsub.Publication
+
 	pubDownloaderConfig  pubsub.Publication
 	subDownloaderStatus  pubsub.Subscription
 	pubVerifyImageConfig pubsub.Publication
@@ -212,6 +215,17 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
 
+	pubCertObjStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CertObjStatus{},
+		})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubCertObjStatus = pubCertObjStatus
+
 	pubBlobStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -281,6 +295,25 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.subVerifyImageStatus = subVerifyImageStatus
 	subVerifyImageStatus.Activate()
+
+	// Look for CertObjConfig, from zedagent
+	subCertObjConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.CertObjConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleCertObjCreate,
+			ModifyHandler: handleCertObjModify,
+			DeleteHandler: handleCertObjConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subCertObjConfig = subCertObjConfig
+	subCertObjConfig.Activate()
 
 	// Look for ResolveStatus from downloader
 	subResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -422,6 +455,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
 
+		case change := <-ctx.subCertObjConfig.MsgChan():
+			ctx.subCertObjConfig.ProcessChange(change)
+
 		case change := <-subDownloaderStatus.MsgChan():
 			subDownloaderStatus.ProcessChange(change)
 
@@ -516,4 +552,67 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 		duration := time.Duration(ctx.vdiskGCTime / 10)
 		ctx.gc = time.NewTicker(duration * time.Second)
 	}
+}
+
+func handleCertObjConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Infof("handleCertObjConfigDelete(%s)", key)
+	ctx := ctxArg.(*volumemgrContext)
+	status := lookupCertObjStatus(ctx, key)
+	if status == nil {
+		log.Infof("handleCertObjConfigDelete: unknown %s", key)
+		return
+	}
+	handleCertObjDelete(ctx, key, status)
+	log.Infof("handleCertObjConfigDelete(%s) done", key)
+}
+
+// certificate config/status event handlers
+// certificate config create event
+func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*volumemgrContext)
+	config := configArg.(types.CertObjConfig)
+	log.Infof("handleCertObjCreate for %s", key)
+
+	status := types.CertObjStatus{
+		UUIDandVersion: config.UUIDandVersion,
+		ConfigSha256:   config.ConfigSha256,
+	}
+
+	publishCertObjStatus(ctx, &status)
+
+	certObjHandleStatusUpdate(ctx, &config, &status)
+}
+
+// certificate config modify event
+func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*volumemgrContext)
+	config := configArg.(types.CertObjConfig)
+	status := lookupCertObjStatus(ctx, key)
+	uuidStr := config.Key()
+	log.Infof("handleCertObjModify for %s", uuidStr)
+
+	if config.UUIDandVersion.Version != status.UUIDandVersion.Version {
+		log.Infof("handleCertObjModify(%s), New config version %v", key,
+			config.UUIDandVersion.Version)
+		status.UUIDandVersion = config.UUIDandVersion
+		publishCertObjStatus(ctx, status)
+
+	}
+
+	// on storage config change, purge and recreate
+	if certObjCheckConfigModify(ctx, key, &config, status) {
+		removeCertObjConfig(ctx, key)
+		handleCertObjCreate(ctx, key, config)
+	}
+}
+
+// certificate config delete event
+func handleCertObjDelete(ctx *volumemgrContext, key string,
+	status *types.CertObjStatus) {
+
+	uuidStr := status.Key()
+	log.Infof("handleCertObjDelete for %s", uuidStr)
+	removeCertObjConfig(ctx, uuidStr)
 }
