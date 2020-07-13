@@ -451,9 +451,10 @@ type TestResults struct {
 }
 
 // RecordSuccess records a success
-// Keeps the LastError and LastFailed in place as history
+// Keeps the LastFailed in place as history
 func (trPtr *TestResults) RecordSuccess() {
 	trPtr.LastSucceeded = time.Now()
+	trPtr.LastError = ""
 }
 
 // RecordFailure records a failure
@@ -483,9 +484,9 @@ func (trPtr *TestResults) Update(src TestResults) {
 		}
 	} else {
 		trPtr.LastSucceeded = src.LastSucceeded
+		trPtr.LastError = ""
 		if src.LastFailed.After(trPtr.LastFailed) {
 			trPtr.LastFailed = src.LastFailed
-			trPtr.LastError = src.LastError
 		}
 	}
 }
