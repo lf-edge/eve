@@ -71,7 +71,6 @@ var cipherMetricsNim types.CipherMetricsMap
 
 // Context for handleDNSModify
 type DNSContext struct {
-	usableAddressCount     int
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus pubsub.Subscription
 	triggerGetConfig       bool
@@ -680,8 +679,6 @@ func Run(ps *pubsub.PubSub) {
 	subNodeAgentStatus.Activate()
 
 	DNSctx := DNSContext{}
-	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
-
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		TopicImpl:     types.DeviceNetworkStatus{},
@@ -1231,16 +1228,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(*deviceNetworkStatus, status))
 	*deviceNetworkStatus = status
-	// Did we (re-)gain the first usable address?
-	// XXX should we also trigger if the count increases?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
-	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses",
-			ctx.usableAddressCount, newAddrCount)
-		ctx.triggerGetConfig = true
-	}
 	ctx.DNSinitialized = true
-	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
 
 	if zedcloudCtx.V2API {
@@ -1260,9 +1248,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		return
 	}
 	*deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.DNSinitialized = false
-	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
