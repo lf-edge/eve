@@ -290,6 +290,7 @@ type PendDPCStatus uint32
 const (
 	DPC_NONE PendDPCStatus = iota
 	DPC_FAIL
+	DPC_FAIL_WITH_IPANDDNS // Failed to reach controller but has IP/DNS
 	DPC_SUCCESS
 	DPC_IPDNS_WAIT  // DPC_IPDNS_WAIT means not IP and DNS server yet
 	DPC_PCI_WAIT    // DPC_PCI_WAIT means some interface still in pci back
@@ -304,6 +305,8 @@ func (status PendDPCStatus) String() string {
 		return ""
 	case DPC_FAIL:
 		return "DPC_FAIL"
+	case DPC_FAIL_WITH_IPANDDNS:
+		return "DPC_FAIL_WITH_IPANDDNS"
 	case DPC_SUCCESS:
 		return "DPC_SUCCESS"
 	case DPC_IPDNS_WAIT:
@@ -326,7 +329,7 @@ type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
-	Status       PendDPCStatus
+	State        PendDPCStatus
 
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
@@ -350,7 +353,7 @@ func (config DevicePortConfig) LogCreate() {
 		AddField("last-failed", config.LastFailed).
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
-		AddField("status", config.Status.String()).
+		AddField("state", config.State.String()).
 		Infof("DevicePortConfig create")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
@@ -375,18 +378,18 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 		oldConfig.LastFailed != config.LastFailed ||
 		oldConfig.LastSucceeded != config.LastSucceeded ||
 		oldConfig.LastError != config.LastError ||
-		oldConfig.Status != config.Status {
+		oldConfig.State != config.State {
 
 		logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 			AddField("last-failed", config.LastFailed).
 			AddField("last-succeeded", config.LastSucceeded).
 			AddField("last-error", config.LastError).
-			AddField("status", config.Status.String()).
+			AddField("state", config.State.String()).
 			AddField("old-ports-int64", len(oldConfig.Ports)).
 			AddField("old-last-failed", oldConfig.LastFailed).
 			AddField("old-last-succeeded", oldConfig.LastSucceeded).
 			AddField("old-last-error", oldConfig.LastError).
-			AddField("old-status", oldConfig.Status.String()).
+			AddField("old-state", oldConfig.State.String()).
 			Infof("DevicePortConfig modify")
 	}
 	// XXX which fields to compare/log?
@@ -420,7 +423,7 @@ func (config DevicePortConfig) LogDelete() {
 		AddField("last-failed", config.LastFailed).
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
-		AddField("status", config.Status.String()).
+		AddField("state", config.State.String()).
 		Infof("DevicePortConfig delete")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
@@ -819,6 +822,7 @@ type AddrInfo struct {
 type DeviceNetworkStatus struct {
 	Version DevicePortConfigVersion // From DevicePortConfig
 	Testing bool                    // Ignore since it is not yet verified
+	State   PendDPCStatus           // Details about testing state
 	Ports   []NetworkPortStatus
 }
 
@@ -836,6 +840,7 @@ func (status DeviceNetworkStatus) LogCreate() {
 	}
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
+		AddField("state", status.State.String()).
 		Infof("DeviceNetworkStatus create")
 	for _, p := range status.Ports {
 		// XXX different logobject for a particular port?
@@ -857,12 +862,15 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 		log.Errorf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
 	}
 	if oldStatus.Testing != status.Testing ||
+		oldStatus.State != status.State ||
 		len(oldStatus.Ports) != len(status.Ports) {
 
 		logObject.CloneAndAddField("testing-bool", status.Testing).
 			AddField("ports-int64", len(status.Ports)).
+			AddField("state", status.State.String()).
 			AddField("old-testing-bool", oldStatus.Testing).
 			AddField("old-ports-int64", len(oldStatus.Ports)).
+			AddField("old-state", oldStatus.State.String()).
 			Infof("DeviceNetworkStatus modify")
 	}
 	// XXX which fields to compare/log?
@@ -894,6 +902,7 @@ func (status DeviceNetworkStatus) LogDelete() {
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
+		AddField("state", status.State.String()).
 		Infof("DeviceNetworkStatus instance status delete")
 	for _, p := range status.Ports {
 		// XXX different logobject for a particular port?

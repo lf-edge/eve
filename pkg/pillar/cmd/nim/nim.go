@@ -843,6 +843,10 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 		dpc := &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 		dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+		if err == nil {
+			dpc.State = types.DPC_SUCCESS
+			dpc.TestResults.RecordSuccess()
+		}
 		ctx.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
 		log.Infof("publishing DevicePortConfigList update: %+v",
 			*ctx.DevicePortConfigList)
@@ -852,21 +856,15 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 
 	// Use TestResults to update the DeviceNetworkStatus and publish
 	ctx.DeviceNetworkStatus.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	if err == nil {
+		ctx.DeviceNetworkStatus.State = types.DPC_SUCCESS
+	}
 	log.Infof("PublishDeviceNetworkStatus updated: %+v\n",
 		*ctx.DeviceNetworkStatus)
 	ctx.PubDeviceNetworkStatus.Publish("global", *ctx.DeviceNetworkStatus)
 
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
-		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
-			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-			cur.TestResults.RecordSuccess()
-			log.Infof("publishing DevicePortConfigList success: %+v",
-				*ctx.DevicePortConfigList)
-			ctx.PubDevicePortConfigList.Publish("global",
-				*ctx.DevicePortConfigList)
-		}
-
 		ctx.CloudConnectivityWorks = true
 		// Restart network test timer for next slot.
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
