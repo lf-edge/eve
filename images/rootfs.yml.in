@@ -36,8 +36,6 @@ services:
      image: WWAN_TAG
    - name: wlan
      image: WLAN_TAG
-   - name: lisp
-     image: LISP_TAG
    - name: guacd
      image: GUACD_TAG
    - name: pillar
