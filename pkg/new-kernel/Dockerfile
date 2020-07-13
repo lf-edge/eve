@@ -140,6 +140,9 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
                    M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
          modules modules_install
 
+# Strip at least some of the modules to conserve space
+RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules/*/extra -name \*.ko` ;fi
+
 # Device Tree Blobs
 RUN if [ "$(uname -m)" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install ;fi
 
