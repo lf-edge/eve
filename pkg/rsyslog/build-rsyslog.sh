@@ -10,3 +10,5 @@ echo "./configure --prefix=/usr/local $RSYSLOG_CONFIGURE_OPTIONS" --enable-compi
 chmod +x utils/conf
 
 autoreconf -fvi && utils/conf && make -j2 && make install || exit $?
+
+strip /usr/local/sbin/rsyslogd

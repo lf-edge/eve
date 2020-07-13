@@ -144,6 +144,7 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
 RUN if [ "$(uname -m)" = aarch64 ]; then \
        mkdir -p /tmp/kernel-modules/boot/dtb/eve && \
        ./scripts/dtc/dtc -O dtb -o /tmp/kernel-modules/boot/dtb/eve/eve.dtb -I dts /eve.dts ;\
+       strip --strip-debug `find /tmp/kernel-modules/lib/modules/*/extra -name \*.ko`       ;\
     fi
 
 # Package all the modules up
