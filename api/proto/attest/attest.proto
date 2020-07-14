@@ -97,10 +97,11 @@ message AttestVersionInfo {
    string version = 2;                 // Version string of the corresponding package
 }
 
-//PCR values from TPM, from a particular hash bank
-message TpmPCRValues {
-   TpmHashAlgo hash_algo = 1;
-   repeated bytes values = 2;
+//Holds one single PCR value from TPM, from a particular hash bank
+message TpmPCRValue {
+   uint32 index = 1;          //PCR index
+   TpmHashAlgo hash_algo = 2; //SHA1/SHA256/SHA384/SHA256
+   bytes value = 3;           //value in PCR
 }
 
 //attestData is taken from
@@ -108,7 +109,7 @@ message TpmPCRValues {
 message ZAttestQuote {
   bytes attestData = 1;                     // Nonce is included in attestData, see comment above
   bytes signature = 2;                      // Signature to verify attestData
-  TpmPCRValues pcr_values = 3;              // Current values of TPM PCRs 0-15
+  repeated TpmPCRValue pcr_values = 3;      // Current values of TPM PCRs 0-15
   repeated TpmEventLogEntry event_log = 4;  // TPM Event log
   repeated AttestVersionInfo versions = 5;  // Versions of various software packages, as defined by VersionType
   AttestGPSCoordinates gps_info = 6;        // Geo-Coordinates of the device

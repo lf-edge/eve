@@ -27,11 +27,21 @@ type CertType uint8
 //CertHashType carries the hash algo used for compute the short hash
 type CertHashType uint8
 
+//PCRExtendHashType carries the hash algo used in PCR Extend operation
+type PCRExtendHashType uint8
+
 //Various certificate types published by tpmmgr
 const (
 	SigAlgNone SigAlg = iota + 0
 	EcdsaSha256
 	RsaRsassa256
+)
+
+//PCR Extend Hash Algorithm used
+const (
+	PCRExtendHashAlgoNone PCRExtendHashType = iota + 0
+	PCRExtendHashAlgoSha1
+	PCRExtendHashAlgoSha256
 )
 
 //Needs to match api/proto/attest/attest.proto:ZEveCertType
@@ -44,12 +54,19 @@ const (
 	CertTypeEcdhXchange
 )
 
+type PCRValues struct {
+	index  uint8
+	algo   PCRExtendHashType
+	digest []byte
+}
+
 //AttestQuote contains attestation quote
 type AttestQuote struct {
-	nonce     []byte //Nonce provided by the requester
-	sigType   SigAlg //The signature algorithm used
-	signature []byte //ASN1 encoded signature
-	quote     []byte //the quote structure
+	nonce     []byte      //Nonce provided by the requester
+	sigType   SigAlg      //The signature algorithm used
+	signature []byte      //ASN1 encoded signature
+	quote     []byte      //the quote structure
+	pcrs      []PCRValues //pcr values
 }
 
 //Key uniquely identifies an AttestQuote object
