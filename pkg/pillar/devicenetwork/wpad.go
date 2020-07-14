@@ -26,12 +26,12 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 		proxyConfig.NetworkProxyURL)
 
 	if proxyConfig.Pacfile != "" {
-		log.Infof("CheckAndGetNetworkProxy(%s): already have Pacfile\n",
+		log.Debugf("CheckAndGetNetworkProxy(%s): already have Pacfile\n",
 			ifname)
 		return nil
 	}
 	if !proxyConfig.NetworkProxyEnable {
-		log.Infof("CheckAndGetNetworkProxy(%s): not enabled\n",
+		log.Debugf("CheckAndGetNetworkProxy(%s): not enabled\n",
 			ifname)
 		return nil
 	}
