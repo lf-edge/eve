@@ -855,7 +855,7 @@ func publishLispInfoStatus(ctx *dptypes.DataplaneContext,
 	key := "global"
 	pub := ctx.PubLispInfoStatus
 	pub.Publish(key, *status)
-	log.Infof("publishLispInfoStatus: Done")
+	log.Debugf("publishLispInfoStatus: Done")
 }
 
 func unpublishLispInfoStatus(ctx *dptypes.DataplaneContext,
