@@ -234,7 +234,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 			ifname, err)
 		pending.PendDPC.RecordPortFailure(ifname, err.Error())
 		pending.PendDPC.RecordFailure(err.Error())
-		return types.DPC_FAIL
+		// Proceed trying other interfaces
 	}
 	log.Infof("VerifyPending: No required ports missing. " +
 		"parsing device port config list")
