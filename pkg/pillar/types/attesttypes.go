@@ -54,7 +54,8 @@ const (
 	CertTypeEcdhXchange
 )
 
-type PCRValues struct {
+//PCRValue contains value of single PCR
+type PCRValue struct {
 	index  uint8
 	algo   PCRExtendHashType
 	digest []byte
@@ -62,11 +63,11 @@ type PCRValues struct {
 
 //AttestQuote contains attestation quote
 type AttestQuote struct {
-	nonce     []byte      //Nonce provided by the requester
-	sigType   SigAlg      //The signature algorithm used
-	signature []byte      //ASN1 encoded signature
-	quote     []byte      //the quote structure
-	pcrs      []PCRValues //pcr values
+	nonce     []byte     //Nonce provided by the requester
+	sigType   SigAlg     //The signature algorithm used
+	signature []byte     //ASN1 encoded signature
+	quote     []byte     //the quote structure
+	pcrs      []PCRValue //pcr values
 }
 
 //Key uniquely identifies an AttestQuote object

@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attest'),
-  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x1a\x11\x63\x65rts/certs.proto\"c\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x15\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\x06.ZCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode*f\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03*p\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03*i\n\x13ZAttestResponseCode\x12\x18\n\x14\x41TTEST_RESPONSE_NONE\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x01\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x02\x42=\n\x15org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
+  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x1a\x11\x63\x65rts/certs.proto\"\x8d\x01\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x15\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\x06.ZCert\x12(\n\x0cstorage_keys\x18\x04 \x01(\x0b\x32\x12.AttestStorageKeys\"\xb0\x01\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\x12\x31\n\x11storage_keys_resp\x18\x04 \x01(\x0b\x32\x16.AttestStorageKeysResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"A\n\x0eTpmEventDigest\x12\x1f\n\thash_algo\x18\x01 \x01(\x0e\x32\x0c.TpmHashAlgo\x12\x0e\n\x06\x64igest\x18\x02 \x01(\x0c\"\x9f\x01\n\x10TpmEventLogEntry\x12\r\n\x05index\x18\x01 \x01(\r\x12\x11\n\tpcr_index\x18\x02 \x01(\r\x12\x12\n\nevent_type\x18\x03 \x01(\r\x12\x1f\n\x06\x64igest\x18\x04 \x01(\x0b\x32\x0f.TpmEventDigest\x12\x19\n\x11\x65vent_data_binary\x18\x05 \x01(\x0c\x12\x19\n\x11\x65vent_data_string\x18\x06 \x01(\t\"_\n\x14\x41ttestGPSCoordinates\x12\"\n\tgps_input\x18\x01 \x01(\x0e\x32\x0f.AttestGPSInput\x12\x10\n\x08latitude\x18\x02 \x01(\x01\x12\x11\n\tlongitude\x18\x03 \x01(\x01\"N\n\x11\x41ttestVersionInfo\x12(\n\x0cversion_type\x18\x01 \x01(\x0e\x32\x12.AttestVersionType\x12\x0f\n\x07version\x18\x02 \x01(\t\"L\n\x0bTpmPCRValue\x12\r\n\x05index\x18\x01 \x01(\r\x12\x1f\n\thash_algo\x18\x02 \x01(\x0e\x32\x0c.TpmHashAlgo\x12\r\n\x05value\x18\x03 \x01(\x0c\"\xcc\x01\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\x12 \n\npcr_values\x18\x03 \x03(\x0b\x32\x0c.TpmPCRValue\x12$\n\tevent_log\x18\x04 \x03(\x0b\x32\x11.TpmEventLogEntry\x12$\n\x08versions\x18\x05 \x03(\x0b\x32\x12.AttestVersionInfo\x12\'\n\x08gps_info\x18\x06 \x01(\x0b\x32\x15.AttestGPSCoordinates\"F\n\x0f\x41ttestVolumeKey\x12&\n\x08key_type\x18\x01 \x01(\x0e\x32\x14.AttestVolumeKeyType\x12\x0b\n\x03key\x18\x02 \x01(\x0c\"s\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\x12\x1e\n\x04keys\x18\x03 \x03(\x0b\x32\x10.AttestVolumeKey\"L\n\x11\x41ttestStorageKeys\x12\x17\n\x0fintegrity_token\x18\x01 \x01(\x0c\x12\x1e\n\x04keys\x18\x02 \x03(\x0b\x32\x10.AttestVolumeKey\"I\n\x15\x41ttestStorageKeysResp\x12\x30\n\x08response\x18\x01 \x01(\x0e\x32\x1e.AttestStorageKeysResponseCode*\x88\x01\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03\x12 \n\x1cZ_ATTEST_REQ_TYPE_STORE_KEYS\x10\x04*\x93\x01\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03\x12!\n\x1dZ_ATTEST_RESP_TYPE_STORE_KEYS\x10\x04*t\n\x0bTpmHashAlgo\x12\x19\n\x15TPM_HASH_ALGO_INVALID\x10\x00\x12\x16\n\x12TPM_HASH_ALGO_SHA1\x10\x01\x12\x18\n\x14TPM_HASH_ALGO_SHA256\x10\x02\x12\x18\n\x14TPM_HASH_ALGO_SHA512\x10\x03*i\n\x0e\x41ttestGPSInput\x12\x1c\n\x18\x41TTEST_GPS_INPUT_INVALID\x10\x00\x12\x1c\n\x18\x41TTEST_GPS_INPUT_PRESENT\x10\x01\x12\x1b\n\x17\x41TTEST_GPS_INPUT_ABSENT\x10\x02*s\n\x11\x41ttestVersionType\x12\x1f\n\x1b\x41TTEST_VERSION_TYPE_INVALID\x10\x00\x12\x1b\n\x17\x41TTEST_VERSION_TYPE_EVE\x10\x01\x12 \n\x1c\x41TTEST_VERSION_TYPE_FIRMWARE\x10\x02*\xdb\x01\n\x13ZAttestResponseCode\x12\"\n\x1eZ_ATTEST_RESPONSE_CODE_INVALID\x10\x00\x12\"\n\x1eZ_ATTEST_RESPONSE_CODE_SUCCESS\x10\x01\x12)\n%Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH\x10\x02\x12(\n$Z_ATTEST_RESPONSE_CODE_NO_CERT_FOUND\x10\x03\x12\'\n#Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED\x10\x04*Y\n\x13\x41ttestVolumeKeyType\x12\"\n\x1e\x41TTEST_VOLUME_KEY_TYPE_INVALID\x10\x00\x12\x1e\n\x1a\x41TTEST_VOLUME_KEY_TYPE_VSK\x10\x01*\xb4\x01\n\x1d\x41ttestStorageKeysResponseCode\x12-\n)ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID\x10\x00\x12-\n)ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS\x10\x01\x12\x35\n1ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH\x10\x02\x42=\n\x15org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
   ,
   dependencies=[certs_dot_certs__pb2.DESCRIPTOR,])
 
@@ -47,11 +47,15 @@ _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
       name='ATTEST_REQ_QUOTE', index=3, number=3,
       serialized_options=None,
       type=None),
+    _descriptor.EnumValueDescriptor(
+      name='Z_ATTEST_REQ_TYPE_STORE_KEYS', index=4, number=4,
+      serialized_options=None,
+      type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=420,
-  serialized_end=522,
+  serialized_start=1434,
+  serialized_end=1570,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTREQTYPE)
 
@@ -78,15 +82,104 @@ _ZATTESTRESPTYPE = _descriptor.EnumDescriptor(
       name='ATTEST_RESP_QUOTE_RESP', index=3, number=3,
       serialized_options=None,
       type=None),
+    _descriptor.EnumValueDescriptor(
+      name='Z_ATTEST_RESP_TYPE_STORE_KEYS', index=4, number=4,
+      serialized_options=None,
+      type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=524,
-  serialized_end=636,
+  serialized_start=1573,
+  serialized_end=1720,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPTYPE)
 
 ZAttestRespType = enum_type_wrapper.EnumTypeWrapper(_ZATTESTRESPTYPE)
+_TPMHASHALGO = _descriptor.EnumDescriptor(
+  name='TpmHashAlgo',
+  full_name='TpmHashAlgo',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='TPM_HASH_ALGO_INVALID', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='TPM_HASH_ALGO_SHA1', index=1, number=1,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='TPM_HASH_ALGO_SHA256', index=2, number=2,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='TPM_HASH_ALGO_SHA512', index=3, number=3,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=1722,
+  serialized_end=1838,
+)
+_sym_db.RegisterEnumDescriptor(_TPMHASHALGO)
+
+TpmHashAlgo = enum_type_wrapper.EnumTypeWrapper(_TPMHASHALGO)
+_ATTESTGPSINPUT = _descriptor.EnumDescriptor(
+  name='AttestGPSInput',
+  full_name='AttestGPSInput',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_GPS_INPUT_INVALID', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_GPS_INPUT_PRESENT', index=1, number=1,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_GPS_INPUT_ABSENT', index=2, number=2,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=1840,
+  serialized_end=1945,
+)
+_sym_db.RegisterEnumDescriptor(_ATTESTGPSINPUT)
+
+AttestGPSInput = enum_type_wrapper.EnumTypeWrapper(_ATTESTGPSINPUT)
+_ATTESTVERSIONTYPE = _descriptor.EnumDescriptor(
+  name='AttestVersionType',
+  full_name='AttestVersionType',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_VERSION_TYPE_INVALID', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_VERSION_TYPE_EVE', index=1, number=1,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_VERSION_TYPE_FIRMWARE', index=2, number=2,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=1947,
+  serialized_end=2062,
+)
+_sym_db.RegisterEnumDescriptor(_ATTESTVERSIONTYPE)
+
+AttestVersionType = enum_type_wrapper.EnumTypeWrapper(_ATTESTVERSIONTYPE)
 _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
   name='ZAttestResponseCode',
   full_name='ZAttestResponseCode',
@@ -94,37 +187,114 @@ _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESPONSE_NONE', index=0, number=0,
+      name='Z_ATTEST_RESPONSE_CODE_INVALID', index=0, number=0,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESPONSE_SUCCESS', index=1, number=1,
+      name='Z_ATTEST_RESPONSE_CODE_SUCCESS', index=1, number=1,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESPONSE_FAILURE', index=2, number=2,
+      name='Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH', index=2, number=2,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='Z_ATTEST_RESPONSE_CODE_NO_CERT_FOUND', index=3, number=3,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED', index=4, number=4,
       serialized_options=None,
       type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=638,
-  serialized_end=743,
+  serialized_start=2065,
+  serialized_end=2284,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPONSECODE)
 
 ZAttestResponseCode = enum_type_wrapper.EnumTypeWrapper(_ZATTESTRESPONSECODE)
+_ATTESTVOLUMEKEYTYPE = _descriptor.EnumDescriptor(
+  name='AttestVolumeKeyType',
+  full_name='AttestVolumeKeyType',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_VOLUME_KEY_TYPE_INVALID', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_VOLUME_KEY_TYPE_VSK', index=1, number=1,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=2286,
+  serialized_end=2375,
+)
+_sym_db.RegisterEnumDescriptor(_ATTESTVOLUMEKEYTYPE)
+
+AttestVolumeKeyType = enum_type_wrapper.EnumTypeWrapper(_ATTESTVOLUMEKEYTYPE)
+_ATTESTSTORAGEKEYSRESPONSECODE = _descriptor.EnumDescriptor(
+  name='AttestStorageKeysResponseCode',
+  full_name='AttestStorageKeysResponseCode',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS', index=1, number=1,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH', index=2, number=2,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=2378,
+  serialized_end=2558,
+)
+_sym_db.RegisterEnumDescriptor(_ATTESTSTORAGEKEYSRESPONSECODE)
+
+AttestStorageKeysResponseCode = enum_type_wrapper.EnumTypeWrapper(_ATTESTSTORAGEKEYSRESPONSECODE)
 ATTEST_REQ_NONE = 0
 ATTEST_REQ_CERT = 1
 ATTEST_REQ_NONCE = 2
 ATTEST_REQ_QUOTE = 3
+Z_ATTEST_REQ_TYPE_STORE_KEYS = 4
 ATTEST_RESP_NONE = 0
 ATTEST_RESP_CERT = 1
 ATTEST_RESP_NONCE = 2
 ATTEST_RESP_QUOTE_RESP = 3
-ATTEST_RESPONSE_NONE = 0
-ATTEST_RESPONSE_SUCCESS = 1
-ATTEST_RESPONSE_FAILURE = 2
+Z_ATTEST_RESP_TYPE_STORE_KEYS = 4
+TPM_HASH_ALGO_INVALID = 0
+TPM_HASH_ALGO_SHA1 = 1
+TPM_HASH_ALGO_SHA256 = 2
+TPM_HASH_ALGO_SHA512 = 3
+ATTEST_GPS_INPUT_INVALID = 0
+ATTEST_GPS_INPUT_PRESENT = 1
+ATTEST_GPS_INPUT_ABSENT = 2
+ATTEST_VERSION_TYPE_INVALID = 0
+ATTEST_VERSION_TYPE_EVE = 1
+ATTEST_VERSION_TYPE_FIRMWARE = 2
+Z_ATTEST_RESPONSE_CODE_INVALID = 0
+Z_ATTEST_RESPONSE_CODE_SUCCESS = 1
+Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH = 2
+Z_ATTEST_RESPONSE_CODE_NO_CERT_FOUND = 3
+Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED = 4
+ATTEST_VOLUME_KEY_TYPE_INVALID = 0
+ATTEST_VOLUME_KEY_TYPE_VSK = 1
+ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID = 0
+ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS = 1
+ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH = 2
 
 
 
@@ -156,6 +326,13 @@ _ZATTESTREQ = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='storage_keys', full_name='ZAttestReq.storage_keys', index=3,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -168,8 +345,8 @@ _ZATTESTREQ = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=42,
-  serialized_end=141,
+  serialized_start=43,
+  serialized_end=184,
 )
 
 
@@ -201,6 +378,13 @@ _ZATTESTRESPONSE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='storage_keys_resp', full_name='ZAttestResponse.storage_keys_resp', index=3,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -213,8 +397,8 @@ _ZATTESTRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=143,
-  serialized_end=268,
+  serialized_start=187,
+  serialized_end=363,
 )
 
 
@@ -244,8 +428,240 @@ _ZATTESTNONCERESP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=270,
-  serialized_end=303,
+  serialized_start=365,
+  serialized_end=398,
+)
+
+
+_TPMEVENTDIGEST = _descriptor.Descriptor(
+  name='TpmEventDigest',
+  full_name='TpmEventDigest',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='hash_algo', full_name='TpmEventDigest.hash_algo', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='digest', full_name='TpmEventDigest.digest', index=1,
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=400,
+  serialized_end=465,
+)
+
+
+_TPMEVENTLOGENTRY = _descriptor.Descriptor(
+  name='TpmEventLogEntry',
+  full_name='TpmEventLogEntry',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='index', full_name='TpmEventLogEntry.index', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='pcr_index', full_name='TpmEventLogEntry.pcr_index', index=1,
+      number=2, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='event_type', full_name='TpmEventLogEntry.event_type', index=2,
+      number=3, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='digest', full_name='TpmEventLogEntry.digest', index=3,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='event_data_binary', full_name='TpmEventLogEntry.event_data_binary', index=4,
+      number=5, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='event_data_string', full_name='TpmEventLogEntry.event_data_string', index=5,
+      number=6, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=468,
+  serialized_end=627,
+)
+
+
+_ATTESTGPSCOORDINATES = _descriptor.Descriptor(
+  name='AttestGPSCoordinates',
+  full_name='AttestGPSCoordinates',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='gps_input', full_name='AttestGPSCoordinates.gps_input', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='latitude', full_name='AttestGPSCoordinates.latitude', index=1,
+      number=2, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='longitude', full_name='AttestGPSCoordinates.longitude', index=2,
+      number=3, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=629,
+  serialized_end=724,
+)
+
+
+_ATTESTVERSIONINFO = _descriptor.Descriptor(
+  name='AttestVersionInfo',
+  full_name='AttestVersionInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='version_type', full_name='AttestVersionInfo.version_type', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='version', full_name='AttestVersionInfo.version', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=726,
+  serialized_end=804,
+)
+
+
+_TPMPCRVALUE = _descriptor.Descriptor(
+  name='TpmPCRValue',
+  full_name='TpmPCRValue',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='index', full_name='TpmPCRValue.index', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='hash_algo', full_name='TpmPCRValue.hash_algo', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='value', full_name='TpmPCRValue.value', index=2,
+      number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=806,
+  serialized_end=882,
 )
 
 
@@ -270,6 +686,34 @@ _ZATTESTQUOTE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='pcr_values', full_name='ZAttestQuote.pcr_values', index=2,
+      number=3, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='event_log', full_name='ZAttestQuote.event_log', index=3,
+      number=4, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='versions', full_name='ZAttestQuote.versions', index=4,
+      number=5, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='gps_info', full_name='ZAttestQuote.gps_info', index=5,
+      number=6, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -282,8 +726,46 @@ _ZATTESTQUOTE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=305,
-  serialized_end=358,
+  serialized_start=885,
+  serialized_end=1089,
+)
+
+
+_ATTESTVOLUMEKEY = _descriptor.Descriptor(
+  name='AttestVolumeKey',
+  full_name='AttestVolumeKey',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='key_type', full_name='AttestVolumeKey.key_type', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='key', full_name='AttestVolumeKey.key', index=1,
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1091,
+  serialized_end=1161,
 )
 
 
@@ -301,6 +783,20 @@ _ZATTESTQUOTERESP = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='integrity_token', full_name='ZAttestQuoteResp.integrity_token', index=1,
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='keys', full_name='ZAttestQuoteResp.keys', index=2,
+      number=3, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -313,25 +809,122 @@ _ZATTESTQUOTERESP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=360,
-  serialized_end=418,
+  serialized_start=1163,
+  serialized_end=1278,
+)
+
+
+_ATTESTSTORAGEKEYS = _descriptor.Descriptor(
+  name='AttestStorageKeys',
+  full_name='AttestStorageKeys',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='integrity_token', full_name='AttestStorageKeys.integrity_token', index=0,
+      number=1, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='keys', full_name='AttestStorageKeys.keys', index=1,
+      number=2, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1280,
+  serialized_end=1356,
+)
+
+
+_ATTESTSTORAGEKEYSRESP = _descriptor.Descriptor(
+  name='AttestStorageKeysResp',
+  full_name='AttestStorageKeysResp',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='response', full_name='AttestStorageKeysResp.response', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1358,
+  serialized_end=1431,
 )
 
 _ZATTESTREQ.fields_by_name['reqType'].enum_type = _ZATTESTREQTYPE
 _ZATTESTREQ.fields_by_name['quote'].message_type = _ZATTESTQUOTE
 _ZATTESTREQ.fields_by_name['certs'].message_type = certs_dot_certs__pb2._ZCERT
+_ZATTESTREQ.fields_by_name['storage_keys'].message_type = _ATTESTSTORAGEKEYS
 _ZATTESTRESPONSE.fields_by_name['respType'].enum_type = _ZATTESTRESPTYPE
 _ZATTESTRESPONSE.fields_by_name['nonce'].message_type = _ZATTESTNONCERESP
 _ZATTESTRESPONSE.fields_by_name['quoteResp'].message_type = _ZATTESTQUOTERESP
+_ZATTESTRESPONSE.fields_by_name['storage_keys_resp'].message_type = _ATTESTSTORAGEKEYSRESP
+_TPMEVENTDIGEST.fields_by_name['hash_algo'].enum_type = _TPMHASHALGO
+_TPMEVENTLOGENTRY.fields_by_name['digest'].message_type = _TPMEVENTDIGEST
+_ATTESTGPSCOORDINATES.fields_by_name['gps_input'].enum_type = _ATTESTGPSINPUT
+_ATTESTVERSIONINFO.fields_by_name['version_type'].enum_type = _ATTESTVERSIONTYPE
+_TPMPCRVALUE.fields_by_name['hash_algo'].enum_type = _TPMHASHALGO
+_ZATTESTQUOTE.fields_by_name['pcr_values'].message_type = _TPMPCRVALUE
+_ZATTESTQUOTE.fields_by_name['event_log'].message_type = _TPMEVENTLOGENTRY
+_ZATTESTQUOTE.fields_by_name['versions'].message_type = _ATTESTVERSIONINFO
+_ZATTESTQUOTE.fields_by_name['gps_info'].message_type = _ATTESTGPSCOORDINATES
+_ATTESTVOLUMEKEY.fields_by_name['key_type'].enum_type = _ATTESTVOLUMEKEYTYPE
 _ZATTESTQUOTERESP.fields_by_name['response'].enum_type = _ZATTESTRESPONSECODE
+_ZATTESTQUOTERESP.fields_by_name['keys'].message_type = _ATTESTVOLUMEKEY
+_ATTESTSTORAGEKEYS.fields_by_name['keys'].message_type = _ATTESTVOLUMEKEY
+_ATTESTSTORAGEKEYSRESP.fields_by_name['response'].enum_type = _ATTESTSTORAGEKEYSRESPONSECODE
 DESCRIPTOR.message_types_by_name['ZAttestReq'] = _ZATTESTREQ
 DESCRIPTOR.message_types_by_name['ZAttestResponse'] = _ZATTESTRESPONSE
 DESCRIPTOR.message_types_by_name['ZAttestNonceResp'] = _ZATTESTNONCERESP
+DESCRIPTOR.message_types_by_name['TpmEventDigest'] = _TPMEVENTDIGEST
+DESCRIPTOR.message_types_by_name['TpmEventLogEntry'] = _TPMEVENTLOGENTRY
+DESCRIPTOR.message_types_by_name['AttestGPSCoordinates'] = _ATTESTGPSCOORDINATES
+DESCRIPTOR.message_types_by_name['AttestVersionInfo'] = _ATTESTVERSIONINFO
+DESCRIPTOR.message_types_by_name['TpmPCRValue'] = _TPMPCRVALUE
 DESCRIPTOR.message_types_by_name['ZAttestQuote'] = _ZATTESTQUOTE
+DESCRIPTOR.message_types_by_name['AttestVolumeKey'] = _ATTESTVOLUMEKEY
 DESCRIPTOR.message_types_by_name['ZAttestQuoteResp'] = _ZATTESTQUOTERESP
+DESCRIPTOR.message_types_by_name['AttestStorageKeys'] = _ATTESTSTORAGEKEYS
+DESCRIPTOR.message_types_by_name['AttestStorageKeysResp'] = _ATTESTSTORAGEKEYSRESP
 DESCRIPTOR.enum_types_by_name['ZAttestReqType'] = _ZATTESTREQTYPE
 DESCRIPTOR.enum_types_by_name['ZAttestRespType'] = _ZATTESTRESPTYPE
+DESCRIPTOR.enum_types_by_name['TpmHashAlgo'] = _TPMHASHALGO
+DESCRIPTOR.enum_types_by_name['AttestGPSInput'] = _ATTESTGPSINPUT
+DESCRIPTOR.enum_types_by_name['AttestVersionType'] = _ATTESTVERSIONTYPE
 DESCRIPTOR.enum_types_by_name['ZAttestResponseCode'] = _ZATTESTRESPONSECODE
+DESCRIPTOR.enum_types_by_name['AttestVolumeKeyType'] = _ATTESTVOLUMEKEYTYPE
+DESCRIPTOR.enum_types_by_name['AttestStorageKeysResponseCode'] = _ATTESTSTORAGEKEYSRESPONSECODE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 ZAttestReq = _reflection.GeneratedProtocolMessageType('ZAttestReq', (_message.Message,), dict(
@@ -355,6 +948,41 @@ ZAttestNonceResp = _reflection.GeneratedProtocolMessageType('ZAttestNonceResp', 
   ))
 _sym_db.RegisterMessage(ZAttestNonceResp)
 
+TpmEventDigest = _reflection.GeneratedProtocolMessageType('TpmEventDigest', (_message.Message,), dict(
+  DESCRIPTOR = _TPMEVENTDIGEST,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:TpmEventDigest)
+  ))
+_sym_db.RegisterMessage(TpmEventDigest)
+
+TpmEventLogEntry = _reflection.GeneratedProtocolMessageType('TpmEventLogEntry', (_message.Message,), dict(
+  DESCRIPTOR = _TPMEVENTLOGENTRY,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:TpmEventLogEntry)
+  ))
+_sym_db.RegisterMessage(TpmEventLogEntry)
+
+AttestGPSCoordinates = _reflection.GeneratedProtocolMessageType('AttestGPSCoordinates', (_message.Message,), dict(
+  DESCRIPTOR = _ATTESTGPSCOORDINATES,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:AttestGPSCoordinates)
+  ))
+_sym_db.RegisterMessage(AttestGPSCoordinates)
+
+AttestVersionInfo = _reflection.GeneratedProtocolMessageType('AttestVersionInfo', (_message.Message,), dict(
+  DESCRIPTOR = _ATTESTVERSIONINFO,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:AttestVersionInfo)
+  ))
+_sym_db.RegisterMessage(AttestVersionInfo)
+
+TpmPCRValue = _reflection.GeneratedProtocolMessageType('TpmPCRValue', (_message.Message,), dict(
+  DESCRIPTOR = _TPMPCRVALUE,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:TpmPCRValue)
+  ))
+_sym_db.RegisterMessage(TpmPCRValue)
+
 ZAttestQuote = _reflection.GeneratedProtocolMessageType('ZAttestQuote', (_message.Message,), dict(
   DESCRIPTOR = _ZATTESTQUOTE,
   __module__ = 'attest.attest_pb2'
@@ -362,12 +990,33 @@ ZAttestQuote = _reflection.GeneratedProtocolMessageType('ZAttestQuote', (_messag
   ))
 _sym_db.RegisterMessage(ZAttestQuote)
 
+AttestVolumeKey = _reflection.GeneratedProtocolMessageType('AttestVolumeKey', (_message.Message,), dict(
+  DESCRIPTOR = _ATTESTVOLUMEKEY,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:AttestVolumeKey)
+  ))
+_sym_db.RegisterMessage(AttestVolumeKey)
+
 ZAttestQuoteResp = _reflection.GeneratedProtocolMessageType('ZAttestQuoteResp', (_message.Message,), dict(
   DESCRIPTOR = _ZATTESTQUOTERESP,
   __module__ = 'attest.attest_pb2'
   # @@protoc_insertion_point(class_scope:ZAttestQuoteResp)
   ))
 _sym_db.RegisterMessage(ZAttestQuoteResp)
+
+AttestStorageKeys = _reflection.GeneratedProtocolMessageType('AttestStorageKeys', (_message.Message,), dict(
+  DESCRIPTOR = _ATTESTSTORAGEKEYS,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:AttestStorageKeys)
+  ))
+_sym_db.RegisterMessage(AttestStorageKeys)
+
+AttestStorageKeysResp = _reflection.GeneratedProtocolMessageType('AttestStorageKeysResp', (_message.Message,), dict(
+  DESCRIPTOR = _ATTESTSTORAGEKEYSRESP,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:AttestStorageKeysResp)
+  ))
+_sym_db.RegisterMessage(AttestStorageKeysResp)
 
 
 DESCRIPTOR._options = None
