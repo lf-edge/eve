@@ -156,6 +156,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device]
   driver = "intel-iommu"
+  caching-mode = "on"
 
 [realtime]
   mlock = "off"
@@ -415,6 +416,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [device]
   driver = "intel-iommu"
+  caching-mode = "on"
 
 [realtime]
   mlock = "off"
@@ -968,6 +970,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "intel-iommu"
+  caching-mode = "on"
 
 [realtime]
   mlock = "off"
@@ -1230,6 +1233,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "intel-iommu"
+  caching-mode = "on"
 
 [realtime]
   mlock = "off"
