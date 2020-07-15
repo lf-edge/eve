@@ -195,9 +195,13 @@ const qemuDiskTemplate = `
   readonly = "on"
 
 [device "sata0-{{.SATAId}}"]
+  drive = "drive-sata0-{{.DiskID}}"
+{{- if eq .Machine "virt"}}
+  driver = "usb-storage"
+{{else}}
   driver = "ide-cd"
   bus = "ide.{{.SATAId}}"
-  drive = "drive-sata0-{{.DiskID}}"
+{{- end }}
 {{else if eq .Devtype "CONTAINER"}}
 [fsdev "fsdev{{.DiskID}}"]
   fsdriver = "local"
@@ -390,10 +394,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	// render disk device model settings
 	diskContext := struct {
+		Machine                       string
 		PCIId, DiskID, SATAId         int
 		DiskFile, DiskFormat, Devtype string
 		ro                            bool
-	}{PCIId: 4, DiskID: 0, SATAId: 0}
+	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0}
 	t, _ = template.New("qemuDisk").Parse(qemuDiskTemplate)
 	for _, ds := range diskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
