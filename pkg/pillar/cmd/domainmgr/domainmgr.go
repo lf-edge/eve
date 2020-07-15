@@ -177,6 +177,11 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// These settings can be overridden by GlobalConfig
+	// Note that if this device has never connected to the controller
+	// usbAccess is set to true. Once it connects it will get the default
+	// from the controller which is likely to be false. That is persisted
+	// hence will be overridden in handleGlobalConfig below.
+	// This helps onboarding new hardware by making keyboard etc available
 	domainCtx := domainContext{
 		usbAccess:           true,
 		domainBootRetryTime: 600,
