@@ -711,7 +711,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 #  bus = "pcie.0"
 #  addr = "0x1"
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
@@ -731,9 +731,14 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   addr = "0x0"
 
 [device "input0"]
-  driver = "usb-tablet"
+  driver = "usb-kbd"
   bus = "usb.0"
   port = "1"
+
+[device "input1"]
+  driver = "usb-mouse"
+  bus = "usb.0"
+  port = "2"
 
 
 [device "pci.4"]
@@ -1524,7 +1529,7 @@ func TestCreateDomConfig(t *testing.T) {
 #  bus = "pcie.0"
 #  addr = "0x1"
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
@@ -1544,9 +1549,14 @@ func TestCreateDomConfig(t *testing.T) {
   addr = "0x0"
 
 [device "input0"]
-  driver = "usb-tablet"
+  driver = "usb-kbd"
   bus = "usb.0"
   port = "1"
+
+[device "input1"]
+  driver = "usb-mouse"
+  bus = "usb.0"
+  port = "2"
 
 
 [device "pci.4"]
