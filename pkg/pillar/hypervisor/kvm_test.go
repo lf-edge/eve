@@ -304,9 +304,9 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   readonly = "on"
 
 [device "sata0-0"]
+  drive = "drive-sata0-3"
   driver = "ide-cd"
   bus = "ide.0"
-  drive = "drive-sata0-3"
 
 [device "pci.7"]
   driver = "pcie-root-port"
@@ -563,9 +563,9 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   readonly = "on"
 
 [device "sata0-0"]
+  drive = "drive-sata0-3"
   driver = "ide-cd"
   bus = "ide.0"
-  drive = "drive-sata0-3"
 
 [device "pci.7"]
   driver = "pcie-root-port"
@@ -798,9 +798,9 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   readonly = "on"
 
 [device "sata0-0"]
-  driver = "ide-cd"
-  bus = "ide.0"
   drive = "drive-sata0-3"
+  driver = "usb-storage"
+
 
 [device "pci.7"]
   driver = "pcie-root-port"
@@ -1111,9 +1111,9 @@ func TestCreateDomConfig(t *testing.T) {
   readonly = "on"
 
 [device "sata0-0"]
+  drive = "drive-sata0-3"
   driver = "ide-cd"
   bus = "ide.0"
-  drive = "drive-sata0-3"
 
 [device "pci.7"]
   driver = "pcie-root-port"
@@ -1373,9 +1373,9 @@ func TestCreateDomConfig(t *testing.T) {
   readonly = "on"
 
 [device "sata0-0"]
+  drive = "drive-sata0-3"
   driver = "ide-cd"
   bus = "ide.0"
-  drive = "drive-sata0-3"
 
 [device "pci.7"]
   driver = "pcie-root-port"
@@ -1611,9 +1611,9 @@ func TestCreateDomConfig(t *testing.T) {
   readonly = "on"
 
 [device "sata0-0"]
-  driver = "ide-cd"
-  bus = "ide.0"
   drive = "drive-sata0-3"
+  driver = "usb-storage"
+
 
 [device "pci.7"]
   driver = "pcie-root-port"
