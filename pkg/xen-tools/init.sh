@@ -7,6 +7,7 @@ if [ -d /proc/xen/ ]; then
    echo "Xen hypervisor support detected"
 
    # set things up for log collection
+   cp -r /var.template/* /var
    mkdir -p /var/log/xen
    mkfifo /var/log/xen/xen-hotplug.log
 
@@ -30,9 +31,13 @@ if [ -d /proc/xen/ ]; then
 
 elif [ -e /dev/kvm ]; then
    echo "KVM hypervisor support detected"
+
+   # set things up for R/O FS qemu task execution
+   ln -s . /run/run || :
+
    while true ; do sleep 60 ; done
 
 else
-   echo "No hypervisor support detected, feel free to run bare-metail containers"
+   echo "No hypervisor support detected, feel free to run bare-metal containers"
 
 fi
