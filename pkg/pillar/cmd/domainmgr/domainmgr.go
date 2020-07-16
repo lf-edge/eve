@@ -80,12 +80,16 @@ type domainContext struct {
 	subDomainConfig        pubsub.Subscription
 	pubDomainStatus        pubsub.Publication
 	subGlobalConfig        pubsub.Subscription
+	subOnboardStatus       pubsub.Subscription
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
+	onboarded              bool
+	GCComplete             bool
+	setInitialUsbAccess    bool
 	GCInitialized          bool
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
@@ -311,6 +315,7 @@ func Run(ps *pubsub.PubSub) {
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
+			SyncHandler:   handleGlobalConfigSync,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
@@ -319,6 +324,22 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		CreateHandler: handleOnboardStatusModify,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &domainCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subOnboardStatus = subOnboardStatus
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
@@ -346,17 +367,60 @@ func Run(ps *pubsub.PubSub) {
 	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
 	defer domainCtx.casClient.CloseClient()
 
+	// Parse any existing ConfigIntemValueMap but continue if there
+	// is none
+	for !domainCtx.GCComplete {
+		log.Infof("waiting for GCComplete")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GCComplete")
+
+	if !domainCtx.setInitialUsbAccess {
+		log.Infof("GCComplete but not setInitialUsbAccess => first boot")
+		// Enable USB keyboard and storage
+		domainCtx.usbAccess = true
+		updateUsbAccess(&domainCtx)
+		domainCtx.setInitialUsbAccess = true
+	}
+
 	// Pick up debug aka log level before we start real work
 	for !domainCtx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
+
+	// Wait until we have been onboarded aka know our own UUID
+	for !domainCtx.onboarded {
+		log.Infof("Waiting for onboarded")
+		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed onboarded")
 
 	go metricsTimerTask(&domainCtx, hyper)
 
@@ -371,6 +435,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -1822,11 +1887,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
 			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
 		}
+		// XXX remove the initialized case?
 		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess ||
-			!ctx.GCInitialized {
+			!ctx.setInitialUsbAccess {
 
 			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
 			updateUsbAccess(ctx)
+			ctx.setInitialUsbAccess = true
 		}
 		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
 			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
@@ -1851,6 +1918,19 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
+}
+
+// This gets called once the GlobalConfig subscription/directory has been
+// completely processed. Thus will signal that we might have an empty
+// ConfigValueMap on initial boot, if GCComplete is set but GCInitialized is
+// not set.
+func handleGlobalConfigSync(ctxArg interface{}, done bool) {
+
+	ctx := ctxArg.(*domainContext)
+	log.Infof("handleGlobalConfigSync %t", done)
+	if done {
+		ctx.GCComplete = true
+	}
 }
 
 // getCloudInitUserData : returns decrypted cloud-init user data
