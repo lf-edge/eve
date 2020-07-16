@@ -4,6 +4,7 @@
 package volumemgr
 
 import (
+	"fmt"
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -89,6 +90,12 @@ func handleContentTreeDeleteBaseOs(ctxArg interface{}, key string,
 	log.Infof("handleContentTreeModify(%s) Done", key)
 }
 
+func handleContentTreeRestart(ctxArg interface{}, done bool) {
+	log.Infof("handleContentTreeRestart(%v)", done)
+	ctx := ctxArg.(*volumemgrContext)
+	ctx.contentTreeRestarted = true
+}
+
 func publishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 
 	key := status.Key()
@@ -168,7 +175,6 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 		// we only publish the BlobStatus if we have the hash for it; this
 		// might come later
 		if config.ContentSha256 != "" {
-			status.Blobs = append(status.Blobs, config.ContentSha256)
 			sv := SignatureVerifier{
 				Signature:        config.ImageSignature,
 				PublicKey:        config.SignatureKey,
@@ -189,11 +195,54 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}
+			AddBlobsToContentTreeStatus(ctx, status, strings.ToLower(config.ContentSha256))
 		}
 	}
 	publishContentTreeStatus(ctx, status)
 	log.Infof("createContentTreeStatus for %v Done", config.ContentID)
 	return status
+}
+
+//AddBlobsToContentTreeStatus adds blob to ContentTreeStatus.Blobs also increments RefCount of the respective BlobStatus.
+//NOTE: This should be the only method to add blobs into ContentTreeStatus.Blobs
+func AddBlobsToContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus, blobShas ...string) error {
+	log.Infof("AddBlobsToContentTreeStatus(%s): for blobs %v", status.ContentID, blobShas)
+	for _, blobSha := range blobShas {
+		blobStatus := lookupBlobStatus(ctx, blobSha)
+		if blobStatus == nil {
+			err := fmt.Errorf("AddBlobsToContentTreeStatus(%s): No BlobStatus found for blobHash: %s",
+				status.ContentID.String(), blobSha)
+			log.Errorf(err.Error())
+			return err
+		}
+		// Adding a blob to ContentTreeStatus and incrementing the refcount of that blob should be atomic as
+		// we would depend on that while we remove a blob from ContentTreeStatus and decrement
+		// the RefCount of that blob. In case if the blobs in a ContentTreeStatus in not in sync with the
+		// corresponding Blob's Refcount, then that would lead to Fatal error.
+		// If the same sha appears in multiple places in the ContentTree we intentionally add it twice to the list of
+		// Blobs so that we can have two reference counts on that blob.
+		status.Blobs = append(status.Blobs, blobSha)
+		AddRefToBlobStatus(ctx, blobStatus)
+	}
+	return nil
+}
+
+//RemoveAllBlobsFromContentTreeStatus removes all the blob from ContentTreeStatus.Blobs also decrements RefCount of the
+// respective BlobStatus.
+//NOTE: This should be the only method to remove blobs from ContentTreeStatus.Blobs
+func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus, blobShas ...string) {
+	log.Infof("RemoveAllBlobsFromContentTreeStatus(%s): for blobs %v", status.ContentID, blobShas)
+	for _, blobSha := range status.Blobs {
+		blobStatus := lookupBlobStatus(ctx, blobSha)
+		if blobStatus == nil {
+			err := fmt.Errorf("RemoveAllBlobsFromContentTreeStatus(%s): No BlobStatus found for blobHash: %s",
+				status.ContentID.String(), blobSha)
+			log.Errorf(err.Error())
+			continue
+		}
+		RemoveRefFromBlobStatus(ctx, blobStatus)
+	}
+	status.Blobs = make([]string, 0)
 }
 
 func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
@@ -209,6 +258,14 @@ func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 
 func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	log.Infof("deleteContentTree for %v", status.ContentID)
+	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
+	if status.Format == zconfig.Format_CONTAINER {
+		//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
+		if err := ctx.casClient.RemoveImage(getReferenceID(status.ContentID.String(), status.RelativeURL)); err != nil {
+			log.Errorf("deleteContentTree: exception while deleting image %s: %s",
+				status.RelativeURL, err.Error())
+		}
+	}
 	unpublishContentTreeStatus(ctx, status)
 	deleteLatchContentTreeHash(ctx, status.ContentID, uint32(status.GenerationCounter))
 	log.Infof("deleteContentTree for %v Done", status.ContentID)

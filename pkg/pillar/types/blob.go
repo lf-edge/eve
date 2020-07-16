@@ -30,7 +30,7 @@ type BlobStatus struct {
 	HasDownloaderRef bool
 	// HasVerifierRef whether or not we have started a verifier for this blob
 	HasVerifierRef bool
-	// RefCount number of consumers of this blob
+	// RefCount number of consumers referring this object
 	RefCount uint
 	// WaitingForCerts waiting for certificates and so cannot continue verifying
 	WaitingForCerts bool

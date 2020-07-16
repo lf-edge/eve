@@ -8,12 +8,12 @@ package upgradeconverter
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -141,16 +141,8 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 				}
 			}
 			// For containers we save the old basename in a file
-			snapshotID := filepath.Base(oldPath)
-			filename := filepath.Join(newPath, "snapshotid.txt")
-			err := ioutil.WriteFile(filename, []byte(snapshotID),
-				0644)
-			if err != nil {
-				log.Errorf("Save snapshotID %s failed: %s",
-					snapshotID, err)
-			} else {
-				log.Infof("Saved snapshotID %s in %s",
-					snapshotID, filename)
+			if err := containerd.SaveSnapshotID(oldPath, newPath); err != nil {
+				log.Errorf("maybeMove: exception while saving snapshotID: %s", err.Error())
 			}
 		} else {
 			// Must copy due to fscrypt

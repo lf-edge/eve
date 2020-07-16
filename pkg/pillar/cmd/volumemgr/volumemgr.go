@@ -12,13 +12,14 @@ import (
 	"os"
 	"time"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -29,8 +30,9 @@ const (
 	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
 	volumeClearDirName     = types.VolumeClearDirName     // We store un-encrypted VM and OCI volumes here
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime     = 3 * time.Minute
+	warningTime   = 40 * time.Second
+	casClientType = "containerd"
 )
 
 // Set from Makefile
@@ -68,13 +70,18 @@ type volumemgrContext struct {
 
 	worker *worker.Worker // For background work
 
-	verifierRestarted bool // Wait for verifier to restar
-	usingConfig       bool // From zedagent
-	gcRunning         bool
+	verifierRestarted    bool // Wait for verifier to restart
+	contentTreeRestarted bool // Wait to receive all contentTree after restart
+	usingConfig          bool // From zedagent
+	gcRunning            bool
 
 	globalConfig  *types.ConfigItemValueMap
 	GCInitialized bool
 	vdiskGCTime   uint32 // In seconds; XXX delete when OldVolumeStatus is deleted
+
+	// Common CAS client which can be used by multiple routines.
+	// There is no shared data so its safe to be used by multiple goroutines
+	casClient cas.CAS
 }
 
 var debug = false
@@ -333,14 +340,15 @@ func Run(ps *pubsub.PubSub) {
 	subResolveStatus.Activate()
 
 	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeCreateAppImg,
-		ModifyHandler: handleContentTreeModifyAppImg,
-		DeleteHandler: handleContentTreeDeleteAppImg,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "zedagent",
-		TopicImpl:     types.ContentTreeConfig{},
-		Ctx:           &ctx,
+		CreateHandler:  handleContentTreeCreateAppImg,
+		ModifyHandler:  handleContentTreeModifyAppImg,
+		DeleteHandler:  handleContentTreeDeleteAppImg,
+		RestartHandler: handleContentTreeRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+		AgentName:      "zedagent",
+		TopicImpl:      types.ContentTreeConfig{},
+		Ctx:            &ctx,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -409,14 +417,21 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	if err := containerd.InitContainerdClient(); err != nil {
+	if ctx.casClient, err = cas.NewCAS(casClientType); err != nil {
+		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
 		log.Fatal(err)
 	}
-	defer containerd.CtrdClient.Close()
+
+	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
+	defer ctx.casClient.CloseClient()
+
+	populateInitBlobStatus(&ctx)
 
 	// First we process the verifierStatus to avoid triggering a download
 	// of an image we already have in place.
-	for !ctx.verifierRestarted {
+	// Also we wait for zedagent to send all contentTreeConfig so that we can GC all blobs which
+	// doesn't have ConfigTree ref
+	for !ctx.verifierRestarted && !ctx.contentTreeRestarted {
 		log.Warnf("Subject to watchdog. Waiting for verifierRestarted")
 
 		select {
@@ -425,6 +440,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subVerifyImageStatus.MsgChan():
 			subVerifyImageStatus.ProcessChange(change)
+
+		case change := <-ctx.subContentTreeConfig.MsgChan():
+			ctx.subContentTreeConfig.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
 			HandleWorkResult(&ctx, ctx.worker.Process(res))
@@ -446,6 +464,7 @@ func Run(ps *pubsub.PubSub) {
 	duration := time.Duration(ctx.vdiskGCTime / 10)
 	ctx.gc = time.NewTicker(duration * time.Second)
 	ctx.gc.Stop()
+	gcUnusedInitObjects(&ctx)
 
 	for {
 		select {
@@ -493,6 +512,13 @@ func Run(ps *pubsub.PubSub) {
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+//gcUnusedInitObjects this method will garbage collect all unused resource during init
+func gcUnusedInitObjects(ctx *volumemgrContext) {
+	log.Infof("gcUnusedInitObjects")
+	gcBlobStatus(ctx)
+	gcVerifyImageConfig(ctx)
 }
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {

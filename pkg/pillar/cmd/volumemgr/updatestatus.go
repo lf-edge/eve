@@ -9,7 +9,6 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
@@ -93,10 +92,10 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			}
 
 			// at this point, we will have the hash of the root blob as status.ContentSha256,
-			// so we need to create the BlobStatus, if it does not exist
-			// if it does not already exist
-			if lookupOrCreateBlobStatus(ctx, sv, status.ContentSha256) == nil {
-				rootBlob := &types.BlobStatus{
+			// so we need to create the BlobStatus, if it does not exist already
+			rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.ContentSha256)
+			if rootBlob == nil {
+				rootBlob = &types.BlobStatus{
 					DatastoreID: status.DatastoreID,
 					RelativeURL: status.RelativeURL,
 					Sha256:      status.ContentSha256,
@@ -104,12 +103,20 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					State:       types.INITIAL,
 					BlobType:    types.BlobUnknown,
 				}
-				log.Infof("doUpdateContentTree: publishing root BlobStatus (%s) for content tree (%s)",
+				log.Infof("doUpdateContentTree: publishing new root BlobStatus (%s) for content tree (%s)",
+					status.ContentSha256, status.ContentID)
+				publishBlobStatus(ctx, rootBlob)
+			} else if rootBlob.State == types.LOADED {
+				//Need to update DatastoreID and RelativeURL if the blob is already loaded into CAS,
+				// because if any child blob is not downloaded, then we would need the below data.
+				rootBlob.DatastoreID = status.DatastoreID
+				rootBlob.RelativeURL = status.RelativeURL
+				log.Infof("doUpdateContentTree: publishing loaded root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
 				publishBlobStatus(ctx, rootBlob)
 			}
 			if len(status.Blobs) == 0 {
-				status.Blobs = append(status.Blobs, status.ContentSha256)
+				AddBlobsToContentTreeStatus(ctx, status, rootBlob.Sha256)
 			}
 		}
 
@@ -159,7 +166,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					changed = true
 				}
 			}
-			if blob.State != types.VERIFIED {
+			if blob.State < types.VERIFIED {
 				leftToProcess = true
 				log.Errorf("doUpdateContentTree: left to process due to state '%s' for content blob %s",
 					blob.State, blob.Sha256)
@@ -167,7 +174,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				log.Infof("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
 				// if verified, check for any children and start them off
 				// resolve any unknown types and get manifests of index, or children of manifest
-				blobType, err := resolveBlobType(blob)
+				blobType, err := resolveBlobType(ctx, blob)
 				if blobType != blob.BlobType || err != nil {
 					blob.BlobType = blobType
 					publishBlobStatus(ctx, blob)
@@ -179,19 +186,19 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
-				blobChildren := blobsNotInList(getBlobChildren(blob), status.Blobs)
+				blobChildren := blobsNotInList(getBlobChildren(ctx, sv, blob), status.Blobs)
 				if len(blobChildren) > 0 {
 					log.Infof("doUpdateContentTree: adding %d children", len(blobChildren))
 					// add all of the children
 					for _, blob := range blobChildren {
 						addedBlobs = append(addedBlobs, blob.Sha256)
 					}
-					status.Blobs = append(status.Blobs, addedBlobs...)
 					// only publish those that do not already exist
 					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
+					AddBlobsToContentTreeStatus(ctx, status, addedBlobs...)
 				}
 				if blob.BlobType == types.BlobManifest {
-					size := resolveManifestSize(*blob)
+					size := resolveManifestSize(ctx, *blob)
 					if size != status.TotalSize {
 						status.TotalSize = size
 						changed = true
@@ -267,14 +274,24 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// for now, we only load containers into containerd
 		// TODO: next stage, load disk images as well
 		if status.Format == zconfig.Format_CONTAINER {
-			// get all of the blobs
-			if err := containerd.LoadBlobs(lookupBlobStatuses(ctx, status.Blobs...), status.RelativeURL); err != nil {
-				log.Errorf("doUpdateContentTree(%s) unable to load blobs into containerd: %v", status.Key(), err)
-				status.SetErrorWithSource(fmt.Sprintf("unable to load blobs into containerd: %v", err),
-					types.ContentTreeStatus{}, time.Now())
+			if err := ctx.casClient.IngestBlobsAnsCreateImage(
+				getReferenceID(status.ContentID.String(), status.RelativeURL),
+				lookupBlobStatuses(ctx, status.Blobs...)...); err != nil {
+				err = fmt.Errorf("doUpdateContentTree(%s): Exception while loading blobs into CAS: %s",
+					status.ContentID, err.Error())
+				log.Errorf(err.Error())
+				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
 				return changed, false
 			}
-			log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into containerd", status.Key())
+			for _, loadedBlob := range lookupBlobStatuses(ctx, status.Blobs...) {
+				log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
+				if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
+					MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
+					loadedBlob.HasVerifierRef = false
+				}
+				publishBlobStatus(ctx, loadedBlob)
+			}
+			log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
 		}
 		status.State = types.VERIFIED
 		changed = true
@@ -361,7 +378,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				return changed, false
 			}
 			status.FileLocation = ctStatus.FileLocation
-			status.ReferenceName = ctStatus.RelativeURL
+			status.ReferenceName = getReferenceID(ctStatus.ContentID.String(), ctStatus.RelativeURL)
 			status.ContentFormat = ctStatus.Format
 			changed = true
 			// Asynch creation; ensure we have requested it
@@ -556,4 +573,50 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	if !found {
 		log.Warnf("XXX updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
 	}
+}
+
+func loadBlobsAndCreateRefInCAS(ctx *volumemgrContext, status *types.ContentTreeStatus) error {
+	// get all of the blobs
+	log.Infof("loadBlobsAndCreateRefInCAS(%s): Attempting to load blobs: %v", status.Key(), status.Blobs)
+	loadedBlobs, err := ctx.casClient.IngestBlob(lookupBlobStatuses(ctx, status.Blobs...)...)
+	for _, loadedBlob := range loadedBlobs {
+		log.Infof("loadBlobsAndCreateRefInCAS(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
+		if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
+			MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
+			loadedBlob.HasVerifierRef = false
+		}
+		publishBlobStatus(ctx, loadedBlob)
+	}
+	if err != nil {
+		err = fmt.Errorf("loadBlobsAndCreateRefInCAS(%s) Exception while loading blobs into CAS: %v",
+			status.Key(), err)
+		log.Errorf(err.Error())
+		return err
+	}
+	reference := getReferenceID(status.ContentID.String(), status.RelativeURL)
+	rootBlobSha := checkAndCorrectBlobHash(status.Blobs[0])
+	imageHash, err := ctx.casClient.GetImageHash(reference)
+	log.Infof("loadBlobsAndCreateRefInCAS(%s): creating/updating reference: %s", status.Key(), reference)
+	if err != nil || imageHash == "" {
+		if err := ctx.casClient.CreateImage(reference, rootBlobSha); err != nil {
+			err = fmt.Errorf("loadBlobsAndCreateRefInCAS: could not create image for %s with root %s: %v",
+				reference, rootBlobSha, err.Error())
+			log.Errorf(err.Error())
+			return err
+		}
+	} else {
+		if err := ctx.casClient.ReplaceImage(reference, rootBlobSha); err != nil {
+			err = fmt.Errorf("loadBlobsAndCreateRefInCAS: could not update image for %s with root %s: %v",
+				reference, rootBlobSha, err.Error())
+			log.Errorf(err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
+//getReferenceID returns a unique referenceID for a contentTree.
+//It necessary to prepend contentID as we would get same referenceID in case if 2 contentTree has same relativeURL,
+func getReferenceID(contentID, relativeURL string) string {
+	return fmt.Sprintf("%s-%s", contentID, relativeURL)
 }

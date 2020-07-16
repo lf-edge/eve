@@ -79,6 +79,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		}
 		publishContentTreeConfig(ctx, *contentConfig)
 	}
+	ctx.pubContentTreeConfig.SignalRestarted()
 	log.Infof("parsing content info config done\n")
 }
 
