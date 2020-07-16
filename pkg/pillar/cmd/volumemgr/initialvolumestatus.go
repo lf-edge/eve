@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -66,7 +65,7 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 			log.Infof("gcObjects: Found unused volume %s. Deleting it.",
 				filelocation)
 			if format == "CONTAINER" {
-				_ = containerd.SnapshotRm(filelocation, true)
+				_ = ctx.casClient.RemoveContainerRootDir(filelocation)
 			}
 			deleteFile(filelocation)
 		}

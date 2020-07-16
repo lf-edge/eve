@@ -10,7 +10,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -74,8 +73,22 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	created := false
 
 	filelocation := status.PathName()
-
-	if err := containerd.SnapshotPrepare(filelocation, ref); err != nil {
+	ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
+	if ctStatus == nil {
+		err := fmt.Errorf("createContainerVolume: Unable to find contentTreeStatus %s for Volume %s",
+			status.ContentID.String(), status.VolumeID)
+		log.Errorf(err.Error())
+		return created, filelocation, err
+	}
+	//First blob in the list will be a root Blob
+	rootBlobStatus := lookupBlobStatus(ctx, ctStatus.Blobs[0])
+	if rootBlobStatus == nil {
+		err := fmt.Errorf("createContainerVolume: Unable to find root BlobStatus %s for Volume %s",
+			ctStatus.Blobs[0], status.VolumeID)
+		log.Errorf(err.Error())
+		return created, filelocation, err
+	}
+	if err := ctx.casClient.PrepareContainerRootDir(filelocation, ref, checkAndCorrectBlobHash(rootBlobStatus.Sha256)); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}
@@ -136,7 +149,7 @@ func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (b
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
 	log.Infof("Removing container volume %s", filelocation)
-	if err := containerd.SnapshotRm(filelocation, true); err != nil {
+	if err := ctx.casClient.RemoveContainerRootDir(filelocation); err != nil {
 		return created, filelocation, err
 	}
 	filelocation = ""

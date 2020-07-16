@@ -26,6 +26,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -50,6 +51,7 @@ const (
 	errorTime           = 3 * time.Minute
 	warningTime         = 40 * time.Second
 	containerRootfsPath = "rootfs/"
+	casClientType       = "containerd"
 )
 
 // Really a constant
@@ -87,6 +89,10 @@ type domainContext struct {
 	GCInitialized          bool
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
+
+	// Common CAS client which can be used by multiple routines.
+	// There is no shared data so its safe to be used by multiple goroutines
+	casClient cas.CAS
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -327,10 +333,13 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	if err := containerd.InitContainerdClient(); err != nil {
+	if domainCtx.casClient, err = cas.NewCAS(casClientType); err != nil {
+		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
 		log.Fatal(err)
 	}
-	defer containerd.CtrdClient.Close()
+
+	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
+	defer domainCtx.casClient.CloseClient()
 
 	// Pick up debug aka log level before we start real work
 	for !domainCtx.GCInitialized {
@@ -1072,7 +1081,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 
 		snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-		if err := containerd.CtrMountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
+		if err := ctx.casClient.MountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
 			err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
 				snapshotID, config.UUIDandVersion.UUID, err)
 			log.Error(err.Error())

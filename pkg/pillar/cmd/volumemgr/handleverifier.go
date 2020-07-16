@@ -105,6 +105,11 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s",
 		m.RefCount, imageSha)
 	publishVerifyImageConfig(ctx, m)
+
+	if m.RefCount == 0 {
+		log.Infof("MaybeRemoveVerifyImageConfig(%s): marking VerifyImageConfig as expired", imageSha)
+		MaybeDeleteVerifyImageConfig(ctx, imageSha)
+	}
 	log.Infof("MaybeRemoveVerifyImageConfig done for %s", imageSha)
 }
 
@@ -151,6 +156,7 @@ func MaybeDeleteVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
 		return
 	}
 	m.Expired = true
+	publishVerifyImageConfig(ctx, m)
 	log.Infof("MaybeDeleteVerifyImageConfig done for %s", imageSha)
 }
 
@@ -232,4 +238,17 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*volumemgrContext)
 	updateStatus(ctx, status.ImageSha256)
 	log.Infof("handleVerifyImageStatusDelete done for %s", key)
+}
+
+//gcVerifyImageConfig marks all VerifyImageConfig with refCount = 0 as expired
+func gcVerifyImageConfig(ctx *volumemgrContext) {
+	verifyImageConfigMap := ctx.pubVerifyImageConfig.GetAll()
+
+	for _, verifyImageConfigIntf := range verifyImageConfigMap {
+		verifyImageConfig := verifyImageConfigIntf.(types.VerifyImageConfig)
+		if verifyImageConfig.RefCount == 0 {
+			log.Infof("gcVerifyImageConfig(%s): marking VerifyImageConfig as expired", verifyImageConfig.Key())
+			MaybeDeleteVerifyImageConfig(ctx, verifyImageConfig.Key())
+		}
+	}
 }
