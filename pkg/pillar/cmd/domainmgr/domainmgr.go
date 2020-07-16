@@ -741,7 +741,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		configActivate = true
 	}
 
-	domainID, domainStatus, err := status.Task.Info(status.DomainName, status.DomainId)
+	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
 	if err != nil {
 		if status.Activated && configActivate {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
@@ -787,7 +787,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
-			if err := status.Task.Delete(status.DomainName, status.DomainId); err != nil {
+			if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
 				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 			}
 		}
@@ -1175,13 +1175,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if status.VirtualizationMode == types.NOHYPER {
-		status.Task, err = hypervisor.GetHypervisor("containerd")
-	} else {
-		status.Task = hyper
-	}
-
-	if err := status.Task.Setup(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
+	if err := hyper.Task(status).Setup(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
@@ -1228,7 +1222,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.State = types.BOOTING
 	publishDomainStatus(ctx, status)
 
-	err := status.Task.Start(status.DomainName, domainID)
+	err := hyper.Task(status).Start(status.DomainName, domainID)
 	if err != nil {
 		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
@@ -1240,7 +1234,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	domainID, _, err = status.Task.Info(status.DomainName, status.DomainId)
+	domainID, _, err = hyper.Task(status).Info(status.DomainName, status.DomainId)
 
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
@@ -1259,7 +1253,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Infof("doInactivate(%v) for %s",
 		status.UUIDandVersion, status.DisplayName)
-	domainID, _, err := status.Task.Info(status.DomainName, status.DomainId)
+	domainID, _, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1351,7 +1345,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// container to exit state and the domain is destroyed
 	// Issue Domain Destroy irrespective in container case
 	if status.IsContainer || status.DomainId != 0 {
-		if err := status.Task.Delete(status.DomainName, status.DomainId); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
 			log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
@@ -1717,7 +1711,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			time.Sleep(delay)
 			waited += delay
 		}
-		_, _, err := status.Task.Info(status.DomainName, status.DomainId)
+		_, _, err := hyper.Task(&status).Info(status.DomainName, status.DomainId)
 		if err != nil {
 			log.Infof("waitForDomainGone(%v) for %s: domain is gone",
 				status.UUIDandVersion, status.DisplayName)
@@ -1745,7 +1739,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 
 	// XXX dumping status to log
-	status.Task.Info(status.DomainName, status.DomainId)
+	hyper.Task(status).Info(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
 	publishDomainStatus(ctx, status)
@@ -1809,7 +1803,7 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 		log.Errorf("DomainCreate(%s) no DomainConfig", status.Key())
 		return 0, fmt.Errorf("DomainCreate(%s) no DomainConfig", status.Key())
 	}
-	domainID, err = status.Task.Create(status.DomainName, filename, config)
+	domainID, err = hyper.Task(&status).Create(status.DomainName, filename, config)
 
 	return domainID, err
 }
@@ -1822,7 +1816,7 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 
 	// Stop the domain
 	log.Infof("Stopping domain - %s", status.DomainName)
-	err = status.Task.Stop(status.DomainName, status.DomainId, force)
+	err = hyper.Task(&status).Stop(status.DomainName, status.DomainId, force)
 
 	return err
 }

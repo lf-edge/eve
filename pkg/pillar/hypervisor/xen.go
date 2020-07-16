@@ -53,11 +53,24 @@ type xenContext struct {
 }
 
 func newXen() Hypervisor {
-	return xenContext{}
+	ctrdCtx, err := initContainerd()
+	if err != nil {
+		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
+		return nil // it really never returns on account of above
+	}
+	return xenContext{ctrdContext: *ctrdCtx}
 }
 
 func (ctx xenContext) Name() string {
 	return "xen"
+}
+
+func (ctx xenContext) Task(status *types.DomainStatus) types.Task {
+	if status.VirtualizationMode == types.NOHYPER {
+		return ctx.ctrdContext
+	} else {
+		return ctx
+	}
 }
 
 func (ctx xenContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,

@@ -93,9 +93,10 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	if err != nil && removeExisting {
 		_, status, err := CtrContainerInfo(s.name)
 		if err == nil && status != "running" && status != "pausing" {
-			_ = CtrDeleteContainer(s.name)
+			err = CtrDeleteContainer(s.name)
 			_, err = CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
 		}
+		return err
 	}
 	return err
 }

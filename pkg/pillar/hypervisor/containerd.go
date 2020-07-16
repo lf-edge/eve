@@ -20,19 +20,31 @@ type ctrdContext struct {
 	PCI        map[string]bool
 }
 
-func newContainerd() Hypervisor {
+func initContainerd() (*ctrdContext, error) {
 	if err := containerd.InitContainerdClient(); err != nil {
-		log.Fatal(err)
-		return nil
+		return nil, err
 	}
-	return ctrdContext{
+	return &ctrdContext{
 		domCounter: 0,
 		PCI:        map[string]bool{},
+	}, nil
+}
+
+func newContainerd() Hypervisor {
+	if ret, err := initContainerd(); err != nil {
+		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
+		return nil // it really never returns on account of above
+	} else {
+		return ret
 	}
 }
 
 func (ctx ctrdContext) Name() string {
 	return "containerd"
+}
+
+func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
+	return ctx
 }
 
 func (ctx ctrdContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {

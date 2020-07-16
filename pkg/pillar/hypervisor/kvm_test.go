@@ -1,50 +1,18 @@
 package hypervisor
 
 import (
-	"fmt"
-	v1stat "github.com/containerd/cgroups/stats/v1"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"strings"
 	"testing"
 )
 
-type KvmContainerMockImpl struct{}
-
-func (k *KvmContainerMockImpl) InitContainerdClient() error {
-	return nil
-}
-
-func (k *KvmContainerMockImpl) GetMetrics(ctrID string) (*v1stat.Metrics, error) {
-	m := &v1stat.Metrics{}
-
-	m.Memory = &v1stat.MemoryStat{}
-	m.Memory.Usage = &v1stat.MemoryEntry{}
-	m.Memory.Usage.Usage = 400000
-	m.Memory.Usage.Max = 500000
-
-	m.CPU = &v1stat.CPUStat{}
-	m.CPU.Usage = &v1stat.CPUUsage{}
-	m.CPU.Usage.Total = 80000000
-
-	return m, nil
-}
-
-var hyperKvm Hypervisor
 var kvmIntel, kvmArm kvmContext
 
 func init() {
-	var err error
-	kvmContainerImpl = &KvmContainerMockImpl{}
-	hyperKvm, err = GetHypervisor("kvm")
-	if hyperKvm.Name() != "kvm" || err != nil {
-		panic(fmt.Sprintf("Requested kvm hypervisor, got %s (with error %v) instead", hyperKvm.Name(), err))
-	}
-
 	// these ones are very much handcrafted just for the tests
 	kvmIntel = kvmContext{
 		domains:     map[string]int{},
@@ -1689,25 +1657,6 @@ func TestCreateDomConfig(t *testing.T) {
 	})
 }
 
-func TestGetDomsCPUMem(t *testing.T) {
-	ctx := kvmContext{domains: map[string]int{"test1": 1}}
-	res, err := ctx.GetDomsCPUMem()
-
-	if err != nil {
-		if strings.HasSuffix(err.Error(), "stat /proc: no such file or directory") {
-			// skipping this test since we're clearly not running on Linux
-			// XXX: is there a golang way to skip the test?
-			return
-		}
-		t.Errorf("can't get domain statistics %v", err)
-	}
-
-	if len(res) != 1 || res["test1"].UsedMemoryPercent < 0 || res["test1"].UsedMemoryPercent > 100 ||
-		res["test1"].CPUTotal != 0 || res["test1"].AvailableMemory < res["test1"].UsedMemory {
-		t.Errorf("result from get domain statistics doesn't make sense %+v", res["test1"])
-	}
-}
-
 func TestCreateDom(t *testing.T) {
 	if exec.Command("qemu-system-x86_64", "--version").Run() != nil {
 		// skipping this test since we're clearly not in a presence of qemu
@@ -1799,7 +1748,7 @@ func TestCreateDom(t *testing.T) {
   cores = "2"
   threads = "1"`), 0777)
 
-	if _, err := hyperKvm.Create("test", conf.Name(), &config); err != nil {
+	if _, err := kvmIntel.Task(testDom).Create("test", conf.Name(), &config); err != nil {
 		t.Errorf("Create domain config failed %v", err)
 	}
 
@@ -1819,15 +1768,15 @@ func TestCreateDom(t *testing.T) {
 		}
 	}
 
-	if err := hyperKvm.Start("test", 0); err != nil {
+	if err := kvmIntel.Task(testDom).Start("test", 0); err != nil {
 		t.Errorf("Start domain failed %v", err)
 	}
 
-	if err := hyperKvm.Stop("test", 0, true); err != nil {
+	if err := kvmIntel.Task(testDom).Stop("test", 0, true); err != nil {
 		t.Errorf("Stop domain failed %v", err)
 	}
 
-	if err := hyperKvm.Delete("test", 0); err != nil {
+	if err := kvmIntel.Task(testDom).Delete("test", 0); err != nil {
 		t.Errorf("Delete domain failed %v", err)
 	}
 
