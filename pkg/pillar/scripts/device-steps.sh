@@ -15,8 +15,8 @@ ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
-AGENTS0="logmanager ledmanager nim nodeagent"
-AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient volumemgr"
+AGENTS0="logmanager ledmanager nim nodeagent domainmgr"
+AGENTS1="zedmanager zedrouter downloader verifier identitymgr zedagent baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
@@ -187,12 +187,18 @@ echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
 # TBD: Should we start it earlier before wwan and wlan services?
 if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
-    ledmanager &
+    $BINDIR/ledmanager &
     wait_for_touch ledmanager
 fi
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     touch $FIRSTBOOTFILE # For nodeagent
 fi
+
+# Start domainmgr to setup USB hid/storage based on onboarding status
+# and config item
+echo "$(date -Ins -u) Starting domainmgr"
+$BINDIR/domainmgr &
+wait_for_touch domainmgr
 
 echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent &
@@ -201,6 +207,7 @@ wait_for_touch nodeagent
 mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
       "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch"
+      "$WATCHDOG_PID/domainmgr.pid" "$WATCHDOG_FILE/domainmgr.touch"
 
 mkdir -p $DPCDIR
 
