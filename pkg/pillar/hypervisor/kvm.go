@@ -5,11 +5,9 @@ package hypervisor
 
 import (
 	"fmt"
-	v1stat "github.com/containerd/cgroups/stats/v1"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/shirou/gopsutil/process"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -298,35 +296,6 @@ const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 
-func logError(format string, a ...interface{}) error {
-	log.Errorf(format, a...)
-	return fmt.Errorf(format, a...)
-}
-
-//KvmContainerIntf wraps containerd methods. This helps
-//in unit-testing, by mocking this interface with stubs
-//to focus on kvm.go unit-testing
-type KvmContainerIntf interface {
-	InitContainerdClient() error
-	GetMetrics(ctrID string) (*v1stat.Metrics, error)
-}
-
-//KvmContainerImpl implements KvmContainerIntf for containerd
-type KvmContainerImpl struct{}
-
-//InitContainerdClient implements InitContainerdClient interface of KvmContainerIntf
-func (k *KvmContainerImpl) InitContainerdClient() error {
-	return containerd.InitContainerdClient()
-}
-
-//GetMetrics implements GetMetrics interface of KvmContainerIntf
-func (k *KvmContainerImpl) GetMetrics(ctrID string) (*v1stat.Metrics, error) {
-	return containerd.CtrGetContainerMetrics(ctrID)
-}
-
-//Instantiate an object to call KvmContainerImpl methods
-var kvmContainerImpl KvmContainerIntf = &KvmContainerImpl{}
-
 // KVM domains map 1-1 to anchor device model UNIX processes (qemu or firecracker)
 // For every anchor process we maintain the following entry points in the
 // /var/run/hypervisor/kvm/DOMAIN_NAME:
@@ -348,17 +317,19 @@ type kvmContext struct {
 }
 
 func newKvm() Hypervisor {
+	ctrdCtx, err := initContainerd()
+	if err != nil {
+		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
+		return nil // it really never returns on account of above
+	}
 	// later on we may want to pass device model machine type in DomainConfig directly;
 	// for now -- lets just pick a static device model based on the host architecture
 	// "-cpu host",
 	// -cpu IvyBridge-IBRS,ss=on,vmx=on,movbe=on,hypervisor=on,arat=on,tsc_adjust=on,mpx=on,rdseed=on,smap=on,clflushopt=on,sha-ni=on,umip=on,md-clear=on,arch-capabilities=on,xsaveopt=on,xsavec=on,xgetbv1=on,xsaves=on,pdpe1gb=on,3dnowprefetch=on,avx=off,f16c=off,hv_time,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff
-	if err := kvmContainerImpl.InitContainerdClient(); err != nil {
-		log.Errorf("InitContainerdClient failed: %v", err)
-		return nil
-	}
 	switch runtime.GOARCH {
 	case "arm64":
 		return kvmContext{
+			ctrdContext:  *ctrdCtx,
 			domains:      map[string]int{},
 			devicemodel:  "virt",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
@@ -368,6 +339,7 @@ func newKvm() Hypervisor {
 		}
 	case "amd64":
 		return kvmContext{
+			ctrdContext:  *ctrdCtx,
 			domains:      map[string]int{},
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
@@ -381,6 +353,14 @@ func newKvm() Hypervisor {
 
 func (ctx kvmContext) Name() string {
 	return "kvm"
+}
+
+func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
+	if status.VirtualizationMode == types.NOHYPER {
+		return ctx.ctrdContext
+	} else {
+		return ctx
+	}
 }
 
 func (ctx kvmContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
@@ -752,79 +732,6 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	}
 
 	return nil
-}
-
-func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
-	return selfDomCPUMem()
-}
-
-func readCPUUsage(pid int) (float64, error) {
-	ps, err := process.NewProcess(int32(pid))
-	if err != nil {
-		return 0, err
-	}
-
-	cput, err := ps.Times()
-	if err != nil {
-		return 0, err
-	}
-
-	return cput.Total(), nil
-}
-
-func readMemUsage(pid int) (uint32, uint32, float64, error) {
-	ps, err := process.NewProcess(int32(pid))
-	if err != nil {
-		return 0, 0, 0, err
-	}
-
-	processMemory, err := ps.MemoryInfo()
-	if err != nil {
-		return 0, 0, 0, err
-	}
-
-	usedMem := uint32(roundFromBytesToMbytes(processMemory.RSS))
-	availMem := uint32(roundFromBytesToMbytes(processMemory.VMS))
-
-	usedMemPerc, err := ps.MemoryPercent()
-	if err != nil {
-		return usedMem, availMem, 0, err
-	}
-
-	return usedMem, availMem, float64(usedMemPerc), nil
-}
-
-func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
-	// for more precised measurements we should be using a tool like https://github.com/cha87de/kvmtop
-	res := map[string]types.DomainMetric{}
-
-	for dom := range ctx.domains {
-		var usedMem, availMem uint32
-		var usedMemPerc float64
-		var cpuTotal uint64
-
-		if metric, err := kvmContainerImpl.GetMetrics(dom); err == nil {
-			usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
-			availMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
-			if availMem != 0 {
-				usedMemPerc = float64(100 * float32(usedMem) / float32(availMem))
-			} else {
-				usedMemPerc = 0
-			}
-			cpuTotal = metric.CPU.Usage.Total / 1000000000
-		} else {
-			log.Errorf("GetDomsCPUMem failed with error %v", err)
-		}
-
-		res[dom] = types.DomainMetric{
-			UUIDandVersion:    types.UUIDandVersion{},
-			CPUTotal:          cpuTotal,
-			UsedMemory:        usedMem,
-			AvailableMemory:   availMem,
-			UsedMemoryPercent: usedMemPerc,
-		}
-	}
-	return res, nil
 }
 
 func getQmpExecutorSocket(domainName string) string {

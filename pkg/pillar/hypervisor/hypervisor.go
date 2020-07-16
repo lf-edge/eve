@@ -8,14 +8,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
+	log "github.com/sirupsen/logrus"
 	"os"
 )
 
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
-	types.Task
-
 	Name() string
+	Task(*types.DomainStatus) types.Task
 
 	PCIReserve(string) error
 	PCIRelease(string) error
@@ -90,4 +90,9 @@ func roundFromKbytesToMbytes(byteCount uint64) uint64 {
 	const kbyte = 1024
 
 	return (byteCount + kbyte/2) / kbyte
+}
+
+func logError(format string, a ...interface{}) error {
+	log.Errorf(format, a...)
+	return fmt.Errorf(format, a...)
 }

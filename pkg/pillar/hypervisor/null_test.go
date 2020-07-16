@@ -11,8 +11,6 @@ import (
 	"testing"
 )
 
-var hyper Hypervisor
-
 func init() {
 	var err error
 	hyper, err = GetHypervisor("null")
@@ -22,11 +20,11 @@ func init() {
 }
 
 func TestNullCreate(t *testing.T) {
-	if _, err := hyper.Create("", "", nil); err == nil {
+	if _, err := hyper.Task(testDom).Create("", "", nil); err == nil {
 		t.Errorf("Create domain should've failed for empty arguments")
 	}
 
-	if _, err := hyper.Create("", "/foo-bar-baz", nil); err == nil {
+	if _, err := hyper.Task(testDom).Create("", "/foo-bar-baz", nil); err == nil {
 		t.Errorf("Create domain should've failed for non-existent config")
 	}
 }
@@ -78,7 +76,7 @@ serial = ['pty']
 		conf.Close()
 	}
 
-	domID, err := hyper.Create("test.1", conf.Name(), &types.DomainConfig{})
+	domID, err := hyper.Task(testDom).Create("test.1", conf.Name(), &types.DomainConfig{})
 	if err != nil {
 		t.Errorf("Create domain test failed %v", err)
 	}
@@ -88,35 +86,35 @@ serial = ['pty']
 		t.Errorf("Create domain didn't deposit a file %s %v", ctx.tempDir, err)
 	}
 
-	if err := hyper.Stop("test.1", domID, true); err == nil {
+	if err := hyper.Task(testDom).Stop("test.1", domID, true); err == nil {
 		t.Errorf("Stop domain should've failed for a domain that is not running")
 	}
 
-	if err := hyper.Start("test.1", domID); err != nil {
+	if err := hyper.Task(testDom).Start("test.1", domID); err != nil {
 		t.Errorf("Couldn't start a domain %v", err)
 	}
 
-	if err := hyper.Start("test.1", domID); err == nil {
+	if err := hyper.Task(testDom).Start("test.1", domID); err == nil {
 		t.Errorf("Start domain should've failed for a domain that is already running")
 	}
 
-	if err := hyper.Stop("test.1", domID, false); err != nil {
+	if err := hyper.Task(testDom).Stop("test.1", domID, false); err != nil {
 		t.Errorf("Couldn't stop a domain %v", err)
 	}
 
-	if _, _, err := hyper.Info("", 0); err == nil {
+	if _, _, err := hyper.Task(testDom).Info("", 0); err == nil {
 		t.Errorf("Info domain should've failed for a domain that is empty")
 	}
 
-	if _, _, err := hyper.Info("foo-bar-baz", 0); err == nil {
+	if _, _, err := hyper.Task(testDom).Info("foo-bar-baz", 0); err == nil {
 		t.Errorf("Info domain should've failed for a domain that is non-existent")
 	}
 
-	if _, _, err := hyper.Info("test.1", domID); err != nil {
+	if _, _, err := hyper.Task(testDom).Info("test.1", domID); err != nil {
 		t.Errorf("Info domain failed %v", err)
 	}
 
-	if err := hyper.Delete("test.1", domID); err != nil {
+	if err := hyper.Task(testDom).Delete("test.1", domID); err != nil {
 		t.Errorf("Delete domain failed %v", err)
 	}
 }

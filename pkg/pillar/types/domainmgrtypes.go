@@ -55,7 +55,7 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 // VirtualizationModeOrDefault sets the default to PV
 func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	switch config.VirtualizationMode {
-	case PV, HVM, FML:
+	case PV, HVM, FML, NOHYPER:
 		return config.VirtualizationMode
 	default:
 		return PV
@@ -175,7 +175,6 @@ type DomainStatus struct {
 	DiskStatusList     []DiskStatus
 	VifList            []VifInfo
 	IoAdapterList      []IoAdapter
-	Task               Task
 	VirtualizationMode VmMode
 	EnableVnc          bool
 	VncDisplay         uint32

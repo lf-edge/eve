@@ -40,6 +40,10 @@ func (ctx nullContext) Name() string {
 	return "null"
 }
 
+func (ctx nullContext) Task(status *types.DomainStatus) types.Task {
+	return ctx
+}
+
 func (ctx nullContext) Setup(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
 	return nil
 }
