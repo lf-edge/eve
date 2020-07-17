@@ -151,6 +151,7 @@ const (
 	NOHYPER
 )
 
+// Task represents any runnable entity on EVE
 type Task interface {
 	Setup(string, DomainConfig, []DiskStatus, *AssignableAdapters, *os.File) error
 	Create(string, string, *DomainConfig) (int, error)
