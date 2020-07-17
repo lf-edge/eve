@@ -95,14 +95,6 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	// Map of per-interface errors
 	intfStatusMap := *types.NewIntfStatusMap()
 
-	// Check if it is 1970 in which case we declare success since
-	// our certificates will not work until NTP has brought the time
-	// forward.
-	if time.Now().Year() == 1970 {
-		log.Infof("VerifyDeviceNetworkStatus skip due to 1970")
-		return false, intfStatusMap, nil
-	}
-
 	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
