@@ -395,7 +395,7 @@ func CtrContainerInfo(name string) (int, string, error) {
 	return 0, "", err
 }
 
-// CtrCreateTask starts the default task in a pre-existing container and attaches its logging to memlogd
+// CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
 func CtrCreateTask(domainName string) (int, error) {
 	if err := verifyCtr(); err != nil {
 		return 0, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
@@ -427,7 +427,7 @@ func CtrCreateTask(domainName string) (int, error) {
 	return int(task.Pid()), nil
 }
 
-// CtrCreateTask starts the default task in a pre-existing container and attaches its logging to memlogd
+// CtrStartTask starts the default task in a pre-existing container that was prepared by CtrCreateTask
 func CtrStartTask(domainName string) error {
 	if err := verifyCtr(); err != nil {
 		return fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
@@ -446,11 +446,7 @@ func CtrStartTask(domainName string) error {
 		return err
 	}
 
-	if err := task.Start(ctrdCtx); err != nil {
-		return err
-	}
-
-	return nil
+	return task.Start(ctrdCtx)
 }
 
 // CtrExec starts the executable in a running container and attaches its logging to memlogd
@@ -602,8 +598,8 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 		return fmt.Errorf("LKTaskLaunch: can't load spec file from %s %v", config, err)
 	}
 
-	spec.Root.Path = rootfs
-	spec.Root.Readonly = true
+	spec.Get().Root.Path = rootfs
+	spec.Get().Root.Readonly = true
 	if domSettings != nil {
 		spec.UpdateFromDomain(*domSettings)
 		if memOverhead > 0 {
@@ -612,7 +608,7 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 	}
 
 	if args != nil {
-		spec.Process.Args = args
+		spec.Get().Process.Args = args
 	}
 
 	return spec.CreateContainer(true)

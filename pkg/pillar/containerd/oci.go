@@ -26,6 +26,9 @@ const eveScript = "/bin/eve"
 
 var vethScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh"}
 
+// ociSpec is kept private (with all the actions done by getters and setters
+// This is because we expect the implementation to still evolve quite a bit
+// for all the different task usecases
 type ociSpec struct {
 	specs.Spec
 	name         string
@@ -35,8 +38,9 @@ type ociSpec struct {
 	stopSignal   string
 }
 
-//
+// OCISpec provides methods to manipulate OCI runtime specifications and create containers based on them
 type OCISpec interface {
+	Get() *specs.Spec
 	Save(*os.File) error
 	Load(*os.File) error
 	CreateContainer(bool) error
@@ -47,7 +51,7 @@ type OCISpec interface {
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
-func NewOciSpec(name string) (*ociSpec, error) {
+func NewOciSpec(name string) (OCISpec, error) {
 	s := &ociSpec{name: name}
 	// we need a dummy container object to trick containerd
 	// initialization functions into filling out defaults
@@ -61,6 +65,11 @@ func NewOciSpec(name string) (*ociSpec, error) {
 	}
 	s.Root.Path = "/"
 	return s, nil
+}
+
+// Get simply returns an underlying OCI runtime spec
+func (s *ociSpec) Get() *specs.Spec {
+	return &s.Spec
 }
 
 // Save stores json representation of the oci spec in a file
