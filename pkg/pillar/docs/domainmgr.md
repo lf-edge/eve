@@ -8,6 +8,7 @@ Domainmgr is the interface to the hypervisor to start DomU instances:
 - It includes doing device assignment, i.e. assigning peripheral devices to DomU based on config.
 - It has retry logic for when a domU fails to boot
 - It reports metrics such as CPU and memory from the domains
+- As part of device assignment it also manages the loading and unloading of USB kernel modules based on the debug.enable.usb configuration knob.
 
 ## Key Input/Output
 
