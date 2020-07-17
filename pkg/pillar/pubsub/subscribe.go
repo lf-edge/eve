@@ -219,10 +219,12 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	if log.GetLevel() == log.DebugLevel {
 		sub.dump("after handleModify")
 	}
+	// Need a copy in case the caller will modify e.g., embedded maps
+	newItem := deepCopy(item)
 	if created && sub.CreateHandler != nil {
-		(sub.CreateHandler)(sub.userCtx, key, item)
+		(sub.CreateHandler)(sub.userCtx, key, newItem)
 	} else if sub.ModifyHandler != nil {
-		(sub.ModifyHandler)(sub.userCtx, key, item)
+		(sub.ModifyHandler)(sub.userCtx, key, newItem)
 	}
 	log.Debugf("pubsub.handleModify(%s) done for key %s\n", name, key)
 }
