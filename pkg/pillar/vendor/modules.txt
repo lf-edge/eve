@@ -83,12 +83,11 @@ github.com/aws/aws-sdk-go/private/protocol/query/queryutil
 # github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
 github.com/containerd/cgroups/stats/v1
 # github.com/containerd/containerd v1.3.4
+github.com/containerd/containerd/content
 github.com/containerd/containerd/images
-github.com/containerd/containerd/leases
 github.com/containerd/containerd
 github.com/containerd/containerd/cio
 github.com/containerd/containerd/containers
-github.com/containerd/containerd/content
 github.com/containerd/containerd/mount
 github.com/containerd/containerd/namespaces
 github.com/containerd/containerd/oci
@@ -116,6 +115,7 @@ github.com/containerd/containerd/defaults
 github.com/containerd/containerd/diff
 github.com/containerd/containerd/events
 github.com/containerd/containerd/images/archive
+github.com/containerd/containerd/leases
 github.com/containerd/containerd/leases/proxy
 github.com/containerd/containerd/pkg/dialer
 github.com/containerd/containerd/plugin
@@ -374,11 +374,11 @@ golang.org/x/text/transform
 # google.golang.org/genproto v0.0.0-20200117163144-32f20d992d24
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.26.0
-google.golang.org/grpc/metadata
 google.golang.org/grpc
 google.golang.org/grpc/codes
 google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/status
+google.golang.org/grpc/metadata
 google.golang.org/grpc/backoff
 google.golang.org/grpc/balancer
 google.golang.org/grpc/balancer/base
