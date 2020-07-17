@@ -291,12 +291,16 @@ type DiskConfig struct {
 	FileLocation string // Location of the volume
 	ReadOnly     bool
 	Format       zconfig.Format
+	IsBlank      bool
+	MountDir     string
 }
 
 type DiskStatus struct {
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
+	IsBlank      bool
+	MountDir     string
 	Devtype      string // XXX used internally by hypervisor; deprecate?
 	Vdev         string // Allocated
 }

@@ -195,6 +195,9 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		if ds.Format == zconfig.Format_CONTAINER {
 			p9Strings = append(p9Strings,
 				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FileLocation))
+		} else if ds.IsBlank {
+			p9Strings = append(p9Strings,
+				fmt.Sprintf("'tag=%s,security_model=none,path=%s'", ds.MountDir, ds.FileLocation))
 		} else {
 			access := "rw"
 			if ds.ReadOnly {

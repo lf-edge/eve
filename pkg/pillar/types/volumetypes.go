@@ -131,8 +131,14 @@ func (status VolumeStatus) IsContainer() bool {
 
 // PathName returns the path of the volume
 func (status VolumeStatus) PathName() string {
-	return fmt.Sprintf("%s/%s#%d.%s", status.VolumeDir, status.VolumeID.String(),
-		status.GenerationCounter, strings.ToLower(status.ContentFormat.String()))
+	switch status.VolumeContentOriginType {
+	case zconfig.VolumeContentOriginType_VCOT_BLANK:
+		return fmt.Sprintf("%s/%s#%d.%s", status.VolumeDir, status.VolumeID.String(),
+			status.GenerationCounter, "blank")
+	default:
+		return fmt.Sprintf("%s/%s#%d.%s", status.VolumeDir, status.VolumeID.String(),
+			status.GenerationCounter, strings.ToLower(status.ContentFormat.String()))
+	}
 }
 
 // LogCreate :
@@ -269,16 +275,17 @@ func (config VolumeRefConfig) LogKey() string {
 // If a volume is purged (re-created from scratch) it will either have a new
 // UUID or a new generationCount
 type VolumeRefStatus struct {
-	VolumeID           uuid.UUID
-	GenerationCounter  int64
-	RefCount           uint
-	State              SwState
-	ActiveFileLocation string
-	ContentFormat      zconfig.Format
-	ReadOnly           bool
-	DisplayName        string
-	MaxVolSize         uint64
-	PendingAdd         bool // Flag to identify whether volume ref config published or not
+	VolumeID                uuid.UUID
+	VolumeContentOriginType zconfig.VolumeContentOriginType
+	GenerationCounter       int64
+	RefCount                uint
+	State                   SwState
+	ActiveFileLocation      string
+	ContentFormat           zconfig.Format
+	ReadOnly                bool
+	DisplayName             string
+	MaxVolSize              uint64
+	PendingAdd              bool // Flag to identify whether volume ref config published or not
 
 	ErrorAndTimeWithSource
 }

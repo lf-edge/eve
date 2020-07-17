@@ -5,6 +5,7 @@ package volumemgr
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -315,13 +316,28 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	changed := false
 	switch status.VolumeContentOriginType {
 	case zconfig.VolumeContentOriginType_VCOT_BLANK:
-		// XXX TBD
-		errStr := fmt.Sprintf("doUpdateVol(%s) name %s: Volume content origin type %v is not implemeted yet.",
-			status.Key(), status.DisplayName, status.VolumeContentOriginType)
-		status.SetErrorWithSource(errStr,
-			types.VolumeStatus{}, time.Now())
+		status.State = types.CREATING_VOLUME
+		status.FileLocation = status.PathName()
+		var permission os.FileMode
+		if status.ReadOnly {
+			// RO directory by user, group and others
+			permission = 0444
+		} else {
+			// RW directory by user, group and others
+			permission = 0666
+		}
+		if err := os.MkdirAll(status.FileLocation, permission); err != nil {
+			log.Error(err)
+			status.SetErrorWithSource(err.Error(),
+				types.VolumeStatus{}, time.Now())
+			changed = true
+			return changed, false
+		}
+		status.State = types.CREATED_VOLUME
+		status.Progress = 100
+		status.VolumeCreated = true
 		changed = true
-		return changed, false
+		return changed, true
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
 		// XXX why do we need to hard-code AppImgObj?
 		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)

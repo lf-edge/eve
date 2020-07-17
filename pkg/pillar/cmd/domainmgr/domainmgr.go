@@ -1389,6 +1389,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
+		ds.IsBlank = dc.IsBlank
+		ds.MountDir = dc.MountDir
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Format == zconfig.Format_CONTAINER {

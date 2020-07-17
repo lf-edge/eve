@@ -23,15 +23,16 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
 		status = &types.VolumeRefStatus{
-			VolumeID:           config.VolumeID,
-			GenerationCounter:  config.GenerationCounter,
-			RefCount:           config.RefCount,
-			State:              vs.State,
-			ActiveFileLocation: vs.FileLocation,
-			ContentFormat:      vs.ContentFormat,
-			ReadOnly:           vs.ReadOnly,
-			DisplayName:        vs.DisplayName,
-			MaxVolSize:         vs.MaxVolSize,
+			VolumeID:                config.VolumeID,
+			GenerationCounter:       config.GenerationCounter,
+			RefCount:                config.RefCount,
+			VolumeContentOriginType: vs.VolumeContentOriginType,
+			State:                   vs.State,
+			ActiveFileLocation:      vs.FileLocation,
+			ContentFormat:           vs.ContentFormat,
+			ReadOnly:                vs.ReadOnly,
+			DisplayName:             vs.DisplayName,
+			MaxVolSize:              vs.MaxVolSize,
 		}
 		if vs.HasError() {
 			status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
@@ -142,6 +143,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 			publishVolumeStatus(ctx, vs)
 			status := lookupVolumeRefStatus(ctx, config.Key())
 			if status != nil {
+				status.VolumeContentOriginType = vs.VolumeContentOriginType
 				status.State = vs.State
 				status.ActiveFileLocation = vs.FileLocation
 				status.ContentFormat = vs.ContentFormat
@@ -157,15 +159,16 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				return
 			}
 			status = &types.VolumeRefStatus{
-				VolumeID:           config.VolumeID,
-				GenerationCounter:  config.GenerationCounter,
-				RefCount:           config.RefCount,
-				State:              vs.State,
-				ActiveFileLocation: vs.FileLocation,
-				ContentFormat:      vs.ContentFormat,
-				ReadOnly:           vs.ReadOnly,
-				DisplayName:        vs.DisplayName,
-				MaxVolSize:         vs.MaxVolSize,
+				VolumeID:                config.VolumeID,
+				GenerationCounter:       config.GenerationCounter,
+				RefCount:                config.RefCount,
+				VolumeContentOriginType: vs.VolumeContentOriginType,
+				State:                   vs.State,
+				ActiveFileLocation:      vs.FileLocation,
+				ContentFormat:           vs.ContentFormat,
+				ReadOnly:                vs.ReadOnly,
+				DisplayName:             vs.DisplayName,
+				MaxVolSize:              vs.MaxVolSize,
 			}
 			if vs.HasError() {
 				status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
