@@ -9,7 +9,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
-	"strconv"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -116,16 +115,15 @@ func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState
 
 	stateMap := map[string]types.SwState{
 		"running": types.RUNNING,
-		"created": types.INSTALLED,
+		"created": types.BOOTING,
 		"paused":  types.HALTED,
 		"stopped": types.HALTED,
 		"pausing": types.HALTING,
 	}
 	effectiveDomainState, matched := stateMap[status]
-	if _, err := os.Stat("/proc/" + strconv.Itoa(effectiveDomainID)); err != nil || !matched {
+	if !matched {
 		effectiveDomainState = types.UNKNOWN
 	}
-
 	return effectiveDomainID, effectiveDomainState, nil
 }
 

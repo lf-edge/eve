@@ -732,7 +732,6 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 }
 
 // Check if it is still running
-// XXX would xen state be useful?
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	// Check config.Active to avoid spurious errors when shutting down
 	configActivate := false
@@ -742,7 +741,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	}
 
 	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
-	if err != nil {
+	if err != nil || domainStatus == types.HALTED {
 		if status.Activated && configActivate {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
 				status.Key(), err)
@@ -779,11 +778,13 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key())
 			publishDomainStatus(ctx, status)
 		}
-		// check if qemu processes has crashed
-		if configActivate && status.Activated && domainStatus == types.BROKEN {
-			errStr := fmt.Sprintf("verifyStatus(%s) device model process crashed", status.Key())
+		// check if any supporting tasks (like qemu) have crashed
+		if configActivate && status.Activated && !(domainStatus == types.BOOTING ||
+			domainStatus == types.RUNNING ||
+			domainStatus == types.HALTING) {
+			errStr := fmt.Sprintf("verifyStatus(%s) task has crashed (%d)", status.Key(), domainStatus)
 			log.Errorf(errStr)
-			status.SetErrorNow("device model process crashed - please restart application instance")
+			status.SetErrorNow("one of the application's tasks have crashed - please restart application instance")
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
@@ -1738,7 +1739,6 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	log.Infof("handleDelete(%v) for %s",
 		status.UUIDandVersion, status.DisplayName)
 
-	// XXX dumping status to log
 	hyper.Task(status).Info(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
