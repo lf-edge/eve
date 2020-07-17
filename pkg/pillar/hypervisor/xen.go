@@ -653,11 +653,13 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	}
 	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
 
-	var dmList map[string]types.DomainMetric
-	if len(cpuMemoryStat) == 0 {
+	// first we get all the task stats from containerd, and we update
+	// the ones that have a Xen domain associated with them
+	dmList, err := ctx.ctrdContext.GetDomsCPUMem()
+	if len(cpuMemoryStat) != 0 {
+		dmList = parseCPUMemoryStat(cpuMemoryStat, dmList)
+	} else if err != nil {
 		dmList = fallbackDomainMetric()
-	} else {
-		dmList = parseCPUMemoryStat(cpuMemoryStat)
 	}
 	// finally add host entry to dmList
 	if false {
@@ -670,9 +672,12 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 }
 
 // Returns cpuTotal, usedMemory, availableMemory, usedPercentage
-func parseCPUMemoryStat(cpuMemoryStat [][]string) map[string]types.DomainMetric {
+func parseCPUMemoryStat(cpuMemoryStat [][]string, dmList map[string]types.DomainMetric) map[string]types.DomainMetric {
+	result := dmList
+	if result == nil {
+		result = make(map[string]types.DomainMetric)
+	}
 
-	result := make(map[string]types.DomainMetric)
 	for _, stat := range cpuMemoryStat {
 		if len(stat) <= 2 {
 			continue
