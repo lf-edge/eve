@@ -449,14 +449,14 @@ func CtrStartTask(domainName string) error {
 	return task.Start(ctrdCtx)
 }
 
-// CtrExec starts the executable in a running container and attaches its logging to memlogd
+// ctrExec starts the executable in a running container and attaches its logging to memlogd
 func ctrExec(ctx context.Context, domainName string, args []string) ([]byte, []byte, error) {
 	if err := verifyCtr(); err != nil {
-		return nil, nil, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
+		return nil, nil, fmt.Errorf("ctrExec: exception while verifying ctrd client: %s", err.Error())
 	}
 	ctr, err := CtrdClient.LoadContainer(ctx, domainName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("CtrLoadContainer: Exception while loading container: %v", err)
+		return nil, nil, fmt.Errorf("ctrExec: Exception while loading container: %v", err)
 	}
 
 	spec, err := ctr.Spec(ctx)
