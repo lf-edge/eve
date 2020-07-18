@@ -32,7 +32,7 @@ RUN apk add \
     libunwind-dev
 
 ENV XEN_UBOOT_ADDR 0x81000000
-ENV XEN_VERSION 4.14.0-rc5
+ENV XEN_VERSION 4.14.0-rc6
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
@@ -41,26 +41,13 @@ RUN \
     [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
     tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
 
-# Xen config
-COPY xen_config* /xen/
 WORKDIR /xen/xen
-
 COPY *.patch arch /tmp/
 RUN cp /tmp/"$(uname -m)"/*.patch /tmp/
 RUN for p in /tmp/*.patch ; do patch -p1 < "$p" || exit 1 ; done
 RUN chmod +x scripts/* || :
 
-RUN case "$(uname -m)" in \
-    x86_64) \
-        XEN_DEF_CONF=/xen/xen/arch/x86/configs/x86_64_defconfig; \
-	;; \
-    aarch64) \
-        XEN_DEF_CONF=/xen/xen/arch/arm/configs/arm64_defconfig; \
-        ;; \
-    esac ;\
-    cp /xen/xen_config-${XEN_VERSION}-$(uname -m) ${XEN_DEF_CONF}; \
-    rm /xen/xen_config* && \
-    make defconfig && \
+RUN make defconfig && \
     make oldconfig && \
     mkdir -p /out/boot
 
