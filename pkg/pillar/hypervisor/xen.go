@@ -434,6 +434,13 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState, error) {
+	// first we ask for the task status
+	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName, domainID)
+	if err != nil || effectiveDomainState == types.HALTED {
+		return effectiveDomainID, effectiveDomainState, err
+	}
+
+	// if task us alive, we augment task status with finer grained details from qemu
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 
 	// XXX xl list -l domainName returns json. XXX but state not included!
@@ -460,7 +467,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	//Removing all unset state bits represented by "-"
 	domainState = strings.ReplaceAll(domainState, "-", "")
 	//Domain's ID is the 2nd columd in xl list <domain> result
-	effectiveDomainID, err := strconv.Atoi(strings.Split(xlDomainResult, " ")[1])
+	effectiveDomainID, err = strconv.Atoi(strings.Split(xlDomainResult, " ")[1])
 	if len(domainState) < 1 || err != nil {
 		// for case where xl info returns ------ we assume the domain is running
 		log.Infof("Info: domain %s in ------ state with ID %d", domainName, effectiveDomainID)
