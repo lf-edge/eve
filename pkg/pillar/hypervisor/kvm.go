@@ -307,7 +307,6 @@ const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 // that may be created by others)
 type kvmContext struct {
 	ctrdContext
-	domains map[string]int
 	// for now the following is statically configured and can not be changed per domain
 	devicemodel  string
 	dmExec       string
@@ -330,7 +329,6 @@ func newKvm() Hypervisor {
 	case "arm64":
 		return kvmContext{
 			ctrdContext:  *ctrdCtx,
-			domains:      map[string]int{},
 			devicemodel:  "virt",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-serial", "pty"},
@@ -340,7 +338,6 @@ func newKvm() Hypervisor {
 	case "amd64":
 		return kvmContext{
 			ctrdContext:  *ctrdCtx,
-			domains:      map[string]int{},
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-no-hpet"},
@@ -589,7 +586,6 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 	if status, err := getQemuStatus(qmpFile); err != nil || status != "running" {
 		return logError("domain status is not running but %s after cont command returned %v", status, err)
 	}
-	ctx.domains[domainName] = domainID
 	return nil
 }
 
@@ -597,7 +593,6 @@ func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
 	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
-	delete(ctx.domains, domainName)
 	return nil
 }
 
@@ -620,50 +615,41 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState, error) {
-	effectiveDomainID, matched := ctx.domains[domainName]
-	if !matched {
-		return 0, types.UNKNOWN, logError("couldn't find domain %s", domainName)
+	// first we ask for the task status
+	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName, domainID)
+	// if task us alive, we augment task status with finer grained details from qemu
+	if err == nil && effectiveDomainState != types.HALTED {
+		// lets parse the status according to https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
+		stateMap := map[string]types.SwState{
+			"finish-migrate": types.PAUSED,
+			"inmigrate":      types.PAUSING,
+			"internal-error": types.BROKEN,
+			"io-error":       types.BROKEN,
+			"paused":         types.PAUSED,
+			"postmigrate":    types.PAUSED,
+			"prelaunch":      types.PAUSED,
+			"restore-vm":     types.PAUSED,
+			"running":        types.RUNNING,
+			"save-vm":        types.PAUSED,
+			"shutdown":       types.HALTING,
+			"suspended":      types.PAUSED,
+			"watchdog":       types.PAUSING,
+			"guest-panicked": types.BROKEN,
+			"colo":           types.PAUSED,
+			"preconfig":      types.PAUSED,
+		}
+		res, err := getQemuStatus(getQmpExecutorSocket(domainName))
+		if err != nil {
+			return 0, types.UNKNOWN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
+		}
+
+		var matched bool
+		if effectiveDomainState, matched = stateMap[res]; !matched {
+			effectiveDomainState = types.UNKNOWN
+		}
 	}
 
-	if effectiveDomainID != domainID {
-		log.Warnf("assumed domainID %d is different from effective domainID %d", domainID, effectiveDomainID)
-	}
-
-	// lets see if qemu process is still running
-	if _, err := os.Stat(fmt.Sprintf("/proc/%d", effectiveDomainID)); err != nil {
-		return 0, types.BROKEN, logError("qemu process %d for domain %s seems to have exited", effectiveDomainID, domainName)
-	}
-
-	// lets parse the status according to https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
-	stateMap := map[string]types.SwState{
-		"finish-migrate": types.HALTED,
-		"inmigrate":      types.HALTING,
-		"internal-error": types.BROKEN,
-		"io-error":       types.BROKEN,
-		"paused":         types.HALTED,
-		"postmigrate":    types.HALTED,
-		"prelaunch":      types.BOOTING,
-		"restore-vm":     types.HALTED,
-		"running":        types.RUNNING,
-		"save-vm":        types.HALTED,
-		"shutdown":       types.HALTING,
-		"suspended":      types.HALTED,
-		"watchdog":       types.HALTED,
-		"guest-panicked": types.BROKEN,
-		"colo":           types.HALTED,
-		"preconfig":      types.HALTED,
-	}
-	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
-	if err != nil {
-		return 0, types.UNKNOWN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
-	}
-
-	effectiveDomainState, matched := stateMap[res]
-	if !matched {
-		effectiveDomainState = types.UNKNOWN
-	}
-
-	return effectiveDomainID, effectiveDomainState, nil
+	return effectiveDomainID, effectiveDomainState, err
 }
 
 func (ctx kvmContext) PCIReserve(long string) error {

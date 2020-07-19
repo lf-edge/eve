@@ -778,10 +778,9 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key())
 			publishDomainStatus(ctx, status)
 		}
-		// check if any supporting tasks (like qemu) have crashed
-		if configActivate && status.Activated && !(domainStatus == types.BOOTING ||
-			domainStatus == types.RUNNING ||
-			domainStatus == types.HALTING) {
+		// check if task is in the BROKEN or UNKNOWN state and kill it (later on we may do some
+		// level of recovery or at least gather some intel on why and how it crashed)
+		if configActivate && status.Activated && (domainStatus == types.BROKEN || domainStatus == types.UNKNOWN) {
 			errStr := fmt.Sprintf("verifyStatus(%s) task has crashed (%d)", status.Key(), domainStatus)
 			log.Errorf(errStr)
 			status.SetErrorNow("one of the application's tasks have crashed - please restart application instance")
@@ -1712,8 +1711,8 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			time.Sleep(delay)
 			waited += delay
 		}
-		_, _, err := hyper.Task(&status).Info(status.DomainName, status.DomainId)
-		if err != nil {
+		_, state, err := hyper.Task(&status).Info(status.DomainName, status.DomainId)
+		if err != nil || state == types.HALTED {
 			log.Infof("waitForDomainGone(%v) for %s: domain is gone",
 				status.UUIDandVersion, status.DisplayName)
 			gone = true
@@ -1738,8 +1737,6 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	log.Infof("handleDelete(%v) for %s",
 		status.UUIDandVersion, status.DisplayName)
-
-	hyper.Task(status).Info(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
 	publishDomainStatus(ctx, status)

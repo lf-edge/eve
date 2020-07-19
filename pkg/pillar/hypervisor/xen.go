@@ -462,8 +462,9 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	//Domain's ID is the 2nd columd in xl list <domain> result
 	effectiveDomainID, err := strconv.Atoi(strings.Split(xlDomainResult, " ")[1])
 	if len(domainState) < 1 || err != nil {
-		log.Infof("Info: domain %s in undetermined state with ID %d", domainName, effectiveDomainID)
-		return effectiveDomainID, types.UNKNOWN, nil
+		// for case where xl info returns ------ we assume the domain is running
+		log.Infof("Info: domain %s in ------ state with ID %d", domainName, effectiveDomainID)
+		domainState = "r"
 	} else {
 		if effectiveDomainID != domainID {
 			log.Warningf("Info: domainid changed from %d to %d for %s\n",
@@ -474,11 +475,11 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	//In case of more that 1 (logically possible) domain state, will consider the last state.
 	lastState := domainState[len(domainState)-1:]
 	log.Debugf("Info: domain: %s lastState: %s", domainName, lastState)
-	//if domainState is not 'r' or 'b' then the domain is not healthy.
+	// these states are taken from https://xenbits.xen.org/docs/unstable/man/xl.1.html (scroll to STATES)
 	stateMap := map[string]types.SwState{
 		"r": types.RUNNING,
 		"b": types.RUNNING,
-		"p": types.HALTED,
+		"p": types.PAUSED,
 		"s": types.HALTING,
 		"c": types.BROKEN,
 		"d": types.HALTING,
@@ -489,9 +490,9 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	}
 
 	// if we are in one of the states that may require a device model -- check for it
-	if effectiveDomainState == types.RUNNING || effectiveDomainState == types.HALTED {
+	if effectiveDomainState == types.RUNNING || effectiveDomainState == types.PAUSED {
 		// create pgrep command to see if dataplane is running
-		match := fmt.Sprintf("domid %d", effectiveDomainID)
+		match := fmt.Sprintf("name %s ", domainName)
 		cmd := wrap.Command("pgrep", "-f", match)
 
 		// pgrep returns 0 when there is atleast one matching program running

@@ -35,6 +35,8 @@ const (
 	INSTALLED       // Available to be activated
 	BOOTING
 	RUNNING
+	PAUSING
+	PAUSED
 	HALTING // being halted
 	HALTED
 	RESTARTING // Restarting due to config change or zcli
@@ -73,12 +75,18 @@ func (state SwState) String() string {
 		return "BOOTING"
 	case RUNNING:
 		return "RUNNING"
-	case HALTING:
-		return "HALTING"
+	case PAUSING:
+		return "PAUSING"
+	case PAUSED:
+		return "PAUSED"
 	case HALTED:
 		return "HALTED"
 	case RESTARTING:
 		return "RESTARTING"
+	case BROKEN:
+		return "BROKEN"
+	case UNKNOWN:
+		return "UNKNOWN"
 	case PURGING:
 		return "PURGING"
 	default:
@@ -109,11 +117,27 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_CREATED_VOLUME
 	case INSTALLED:
 		return info.ZSwState_INSTALLED
+	// for now we're treating PAUSED as a subset
+	// of INSTALLED simply because controllers don't
+	// support resumable paused tasks just yet (see
+	// how PAUSING maps to RUNNING below)
+	case PAUSED:
+		return info.ZSwState_INSTALLED
 	case BOOTING:
 		return info.ZSwState_BOOTING
 	case RUNNING:
 		return info.ZSwState_RUNNING
+	// for now we're treating PAUSING as a subset of RUNNING
+	// simply because controllers don't support resumable
+	// paused tasks yet
+	case PAUSING:
+		return info.ZSwState_RUNNING
 	case HALTING:
+		return info.ZSwState_HALTING
+	// we map BROKEN to HALTING to indicate that EVE has an active
+	// role in reaping BROKEN domains and transitioning them to
+	// a final HALTED state
+	case BROKEN:
 		return info.ZSwState_HALTING
 	case HALTED:
 		return info.ZSwState_HALTED
