@@ -377,9 +377,9 @@ func (ctx xenContext) Start(domainName string, domainID int) error {
 	if err != nil {
 		// XXX continuing even if we get a failure?
 		log.Errorln("xen-disable-vif.sh write failed, continuing anyway", err)
-		log.Errorln("xen-disable-vif.sh write output ", string(stdOut), string(stdErr))
+		log.Errorln("xen-disable-vif.sh write output ", stdOut, stdErr)
 	} else {
-		log.Debugf("xenstore write done. Result %s", string(stdOut))
+		log.Debugf("xenstore write done. Result %s", stdOut)
 	}
 
 	log.Infof("xlUnpause %s %d\n", domainName, domainID)
@@ -387,10 +387,10 @@ func (ctx xenContext) Start(domainName string, domainID int) error {
 		[]string{"xl", "unpause", domainName})
 	if err != nil {
 		log.Errorln("xl unpause failed ", err)
-		log.Errorln("xl unpause output ", string(stdOut), string(stdErr))
-		return fmt.Errorf("xl unpause failed: %s %s", string(stdOut), string(stdErr))
+		log.Errorln("xl unpause output ", stdOut, stdErr)
+		return fmt.Errorf("xl unpause failed: %s %s", stdOut, stdErr)
 	}
-	log.Infof("xlUnpause done. Result %s", string(stdOut))
+	log.Infof("xlUnpause done. Result %s", stdOut)
 	return nil
 }
 
@@ -407,8 +407,8 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 	stdOut, stdErr, err := containerd.CtrExec(domainName, args)
 	if err != nil {
 		log.Errorln("xl shutdown failed ", err)
-		log.Errorln("xl shutdown output ", string(stdOut), string(stdErr))
-		return fmt.Errorf("xl shutdown failed: %s %s", string(stdOut), string(stdErr))
+		log.Errorln("xl shutdown output ", stdOut, stdErr)
+		return fmt.Errorf("xl shutdown failed: %s %s", stdOut, stdErr)
 	}
 	log.Infof("xl shutdown done\n")
 	return nil
@@ -420,8 +420,8 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 		[]string{"xl", "destroy", domainName})
 	if err != nil {
 		log.Errorln("xl destroy failed ", err)
-		log.Errorln("xl destroy output ", string(stdOut), string(stdErr))
-		return fmt.Errorf("xl destroy failed: %s %s", string(stdOut), string(stdErr))
+		log.Errorln("xl destroy output ", stdOut, stdErr)
+		return fmt.Errorf("xl destroy failed: %s %s", stdOut, stdErr)
 	}
 	log.Infof("xl destroy done\n")
 
@@ -442,15 +442,15 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 		[]string{"xl", "list", domainName})
 	if err != nil {
 		log.Errorln("xl list failed ", err)
-		log.Errorln("xl list output ", string(stdOut), string(stdErr))
-		return 0, types.UNKNOWN, fmt.Errorf("xl list failed: %s %s", string(stdOut), string(stdErr))
+		log.Errorln("xl list output ", stdOut, stdErr)
+		return 0, types.UNKNOWN, fmt.Errorf("xl list failed: %s %s", stdOut, stdErr)
 	}
-	log.Infof("xl list done. Result %s\n", string(stdOut))
+	log.Infof("xl list done. Result %s\n", stdOut)
 
 	//stdoutStderr should have 2 rows separated by '\n'. Where 1st row will be column names and 2nd row will be domain details
-	cmdResponse := strings.Split(string(stdOut), "\n")
+	cmdResponse := strings.Split(stdOut, "\n")
 	if len(cmdResponse) < 2 {
-		log.Errorln("Info: domain not present in xl list output", string(stdOut))
+		log.Errorln("Info: domain not present in xl list output", stdOut)
 		return 0, types.UNKNOWN, fmt.Errorf("info: domain not present in xl list output %s", string(stdOut))
 	}
 	//Removing all extra space between column result and split the result as array.
@@ -511,7 +511,7 @@ func (ctx xenContext) PCIReserve(long string) error {
 	stdOut, stdErr, err := containerd.CtrSystemExec("xen-tools",
 		[]string{"xl", "pci-assignable-add", long})
 	if err != nil {
-		errStr := fmt.Sprintf("xl pci-assignable-add failed: %s %s", string(stdOut), string(stdErr))
+		errStr := fmt.Sprintf("xl pci-assignable-add failed: %s %s", stdOut, stdErr)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
@@ -524,7 +524,7 @@ func (ctx xenContext) PCIRelease(long string) error {
 	stdOut, stdErr, err := containerd.CtrSystemExec("xen-tools",
 		[]string{"xl", "pci-assignable-rem", "-r", long})
 	if err != nil {
-		errStr := fmt.Sprintf("xl pci-assignable-rem failed: %s %s", string(stdOut), string(stdErr))
+		errStr := fmt.Sprintf("xl pci-assignable-rem failed: %s %s", stdOut, stdErr)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
@@ -533,14 +533,13 @@ func (ctx xenContext) PCIRelease(long string) error {
 }
 
 func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
-	stdout, stderr, err := containerd.CtrSystemExec("xen-tools",
+	xlInfo, stderr, err := containerd.CtrSystemExec("xen-tools",
 		[]string{"xl", "info"})
 	if err != nil {
-		log.Errorf("xl info failed %s %s falling back on Dom0 stats: %v", string(stdout), string(stderr), err)
+		log.Errorf("xl info failed %s %s falling back on Dom0 stats: %v", xlInfo, stderr, err)
 		return selfDomCPUMem()
 	}
 
-	xlInfo := string(stdout)
 	splitXlInfo := strings.Split(xlInfo, "\n")
 
 	dict := make(map[string]string, len(splitXlInfo)-1)
@@ -584,9 +583,8 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	count := 0
 	counter := 0
-	stdout, _, _ := containerd.CtrSystemExec("xen-tools",
+	xentopInfo, _, _ := containerd.CtrSystemExec("xen-tools",
 		[]string{"xentop", "-b", "-d", "1", "-i", "2", "-f"})
-	xentopInfo := string(stdout)
 
 	splitXentopInfo := strings.Split(xentopInfo, "\n")
 	splitXentopInfoLength := len(splitXentopInfo)

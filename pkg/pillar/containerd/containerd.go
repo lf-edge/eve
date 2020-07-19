@@ -450,22 +450,22 @@ func CtrStartTask(domainName string) error {
 }
 
 // ctrExec starts the executable in a running container and attaches its logging to memlogd
-func ctrExec(ctx context.Context, domainName string, args []string) ([]byte, []byte, error) {
+func ctrExec(ctx context.Context, domainName string, args []string) (string, string, error) {
 	if err := verifyCtr(); err != nil {
-		return nil, nil, fmt.Errorf("ctrExec: exception while verifying ctrd client: %s", err.Error())
+		return "", "", fmt.Errorf("ctrExec: exception while verifying ctrd client: %s", err.Error())
 	}
 	ctr, err := CtrdClient.LoadContainer(ctx, domainName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("ctrExec: Exception while loading container: %v", err)
+		return "", "", fmt.Errorf("ctrExec: Exception while loading container: %v", err)
 	}
 
 	spec, err := ctr.Spec(ctx)
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
 	task, err := ctr.Task(ctx, nil)
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
 
 	pspec := spec.Process
@@ -480,19 +480,19 @@ func ctrExec(ctx context.Context, domainName string, args []string) ([]byte, []b
 	cioOpts := []cio.Opt{cio.WithStreams(new(bytes.Buffer), &stdOut, &stdErr), cio.WithFIFODir(fifoDir)}
 	process, err := task.Exec(ctx, domainName+strconv.Itoa(rand.Int()), pspec, cio.NewCreator(cioOpts...))
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
 	defer process.Delete(ctx)
 
 	// prepare an exit code channel
 	statusC, err := process.Wait(ctx)
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
 
 	// finally - run it (asynchronously)
 	if err := process.Start(ctx); err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
 
 	// block until the process exits or the timer fires
@@ -508,16 +508,18 @@ func ctrExec(ctx context.Context, domainName string, args []string) ([]byte, []b
 		err = fmt.Errorf("execution timed out")
 	}
 
-	return stdOut.Bytes(), stdErr.Bytes(), err
+	st, ee := process.Status(ctx)
+	log.Debugf("ctrExec process exited with: %v %v %d %d %d %d", st, ee, stdOut.Cap(), stdOut.Len(), stdErr.Cap(), stdErr.Len())
+	return stdOut.String(), stdErr.String(), err
 }
 
 // CtrExec starts the executable in a running user container
-func CtrExec(domainName string, args []string) ([]byte, []byte, error) {
+func CtrExec(domainName string, args []string) (string, string, error) {
 	return ctrExec(ctrdCtx, domainName, args)
 }
 
 // CtrSystemExec starts the executable in a running system (EVE's) container
-func CtrSystemExec(domainName string, args []string) ([]byte, []byte, error) {
+func CtrSystemExec(domainName string, args []string) (string, string, error) {
 	return ctrExec(ctrdSystemCtx, domainName, args)
 }
 
