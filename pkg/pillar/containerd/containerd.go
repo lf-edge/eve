@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/containerd/api/services/tasks/v1"
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
@@ -425,6 +426,24 @@ func CtrCreateTask(domainName string) (int, error) {
 	}
 
 	return int(task.Pid()), nil
+}
+
+// CtrListTaskIds returns a list of all known tasks
+func CtrListTaskIds() ([]string, error) {
+	if err := verifyCtr(); err != nil {
+		return nil, fmt.Errorf("CtrListContainerIds: exception while verifying ctrd client: %s", err.Error())
+	}
+
+	tasks, err := CtrdClient.TaskService().List(ctrdCtx, &tasks.ListTasksRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	var res []string
+	for _, v := range tasks.Tasks {
+		res = append(res, v.ID)
+	}
+	return res, nil
 }
 
 // CtrStartTask starts the default task in a pre-existing container that was prepared by CtrCreateTask

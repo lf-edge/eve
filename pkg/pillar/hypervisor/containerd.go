@@ -151,7 +151,7 @@ func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 
 func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	res := map[string]types.DomainMetric{}
-	ids, err := containerd.CtrListContainerIds()
+	ids, err := containerd.CtrListTaskIds()
 	if err != nil {
 		return nil, err
 	}
