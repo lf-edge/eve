@@ -114,11 +114,11 @@ func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState
 	}
 
 	stateMap := map[string]types.SwState{
+		"created": types.INSTALLED,
 		"running": types.RUNNING,
-		"created": types.BOOTING,
-		"paused":  types.HALTED,
+		"pausing": types.PAUSING,
+		"paused":  types.PAUSED,
 		"stopped": types.HALTED,
-		"pausing": types.HALTING,
 	}
 	effectiveDomainState, matched := stateMap[status]
 	if !matched {
