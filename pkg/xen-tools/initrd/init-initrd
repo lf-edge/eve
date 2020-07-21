@@ -13,9 +13,21 @@ then
     exit 1
 fi
 
+MOUNT_TAGS=`cat /proc/cmdline | grep -o '\bvolumes=[^ ]*' | cut -d = -f 2`
+IFS=';' read -r -a mounts <<< "$MOUNT_TAGS"
+
 mkdir /mnt >/dev/null 2>&1
 if [ "$root" = "9p-xen" ]; then
-    mount -t 9p -o msize=131072,trans=xen share_dir /mnt
+    for element in "${mounts[@]}"
+    do
+        IFS=':' read -r -a mount <<< "$line"
+        len=${#mount[@]}
+        if (( $len > 1 )); then
+            echo "Mounting 9p tag ${mount[0]} on ${mount[1]}"
+            mkdir -p ${mount[1]}
+            mount -t 9p -o msize=131072,trans=xen ${mount[0]} ${mount[1]}
+        fi
+    done
 elif [ "$root" = "9p-kvm" ]; then
     mount -t 9p -o msize=131072,trans=virtio,version=9p2000.L hostshare /mnt
 else

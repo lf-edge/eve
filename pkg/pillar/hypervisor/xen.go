@@ -230,10 +230,13 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	var diskStrings []string
 	var p9Strings []string
+	var volumes []string
 	for i, ds := range diskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
+		if ds.Format == zconfig.Format_CONTAINER && ds.MountDir != "" {
 			p9Strings = append(p9Strings,
-				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FileLocation))
+				fmt.Sprintf("'tag=%s,security_model=none,path=%s'", ds.Tag, ds.FileLocation))
+			volumes = append(volumes,
+				fmt.Sprintf("%s:%s", ds.Tag, ds.MountDir))
 		} else {
 			access := "rw"
 			if ds.ReadOnly {
@@ -250,6 +253,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	}
 	if len(p9Strings) > 0 {
 		file.WriteString(fmt.Sprintf("p9 = [%s]\n", strings.Join(p9Strings, ",")))
+		extra = extra + fmt.Sprintf(" volumes=%s", strings.Join(volumes, ","))
 	}
 
 	vifString := ""

@@ -12,6 +12,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 )
 
+var tagCounter int64
+
 // dirSize returns the size of the directory
 func dirSize(path string) (uint64, error) {
 	var size int64
@@ -51,4 +53,9 @@ func GetVolumeSize(name string) (uint64, uint64, error) {
 		return 0, 0, errors.New(errStr)
 	}
 	return imgInfo.ActualSize, imgInfo.VirtualSize, nil
+}
+
+func TagGenerator() string {
+	tagCounter++
+	return fmt.Sprintf("tag%d", tagCounter)
 }

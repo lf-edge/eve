@@ -24,6 +24,7 @@ type VolumeConfig struct {
 	RefCount                uint
 	GenerationCounter       int64
 	VolumeDir               string
+	MountDir                string
 	DisplayName             string
 }
 
@@ -99,6 +100,7 @@ type VolumeStatus struct {
 	ReadOnly                bool
 	GenerationCounter       int64
 	VolumeDir               string
+	MountDir                string
 	DisplayName             string
 	State                   SwState
 	RefCount                uint
@@ -278,6 +280,7 @@ type VolumeRefStatus struct {
 	ReadOnly           bool
 	DisplayName        string
 	MaxVolSize         uint64
+	MountDir           string
 	PendingAdd         bool // Flag to identify whether volume ref config published or not
 
 	ErrorAndTimeWithSource
