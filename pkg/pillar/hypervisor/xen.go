@@ -449,11 +449,11 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName, domainID)
-	if err != nil || effectiveDomainState == types.HALTED {
+	if err != nil || effectiveDomainState != types.RUNNING {
 		return effectiveDomainID, effectiveDomainState, err
 	}
 
-	// if task us alive, we augment task status with finer grained details from qemu
+	// if task is alive, we augment task status with finer grained details from xl info
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 
 	// XXX xl list -l domainName returns json. XXX but state not included!
@@ -463,7 +463,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	if err != nil {
 		log.Errorln("xl list failed ", err)
 		log.Errorln("xl list output ", stdOut, stdErr)
-		return 0, types.UNKNOWN, fmt.Errorf("xl list failed: %s %s", stdOut, stdErr)
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("xl list failed: %s %s", stdOut, stdErr)
 	}
 	log.Infof("xl list done. Result %s\n", stdOut)
 
@@ -471,7 +471,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	cmdResponse := strings.Split(stdOut, "\n")
 	if len(cmdResponse) < 2 {
 		log.Errorln("Info: domain not present in xl list output", stdOut)
-		return 0, types.UNKNOWN, fmt.Errorf("info: domain not present in xl list output %s", string(stdOut))
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain not present in xl list output %s", string(stdOut))
 	}
 	//Removing all extra space between column result and split the result as array.
 	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(cmdResponse[1], " ")
@@ -506,7 +506,8 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	}
 	effectiveDomainState, matched := stateMap[lastState]
 	if !matched {
-		effectiveDomainState = types.UNKNOWN
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %s",
+			domainName, lastState)
 	}
 
 	// if we are in one of the states that may require a device model -- check for it
@@ -518,8 +519,9 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 		// pgrep returns 0 when there is atleast one matching program running
 		// cmd.Output returns nil when pgrep returns 0, otherwise pids.
 		if _, err := cmd.Output(); err != nil {
-			log.Infof("Info: device model %s process is not running: %s", match, err)
-			effectiveDomainState = types.BROKEN
+			err = fmt.Errorf("info: device model %s process is not running: %s", match, err)
+			log.Infof(err.Error())
+			return effectiveDomainID, types.BROKEN, err
 		}
 	}
 

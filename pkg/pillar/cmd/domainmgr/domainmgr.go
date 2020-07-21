@@ -751,11 +751,24 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			if status.IsContainer {
 				status.SetErrorNow("container exited - please restart application instance")
 			}
+
+			// check if task is in the BROKEN state and kill it (later on we may do some
+			// level of recovery or at least gather some intel on why and how it crashed)
+			// NOTE: we don't do anything for repairing tasks in the UNKNOWN state, for those
+			// the only remedy is an explicit user action (delete, restart, etc.)
+			if domainStatus == types.BROKEN {
+				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
+				log.Errorf(err.Error())
+				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
+				if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+				}
+			}
 		}
 		status.DomainId = 0
 		publishDomainStatus(ctx, status)
 	} else {
-		if !status.Activated {
+		if !status.Activated && domainStatus == types.RUNNING {
 			log.Warnf("verifyDomain(%s) domain came back alive; id  %d",
 				status.Key(), domainID)
 			status.ClearError()
@@ -777,19 +790,6 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 				status.Key())
 			publishDomainStatus(ctx, status)
-		}
-		// check if task is in the BROKEN or UNKNOWN state and kill it (later on we may do some
-		// level of recovery or at least gather some intel on why and how it crashed)
-		if configActivate && status.Activated && (domainStatus == types.BROKEN || domainStatus == types.UNKNOWN) {
-			errStr := fmt.Sprintf("verifyStatus(%s) task has crashed (%d)", status.Key(), domainStatus)
-			log.Errorf(errStr)
-			status.SetErrorNow("one of the application's tasks have crashed - please restart application instance")
-			status.Activated = false
-			status.State = types.HALTED
-			publishDomainStatus(ctx, status)
-			if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
-				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
-			}
 		}
 	}
 }
