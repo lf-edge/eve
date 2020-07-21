@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package downloader
 
 import (
@@ -28,11 +31,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		trType                                                 zedUpload.SyncTransportType
 		auth                                                   *zedUpload.AuthInput
 	)
-
-	if status.ObjType == "" {
-		log.Fatalf("handleSyncOp: No ObjType for %s",
-			status.ImageSha256)
-	}
 
 	// the target filename, where to place the download, is provided in config.
 	// downloader has two options:
@@ -248,11 +246,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// based on the result, perform some storage
 	// management also
 
-	if status.ObjType == "" {
-		log.Fatalf("handleSyncOpResponse: No ObjType for %s",
-			status.ImageSha256)
-	}
-
 	if errStr != "" {
 		// Delete file, and update the storage
 		doDelete(ctx, key, locFilename, status)
@@ -337,6 +330,16 @@ func getDatastoreCredential(ctx *downloaderContext,
 				dst.Key(), err)
 			decBlock.DsAPIKey = dst.ApiKey
 			decBlock.DsPassword = dst.Password
+			// We assume IsCipher is only set when there was some
+			// data. Hence this is a fallback if there is
+			// some cleartext.
+			if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
+				cipher.RecordFailure(agentName,
+					types.CleartextFallback)
+			} else {
+				cipher.RecordFailure(agentName,
+					types.MissingFallback)
+			}
 			return decBlock, nil
 		}
 		log.Infof("%s, datastore config cipherblock decryption successful", dst.Key())
@@ -346,5 +349,10 @@ func getDatastoreCredential(ctx *downloaderContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password
+	if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
+		cipher.RecordFailure(agentName, types.NoCipher)
+	} else {
+		cipher.RecordFailure(agentName, types.NoData)
+	}
 	return decBlock, nil
 }

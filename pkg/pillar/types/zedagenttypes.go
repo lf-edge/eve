@@ -20,18 +20,18 @@ type OsVerParams struct {
 // This is what we assume will come from the ZedControl for base OS.
 // Note that we can have different versions  configured for the
 // same UUID, hence the key is the UUIDandVersion  We assume the
-// elements in StorageConfig should be installed, but activation
+// elements in ContentTreeConfig should be installed, but activation
 // is driven by the Activate attribute.
 
 type BaseOsConfig struct {
-	UUIDandVersion    UUIDandVersion
-	BaseOsVersion     string // From GetShortVersion
-	ConfigSha256      string
-	ConfigSignature   string
-	OsParams          []OsVerParams // From GetLongVersion
-	StorageConfigList []StorageConfig
-	RetryCount        int32
-	Activate          bool
+	UUIDandVersion        UUIDandVersion
+	BaseOsVersion         string // From GetShortVersion
+	ConfigSha256          string
+	ConfigSignature       string
+	OsParams              []OsVerParams // From GetLongVersion
+	ContentTreeConfigList []ContentTreeConfig
+	RetryCount            int32
+	Activate              bool
 }
 
 func (config BaseOsConfig) Key() string {
@@ -94,17 +94,17 @@ func (config BaseOsConfig) LogKey() string {
 
 // Indexed by UUIDandVersion as above
 type BaseOsStatus struct {
-	UUIDandVersion    UUIDandVersion
-	BaseOsVersion     string
-	ConfigSha256      string
-	Activated         bool
-	Reboot            bool
-	TooEarly          bool // Failed since previous was inprogress/test
-	OsParams          []OsVerParams
-	StorageStatusList []StorageStatus
-	PartitionLabel    string
-	PartitionDevice   string // From zboot
-	PartitionState    string // From zboot
+	UUIDandVersion        UUIDandVersion
+	BaseOsVersion         string
+	ConfigSha256          string
+	Activated             bool
+	Reboot                bool
+	TooEarly              bool // Failed since previous was inprogress/test
+	OsParams              []OsVerParams
+	ContentTreeStatusList []ContentTreeStatus
+	PartitionLabel        string
+	PartitionDevice       string // From zboot
+	PartitionState        string // From zboot
 
 	// Mininum state across all steps/StorageStatus.
 	// Error* set implies error.
@@ -198,9 +198,8 @@ func (status BaseOsStatus) LogKey() string {
 // for indexing
 // XXX shouldn't it be keyed by safename
 type CertObjConfig struct {
-	UUIDandVersion    UUIDandVersion
-	ConfigSha256      string
-	StorageConfigList []StorageConfig
+	UUIDandVersion UUIDandVersion
+	ConfigSha256   string
 }
 
 func (config CertObjConfig) Key() string {
@@ -220,10 +219,8 @@ func (config CertObjConfig) VerifyFilename(fileName string) bool {
 // Indexed by UUIDandVersion as above
 // XXX shouldn't it be keyed by safename
 type CertObjStatus struct {
-	UUIDandVersion    UUIDandVersion
-	ConfigSha256      string
-	StorageStatusList []StorageStatus
-	// Mininum state across all steps/ StorageStatus.
+	UUIDandVersion UUIDandVersion
+	ConfigSha256   string
 	// Error* set implies error.
 	State SwState
 	// error strings across all steps/StorageStatus
@@ -263,21 +260,6 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 //  - whether the cert object is installed
 //  - any error information
 func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorAndTime) {
-	for _, certObj := range status.StorageStatusList {
-		if certObj.Name == certURL {
-			installed := true
-			if certObj.HasError() || certObj.State != INSTALLED {
-				installed = false
-			}
-			// An Error in StorageStatus can be from
-			// DownloaderStatus with changing timestamp
-			// from re-trying the download. Carry that to caller.
-			return true, installed, ErrorAndTime{
-				Error:     certObj.Error,
-				ErrorTime: certObj.ErrorTime,
-			}
-		}
-	}
 	return false, false, ErrorAndTime{
 		Error:     fmt.Sprintf("Invalid Certificate %s, not found", certURL),
 		ErrorTime: time.Now(),

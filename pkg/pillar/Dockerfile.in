@@ -35,6 +35,7 @@ ADD ./  /pillar/
 
 # go vet/format and go install
 WORKDIR /pillar
+RUN patch -p1 < patch-arm-poll.diff
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     echo "Running go vet" && go vet ./... && \
     echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \

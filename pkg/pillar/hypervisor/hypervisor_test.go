@@ -4,9 +4,13 @@
 package hypervisor
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"reflect"
 	"testing"
 )
+
+var testDom = &types.DomainStatus{VirtualizationMode: types.HVM}
+var hyper Hypervisor
 
 func TestGetHypervisor(t *testing.T) {
 	if _, err := GetHypervisor("quantum computing"); err == nil {

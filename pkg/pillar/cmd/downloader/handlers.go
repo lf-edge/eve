@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package downloader
 
 import (
@@ -27,7 +30,7 @@ func makeDownloadHandler() *downloadHandler {
 // Wrappers around createObject, modifyObject, and deleteObject
 
 // Determine whether it is an create or modify
-func (d *downloadHandler) modify(ctxArg interface{}, objType string,
+func (d *downloadHandler) modify(ctxArg interface{},
 	key string, configArg interface{}) {
 
 	log.Infof("downloadHandler.modify(%s)", key)
@@ -45,7 +48,7 @@ func (d *downloadHandler) modify(ctxArg interface{}, objType string,
 	}
 }
 
-func (d *downloadHandler) create(ctxArg interface{}, objType string,
+func (d *downloadHandler) create(ctxArg interface{},
 	key string, configArg interface{}) {
 
 	log.Infof("downloadHandler.create(%s)", key)
@@ -57,7 +60,7 @@ func (d *downloadHandler) create(ctxArg interface{}, objType string,
 	}
 	h1 := make(chan Notify, 1)
 	d.handlers[config.Key()] = h1
-	go runHandler(ctx, objType, key, h1)
+	go runHandler(ctx, key, h1)
 	h = h1
 	select {
 	case h <- Notify{}:

@@ -7,16 +7,18 @@ import (
 	"path"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 // AddOrRefcountDownloaderConfig used to publish the downloader config
+// The objType is only used to determine the free/not-free download setting
 func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob types.BlobStatus) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s", blob.Sha256)
 
 	refCount := uint(1)
-	m := lookupDownloaderConfig(ctx, objType, blob.Sha256)
+	m := lookupDownloaderConfig(ctx, blob.Sha256)
 	if m != nil {
 		log.Infof("downloader config exists for %s to refcount %d", blob.Sha256, m.RefCount)
 		refCount = m.RefCount + 1
@@ -42,7 +44,12 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 	}
 
 	// where should the final downloaded file be?
-	locFilename := path.Join(types.DownloadDirname, "pending", blob.Sha256)
+	// Pick a unique name since the sha has not yet been verified hence
+	// can potentially collide between different concurrent downloads
+	pendingFile := uuid.NewV4().String() + "." + blob.Sha256
+	locFilename := path.Join(types.SealedDirName, "downloader", "pending",
+		pendingFile)
+
 	// try to reserve storage, must be released on error
 	size := blob.Size
 
@@ -56,14 +63,14 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 		RefCount:         refCount,
 	}
 	log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
-	publishDownloaderConfig(ctx, objType, &n)
+	publishDownloaderConfig(ctx, &n)
 	log.Infof("AddOrRefcountDownloaderConfig done for %s", blob.Sha256)
 }
 
-func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha string) {
-	log.Infof("MaybeRemoveDownloaderConfig(%s) for %s", imageSha, objType)
+func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
+	log.Infof("MaybeRemoveDownloaderConfig(%s)", imageSha)
 
-	m := lookupDownloaderConfig(ctx, objType, imageSha)
+	m := lookupDownloaderConfig(ctx, imageSha)
 	if m == nil {
 		log.Infof("MaybeRemoveDownloaderConfig: config missing for %s",
 			imageSha)
@@ -78,29 +85,29 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, objType string, imageSha
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s",
 		m.RefCount, imageSha)
 	if m.RefCount == 0 {
-		unpublishDownloaderConfig(ctx, objType, m)
+		unpublishDownloaderConfig(ctx, m)
 	} else {
-		publishDownloaderConfig(ctx, objType, m)
+		publishDownloaderConfig(ctx, m)
 	}
 	log.Infof("MaybeRemoveDownloaderConfig done for %s", imageSha)
 }
 
-func publishDownloaderConfig(ctx *volumemgrContext, objType string,
+func publishDownloaderConfig(ctx *volumemgrContext,
 	config *types.DownloaderConfig) {
 
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s)", key)
-	pub := ctx.publication(*config, objType)
+	pub := ctx.pubDownloaderConfig
 	pub.Publish(key, *config)
 	log.Debugf("publishDownloaderConfig(%s) Done", key)
 }
 
-func unpublishDownloaderConfig(ctx *volumemgrContext, objType string,
+func unpublishDownloaderConfig(ctx *volumemgrContext,
 	config *types.DownloaderConfig) {
 
 	key := config.Key()
 	log.Debugf("unpublishDownloaderConfig(%s)", key)
-	pub := ctx.publication(*config, objType)
+	pub := ctx.pubDownloaderConfig
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Errorf("unpublishDownloaderConfig(%s) not found", key)
@@ -127,24 +134,24 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	// a race and downloader will see the RefCount increase and clear the
 	// Expired flag (and not delete the file).
 
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
+	config := lookupDownloaderConfig(ctx, status.ImageSha256)
 	if config != nil && config.RefCount == 0 && status.Expired {
 		log.Infof("handleDownloaderStatusModify expired - deleting config %s",
 			key)
-		unpublishDownloaderConfig(ctx, status.ObjType, config)
+		unpublishDownloaderConfig(ctx, config)
 
 		return
 	}
 
 	// Normal update case
-	updateStatus(ctx, status.ObjType, status.ImageSha256)
+	updateStatus(ctx, status.ImageSha256)
 	log.Infof("handleDownloaderStatusModify done for %s", status.ImageSha256)
 }
 
-func lookupDownloaderConfig(ctx *volumemgrContext, objType,
+func lookupDownloaderConfig(ctx *volumemgrContext,
 	key string) *types.DownloaderConfig {
 
-	pub := ctx.publication(types.DownloaderConfig{}, objType)
+	pub := ctx.pubDownloaderConfig
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Infof("lookupDownloaderConfig(%s) not found", key)
@@ -155,10 +162,10 @@ func lookupDownloaderConfig(ctx *volumemgrContext, objType,
 }
 
 // Note that this function returns the entry even if Pending* is set.
-func lookupDownloaderStatus(ctx *volumemgrContext, objType,
+func lookupDownloaderStatus(ctx *volumemgrContext,
 	key string) *types.DownloaderStatus {
 
-	sub := ctx.subscription(types.DownloaderStatus{}, objType)
+	sub := ctx.subDownloaderStatus
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupDownloaderStatus(%s) not found", key)
@@ -174,13 +181,13 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloaderStatusDelete for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.DownloaderStatus)
-	updateStatus(ctx, status.ObjType, status.ImageSha256)
+	updateStatus(ctx, status.ImageSha256)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageSha256)
+	config := lookupDownloaderConfig(ctx, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleDownloaderStatusDelete delete config for %s",
 			key)
-		unpublishDownloaderConfig(ctx, status.ObjType, config)
+		unpublishDownloaderConfig(ctx, config)
 	}
 	log.Infof("handleDownloaderStatusDelete done for %s", key)
 }

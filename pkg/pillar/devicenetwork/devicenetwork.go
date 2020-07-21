@@ -95,14 +95,6 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	// Map of per-interface errors
 	intfStatusMap := *types.NewIntfStatusMap()
 
-	// Check if it is 1970 in which case we declare success since
-	// our certificates will not work until NTP has brought the time
-	// forward.
-	if time.Now().Year() == 1970 {
-		log.Infof("VerifyDeviceNetworkStatus skip due to 1970")
-		return false, intfStatusMap, nil
-	}
-
 	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
@@ -188,6 +180,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 
 	log.Infof("MakeDeviceNetworkStatus()\n")
 	globalStatus.Version = globalConfig.Version
+	globalStatus.State = oldStatus.State
 	globalStatus.Ports = make([]types.NetworkPortStatus,
 		len(globalConfig.Ports))
 	for ix, u := range globalConfig.Ports {
@@ -410,6 +403,16 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 				wifi.SSID, err)
 			decBlock.WifiUserName = wifi.Identity
 			decBlock.WifiPassword = wifi.Password
+			// We assume IsCipher is only set when there was some
+			// data. Hence this is a fallback if there is
+			// some cleartext.
+			if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
+				cipher.RecordFailure(ctx.AgentName,
+					types.CleartextFallback)
+			} else {
+				cipher.RecordFailure(ctx.AgentName,
+					types.MissingFallback)
+			}
 			return decBlock, nil
 		}
 		log.Infof("%s, wifi config cipherblock decryption successful\n", wifi.SSID)
@@ -419,6 +422,11 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.WifiUserName = wifi.Identity
 	decBlock.WifiPassword = wifi.Password
+	if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
+		cipher.RecordFailure(ctx.AgentName, types.NoCipher)
+	} else {
+		cipher.RecordFailure(ctx.AgentName, types.NoData)
+	}
 	return decBlock, nil
 }
 

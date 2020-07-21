@@ -5,6 +5,7 @@ config:
   binds:
     - /run:/run
     - /dev:/dev
+    - /dev/pts:/dev/pts
     - /etc/resolv.conf:/etc/resolv.conf
     - /var/persist:/persist
     - /:/hostfs

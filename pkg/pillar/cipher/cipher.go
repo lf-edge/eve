@@ -36,7 +36,9 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 	*cipherBlock = status
 	var decBlock types.EncryptionBlock
 	if !cipherBlock.IsCipher {
-		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, nil)
+		// Should not be called if IsCipher is not set
+		return handleCipherBlockCredError(agentName, cipherBlock,
+			decBlock, nil, types.Invalid)
 	}
 	log.Infof("%s, cipherblock decryption, using cipher-context: %s\n",
 		cipherBlock.Key(), cipherBlock.CipherContextID)
@@ -45,13 +47,15 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 			cipherBlock.Key(), cipherBlock.Error)
 		log.Errorln(errStr)
 		err := errors.New(errStr)
-		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
+		return handleCipherBlockCredError(agentName, cipherBlock,
+			decBlock, err, types.NotReady)
 	}
 	clearBytes, err := DecryptCipherBlock(ctx, *cipherBlock)
 	if err != nil {
 		log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
+		return handleCipherBlockCredError(agentName, cipherBlock,
+			decBlock, err, types.DecryptFailed)
 	}
 
 	var zconfigDecBlock zconfig.EncryptionBlock
@@ -59,10 +63,12 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 	if err != nil {
 		log.Errorf("%s, encryption block unmarshall failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(agentName, cipherBlock, decBlock, err)
+		return handleCipherBlockCredError(agentName, cipherBlock,
+			decBlock, err, types.UnmarshalFailed)
 	}
 	log.Infof("%s, cipherblock decryption successful", cipherBlock.Key())
 	decBlock = getEncryptionBlock(&zconfigDecBlock)
+	RecordSuccess(agentName)
 	return *cipherBlock, decBlock, err
 }
 
@@ -97,7 +103,9 @@ func GetCipherData(ctx *DecryptCipherContext, agentName string, status types.Cip
 // try to return valid plain-text data for further processing
 // for encryption block
 func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatus,
-	decBlock types.EncryptionBlock, err error) (types.CipherBlockStatus, types.EncryptionBlock, error) {
+	decBlock types.EncryptionBlock, err error, errtype types.CipherError) (types.CipherBlockStatus, types.EncryptionBlock, error) {
+
+	RecordFailure(agentName, errtype)
 	if err != nil {
 		status.SetErrorNow(err.Error())
 		// we have already captured the error info above

@@ -77,6 +77,8 @@ func (etsPtr *ErrorAndTimeWithSource) SetError(errStr string, errTime time.Time)
 }
 
 // SetErrorWithSource - Sets error state. Source needs to be a type
+// but source might be a string passed from ErrorSourceType in another
+// object.
 func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 	source interface{}, errTime time.Time) {
 
@@ -87,7 +89,12 @@ func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 		log.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
-	etsPtr.ErrorSourceType = reflect.TypeOf(source).String()
+	switch source.(type) {
+	case string:
+		etsPtr.ErrorSourceType = source.(string)
+	default:
+		etsPtr.ErrorSourceType = reflect.TypeOf(source).String()
+	}
 	etsPtr.ErrorTime = errTime
 }
 
@@ -124,7 +131,6 @@ func (etsPtr *ErrorAndTimeWithSource) ErrorAndTime() ErrorAndTime {
 // and their struct types do not compare as equal
 // Allow string in case passed from another ErrorSourceType
 func allowedSourceType(source interface{}) bool {
-	// Catch common mistakes like a string
 	switch source.(type) {
 	case int:
 		return false

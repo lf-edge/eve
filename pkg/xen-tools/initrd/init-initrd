@@ -80,6 +80,9 @@ echo "Executing /mount_disk.sh"
 # Commence launch sequence
 source /mnt/environment
 
+echo "Run acpid daemon"
+acpid -l /proc/self/fd/1
+
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
 #shellcheck disable=SC2086

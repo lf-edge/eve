@@ -56,7 +56,7 @@ if [ -n "$oom" ]; then
 fi
 if [ -n "$agent" ]; then
     echo "$agent crashed" >>/persist/reboot-reason
-    panic=$(grep panic /persist/rsyslog/syslog.txt)
+    panic=$(grep panic /persist/rsyslog/syslog.txt | tail -1)
     if [ -n "$panic" ]; then
         echo "$panic" >>/persist/reboot-reason
         # Note that panic stack trace might exist tagged with e.g. pillar.err

@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -60,10 +61,14 @@ var reportDirPaths = []string{
 	types.PersistDir + "/checkpoint",
 }
 
-// Application-related files live here; includes downloads and verifications in progress
+// Application-related files live here
+// XXX do we need to exclude the ContentTrees used for eve image update?
+// If so how do we tell them apart
 var appPersistPaths = []string{
-	types.PersistDir + "/img",
-	types.AppImgDirname,
+	types.VolumeEncryptedDirName,
+	types.VolumeClearDirName,
+	types.SealedDirName + "/downloader",
+	types.SealedDirName + "/verifier",
 }
 
 func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
@@ -342,16 +347,53 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			&metric)
 	}
 
+	// collect CipherMetric from agents and report
+	// Collect zedcloud metrics from ourselves and other agents
+	cipherMetrics := cipher.GetCipherMetrics()
+	if cipherMetricsDL != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDL)
+	}
+	if cipherMetricsDM != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDM)
+	}
+	if cipherMetricsNim != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsNim)
+	}
+	for agentName, cm := range cipherMetrics {
+		log.Debugf("Cipher metrics for %s: %+v", agentName, cm)
+		metric := metrics.CipherMetric{AgentName: agentName,
+			FailureCount: cm.FailureCount,
+			SuccessCount: cm.SuccessCount,
+		}
+		if !cm.LastFailure.IsZero() {
+			lf, _ := ptypes.TimestampProto(cm.LastFailure)
+			metric.LastFailure = lf
+		}
+		if !cm.LastSuccess.IsZero() {
+			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
+			metric.LastSuccess = ls
+		}
+		for i := range cm.TypeCounters {
+			tc := metrics.TypeCounter{
+				ErrorCode: metrics.CipherError(i),
+				Count:     cm.TypeCounters[i],
+			}
+			metric.Tc = append(metric.Tc, &tc)
+		}
+		ReportDeviceMetric.Cipher = append(ReportDeviceMetric.Cipher,
+			&metric)
+	}
+
 	disks := diskmetrics.FindDisksPartitions()
 	for _, d := range disks {
 		size, _ := diskmetrics.PartitionSize(d)
 		log.Debugf("Disk/partition %s size %d", d, size)
-		size = RoundToMbytes(size)
+		size = utils.RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
 		stat, err := disk.IOCounters(d)
 		if err == nil {
-			metric.ReadBytes = RoundToMbytes(stat[d].ReadBytes)
-			metric.WriteBytes = RoundToMbytes(stat[d].WriteBytes)
+			metric.ReadBytes = utils.RoundToMbytes(stat[d].ReadBytes)
+			metric.WriteBytes = utils.RoundToMbytes(stat[d].WriteBytes)
 			metric.ReadCount = stat[d].ReadCount
 			metric.WriteCount = stat[d].WriteCount
 		}
@@ -375,9 +417,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
 		metric := metrics.DiskMetric{MountPath: path,
-			Total: RoundToMbytes(u.Total),
-			Used:  RoundToMbytes(u.Used),
-			Free:  RoundToMbytes(u.Free),
+			Total: utils.RoundToMbytes(u.Total),
+			Used:  utils.RoundToMbytes(u.Used),
+			Free:  utils.RoundToMbytes(u.Free),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -387,7 +429,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		usage := diskmetrics.SizeFromDir(path)
 		log.Debugf("Path %s usage %d", path, usage)
 		metric := metrics.DiskMetric{MountPath: path,
-			Used: RoundToMbytes(usage),
+			Used: utils.RoundToMbytes(usage),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -599,8 +641,8 @@ func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetri
 		return err
 	}
 	appDiskDetails.Disk = vrs.ActiveFileLocation
-	appDiskDetails.Used = RoundToMbytes(actualSize)
-	appDiskDetails.Provisioned = RoundToMbytes(maxSize)
+	appDiskDetails.Used = utils.RoundToMbytes(actualSize)
+	appDiskDetails.Provisioned = utils.RoundToMbytes(maxSize)
 	if vrs.IsContainer() {
 		appDiskDetails.DiskType = "CONTAINER"
 		return nil
@@ -624,12 +666,6 @@ func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 	volumeResourcesDetails.CurSizeBytes = actualSize
 	volumeResourcesDetails.MaxSizeBytes = maxSize
 	return nil
-}
-
-func RoundToMbytes(byteCount uint64) uint64 {
-	const mbyte = 1024 * 1024
-
-	return (byteCount + mbyte/2) / mbyte
 }
 
 //getDataSecAtRestInfo prepares status related to Data security at Rest
@@ -755,7 +791,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	for _, disk := range disks {
 		size, _ := diskmetrics.PartitionSize(disk)
 		log.Debugf("Disk/partition %s size %d", disk, size)
-		size = RoundToMbytes(size)
+		size = utils.RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
@@ -770,7 +806,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		log.Debugf("Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
-		size := RoundToMbytes(u.Total)
+		size := utils.RoundToMbytes(u.Total)
 		is := info.ZInfoStorage{MountPath: path, Total: size}
 		// We know this is where we store images and keep
 		// domU virtual disks.
@@ -824,9 +860,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.Status = bos.State.ZSwState()
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
-			if len(bos.StorageStatusList) > 0 {
-				// Assume one - pick first StorageStatus
-				swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+			if len(bos.ContentTreeStatusList) > 0 {
+				// Assume one - pick first ContentTreeStatus
+				swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 			}
 			if !bos.ErrorTime.IsZero() {
 				log.Debugf("reportMetrics sending error time %v error %v for %s",
@@ -877,9 +913,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		swInfo.Status = bos.State.ZSwState()
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
-		if len(bos.StorageStatusList) > 0 {
-			// Assume one - pick first StorageStatus
-			swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+		if len(bos.ContentTreeStatusList) > 0 {
+			// Assume one - pick first ContentTreeStatus
+			swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 		}
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s",

@@ -4,9 +4,7 @@
 package types
 
 import (
-	"errors"
 	"fmt"
-	"os"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -145,6 +143,21 @@ func (status ContentTreeStatus) IsContainer() bool {
 	return false
 }
 
+// UpdateFromContentTreeConfig sets up ContentTreeStatus based on ContentTreeConfig struct
+func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeConfig) {
+	status.ContentID = config.ContentID
+	status.DatastoreID = config.DatastoreID
+	status.RelativeURL = config.RelativeURL
+	status.Format = config.Format
+	status.ContentSha256 = config.ContentSha256
+	status.MaxDownloadSize = config.MaxDownloadSize
+	status.GenerationCounter = config.GenerationCounter
+	status.ImageSignature = config.ImageSignature
+	status.SignatureKey = config.SignatureKey
+	status.CertificateChain = config.CertificateChain
+	status.DisplayName = config.DisplayName
+}
+
 // LogCreate :
 func (status ContentTreeStatus) LogCreate() {
 	logObject := base.NewLogObject(base.ContentTreeStatusLogType, status.DisplayName,
@@ -209,118 +222,4 @@ func (status ContentTreeStatus) LogDelete() {
 // LogKey :
 func (status ContentTreeStatus) LogKey() string {
 	return string(base.ContentTreeStatusLogType) + "-" + status.Key()
-}
-
-// IsCertsAvailable checks certificate requirement/availability for a content tree object
-func (status ContentTreeStatus) IsCertsAvailable(displaystr string) (bool, error) {
-	if !status.needsCerts() {
-		log.Debugf("%s, Certs are not required\n", displaystr)
-		return false, nil
-	}
-	cidx, err := status.getCertCount(displaystr)
-	return cidx != 0, err
-}
-
-// needsCerts whether certificates are required for the content tree object
-func (status ContentTreeStatus) needsCerts() bool {
-	if len(status.ImageSignature) == 0 {
-		return false
-	}
-	return true
-}
-
-// getCertCount returns the number of certificates for the content tree Object
-// called with valid ImageSignature only
-func (status ContentTreeStatus) getCertCount(displaystr string) (int, error) {
-	cidx := 0
-	if status.SignatureKey == "" {
-		errStr := fmt.Sprintf("%s, Invalid Root CertURL\n", displaystr)
-		log.Errorf(errStr)
-		return cidx, errors.New(errStr)
-	}
-	cidx++
-	if len(status.CertificateChain) != 0 {
-		for _, certURL := range status.CertificateChain {
-			if certURL == "" {
-				errStr := fmt.Sprintf("%s, Invalid Intermediate CertURL\n", displaystr)
-				log.Errorf(errStr)
-				return 0, errors.New(errStr)
-			}
-			cidx++
-		}
-	}
-	return cidx, nil
-}
-
-// HandleCertStatus gets the CertObject Status for the content tree object
-// True, when there is no Certs or, the certificates are ready
-// False, Certificates are not ready or, there are some errors
-func (status ContentTreeStatus) HandleCertStatus(displaystr string,
-	certObjStatus CertObjStatus) (bool, ErrorAndTime) {
-	if ret, errInfo := status.checkCertsStatusForObject(certObjStatus); !ret {
-		log.Infof("%s, Certs are still not ready\n", displaystr)
-		return ret, errInfo
-	}
-	if ret := status.checkCertsForObject(); !ret {
-		log.Infof("%s, Certs are still not installed\n", displaystr)
-		return ret, ErrorAndTime{}
-	}
-	return true, ErrorAndTime{}
-}
-
-// checkCertsStatusForObject checks certificates for installation status
-func (status ContentTreeStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorAndTime) {
-
-	if status.SignatureKey != "" {
-		found, installed, errInfo := certObjStatus.getCertStatus(status.SignatureKey)
-		if !found || !installed {
-			return false, errInfo
-		}
-	}
-
-	for _, certURL := range status.CertificateChain {
-		found, installed, errorAndTime := certObjStatus.getCertStatus(certURL)
-		if !found || !installed {
-			return false, errorAndTime
-		}
-	}
-	return true, ErrorAndTime{}
-}
-
-// checkCertsForObject checks availability of Certs in Disk
-func (status ContentTreeStatus) checkCertsForObject() bool {
-
-	if status.SignatureKey != "" {
-		safename := UrlToSafename(status.SignatureKey, "")
-		filename := CertificateDirname + "/" + SafenameToFilename(safename)
-		// XXX result is just the sha? Or "serverCert.<sha>?
-		if _, err := os.Stat(filename); err != nil {
-			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false
-		}
-		// XXX check for valid or non-zero length?
-	}
-
-	for _, certURL := range status.CertificateChain {
-		safename := UrlToSafename(certURL, "")
-		filename := CertificateDirname + "/" + SafenameToFilename(safename)
-		// XXX result is just the sha? Or "serverCert.<sha>?
-		if _, err := os.Stat(filename); err != nil {
-			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false
-		}
-		// XXX check for valid or non-zero length?
-	}
-
-	for _, certURL := range status.CertificateChain {
-		safename := UrlToSafename(certURL, "")
-		filename := CertificateDirname + "/" + SafenameToFilename(safename)
-		// XXX result is just the sha? Or "serverCert.<sha>?
-		if _, err := os.Stat(filename); err != nil {
-			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false
-		}
-		// XXX check for valid or non-zero length?
-	}
-	return true
 }

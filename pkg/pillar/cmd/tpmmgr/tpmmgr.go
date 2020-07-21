@@ -86,11 +86,18 @@ const (
 
 var (
 	//location of the ecdh certificate
-	ecdhCertFile = types.IdentityDirname + "/ecdh.cert.pem"
+	ecdhCertFile = types.PersistConfigDir + "/ecdh.cert.pem"
+
+	//location of the attestation quote certificate
+	quoteCertFile = types.PersistConfigDir + "/attest.cert.pem"
 
 	//location of the ecdh private key
 	//on devices without a TPM
-	ecdhKeyFile = types.IdentityDirname + "/ecdh.key.pem"
+	ecdhKeyFile = types.PersistConfigDir + "/ecdh.key.pem"
+
+	//location of private key for the quote certificate
+	//on devices without a TPM
+	quoteKeyFile = types.PersistConfigDir + "/attest.key.pem"
 
 	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
@@ -866,6 +873,200 @@ func getPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	return nil, err
 }
 
+func createQuoteCert() error {
+	// certificate is already created
+	if etpm.FileExists(quoteCertFile) {
+		return nil
+	}
+	// try TPM
+	if etpm.IsTpmEnabled() {
+		if err := createQuoteCertOnTpm(); err == nil {
+			return nil
+		} else {
+			// some issue with TPM. Fall back to soft cert
+			log.Errorf("createQuoteCertOnTpm failed with err (%v), trying software certificate", err)
+		}
+	}
+	// create soft certficate
+	return createQuoteCertSoft()
+}
+
+func createQuoteCertOnTpm() error {
+	//Check if we already have the certificate
+	if !etpm.FileExists(quoteCertFile) {
+		//Cert is not present, generate new one
+		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+		if err != nil {
+			return err
+		}
+		defer rw.Close()
+
+		deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+		if err != nil {
+			return err
+		}
+
+		block, _ := pem.Decode(deviceCertBytes)
+		if block == nil {
+			return fmt.Errorf("Failed in PEM decoding of deviceCertBytes")
+		}
+
+		deviceCert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return err
+		}
+
+		quoteKey, _, _, err := tpm2.ReadPublic(rw, TpmQuoteKeyHdl)
+		if err != nil {
+			return err
+		}
+
+		publicKey, err := quoteKey.Key()
+		if err != nil {
+			return err
+		}
+
+		tpmPrivKey := etpm.TpmPrivateKey{}
+		tpmPrivKey.PublicKey = tpmPrivKey.Public()
+		template := createQuoteTemplate(*deviceCert)
+
+		cert, err := x509.CreateCertificate(rand.Reader,
+			&template, deviceCert, publicKey, tpmPrivKey)
+		if err != nil {
+			return err
+		}
+
+		certBlock := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert,
+		}
+
+		certBytes := pem.EncodeToMemory(certBlock)
+		if certBytes == nil {
+			return fmt.Errorf("empty bytes after encoding to PEM")
+		}
+
+		err = ioutil.WriteFile(quoteCertFile, certBytes, 0644)
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
+}
+
+// create Quote Template using the deviceCert for lifetimes
+// Use a CommonName to differentiate from the device cert itself
+func createQuoteTemplate(deviceCert x509.Certificate) x509.Certificate {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Country:      []string{"US"},
+			Province:     []string{"CA"},
+			Locality:     []string{"San Francisco"},
+			Organization: []string{"The Linux Foundation"},
+			CommonName:   "Device Attestation certificate",
+		},
+		NotBefore: deviceCert.NotBefore,
+		NotAfter:  deviceCert.NotAfter,
+
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	return template
+}
+
+// generate the software Quote key and certificate,
+// the certificate is signed using the device private key
+// Assumes no TPM hence device private key is in a file
+func createQuoteCertSoft() error {
+	// get the device software private key
+	devicePrivKey, err := getDevicePrivateKey()
+	if err != nil {
+		return fmt.Errorf("Failed reading device key with error: %v", err)
+	}
+
+	// generate the quote private key
+	certPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("Failed to generate software ECDSA key pair: %v", err)
+	}
+
+	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	if err != nil {
+		return fmt.Errorf("Failed to read device cert file: %v", err)
+	}
+
+	block, _ := pem.Decode(deviceCertBytes)
+	if block == nil {
+		return fmt.Errorf("Failed in PEM decoding of deviceCertBytes")
+	}
+
+	deviceCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("Failed to parse device cert bytes with error: %v", err)
+	}
+
+	// get the quote template
+	template := createQuoteTemplate(*deviceCert)
+
+	// create the certificate and sign with device private key
+	derBytes, err := x509.CreateCertificate(rand.Reader,
+		&template, deviceCert, certPrivKey.Public(), devicePrivKey)
+	if err != nil {
+		return fmt.Errorf("Failed to create Quote certificate: %v", err)
+	}
+
+	certBlock := &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: derBytes,
+	}
+
+	// public cert bytes
+	certBytes := pem.EncodeToMemory(certBlock)
+	if certBytes == nil {
+		return fmt.Errorf("Failed in PEM encoding of Quote cert: empty bytes")
+	}
+
+	// private cert bytes
+	privBytes, err := x509.MarshalECPrivateKey(certPrivKey)
+	if err != nil {
+		return fmt.Errorf("Failed in MarshalECPrivateKey of Quote cert: %v", err)
+	}
+	keyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privBytes,
+	}
+
+	keyBytes := pem.EncodeToMemory(keyBlock)
+	if keyBytes == nil {
+		return fmt.Errorf("Failed in PEM encoding of Quote key: empty bytes")
+	}
+	return writeQuoteCertToFile(certBytes, keyBytes)
+}
+
+func writeQuoteCertToFile(certBytes, keyBytes []byte) error {
+	if err := ioutil.WriteFile(quoteKeyFile, keyBytes, 0644); err != nil {
+		return err
+	}
+	if err := ioutil.WriteFile(quoteCertFile, certBytes, 0644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func getQuoteCert(certPath string) ([]byte, error) {
+	certBytes, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read Quote certificate: %v", err)
+	}
+	return certBytes, nil
+}
+
 func createEcdhCert() error {
 	// certificate is already created
 	if etpm.FileExists(ecdhCertFile) {
@@ -885,24 +1086,23 @@ func createEcdhCert() error {
 }
 
 func createEcdhCertOnTpm() error {
-	//Check if we already have the certificate in /config
+	//Check if we already have the certificate
 	if !etpm.FileExists(ecdhCertFile) {
-		//Cert is not present in /config, generate new one
-		//Store certificate in /config
+		//Cert is not present, generate new one
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 		if err != nil {
 			return err
 		}
 		defer rw.Close()
 
-		clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+		deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 		if err != nil {
-			return nil
+			return err
 		}
 
-		block, _ := pem.Decode(clientCertBytes)
+		block, _ := pem.Decode(deviceCertBytes)
 		if block == nil {
-			return fmt.Errorf("error in parsing clientCertBytes")
+			return fmt.Errorf("Failed in PEM decoding of deviceCertBytes")
 		}
 
 		deviceCert, err := x509.ParseCertificate(block.Bytes)
@@ -946,7 +1146,6 @@ func createEcdhCertOnTpm() error {
 		}
 
 	}
-	//change state to CERTS_CREATED
 	return nil
 }
 
@@ -961,8 +1160,8 @@ func createEcdhTemplate(deviceCert x509.Certificate) x509.Certificate {
 		Subject: pkix.Name{
 			Country:      []string{"US"},
 			Province:     []string{"CA"},
-			Locality:     []string{"Santa Clara"},
-			Organization: []string{"Zededa, Inc"},
+			Locality:     []string{"San Francisco"},
+			Organization: []string{"The Linux Foundation"},
 			CommonName:   "Device ECDH certificate",
 		},
 		NotBefore: deviceCert.NotBefore,
@@ -979,33 +1178,26 @@ func createEcdhTemplate(deviceCert x509.Certificate) x509.Certificate {
 // the certificate is signed using the device private key
 // Assumes no TPM hence device private key is in a file
 func createEcdhCertSoft() error {
-
 	// get the device software private key
 	devicePrivKey, err := getDevicePrivateKey()
 	if err != nil {
-		errStr := fmt.Sprintf("device key file is absent")
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed reading device key with error: %v", err)
 	}
 
 	// generate the ecdh private key
 	certPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		errStr := fmt.Sprintf("curve get fail, %v", err)
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed to generate software ECDSA key pair: %v", err)
 	}
 
-	clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 	if err != nil {
-		errStr := fmt.Sprintf("read device cert failed: %v", err)
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed to read device cert file: %v", err)
 	}
 
-	block, _ := pem.Decode(clientCertBytes)
+	block, _ := pem.Decode(deviceCertBytes)
 	if block == nil {
-		return fmt.Errorf("error in parsing clientCertBytes")
+		return fmt.Errorf("Failed in PEM decoding of deviceCertBytes")
 	}
 
 	deviceCert, err := x509.ParseCertificate(block.Bytes)
@@ -1020,9 +1212,7 @@ func createEcdhCertSoft() error {
 	derBytes, err := x509.CreateCertificate(rand.Reader,
 		&template, deviceCert, certPrivKey.Public(), devicePrivKey)
 	if err != nil {
-		errStr := fmt.Sprintf("certificate create fail, %v", err)
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed to create ECDH certificate: %v", err)
 	}
 
 	certBlock := &pem.Block{
@@ -1033,17 +1223,13 @@ func createEcdhCertSoft() error {
 	// public cert bytes
 	certBytes := pem.EncodeToMemory(certBlock)
 	if certBytes == nil {
-		errStr := fmt.Sprintf("PEM Encode error: empty bytes")
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed in PEM encoding of ECDH cert: empty bytes")
 	}
 
 	// private cert bytes
 	privBytes, err := x509.MarshalECPrivateKey(certPrivKey)
 	if err != nil {
-		errStr := fmt.Sprintf("certificate marshal fail, %v", err)
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed in MarshalECPrivateKey of ECDH cert: %v", err)
 	}
 	keyBlock := &pem.Block{
 		Type:  "PRIVATE KEY",
@@ -1052,11 +1238,8 @@ func createEcdhCertSoft() error {
 
 	keyBytes := pem.EncodeToMemory(keyBlock)
 	if keyBytes == nil {
-		errStr := fmt.Sprintf("PEM Encode error: empty bytes")
-		log.Errorf(errStr)
-		return errors.New(errStr)
+		return fmt.Errorf("Failed in PEM encoding of ECDH key: empty bytes")
 	}
-	// write to /config
 	return writeEcdhCertToFile(certBytes, keyBytes)
 }
 
@@ -1064,10 +1247,7 @@ func writeEcdhCertToFile(certBytes, keyBytes []byte) error {
 	if err := ioutil.WriteFile(ecdhKeyFile, keyBytes, 0644); err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(ecdhCertFile, certBytes, 0644); err != nil {
-		return err
-	}
-	return nil
+	return ioutil.WriteFile(ecdhCertFile, certBytes, 0644)
 }
 
 func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
@@ -1081,10 +1261,7 @@ func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
 func getECDHCert(certPath string) ([]byte, error) {
 	certBytes, err := ioutil.ReadFile(certPath)
 	if err != nil {
-		errStr := fmt.Sprintf("getECDHCert failed while reading ECDH certificate: %v",
-			err)
-		log.Error(errStr)
-		return []byte{}, errors.New(errStr)
+		return nil, fmt.Errorf("Failed to read ECDH certificate: %v", err)
 	}
 	return certBytes, nil
 }
@@ -1323,7 +1500,7 @@ func Run(ps *pubsub.PubSub) {
 			fmt.Printf("test passed")
 		}
 	case "createCerts":
-		//Create additional security keys if already not created, followed by any certificates
+		//Create additional security keys if already not created, followed by security certificates
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
 			log.Errorf("Error in creating Endorsement key: %v ", err)
 			os.Exit(1)
@@ -1348,6 +1525,10 @@ func Run(ps *pubsub.PubSub) {
 	case "createSoftCerts":
 		if err := createEcdhCert(); err != nil {
 			log.Errorf("Error in creating Ecdh Certificate: %v", err)
+			os.Exit(1)
+		}
+		if err := createQuoteCert(); err != nil {
+			log.Errorf("Error in creating Quote Certificate: %v", err)
 			os.Exit(1)
 		}
 	default:

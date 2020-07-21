@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
@@ -85,6 +86,7 @@ func Run(ps *pubsub.PubSub) {
 		fallbackPortMap:  make(map[string]bool),
 		filteredFallback: make(map[string]bool),
 	}
+	nimCtx.deviceNetworkContext.AgentName = agentName
 	nimCtx.deviceNetworkContext.AssignableAdapters = &types.AssignableAdapters{}
 	nimCtx.sshAccess = true // Kernel default - no iptables filters
 	nimCtx.globalConfig = types.DefaultConfigItemValueMap()
@@ -105,6 +107,13 @@ func Run(ps *pubsub.PubSub) {
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName, warningTime, errorTime)
+
+	// Publish metrics for zedagent every 10 seconds
+	interval := time.Duration(10 * time.Second)
+	max := float64(interval)
+	min := max * 0.3
+	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
@@ -157,6 +166,14 @@ func Run(ps *pubsub.PubSub) {
 			AgentName: agentName,
 			TopicType: types.CipherBlockStatus{},
 		})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CipherMetricsMap{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -701,6 +718,15 @@ func Run(ps *pubsub.PubSub) {
 			pubsub.CheckMaxTimeTopic(agentName, "TestBetterTimer", start,
 				warningTime, errorTime)
 
+		case <-publishTimer.C:
+			start := time.Now()
+			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
+			if err != nil {
+				log.Errorln(err)
+			}
+			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -817,6 +843,10 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 		dpc := &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 		dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+		if err == nil {
+			dpc.State = types.DPC_SUCCESS
+			dpc.TestResults.RecordSuccess()
+		}
 		ctx.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
 		log.Infof("publishing DevicePortConfigList update: %+v",
 			*ctx.DevicePortConfigList)
@@ -826,21 +856,15 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 
 	// Use TestResults to update the DeviceNetworkStatus and publish
 	ctx.DeviceNetworkStatus.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	if err == nil {
+		ctx.DeviceNetworkStatus.State = types.DPC_SUCCESS
+	}
 	log.Infof("PublishDeviceNetworkStatus updated: %+v\n",
 		*ctx.DeviceNetworkStatus)
 	ctx.PubDeviceNetworkStatus.Publish("global", *ctx.DeviceNetworkStatus)
 
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
-		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
-			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-			cur.TestResults.RecordSuccess()
-			log.Infof("publishing DevicePortConfigList success: %+v",
-				*ctx.DevicePortConfigList)
-			ctx.PubDevicePortConfigList.Publish("global",
-				*ctx.DevicePortConfigList)
-		}
-
 		ctx.CloudConnectivityWorks = true
 		// Restart network test timer for next slot.
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)

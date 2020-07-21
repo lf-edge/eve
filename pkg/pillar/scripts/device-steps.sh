@@ -15,14 +15,18 @@ ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
-AGENTS0="logmanager ledmanager nim nodeagent"
-AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient volumemgr"
+AGENTS0="logmanager ledmanager nim nodeagent domainmgr"
+AGENTS1="zedmanager zedrouter downloader verifier identitymgr zedagent baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
+
+# For checking whether we have a Keyboard etc at startup
+in=$(cat /sys/class/input/input*/name)
+echo "$(date -Ins -u) input devices: $in"
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -124,6 +128,11 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE"
     if ! $BINDIR/vaultmgr setupVaults; then
         echo "$(date -Ins -u) device-steps: vaultmgr setupVaults failed"
     fi
+else
+    if [ ! -d $PERSISTDIR/vault ]; then
+        echo "$(date -Ins -u) Creating $PERSISTDIR/vault"
+        mkdir $PERSISTDIR/vault
+    fi
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
@@ -137,12 +146,12 @@ if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
 
-echo "$(date -Ins -u) Current downloaded files:"
-ls -lt $PERSISTDIR/downloads/*/*
+echo "$(date -Ins -u) Current downloaded/verified files:"
+ls -lt $PERSISTDIR/vault/verifier/verified/
 echo
 
-echo "$(date -Ins -u) Preserved images:"
-ls -lt $PERSISTDIR/img/
+echo "$(date -Ins -u) Preserved volumes:"
+ls -lt $PERSISTDIR/vault/volumes/
 echo
 
 # Copy any GlobalConfig from /config
@@ -178,12 +187,19 @@ echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
 # TBD: Should we start it earlier before wwan and wlan services?
 if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
-    ledmanager &
+    $BINDIR/ledmanager &
     wait_for_touch ledmanager
 fi
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     touch $FIRSTBOOTFILE # For nodeagent
 fi
+
+# Start domainmgr to setup USB hid/storage based on onboarding status
+# and config item
+echo "$(date -Ins -u) Starting domainmgr"
+$BINDIR/domainmgr &
+wait_for_touch domainmgr
+
 echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent &
 wait_for_touch nodeagent
@@ -191,6 +207,7 @@ wait_for_touch nodeagent
 mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
       "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch"
+      "$WATCHDOG_PID/domainmgr.pid" "$WATCHDOG_FILE/domainmgr.touch"
 
 mkdir -p $DPCDIR
 

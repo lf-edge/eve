@@ -115,6 +115,7 @@ func Run(ps *pubsub.PubSub) {
 		pacContents:  *pacContentsPtr,
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
+	ctx.AgentName = agentName
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
@@ -511,6 +512,11 @@ func printOutput(ctx *diagContext) {
 	if testing {
 		fmt.Fprintf(outfile, "WARNING: The configuration below is under test hence might report failures\n")
 	}
+	if ctx.DeviceNetworkStatus.State != types.DPC_SUCCESS {
+		fmt.Fprintf(outfile, "WARNING: state %s not SUCCESS\n",
+			ctx.DeviceNetworkStatus.State.String())
+	}
+
 	numPorts := len(ctx.DeviceNetworkStatus.Ports)
 	mgmtPorts := 0
 	passPorts := 0

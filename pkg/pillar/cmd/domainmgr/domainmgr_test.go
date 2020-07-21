@@ -9,21 +9,10 @@
 package domainmgr
 
 import (
-	"flag"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"reflect"
 	"testing"
 )
-
-func TestDefaultXenHypervisor(t *testing.T) {
-	hypervisorPtr := flag.String("h", "xen", "")
-	flag.CommandLine.Parse([]string{""})
-	hyper, err := hypervisor.GetHypervisor(*hypervisorPtr)
-	if err != nil || hyper.Name() != "xen" {
-		t.Errorf("Expected xen default hypervisor, got %s with error %v", hyper.Name(), err)
-	}
-}
 
 func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	type fetchEnvVar struct {

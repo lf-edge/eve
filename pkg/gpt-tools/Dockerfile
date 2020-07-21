@@ -49,6 +49,7 @@ RUN set -e && for patch in ../patches/sgdisk-*.patch; do \
         patch -p1 < "$patch"; \
     done
 RUN make LDFLAGS=-static sgdisk
+RUN strip sgdisk
 RUN cp sgdisk /out/sgdisk
 
 

@@ -15,7 +15,7 @@ import (
 type domState struct {
 	id     int
 	config string
-	state  string
+	state  types.SwState
 }
 
 type nullContext struct {
@@ -40,7 +40,11 @@ func (ctx nullContext) Name() string {
 	return "null"
 }
 
-func (ctx nullContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+func (ctx nullContext) Task(status *types.DomainStatus) types.Task {
+	return ctx
+}
+
+func (ctx nullContext) Setup(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
 	return nil
 }
 
@@ -70,14 +74,14 @@ func (ctx nullContext) Create(domainName string, cfgFilename string, config *typ
 
 	// calls to Create are serialized in the consumer: no need to worry about locking
 	ctx.domCounter++
-	ctx.doms[domainName] = &domState{id: ctx.domCounter, config: string(configContent), state: "stopped"}
+	ctx.doms[domainName] = &domState{id: ctx.domCounter, config: string(configContent), state: types.HALTED}
 
 	return ctx.domCounter, nil
 }
 
 func (ctx nullContext) Start(domainName string, domainID int) error {
-	if dom, found := ctx.doms[domainName]; found && dom.state == "stopped" {
-		dom.state = "running"
+	if dom, found := ctx.doms[domainName]; found && dom.state == types.HALTED {
+		dom.state = types.RUNNING
 		return nil
 	} else {
 		return fmt.Errorf("null domain %s doesn't exist or is not stopped", domainName)
@@ -85,8 +89,8 @@ func (ctx nullContext) Start(domainName string, domainID int) error {
 }
 
 func (ctx nullContext) Stop(domainName string, domainID int, force bool) error {
-	if dom, found := ctx.doms[domainName]; found && dom.state == "running" {
-		dom.state = "stopped"
+	if dom, found := ctx.doms[domainName]; found && dom.state == types.RUNNING {
+		dom.state = types.HALTED
 		return nil
 	} else {
 		return fmt.Errorf("null domain %s doesn't exist or is not running", domainName)
@@ -100,26 +104,14 @@ func (ctx nullContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx nullContext) Info(domainName string, domainID int) error {
+func (ctx nullContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	if dom, found := ctx.doms[domainName]; found {
-		log.Infof("Null Domain %s is %s and has the following config %s\n", domainName, dom.state, dom.config)
-		return nil
+		log.Infof("Null Domain %s is %v and has the following config %s\n", domainName, dom.state, dom.config)
+		return dom.id, dom.state, nil
 	} else {
 		log.Errorf("Null Domain %s doesn't exist", domainName)
-		return fmt.Errorf("null domain %s doesn't exist", domainName)
+		return 0, types.UNKNOWN, fmt.Errorf("null domain %s doesn't exist", domainName)
 	}
-}
-
-func (ctx nullContext) LookupByName(domainName string, domainID int) (int, error) {
-	if dom, found := ctx.doms[domainName]; found {
-		return dom.id, nil
-	} else {
-		return 0, fmt.Errorf("null domain %s doesn't exist", domainName)
-	}
-}
-
-func (ctx nullContext) Tune(string, int, int) error {
-	return nil
 }
 
 func (ctx nullContext) PCIReserve(long string) error {
@@ -138,14 +130,6 @@ func (ctx nullContext) PCIRelease(long string) error {
 		ctx.PCI[long] = false
 		return nil
 	}
-}
-
-func (ctx nullContext) IsDomainPotentiallyShuttingDown(domainName string) bool {
-	return false
-}
-
-func (ctx nullContext) IsDeviceModelAlive(int) bool {
-	return true
 }
 
 func (ctx nullContext) GetHostCPUMem() (types.HostMemory, error) {

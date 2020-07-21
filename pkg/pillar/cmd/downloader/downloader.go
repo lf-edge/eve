@@ -1,9 +1,9 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Process input in the form of collections of DownloaderConfig structs
 // and publish the results as collections of DownloaderStatus structs.
-// There are several inputs and outputs based on the objType.
+// Also process ResolveConfig to produce ResolveStatus
 
 package downloader
 
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -27,8 +28,9 @@ import (
 const (
 	agentName = "downloader"
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime          = 3 * time.Minute
+	warningTime        = 40 * time.Second
+	downloaderBasePath = types.SealedDirName + "/" + agentName
 )
 
 // Go doesn't like this as a constant
@@ -69,7 +71,7 @@ func Run(ps *pubsub.PubSub) {
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+	metricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: cms,
 	})
@@ -77,7 +79,15 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
-	// Publish send metrics for zedagent every 10 seconds
+	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CipherMetricsMap{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Publish metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
 	max := float64(interval)
 	min := max * 0.3
@@ -106,7 +116,7 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("processed GlobalConfig")
 
 	// First wait to have some management ports with addresses
-	// Looking at any management ports since we can do baseOS download over all
+	// Looking at any management ports since we can do download over all
 	// Also ensure GlobalDownloadConfig has been read
 	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
 		ctx.globalConfig.MaxSpace == 0 {
@@ -150,20 +160,11 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-ctx.subCertObjConfig.MsgChan():
-			ctx.subCertObjConfig.ProcessChange(change)
+		case change := <-ctx.subDownloaderConfig.MsgChan():
+			ctx.subDownloaderConfig.ProcessChange(change)
 
-		case change := <-ctx.subAppImgConfig.MsgChan():
-			ctx.subAppImgConfig.ProcessChange(change)
-
-		case change := <-ctx.subContentTreeResolveConfig.MsgChan():
-			ctx.subContentTreeResolveConfig.ProcessChange(change)
-
-		case change := <-ctx.subAppImgResolveConfig.MsgChan():
-			ctx.subAppImgResolveConfig.ProcessChange(change)
-
-		case change := <-ctx.subBaseOsConfig.MsgChan():
-			ctx.subBaseOsConfig.ProcessChange(change)
+		case change := <-ctx.subResolveConfig.MsgChan():
+			ctx.subResolveConfig.ProcessChange(change)
 
 		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)
@@ -173,7 +174,11 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := metricsPub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Errorln(err)
+			}
+			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -188,32 +193,24 @@ func Run(ps *pubsub.PubSub) {
 
 // handle the datastore modification
 func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
-	publications := []pubsub.Publication{
-		ctx.pubAppImgStatus,
-		ctx.pubBaseOsStatus,
-		ctx.pubCertObjStatus,
-	}
-	for _, pub := range publications {
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.DownloaderStatus)
-			if status.DatastoreID == dsID {
-				config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
-				if config != nil {
-					dHandler.modify(ctx, status.ObjType, status.Key(), *config)
-				}
+	pub := ctx.pubDownloaderStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.DownloaderStatus)
+		if status.DatastoreID == dsID {
+			config := lookupDownloaderConfig(ctx, status.Key())
+			if config != nil {
+				dHandler.modify(ctx, status.Key(), *config)
 			}
 		}
 	}
 }
 
-// Wrappers to add objType for create. The Delete wrappers are merely
-
 // Callers must be careful to publish any changes to DownloaderStatus
-func lookupDownloaderStatus(ctx *downloaderContext, objType string,
+func lookupDownloaderStatus(ctx *downloaderContext,
 	key string) *types.DownloaderStatus {
 
-	pub := ctx.publication(objType)
+	pub := ctx.pubDownloaderStatus
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Infof("lookupDownloaderStatus(%s) not found", key)
@@ -223,10 +220,9 @@ func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 	return &status
 }
 
-func lookupDownloaderConfig(ctx *downloaderContext, objType string,
-	key string) *types.DownloaderConfig {
+func lookupDownloaderConfig(ctx *downloaderContext, key string) *types.DownloaderConfig {
 
-	sub := ctx.subscription(objType)
+	sub := ctx.subDownloaderConfig
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupDownloaderConfig(%s) not found", key)
@@ -236,9 +232,8 @@ func lookupDownloaderConfig(ctx *downloaderContext, objType string,
 	return &config
 }
 
-// Server for each domU
-func runHandler(ctx *downloaderContext, objType string, key string,
-	c <-chan Notify) {
+// runHandler is the server for each DownloaderConfig object aka key
+func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 
 	log.Infof("runHandler starting")
 
@@ -251,25 +246,23 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 		select {
 		case _, ok := <-c:
 			if ok {
-				sub := ctx.subscription(objType)
+				sub := ctx.subDownloaderConfig
 				c, err := sub.Get(key)
 				if err != nil {
 					log.Errorf("runHandler no config for %s", key)
 					continue
 				}
 				config := c.(types.DownloaderConfig)
-				status := lookupDownloaderStatus(ctx,
-					objType, key)
+				status := lookupDownloaderStatus(ctx, key)
 				if status == nil {
-					handleCreate(ctx, objType, config, status, key)
+					handleCreate(ctx, config, status, key)
 				} else {
 					handleModify(ctx, key, config, status)
 				}
 				// XXX if err start timer
 			} else {
 				// Closed
-				status := lookupDownloaderStatus(ctx,
-					objType, key)
+				status := lookupDownloaderStatus(ctx, key)
 				if status != nil {
 					handleDelete(ctx, key, status)
 				}
@@ -278,7 +271,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 			}
 		case <-ticker.C:
 			log.Debugf("runHandler(%s) timer", key)
-			status := lookupDownloaderStatus(ctx, objType, key)
+			status := lookupDownloaderStatus(ctx, key)
 			if status != nil {
 				maybeRetryDownload(ctx, status)
 			}
@@ -306,7 +299,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 	log.Infof("maybeRetryDownload(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	config := lookupDownloaderConfig(ctx, status.Key())
 	if config == nil {
 		log.Infof("maybeRetryDownload(%s) no config",
 			status.Key())
@@ -321,23 +314,17 @@ func maybeRetryDownload(ctx *downloaderContext,
 	doDownload(ctx, *config, status)
 }
 
-func handleCreate(ctx *downloaderContext, objType string,
-	config types.DownloaderConfig, status *types.DownloaderStatus, key string) {
+func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
+	status *types.DownloaderStatus, key string) {
 
-	log.Infof("handleCreate(%s) objType %s for %s",
-		config.ImageSha256, objType, config.Name)
+	log.Infof("handleCreate(%s) for %s", config.ImageSha256, config.Name)
 
-	if objType == "" {
-		log.Fatalf("handleCreate: No ObjType for %s",
-			config.ImageSha256)
-	}
 	if status == nil {
 		// Start by marking with PendingAdd
 		status0 := types.DownloaderStatus{
 			DatastoreID:      config.DatastoreID,
 			Name:             config.Name,
 			ImageSha256:      config.ImageSha256,
-			ObjType:          objType,
 			State:            types.DOWNLOADING,
 			RefCount:         config.RefCount,
 			Size:             config.Size,
@@ -370,16 +357,10 @@ func handleCreate(ctx *downloaderContext, objType string,
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
-	log.Infof("handleModify(%s) objType %s for %s",
-		status.ImageSha256, status.ObjType, status.Name)
+	log.Infof("handleModify(%s) for %s", status.ImageSha256, status.Name)
 
 	status.PendingModify = true
 	publishDownloaderStatus(ctx, status)
-
-	if status.ObjType == "" {
-		log.Fatalf("handleModify: No ObjType for %s",
-			status.ImageSha256)
-	}
 
 	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s",
 		status.ImageSha256, status.RefCount, config.RefCount,
@@ -389,7 +370,7 @@ func handleModify(ctx *downloaderContext, key string,
 	// or status is not downloaded then do install
 	if config.RefCount != 0 && (status.HasError() || status.State != types.DOWNLOADED) {
 		log.Infof("handleModify installing %s", config.Name)
-		handleCreate(ctx, status.ObjType, config, status, key)
+		handleCreate(ctx, config, status, key)
 	} else if status.RefCount != config.RefCount {
 		status.RefCount = config.RefCount
 	}
@@ -451,14 +432,9 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%s) objType %s for %s RefCount %d LastUse %v Expired %v",
-		status.ImageSha256, status.ObjType, status.Name,
+	log.Infof("handleDelete(%s) for %s RefCount %d LastUse %v Expired %v",
+		status.ImageSha256, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
-
-	if status.ObjType == "" {
-		log.Fatalf("handleDelete: No ObjType for %s",
-			status.ImageSha256)
-	}
 
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
@@ -484,14 +460,16 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 		log.Errorf("context create fail %s", err)
 		log.Fatal(err)
 	}
-
+	// Remove any files which didn't complete before the device reboot
+	clearInProgressDownloadDirs()
+	createDownloadDirs()
 	return dCtx
 }
 
 func publishDownloaderStatus(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
-	pub := ctx.publication(status.ObjType)
+	pub := ctx.pubDownloaderStatus
 	key := status.Key()
 	log.Debugf("publishDownloaderStatus(%s)", key)
 	pub.Publish(key, *status)
@@ -500,7 +478,7 @@ func publishDownloaderStatus(ctx *downloaderContext,
 func unpublishDownloaderStatus(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
-	pub := ctx.publication(status.ObjType)
+	pub := ctx.pubDownloaderStatus
 	key := status.Key()
 	log.Debugf("unpublishDownloaderStatus(%s)", key)
 	st, _ := pub.Get(key)

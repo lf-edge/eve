@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package verifier
 
 import (
@@ -29,7 +32,7 @@ func makeVerifyHandler() *verifyHandler {
 // Wrappers around handleCreate, handleModify, and handleDelete
 
 // Determine whether it is an create or modify
-func (v *verifyHandler) modify(ctxArg interface{}, objType string,
+func (v *verifyHandler) modify(ctxArg interface{},
 	key string, configArg interface{}) {
 
 	typeName := pubsub.TypeToName(configArg)
@@ -49,7 +52,7 @@ func (v *verifyHandler) modify(ctxArg interface{}, objType string,
 	log.Infof("verifyHandler.modify(%s) done", handlerKey)
 }
 
-func (v *verifyHandler) create(ctxArg interface{}, objType string,
+func (v *verifyHandler) create(ctxArg interface{},
 	key string, configArg interface{}) {
 
 	typeName := pubsub.TypeToName(configArg)
@@ -64,7 +67,7 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 	v.handlers[handlerKey] = h1
 	switch typeName {
 	case "VerifyImageConfig":
-		go runHandler(ctx, objType, key, h1)
+		go runHandler(ctx, key, h1)
 	default:
 		log.Fatalf("Unknown type %s", typeName)
 	}

@@ -18,6 +18,7 @@ import (
 
 // downloadBlob download a blob from a content tree
 // returns whether or not the BlobStatus has changed
+// The objType is only used to check the free vs. non-free policy for downloads
 func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
 
 	changed := false
@@ -29,7 +30,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 	}
 	// Check if we have a DownloadStatus if not put a DownloadConfig
 	// in place
-	ds := lookupDownloaderStatus(ctx, objType, blob.Sha256)
+	ds := lookupDownloaderStatus(ctx, blob.Sha256)
 
 	// we do not have one, or it is expired or not referenced, then
 	// the one we just created is it; set our State to DOWNLOADING and return
@@ -95,12 +96,41 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 		// Nothing to do
 	case types.DOWNLOADED:
 		// signal verifier to start if it hasn't already; add RefCount
-		if verifyBlob(ctx, objType, sv, blob) {
+		if verifyBlob(ctx, sv, blob) {
 			changed = true
 		}
 	}
 	log.Infof("downloadBlob(%s) complete", blob.Sha256)
 	return changed
+}
+
+//AddRefToBlobStatus adds the refObject as an reference to the blobs in the given blob list.
+func AddRefToBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobStatus) {
+	for _, blob := range blobStatus {
+		blob.RefCount++
+		log.Infof("AddRefToBlobStatus: RefCount to %d for Blob %s",
+			blob.RefCount, blob.Sha256)
+		publishBlobStatus(ctx, blob)
+	}
+}
+
+//RemoveRefFromBlobStatus removes the reference from the blobs in the given blob list.
+func RemoveRefFromBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobStatus) {
+	for _, blob := range blobStatus {
+		if blob.RefCount == 0 {
+			log.Fatalf("RemoveRefFromBlobStatus: Attempting to reduce 0 Refcount for blob %s ", blob.Sha256)
+		}
+		blob.RefCount--
+		log.Infof("RemoveRefFromBlobStatus: RefCount to %d for Blob %s",
+			blob.RefCount, blob.Sha256)
+		if blob.RefCount == 0 {
+			log.Infof("RemoveRefFromBlobStatus: unpublishing Blob %s since no object is referring it.",
+				blob.Sha256)
+			unpublishBlobStatus(ctx, blob)
+			continue
+		}
+		publishBlobStatus(ctx, blob)
+	}
 }
 
 // updateBlobFromVerifyImageStatus updates a BlobStatus from a VerifyImageStatus.
@@ -142,17 +172,17 @@ func updateBlobFromVerifyImageStatus(vs *types.VerifyImageStatus, blob *types.Bl
 // potentially incrementing creating or incrementing the refcount on a
 // VerifyImageConfig to trigger the generation of a VerifyImageStatus.
 // returns if the BlobStatus was changed, and thus woudl require publishing
-func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func verifyBlob(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
 
 	// A: try to use an existing VerifyImageStatus
-	vs := lookupVerifyImageStatus(ctx, objType, blob.Sha256)
+	vs := lookupVerifyImageStatus(ctx, blob.Sha256)
 	if vs != nil && !vs.Expired {
 		log.Infof("verifyBlob(%s): found VerifyImageStatus", blob.Sha256)
 		changed = updateBlobFromVerifyImageStatus(vs, blob)
 
 		// if we do not reference it, increment the refcount
-		if startBlobVerification(ctx, objType, sv, blob) {
+		if startBlobVerification(ctx, sv, blob) {
 			changed = true
 		}
 
@@ -164,7 +194,7 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 		blob.State = types.VERIFYING
 		changed = true
 	}
-	if startBlobVerification(ctx, objType, sv, blob) {
+	if startBlobVerification(ctx, sv, blob) {
 		changed = true
 	}
 	return changed
@@ -172,12 +202,12 @@ func verifyBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blo
 
 // startBlobVerification kick off verification of a blob, or increment the refcount.
 // Used only in verifyBlob, but repetitive, so a separate utility function
-func startBlobVerification(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func startBlobVerification(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) bool {
 	changed := false
 	if blob.HasVerifierRef {
 		return false
 	}
-	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, objType, *blob, sv)
+	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, *blob, sv)
 	if done {
 		blob.HasVerifierRef = true
 		return true
@@ -195,7 +225,7 @@ func startBlobVerification(ctx *volumemgrContext, objType string, sv SignatureVe
 }
 
 // getBlobChildren get the children of a blob
-func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
+func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) []*types.BlobStatus {
 	log.Infof("getBlobChildren(%s)", blob.Sha256)
 	if blob.State < types.VERIFIED {
 		return nil
@@ -206,7 +236,7 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 	case types.BlobIndex:
 		log.Infof("getBlobChildren(%s): is an index, looking for manifest", blob.Sha256)
 		// resolve to our platform-specific one
-		manifest, err := resolveIndex(blob.Path)
+		manifest, err := resolveIndex(ctx, blob)
 		if err != nil {
 			log.Errorf("getBlobChildren(%s): error resolving index to manifest: %v", blob.Sha256, err)
 			blob.SetError(err.Error(), time.Now())
@@ -218,21 +248,33 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 			return nil
 		}
 		log.Infof("getBlobChildren(%s): adding manifest %s", blob.Sha256, manifest.Digest.Hex)
-		return []*types.BlobStatus{
-			{
-				DatastoreID: blob.DatastoreID,
-				RelativeURL: replaceSha(blob.RelativeURL, manifest.Digest),
-				Sha256:      strings.ToLower(manifest.Digest.Hex),
-				Size:        uint64(manifest.Size),
-				State:       types.INITIAL,
-				BlobType:    types.BlobManifest,
-				ObjType:     blob.ObjType,
-			},
+		childHash := strings.ToLower(manifest.Digest.Hex)
+		//Check if childBlob already exists
+		existingChild := lookupOrCreateBlobStatus(ctx, sv, childHash)
+		if existingChild == nil {
+			return []*types.BlobStatus{
+				{
+					DatastoreID: blob.DatastoreID,
+					RelativeURL: replaceSha(blob.RelativeURL, manifest.Digest),
+					Sha256:      strings.ToLower(manifest.Digest.Hex),
+					Size:        uint64(manifest.Size),
+					State:       types.INITIAL,
+					BlobType:    types.BlobManifest,
+				},
+			}
+		} else if existingChild.State == types.LOADED {
+			// Need to update DatastoreID and RelativeURL if the blob is already loaded into CAS,
+			// because if any child blob is not downloaded already, then we would need the below data.
+			existingChild.DatastoreID = blob.DatastoreID
+			existingChild.RelativeURL = replaceSha(blob.RelativeURL, manifest.Digest)
 		}
+		log.Infof("getBlobChildren(%s): manifest %s already exists.", blob.Sha256, childHash)
+		return []*types.BlobStatus{existingChild}
+
 	case types.BlobManifest:
 		log.Infof("getBlobChildren(%s): is a manifest, adding children", blob.Sha256)
 		// get all of the parts
-		_, children, err := resolveManifestChildren(blob.Path)
+		_, children, err := resolveManifestChildren(ctx, blob)
 		if err != nil {
 			blob.SetError(err.Error(), time.Now())
 			return nil
@@ -241,14 +283,22 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 		if len(children) > 0 {
 			blobChildren = make([]*types.BlobStatus, 0)
 			for _, child := range children {
-				blobChildren = append(blobChildren, &types.BlobStatus{
-					DatastoreID: blob.DatastoreID,
-					RelativeURL: replaceSha(blob.RelativeURL, child.Digest),
-					Sha256:      strings.ToLower(child.Digest.Hex),
-					Size:        uint64(child.Size),
-					State:       types.INITIAL,
-					ObjType:     blob.ObjType,
-				})
+				childHash := strings.ToLower(child.Digest.Hex)
+				//Check if childBlob already exists
+				existingChild := lookupOrCreateBlobStatus(ctx, sv, childHash)
+				if existingChild != nil {
+					log.Infof("getBlobChildren(%s): child blob %s already exists.", blob.Sha256, childHash)
+					blobChildren = append(blobChildren, existingChild)
+				} else {
+					log.Infof("getBlobChildren(%s): creating a new BlobStatus for child %s", blob.Sha256, childHash)
+					blobChildren = append(blobChildren, &types.BlobStatus{
+						DatastoreID: blob.DatastoreID,
+						RelativeURL: replaceSha(blob.RelativeURL, child.Digest),
+						Sha256:      childHash,
+						Size:        uint64(child.Size),
+						State:       types.INITIAL,
+					})
+				}
 			}
 		}
 		return blobChildren
@@ -259,27 +309,58 @@ func getBlobChildren(blob *types.BlobStatus) []*types.BlobStatus {
 
 // resolveBlobType resolves what type of blob this is
 // returns if it updated it, including error
-func resolveBlobType(blob *types.BlobStatus) (types.BlobType, error) {
+func resolveBlobType(ctx *volumemgrContext, blob *types.BlobStatus) (types.BlobType, error) {
 	if blob.BlobType != types.BlobUnknown {
 		return blob.BlobType, nil
 	}
 	log.Infof("resolveBlobType(%s): is unknown, resolving type", blob.Sha256)
 	// figure out if it is anything we can process
-
-	// try it as an index and as a straight manifest
-	r, err := os.Open(blob.Path)
-	if err != nil {
-		return blob.BlobType, err
+	var blobType types.BlobType
+	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
+	if blob.State == types.LOADED {
+		blobHash := checkAndCorrectBlobHash(blob.Sha256)
+		// try it as an index and as a straight manifest
+		reader, err := ctx.casClient.ReadBlob(blobHash)
+		if err != nil {
+			err = fmt.Errorf("resolveIndex(%s): Exception while reading blob: %v", blob.Sha256, err)
+			log.Errorf(err.Error())
+			return blob.BlobType, err
+		}
+		blobType, err = resolveBlobTypeFromReader(reader)
+		if err != nil {
+			err = fmt.Errorf("resolveBlobType(%s): exception while getting blobtype of blob from CAS. %s",
+				blob.Sha256, err.Error())
+			log.Errorf(err.Error())
+			return blob.BlobType, err
+		}
+	} else {
+		fileReader, err := os.Open(blob.Path)
+		if err != nil {
+			err = fmt.Errorf("resolveIndex(%s): failed to open file %s: %v", blob.Sha256, blob.Path, err)
+			log.Errorf(err.Error())
+			return blob.BlobType, err
+		}
+		blobType, err = resolveBlobTypeFromReader(fileReader)
+		if err != nil {
+			err = fmt.Errorf("resolveBlobType(%s): exception while getting blobtype of blob from %s. %s",
+				blob.Sha256, blob.Path, err.Error())
+			log.Errorf(err.Error())
+			return blob.BlobType, err
+		}
+		defer fileReader.Close()
 	}
-	defer r.Close()
 
+	return blobType, nil
+}
+
+func resolveBlobTypeFromReader(reader io.Reader) (types.BlobType, error) {
 	// we do not need to really parse it, just get the media type
-	desc, err := v1.ParseManifest(r)
+	desc, err := v1.ParseManifest(reader)
 	if err != nil {
 		if err != io.EOF {
 			return types.BlobBinary, nil
 		}
-		return blob.BlobType, err
+		return types.BlobUnknown, err
 	}
 
 	var blobType types.BlobType
@@ -315,41 +396,9 @@ func blobsNotInList(a []*types.BlobStatus, b []string) []*types.BlobStatus {
 	return ret
 }
 
-// blobsNotInStatus find any in the slice that do not already have a BlobStatus
-func blobsNotInStatus(ctx *volumemgrContext, a []*types.BlobStatus) []*types.BlobStatus {
-	// if we have none, return none
-	if len(a) < 1 {
-		return a
-	}
-
-	// get a slice of just the hashes
-	shas := []string{}
-	for _, blob := range a {
-		shas = append(shas, blob.Sha256)
-	}
-
-	// look up all of the shas of the list we were passed
-	blobs := lookupBlobStatuses(ctx, shas...)
-	// save a map of the hashes
-	m := map[string]bool{}
-	for _, item := range blobs {
-		m[item.Sha256] = true
-	}
-
-	// to hold our return value
-	ret := make([]*types.BlobStatus, 0)
-	// only add those that we did not find
-	for _, item := range a {
-		if _, ok := m[item.Sha256]; !ok {
-			ret = append(ret, item)
-		}
-	}
-	return ret
-}
-
 // blobsNotInStatusOrCreate find any in the slice that do not already have a BlobStatus,
 // but first check if the BlobStatus can be recreated from VerifyImageStatus
-func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, objType string, a []*types.BlobStatus) []*types.BlobStatus {
+func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, a []*types.BlobStatus) []*types.BlobStatus {
 	// if we have none, return none
 	if len(a) < 1 {
 		return a
@@ -359,7 +408,7 @@ func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, objTy
 	ret := make([]*types.BlobStatus, 0)
 	// go through each one, and try to find or create it
 	for _, blob := range a {
-		found := lookupOrCreateBlobStatus(ctx, sv, objType, blob.Sha256)
+		found := lookupOrCreateBlobStatus(ctx, sv, blob.Sha256)
 		if found == nil {
 			ret = append(ret, blob)
 		}
@@ -369,12 +418,12 @@ func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, objTy
 
 // resolveManifestSize resolve the size of total image for a manifest.
 // If the blob is not of type Manifest, return existing size
-func resolveManifestSize(blob types.BlobStatus) int64 {
+func resolveManifestSize(ctx *volumemgrContext, blob types.BlobStatus) int64 {
 	if blob.BlobType != types.BlobManifest {
 		return blob.TotalSize
 	}
 
-	size, _, err := resolveManifestChildren(blob.Path)
+	size, _, err := resolveManifestChildren(ctx, &blob)
 	if err != nil {
 		return blob.TotalSize
 	}
@@ -400,7 +449,8 @@ func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 
 // lookupOrCreateBlobStatus tries to lookup a BlobStatus. If one is not found,
 // and a VerifyImageStatus exists, use that to create the BlobStatus.
-func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objType, blobSha string) *types.BlobStatus {
+func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, blobSha string) *types.BlobStatus {
+	log.Infof("lookupOrCreateBlobStatus(%s)", blobSha)
 	if blobSha == "" {
 		return nil
 	}
@@ -415,23 +465,21 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, objTy
 
 	// first see if a VerifyImageStatus exists
 	// if it does, then create a BlobStatus with State up to the level of the VerifyImageStatus
-	vs := lookupVerifyImageStatus(ctx, objType, blobSha)
+	vs := lookupVerifyImageStatus(ctx, blobSha)
 	if vs != nil && !vs.Expired {
 		log.Infof("lookupOrCreateBlobStatus(%s) VerifyImageStatus found, creating and publishing BlobStatus", blobSha)
 		blob := &types.BlobStatus{
-			BlobType:       types.BlobUnknown,
-			Sha256:         blobSha,
-			State:          vs.State,
-			Path:           vs.FileLocation,
-			HasVerifierRef: true,
-			ObjType:        objType,
-			Size:           uint64(vs.Size),
-			CurrentSize:    vs.Size,
-			TotalSize:      vs.Size,
-			Progress:       100,
+			BlobType:    types.BlobUnknown,
+			Sha256:      blobSha,
+			State:       vs.State,
+			Path:        vs.FileLocation,
+			Size:        uint64(vs.Size),
+			CurrentSize: vs.Size,
+			TotalSize:   vs.Size,
+			Progress:    100,
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
-		startBlobVerification(ctx, objType, sv, blob)
+		startBlobVerification(ctx, sv, blob)
 		publishBlobStatus(ctx, blob)
 		return blob
 	}
@@ -450,16 +498,6 @@ func lookupBlobStatuses(ctx *volumemgrContext, shas ...string) []*types.BlobStat
 	return ret
 }
 
-func blobStatusGetAll(ctx *volumemgrContext) map[string]*types.BlobStatus {
-	pub := ctx.pubBlobStatus
-	blobShaAndBlobStatus := make(map[string]*types.BlobStatus)
-	for blobSha, blobStatusInt := range pub.GetAll() {
-		blobStatus := blobStatusInt.(types.BlobStatus)
-		blobShaAndBlobStatus[blobSha] = &blobStatus
-	}
-	return blobShaAndBlobStatus
-}
-
 func publishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	for _, blob := range blobs {
 		key := blob.Sha256
@@ -476,14 +514,20 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 
 		// drop references
 		if blob.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(ctx, blob.ObjType,
-				blob.Sha256)
+			MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
 			blob.HasDownloaderRef = false
 		}
 		if blob.HasVerifierRef {
-			MaybeRemoveVerifyImageConfig(ctx, blob.ObjType,
-				blob.Sha256)
+			MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
 			blob.HasVerifierRef = false
+		}
+		//If blob is loaded, then remove it from CAS
+		if blob.State == types.LOADED {
+			if err := ctx.casClient.RemoveBlob(checkAndCorrectBlobHash(blob.Sha256)); err != nil {
+				err := fmt.Errorf("unpublishBlobStatus: Exception while removing loaded blob %s: %s",
+					blob.Sha256, err.Error())
+				log.Errorf(err.Error())
+			}
 		}
 
 		pub := ctx.pubBlobStatus
@@ -498,4 +542,60 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	for _, err := range errs {
 		log.Errorf("%v", err)
 	}
+}
+
+//populateInitBlobStatus fetches all blob present in CAS and publishes a BlobStatus for them
+func populateInitBlobStatus(ctx *volumemgrContext) {
+	blobInfoList, err := ctx.casClient.ListBlobInfo()
+	if err != nil {
+		log.Errorf("populateInitBlobStatus: exception while fetching existing blobs from CAS")
+		return
+	}
+	newBlobStatus := make([]*types.BlobStatus, 0)
+	for _, blobInfo := range blobInfoList {
+		blobReader, err := ctx.casClient.ReadBlob(blobInfo.Digest)
+		if err != nil {
+			log.Errorf("populateInitBlobStatus: exception while reading blob %s from CAS: %s", blobInfo.Digest, err.Error())
+			continue
+		}
+		blobType, err := resolveBlobTypeFromReader(blobReader)
+		if err != nil {
+			log.Errorf("populateInitBlobStatus: exception while resolving blobType of %s: %s", blobInfo.Digest, err.Error())
+			continue
+		}
+		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
+			log.Debugf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
+			blobStatus := &types.BlobStatus{
+				Sha256:      strings.TrimPrefix(blobInfo.Digest, "sha256:"),
+				Size:        uint64(blobInfo.Size),
+				State:       types.LOADED,
+				BlobType:    blobType,
+				TotalSize:   blobInfo.Size,
+				CurrentSize: blobInfo.Size,
+				Progress:    100,
+			}
+			newBlobStatus = append(newBlobStatus, blobStatus)
+		}
+	}
+	if len(newBlobStatus) > 0 {
+		publishBlobStatus(ctx, newBlobStatus...)
+	}
+}
+
+//gcBlobStatus gc all blob object which doesn't have any reference
+func gcBlobStatus(ctx *volumemgrContext) {
+	log.Infof("gcBlobStatus")
+	pub := ctx.pubBlobStatus
+	for _, blobStatusInt := range pub.GetAll() {
+		blobStatus := blobStatusInt.(types.BlobStatus)
+		if blobStatus.State == types.LOADED && blobStatus.RefCount == 0 {
+			log.Infof("gcBlobStatus: removing blob %s which has no refObjects", blobStatus.Sha256)
+			unpublishBlobStatus(ctx, &blobStatus)
+		}
+	}
+}
+
+//checkAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
+func checkAndCorrectBlobHash(blobHash string) string {
+	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(blobHash, "sha256:"))
 }

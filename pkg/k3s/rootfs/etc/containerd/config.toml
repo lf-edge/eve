@@ -1,0 +1,15 @@
+state = "/run/containerd"
+root = "/var/lib/containerd"
+disabled_plugins = ["cri"]
+
+[grpc]
+  address = "/run/containerd/containerd.sock"
+  uid = 0
+  gid = 0
+
+[debug]
+  address = "/run/containerd/debug.sock"
+  level = "info"
+
+[metrics]
+  address = ""

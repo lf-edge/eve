@@ -12,6 +12,7 @@ package zedrouter
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"strconv"
@@ -22,6 +23,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -30,6 +32,9 @@ const DOCKERAPIPORT int = 2375
 
 // DOCKERAPIVERSION - docker API version used
 const DOCKERAPIVERSION string = "1.40"
+
+// convert from nanoSeconds to Seconds
+const nanoSecToSec uint64 = 1000000000
 
 // check if we need to launch the goroutine to collect App container stats
 func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
@@ -66,23 +71,35 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 				return
 			}
 
+			var acNum int
 			collectTime := time.Now() // all apps collection assign the same timestamp
-			log.Infof("appStatsAndLogCollect: containerStats, timer loop")
 			for _, st := range items {
 				status := st.(types.AppNetworkStatus)
 				if status.GetStatsIPAddr != nil {
-					acMetrics, err := appContainerGetStats(status.GetStatsIPAddr)
+					// get a list of containers and client handle
+					cli, containers, err := getAppContainers(status)
 					if err != nil {
-						log.Errorf("appStatsAndLogCollect: can't get App %s Container Metrics on %s, %v",
+						log.Errorf("appStatsAndLogCollect: can't get App Containers %s on %s, %v",
 							status.UUIDandVersion.UUID.String(), status.GetStatsIPAddr.String(), err)
 						continue
 					}
-					acMetrics.UUIDandVersion = status.UUIDandVersion
-					acMetrics.CollectTime = collectTime
-					ctx.pubAppContainerMetrics.Publish(acMetrics.Key(), acMetrics)
-					getAppContainerLogs(status, lastLogTime)
+					acNum += len(containers)
+
+					// collect container stats, and publish to zedclient
+					acMetrics := getAppContainerStats(status, cli, containers)
+					if len(acMetrics.StatsList) > 0 {
+						acMetrics.UUIDandVersion = status.UUIDandVersion
+						acMetrics.CollectTime = collectTime
+						ctx.pubAppContainerMetrics.Publish(acMetrics.Key(), acMetrics)
+					}
+
+					// collect container logs and send through the logging system
+					getAppContainerLogs(status, lastLogTime, cli, containers)
 				}
 			}
+			// log output every 5 min, see this goroutine running status and number of containers from App
+			log.Infof("appStatsAndLogCollect: containerStats, %d processed. reset timer", acNum)
+
 			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 		}
 	}
@@ -120,10 +137,81 @@ func checkAppStopStatsCollect(ctx *zedrouterContext) (map[string]interface{}, bo
 	return items, false
 }
 
-func appContainerGetStats(ipAddr net.IP) (types.AppContainerMetrics, error) {
+func getAppContainerStats(status types.AppNetworkStatus, cli *client.Client, containers []apitypes.Container) types.AppContainerMetrics {
 	var acMetrics types.AppContainerMetrics
-	// XXX collect container stats for each container with the docker API endpoint ipAddr
-	return acMetrics, nil
+
+	for _, container := range containers {
+		// the main purpose of Inspect is to obtain the container start time for CPU stats
+		cjson, err := cli.ContainerInspect(context.Background(), container.ID)
+		if err != nil {
+			log.Errorf("getAppContainerStats: container inspect for %s, error %v", container.ID, err)
+			continue
+		}
+		startTime, _ := time.Parse(time.RFC3339Nano, cjson.State.StartedAt)
+
+		stats, err := cli.ContainerStats(context.Background(), container.ID, false)
+		if err != nil {
+			log.Errorf("getAppContainerStats: container stats for %s, error %v\n", container.Names[0], err)
+			continue
+		}
+
+		acStats, err := processAppContainerStats(stats, container, startTime)
+		if err != nil {
+			log.Errorf("getAppContainerStats: process stats for %s, error %v\n", container.Names[0], err)
+			continue
+		}
+		log.Debugf("getAppContainerStats: container stats %v", acStats)
+		acMetrics.StatsList = append(acMetrics.StatsList, acStats)
+	}
+
+	return acMetrics
+}
+
+func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.Container, startTime time.Time) (types.AppContainerStats, error) {
+	var acStats types.AppContainerStats
+	var v *apitypes.StatsJSON
+
+	dec := json.NewDecoder(stats.Body)
+	err := dec.Decode(&v)
+	if err != nil {
+		return acStats, err
+	}
+
+	acStats.ContainerName = strings.Trim(container.Names[0], "/")
+	acStats.Status = container.Status
+
+	acStats.Pids = uint32(v.PidsStats.Current)
+
+	// Container CPU stats, convert from nano-seconds to seconds
+	acStats.CPUTotal = v.CPUStats.CPUUsage.TotalUsage / nanoSecToSec
+	acStats.SystemCPUTotal = v.CPUStats.SystemUsage / nanoSecToSec
+	acStats.Uptime = startTime.UnixNano()
+
+	// Container memory stats, convert bytes to Mbytes
+	acStats.UsedMem = uint32(utils.RoundToMbytes(v.MemoryStats.Usage))
+	acStats.AvailMem = uint32(utils.RoundToMbytes(v.MemoryStats.Limit))
+
+	// Container network stats, in bytes
+	networks := v.Networks
+	for _, n := range networks {
+		acStats.RxBytes += n.RxBytes
+		acStats.TxBytes += n.TxBytes
+	}
+
+	// Container Block IO stats, convert bytes to Mbytes
+	blkioStats := v.BlkioStats
+	for _, bioEntry := range blkioStats.IoServiceBytesRecursive {
+		switch strings.ToLower(bioEntry.Op) {
+		case "read":
+			acStats.ReadBytes += bioEntry.Value
+		case "write":
+			acStats.WriteBytes += bioEntry.Value
+		}
+	}
+	acStats.ReadBytes = utils.RoundToMbytes(acStats.ReadBytes)
+	acStats.WriteBytes = utils.RoundToMbytes(acStats.WriteBytes)
+
+	return acStats, nil
 }
 
 func appChangeContainerStatsACL(newIPAddr, oldIPAddr net.IP) {
@@ -155,12 +243,8 @@ func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkC
 	}
 }
 
-func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Time) {
+func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Time, cli *client.Client, containers []apitypes.Container) {
 	var buf bytes.Buffer
-	cli, containers, err := getAppContainers(status)
-	if err != nil {
-		return
-	}
 
 	for _, container := range containers {
 		var lasttime, newtime, message string

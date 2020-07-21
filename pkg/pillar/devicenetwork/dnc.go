@@ -33,6 +33,7 @@ type DPCPending struct {
 
 type DeviceNetworkContext struct {
 	DecryptCipherContext     cipher.DecryptCipherContext
+	AgentName                string
 	UsableAddressCount       int
 	DevicePortConfig         *types.DevicePortConfig // Currently in use
 	DevicePortConfigList     *types.DevicePortConfigList
@@ -233,7 +234,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 			ifname, err)
 		pending.PendDPC.RecordPortFailure(ifname, err.Error())
 		pending.PendDPC.RecordFailure(err.Error())
-		return types.DPC_FAIL
+		// Proceed trying other interfaces
 	}
 	log.Infof("VerifyPending: No required ports missing. " +
 		"parsing device port config list")
@@ -295,8 +296,8 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	log.Errorf("VerifyPending: %s\n", errStr)
 	pending.TestCount = MaxDPCRetestCount
 	pending.PendDPC.RecordFailure(errStr)
-	pending.PendDPC.LastIPAndDNS = time.Now()
-	return types.DPC_FAIL
+	pending.PendDPC.LastIPAndDNS = pending.PendDPC.LastFailed
+	return types.DPC_FAIL_WITH_IPANDDNS
 }
 
 // Check if all interfaces exist in the kernel
@@ -331,14 +332,17 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		res := VerifyPending(ctx, &ctx.Pending, ctx.AssignableAdapters,
 			ctx.TestSendTimeout)
 		dpc := &ctx.Pending.PendDPC
-		dpc.Status = res
+		dpc.State = res
 		ctx.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
+		ctx.Pending.PendDNS.State = dpc.State
 		UpdateResolvConf(ctx.Pending.PendDNS)
 		UpdatePBR(ctx.Pending.PendDNS)
+		// Publish in case we need a port back from domainmgr
 		if ctx.PubDeviceNetworkStatus != nil {
+			ctx.Pending.PendDNS.Testing = true
+			ctx.Pending.PendDNS.State = res
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)
-			ctx.Pending.PendDNS.Testing = true
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		log.Infof("VerifyDevicePortConfig: %s for %d",
@@ -354,7 +358,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			duration := time.Duration(ctx.DPCTestDuration) * time.Second
 			pending.PendTimer = time.NewTimer(duration)
 			return
-		case types.DPC_FAIL:
+		case types.DPC_FAIL, types.DPC_FAIL_WITH_IPANDDNS:
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
 			tested, index := lookupPortConfig(ctx, pending.PendDPC)
@@ -384,6 +388,16 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.NextDPCIndex+1)
 			if nextIndex == -1 {
 				log.Infof("VerifyDevicePortConfig: nothing testable")
+				if res == types.DPC_FAIL_WITH_IPANDDNS {
+					// publish what we have since applications
+					// might need it
+					ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
+					*ctx.DevicePortConfig = pending.PendDPC
+					*ctx.DeviceNetworkStatus = pending.PendDNS
+					ctx.DeviceNetworkStatus.Testing = false
+					*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
+					DoDNSUpdate(ctx)
+				}
 				pending.Inprogress = false
 				// Restart network test timer
 				duration := time.Duration(ctx.NetworkTestInterval) * time.Second
@@ -608,7 +622,9 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 	}
 	*ctx.AssignableAdapters = newAssignableAdapters
 	// In case a verification is in progress and is waiting for return from pciback
-	VerifyDevicePortConfig(ctx)
+	if ctx.Pending.Inprogress {
+		VerifyDevicePortConfig(ctx)
+	}
 	log.Infof("handleAssignableAdaptersModify() done\n")
 }
 

@@ -4,11 +4,9 @@
 package volumemgr
 
 import (
-	"fmt"
 	"io"
 	"os"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -18,16 +16,6 @@ import (
 func lookupCertObjImageID(ctx *volumemgrContext, imageID uuid.UUID) []*types.CertObjConfig {
 
 	var result []*types.CertObjConfig
-	sub := ctx.subCertObjConfig
-	items := sub.GetAll()
-	for _, c := range items {
-		config := c.(types.CertObjConfig)
-		for _, sc := range config.StorageConfigList {
-			if uuid.Equal(imageID, sc.ImageID) {
-				result = append(result, &config)
-			}
-		}
-	}
 	return result
 }
 
@@ -35,23 +23,6 @@ func lookupCertObjImageID(ctx *volumemgrContext, imageID uuid.UUID) []*types.Cer
 func certObjCheckConfigModify(ctx *volumemgrContext, uuidStr string,
 	config *types.CertObjConfig, status *types.CertObjStatus) bool {
 
-	// check, whether number of cert objects have changed
-	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-		log.Infof("certObjCheckConfigModify(%s), Storage length mismatch: %d vs %d\n", uuidStr,
-			len(config.StorageConfigList), len(status.StorageStatusList))
-		return true
-	}
-
-	// check, whether any cert object have changed
-	for idx, sc := range config.StorageConfigList {
-		ss := status.StorageStatusList[idx]
-		if sc.Name != ss.Name {
-			log.Infof("certObjCheckConfigModify(%s) CertObj changed %s, %s",
-				uuidStr, ss.Name, sc.Name)
-			return true
-		}
-	}
-	log.Infof("certObjCheckConfigModify(%s): no change", uuidStr)
 	return false
 }
 
@@ -103,22 +74,6 @@ func doCertObjStatusUpdate(ctx *volumemgrContext, uuidStr string, config types.C
 		return changed
 	}
 
-	// Walk all which have WaitingForCerts set
-	pubs := []pubsub.Publication{
-		ctx.publication(types.OldVolumeStatus{}, types.AppImgObj),
-		ctx.publication(types.OldVolumeStatus{}, types.BaseOsObj),
-	}
-
-	for _, pub := range pubs {
-		items := pub.GetAll()
-		for _, st := range items {
-			vs := st.(types.OldVolumeStatus)
-			if !vs.WaitingForCerts {
-				continue
-			}
-			doUpdateOld(ctx, &vs)
-		}
-	}
 	log.Infof("doCertObjStatusUdate(%s) done %v", uuidStr, changed)
 	return changed
 }
@@ -128,30 +83,6 @@ func doCertObjInstall(ctx *volumemgrContext, uuidStr string, config types.CertOb
 
 	log.Infof("doCertObjInstall(%s)", uuidStr)
 	changed := false
-
-	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-		errString := fmt.Sprintf("%s, Storage length mismatch: %d vs %d\n", uuidStr,
-			len(config.StorageConfigList),
-			len(status.StorageStatusList))
-		log.Error(errString)
-		status.SetErrorNow(errString)
-		return changed, false
-	}
-
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-
-		if ss.Name != sc.Name || !uuid.Equal(ss.ImageID, sc.ImageID) {
-			// Report to zedcloud
-			errString := fmt.Sprintf("%s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
-				sc.Name, ss.Name,
-				sc.ImageID, ss.ImageID)
-			log.Error(errString)
-			status.SetErrorNow(errString)
-			changed = true
-			return changed, false
-		}
-	}
 
 	downloadchange, downloaded :=
 		checkCertObjStorageDownloadStatus(ctx, uuidStr, config, status)
@@ -232,31 +163,8 @@ func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 
 	var del, changed, removedAll bool
 	// XXX VolumeStatus for function
-	vstatus := new(types.OldVolumeStatus)
 	removedAll = true
 	log.Infof("doCertObjUninstall(%s)", uuidStr)
-
-	for i := range status.StorageStatusList {
-
-		ss := &status.StorageStatusList[i]
-		log.Infof("doCertObjUninstall(%s) imageID %s",
-			uuidStr, ss.ImageID)
-		// Decrease refcount if we had increased it
-		if vstatus.DownloadOrigin.HasDownloaderRef {
-			// XXX removeDownloaderConfig(ctx, types.CertObj, ss.ImageID)
-			vstatus.DownloadOrigin.HasDownloaderRef = false
-			changed = true
-		}
-
-		ds := lookupDownloaderStatus(ctx, types.CertObj, ss.ImageID.String())
-		// XXX if additional refs it will not go away
-		if false && ds != nil {
-			log.Infof("doCertObjUninstall(%s) download %s not yet gone",
-				uuidStr, ss.ImageID)
-			removedAll = false
-			continue
-		}
-	}
 
 	if !removedAll {
 		log.Infof("doCertObjUninstall(%s) waiting for download purge",

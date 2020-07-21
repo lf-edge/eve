@@ -87,7 +87,6 @@ type nodeagentContext struct {
 	testComplete           bool
 	testInprogress         bool
 	timeTickCount          uint32
-	usableAddressCount     int
 	rebootCmd              bool // Are we rebooting?
 	deviceReboot           bool
 	currentRebootReason    string    // Reason we are rebooting
@@ -447,9 +446,6 @@ func checkNetworkConnectivity(ps *pubsub.PubSub, ctxPtr *nodeagentContext) {
 	subDeviceNetworkStatus.Activate()
 
 	ctxPtr.deviceNetworkStatus = &types.DeviceNetworkStatus{}
-	ctxPtr.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*ctxPtr.deviceNetworkStatus)
-	log.Infof("Waiting until we have some uplinks with usable addresses")
-
 	for !ctxPtr.DNSinitialized {
 		log.Infof("Waiting for DeviceNetworkStatus: %v",
 			ctxPtr.DNSinitialized)
@@ -490,15 +486,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(*ctxPtr.deviceNetworkStatus, status))
 	*ctxPtr.deviceNetworkStatus = status
-	// Did we (re-)gain the first usable address?
-	// XXX should we also trigger if the count increases?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctxPtr.deviceNetworkStatus)
-	if newAddrCount != 0 && ctxPtr.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses",
-			ctxPtr.usableAddressCount, newAddrCount)
-	}
 	ctxPtr.DNSinitialized = true
-	ctxPtr.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s", key)
 }
 
@@ -513,9 +501,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		return
 	}
 	*ctxPtr.deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctxPtr.deviceNetworkStatus)
 	ctxPtr.DNSinitialized = false
-	ctxPtr.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s", key)
 }
 

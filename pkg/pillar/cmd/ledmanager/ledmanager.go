@@ -128,6 +128,12 @@ var mToF = []modelToFuncs{
 		ledName:   "input0::scrolllock", /// XXX find on-board LED
 	},
 	{
+		model:     "RaspberryPi.RPi4",
+		initFunc:  InitLedCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "input0::scrolllock", /// XXX find on-board LED
+	},
+	{
 		// Last in table as a default
 		model:     "",
 		initFunc:  InitDDCmd,

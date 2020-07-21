@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package volumemgr
 
 import (
@@ -8,21 +11,46 @@ import (
 	"strings"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	log "github.com/sirupsen/logrus"
 )
 
 // resolveIndex get the manifest for our platform from the index
-func resolveIndex(filename string) (*v1.Descriptor, error) {
-	// try it as an index and as a straight manifest
-	r, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file %s: %v", filename, err)
+func resolveIndex(ctx *volumemgrContext, blob *types.BlobStatus) (*v1.Descriptor, error) {
+	var index *v1.IndexManifest
+	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
+	if blob.State == types.LOADED {
+		blobHash := checkAndCorrectBlobHash(blob.Sha256)
+		// try it as an index and as a straight manifest
+		reader, err := ctx.casClient.ReadBlob(blobHash)
+		if err != nil {
+			err = fmt.Errorf("resolveIndex(%s): Exception while reading blob: %v", blob.Sha256, err)
+			log.Errorf(err.Error())
+			return nil, err
+		}
+		index, err = v1.ParseIndexManifest(reader)
+		if err != nil && err != io.EOF {
+			err = fmt.Errorf("resolveIndex(%s): Exception while parsing Index from cas: %v", blob.Sha256, err)
+			log.Errorf(err.Error())
+			return nil, err
+		}
+	} else {
+		fileReader, err := os.Open(blob.Path)
+		if err != nil {
+			err = fmt.Errorf("resolveIndex(%s): failed to open file %s: %v", blob.Sha256, blob.Path, err)
+			log.Errorf(err.Error())
+			return nil, err
+		}
+		index, err = v1.ParseIndexManifest(fileReader)
+		if err != nil && err != io.EOF {
+			err = fmt.Errorf("resolveIndex(%s): Exception while parsing Index from %s: %v",
+				blob.Sha256, blob.Path, err)
+			log.Errorf(err.Error())
+			return nil, err
+		}
+		defer fileReader.Close()
 	}
-	defer r.Close()
 
-	index, err := v1.ParseIndexManifest(r)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
 	// find our platform
 	var manifest *v1.Descriptor
 	for _, m := range index.Manifests {
@@ -36,19 +64,40 @@ func resolveIndex(filename string) (*v1.Descriptor, error) {
 
 // resolveManifestChildren get all of the children of a manifest, as well as
 // expected total size
-func resolveManifestChildren(filename string) (int64, []v1.Descriptor, error) {
-	// try it as an index and as a straight manifest
-	r, err := os.Open(filename)
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to open file %s: %v", filename, err)
-	}
-	defer r.Close()
+func resolveManifestChildren(ctx *volumemgrContext, blob *types.BlobStatus) (int64, []v1.Descriptor, error) {
+	var manifest *v1.Manifest
 
-	manifest, err := v1.ParseManifest(r)
-
-	// any non-EOF errors should be passed back
-	if err != nil && err != io.EOF {
-		return 0, nil, err
+	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
+	if blob.State == types.LOADED {
+		blobHash := checkAndCorrectBlobHash(blob.Sha256)
+		// try it as an index and as a straight manifest
+		reader, err := ctx.casClient.ReadBlob(blobHash)
+		if err != nil {
+			err = fmt.Errorf("resolveManifestChildren(%s): Exception while reading blob: %v", blob.Sha256, err)
+			log.Errorf(err.Error())
+			return 0, nil, err
+		}
+		manifest, err = v1.ParseManifest(reader)
+		if err != nil && err != io.EOF {
+			err = fmt.Errorf("resolveManifestChildren(%s): Exception while parsing Index from cas: %v", blob.Sha256, err)
+			log.Errorf(err.Error())
+			return 0, nil, err
+		}
+	} else {
+		fileReader, err := os.Open(blob.Path)
+		if err != nil {
+			err = fmt.Errorf("resolveManifestChildren(%s): failed to open file %s: %v", blob.Sha256, blob.Path, err)
+			log.Errorf(err.Error())
+			return 0, nil, err
+		}
+		manifest, err = v1.ParseManifest(fileReader)
+		if err != nil && err != io.EOF {
+			err = fmt.Errorf("resolveManifestChildren(%s): Exception while parsing Index from %s: %v",
+				blob.Sha256, blob.Path, err)
+			log.Errorf(err.Error())
+			return 0, nil, err
+		}
+		defer fileReader.Close()
 	}
 
 	// get all of the parts and calculate the size

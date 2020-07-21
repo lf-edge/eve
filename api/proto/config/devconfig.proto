@@ -69,15 +69,18 @@ message EdgeDevConfig {
   repeated ContentTree contentInfo = 20;
   repeated Volume volumes = 21;
 
-  // This sha256 field is a 256 bits (64 bytes) long hex string used
-  // by the device to detect when it needs to re-download the controller
-  // certs using the /certs API endpoint.
+  // This field is used by the device to detect when it needs to re-download
+  // the controller certs using the /certs API endpoint.
+  // The controller just needs to ensure this value changes when it wants the
+  // device to re-fetch the controller certs, for instance by having it
+  // be a hash of all of the controller certificates.
   string controllercert_confighash = 22;
   // deprecated 23;
 }
 
 message ConfigRequest {
   string configHash = 1;
+  bytes  integrity_token = 2; // value provided by controller during remote attestation
 }
 
 message ConfigResponse {

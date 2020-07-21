@@ -91,7 +91,6 @@ func (config VerifyImageConfig) LogKey() string {
 type VerifyImageStatus struct {
 	ImageSha256   string // sha256 of immutable image
 	Name          string
-	ObjType       string
 	FileLocation  string // Current location
 	Size          int64
 	PendingAdd    bool
@@ -120,7 +119,6 @@ func (status VerifyImageStatus) LogCreate() {
 		AddField("refcount-int64", status.RefCount).
 		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
-		AddField("objtype", status.ObjType).
 		AddField("filelocation", status.FileLocation).
 		Infof("VerifyImage status create")
 }
@@ -148,7 +146,6 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-expired-bool", oldStatus.Expired).
 			AddField("old-size-int64", oldStatus.Size).
-			AddField("objtype", status.ObjType).
 			AddField("filelocation", status.FileLocation).
 			AddField("old-filelocation", oldStatus.FileLocation).
 			Infof("VerifyImage status modify")
@@ -171,7 +168,6 @@ func (status VerifyImageStatus) LogDelete() {
 		AddField("refcount-int64", status.RefCount).
 		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
-		AddField("objtype", status.ObjType).
 		AddField("filelocation", status.FileLocation).
 		Infof("VerifyImage status delete")
 

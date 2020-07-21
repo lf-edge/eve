@@ -67,6 +67,7 @@ type clientContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
+	networkState           types.PendDPCStatus
 	subGlobalConfig        pubsub.Subscription
 	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
@@ -273,8 +274,8 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	clientCtx.getCertsTimer.Stop()
 
 	for !done {
-		log.Infof("Waiting for usableAddressCount %d and done %v",
-			clientCtx.usableAddressCount, done)
+		log.Infof("Waiting for usableAddressCount %d networkState %s and done %v",
+			clientCtx.usableAddressCount, clientCtx.networkState.String(), done)
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -283,9 +284,12 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-ticker.C:
-			if clientCtx.usableAddressCount == 0 {
-				log.Infof("ticker and no usableAddressCount")
-				// XXX keep exponential unchanged?
+			if clientCtx.networkState != types.DPC_SUCCESS &&
+				clientCtx.networkState != types.DPC_FAIL_WITH_IPANDDNS {
+				log.Infof("ticker and networkState %s usableAddressCount %d",
+					clientCtx.networkState.String(),
+					clientCtx.usableAddressCount)
+				// We keep exponential unchanged
 				break
 			}
 
@@ -333,12 +337,13 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 			}
 
 		case <-t1.C:
-			// If we already know a uuid we can skip
+			// If we already know a uuid we can skip waiting
+			// but if the network is working we do wait
 			// This might not set hardwaremodel when upgrading
 			// an onboarded system without /config/hardwaremodel.
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
-			if clientCtx.usableAddressCount == 0 &&
+			if clientCtx.networkState != types.DPC_SUCCESS &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
 				log.Infof("Already have a UUID %s; declaring success",
@@ -706,11 +711,17 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	*ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
+
 	if newAddrCount != ctx.usableAddressCount {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses",
 			ctx.usableAddressCount, newAddrCount)
 		// ledmanager subscribes to DeviceNetworkStatus to see changes
 		ctx.usableAddressCount = newAddrCount
+	}
+	if ctx.deviceNetworkStatus.State != ctx.networkState {
+		log.Infof("DeviceNetworkStatus state from %s to %s",
+			ctx.deviceNetworkStatus.State.String(), ctx.networkState.String())
+		ctx.networkState = ctx.deviceNetworkStatus.State
 	}
 
 	// update proxy certs if configured

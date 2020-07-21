@@ -134,8 +134,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		if !found {
 			log.Infof("parseBaseOsConfig: deleting %s", uuidStr)
 			getconfigCtx.pubBaseOsConfig.Unpublish(uuidStr)
-
-			unpublishCertObjConfig(getconfigCtx, uuidStr)
 		}
 	}
 
@@ -164,20 +162,13 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 			baseOs.OsParams[jdx] = *param
 		}
 
-		baseOs.StorageConfigList = make([]types.StorageConfig,
+		baseOs.ContentTreeConfigList = make([]types.ContentTreeConfig,
 			len(cfgOs.Drives))
-		parseStorageConfigList(types.BaseOsObj, baseOs.StorageConfigList,
-			cfgOs.Drives)
+		parseContentTreeConfigList(baseOs.ContentTreeConfigList, cfgOs.Drives)
 
-		certInstance := getCertObjects(baseOs.UUIDandVersion,
-			baseOs.ConfigSha256, baseOs.StorageConfigList)
 		log.Debugf("parseBaseOsConfig publishing %v",
 			baseOs)
 		publishBaseOsConfig(getconfigCtx, baseOs)
-		if certInstance != nil {
-			publishCertObjConfig(getconfigCtx, certInstance,
-				baseOs.Key())
-		}
 	}
 }
 
@@ -481,8 +472,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if !found {
 			log.Infof("Remove app config %s", uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
-
-			unpublishCertObjConfig(getconfigCtx, uuidStr)
 		}
 	}
 
@@ -971,27 +960,27 @@ func publishDatastoreConfig(ctx *getconfigContext,
 	}
 }
 
-func parseStorageConfigList(objType string,
-	storageList []types.StorageConfig, drives []*zconfig.Drive) {
+func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drives []*zconfig.Drive) {
 
 	var idx int = 0
 
 	for _, drive := range drives {
-		image := new(types.StorageConfig)
+		contentTree := new(types.ContentTreeConfig)
 		if drive.Image == nil {
 			log.Errorf("No drive.Image for drive %v",
 				drive)
 			// Pass on for error reporting
-			image.DatastoreID = nilUUID
+			contentTree.ContentID = nilUUID
 		} else {
-			id, _ := uuid.FromString(drive.Image.DsId)
-			image.DatastoreID = id
-			image.Name = drive.Image.Name
-			image.ImageID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
-			image.Format = drive.Image.Iformat
-			image.MaxDownSize = uint64(drive.Image.SizeBytes)
-			image.ImageSignature = drive.Image.Siginfo.Signature
-			image.SignatureKey = drive.Image.Siginfo.Signercerturl
+			contentTree.ContentID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
+			contentTree.DatastoreID, _ = uuid.FromString(drive.Image.DsId)
+			contentTree.RelativeURL = drive.Image.Name
+			contentTree.Format = drive.Image.Iformat
+			contentTree.ContentSha256 = strings.ToLower(drive.Image.Sha256)
+			contentTree.MaxDownloadSize = uint64(drive.Image.SizeBytes)
+			contentTree.DisplayName = drive.Image.Name
+			contentTree.ImageSignature = drive.Image.Siginfo.Signature
+			contentTree.SignatureKey = drive.Image.Siginfo.Signercerturl
 
 			// XXX:FIXME certificates can be many
 			// this list, currently contains the certUrls
@@ -999,15 +988,11 @@ func parseStorageConfigList(objType string,
 			// as proper DataStore Entries
 
 			if drive.Image.Siginfo.Intercertsurl != "" {
-				image.CertificateChain = make([]string, 1)
-				image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
+				contentTree.CertificateChain = make([]string, 1)
+				contentTree.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
 			}
 		}
-		image.ReadOnly = drive.Readonly
-		image.MaxVolSize = uint64(drive.Maxsizebytes)
-		image.Target = strings.ToLower(drive.Target.String())
-		image.ImageSha256 = strings.ToLower(drive.Image.Sha256)
-		storageList[idx] = *image
+		contentTreeList[idx] = *contentTree
 		idx++
 	}
 }
@@ -1820,98 +1805,6 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
 	pub.Publish(key, *config)
-}
-
-func getCertObjects(uuidAndVersion types.UUIDandVersion,
-	sha256 string, drives []types.StorageConfig) *types.CertObjConfig {
-
-	var cidx int = 0
-
-	// count the number of cerificates in this object
-	for _, image := range drives {
-		if image.SignatureKey != "" {
-			cidx++
-		}
-		for _, certUrl := range image.CertificateChain {
-			if certUrl != "" {
-				cidx++
-			}
-		}
-	}
-
-	// if no cerificates, return
-	if cidx == 0 {
-		return nil
-	}
-
-	// using the holder object UUID for
-	// cert config json, and also the config sha
-	var config = &types.CertObjConfig{}
-
-	// certs object holder
-	// each storageConfigList entry is a
-	// certificate object
-	config.UUIDandVersion = uuidAndVersion
-	config.ConfigSha256 = sha256
-	config.StorageConfigList = make([]types.StorageConfig, cidx)
-
-	cidx = 0
-	for _, image := range drives {
-		if image.SignatureKey != "" {
-			getCertObjConfig(config, image, image.SignatureKey, cidx)
-			cidx++
-		}
-
-		for _, certUrl := range image.CertificateChain {
-			if certUrl != "" {
-				getCertObjConfig(config, image, certUrl, cidx)
-				cidx++
-			}
-		}
-	}
-
-	return config
-}
-
-func getCertObjConfig(config *types.CertObjConfig,
-	image types.StorageConfig, certUrl string, idx int) {
-
-	if certUrl == "" {
-		return
-	}
-
-	// XXX the sha for the cert should be set
-	// XXX:FIXME hardcoding Size as 100KB
-	var drive = &types.StorageConfig{
-		DatastoreID: image.DatastoreID,
-		Name:        certUrl, // XXX FIXME use??
-		NameIsURL:   true,
-		MaxDownSize: 100 * 1024,
-		ImageSha256: "",
-	}
-	config.StorageConfigList[idx] = *drive
-}
-
-func publishCertObjConfig(getconfigCtx *getconfigContext,
-	config *types.CertObjConfig, uuidStr string) {
-
-	key := uuidStr // XXX vs. config.Key()?
-	log.Debugf("publishCertObjConfig(%s) key %s", uuidStr, config.Key())
-	pub := getconfigCtx.pubCertObjConfig
-	pub.Publish(key, *config)
-}
-
-func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
-
-	key := uuidStr
-	log.Debugf("unpublishCertObjConfig(%s)", key)
-	pub := getconfigCtx.pubCertObjConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Errorf("unpublishCertObjConfig(%s) not found", key)
-		return
-	}
-	pub.Unpublish(key)
 }
 
 // Get sha256 for a subset of the protobuf message.

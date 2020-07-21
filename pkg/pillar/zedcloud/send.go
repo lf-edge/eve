@@ -384,13 +384,11 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		if b2 != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
 		}
-		// Add Device UUID to the HTTP Header
-		// for tracability
-		devUuidStr := ctx.DevUUID.String()
-		if devUuidStr != "" && devUuidStr != nilUUID.String() {
-			req.Header.Add("X-Request-Id", devUuidStr)
-		} else {
-			// Add Device Serial Number to the HTTP Header for initial tracability
+		// Add a per-request UUID to the HTTP Header
+		// for tracability in the controller
+		req.Header.Add("X-Request-Id", uuid.NewV4().String())
+		if ctx.DevUUID == nilUUID {
+			// Also add Device Serial Number to the HTTP Header for initial tracability
 			devSerialNum := ctx.DevSerial
 			if devSerialNum != "" {
 				req.Header.Add("X-Serial-Number", devSerialNum)
@@ -401,7 +399,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				req.Header.Add("X-Soft-Serial", devSoftSerial)
 			}
 			log.Debugf("Serial-Numbers, count (%d), serial: %s, soft-serial %s",
-				sendCounter, devSerialNum, devSoftSerial) // XXX change to debug
+				sendCounter, devSerialNum, devSoftSerial)
 			sendCounter++
 		}
 

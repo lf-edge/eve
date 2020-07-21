@@ -23,6 +23,7 @@ import (
 
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
 // Assumes that the caller has checked that the interfaces exist
+// We therefor skip any interfaces which do not exist
 func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 
 	// Look for adds or changes
@@ -73,6 +74,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 	// Check the ifname exists to avoid waiting for a dhcpcd below
 	_, err := IfnameToIndex(nuc.IfName)
 	if err != nil {
+		// Caller intends us to proceed without this interface
 		log.Warnf("doDhcpClientActivate(%s) failed %s", nuc.IfName, err)
 		return
 	}

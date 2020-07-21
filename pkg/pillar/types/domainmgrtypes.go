@@ -4,6 +4,7 @@
 package types
 
 import (
+	"os"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -54,7 +55,7 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 // VirtualizationModeOrDefault sets the default to PV
 func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	switch config.VirtualizationMode {
-	case PV, HVM, FML:
+	case PV, HVM, FML, NOHYPER:
 		return config.VirtualizationMode
 	default:
 		return PV
@@ -147,7 +148,18 @@ const (
 	HVM
 	Filler
 	FML
+	NOHYPER
 )
+
+// Task represents any runnable entity on EVE
+type Task interface {
+	Setup(string, DomainConfig, []DiskStatus, *AssignableAdapters, *os.File) error
+	Create(string, string, *DomainConfig) (int, error)
+	Start(string, int) error
+	Stop(string, int, bool) error
+	Delete(string, int) error
+	Info(string, int) (int, SwState, error)
+}
 
 type DomainStatus struct {
 	UUIDandVersion     UUIDandVersion

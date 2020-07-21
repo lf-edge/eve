@@ -1,3 +1,6 @@
+// Copyright (c) 2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package volumemgr
 
 // SignatureVerifier an expected signature, the public key used to verify it

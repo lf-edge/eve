@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package downloader
 
 import (
@@ -11,28 +14,23 @@ import (
 )
 
 type downloaderContext struct {
-	decryptCipherContext        cipher.DecryptCipherContext
-	dCtx                        *zedUpload.DronaCtx
-	subDeviceNetworkStatus      pubsub.Subscription
-	subAppImgConfig             pubsub.Subscription
-	pubAppImgStatus             pubsub.Publication
-	subBaseOsConfig             pubsub.Subscription
-	pubBaseOsStatus             pubsub.Publication
-	subCertObjConfig            pubsub.Subscription
-	pubCertObjStatus            pubsub.Publication
-	subContentTreeResolveConfig pubsub.Subscription
-	pubContentTreeResolveStatus pubsub.Publication
-	subAppImgResolveConfig      pubsub.Subscription
-	subGlobalDownloadConfig     pubsub.Subscription
-	pubGlobalDownloadStatus     pubsub.Publication
-	pubCipherBlockStatus        pubsub.Publication
-	subDatastoreConfig          pubsub.Subscription
-	deviceNetworkStatus         types.DeviceNetworkStatus
-	globalConfig                types.GlobalDownloadConfig
-	globalStatusLock            sync.Mutex
-	globalStatus                types.GlobalDownloadStatus
-	subGlobalConfig             pubsub.Subscription
-	GCInitialized               bool
+	decryptCipherContext    cipher.DecryptCipherContext
+	dCtx                    *zedUpload.DronaCtx
+	subDeviceNetworkStatus  pubsub.Subscription
+	subDownloaderConfig     pubsub.Subscription
+	pubDownloaderStatus     pubsub.Publication
+	subResolveConfig        pubsub.Subscription
+	pubResolveStatus        pubsub.Publication
+	subGlobalDownloadConfig pubsub.Subscription
+	pubGlobalDownloadStatus pubsub.Publication
+	pubCipherBlockStatus    pubsub.Publication
+	subDatastoreConfig      pubsub.Subscription
+	deviceNetworkStatus     types.DeviceNetworkStatus
+	globalConfig            types.GlobalDownloadConfig
+	globalStatusLock        sync.Mutex
+	globalStatus            types.GlobalDownloadStatus
+	subGlobalConfig         pubsub.Subscription
+	GCInitialized           bool
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
@@ -130,8 +128,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	subGlobalDownloadConfig.Activate()
 
 	// Look for DatastoreConfig. We should process this
-	// before any download config ( App/baseos/cert). Without DataStore Config,
-	// Image Downloads will run into errors.
+	// before any download config. Without DataStore Config,
+	// Image Downloads will run into errors, which requires retries
 	subDatastoreConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleDatastoreConfigModify,
 		ModifyHandler: handleDatastoreConfigModify,
@@ -167,171 +165,58 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.DownloaderStatus{},
+	pubDownloaderStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.DownloaderStatus{},
 	})
 	if err != nil {
 		return err
 	}
-	ctx.pubAppImgStatus = pubAppImgStatus
-	pubAppImgStatus.ClearRestarted()
+	ctx.pubDownloaderStatus = pubDownloaderStatus
 
-	pubBaseOsStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.BaseOsObj,
-		TopicType:  types.DownloaderStatus{},
+	pubResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.ResolveStatus{},
 	})
 	if err != nil {
 		return err
 	}
-	ctx.pubBaseOsStatus = pubBaseOsStatus
-	pubBaseOsStatus.ClearRestarted()
+	ctx.pubResolveStatus = pubResolveStatus
 
-	pubCertObjStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.CertObj,
-		TopicType:  types.DownloaderStatus{},
-	})
-	if err != nil {
-		return err
-	}
-	ctx.pubCertObjStatus = pubCertObjStatus
-	pubCertObjStatus.ClearRestarted()
-
-	pubContentTreeResolveStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.ResolveStatus{},
-	})
-	if err != nil {
-		return err
-	}
-	ctx.pubContentTreeResolveStatus = pubContentTreeResolveStatus
-	pubContentTreeResolveStatus.ClearRestarted()
-
-	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleAppImgCreate,
-		ModifyHandler: handleAppImgModify,
-		DeleteHandler: handleAppImgDelete,
+	subDownloaderConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleDownloaderConfigCreate,
+		ModifyHandler: handleDownloaderConfigModify,
+		DeleteHandler: handleDownloaderConfigDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "volumemgr",
-		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.DownloaderConfig{},
 		Ctx:           ctx,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subAppImgConfig = subAppImgConfig
-	subAppImgConfig.Activate()
+	ctx.subDownloaderConfig = subDownloaderConfig
+	subDownloaderConfig.Activate()
 
-	subBaseOsConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleBaseOsCreate,
-		ModifyHandler: handleBaseOsModify,
-		DeleteHandler: handleBaseOsDelete,
+	subResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleResolveModify,
+		ModifyHandler: handleResolveModify,
+		DeleteHandler: handleResolveDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "volumemgr",
-		AgentScope:    types.BaseOsObj,
-		TopicImpl:     types.DownloaderConfig{},
-		Ctx:           ctx,
-	})
-	if err != nil {
-		return err
-	}
-	ctx.subBaseOsConfig = subBaseOsConfig
-	subBaseOsConfig.Activate()
-
-	subCertObjConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleCertObjCreate,
-		ModifyHandler: handleCertObjModify,
-		DeleteHandler: handleCertObjDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "volumemgr",
-		AgentScope:    types.CertObj,
-		TopicImpl:     types.DownloaderConfig{},
-		Ctx:           ctx,
-	})
-	if err != nil {
-		return err
-	}
-	ctx.subCertObjConfig = subCertObjConfig
-	subCertObjConfig.Activate()
-
-	subContentTreeResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeResolveModify,
-		ModifyHandler: handleContentTreeResolveModify,
-		DeleteHandler: handleContentTreeResolveDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "volumemgr",
-		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.ResolveConfig{},
 		Ctx:           ctx,
 	})
 	if err != nil {
 		return err
 	}
-	ctx.subContentTreeResolveConfig = subContentTreeResolveConfig
-	subContentTreeResolveConfig.Activate()
+	ctx.subResolveConfig = subResolveConfig
+	subResolveConfig.Activate()
 
-	subAppImgResolveConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleAppImgResolveModify,
-		ModifyHandler: handleAppImgResolveModify,
-		DeleteHandler: handleAppImgResolveDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "zedmanager",
-		AgentScope:    types.AppImgObj,
-		TopicImpl:     types.ResolveConfig{},
-		Ctx:           ctx,
-	})
-	if err != nil {
-		return err
-	}
-	ctx.subAppImgResolveConfig = subAppImgResolveConfig
-	subAppImgResolveConfig.Activate()
-
-	pubAppImgStatus.SignalRestarted()
-	pubBaseOsStatus.SignalRestarted()
-	pubCertObjStatus.SignalRestarted()
-	pubContentTreeResolveStatus.SignalRestarted()
+	pubDownloaderStatus.SignalRestarted()
+	pubResolveStatus.SignalRestarted()
 
 	return nil
-}
-
-func (ctx *downloaderContext) subscription(objType string) pubsub.Subscription {
-	var sub pubsub.Subscription
-	switch objType {
-	case types.AppImgObj:
-		sub = ctx.subAppImgConfig
-	case types.BaseOsObj:
-		sub = ctx.subBaseOsConfig
-	case types.CertObj:
-		sub = ctx.subCertObjConfig
-	default:
-		log.Fatalf("downloaderSubscription: Unknown ObjType %s",
-			objType)
-	}
-	return sub
-}
-
-func (ctx *downloaderContext) publication(objType string) pubsub.Publication {
-	var pub pubsub.Publication
-	switch objType {
-	case types.AppImgObj:
-		pub = ctx.pubAppImgStatus
-	case types.BaseOsObj:
-		pub = ctx.pubBaseOsStatus
-	case types.CertObj:
-		pub = ctx.pubCertObjStatus
-	default:
-		log.Fatalf("downloaderPublication: Unknown ObjType %s",
-			objType)
-	}
-	return pub
 }

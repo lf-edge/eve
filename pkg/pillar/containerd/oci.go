@@ -26,7 +26,9 @@ const eveScript = "/bin/eve"
 
 var vethScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh"}
 
-//revive:disable
+// ociSpec is kept private (with all the actions done by getters and setters
+// This is because we expect the implementation to still evolve quite a bit
+// for all the different task usecases
 type ociSpec struct {
 	specs.Spec
 	name         string
@@ -36,8 +38,20 @@ type ociSpec struct {
 	stopSignal   string
 }
 
+// OCISpec provides methods to manipulate OCI runtime specifications and create containers based on them
+type OCISpec interface {
+	Get() *specs.Spec
+	Save(*os.File) error
+	Load(*os.File) error
+	CreateContainer(bool) error
+	AdjustMemLimit(types.DomainConfig, int64)
+	UpdateVifList(types.DomainConfig)
+	UpdateFromDomain(types.DomainConfig)
+	UpdateFromVolume(string) error
+}
+
 // NewOciSpec returns a default oci spec from the containerd point of view
-func NewOciSpec(name string) (*ociSpec, error) {
+func NewOciSpec(name string) (OCISpec, error) {
 	s := &ociSpec{name: name}
 	// we need a dummy container object to trick containerd
 	// initialization functions into filling out defaults
@@ -53,7 +67,10 @@ func NewOciSpec(name string) (*ociSpec, error) {
 	return s, nil
 }
 
-//revive:enable
+// Get simply returns an underlying OCI runtime spec
+func (s *ociSpec) Get() *specs.Spec {
+	return &s.Spec
+}
 
 // Save stores json representation of the oci spec in a file
 func (s *ociSpec) Save(file *os.File) error {
@@ -85,9 +102,10 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	if err != nil && removeExisting {
 		_, status, err := CtrContainerInfo(s.name)
 		if err == nil && status != "running" && status != "pausing" {
-			_ = CtrDeleteContainer(s.name)
+			err = CtrDeleteContainer(s.name)
 			_, err = CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
 		}
+		return err
 	}
 	return err
 }
@@ -101,31 +119,32 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 	}
 }
 
-// UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
-func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig, needsNetWorkSetup bool) {
-	if needsNetWorkSetup {
-		// use pre-start and post-stop hooks for networking
-		if s.Hooks == nil {
-			s.Hooks = &specs.Hooks{}
-		}
-		timeout := 60
-		for _, v := range dom.VifList {
-			vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
-			s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
-				Env:     vifSpec,
-				Path:    eveScript,
-				Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
-				Timeout: &timeout,
-			})
-			s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
-				Env:     vifSpec,
-				Path:    eveScript,
-				Args:    append(vethScript, "down", v.Vif),
-				Timeout: &timeout,
-			})
-		}
+// UpdateVifList creates VIF management hooks in OCI spec
+func (s *ociSpec) UpdateVifList(dom types.DomainConfig) {
+	// use pre-start and post-stop hooks for networking
+	if s.Hooks == nil {
+		s.Hooks = &specs.Hooks{}
 	}
+	timeout := 60
+	for _, v := range dom.VifList {
+		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
+		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
+			Env:     vifSpec,
+			Path:    eveScript,
+			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
+			Timeout: &timeout,
+		})
+		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
+			Env:     vifSpec,
+			Path:    eveScript,
+			Args:    append(vethScript, "down", v.Vif),
+			Timeout: &timeout,
+		})
+	}
+}
 
+// UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
+func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig) {
 	// update cgroup resource constraints for CPU and memory
 	if s.Linux != nil {
 		if s.Linux.Resources == nil {

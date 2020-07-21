@@ -65,10 +65,12 @@ var clientMetrics types.MetricsMap
 var logmanagerMetrics types.MetricsMap
 var downloaderMetrics types.MetricsMap
 var networkMetrics types.NetworkMetrics
+var cipherMetricsDL types.CipherMetricsMap
+var cipherMetricsDM types.CipherMetricsMap
+var cipherMetricsNim types.CipherMetricsMap
 
 // Context for handleDNSModify
 type DNSContext struct {
-	usableAddressCount     int
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus pubsub.Subscription
 	triggerGetConfig       bool
@@ -317,16 +319,6 @@ func Run(ps *pubsub.PubSub) {
 
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
-
-	pubCertObjConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.CertObjConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCertObjConfig.ClearRestarted()
-	getconfigCtx.pubCertObjConfig = pubCertObjConfig
 
 	pubBaseOsConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -677,8 +669,6 @@ func Run(ps *pubsub.PubSub) {
 	subNodeAgentStatus.Activate()
 
 	DNSctx := DNSContext{}
-	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
-
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		TopicImpl:     types.DeviceNetworkStatus{},
@@ -877,6 +867,34 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
+	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "downloader",
+		TopicImpl: types.CipherMetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subCipherMetricsDM, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "domainmgr",
+		TopicImpl: types.CipherMetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subCipherMetricsNim, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "nim",
+		TopicImpl: types.CipherMetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
@@ -993,6 +1011,36 @@ func Run(ps *pubsub.PubSub) {
 			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
+		case change := <-subCipherMetricsDL.MsgChan():
+			subCipherMetricsDL.ProcessChange(change)
+			m, err := subCipherMetricsDL.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsDL.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsDL = m.(types.CipherMetricsMap)
+			}
+
+		case change := <-subCipherMetricsDM.MsgChan():
+			subCipherMetricsDM.ProcessChange(change)
+			m, err := subCipherMetricsDM.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsDM.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsDM = m.(types.CipherMetricsMap)
+			}
+
+		case change := <-subCipherMetricsNim.MsgChan():
+			subCipherMetricsNim.ProcessChange(change)
+			m, err := subCipherMetricsNim.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsNim.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsNim = m.(types.CipherMetricsMap)
+			}
+
 		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
 
@@ -1101,12 +1149,6 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(types.DownloadDirname); err != nil {
-		log.Debugf("Create %s", types.DownloadDirname)
-		if err := os.MkdirAll(types.DownloadDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 }
 
 // handleAppInstanceStatusCreate - Handle AIS create. Publish ZInfoApp
@@ -1176,16 +1218,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(*deviceNetworkStatus, status))
 	*deviceNetworkStatus = status
-	// Did we (re-)gain the first usable address?
-	// XXX should we also trigger if the count increases?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
-	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses",
-			ctx.usableAddressCount, newAddrCount)
-		ctx.triggerGetConfig = true
-	}
 	ctx.DNSinitialized = true
-	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
 
 	if zedcloudCtx.V2API {
@@ -1205,9 +1238,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		return
 	}
 	*deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.DNSinitialized = false
-	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
