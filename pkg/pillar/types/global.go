@@ -156,6 +156,8 @@ const (
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
 	// IgnoreDiskCheckForApps global setting key
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
+	// LisperDotNetLinkUpdate enable lisper.net tuntap interface update
+	LisperDotNetLinkUpdate GlobalSettingKey = "link.update.lisper.net.enable"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -730,6 +732,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
+	configItemSpecMap.AddBoolItem(LisperDotNetLinkUpdate, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)

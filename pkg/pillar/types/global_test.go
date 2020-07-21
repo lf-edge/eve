@@ -169,6 +169,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		UsbAccess,
 		AllowAppVnc,
 		IgnoreDiskCheckForApps,
+		LisperDotNetLinkUpdate,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		AllowNonFreeAppImages,
