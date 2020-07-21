@@ -55,6 +55,7 @@ func GetVolumeSize(name string) (uint64, uint64, error) {
 	return imgInfo.ActualSize, imgInfo.VirtualSize, nil
 }
 
+// TagGenerator returns unique tag name on each call
 func TagGenerator() string {
 	tagCounter++
 	return fmt.Sprintf("tag%d", tagCounter)
