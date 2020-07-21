@@ -45,13 +45,9 @@ func AddrChange(ctx DeviceNetworkContext, change netlink.AddrUpdate) (bool, int)
 
 	changed := false
 	if change.NewAddr {
-		log.Infof("AddrChange new %d %s\n",
-			change.LinkIndex, change.LinkAddress.String())
 		changed = IfindexToAddrsAdd(change.LinkIndex,
 			change.LinkAddress.IP)
 	} else {
-		log.Infof("AddrChange del %d %s\n",
-			change.LinkIndex, change.LinkAddress.String())
 		changed = IfindexToAddrsDel(change.LinkIndex,
 			change.LinkAddress.IP)
 	}
@@ -70,9 +66,10 @@ func AddrChange(ctx DeviceNetworkContext, change netlink.AddrUpdate) (bool, int)
 				DelSourceRule(change.LinkIndex, change.LinkAddress, false)
 			}
 		}
+		log.Infof("AddrChange: changed, %d %s", change.LinkIndex, change.LinkAddress.String())
+	} else {
+		log.Debugf("AddrChange: no change, %d %s", change.LinkIndex, change.LinkAddress.String())
 	}
-	log.Infof("AddrChange %t %d %s", changed,
-		change.LinkIndex, change.LinkAddress.String())
 	return changed, change.LinkIndex
 }
 
