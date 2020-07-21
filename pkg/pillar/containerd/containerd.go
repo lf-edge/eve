@@ -385,15 +385,23 @@ func CtrContainerInfo(name string) (int, string, error) {
 	if err := verifyCtr(); err != nil {
 		return 0, "", fmt.Errorf("CtrContainerInfo: exception while verifying ctrd client: %s", err.Error())
 	}
+
 	c, err := CtrLoadContainer(name)
-	if err == nil {
-		if t, err := c.Task(ctrdCtx, nil); err == nil {
-			if stat, err := t.Status(ctrdCtx); err == nil {
-				return int(t.Pid()), string(stat.Status), nil
-			}
-		}
+	if err != nil {
+		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't load container %s: %v", name, err)
 	}
-	return 0, "", err
+
+	t, err := c.Task(ctrdCtx, nil)
+	if err != nil {
+		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't load task for container %s: %v", name, err)
+	}
+
+	stat, err := t.Status(ctrdCtx)
+	if err != nil {
+		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
+	}
+
+	return int(t.Pid()), string(stat.Status), nil
 }
 
 // CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd

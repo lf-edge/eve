@@ -100,12 +100,8 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	_, err := CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
 	// if container exists, is stopped and we are asked to remove existing - try that
 	if err != nil && removeExisting {
-		_, status, err := CtrContainerInfo(s.name)
-		if err == nil && status != "running" && status != "pausing" {
-			err = CtrDeleteContainer(s.name)
-			_, err = CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
-		}
-		return err
+		_ = CtrDeleteContainer(s.name)
+		_, err = CtrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
 	}
 	return err
 }
