@@ -9,13 +9,13 @@ import (
 
 //AttestNonce carries nonce published by requester
 type AttestNonce struct {
-	nonce     []byte
-	requester string
+	Nonce     []byte
+	Requester string
 }
 
 //Key returns nonce content, which is the key as well
 func (nonce AttestNonce) Key() string {
-	return nonce.requester
+	return hex.EncodeToString(nonce.Nonce)
 }
 
 //SigAlg denotes the Signature algorithm in use e.g. ECDSA, RSASSA
@@ -56,23 +56,23 @@ const (
 
 //PCRValue contains value of single PCR
 type PCRValue struct {
-	index  uint8
-	algo   PCRExtendHashType
-	digest []byte
+	Index  uint8
+	Algo   PCRExtendHashType
+	Digest []byte
 }
 
 //AttestQuote contains attestation quote
 type AttestQuote struct {
-	nonce     []byte     //Nonce provided by the requester
-	sigType   SigAlg     //The signature algorithm used
-	signature []byte     //ASN1 encoded signature
-	quote     []byte     //the quote structure
-	pcrs      []PCRValue //pcr values
+	Nonce     []byte     //Nonce provided by the requester
+	SigType   SigAlg     //The signature algorithm used
+	Signature []byte     //ASN1 encoded signature
+	Quote     []byte     //the quote structure
+	PCRs      []PCRValue //pcr values
 }
 
 //Key uniquely identifies an AttestQuote object
-func (quote AttestQuote) Key() []byte {
-	return quote.nonce
+func (quote AttestQuote) Key() string {
+	return hex.EncodeToString(quote.Nonce)
 }
 
 //Needs to match api/proto/attest/attest.proto:ZEveCertHashType

@@ -80,6 +80,7 @@ type DNSContext struct {
 type zedagentContext struct {
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
+	attestCtx                 *attestContext    // Cross link
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
@@ -223,6 +224,7 @@ func Run(ps *pubsub.PubSub) {
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
 	cipherCtx := cipherContext{}
+	attestCtx := attestContext{}
 
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
@@ -235,6 +237,9 @@ func Run(ps *pubsub.PubSub) {
 
 	cipherCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.cipherCtx = &cipherCtx
+
+	attestCtx.zedagentCtx = &zedagentCtx
+	zedagentCtx.attestCtx = &attestCtx
 
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.InitDeferred()
@@ -733,6 +738,9 @@ func Run(ps *pubsub.PubSub) {
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
 
+	//initialize remote attestation context
+	attestModuleInitialize(&zedagentCtx, ps)
+
 	// Pick up debug aka log level before we start real work
 
 	for !zedagentCtx.GCInitialized {
@@ -916,6 +924,9 @@ func Run(ps *pubsub.PubSub) {
 
 	// start cipher module tasks
 	cipherModuleStart(&zedagentCtx)
+
+	// start remote attestation task
+	attestModuleStart(&zedagentCtx)
 
 	for {
 		select {

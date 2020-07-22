@@ -118,10 +118,24 @@ var (
 	ErrTpmAgentUnavailable   = errors.New("TPM agent is unavailable")
 )
 
+//Watchdog needs to be implemented by the consumer of this package
+//It contains interface definition for punching watchdog (not having it is okay)
+type Watchdog interface {
+	PunchWatchdog(ctx *Context) error
+}
+
 //External interfaces to the state machine
 //For unit-testing, these will be redirected to their mock versions.
 var tpmAgent TpmAgent
 var verifier Verifier
+var watchdog Watchdog
+
+//RegisterExternalIntf is used to fill up external interface implementaions
+func RegisterExternalIntf(t TpmAgent, v Verifier, w Watchdog) {
+	tpmAgent = t
+	verifier = v
+	watchdog = w
+}
 
 //Context has all the runtime context required to run this state machine
 type Context struct {
@@ -129,15 +143,31 @@ type Context struct {
 	state                 State
 	restartTimer          *time.Timer
 	eventTrigger          chan Event
-	retryTime             time.Duration
+	retryTime             time.Duration //in seconds
 	restartRequestPending bool
-	watchdogTime          time.Duration
+	watchdogTickerTime    time.Duration //in seconds
 }
 
 //Transition represents an event triggered from a state
 type Transition struct {
 	event Event
 	state State
+}
+
+//New returns a new instance of the state machine
+func New(retryTime, watchdogTickerTime time.Duration) (*Context, error) {
+	return &Context{
+		event:              EventInitialize,
+		state:              StateNone,
+		eventTrigger:       make(chan Event),
+		retryTime:          retryTime,
+		watchdogTickerTime: watchdogTickerTime,
+	}, nil
+}
+
+//Initialize initializes the new instance of state machine
+func (ctx *Context) Initialize() error {
+	return nil
 }
 
 //EventHandler represents a handler function for a Transition
@@ -176,7 +206,9 @@ func triggerSelfEvent(ctx *Context, event Event) error {
 }
 
 func startNewRetryTimer(ctx *Context) error {
-	ctx.restartTimer.Stop()
+	if ctx.restartTimer != nil {
+		ctx.restartTimer.Stop()
+	}
 	log.Debugf("Starting retry timer at %v\n", time.Now())
 	if ctx.retryTime == 0 {
 		return fmt.Errorf("retryTime not initialized")
@@ -347,5 +379,38 @@ func despatchEvent(event Event, state State, ctx *Context) error {
 		//just to keep compiler happy
 		return fmt.Errorf("Unexpected Event %s in State %s\n",
 			event.String(), state.String())
+	}
+}
+
+func punchWatchdog(ctx *Context) {
+	//if there is one registered
+	if watchdog != nil {
+		watchdog.PunchWatchdog(ctx)
+	}
+}
+
+//EnterEventLoop is the eternel event loop for the state machine
+func (ctx *Context) EnterEventLoop() {
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(ctx.watchdogTickerTime * time.Second)
+	punchWatchdog(ctx)
+
+	ctx.restartTimer = time.NewTimer(1 * time.Second)
+	ctx.restartTimer.Stop()
+
+	for {
+		select {
+		case trigger := <-ctx.eventTrigger:
+			log.Debug("[ATTEST] despatching event")
+			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+				log.Errorf("%v", err)
+			}
+		case <-ctx.restartTimer.C:
+			log.Debug("[ATTEST] EventRetryTimerExpiry event")
+			triggerSelfEvent(ctx, EventRetryTimerExpiry)
+		case <-stillRunning.C:
+			log.Debug("[ATTEST] stillRunning event")
+			punchWatchdog(ctx)
+		}
 	}
 }

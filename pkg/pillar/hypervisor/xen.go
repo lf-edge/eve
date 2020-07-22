@@ -146,18 +146,31 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 			bootLoader))
 	}
 	if config.EnableVnc {
-		file.WriteString(fmt.Sprintf("vnc = 1\n"))
-		file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
-		file.WriteString(fmt.Sprintf("usb=1\n"))
-		file.WriteString(fmt.Sprintf("usbdevice=[\"tablet\"]\n"))
+		if config.VirtualizationMode == types.PV {
+			vncParams := []string{"vnc=1", "vnclisten=0.0.0.0"}
+			if config.VncDisplay != 0 {
+				vncParams = append(vncParams, fmt.Sprintf("vncdisplay=%d",
+					config.VncDisplay))
+			}
+			if config.VncPasswd != "" {
+				vncParams = append(vncParams, fmt.Sprintf("vncpasswd=\"%s\"\n",
+					config.VncPasswd))
+			}
+			file.WriteString(fmt.Sprintf("vfb = ['%s']\n", strings.Join(vncParams, ", ")))
+		} else {
+			file.WriteString(fmt.Sprintf("vnc = 1\n"))
+			file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
+			file.WriteString(fmt.Sprintf("usb=1\n"))
+			file.WriteString(fmt.Sprintf("usbdevice=[\"tablet\"]\n"))
 
-		if config.VncDisplay != 0 {
-			file.WriteString(fmt.Sprintf("vncdisplay = %d\n",
-				config.VncDisplay))
-		}
-		if config.VncPasswd != "" {
-			file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
-				config.VncPasswd))
+			if config.VncDisplay != 0 {
+				file.WriteString(fmt.Sprintf("vncdisplay = %d\n",
+					config.VncDisplay))
+			}
+			if config.VncPasswd != "" {
+				file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
+					config.VncPasswd))
+			}
 		}
 	} else {
 		file.WriteString(fmt.Sprintf("vnc = 0\n"))

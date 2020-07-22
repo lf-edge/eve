@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -78,6 +79,7 @@ const (
 	emptyPassword  = ""
 	tpmLockName    = types.TmpDirname + "/tpm.lock"
 	vaultKeyLength = 32 //Bytes
+	maxPCRIndex    = 23
 
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
@@ -101,7 +103,7 @@ var (
 
 	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
-	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
+	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
@@ -631,32 +633,68 @@ func printCapability() {
 	}
 }
 
-func printPCRs() {
+func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
+	if !etpm.IsTpmEnabled() {
+		//No TPM, not an error, return empty values
+		return nil, nil, nil, nil
+	}
+
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
-		fmt.Printf("Error opening TPM device: %s", err)
-		return
+		return nil, nil, nil, err
 	}
 	defer rw.Close()
-	for i := 0; i < 23; i++ {
-		pcrVal, err := tpm2.ReadPCR(rw, i, tpm2.AlgSHA256)
+	pcrs := make([]types.PCRValue, 0)
+
+	var i uint8
+	for i = 0; i <= maxPCRIndex; i++ {
+		pcrVal, err := tpm2.ReadPCR(rw, int(i), tpm2.AlgSHA256)
 		if err != nil {
-			log.Fatal(err)
+			return nil, nil, nil, err
 		}
-		fmt.Printf("PCR %d: Value: 0x%X\n", i, pcrVal)
+
+		pcr := types.PCRValue{
+			Index:  i,
+			Algo:   types.PCRExtendHashAlgoSha256,
+			Digest: pcrVal,
+		}
+		pcrs = append(pcrs, pcr)
 	}
-	attestData, pcrQuote, err := tpm2.Quote(rw, TpmQuoteKeyHdl,
+	attestData, sig, err := tpm2.Quote(rw, TpmQuoteKeyHdl,
 		emptyPassword,
 		emptyPassword,
-		[]byte("nonce"),
+		nonce,
 		pcrListForQuote,
 		tpm2.AlgNull)
 	if err != nil {
-		fmt.Printf("Error in creating quote: %v\n", err)
-		log.Fatal(err)
+		return nil, nil, nil, err
 	} else {
-		fmt.Printf("attestData = %v\n", attestData)
-		fmt.Printf("pcrQuote = %v, %v\n", pcrQuote.Alg, *pcrQuote.ECC)
+		switch sig.Alg {
+		case tpm2.AlgECDSA:
+			signature, err := asn1.Marshal(struct {
+				R, S *big.Int
+			}{sig.ECC.R, sig.ECC.S})
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			return attestData, signature, pcrs, nil
+		default:
+			return nil, nil, nil, fmt.Errorf("Unsupported signature type")
+		}
+	}
+}
+
+func printPCRs() {
+	quote, signature, pcrs, err := getQuote([]byte("ThisIsRandomNonce"))
+	if err != nil {
+		fmt.Printf("Error in getting quote: %v", err)
+	} else {
+		fmt.Printf("attestData = %v\n", quote)
+		for _, pcr := range pcrs {
+			fmt.Printf("%d: %x\n", pcr.Index, pcr.Digest)
+		}
+		fmt.Printf("Quote: %x\n", quote)
+		fmt.Printf("Signature: %x\n", signature)
 	}
 }
 
@@ -807,7 +845,7 @@ func testEcdhAES() error {
 	recoveredMsg := make([]byte, len(ciphertext))
 	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
 	if err != nil {
-		fmt.Printf("publishECDHCertToController failed with error: %v", err)
+		fmt.Printf("getCertHash failed with error: %v", err)
 		return err
 	}
 
@@ -1258,10 +1296,10 @@ func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
 	log.Debugf("publishEdgeNodeCert %s Done", key)
 }
 
-func getECDHCert(certPath string) ([]byte, error) {
+func readEdgeNodeCert(certPath string) ([]byte, error) {
 	certBytes, err := ioutil.ReadFile(certPath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read ECDH certificate: %v", err)
+		return nil, fmt.Errorf("readEdgeNodeCert failed with error: %v", err)
 	}
 	return certBytes, nil
 }
@@ -1276,37 +1314,33 @@ func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 	}
 }
 
-func publishECDHCertToController(ctx *tpmMgrContext) {
-	log.Infof("publishECDHCertToController started")
-	if !etpm.FileExists(ecdhCertFile) {
-		log.Errorf("publishECDHCertToController failed: ECDH certificate not found")
+func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certType types.CertType, isTpm bool) {
+	log.Infof("publishEdgeNodeCertToController started")
+	if !etpm.FileExists(certFile) {
+		log.Errorf("publishEdgeNodeCertToController failed: no cert file")
 		return
 	}
-	certBytes, err := getECDHCert(ecdhCertFile)
+	certBytes, err := readEdgeNodeCert(certFile)
 	if err != nil {
-		errStr := fmt.Sprintf("publishECDHCertToController failed: %v", err)
+		errStr := fmt.Sprintf("publishEdgeNodeCertToController failed: %v", err)
 		log.Error(errStr)
 		return
 	}
 	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
 	if err != nil {
-		errStr := fmt.Sprintf("publishECDHCertToController failed: %v", err)
+		errStr := fmt.Sprintf("publishEdgeNodeCertToController failed: %v", err)
 		log.Error(errStr)
 		return
 	}
-	isTpm := true
-	if !etpm.IsTpmEnabled() || etpm.FileExists(ecdhKeyFile) {
-		isTpm = false
-	}
-	ecdhCert := types.EdgeNodeCert{
+	cert := types.EdgeNodeCert{
 		HashAlgo: types.CertHashTypeSha256First16,
 		CertID:   certHash,
-		CertType: types.CertTypeEcdhXchange,
+		CertType: certType,
 		Cert:     certBytes,
 		IsTpm:    isTpm,
 	}
-	publishEdgeNodeCert(ctx, ecdhCert)
-	log.Infof("publishECDHCertToController Done")
+	publishEdgeNodeCert(ctx, cert)
+	log.Infof("publishEdgeNodeCertToController Done")
 }
 
 func Run(ps *pubsub.PubSub) {
@@ -1454,7 +1488,15 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatal(err)
 		}
 		ctx.pubEdgeNodeCert = pubEdgeNodeCert
-		publishECDHCertToController(&ctx)
+
+		//publish ECDH cert
+		publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
+			etpm.IsTpmEnabled() && !etpm.FileExists(ecdhKeyFile))
+
+		//publish attestation quote cert
+		//XXX disabled until Controller adds support
+		//publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
+		//	etpm.IsTpmEnabled() && !etpm.FileExists(quoteKeyFile))
 
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
@@ -1609,10 +1651,37 @@ func readNodeAgentStatus(ctx *tpmMgrContext) (bool, error) {
 // Handles both create and modify events
 func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleAttestNonceModify received")
-	//status := statusArg.(types.NodeAgentStatus)
+	ctx := ctxArg.(*tpmMgrContext)
+	nonceReq := statusArg.(types.AttestNonce)
+	log.Debugf("Received quote request from %s", nonceReq.Requester)
+	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
+	if err != nil {
+		attestQuote := types.AttestQuote{
+			Nonce:     nonceReq.Nonce,
+			SigType:   types.EcdsaSha256,
+			Signature: signature,
+			Quote:     quote,
+			PCRs:      pcrs,
+		}
+		key := attestQuote.Key()
+		log.Debugf("publishing quote for nonce %x", key)
+		pub := ctx.pubAttestQuote
+		pub.Publish(key, attestQuote)
+	} else {
+		log.Fatalf("Error in fetching quote %v", err)
+	}
 	log.Infof("handleAttestNonceModify done")
 }
 
 func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Infof("handleAttestNonceDelete done")
+	log.Infof("handleAttestNonceDelete received")
+	ctx := ctxArg.(*tpmMgrContext)
+	pub := ctx.pubAttestQuote
+	st, _ := pub.Get(key)
+	if st != nil {
+		log.Infof("Unpublishing quote for nonce %x", key)
+		pub := ctx.pubAttestQuote
+		pub.Unpublish(key)
+	}
+	log.Infof("handleAttestNonceModify done")
 }
