@@ -29,7 +29,6 @@
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
 | storage.apps.ignore.disk.check | boolean | false | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
 | timer.appcontainer.stats.interval | integer in seconds | 300 | collect application container stats |
-| link.update.lisper.net.enable | boolean | false | Enable link change update of lisper.net tuntap interface |
 
 
 In addition, there can be per-agent settings.

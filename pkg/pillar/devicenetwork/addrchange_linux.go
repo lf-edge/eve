@@ -28,19 +28,12 @@ func getRouteUpdateTypeNEWROUTE() uint16 {
 }
 
 // LinkChange handles a link change. Returns ifindex for changed interface
-func LinkChange(change netlink.LinkUpdate, allowLispUpdate bool) (bool, int) {
+func LinkChange(change netlink.LinkUpdate) (bool, int) {
 
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	linkType := change.Link.Type()
 	changed := false
-	// XXX if global configure map of lisper.net link update is disabled, skip
-	if ifname == "lispers.net" && !allowLispUpdate {
-		log.Infof("LinkChange: lisp.net intf update diabled, skip. type %d index %d type %s\n",
-			change.Header.Type, ifindex, linkType)
-		return changed, ifindex
-	}
-
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
 		relevantFlag, upFlag := RelevantLastResort(change.Link)
