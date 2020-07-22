@@ -90,24 +90,39 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    partx -a --nr "$IMGB_ID:$P3_ID" "$DEV"
 fi
 
-#For systems with ext3 filesystem, try not to change to ext4, since it will brick
-#the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
-#when we do usb install, this way the transition is more controlled.
+# We support P3 partition either formatted as ext3/4 or as part of ZFS pool
+# Priorities are: ext3, ext4, zfs
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
-    P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
-    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
-
-    if [ "$P3_FS_TYPE" = "ext3" ]; then
-        if ! fsck.ext3 -y "$P3"; then
-            FSCK_FAILED=1
-        fi
-    else
-        P3_FS_TYPE="ext4"
-        if ! fsck.ext4 -y "$P3"; then
-            FSCK_FAILED=1
-        fi
+    # Loading zfs modules to see if we have any zpools attached to the system
+    # We will unload them later (if they do unload it meands we didn't find zpools)
+    modprobe zfs
+    # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
+    if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
+        # zero out the request (regardless of whether we can convert to zfs)
+        dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
+        zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
     fi
 
+    P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
+    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
+
+    case "$P3_FS_TYPE" in
+         ext3|ext4) if ! "fsck.$P3_FS_TYPE" -y "$P3"; then
+                        FSCK_FAILED=1
+                    fi
+                    ;;
+        zfs_member) if ! zpool import -f persist; then
+                        FSCK_FAILED=1
+                    fi
+                    ;;
+                 *) echo "P3 partition $P3 appears to have unrecognized type $P3_FS_TYPE"
+                    FSCK_FAILED=1
+                    ;;
+    esac
+
+    #For systems with ext3 filesystem, try not to change to ext4, since it will brick
+    #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
+    #when we do usb install, this way the transition is more controlled.
     #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
     if [ $FSCK_FAILED = 1 ]; then
         echo "$(date -Ins -u) mkfs.ext4 on $P3 for $PERSISTDIR"
@@ -123,8 +138,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     if [ "$P3_FS_TYPE" = "ext3" ]; then
         if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
             echo "$(date -Ins -u) mount $P3 failed"
-        else
-            init_containerd
         fi
     fi
     #On ext4, enable encryption support before mounting.
@@ -132,10 +145,14 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         tune2fs -O encrypt "$P3"
         if ! mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR; then
             echo "$(date -Ins -u) mount $P3 failed"
-        else
-            init_containerd
         fi
     fi
+
+    # making sure containerd uses P3 for storing its state
+    init_containerd
+    # this is safe, since if the mount fails the following will fail too
+    # shellcheck disable=SC2046
+    rmmod zfs $(lsmod | grep zfs | awk '{print $1;}') || :
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
 fi
