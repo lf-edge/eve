@@ -162,6 +162,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charserial0"]
   backend = "socket"
+  mux = "on"
   path = "/var/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
@@ -422,6 +423,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charserial0"]
   backend = "socket"
+  mux = "on"
   path = "/var/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
@@ -657,6 +659,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charserial0"]
   backend = "socket"
+  mux = "on"
   path = "/var/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
@@ -976,6 +979,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charserial0"]
   backend = "socket"
+  mux = "on"
   path = "/var/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
@@ -1239,6 +1243,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charserial0"]
   backend = "socket"
+  mux = "on"
   path = "/var/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
@@ -1477,6 +1482,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charserial0"]
   backend = "socket"
+  mux = "on"
   path = "/var/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
