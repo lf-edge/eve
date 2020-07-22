@@ -46,7 +46,6 @@ type nimContext struct {
 	sshAccess            bool
 	sshAuthorizedKeys    string
 	allowAppVnc          bool
-	alowLispLinkUpdate   bool
 
 	subNetworkInstanceStatus pubsub.Subscription
 
@@ -487,7 +486,7 @@ func Run(ps *pubsub.PubSub) {
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.LinkChange(change, nimCtx.alowLispLinkUpdate)
+				ch, ifindex := devicenetwork.LinkChange(change)
 				if ch {
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
@@ -637,7 +636,7 @@ func Run(ps *pubsub.PubSub) {
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.LinkChange(change, nimCtx.alowLispLinkUpdate)
+				ch, ifindex := devicenetwork.LinkChange(change)
 				if ch {
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
@@ -929,7 +928,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		gcpSSHAccess := gcp.GlobalValueString(types.SSHAuthorizedKeys) != ""
 		gcpSSHAuthorizedKeys := gcp.GlobalValueString(types.SSHAuthorizedKeys)
 		gcpAllowAppVnc := gcp.GlobalValueBool(types.AllowAppVnc)
-		gcpLispLinkUpdate := gcp.GlobalValueBool(types.LisperDotNetLinkUpdate)
 		gcpNetworkFallbackAnyEth := gcp.GlobalValueTriState(types.NetworkFallbackAnyEth)
 		if gcpSSHAccess != ctx.sshAccess || first {
 			ctx.sshAccess = gcpSSHAccess
@@ -942,9 +940,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcpAllowAppVnc != ctx.allowAppVnc {
 			ctx.allowAppVnc = gcpAllowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
-		}
-		if gcpLispLinkUpdate != ctx.alowLispLinkUpdate {
-			ctx.alowLispLinkUpdate = gcpLispLinkUpdate
 		}
 		if gcpNetworkFallbackAnyEth != ctx.networkFallbackAnyEth || first {
 			ctx.networkFallbackAnyEth = gcpNetworkFallbackAnyEth
