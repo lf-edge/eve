@@ -216,9 +216,6 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	if rootDev != "" {
 		file.WriteString(fmt.Sprintf("root = \"%s\"\n", rootDev))
 	}
-	if extra != "" {
-		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
-	}
 	// XXX Should one be able to disable the serial console? Would need
 	// knob in manifest
 
@@ -254,6 +251,9 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	if len(p9Strings) > 0 {
 		file.WriteString(fmt.Sprintf("p9 = [%s]\n", strings.Join(p9Strings, ",")))
 		extra = extra + fmt.Sprintf(" volumes=%s", strings.Join(volumes, ","))
+	}
+	if extra != "" {
+		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
 	}
 
 	vifString := ""
