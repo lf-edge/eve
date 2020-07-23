@@ -20,6 +20,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"os"
+	"strings"
 )
 
 const eveScript = "/bin/eve"
@@ -48,6 +49,7 @@ type OCISpec interface {
 	UpdateVifList(types.DomainConfig)
 	UpdateFromDomain(types.DomainConfig)
 	UpdateFromVolume(string) error
+	UpdateMounts([]types.DiskConfig)
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
@@ -216,4 +218,30 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 		}
 	}
 	return oci.WithAdditionalGIDs("root")(ctrdCtx, CtrdClient, &dummy, &s.Spec)
+}
+
+// UpdateMounts
+func (s *ociSpec) UpdateMounts(disks []types.DiskConfig) {
+	for i, disk := range disks {
+		// Skipping root container disk
+		if i == 0 {
+			continue
+		}
+		mount := specs.Mount{}
+		access := ""
+		if disk.ReadOnly {
+			access = "rbind:ro"
+		} else {
+			access = "rbind:rw"
+		}
+		mount.Type = "bind"
+		mount.Source = disk.FileLocation
+		if disk.MountDir != "" {
+			mount.Destination = disk.MountDir
+		} else {
+			mount.Destination = "/"
+		}
+		mount.Options = strings.Split(access, ":")
+		s.Mounts = append(s.Mounts, mount)
+	}
 }

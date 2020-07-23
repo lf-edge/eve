@@ -13,18 +13,9 @@ then
     exit 1
 fi
 
-MOUNT_TAGS=`cat /proc/cmdline | grep -o '\bvolumes=[^ ]*' | cut -d = -f 2`
-
 mkdir /mnt >/dev/null 2>&1
 if [ "$root" = "9p-xen" ]; then
-    for element in $(echo "$MOUNT_TAGS" | tr ',' ' '); do
-    do
-        tag="$(echo '$element' | cut -d ':' -f1)"
-        mount="$(echo '$element' | cut -d ':' -f2)"
-        echo "Mounting 9p tag '$tag' on '$mount'"
-        mkdir -p $mount
-        mount -t 9p -o msize=131072,trans=xen $tag $mount
-    done
+    mount -t 9p -o msize=131072,trans=xen share_dir /mnt
 elif [ "$root" = "9p-kvm" ]; then
     mount -t 9p -o msize=131072,trans=virtio,version=9p2000.L hostshare /mnt
 else

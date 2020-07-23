@@ -653,6 +653,7 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 		if memOverhead > 0 {
 			spec.AdjustMemLimit(*domSettings, memOverhead)
 		}
+		spec.UpdateMounts(domSettings.DiskConfigList)
 	}
 
 	if args != nil {
