@@ -13,14 +13,16 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/oci"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
-	"os"
-	"strings"
 )
 
 const eveScript = "/bin/eve"
@@ -222,24 +224,24 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 
 // UpdateMounts
 func (s *ociSpec) UpdateMounts(disks []types.DiskConfig) {
-	for i, disk := range disks {
+	for i := range disks {
 		// Skipping root container disk
 		if i == 0 {
 			continue
 		}
 		mount := specs.Mount{}
 		access := ""
-		if disk.ReadOnly {
+		if disks[i].ReadOnly {
 			access = "rbind:ro"
 		} else {
 			access = "rbind:rw"
 		}
 		mount.Type = "bind"
-		mount.Source = disk.FileLocation
-		if disk.MountDir != "" {
-			mount.Destination = disk.MountDir
+		mount.Source = path.Join("/var", disks[i].FileLocation)
+		if disks[i].MountDir != "" {
+			mount.Destination = disks[i].MountDir
 		} else {
-			mount.Destination = "/"
+			mount.Destination = path.Join("/mnt", disks[i].DisplayName)
 		}
 		mount.Options = strings.Split(access, ":")
 		s.Mounts = append(s.Mounts, mount)
