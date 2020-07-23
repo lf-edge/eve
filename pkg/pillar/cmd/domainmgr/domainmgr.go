@@ -36,7 +36,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -1161,13 +1160,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			status.SetErrorNow(err.Error())
 			return
 		}
-		if ds.MountDir != "" {
-			ds.MountDir = path.Join("/mnt/rootfs", ds.MountDir)
-		}
 	}
-
-	// XXX Hard coding mount dir for first disk status
-	status.DiskStatusList[0].MountDir = "/mnt"
 
 	filename := xenCfgFilename(config.AppNum)
 	file, err := os.Create(filename)
@@ -1448,7 +1441,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
 		ds.MountDir = dc.MountDir
-		ds.Tag = utils.TagGenerator()
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Format == zconfig.Format_CONTAINER {

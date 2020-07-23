@@ -58,6 +58,7 @@ func (ctx ctrdContext) Setup(domainName string, config types.DomainConfig, diskS
 		}
 	}
 
+	spec.UpdateMounts(config.DiskConfigList)
 	spec.UpdateVifList(config)
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", domainName, config, err)

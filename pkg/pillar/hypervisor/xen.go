@@ -216,6 +216,9 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	if rootDev != "" {
 		file.WriteString(fmt.Sprintf("root = \"%s\"\n", rootDev))
 	}
+	if extra != "" {
+		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
+	}
 	// XXX Should one be able to disable the serial console? Would need
 	// knob in manifest
 
@@ -227,13 +230,10 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	var diskStrings []string
 	var p9Strings []string
-	var volumes []string
 	for i, ds := range diskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER && ds.MountDir != "" {
+		if ds.Format == zconfig.Format_CONTAINER {
 			p9Strings = append(p9Strings,
-				fmt.Sprintf("'tag=%s,security_model=none,path=%s'", ds.Tag, ds.FileLocation))
-			volumes = append(volumes,
-				fmt.Sprintf("%s:%s", ds.Tag, ds.MountDir))
+				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FileLocation))
 		} else {
 			access := "rw"
 			if ds.ReadOnly {
@@ -250,10 +250,6 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	}
 	if len(p9Strings) > 0 {
 		file.WriteString(fmt.Sprintf("p9 = [%s]\n", strings.Join(p9Strings, ",")))
-		extra = extra + fmt.Sprintf(" volumes=%s", strings.Join(volumes, ","))
-	}
-	if extra != "" {
-		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
 	}
 
 	vifString := ""
