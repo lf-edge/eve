@@ -2,6 +2,7 @@ package hypervisor
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/digitalocean/go-qemu/qmp"
 	"github.com/sirupsen/logrus"
 	"os"
@@ -44,6 +45,12 @@ func execShutdown(socket string) error {
 
 func execQuit(socket string) error {
 	_, err := execRawCmd(socket, `{ "execute": "quit" }`)
+	return err
+}
+
+func execVNCPassword(socket string, password string) error {
+	vncSetPwd := fmt.Sprintf(`{ "execute": "change-vnc-password", "arguments": { "password": "%s" } }`, password)
+	_, err := execRawCmd(socket, vncSetPwd)
 	return err
 }
 
