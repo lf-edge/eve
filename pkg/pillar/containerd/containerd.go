@@ -574,6 +574,27 @@ func (client *Client) CtrDeleteContainer(ctx context.Context, containerID string
 	return ctr.Delete(ctx)
 }
 
+//CtrGetAnnotations gets annotations for defined containerID
+func (client *Client) CtrGetAnnotations(ctx context.Context, containerID string) (map[string]string, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return nil, fmt.Errorf("CtrGetAnnotations: exception while verifying ctrd client: %s", err.Error())
+	}
+	ctr, err := client.CtrLoadContainer(ctx, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("CtrGetAnnotations: can't find container %s (%v)", containerID, err)
+	}
+
+	task, err := ctr.Task(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	taskSpec, err := task.Spec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return taskSpec.Annotations, nil
+}
+
 // Resolver return a resolver.ResolverCloser that can read from containerd
 func (client *Client) Resolver(ctx context.Context) (resolver.ResolverCloser, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
@@ -619,6 +640,13 @@ func (client *Client) LKTaskPrepare(name, linuxkit string, domSettings *types.Do
 		if memOverhead > 0 {
 			spec.AdjustMemLimit(*domSettings, memOverhead)
 		}
+	}
+
+	if spec.Get().Annotations == nil {
+		spec.Get().Annotations = make(map[string]string)
+	}
+	if domStatus.EnableVnc && domStatus.VncPasswd != "" {
+		spec.Get().Annotations["VncPasswd"] = domStatus.VncPasswd
 	}
 
 	spec.UpdateMountsNested(domStatus.DiskStatusList)

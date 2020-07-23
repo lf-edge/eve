@@ -651,6 +651,18 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
 	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
 
+	annotations, err := ctx.ctrdContext.Annotations(domainName, domainID)
+	if err != nil {
+		logrus.Warnf("Error in get annotations for domain %s: %v", domainName, err)
+		return err
+	}
+
+	if vncPassword, ok := annotations["VncPasswd"]; ok && vncPassword != "" {
+		if err := execVNCPassword(qmpFile, vncPassword); err != nil {
+			return logError("failed to set VNC password %v", err)
+		}
+	}
+
 	if err := execContinue(qmpFile); err != nil {
 		return logError("failed to start domain that is stopped %v", err)
 	}
