@@ -1463,6 +1463,15 @@ func Run(ps *pubsub.PubSub) {
 		ctx.subNodeAgentStatus = subNodeAgentStatus
 		subNodeAgentStatus.Activate()
 
+		pubAttestQuote, err := ps.NewPublication(
+			pubsub.PublicationOptions{
+				AgentName: agentName,
+				TopicType: types.AttestQuote{},
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.pubAttestQuote = pubAttestQuote
 		subAttestNonce, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
 			TopicImpl:     types.AttestNonce{},
@@ -1470,6 +1479,7 @@ func Run(ps *pubsub.PubSub) {
 			Ctx:           &ctx,
 			CreateHandler: handleAttestNonceModify,
 			ModifyHandler: handleAttestNonceModify,
+			DeleteHandler: handleAttestNonceDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
@@ -1477,7 +1487,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatal(err)
 		}
 		ctx.subAttestNonce = subAttestNonce
-		//subAttestNonce.Activate()
+		subAttestNonce.Activate()
 
 		pubEdgeNodeCert, err := ps.NewPublication(
 			pubsub.PublicationOptions{
@@ -1494,9 +1504,8 @@ func Run(ps *pubsub.PubSub) {
 			etpm.IsTpmEnabled() && !etpm.FileExists(ecdhKeyFile))
 
 		//publish attestation quote cert
-		//XXX disabled until Controller adds support
-		//publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
-		//	etpm.IsTpmEnabled() && !etpm.FileExists(quoteKeyFile))
+		publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
+			etpm.IsTpmEnabled() && !etpm.FileExists(quoteKeyFile))
 
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
@@ -1525,6 +1534,8 @@ func Run(ps *pubsub.PubSub) {
 				subGlobalConfig.ProcessChange(change)
 			case change := <-ctx.subNodeAgentStatus.MsgChan():
 				ctx.subNodeAgentStatus.ProcessChange(change)
+			case change := <-ctx.subAttestNonce.MsgChan():
+				ctx.subAttestNonce.ProcessChange(change)
 			case <-stillRunning.C:
 				agentlog.StillRunning(agentName, warningTime, errorTime)
 			}
@@ -1653,9 +1664,11 @@ func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface
 	log.Infof("handleAttestNonceModify received")
 	ctx := ctxArg.(*tpmMgrContext)
 	nonceReq := statusArg.(types.AttestNonce)
-	log.Debugf("Received quote request from %s", nonceReq.Requester)
+	log.Infof("Received quote request from %s", nonceReq.Requester)
 	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
 	if err != nil {
+		log.Fatalf("Error in fetching quote %v", err)
+	} else {
 		attestQuote := types.AttestQuote{
 			Nonce:     nonceReq.Nonce,
 			SigType:   types.EcdsaSha256,
@@ -1667,8 +1680,6 @@ func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface
 		log.Debugf("publishing quote for nonce %x", key)
 		pub := ctx.pubAttestQuote
 		pub.Publish(key, attestQuote)
-	} else {
-		log.Fatalf("Error in fetching quote %v", err)
 	}
 	log.Infof("handleAttestNonceModify done")
 }
