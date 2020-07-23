@@ -110,12 +110,13 @@ type TpmAgent interface {
 
 //Various error codes to be returned to this package from external interfaces
 var (
-	ErrControllerUnavailable = errors.New("Controller is unavailable")
-	ErrNonceMismatch         = errors.New("Nonce Mismatch")
-	ErrQuoteMismatch         = errors.New("Quote Mismatch")
-	ErrNoCertYet             = errors.New("No Cert Found")
-	ErrInfoTokenInvalid      = errors.New("Provided Integrity Token is Invalid")
-	ErrTpmAgentUnavailable   = errors.New("TPM agent is unavailable")
+	ErrControllerReqFailed = errors.New("Controller Request Failed")
+	ErrControllerError     = errors.New("Response from Controller has issues")
+	ErrNonceMismatch       = errors.New("Nonce Mismatch")
+	ErrQuoteMismatch       = errors.New("Quote Mismatch")
+	ErrNoCertYet           = errors.New("No Cert Found")
+	ErrInfoTokenInvalid    = errors.New("Provided Integrity Token is Invalid")
+	ErrTpmAgentUnavailable = errors.New("TPM agent is unavailable")
 )
 
 //Watchdog needs to be implemented by the consumer of this package
@@ -146,6 +147,8 @@ type Context struct {
 	retryTime             time.Duration //in seconds
 	restartRequestPending bool
 	watchdogTickerTime    time.Duration //in seconds
+	//OpaqueCtx for consumer module's own use
+	OpaqueCtx interface{}
 }
 
 //Transition represents an event triggered from a state
@@ -155,13 +158,14 @@ type Transition struct {
 }
 
 //New returns a new instance of the state machine
-func New(retryTime, watchdogTickerTime time.Duration) (*Context, error) {
+func New(retryTime, watchdogTickerTime time.Duration, opaque interface{}) (*Context, error) {
 	return &Context{
 		event:              EventInitialize,
 		state:              StateNone,
 		eventTrigger:       make(chan Event),
 		retryTime:          retryTime,
 		watchdogTickerTime: watchdogTickerTime,
+		OpaqueCtx:          opaque,
 	}, nil
 }
 
@@ -205,6 +209,16 @@ func triggerSelfEvent(ctx *Context, event Event) error {
 	return nil
 }
 
+//Kickstart starts the state machine with EventInitialize
+func Kickstart(ctx *Context) {
+	ctx.eventTrigger <- EventInitialize
+}
+
+//InternalQuoteRecvd adds EventInternalQuoteRecvd to the fsm
+func InternalQuoteRecvd(ctx *Context) {
+	ctx.eventTrigger <- EventInternalQuoteRecvd
+}
+
 func startNewRetryTimer(ctx *Context) error {
 	if ctx.restartTimer != nil {
 		ctx.restartTimer.Stop()
@@ -228,7 +242,7 @@ func handleInitializeAtNone(ctx *Context) error {
 	}
 	log.Errorf("Error %v while sending nonce request\n", err)
 	switch err {
-	case ErrControllerUnavailable:
+	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
 	default:
 		return fmt.Errorf("Unknown error %v", err)
@@ -267,7 +281,7 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 		return triggerSelfEvent(ctx, EventQuoteMismatch)
 	case ErrNoCertYet:
 		return triggerSelfEvent(ctx, EventNoQuoteCertRecvd)
-	case ErrControllerUnavailable:
+	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
 	default:
 		return fmt.Errorf("Unknown error %v", err)
@@ -284,7 +298,7 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 	}
 	log.Errorf("Error %v while sending attest escrow keys\n", err)
 	switch err {
-	case ErrControllerUnavailable:
+	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
 	case ErrInfoTokenInvalid:
 		ctx.state = StateRestartWait

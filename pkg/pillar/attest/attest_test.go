@@ -10,27 +10,27 @@ import "fmt"
 type VerifierMock struct{}
 
 var (
-	simulateControllerUnavailable = false
-	simulateNonceMismatch         = false
-	simulateQuoteMismatch         = false
-	simulateNoCertToValidate      = false
-	simulateITokenMismatch        = false
-	simulateTpmAgentDown          = false
+	simulateControllerReqFailure = false
+	simulateNonceMismatch        = false
+	simulateQuoteMismatch        = false
+	simulateNoCertToValidate     = false
+	simulateITokenMismatch       = false
+	simulateTpmAgentDown         = false
 )
 
 func (server *VerifierMock) SendNonceRequest(ctx *Context) error {
-	if simulateControllerUnavailable == true {
+	if simulateControllerReqFailure == true {
 		fmt.Printf("Simulating Controller being down\n")
-		return ErrControllerUnavailable
+		return ErrControllerReqFailed
 	}
 
 	return nil
 }
 
 func (server *VerifierMock) SendAttestQuote(ctx *Context) error {
-	if simulateControllerUnavailable == true {
+	if simulateControllerReqFailure == true {
 		fmt.Printf("Simulating Controller being down\n")
-		return ErrControllerUnavailable
+		return ErrControllerReqFailed
 	}
 
 	if simulateNonceMismatch == true {
@@ -52,9 +52,9 @@ func (server *VerifierMock) SendAttestQuote(ctx *Context) error {
 }
 
 func (server *VerifierMock) SendAttestEscrow(ctx *Context) error {
-	if simulateControllerUnavailable == true {
+	if simulateControllerReqFailure == true {
 		fmt.Printf("Simulating Controller being down\n")
-		return ErrControllerUnavailable
+		return ErrControllerReqFailed
 	}
 
 	if simulateITokenMismatch == true {
@@ -76,7 +76,7 @@ func (agent *TpmAgentMock) SendInternalQuoteRequest(ctx *Context) error {
 func initTest() *Context {
 	tpmAgent = &TpmAgentMock{}
 	verifier = &VerifierMock{}
-	simulateControllerUnavailable = false
+	simulateControllerReqFailure = false
 	simulateNonceMismatch = false
 	simulateQuoteMismatch = false
 	simulateNoCertToValidate = false
@@ -207,7 +207,7 @@ func TestNoCertInController(t *testing.T) {
 func TestControllerNotAvbleInNonceWait(t *testing.T) {
 	fmt.Println("-----TestControllerNotAvbleInNonceWait--")
 	ctx := initTest()
-	simulateControllerUnavailable = true
+	simulateControllerReqFailure = true
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
@@ -237,7 +237,7 @@ func TestControllerNotAvbleInAttestWait(t *testing.T) {
 
 	go func() {
 		ctx.state = StateInternalQuoteWait
-		simulateControllerUnavailable = true
+		simulateControllerReqFailure = true
 		ctx.eventTrigger <- EventInternalQuoteRecvd
 	}()
 	for {
@@ -261,7 +261,7 @@ func TestControllerNotAvbleInAttestEscrowWait(t *testing.T) {
 
 	go func() {
 		ctx.state = StateAttestWait
-		simulateControllerUnavailable = true
+		simulateControllerReqFailure = true
 		ctx.eventTrigger <- EventAttestSuccessful
 	}()
 	for {
