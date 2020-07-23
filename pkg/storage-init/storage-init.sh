@@ -110,7 +110,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         chroot /hostfs zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
         # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
         #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
-        chroot /hostfs zfs create -p -o mountpoint=/var/lib/containerd/io.containerd.snapshotter.v1.zfs persist/vault/snapshots
+        chroot /hostfs zfs create -p -o mountpoint=/var/lib/containerd/io.containerd.snapshotter.v1.zfs persist/snapshots
         P3_FS_TYPE=zfs_member
     fi
 

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/api/go/info"
@@ -41,21 +42,21 @@ const (
 	defaultCfgVault     = types.PersistDir + "/config"
 	defaultVault        = types.PersistDir + "/vault"
 	oldKeyDir           = "/TmpVaultDir1"
+	oldKeyFile          = oldKeyDir + "/protector.key"
 	keyDir              = "/TmpVaultDir2"
+	keyFile             = keyDir + "/protector.key"
 	protectorPrefix     = "TheVaultKey"
 	vaultKeyLen         = 32 //bytes
 	vaultHalfKeyLen     = 16 //bytes
 	defaultImgVaultName = "Application Data Store"
 	defaultCfgVaultName = "Configuration Data Store"
+	evePersistTypeFile  = "/run/eve.persist_type"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
 
 var (
-	keyFile    = keyDir + "/protector.key"
-	oldKeyFile = oldKeyDir + "/protector.key"
-
 	keyctlParams      = []string{"link", "@u", "@s"}
 	mntPointParams    = []string{"setup", mountPoint, "--quiet"}
 	statusParams      = []string{"status", mountPoint}
@@ -501,10 +502,32 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 	}
 }
 
+//setup vaults on ext4, using fscrypt
+func setupVaultsOnExt4() {
+	if err := setupFscryptEnv(); err != nil {
+		log.Fatal("Error in setting up fscrypt environment:", err)
+	}
+	if err := setupVault(defaultImgVault); err != nil {
+		log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
+	}
+	if err := setupVault(defaultCfgVault); err != nil {
+		log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
+	}
+	if err := setupVault(defaultVault); err != nil {
+		log.Fatalf("Error in setting up vault %s:%v", defaultVault, err)
+	}
+}
+
+//setup vaults on zfs, using zfs native encryption support
+func setupVaultsOnZfs() {
+	if err := setupZfsVault(defaultSecretDataset); err != nil {
+		log.Fatalf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
+	}
+}
+
 //Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub) {
 
-	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -524,17 +547,19 @@ func Run(ps *pubsub.PubSub) {
 
 	switch flag.Args()[0] {
 	case "setupVaults":
-		if err = setupFscryptEnv(); err != nil {
-			log.Fatal("Error in setting up fscrypt environment:", err)
+		//start with an assumption that nothing needs to be done
+		persistFsType := ""
+		pBytes, err := ioutil.ReadFile(evePersistTypeFile)
+		if err == nil {
+			persistFsType = strings.TrimSpace(string(pBytes))
 		}
-		if err = setupVault(defaultImgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
-		}
-		if err = setupVault(defaultCfgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
-		}
-		if err = setupVault(defaultVault); err != nil {
-			log.Fatalf("Error in setting up vault %s:%v", defaultVault, err)
+		switch persistFsType {
+		case "ext4":
+			setupVaultsOnExt4()
+		case "zfs":
+			setupVaultsOnZfs()
+		default:
+			log.Infof("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
