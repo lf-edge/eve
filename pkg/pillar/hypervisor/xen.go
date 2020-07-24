@@ -81,7 +81,7 @@ func (ctx xenContext) Setup(domainName string, config types.DomainConfig, diskSt
 		return logError("failed to build domain config: %v", err)
 	}
 
-	args := []string{"xl", "create", file.Name(), "-p", "-F", "-c"}
+	args := []string{"/etc/xen/scripts/xen-start", domainName, file.Name()}
 	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, 0, args); err != nil {
 		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
 	}
@@ -376,34 +376,6 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		file.WriteString(fmt.Sprintf("serial = [%s]\n", serialString))
 	}
 	// XXX log file content: log.Infof("Created %s: %s
-	return nil
-}
-
-func (ctx xenContext) Start(domainName string, domainID int) error {
-	if err := ctx.ctrdContext.Start(domainName, domainID); err != nil {
-		return fmt.Errorf("xl start failed: %v", err)
-	}
-
-	// Disable offloads for all vifs
-	stdOut, stdErr, err := containerd.CtrExec(domainName,
-		[]string{"/etc/xen/scripts/disable-vif-features", domainName})
-	if err != nil {
-		// XXX continuing even if we get a failure?
-		log.Errorln("xen-disable-vif.sh write failed, continuing anyway", err)
-		log.Errorln("xen-disable-vif.sh write output ", stdOut, stdErr)
-	} else {
-		log.Debugf("xenstore write done. Result %s", stdOut)
-	}
-
-	log.Infof("xlUnpause %s %d\n", domainName, domainID)
-	stdOut, stdErr, err = containerd.CtrExec(domainName,
-		[]string{"xl", "unpause", domainName})
-	if err != nil {
-		log.Errorln("xl unpause failed ", err)
-		log.Errorln("xl unpause output ", stdOut, stdErr)
-		return fmt.Errorf("xl unpause failed: %s %s", stdOut, stdErr)
-	}
-	log.Infof("xlUnpause done. Result %s", stdOut)
 	return nil
 }
 
