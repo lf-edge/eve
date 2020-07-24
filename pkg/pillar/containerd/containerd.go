@@ -15,7 +15,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -505,7 +504,8 @@ func ctrExec(ctx context.Context, domainName string, args []string) (string, str
 		stdErr bytes.Buffer
 	)
 	cioOpts := []cio.Opt{cio.WithStreams(new(bytes.Buffer), &stdOut, &stdErr), cio.WithFIFODir(fifoDir)}
-	process, err := task.Exec(ctx, domainName+strconv.Itoa(rand.Int()), pspec, cio.NewCreator(cioOpts...))
+	// exec-id for task.Exec can NOT be longer than 71 runes
+	process, err := task.Exec(ctx, fmt.Sprintf("%.20d-%.50s", rand.Int(), domainName), pspec, cio.NewCreator(cioOpts...))
 	if err != nil {
 		return "", "", err
 	}
