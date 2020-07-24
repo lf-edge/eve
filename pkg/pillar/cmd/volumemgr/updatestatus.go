@@ -274,18 +274,21 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// for now, we only load containers into containerd
 		// TODO: next stage, load disk images as well
 		if status.Format == zconfig.Format_CONTAINER {
-			if err := ctx.casClient.IngestBlobsAnsCreateImage(
+			loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(
 				getReferenceID(status.ContentID.String(), status.RelativeURL),
-				lookupBlobStatuses(ctx, status.Blobs...)...); err != nil {
+				lookupBlobStatuses(ctx, status.Blobs...)...)
+			if err != nil {
 				err = fmt.Errorf("doUpdateContentTree(%s): Exception while loading blobs into CAS: %s",
 					status.ContentID, err.Error())
 				log.Errorf(err.Error())
 				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
 				return changed, false
 			}
-			for _, loadedBlob := range lookupBlobStatuses(ctx, status.Blobs...) {
+			for _, loadedBlob := range loadedBlobs {
 				log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
 				if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
+					log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
+						status.Key(), loadedBlob.Sha256)
 					MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
 					loadedBlob.HasVerifierRef = false
 				}

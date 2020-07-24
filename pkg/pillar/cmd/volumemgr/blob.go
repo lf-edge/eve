@@ -564,7 +564,7 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			continue
 		}
 		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
-			log.Debugf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
+			log.Infof("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
 				Sha256:      strings.TrimPrefix(blobInfo.Digest, "sha256:"),
 				Size:        uint64(blobInfo.Size),

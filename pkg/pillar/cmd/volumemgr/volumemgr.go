@@ -431,7 +431,7 @@ func Run(ps *pubsub.PubSub) {
 	// of an image we already have in place.
 	// Also we wait for zedagent to send all contentTreeConfig so that we can GC all blobs which
 	// doesn't have ConfigTree ref
-	for !ctx.verifierRestarted && !ctx.contentTreeRestarted {
+	for !(ctx.verifierRestarted && ctx.contentTreeRestarted) {
 		log.Warnf("Subject to watchdog. Waiting for verifierRestarted")
 
 		select {
