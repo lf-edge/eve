@@ -100,7 +100,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
         # zero out the request (regardless of whether we can convert to zfs)
         dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
-        zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
+        chroot /hostfs zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
     fi
 
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
@@ -111,7 +111,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                         FSCK_FAILED=1
                     fi
                     ;;
-        zfs_member) if ! zpool import -f persist; then
+        zfs_member) if ! chroot /hostfs zpool import -f persist; then
                         FSCK_FAILED=1
                     fi
                     ;;
