@@ -28,26 +28,37 @@ onboot:
 services:
    - name: rsyslogd
      image: RSYSLOGD_TAG
+     cgroupsPath: /eve/eve-rsyslogd
    - name: ntpd
      image: linuxkit/openntpd:v0.5
+     cgroupsPath: /eve/eve-ntpd
    - name: sshd
      image: linuxkit/sshd:v0.5
+     cgroupsPath: /eve/eve-sshd
    - name: wwan
      image: WWAN_TAG
+     cgroupsPath: /eve/eve-wwan
    - name: wlan
      image: WLAN_TAG
+     cgroupsPath: /eve/eve-wlan
    - name: lisp
      image: LISP_TAG
+     cgroupsPath: /eve/eve-lisp
    - name: guacd
      image: GUACD_TAG
+     cgroupsPath: /eve/eve-guacd
    - name: pillar
      image: PILLAR_TAG
+     cgroupsPath: /eve/eve-pillar
    - name: vtpm
      image: VTPM_TAG
+     cgroupsPath: /eve/eve-vtpm
    - name: watchdog
      image: WATCHDOG_TAG
+     cgroupsPath: /eve/eve-watchdog
    - name: xen-tools
      image: XENTOOLS_TAG
+     cgroupsPath: /eve/eve-xen-tools
 files:
    - path: /etc/eve-release
      contents: 'EVE_VERSION'
