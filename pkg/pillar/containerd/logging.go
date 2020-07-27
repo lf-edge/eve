@@ -52,6 +52,7 @@ type Log interface {
 // GetLog returns the log destination we should use.
 func GetLog() Log {
 	if _, err := os.Stat(logWriteSocket); !os.IsNotExist(err) {
+		_ = os.MkdirAll(fifoDir, 0777)
 		return &remoteLog{
 			fifoDir: fifoDir,
 		}

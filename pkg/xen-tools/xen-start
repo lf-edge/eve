@@ -1,7 +1,7 @@
 #!/bin/sh
 set -ex
 
-FEATURES="feature-sg feature-gso-tcpv4 feature-gso-tcpv6 feature-ipv4-csum-offload feature-ipv6-csum-offload"
+VIF_FEATURES="feature-sg feature-gso-tcpv4 feature-gso-tcpv6 feature-ipv4-csum-offload feature-ipv6-csum-offload"
 
 bail() {
    echo "$@"
@@ -9,7 +9,13 @@ bail() {
 }
 
 # pre-flight checks
-[ $# -ne 1 ] && bail "Usage: $0 <domain ID>"
+[ $# -ne 2 ] && bail "Usage: $0 <domain name> <domain config>"
+
+# FIXME: this really needs to be managed by runc
+keyctl link @u @s || :
+
+# create domain in a paused state
+xl create "$2" -p
 
 # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
 for i in 1 2 3; do
@@ -20,8 +26,14 @@ done
 [ -z "$ID" ] && bail "Couldn't find domain $1"
 
 for vif in $(xenstore list /local/domain/$ID/device/vif); do
-  for f in $FEATURES; do
+  for f in $VIF_FEATURES; do
     xenstore write "/local/domain/$ID/device/vif/$vif/$f" 0
     xenstore write "/local/domain/0/backend/vif/$ID/$vif/$f" 0
   done
 done
+
+# finally unpause the domain
+xl unpause "$ID"
+
+# and start watching over the console
+exec xl console "$ID" < /dev/null

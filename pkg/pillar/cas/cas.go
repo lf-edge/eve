@@ -100,7 +100,7 @@ type CAS interface {
 	// RemoveContainerRootDir removes contents of a container's rootPath, existing snapshot and reference.
 	RemoveContainerRootDir(rootPath string) error
 
-	// IngestBlobsAnsCreateImage is a combination of IngestBlobs and CreateImage APIs,
+	// IngestBlobsAndCreateImage is a combination of IngestBlobs and CreateImage APIs,
 	// but this API will add a lock, upload all the blobs, add reference to the blobs and release the lock.
 	// By adding a lock before uploading the blobs we prevent the unreferenced blobs from getting GCed.
 	// We will assume that the first blob in the list will be the root blob for which the reference will be created.
@@ -108,7 +108,7 @@ type CAS interface {
 	// if there is an exception while reading the blob data.
 	//NOTE: This either loads all the blobs or loads nothing. In other words, in case of error,
 	// this API will GC all blobs that were loaded until that point.
-	IngestBlobsAnsCreateImage(reference string, blobs ...*types.BlobStatus) error
+	IngestBlobsAndCreateImage(reference string, blobs ...*types.BlobStatus) ([]*types.BlobStatus, error)
 
 	//CloseClient closes the respective CAS client initialized while calling `NewCAS()`
 	CloseClient() error

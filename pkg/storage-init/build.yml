@@ -7,10 +7,11 @@ image: eve-storage-init
 network: yes
 config:
   binds:
+    - /:/hostfs
+    - /lib/modules:/lib/modules
     - /dev:/dev
     - /var:/var:rshared,rbind
     - /containers:/containers:rshared,rbind
   rootfsPropagation: shared
-  net: host
   capabilities:
-    - CAP_SYS_ADMIN
+    - all

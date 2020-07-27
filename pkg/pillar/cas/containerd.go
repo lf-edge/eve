@@ -538,7 +538,7 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 	return nil
 }
 
-// IngestBlobsAnsCreateImage is a combination of IngestBlobs and CreateImage APIs,
+// IngestBlobsAndCreateImage is a combination of IngestBlobs and CreateImage APIs,
 // but this API will add a lease, upload all the blobs, add reference to the blobs and release the lease.
 // By adding a lock before uploading the blobs we prevent the unreferenced blobs from getting GCed.
 // We will assume that the first blob in the list will be the root blob for which the reference will be created.
@@ -546,43 +546,43 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 // if there is an exception while reading the blob data.
 // NOTE: This API either loads all the blobs or loads nothing. In other words, in case of error,
 // this API will GC all blobs that were loaded until that point
-func (c *containerdCAS) IngestBlobsAnsCreateImage(reference string, blobs ...*types.BlobStatus) error {
+func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*types.BlobStatus) ([]*types.BlobStatus, error) {
 
-	log.Infof("IngestBlobsAnsCreateImage: Attempting to Ingest blobs: %v ann add reference: %s", blobs, reference)
+	log.Infof("IngestBlobsAndCreateImage: Attempting to Ingest blobs: %v ann add reference: %s", blobs, reference)
 
 	deleteLease, err := containerd.CtrCreateLease()
 	if err != nil {
-		err = fmt.Errorf("IngestBlobsAnsCreateImage: Unable load blobs for reference %s. "+
+		err = fmt.Errorf("IngestBlobsAndCreateImage: Unable load blobs for reference %s. "+
 			"Exception while creating lease: %v", reference, err.Error())
 		log.Errorf(err.Error())
-		return err
+		return nil, err
 	}
 	defer deleteLease()
-	_, err = c.IngestBlob(blobs...)
+	loadedBlobs, err := c.IngestBlob(blobs...)
 	if err != nil {
-		err = fmt.Errorf("IngestBlobsAnsCreateImage: Exception while loading blobs into CAS: %v", err.Error())
+		err = fmt.Errorf("IngestBlobsAndCreateImage: Exception while loading blobs into CAS: %v", err.Error())
 		log.Errorf(err.Error())
-		return err
+		return nil, err
 	}
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blobs[0].Sha256))
 	imageHash, err := c.GetImageHash(reference)
-	log.Infof("IngestBlobsAnsCreateImage: creating/updating reference: %s for rootBlob %s", reference, rootBlobSha)
+	log.Infof("IngestBlobsAndCreateImage: creating/updating reference: %s for rootBlob %s", reference, rootBlobSha)
 	if err != nil || imageHash == "" {
 		if err := c.CreateImage(reference, rootBlobSha); err != nil {
-			err = fmt.Errorf("IngestBlobsAnsCreateImage: could not reference %s with rootBlob %s: %v",
+			err = fmt.Errorf("IngestBlobsAndCreateImage: could not reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			log.Errorf(err.Error())
-			return err
+			return nil, err
 		}
 	} else {
 		if err := c.ReplaceImage(reference, rootBlobSha); err != nil {
-			err = fmt.Errorf("IngestBlobsAnsCreateImage: could not update reference %s with rootBlob %s: %v",
+			err = fmt.Errorf("IngestBlobsAndCreateImage: could not update reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			log.Errorf(err.Error())
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return loadedBlobs, nil
 }
 
 //CloseClient closes the containerd CAS client initialized while calling `NewCAS()`

@@ -85,7 +85,7 @@ func (ctx ctrdContext) Start(domainName string, domainID int) error {
 	// now lets wait for task to reach a steady state or for >10sec to elapse
 	for i := 0; i < 10; i++ {
 		_, status, err := containerd.CtrContainerInfo(domainName)
-		if err == nil && status == "running" || status == "stopped" || status == "paused" {
+		if err == nil && (status == "running" || status == "stopped" || status == "paused") {
 			return nil
 		}
 		time.Sleep(time.Second)
@@ -105,7 +105,7 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	effectiveDomainID, status, err := containerd.CtrContainerInfo(domainName)
 	if err != nil {
-		return 0, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
+		return domainID, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
 	}
 
 	if effectiveDomainID != domainID {
@@ -120,11 +120,12 @@ func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState
 		"paused":  types.PAUSED,
 		"stopped": types.HALTED,
 	}
-	effectiveDomainState, matched := stateMap[status]
-	if !matched {
-		effectiveDomainState = types.UNKNOWN
+	if effectiveDomainState, matched := stateMap[status]; !matched {
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("task %s happens to be in an unexpected state %s",
+			domainName, status)
+	} else {
+		return effectiveDomainID, effectiveDomainState, nil
 	}
-	return effectiveDomainID, effectiveDomainState, nil
 }
 
 func (ctx ctrdContext) PCIReserve(long string) error {
