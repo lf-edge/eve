@@ -593,31 +593,36 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 
 		acMetric := lookupAppContainerMetric(ctx, aiStatus.UUIDandVersion.UUID.String())
-		// upload acMetric when it's been newly updated
-		if acMetric != nil && acMetric.CollectTime.Sub(ctx.appContainerStatsTime) > 0 {
+		// the new protocol is always fill in at least the module name to indicate
+		// it has not disappeared yet, even we don't have new info on metrics
+		if acMetric != nil {
 			for _, stats := range acMetric.StatsList { // go through each container
 				appContainerMetric := new(metrics.AppContainerMetric)
 				appContainerMetric.AppContainerName = stats.ContainerName
-				appContainerMetric.Status = stats.Status
-				appContainerMetric.PIDs = stats.Pids
 
-				appContainerMetric.Cpu = new(metrics.AppCpuMetric)
-				uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
-				appContainerMetric.Cpu.UpTime = uptime
-				appContainerMetric.Cpu.Total = stats.CPUTotal
-				appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
+				// fill in the new metrics info for each module
+				if acMetric.CollectTime.Sub(ctx.appContainerStatsTime) > 0 {
+					appContainerMetric.Status = stats.Status
+					appContainerMetric.PIDs = stats.Pids
 
-				appContainerMetric.Memory = new(metrics.MemoryMetric)
-				appContainerMetric.Memory.UsedMem = stats.UsedMem
-				appContainerMetric.Memory.AvailMem = stats.AvailMem
+					appContainerMetric.Cpu = new(metrics.AppCpuMetric)
+					uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
+					appContainerMetric.Cpu.UpTime = uptime
+					appContainerMetric.Cpu.Total = stats.CPUTotal
+					appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
 
-				appContainerMetric.Network = new(metrics.NetworkMetric)
-				appContainerMetric.Network.TxBytes = stats.TxBytes
-				appContainerMetric.Network.RxBytes = stats.RxBytes
+					appContainerMetric.Memory = new(metrics.MemoryMetric)
+					appContainerMetric.Memory.UsedMem = stats.UsedMem
+					appContainerMetric.Memory.AvailMem = stats.AvailMem
 
-				appContainerMetric.Disk = new(metrics.DiskMetric)
-				appContainerMetric.Disk.ReadBytes = stats.ReadBytes
-				appContainerMetric.Disk.WriteBytes = stats.WriteBytes
+					appContainerMetric.Network = new(metrics.NetworkMetric)
+					appContainerMetric.Network.TxBytes = stats.TxBytes
+					appContainerMetric.Network.RxBytes = stats.RxBytes
+
+					appContainerMetric.Disk = new(metrics.DiskMetric)
+					appContainerMetric.Disk.ReadBytes = stats.ReadBytes
+					appContainerMetric.Disk.WriteBytes = stats.WriteBytes
+				}
 
 				ReportAppMetric.Container = append(ReportAppMetric.Container, appContainerMetric)
 			}
