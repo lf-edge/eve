@@ -401,7 +401,7 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 
 func (ctx xenContext) Delete(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
-	stdOut, stdErr, err := containerd.CtrExec(domainName,
+	stdOut, stdErr, err := containerd.CtrSystemExec("xen-tools",
 		[]string{"xl", "destroy", domainName})
 	if err != nil {
 		log.Errorln("xl destroy failed ", err)
