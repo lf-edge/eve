@@ -61,10 +61,6 @@ const (
 
 	// default signal to kill tasks
 	defaultSignal = "SIGTERM"
-	//containerd context lease
-	ctrdCtxLeaseID = "eve-user-apps-lease"
-	//To keep resource safe from getting GC while loading it in Ctrd
-	tempLeaseDuration = 5 * time.Minute
 )
 
 var (
@@ -629,6 +625,9 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 
 	spec.Get().Root.Path = rootfs
 	spec.Get().Root.Readonly = true
+	if spec.Get().Linux != nil {
+		spec.Get().Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, name)
+	}
 	if domSettings != nil {
 		spec.UpdateFromDomain(*domSettings)
 		if memOverhead > 0 {
