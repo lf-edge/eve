@@ -107,5 +107,7 @@ message AppInstanceConfig {
 message VolumeRef {
   string uuid = 1; // Volume UUID
   int64 generationCount = 2;
-  string mount_dir = 9; // Indicates volume mount point inside container
+  // Indicates volume mount point inside container
+  // if mount_dir is empty then it will be mounted on /mnt
+  string mount_dir = 3;
 }
