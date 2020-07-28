@@ -1167,12 +1167,14 @@ func initializeDirs() {
 func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.AppInstanceStatus)
+	log.Infof("handleAppInstanceStatusCreate(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	triggerPublishDevInfo(ctx)
 	ctx.iteration++
+	log.Infof("handleAppInstanceStatusCreate(%s) DONE", key)
 }
 
 // app instance event watch to capture transitions
@@ -1181,11 +1183,13 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.AppInstanceStatus)
+	log.Infof("handleAppInstanceStatusModify(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration++
+	log.Infof("handleAppInstanceStatusModify(%s) DONE", key)
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
@@ -1193,10 +1197,12 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := key
+	log.Infof("handleAppInstanceStatusDelete(%s)", key)
 	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
 	triggerPublishDevInfo(ctx)
 	ctx.iteration++
+	log.Infof("handleAppInstanceStatusDelete(%s) DONE", key)
 }
 
 func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanceStatus {
@@ -1435,7 +1441,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 		updateInprogress && !status.UpdateInprogress {
 		log.Infof("TestComplete and deferred reboot")
 		ctx.rebootCmdDeferred = false
-		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd\n")
+		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd")
 		handleRebootCmd(ctx, infoStr)
 	}
 	if status.DeviceReboot {
