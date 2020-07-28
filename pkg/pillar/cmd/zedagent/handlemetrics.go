@@ -50,8 +50,8 @@ var reportDiskPaths = []string{
 
 // Report directory usage for these paths
 var reportDirPaths = []string{
-	types.PersistDir + "/downloads",
-	types.PersistDir + "/img",
+	types.PersistDir + "/downloads", // XXX old to be removed
+	types.PersistDir + "/img",       // XXX old to be removed
 	types.PersistDir + "/tmp",
 	types.PersistDir + "/log",
 	types.PersistDir + "/rsyslog",
