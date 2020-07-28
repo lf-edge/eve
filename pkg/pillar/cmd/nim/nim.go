@@ -773,7 +773,7 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 	}
 	if force {
 		// The caller has already purged addresses from IfindexToAddrs
-		addrs, err := devicenetwork.GetIPAddrs(ifindex)
+		addrs, _, _, err := devicenetwork.GetIPAddrs(ifindex)
 		if err != nil {
 			addrs = nil
 		}
@@ -791,7 +791,7 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 
 	// Compare old vs. current
 	oldAddrs, _ := devicenetwork.IfindexToAddrs(ifindex)
-	addrs, err := devicenetwork.GetIPAddrs(ifindex)
+	addrs, _, _, err := devicenetwork.GetIPAddrs(ifindex)
 	if err != nil {
 		log.Warnf("%s(%s %d) no addrs: %s",
 			logstr, ifname, ifindex, err)

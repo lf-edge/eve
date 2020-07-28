@@ -131,7 +131,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 	}
 	// we skip the non-Mgmt port for now
 	if !port.IsMgmt {
-		log.Infof("niProbingUpdatePort: %s is type %v, not mgmt, skip\n", port.IfName, port.NetworkXConfig.Type)
+		log.Infof("niProbingUpdatePort: %s is not mgmt, skip", port.IfName)
 		if info, ok := netstatus.PInfo[port.IfName]; ok {
 			log.Infof("niProbingUpdatePort:   info intf %s is present %v\n", info.IfName, info.IsPresent)
 		}
@@ -142,6 +142,12 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		return needTrigPing
 	}
 
+	// Pick first default router
+	var dr net.IP
+	if len(port.DefaultRouters) > 0 {
+		dr = port.DefaultRouters[0]
+	}
+
 	if _, ok := netstatus.PInfo[port.IfName]; !ok {
 		if port.IfName == "" { // no need to probe for air-gap type of NI
 			return needTrigPing
@@ -150,7 +156,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 			IfName:       port.IfName,
 			IsPresent:    true,
 			GatewayUP:    true,
-			NhAddr:       port.NetworkXConfig.Gateway,
+			NhAddr:       dr,
 			LocalAddr:    portGetIntfAddr(port),
 			IsFree:       port.Free,
 			RemoteHostUP: true,
@@ -166,7 +172,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		info := netstatus.PInfo[port.IfName]
 		prevLocalAddr := info.LocalAddr
 		info.IsPresent = true
-		info.NhAddr = port.NetworkXConfig.Gateway
+		info.NhAddr = dr
 		info.LocalAddr = portGetIntfAddr(port)
 		info.IsFree = port.Free
 		// the probe status are copied inside publish NI status
@@ -290,7 +296,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 func portGetIntfAddr(port types.NetworkPortStatus) net.IP {
 	var localip net.IP
 	for _, addrinfo := range port.AddrInfoList {
-		if port.NetworkXConfig.Subnet.Contains(addrinfo.Addr) {
+		if port.Subnet.Contains(addrinfo.Addr) {
 			localip = addrinfo.Addr
 		}
 	}

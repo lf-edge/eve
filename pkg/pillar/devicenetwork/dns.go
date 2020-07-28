@@ -21,7 +21,7 @@ import (
 func GetDhcpInfo(us *types.NetworkPortStatus) {
 
 	log.Infof("GetDhcpInfo(%s)\n", us.IfName)
-	if us.NetworkXConfig.Dhcp != types.DT_CLIENT {
+	if us.Dhcp != types.DT_CLIENT {
 		return
 	}
 	if strings.HasPrefix(us.IfName, "wwan") {
@@ -49,17 +49,6 @@ func GetDhcpInfo(us *types.NetworkPortStatus) {
 		}
 		log.Debugf("Got <%s> <%s>\n", items[0], items[1])
 		switch items[0] {
-		case "routers":
-			routers := trimQuotes(items[1])
-			log.Infof("GetDhcpInfo(%s) Gateway %s\n", us.IfName,
-				routers)
-			// XXX multiple? How separated?
-			ip := net.ParseIP(routers)
-			if ip == nil {
-				log.Errorf("Failed to parse %s\n", routers)
-				continue
-			}
-			us.NetworkXConfig.Gateway = ip
 		case "network_number":
 			network := trimQuotes(items[1])
 			log.Infof("GetDhcpInfo(%s) network_number %s\n", us.IfName,
@@ -81,14 +70,14 @@ func GetDhcpInfo(us *types.NetworkPortStatus) {
 			}
 		}
 	}
-	us.NetworkXConfig.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
+	us.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
 }
 
 // GetDNSInfo gets DNS info from /run files. Updates DomainName and DnsServers
 func GetDNSInfo(us *types.NetworkPortStatus) {
 
 	log.Infof("GetDNSInfo(%s)\n", us.IfName)
-	if us.NetworkXConfig.Dhcp != types.DT_CLIENT {
+	if us.Dhcp != types.DT_CLIENT {
 		return
 	}
 	filename := IfnameToResolvConf(us.IfName)
@@ -106,11 +95,11 @@ func GetDNSInfo(us *types.NetworkPortStatus) {
 			log.Errorf("Failed to parse %s\n", server)
 			continue
 		}
-		us.NetworkXConfig.DnsServers = append(us.NetworkXConfig.DnsServers, ip)
+		us.DnsServers = append(us.DnsServers, ip)
 	}
 	// XXX just pick first since have one DomainName slot
 	for _, dn := range dc.Search {
-		us.NetworkXConfig.DomainName = dn
+		us.DomainName = dn
 		break
 	}
 }

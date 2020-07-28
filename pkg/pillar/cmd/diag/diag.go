@@ -568,20 +568,22 @@ func printOutput(ctx *diagContext) {
 		}
 
 		fmt.Fprintf(outfile, "INFO: %s: DNS servers: ", ifname)
-		for _, ds := range port.NetworkXConfig.DnsServers {
+		for _, ds := range port.DnsServers {
 			fmt.Fprintf(outfile, "%s, ", ds.String())
 		}
 		fmt.Fprintf(outfile, "\n")
 		// If static print static config
-		if port.NetworkXConfig.Dhcp == types.DT_STATIC {
+		if port.Dhcp == types.DT_STATIC {
 			fmt.Fprintf(outfile, "INFO: %s: Static IP subnet: %s\n",
-				ifname, port.NetworkXConfig.Subnet.String())
-			fmt.Fprintf(outfile, "INFO: %s: Static IP router: %s\n",
-				ifname, port.NetworkXConfig.Gateway.String())
+				ifname, port.Subnet.String())
+			for _, r := range port.DefaultRouters {
+				fmt.Fprintf(outfile, "INFO: %s: Static IP router: %s\n",
+					ifname, r.String())
+			}
 			fmt.Fprintf(outfile, "INFO: %s: Static Domain Name: %s\n",
-				ifname, port.NetworkXConfig.DomainName)
+				ifname, port.DomainName)
 			fmt.Fprintf(outfile, "INFO: %s: Static NTP server: %s\n",
-				ifname, port.NetworkXConfig.NtpServer.String())
+				ifname, port.NtpServer.String())
 		}
 		printProxy(ctx, port, ifname)
 
