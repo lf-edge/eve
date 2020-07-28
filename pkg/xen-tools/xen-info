@@ -1,0 +1,24 @@
+#!/bin/sh
+
+bail() {
+   echo "$@"
+   exit 1
+}
+
+# pre-flight checks
+[ $# -ne 1 ] && bail "Usage: $0 <domain name>"
+
+# find the domain
+ID=$(xl domid "$1" 2>/dev/null)
+[ -z "$ID" ] && bail "Couldn't find domain ID for domain $1"
+
+# lets see if this domain is expected to have a device model attached
+if DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid") &&
+   ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-) ;then
+cat <<__EOT__
+Name                                        ID   Mem VCPUs     State    Time(s)
+$1                              $ID   512     1     ----c-       0.0
+__EOT__
+else
+   xl list "$ID"
+fi
