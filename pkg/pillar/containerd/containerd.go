@@ -38,6 +38,8 @@ import (
 )
 
 const (
+	// EVE persist storage type file (content can be: ext3, ext4, zfs)
+	eveStorageTypeFile = "/run/eve.persist_type"
 	// containerd socket
 	ctrdSocket = "/run/containerd/containerd.sock"
 	// ctrdSystemServicesNamespace containerd namespace for EVE system containers
@@ -46,8 +48,6 @@ const (
 	ctrdServicesNamespace = "eve-user-apps"
 	//containerdRunTime - default runtime of containerd
 	containerdRunTime = "io.containerd.runtime.v1.linux"
-	// default snapshotter used by containerd
-	defaultSnapshotter = "overlayfs"
 	// container config file name
 	imageConfigFilename = "image-config.json"
 	// default socket to connect tasks to memlogd
@@ -64,8 +64,10 @@ const (
 )
 
 var (
-	ctrdCtx       context.Context
-	ctrdSystemCtx context.Context
+	// default snapshotter used by containerd
+	defaultSnapshotter = "overlayfs"
+	ctrdCtx            context.Context
+	ctrdSystemCtx      context.Context
 	// CtrdClient is a handle to the current containerd client API
 	CtrdClient   *containerd.Client
 	contentStore content.Store
@@ -90,6 +92,11 @@ func InitContainerdClient() error {
 	}
 	if contentStore == nil {
 		contentStore = CtrdClient.ContentStore()
+		// see if we need to fine-tune default snapshotter based on what flavor of storage persist partition is
+		persistType, err := ioutil.ReadFile(eveStorageTypeFile)
+		if err == nil && strings.TrimSpace(string(persistType)) == "zfs" {
+			defaultSnapshotter = "zfs"
+		}
 	}
 
 	if err := verifyCtr(); err != nil {
