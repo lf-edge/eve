@@ -805,8 +805,15 @@ type NetworkPortStatus struct {
 	Alias          string // From SystemAdapter's alias
 	IsMgmt         bool   // Used to talk to controller
 	Free           bool
-	NetworkXConfig NetworkXObjectConfig
+	Dhcp           DhcpType
+	Subnet         net.IPNet
+	NtpServer      net.IP
+	DomainName     string
+	DnsServers     []net.IP // If not set we use Gateway as DNS server
 	AddrInfoList   []AddrInfo
+	Up             bool
+	MacAddr        string
+	DefaultRouters []net.IP
 	ProxyConfig
 	// TestResults provides recording of failure and success
 	TestResults
@@ -1058,7 +1065,7 @@ func CountDNSServers(globalStatus DeviceNetworkStatus, phylabelOrIfname string) 
 		if us.IfName != ifname && ifname != "" {
 			continue
 		}
-		count += len(us.NetworkXConfig.DnsServers)
+		count += len(us.DnsServers)
 	}
 	return count
 }
@@ -1074,7 +1081,7 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
-		for _, server := range us.NetworkXConfig.DnsServers {
+		for _, server := range us.DnsServers {
 			servers = append(servers, server)
 		}
 	}

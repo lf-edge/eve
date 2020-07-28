@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -192,15 +193,16 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
-		globalStatus.Ports[ix].NetworkXConfig.Dhcp = u.Dhcp
+		globalStatus.Ports[ix].Dhcp = u.Dhcp
 		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
 		if subnet != nil {
-			globalStatus.Ports[ix].NetworkXConfig.Subnet = *subnet
+			globalStatus.Ports[ix].Subnet = *subnet
 		}
-		globalStatus.Ports[ix].NetworkXConfig.Gateway = u.Gateway
-		globalStatus.Ports[ix].NetworkXConfig.DomainName = u.DomainName
-		globalStatus.Ports[ix].NetworkXConfig.NtpServer = u.NtpServer
-		globalStatus.Ports[ix].NetworkXConfig.DnsServers = u.DnsServers
+		// Start with any statically assigned values; update below
+		globalStatus.Ports[ix].DomainName = u.DomainName
+		globalStatus.Ports[ix].DnsServers = u.DnsServers
+
+		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].TestResults = u.TestResults
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
@@ -210,12 +212,14 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].RecordFailure(errStr)
 			continue
 		}
-		addrs, err := GetIPAddrs(ifindex)
+		addrs, up, macAddr, err := GetIPAddrs(ifindex)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
 				u.IfName, ifindex, err)
 			addrs = nil
 		}
+		globalStatus.Ports[ix].Up = up
+		globalStatus.Ports[ix].MacAddr = macAddr.String()
 		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs))
 		if len(addrs) == 0 {
@@ -234,6 +238,9 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
 		GetDhcpInfo(&globalStatus.Ports[ix])
 		GetDNSInfo(&globalStatus.Ports[ix])
+
+		// Get used default routers aka gateways from kernel
+		globalStatus.Ports[ix].DefaultRouters = getDefaultRouters(ifindex)
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
@@ -473,20 +480,23 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 }
 
 // GetIPAddrs return all IP addresses for an ifindex, and updates the cached info.
+// Also returns the up flag (based on admin status), and hardware address.
 // Leaves mask uninitialized
 // It replaces what is in the Ifindex cache since AddrChange callbacks
 // are far from reliable.
 // If AddrChange worked reliably this would just be:
 // return IfindexToAddrs(ifindex)
-func GetIPAddrs(ifindex int) ([]net.IP, error) {
+func GetIPAddrs(ifindex int) ([]net.IP, bool, net.HardwareAddr, error) {
 
 	var addrs []net.IP
+	var up bool
+	var macAddr net.HardwareAddr
 
 	link, err := netlink.LinkByIndex(ifindex)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("Port in config/global does not exist: %d",
 			ifindex))
-		return addrs, err
+		return addrs, up, macAddr, err
 	}
 	addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
@@ -498,6 +508,12 @@ func GetIPAddrs(ifindex int) ([]net.IP, error) {
 		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
 		addrs6 = nil
 	}
+	attrs := link.Attrs()
+	up = (attrs.Flags & net.FlagUp) != 0
+	if attrs.HardwareAddr != nil {
+		macAddr = attrs.HardwareAddr
+	}
+
 	log.Infof("GetIPAddrs(%d) found %v and %v", ifindex, addrs4, addrs6)
 	IfindexToAddrsFlush(ifindex)
 	for _, a := range addrs4 {
@@ -514,8 +530,39 @@ func GetIPAddrs(ifindex int) ([]net.IP, error) {
 		addrs = append(addrs, a.IP)
 		IfindexToAddrsAdd(ifindex, a.IP)
 	}
-	return addrs, nil
+	return addrs, up, macAddr, nil
 
+}
+
+// getDefaultRouters retries the default routers from the kernel i.e.,
+// the ones actually in use whether from DHCP or static
+func getDefaultRouters(ifindex int) []net.IP {
+	var res []net.IP
+	table := types.GetDefaultRouteTable()
+	// Note that a default route is represented as nil Dst
+	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
+	fflags := netlink.RT_FILTER_TABLE
+	fflags |= netlink.RT_FILTER_OIF
+	fflags |= netlink.RT_FILTER_DST
+	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
+		&filter, fflags)
+	if err != nil {
+		log.Errorf("getDefaultRouters: for ifindex %d RouteList failed: %v",
+			ifindex, err)
+		return res
+	}
+	// log.Debugf("getDefaultRouters(%s) - got %d", ifname, len(routes))
+	for _, rt := range routes {
+		if rt.Table != table {
+			continue
+		}
+		if ifindex != 0 && rt.LinkIndex != ifindex {
+			continue
+		}
+		// log.Debugf("getDefaultRouters route dest %v", rt.Dst)
+		res = append(res, rt.Gw)
+	}
+	return res
 }
 
 func lookupPortStatusAddr(status types.DeviceNetworkStatus,

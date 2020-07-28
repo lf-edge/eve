@@ -8,16 +8,13 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
-	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
@@ -939,7 +936,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if p == nil {
 			continue
 		}
-		ReportDeviceNetworkInfo := getNetInfo(*p)
+		ReportDeviceNetworkInfo := encodeNetInfo(*p)
 		// XXX rename DevName to Logicallabel in proto file
 		ReportDeviceNetworkInfo.DevName = *proto.String(label)
 		ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
@@ -1229,8 +1226,8 @@ func setMetricAnyValue(item *metrics.MetricItem, val interface{}) {
 
 var nilIPInfo = ipinfo.IPInfo{}
 
-// getNetInfo encodes info from the port and from the kernel
-func getNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
+// encodeNetInfo encodes info from the port
+func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 
 	networkInfo := new(info.ZInfoNetwork)
 	networkInfo.LocalName = *proto.String(port.IfName)
@@ -1238,37 +1235,24 @@ func getNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	for index, ai := range port.AddrInfoList {
 		networkInfo.IPAddrs[index] = *proto.String(ai.Addr.String())
 	}
-	// Get info from kernel
-	// XXX move to MakeDeviceNetworkStatus
-	link, err := netlink.LinkByName(port.IfName)
-	if err != nil {
-		log.Errorf("Unknown kernel ifname %s", port.IfName)
-	} else {
-		attrs := link.Attrs()
-		networkInfo.Up = (attrs.Flags & net.FlagUp) != 0
-		if attrs.HardwareAddr != nil {
-			networkInfo.MacAddr = *proto.String(attrs.HardwareAddr.String())
-		}
-	}
+	networkInfo.Up = port.Up
+	networkInfo.MacAddr = *proto.String(port.MacAddr)
+
 	// In case caller doesn't override
 	networkInfo.DevName = *proto.String(port.IfName)
 
 	networkInfo.Alias = *proto.String(port.Alias)
-	// XXX move to MakeDeviceNetworkStatus
 	// Default routers from kernel whether or not we are using DHCP
-	drs := getDefaultRouters(port.IfName)
-	networkInfo.DefaultRouters = make([]string, len(drs))
-	for index, dr := range drs {
-		log.Debugf("got dr: %v", dr)
-		networkInfo.DefaultRouters[index] = *proto.String(dr)
+	networkInfo.DefaultRouters = make([]string, len(port.DefaultRouters))
+	for index, dr := range port.DefaultRouters {
+		networkInfo.DefaultRouters[index] = *proto.String(dr.String())
 	}
 
 	networkInfo.Uplink = port.IsMgmt
-	// fill in ZInfoDNS
-	// Note that this is from config not from status
+	// fill in ZInfoDNS from what is currently used
 	networkInfo.Dns = new(info.ZInfoDNS)
-	networkInfo.Dns.DNSdomain = port.NetworkXConfig.DomainName
-	for _, server := range port.NetworkXConfig.DnsServers {
+	networkInfo.Dns.DNSdomain = port.DomainName
+	for _, server := range port.DnsServers {
 		networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
 			server.String())
 	}
@@ -1799,42 +1783,6 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	} else {
 		writeSentMetricsProtoMessage(data)
 	}
-}
-
-// XXX move to MakeDeviceNetworkStatus
-func getDefaultRouters(ifname string) []string {
-	var res []string
-	link, err := netlink.LinkByName(ifname)
-	if err != nil {
-		log.Errorf("getDefaultRouters failed to find %s: %s",
-			ifname, err)
-		return res
-	}
-	ifindex := link.Attrs().Index
-	table := types.GetDefaultRouteTable()
-	// Note that a default route is represented as nil Dst
-	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
-	fflags := netlink.RT_FILTER_TABLE
-	fflags |= netlink.RT_FILTER_OIF
-	fflags |= netlink.RT_FILTER_DST
-	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
-		&filter, fflags)
-	if err != nil {
-		log.Errorf("getDefaultRouters: for ifname %s RouteList failed: %v\n", ifname, err)
-		return res
-	}
-	// log.Debugf("getDefaultRouters(%s) - got %d", ifname, len(routes))
-	for _, rt := range routes {
-		if rt.Table != table {
-			continue
-		}
-		if ifindex != 0 && rt.LinkIndex != ifindex {
-			continue
-		}
-		// log.Debugf("getDefaultRouters route dest %v", rt.Dst)
-		res = append(res, rt.Gw.String())
-	}
-	return res
 }
 
 // Use the ifname/vifname to find the overlay or underlay status
