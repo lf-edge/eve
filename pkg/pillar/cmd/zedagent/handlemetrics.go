@@ -1252,7 +1252,7 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	// fill in ZInfoDNS from what is currently used
 	networkInfo.Dns = new(info.ZInfoDNS)
 	networkInfo.Dns.DNSdomain = port.DomainName
-	for _, server := range port.DnsServers {
+	for _, server := range port.DNSServers {
 		networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
 			server.String())
 	}

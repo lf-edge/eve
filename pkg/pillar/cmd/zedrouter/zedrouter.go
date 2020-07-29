@@ -3070,24 +3070,24 @@ func isDNSServerChanged(ctx *zedrouterContext, newStatus *types.DeviceNetworkSta
 		if _, ok := ctx.dnsServers[port.IfName]; !ok {
 			// if dnsServer does not have valid server IPs, assign now
 			// and if we lose uplink connection, it will not overwrite the previous server IPs
-			if len(port.DnsServers) > 0 { // just assigned
-				ctx.dnsServers[port.IfName] = port.DnsServers
+			if len(port.DNSServers) > 0 { // just assigned
+				ctx.dnsServers[port.IfName] = port.DNSServers
 			}
 		} else {
 			// only check if we have valid new DNS server sets on the uplink
 			// valid DNS server IP changes will trigger the restart of dnsmasq.
-			if len(port.DnsServers) != 0 {
+			if len(port.DNSServers) != 0 {
 				// new one has different entries, and not the Internet disconnect case
-				if len(ctx.dnsServers[port.IfName]) != len(port.DnsServers) {
-					ctx.dnsServers[port.IfName] = port.DnsServers
+				if len(ctx.dnsServers[port.IfName]) != len(port.DNSServers) {
+					ctx.dnsServers[port.IfName] = port.DNSServers
 					dnsDiffer = true
 					continue
 				}
-				for idx, server := range port.DnsServers { // compare each one and update if changed
+				for idx, server := range port.DNSServers { // compare each one and update if changed
 					if server.Equal(ctx.dnsServers[port.IfName][idx]) == false {
 						log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
-							port.IfName, ctx.dnsServers[port.IfName], port.DnsServers)
-						ctx.dnsServers[port.IfName] = port.DnsServers
+							port.IfName, ctx.dnsServers[port.IfName], port.DNSServers)
+						ctx.dnsServers[port.IfName] = port.DNSServers
 						dnsDiffer = true
 						break
 					}

@@ -95,7 +95,7 @@ func GetDNSInfo(us *types.NetworkPortStatus) {
 			log.Errorf("Failed to parse %s\n", server)
 			continue
 		}
-		us.DnsServers = append(us.DnsServers, ip)
+		us.DNSServers = append(us.DNSServers, ip)
 	}
 	// XXX just pick first since have one DomainName slot
 	for _, dn := range dc.Search {
