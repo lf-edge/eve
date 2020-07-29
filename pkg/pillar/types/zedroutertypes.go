@@ -809,7 +809,7 @@ type NetworkPortStatus struct {
 	Subnet         net.IPNet
 	NtpServer      net.IP
 	DomainName     string
-	DnsServers     []net.IP // If not set we use Gateway as DNS server
+	DNSServers     []net.IP // If not set we use Gateway as DNS server
 	AddrInfoList   []AddrInfo
 	Up             bool
 	MacAddr        string
@@ -1065,7 +1065,7 @@ func CountDNSServers(globalStatus DeviceNetworkStatus, phylabelOrIfname string) 
 		if us.IfName != ifname && ifname != "" {
 			continue
 		}
-		count += len(us.DnsServers)
+		count += len(us.DNSServers)
 	}
 	return count
 }
@@ -1081,7 +1081,7 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
-		for _, server := range us.DnsServers {
+		for _, server := range us.DNSServers {
 			servers = append(servers, server)
 		}
 	}

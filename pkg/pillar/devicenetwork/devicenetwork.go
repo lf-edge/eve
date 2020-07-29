@@ -200,7 +200,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		}
 		// Start with any statically assigned values; update below
 		globalStatus.Ports[ix].DomainName = u.DomainName
-		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		globalStatus.Ports[ix].DNSServers = u.DnsServers
 
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].TestResults = u.TestResults

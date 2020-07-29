@@ -568,7 +568,7 @@ func printOutput(ctx *diagContext) {
 		}
 
 		fmt.Fprintf(outfile, "INFO: %s: DNS servers: ", ifname)
-		for _, ds := range port.DnsServers {
+		for _, ds := range port.DNSServers {
 			fmt.Fprintf(outfile, "%s, ", ds.String())
 		}
 		fmt.Fprintf(outfile, "\n")
