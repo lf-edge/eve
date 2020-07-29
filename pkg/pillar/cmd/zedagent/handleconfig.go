@@ -259,6 +259,24 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
+	if resp.StatusCode == http.StatusNotModified {
+		log.Debugf("StatusNotModified len %d", len(contents))
+		// Inform ledmanager about config received from cloud
+		utils.UpdateLedManagerConfig(4)
+		getconfigCtx.ledManagerCount = 4
+
+		if !getconfigCtx.configReceived {
+			getconfigCtx.configReceived = true
+		}
+		getconfigCtx.configGetStatus = types.ConfigGetSuccess
+		publishZedAgentStatus(getconfigCtx)
+
+		log.Debugf("Configuration from zedcloud is unchanged")
+		// Update modification time since checked by readSavedProtoMessage
+		touchReceivedProtoMessage()
+		return false
+	}
+
 	if err := validateProtoMessage(url, resp); err != nil {
 		log.Errorln("validateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
@@ -300,7 +318,7 @@ func getLatestConfig(url string, iteration int,
 }
 
 func validateProtoMessage(url string, r *http.Response) error {
-	//No check Content-Type for empty response
+	// No check Content-Type for empty response
 	if r.ContentLength == 0 {
 		return nil
 	}
@@ -427,11 +445,6 @@ func generateConfigRequest() ([]byte, *zconfig.ConfigRequest, error) {
 // Returns changed, config, error. The changed is based the ConfigRequest vs
 // the ConfigResponse hash
 func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool, *zconfig.EdgeDevConfig, error) {
-
-	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified len %d", len(contents))
-		return false, nil, nil
-	}
 
 	var configResponse = &zconfig.ConfigResponse{}
 	err := proto.Unmarshal(contents, configResponse)
