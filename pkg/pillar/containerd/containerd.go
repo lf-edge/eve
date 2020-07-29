@@ -500,8 +500,9 @@ func ctrExec(ctx context.Context, domainName string, args []string) (string, str
 		stdErr bytes.Buffer
 	)
 	cioOpts := []cio.Opt{cio.WithStreams(new(bytes.Buffer), &stdOut, &stdErr), cio.WithFIFODir(fifoDir)}
-	// exec-id for task.Exec can NOT be longer than 71 runes
-	process, err := task.Exec(ctx, fmt.Sprintf("%.20d-%.50s", rand.Int(), domainName), pspec, cio.NewCreator(cioOpts...))
+	// exec-id for task.Exec can NOT be longer than 71 runes, on top of that it has to match:
+	//   ^[A-Za-z0-9]+(?:[._-](?:[A-Za-z0-9]+))*$:
+	process, err := task.Exec(ctx, fmt.Sprintf("%.50s%.20d", domainName, rand.Int()), pspec, cio.NewCreator(cioOpts...))
 	if err != nil {
 		return "", "", err
 	}
