@@ -205,19 +205,29 @@ func getLatestConfig(url string, iteration int,
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := 2
-		if rtf == types.SenderStatusRemTempFail {
-			log.Infof("getLatestConfig remoteTemporaryFailure: %s", err)
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			log.Infof("getLatestConfig : Controller upgrade in progress")
+		case types.SenderStatusRefused:
+			log.Infof("getLatestConfig : Controller returned ECONNREFUSED")
+		case types.SenderStatusCertInvalid:
+			log.Warnf("getLatestConfig : Controller certificate invalid time")
+		case types.SenderStatusCertMiss:
+			log.Infof("getLatestConfig : Controller certificate miss")
+		default:
+			log.Errorf("getLatestConfig  failed: %s", err)
+		}
+		switch rtf {
+		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid:
 			newCount = 3 // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
 				getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
 			}
-		} else if rtf == types.SenderStatusCertMiss {
+		case types.SenderStatusCertMiss:
 			// trigger to acquire new controller certs from cloud
 			triggerControllerCertEvent(getconfigCtx.zedagentCtx)
-		} else {
-			log.Errorf("getLatestConfig failed: %s", err)
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud

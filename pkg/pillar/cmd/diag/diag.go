@@ -976,10 +976,20 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
 		reqURL, ifname, 0, nil, allowProxy)
 	if err != nil {
-		if rtf == types.SenderStatusRemTempFail {
-			fmt.Fprintf(outfile, "ERROR: %s: get %s remote temporary failure: %s\n",
-				ifname, reqURL, err)
-		} else {
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller upgrade in progress\n",
+				ifname, reqURL)
+		case types.SenderStatusRefused:
+			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller returned ECONNREFUSED\n",
+				ifname, reqURL)
+		case types.SenderStatusCertInvalid:
+			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller certificate invalid time\n",
+				ifname, reqURL)
+		case types.SenderStatusCertMiss:
+			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller certificate miss\n",
+				ifname, reqURL)
+		default:
 			fmt.Fprintf(outfile, "ERROR: %s: get %s failed: %s\n",
 				ifname, reqURL, err)
 		}
@@ -1026,11 +1036,21 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
 		reqURL, ifname, reqlen, b, allowProxy)
 	if err != nil {
-		if rtf == types.SenderStatusRemTempFail {
-			fmt.Fprintf(outfile, "ERROR: %s: post %s remote temporary failure: %s\n",
-				ifname, reqURL, err)
-		} else {
-			fmt.Fprintf(outfile, "ERROR: %s: get %s failed: %s\n",
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			fmt.Fprintf(outfile, "ERROR: %s: post %s Controller upgrade in progress\n",
+				ifname, reqURL)
+		case types.SenderStatusRefused:
+			fmt.Fprintf(outfile, "ERROR: %s: post %s Controller returned ECONNREFUSED\n",
+				ifname, reqURL)
+		case types.SenderStatusCertInvalid:
+			fmt.Fprintf(outfile, "ERROR: %s: post %s Controller certificate invalid time\n",
+				ifname, reqURL)
+		case types.SenderStatusCertMiss:
+			fmt.Fprintf(outfile, "ERROR: %s: post %s Controller certificate miss\n",
+				ifname, reqURL)
+		default:
+			fmt.Fprintf(outfile, "ERROR: %s: post %s failed: %s\n",
 				ifname, reqURL, err)
 		}
 		return false, nil, rtf, nil

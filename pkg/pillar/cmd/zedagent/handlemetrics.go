@@ -1773,12 +1773,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		if rtf == types.SenderStatusRemTempFail {
-			log.Errorf("SendMetricsProtobuf remoteTemporaryFailure: %s",
-				err)
-		} else {
-			log.Errorf("SendMetricsProtobuf failed: %s", err)
-		}
+		log.Errorf("SendMetricsProtobuf status %d failed: %s", rtf, err)
 		return
 	} else {
 		writeSentMetricsProtoMessage(data)
