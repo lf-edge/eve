@@ -18,7 +18,9 @@ type SenderResult uint8
 // Enum of http extra status for 'rtf'
 const (
 	SenderStatusNone                      SenderResult = iota
-	SenderStatusRemTempFail                            // http remote temporarilly failure
+	SenderStatusRefused                                // ECNNREFUSED
+	SenderStatusUpgrade                                // 503 indicating controller upgrade in progress
+	SenderStatusCertInvalid                            // Server cert expired or NotBefore; device might have wrong time
 	SenderStatusCertMiss                               // remote signed senderCertHash we don't have
 	SenderStatusSignVerifyFail                         // envelope signature verify failed
 	SenderStatusAlgoFail                               // hash algorithm we don't support

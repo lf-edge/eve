@@ -849,13 +849,8 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, flowlogURL,
 			size, buf, flowIteration, bailOnHTTPErr)
 		if err != nil {
-			if rtf == types.SenderStatusRemTempFail {
-				log.Errorf("FlowStats: sendFlowProtobuf  remoteTemporaryFailure: %s",
-					err)
-			} else {
-				log.Errorf("FlowStats: sendFlowProtobuf failed: %s",
-					err)
-			}
+			log.Errorf("FlowStats: sendFlowProtobuf status %d failed: %s",
+				rtf, err)
 			flowIteration--
 			if flowQ.Len() > 100 { // if fail to send for too long, start to drop
 				flowQ.Remove(ent)

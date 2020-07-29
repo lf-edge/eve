@@ -197,9 +197,16 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx,
 		certURL, 0, nil, 0, false)
 	if err != nil {
-		if rtf == types.SenderStatusRemTempFail {
-			log.Infof("getCertsFromController remoteTemporaryFailure: %s", err)
-		} else {
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			log.Infof("getCertsFromController: Controller upgrade in progress")
+		case types.SenderStatusRefused:
+			log.Infof("getCertsFromController: Controller returned ECONNREFUSED")
+		case types.SenderStatusCertInvalid:
+			log.Warnf("getCertsFromController: Controller certificate invalid time")
+		case types.SenderStatusCertMiss:
+			log.Infof("getCertsFromController: Controller certificate miss")
+		default:
 			log.Errorf("getCertsFromController failed: %s", err)
 		}
 		return false
@@ -319,10 +326,16 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		if rtf == types.SenderStatusRemTempFail {
-			log.Errorf("sendAttestReqProtobuf remoteTemporaryFailure: %s",
-				err)
-		} else {
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			log.Infof("sendAttestReqProtobuf: Controller upgrade in progress")
+		case types.SenderStatusRefused:
+			log.Infof("sendAttestReqProtobuf: Controller returned ECONNREFUSED")
+		case types.SenderStatusCertInvalid:
+			log.Warnf("sendAttestReqProtobuf: Controller certificate invalid time")
+		case types.SenderStatusCertMiss:
+			log.Infof("sendAttestReqProtobuf: Controller certificate miss")
+		default:
 			log.Errorf("sendAttestReqProtobuf failed: %s", err)
 		}
 		zedcloud.SetDeferred(deferKey, buf, size, attestURL,
