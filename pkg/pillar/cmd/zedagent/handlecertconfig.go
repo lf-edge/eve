@@ -214,6 +214,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
+	// XXX http.StatusNotModified?
 	if err := validateProtoMessage(certURL, resp); err != nil {
 		log.Errorf("getCertsFromController: resp header error")
 		return false

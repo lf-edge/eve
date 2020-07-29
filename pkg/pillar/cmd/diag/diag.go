@@ -888,13 +888,13 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 }
 
 func parsePrint(configURL string, resp *http.Response, contents []byte) {
-	if err := validateConfigMessage(configURL, resp); err != nil {
-		log.Errorln("validateConfigMessage: ", err)
+	if resp.StatusCode == http.StatusNotModified {
+		log.Debugf("StatusNotModified len %d", len(contents))
 		return
 	}
 
-	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified len %d", len(contents))
+	if err := validateConfigMessage(configURL, resp); err != nil {
+		log.Errorln("validateConfigMessage: ", err)
 		return
 	}
 
