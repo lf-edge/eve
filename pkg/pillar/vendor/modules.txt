@@ -86,6 +86,7 @@ github.com/containerd/cgroups/stats/v1
 github.com/containerd/containerd/content
 github.com/containerd/containerd/images
 github.com/containerd/containerd
+github.com/containerd/containerd/api/services/tasks/v1
 github.com/containerd/containerd/cio
 github.com/containerd/containerd/containers
 github.com/containerd/containerd/mount
@@ -104,7 +105,6 @@ github.com/containerd/containerd/api/services/introspection/v1
 github.com/containerd/containerd/api/services/leases/v1
 github.com/containerd/containerd/api/services/namespaces/v1
 github.com/containerd/containerd/api/services/snapshots/v1
-github.com/containerd/containerd/api/services/tasks/v1
 github.com/containerd/containerd/api/services/version/v1
 github.com/containerd/containerd/api/types
 github.com/containerd/containerd/api/types/task
@@ -308,8 +308,8 @@ github.com/shirou/gopsutil/host
 github.com/shirou/gopsutil/net
 github.com/shirou/gopsutil/cpu
 github.com/shirou/gopsutil/mem
-github.com/shirou/gopsutil/process
 github.com/shirou/gopsutil/internal/common
+github.com/shirou/gopsutil/process
 # github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
 github.com/shirou/w32
 # github.com/sirupsen/logrus v1.5.0

@@ -1,0 +1,50 @@
+#!/bin/sh
+
+default_eve_cgroup_memory_limit=1000000000 #1GB
+default_eve_cgroup_cpus_limit='0-1'
+
+#Creating eve cgroup which will be parent cgroup for all eve services
+CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
+for cg in $CGROUPS; do
+  mkdir -p /sys/fs/cgroup/${cg}/eve
+done
+
+#Converts K, M, G values to Bytes
+function get_bytes {
+        if [ "${1: -1}" == "K" ]; then
+                echo $((${1%?} * 1024 ))
+        elif [ "${1: -1}" == "M" ]; then
+                echo $((${1%?} * 1024*1024 ))
+        elif [ "${1: -1}" == "G" ]; then
+                echo $((${1%?} * 1024*1024*1024 ))
+        else
+                echo $1
+        fi
+}
+
+eve_cgroup_memory_limit=$(get_bytes $(cat /proc/cmdline | grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2))
+eve_cgroup_memory_soft_limit=$(get_bytes $(cat /proc/cmdline | grep -o "\bdom0_mem=[^,]*,max:[^ ]*" | cut -d : -f 2))
+eve_cgroup_cpus_limit="0-$(cat /proc/cmdline | grep -o '\bdom0_max_vcpus=[^ ]*' | cut -d = -f 2)"
+
+if [ -z "${eve_cgroup_memory_limit}" ]; then
+        echo "Setting default value of $default_eve_cgroup_memory_limit for eve_cgroup_memory_limit"
+        eve_cgroup_memory_limit=$default_eve_cgroup_memory_limit
+fi
+
+if [ -z "${eve_cgroup_memory_soft_limit}" ]; then
+        echo "Setting value of $eve_cgroup_memory_limit for eve_cgroup_memory_soft_limit"
+        eve_cgroup_memory_soft_limit=$eve_cgroup_memory_limit
+fi
+
+if [ $eve_cgroup_cpus_limit == "0-" ]; then
+        echo "Setting default value of $default_eve_cgroup_cpus_limit for eve_cgroup_memory_limit"
+        eve_cgroup_cpus_limit=$default_eve_cgroup_cpus_limit
+fi
+
+/bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/memory.limit_in_bytes
+
+/bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes
+
+/bin/echo $eve_cgroup_cpus_limit > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
+
+

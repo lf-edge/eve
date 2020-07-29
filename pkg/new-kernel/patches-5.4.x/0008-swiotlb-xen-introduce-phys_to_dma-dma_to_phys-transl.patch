@@ -1,0 +1,88 @@
+From 9838cc0b60a4287034ac3bc94a3adf08bc1c3858 Mon Sep 17 00:00:00 2001
+From: Stefano Stabellini <stefano.stabellini@xilinx.com>
+Date: Wed, 20 May 2020 16:42:57 -0700
+Subject: [PATCH 08/10] swiotlb-xen: introduce phys_to_dma/dma_to_phys
+ translations
+
+Call dma_to_phys in is_xen_swiotlb_buffer.
+Call phys_to_dma in xen_phys_to_bus.
+Call dma_to_phys in xen_bus_to_phys.
+
+Everything is taken care of by these changes except for
+xen_swiotlb_alloc_coherent and xen_swiotlb_free_coherent, which need a
+few explicit phys_to_dma/dma_to_phys calls.
+
+Signed-off-by: Stefano Stabellini <stefano.stabellini@xilinx.com>
+---
+ drivers/xen/swiotlb-xen.c | 20 ++++++++++++--------
+ 1 file changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/xen/swiotlb-xen.c b/drivers/xen/swiotlb-xen.c
+index c50448fd9b75..d011c4c7aa72 100644
+--- a/drivers/xen/swiotlb-xen.c
++++ b/drivers/xen/swiotlb-xen.c
+@@ -64,14 +64,16 @@ static inline dma_addr_t xen_phys_to_bus(struct device *dev, phys_addr_t paddr)
+ 
+ 	dma |= paddr & ~XEN_PAGE_MASK;
+ 
+-	return dma;
++	return phys_to_dma(dev, dma);
+ }
+ 
+-static inline phys_addr_t xen_bus_to_phys(struct device *dev, dma_addr_t baddr)
++static inline phys_addr_t xen_bus_to_phys(struct device *dev,
++					  dma_addr_t dma_addr)
+ {
++	phys_addr_t baddr = dma_to_phys(dev, dma_addr);
+ 	unsigned long xen_pfn = bfn_to_pfn(XEN_PFN_DOWN(baddr));
+-	dma_addr_t dma = (dma_addr_t)xen_pfn << XEN_PAGE_SHIFT;
+-	phys_addr_t paddr = dma;
++	phys_addr_t paddr = (xen_pfn << XEN_PAGE_SHIFT) |
++			    (baddr & ~XEN_PAGE_MASK);
+ 
+ 	paddr |= baddr & ~XEN_PAGE_MASK;
+ 
+@@ -99,7 +101,7 @@ static inline int range_straddles_page_boundary(phys_addr_t p, size_t size)
+ 
+ static int is_xen_swiotlb_buffer(struct device *dev, dma_addr_t dma_addr)
+ {
+-	unsigned long bfn = XEN_PFN_DOWN(dma_addr);
++	unsigned long bfn = XEN_PFN_DOWN(dma_to_phys(dev, dma_addr));
+ 	unsigned long xen_pfn = bfn_to_local_pfn(bfn);
+ 	phys_addr_t paddr = XEN_PFN_PHYS(xen_pfn);
+ 
+@@ -304,11 +306,11 @@ xen_swiotlb_alloc_coherent(struct device *hwdev, size_t size,
+ 	if (hwdev && hwdev->coherent_dma_mask)
+ 		dma_mask = hwdev->coherent_dma_mask;
+ 
+-	/* At this point dma_handle is the physical address, next we are
++	/* At this point dma_handle is the dma address, next we are
+ 	 * going to set it to the machine address.
+ 	 * Do not use virt_to_phys(ret) because on ARM it doesn't correspond
+ 	 * to *dma_handle. */
+-	phys = *dma_handle;
++	phys = dma_to_phys(hwdev, *dma_handle);
+ 	dev_addr = xen_phys_to_bus(hwdev, phys);
+ 	if (((dev_addr + size - 1 <= dma_mask)) &&
+ 	    !range_straddles_page_boundary(phys, size))
+@@ -319,6 +321,7 @@ xen_swiotlb_alloc_coherent(struct device *hwdev, size_t size,
+ 			xen_free_coherent_pages(hwdev, size, ret, (dma_addr_t)phys, attrs);
+ 			return NULL;
+ 		}
++		*dma_handle = phys_to_dma(hwdev, *dma_handle);
+ 		SetPageXenRemapped(virt_to_page(ret));
+ 	}
+ 	memset(ret, 0, size);
+@@ -351,7 +354,8 @@ xen_swiotlb_free_coherent(struct device *hwdev, size_t size, void *vaddr,
+ 	    TestClearPageXenRemapped(pg))
+ 		xen_destroy_contiguous_region(phys, order);
+ 
+-	xen_free_coherent_pages(hwdev, size, vaddr, (dma_addr_t)phys, attrs);
++	xen_free_coherent_pages(hwdev, size, vaddr, phys_to_dma(hwdev, phys),
++				attrs);
+ }
+ 
+ /*
+-- 
+2.15.4
+

@@ -42,11 +42,10 @@ import (
 )
 
 const (
-	agentName    = "domainmgr"
-	runDirname   = "/var/run/" + agentName
-	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
-	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
-	rwImgDirname = types.PersistDir + "/img" // We store images here
+	agentName  = "domainmgr"
+	runDirname = "/var/run/" + agentName
+	xenDirname = runDirname + "/xen"       // We store xen cfg files here
+	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
 	// Time limits for event loop handlers
 	errorTime           = 3 * time.Minute
 	warningTime         = 40 * time.Second
@@ -161,11 +160,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if _, err := os.Stat(ciDirname); err == nil {
 		if err := os.RemoveAll(ciDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(rwImgDirname); err != nil {
-		if err := os.MkdirAll(rwImgDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}

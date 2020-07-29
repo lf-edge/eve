@@ -749,7 +749,7 @@ func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string, ipAddr ne
 		uuidStr := aiStatus.Key()
 		aiStatusPtr := &aiStatus
 		if aiStatusPtr.MaybeUpdateAppIPAddr(macAddr, ipAddr.String()) {
-			log.Debugf("findVifAndTrigAppInfoUpload: underlay %v", aiStatusPtr.UnderlayNetworks)
+			log.Infof("findVifAndTrigAppInfoUpload: underlay %v", aiStatusPtr.UnderlayNetworks)
 			PublishAppInfoToZedCloud(ctx, uuidStr, aiStatusPtr, ctx.assignableAdapters, ctx.iteration)
 			ctx.iteration++
 			break

@@ -10,6 +10,7 @@ config:
     - /:/hostfs
     - /lib/modules:/lib/modules
     - /dev:/dev
+    - /run:/run
     - /var:/var:rshared,rbind
     - /containers:/containers:rshared,rbind
   rootfsPropagation: shared

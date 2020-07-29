@@ -145,6 +145,9 @@ func RebootReason(reason string, normal bool) {
 	if !normal {
 		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s EVE version %s at %s: %s\n",
 			savedAgentName, savedPid, EveCurrentPartition(), EveVersion(), dateStr, reason)
+	} else {
+		reason = fmt.Sprintf("%s EVE version %s at %s\n",
+			reason, EveVersion(), dateStr)
 	}
 	err := printToFile(filename, reason)
 	if err != nil {

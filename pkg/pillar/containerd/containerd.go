@@ -38,6 +38,8 @@ import (
 )
 
 const (
+	// EVE persist storage type file (content can be: ext3, ext4, zfs)
+	eveStorageTypeFile = "/run/eve.persist_type"
 	// containerd socket
 	ctrdSocket = "/run/containerd/containerd.sock"
 	// ctrdSystemServicesNamespace containerd namespace for EVE system containers
@@ -46,8 +48,6 @@ const (
 	ctrdServicesNamespace = "eve-user-apps"
 	//containerdRunTime - default runtime of containerd
 	containerdRunTime = "io.containerd.runtime.v1.linux"
-	// default snapshotter used by containerd
-	defaultSnapshotter = "overlayfs"
 	// container config file name
 	imageConfigFilename = "image-config.json"
 	// default socket to connect tasks to memlogd
@@ -61,15 +61,13 @@ const (
 
 	// default signal to kill tasks
 	defaultSignal = "SIGTERM"
-	//containerd context lease
-	ctrdCtxLeaseID = "eve-user-apps-lease"
-	//To keep resource safe from getting GC while loading it in Ctrd
-	tempLeaseDuration = 5 * time.Minute
 )
 
 var (
-	ctrdCtx       context.Context
-	ctrdSystemCtx context.Context
+	// default snapshotter used by containerd
+	defaultSnapshotter = "overlayfs"
+	ctrdCtx            context.Context
+	ctrdSystemCtx      context.Context
 	// CtrdClient is a handle to the current containerd client API
 	CtrdClient   *containerd.Client
 	contentStore content.Store
@@ -94,6 +92,11 @@ func InitContainerdClient() error {
 	}
 	if contentStore == nil {
 		contentStore = CtrdClient.ContentStore()
+		// see if we need to fine-tune default snapshotter based on what flavor of storage persist partition is
+		persistType, err := ioutil.ReadFile(eveStorageTypeFile)
+		if err == nil && strings.TrimSpace(string(persistType)) == "zfs" {
+			defaultSnapshotter = "zfs"
+		}
 	}
 
 	if err := verifyCtr(); err != nil {
@@ -504,8 +507,9 @@ func ctrExec(ctx context.Context, domainName string, args []string) (string, str
 		stdErr bytes.Buffer
 	)
 	cioOpts := []cio.Opt{cio.WithStreams(new(bytes.Buffer), &stdOut, &stdErr), cio.WithFIFODir(fifoDir)}
-	// exec-id for task.Exec can NOT be longer than 71 runes
-	process, err := task.Exec(ctx, fmt.Sprintf("%.20d-%.50s", rand.Int(), domainName), pspec, cio.NewCreator(cioOpts...))
+	// exec-id for task.Exec can NOT be longer than 71 runes, on top of that it has to match:
+	//   ^[A-Za-z0-9]+(?:[._-](?:[A-Za-z0-9]+))*$:
+	process, err := task.Exec(ctx, fmt.Sprintf("%.50s%.20d", domainName, rand.Int()), pspec, cio.NewCreator(cioOpts...))
 	if err != nil {
 		return "", "", err
 	}
@@ -629,6 +633,9 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 
 	spec.Get().Root.Path = rootfs
 	spec.Get().Root.Readonly = true
+	if spec.Get().Linux != nil {
+		spec.Get().Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, name)
+	}
 	if domSettings != nil {
 		spec.UpdateFromDomain(*domSettings)
 		if memOverhead > 0 {

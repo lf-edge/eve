@@ -557,10 +557,10 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		dateStr := ctx.rebootTime.Format(time.RFC3339Nano)
 		var reason string
 		if fileExists(firstbootFile) {
-			reason = fmt.Sprintf("NORMAL: First boot of device - at %s\n",
+			reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
 				dateStr)
 		} else {
-			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
 				dateStr)
 		}
 		log.Warnf("Default RebootReason: %s", reason)

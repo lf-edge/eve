@@ -12,11 +12,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
-	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
@@ -37,7 +35,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
-	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -50,8 +47,8 @@ var reportDiskPaths = []string{
 
 // Report directory usage for these paths
 var reportDirPaths = []string{
-	types.PersistDir + "/downloads",
-	types.PersistDir + "/img",
+	types.PersistDir + "/downloads", // XXX old to be removed
+	types.PersistDir + "/img",       // XXX old to be removed
 	types.PersistDir + "/tmp",
 	types.PersistDir + "/log",
 	types.PersistDir + "/rsyslog",
@@ -593,31 +590,36 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 
 		acMetric := lookupAppContainerMetric(ctx, aiStatus.UUIDandVersion.UUID.String())
-		// upload acMetric when it's been newly updated
-		if acMetric != nil && acMetric.CollectTime.Sub(ctx.appContainerStatsTime) > 0 {
+		// the new protocol is always fill in at least the module name to indicate
+		// it has not disappeared yet, even we don't have new info on metrics
+		if acMetric != nil {
 			for _, stats := range acMetric.StatsList { // go through each container
 				appContainerMetric := new(metrics.AppContainerMetric)
 				appContainerMetric.AppContainerName = stats.ContainerName
-				appContainerMetric.Status = stats.Status
-				appContainerMetric.PIDs = stats.Pids
 
-				appContainerMetric.Cpu = new(metrics.AppCpuMetric)
-				uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
-				appContainerMetric.Cpu.UpTime = uptime
-				appContainerMetric.Cpu.Total = stats.CPUTotal
-				appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
+				// fill in the new metrics info for each module
+				if acMetric.CollectTime.Sub(ctx.appContainerStatsTime) > 0 {
+					appContainerMetric.Status = stats.Status
+					appContainerMetric.PIDs = stats.Pids
 
-				appContainerMetric.Memory = new(metrics.MemoryMetric)
-				appContainerMetric.Memory.UsedMem = stats.UsedMem
-				appContainerMetric.Memory.AvailMem = stats.AvailMem
+					appContainerMetric.Cpu = new(metrics.AppCpuMetric)
+					uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
+					appContainerMetric.Cpu.UpTime = uptime
+					appContainerMetric.Cpu.Total = stats.CPUTotal
+					appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
 
-				appContainerMetric.Network = new(metrics.NetworkMetric)
-				appContainerMetric.Network.TxBytes = stats.TxBytes
-				appContainerMetric.Network.RxBytes = stats.RxBytes
+					appContainerMetric.Memory = new(metrics.MemoryMetric)
+					appContainerMetric.Memory.UsedMem = stats.UsedMem
+					appContainerMetric.Memory.AvailMem = stats.AvailMem
 
-				appContainerMetric.Disk = new(metrics.DiskMetric)
-				appContainerMetric.Disk.ReadBytes = stats.ReadBytes
-				appContainerMetric.Disk.WriteBytes = stats.WriteBytes
+					appContainerMetric.Network = new(metrics.NetworkMetric)
+					appContainerMetric.Network.TxBytes = stats.TxBytes
+					appContainerMetric.Network.RxBytes = stats.RxBytes
+
+					appContainerMetric.Disk = new(metrics.DiskMetric)
+					appContainerMetric.Disk.ReadBytes = stats.ReadBytes
+					appContainerMetric.Disk.WriteBytes = stats.WriteBytes
+				}
 
 				ReportAppMetric.Container = append(ReportAppMetric.Container, appContainerMetric)
 			}
@@ -927,26 +929,18 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo)
 	}
 
-	// Read interface name from library and match it with port name from
-	// global status. Only report the ports in DeviceNetworkStatus
-	interfaces, _ := psutilnet.Interfaces()
+	// We report all the ports in DeviceNetworkStatus
 	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
 	for _, label := range labelList {
 		p := deviceNetworkStatus.GetPortByLogicallabel(label)
 		if p == nil {
 			continue
 		}
-		for _, interfaceDetail := range interfaces {
-			if p.IfName != interfaceDetail.Name {
-				continue
-			}
-			ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
-			// XXX rename DevName to Logicallabel in proto file
-			ReportDeviceNetworkInfo.DevName = *proto.String(label)
-			ReportDeviceNetworkInfo.Alias = *proto.String(p.Alias)
-			ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
-				ReportDeviceNetworkInfo)
-		}
+		ReportDeviceNetworkInfo := encodeNetInfo(*p)
+		// XXX rename DevName to Logicallabel in proto file
+		ReportDeviceNetworkInfo.DevName = *proto.String(label)
+		ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
+			ReportDeviceNetworkInfo)
 	}
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf
 	// Note that "domain" is returned in search, hence DNSdomain is
@@ -1232,69 +1226,60 @@ func setMetricAnyValue(item *metrics.MetricItem, val interface{}) {
 
 var nilIPInfo = ipinfo.IPInfo{}
 
-func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
-	getAddrs bool) *info.ZInfoNetwork {
+// encodeNetInfo encodes info from the port
+func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 
 	networkInfo := new(info.ZInfoNetwork)
-	networkInfo.LocalName = *proto.String(interfaceDetail.Name)
-	if getAddrs {
-		networkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
-		for index, ip := range interfaceDetail.Addrs {
-			networkInfo.IPAddrs[index] = *proto.String(ip.Addr)
-		}
-		networkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
-		// In case caller doesn't override
-		networkInfo.DevName = *proto.String(networkInfo.LocalName)
-
-		// Default routers from kernel whether or not we are using DHCP
-		drs := getDefaultRouters(interfaceDetail.Name)
-		networkInfo.DefaultRouters = make([]string, len(drs))
-		for index, dr := range drs {
-			log.Debugf("got dr: %v", dr)
-			networkInfo.DefaultRouters[index] = *proto.String(dr)
-		}
+	networkInfo.LocalName = *proto.String(port.IfName)
+	networkInfo.IPAddrs = make([]string, len(port.AddrInfoList))
+	for index, ai := range port.AddrInfoList {
+		networkInfo.IPAddrs[index] = *proto.String(ai.Addr.String())
 	}
-	for _, fl := range interfaceDetail.Flags {
-		if fl == "up" {
-			networkInfo.Up = true
-			break
-		}
+	networkInfo.Up = port.Up
+	networkInfo.MacAddr = *proto.String(port.MacAddr)
+
+	// In case caller doesn't override
+	networkInfo.DevName = *proto.String(port.IfName)
+
+	networkInfo.Alias = *proto.String(port.Alias)
+	// Default routers from kernel whether or not we are using DHCP
+	networkInfo.DefaultRouters = make([]string, len(port.DefaultRouters))
+	for index, dr := range port.DefaultRouters {
+		networkInfo.DefaultRouters[index] = *proto.String(dr.String())
 	}
 
-	port := types.GetPort(*deviceNetworkStatus, interfaceDetail.Name)
-	if port != nil {
-		networkInfo.Uplink = port.IsMgmt
-		// fill in ZInfoDNS
-		networkInfo.Dns = new(info.ZInfoDNS)
-		networkInfo.Dns.DNSdomain = port.NetworkXConfig.DomainName
-		for _, server := range port.NetworkXConfig.DnsServers {
-			networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
-				server.String())
-		}
-
-		// XXX we potentially have geoloc information for each IP
-		// address.
-		// For now fill in using the first IP address which has location
-		// info.
-		for _, ai := range port.AddrInfoList {
-			if ai.Geo == nilIPInfo {
-				continue
-			}
-			geo := new(info.GeoLoc)
-			geo.UnderlayIP = *proto.String(ai.Geo.IP)
-			geo.Hostname = *proto.String(ai.Geo.Hostname)
-			geo.City = *proto.String(ai.Geo.City)
-			geo.Country = *proto.String(ai.Geo.Country)
-			geo.Loc = *proto.String(ai.Geo.Loc)
-			geo.Org = *proto.String(ai.Geo.Org)
-			geo.Postal = *proto.String(ai.Geo.Postal)
-			networkInfo.Location = geo
-			break
-		}
-		// Any error or test result?
-		networkInfo.NetworkErr = encodeTestResults(port.TestResults)
-		networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
+	networkInfo.Uplink = port.IsMgmt
+	// fill in ZInfoDNS from what is currently used
+	networkInfo.Dns = new(info.ZInfoDNS)
+	networkInfo.Dns.DNSdomain = port.DomainName
+	for _, server := range port.DNSServers {
+		networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
+			server.String())
 	}
+
+	// XXX we potentially have geoloc information for each IP
+	// address.
+	// For now fill in using the first IP address which has location
+	// info.
+	for _, ai := range port.AddrInfoList {
+		if ai.Geo == nilIPInfo {
+			continue
+		}
+		geo := new(info.GeoLoc)
+		geo.UnderlayIP = *proto.String(ai.Geo.IP)
+		geo.Hostname = *proto.String(ai.Geo.Hostname)
+		geo.City = *proto.String(ai.Geo.City)
+		geo.Country = *proto.String(ai.Geo.Country)
+		geo.Loc = *proto.String(ai.Geo.Loc)
+		geo.Org = *proto.String(ai.Geo.Org)
+		geo.Postal = *proto.String(ai.Geo.Postal)
+		networkInfo.Location = geo
+		break
+	}
+	// Any error or test result?
+	networkInfo.NetworkErr = encodeTestResults(port.TestResults)
+
+	networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	return networkInfo
 }
 
@@ -1462,30 +1447,25 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		// Get vifs assigned to the application
 		// Mostly reporting the UP status
 		// We extract the appIP from the dnsmasq assignment
-		interfaces, _ := psutilnet.Interfaces()
 		ifNames := (*aiStatus).GetAppInterfaceList()
 		log.Debugf("ReportAppInfo: domainName %s ifs %v",
 			aiStatus.DomainName, ifNames)
 		for _, ifname := range ifNames {
-			for _, interfaceDetail := range interfaces {
-				if ifname != interfaceDetail.Name {
-					continue
-				}
-				networkInfo := getNetInfo(interfaceDetail, false)
-				ip, allocated, macAddr := getAppIP(ctx, aiStatus,
-					ifname)
-				networkInfo.IPAddrs = make([]string, 1)
-				networkInfo.IPAddrs[0] = *proto.String(ip)
-				networkInfo.MacAddr = *proto.String(macAddr)
-				networkInfo.Up = allocated
-				name := appIfnameToName(aiStatus, ifname)
-				log.Debugf("app %s/%s localName %s devName %s",
-					aiStatus.Key(), aiStatus.DisplayName,
-					ifname, name)
-				networkInfo.DevName = *proto.String(name)
-				ReportAppInfo.Network = append(ReportAppInfo.Network,
-					networkInfo)
-			}
+			networkInfo := new(info.ZInfoNetwork)
+			networkInfo.LocalName = *proto.String(ifname)
+			ip, allocated, macAddr := getAppIP(ctx, aiStatus,
+				ifname)
+			networkInfo.IPAddrs = make([]string, 1)
+			networkInfo.IPAddrs[0] = *proto.String(ip)
+			networkInfo.MacAddr = *proto.String(macAddr)
+			networkInfo.Up = allocated
+			name := appIfnameToName(aiStatus, ifname)
+			log.Debugf("app %s/%s localName %s devName %s",
+				aiStatus.Key(), aiStatus.DisplayName,
+				ifname, name)
+			networkInfo.DevName = *proto.String(name)
+			ReportAppInfo.Network = append(ReportAppInfo.Network,
+				networkInfo)
 		}
 	}
 
@@ -1803,41 +1783,6 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	} else {
 		writeSentMetricsProtoMessage(data)
 	}
-}
-
-func getDefaultRouters(ifname string) []string {
-	var res []string
-	link, err := netlink.LinkByName(ifname)
-	if err != nil {
-		log.Errorf("getDefaultRouters failed to find %s: %s",
-			ifname, err)
-		return res
-	}
-	ifindex := link.Attrs().Index
-	table := types.GetDefaultRouteTable()
-	// Note that a default route is represented as nil Dst
-	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
-	fflags := netlink.RT_FILTER_TABLE
-	fflags |= netlink.RT_FILTER_OIF
-	fflags |= netlink.RT_FILTER_DST
-	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
-		&filter, fflags)
-	if err != nil {
-		log.Errorf("getDefaultRouters: for ifname %s RouteList failed: %v\n", ifname, err)
-		return res
-	}
-	// log.Debugf("getDefaultRouters(%s) - got %d", ifname, len(routes))
-	for _, rt := range routes {
-		if rt.Table != table {
-			continue
-		}
-		if ifindex != 0 && rt.LinkIndex != ifindex {
-			continue
-		}
-		// log.Debugf("getDefaultRouters route dest %v", rt.Dst)
-		res = append(res, rt.Gw.String())
-	}
-	return res
 }
 
 // Use the ifname/vifname to find the overlay or underlay status

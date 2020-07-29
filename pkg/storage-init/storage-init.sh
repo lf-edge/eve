@@ -13,6 +13,7 @@ CONFIGDIR=/var/config
 init_containerd() {
     mkdir -p "$PERSISTDIR/containerd"
     mkdir -p /var/lib
+    rm -rf /var/lib/containerd
     ln -s "$PERSISTDIR/containerd" /var/lib/containerd
 }
 
@@ -93,25 +94,33 @@ fi
 # We support P3 partition either formatted as ext3/4 or as part of ZFS pool
 # Priorities are: ext3, ext4, zfs
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
+    P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
+    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
+
     # Loading zfs modules to see if we have any zpools attached to the system
     # We will unload them later (if they do unload it meands we didn't find zpools)
     modprobe zfs
+
     # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
+    # Note that for whatever reason, it appears that blkid can only identify zfs after it has
+    # been populated with some data (not just initialized). Hence this block is AFTER blkid above
     if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
         # zero out the request (regardless of whether we can convert to zfs)
         dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
         chroot /hostfs zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
+        # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
+        #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
+        chroot /hostfs zfs create -p -o mountpoint=/var/lib/containerd/io.containerd.snapshotter.v1.zfs persist/vault/snapshots
+        P3_FS_TYPE=zfs_member
     fi
-
-    P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
-    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
     case "$P3_FS_TYPE" in
          ext3|ext4) if ! "fsck.$P3_FS_TYPE" -y "$P3"; then
                         FSCK_FAILED=1
                     fi
                     ;;
-        zfs_member) if ! chroot /hostfs zpool import -f persist; then
+        zfs_member) P3_FS_TYPE=zfs
+                    if ! chroot /hostfs zpool import -f persist; then
                         FSCK_FAILED=1
                     fi
                     ;;
@@ -148,11 +157,13 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         fi
     fi
 
+    # deposit fs type into /run
+    echo "$P3_FS_TYPE" > /run/eve.persist_type
     # making sure containerd uses P3 for storing its state
     init_containerd
     # this is safe, since if the mount fails the following will fail too
     # shellcheck disable=SC2046
-    rmmod zfs $(lsmod | grep zfs | awk '{print $1;}') || :
+    rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
 fi

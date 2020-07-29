@@ -9,7 +9,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	log "github.com/sirupsen/logrus"
@@ -401,7 +400,7 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 
 func (ctx xenContext) Delete(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
-	stdOut, stdErr, err := containerd.CtrExec(domainName,
+	stdOut, stdErr, err := containerd.CtrSystemExec("xen-tools",
 		[]string{"xl", "destroy", domainName})
 	if err != nil {
 		log.Errorln("xl destroy failed ", err)
@@ -428,22 +427,20 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	// if task is alive, we augment task status with finer grained details from xl info
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 
-	// XXX xl list -l domainName returns json. XXX but state not included!
-	// Note that state is not very useful anyhow
 	stdOut, stdErr, err := containerd.CtrExec(domainName,
-		[]string{"xl", "list", domainName})
+		[]string{"/etc/xen/scripts/xen-info", domainName})
 	if err != nil {
-		log.Errorln("xl list failed ", err)
-		log.Errorln("xl list output ", stdOut, stdErr)
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("xl list failed: %s %s", stdOut, stdErr)
+		log.Errorln("xen-info ", err)
+		log.Errorln("xen-info output ", stdOut, stdErr)
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s %s", stdOut, stdErr)
 	}
-	log.Infof("xl list done. Result %s\n", stdOut)
+	log.Infof("xen-info done. Result %s\n", stdOut)
 
 	//stdoutStderr should have 2 rows separated by '\n'. Where 1st row will be column names and 2nd row will be domain details
 	cmdResponse := strings.Split(stdOut, "\n")
 	if len(cmdResponse) < 2 {
-		log.Errorln("Info: domain not present in xl list output", stdOut)
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain not present in xl list output %s", string(stdOut))
+		log.Errorln("Info: domain not present in xen-info output", stdOut)
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain not present in xen-info output %s", string(stdOut))
 	}
 	//Removing all extra space between column result and split the result as array.
 	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(cmdResponse[1], " ")
@@ -480,21 +477,6 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	if !matched {
 		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %s",
 			domainName, lastState)
-	}
-
-	// if we are in one of the states that may require a device model -- check for it
-	if effectiveDomainState == types.RUNNING || effectiveDomainState == types.PAUSED {
-		// create pgrep command to see if dataplane is running
-		match := fmt.Sprintf("name %s ", domainName)
-		cmd := wrap.Command("pgrep", "-f", match)
-
-		// pgrep returns 0 when there is atleast one matching program running
-		// cmd.Output returns nil when pgrep returns 0, otherwise pids.
-		if _, err := cmd.Output(); err != nil {
-			err = fmt.Errorf("info: device model %s process is not running: %s", match, err)
-			log.Infof(err.Error())
-			return effectiveDomainID, types.BROKEN, err
-		}
 	}
 
 	return effectiveDomainID, effectiveDomainState, nil

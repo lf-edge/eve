@@ -924,11 +924,10 @@ func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.Fil
 			continue
 		}
 		log.Infof("generateResolvConf %s has %d servers: %v",
-			us.IfName, len(us.NetworkXConfig.DnsServers),
-			us.NetworkXConfig.DnsServers)
+			us.IfName, len(us.DNSServers), us.DNSServers)
 		destfile.WriteString(fmt.Sprintf("# From %s\n", us.IfName))
 		// Avoid duplicate IP addresses for nameservers.
-		for _, server := range us.NetworkXConfig.DnsServers {
+		for _, server := range us.DNSServers {
 			duplicate := false
 			for _, a := range written {
 				if a.Equal(server) {

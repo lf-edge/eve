@@ -19,7 +19,7 @@ xl create "$2" -p
 
 # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
 for i in 1 2 3; do
-  ID=$(echo $(($(xl domid "$1") + 0))) ||:
+  ID=$(xl domid "$1" 2>/dev/null)
   sleep 8
   [ -z "$ID" ] || break
 done
