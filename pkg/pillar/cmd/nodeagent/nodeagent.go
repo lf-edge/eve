@@ -39,8 +39,7 @@ import (
 const (
 	agentName                   = "nodeagent"
 	timeTickInterval     uint32 = 10
-	watchdogInterval     uint32 = 25
-	networkUpTimeout     uint32 = 300
+	watchdogInterval     uint32 = 25 // For StillRunning
 	maxRebootStackSize          = 1600
 	maxJSONAttributeSize        = maxRebootStackSize + 100
 	configDir                   = "/config"
@@ -61,40 +60,40 @@ const (
 var Version = "No version specified"
 
 type nodeagentContext struct {
-	agentBaseContext       agentbase.Context
-	GCInitialized          bool // Received initial GlobalConfig
-	DNSinitialized         bool // Received DeviceNetworkStatus
-	globalConfig           *types.ConfigItemValueMap
-	subGlobalConfig        pubsub.Subscription
-	subZbootStatus         pubsub.Subscription
-	subZedAgentStatus      pubsub.Subscription
-	subDeviceNetworkStatus pubsub.Subscription
-	subDomainStatus        pubsub.Subscription
-	pubZbootConfig         pubsub.Publication
-	pubNodeAgentStatus     pubsub.Publication
-	curPart                string
-	upgradeTestStartTime   uint32
-	tickerTimer            *time.Ticker
-	stillRunning           *time.Ticker
-	remainingTestTime      time.Duration
-	lastConfigReceivedTime uint32
-	configGetStatus        types.ConfigGetStatus
-	deviceNetworkStatus    *types.DeviceNetworkStatus
-	deviceRegistered       bool
-	updateInprogress       bool
-	updateComplete         bool
-	sshAccess              bool
-	testComplete           bool
-	testInprogress         bool
-	timeTickCount          uint32
-	rebootCmd              bool // Are we rebooting?
-	deviceReboot           bool
-	currentRebootReason    string    // Reason we are rebooting
-	rebootReason           string    // From last reboot
-	rebootImage            string    // Image from which the last reboot happened
-	rebootStack            string    // From last reboot
-	rebootTime             time.Time // From last reboot
-	restartCounter         uint32
+	agentBaseContext            agentbase.Context
+	GCInitialized               bool // Received initial GlobalConfig
+	DNSinitialized              bool // Received DeviceNetworkStatus
+	globalConfig                *types.ConfigItemValueMap
+	subGlobalConfig             pubsub.Subscription
+	subZbootStatus              pubsub.Subscription
+	subZedAgentStatus           pubsub.Subscription
+	subDeviceNetworkStatus      pubsub.Subscription
+	subDomainStatus             pubsub.Subscription
+	pubZbootConfig              pubsub.Publication
+	pubNodeAgentStatus          pubsub.Publication
+	curPart                     string
+	upgradeTestStartTime        uint32
+	tickerTimer                 *time.Ticker
+	stillRunning                *time.Ticker
+	remainingTestTime           time.Duration
+	lastControllerReachableTime uint32 // Got a config or some error but can reach controller
+	configGetStatus             types.ConfigGetStatus
+	deviceNetworkStatus         *types.DeviceNetworkStatus
+	deviceRegistered            bool
+	updateInprogress            bool
+	updateComplete              bool
+	sshAccess                   bool
+	testComplete                bool
+	testInprogress              bool
+	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
+	rebootCmd                   bool   // Are we rebooting?
+	deviceReboot                bool
+	currentRebootReason         string    // Reason we are rebooting
+	rebootReason                string    // From last reboot
+	rebootImage                 string    // Image from which the last reboot happened
+	rebootStack                 string    // From last reboot
+	rebootTime                  time.Time // From last reboot
+	restartCounter              uint32
 
 	// Some contants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
