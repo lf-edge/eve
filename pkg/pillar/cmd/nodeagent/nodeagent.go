@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -62,12 +61,10 @@ var Version = "No version specified"
 type nodeagentContext struct {
 	agentBaseContext            agentbase.Context
 	GCInitialized               bool // Received initial GlobalConfig
-	DNSinitialized              bool // Received DeviceNetworkStatus
 	globalConfig                *types.ConfigItemValueMap
 	subGlobalConfig             pubsub.Subscription
 	subZbootStatus              pubsub.Subscription
 	subZedAgentStatus           pubsub.Subscription
-	subDeviceNetworkStatus      pubsub.Subscription
 	subDomainStatus             pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
@@ -78,7 +75,6 @@ type nodeagentContext struct {
 	remainingTestTime           time.Duration
 	lastControllerReachableTime uint32 // Got a config or some error but can reach controller
 	configGetStatus             types.ConfigGetStatus
-	deviceNetworkStatus         *types.DeviceNetworkStatus
 	deviceRegistered            bool
 	updateInprogress            bool
 	updateComplete              bool
@@ -236,12 +232,6 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
-
-	// when the partition status is inprogress state
-	// check network connectivity for 300 seconds
-	if nodeagentCtx.updateInprogress {
-		checkNetworkConnectivity(ps, &nodeagentCtx)
-	}
 
 	// if current partition state is not in-progress,
 	// nothing much to do. Zedcloud connectivity is tracked,
@@ -424,84 +414,6 @@ func handleZbootStatusDelete(ctxArg interface{},
 		return
 	}
 	log.Infof("handleZbootStatusDelete(%s) done", key)
-}
-
-func checkNetworkConnectivity(ps *pubsub.PubSub, ctxPtr *nodeagentContext) {
-	// for device network status
-	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "nim",
-		TopicImpl:     types.DeviceNetworkStatus{},
-		Activate:      false,
-		Ctx:           ctxPtr,
-		ModifyHandler: handleDNSModify,
-		DeleteHandler: handleDNSDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
-	subDeviceNetworkStatus.Activate()
-
-	ctxPtr.deviceNetworkStatus = &types.DeviceNetworkStatus{}
-	for !ctxPtr.DNSinitialized {
-		log.Infof("Waiting for DeviceNetworkStatus: %v",
-			ctxPtr.DNSinitialized)
-		select {
-		case change := <-ctxPtr.subGlobalConfig.MsgChan():
-			ctxPtr.subGlobalConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-ctxPtr.tickerTimer.C:
-			handleDeviceTimers(ctxPtr)
-
-		case <-ctxPtr.stillRunning.C:
-		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Infof("DeviceNetworkStatus: %v", ctxPtr.DNSinitialized)
-
-	// reset timer tick, for all timer functions
-	ctxPtr.timeTickCount = 0
-}
-
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
-
-	status := statusArg.(types.DeviceNetworkStatus)
-	ctxPtr := ctxArg.(*nodeagentContext)
-	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
-		return
-	}
-	log.Infof("handleDNSModify for %s", key)
-	if cmp.Equal(*ctxPtr.deviceNetworkStatus, status) {
-		log.Infof("handleDNSModify no change")
-		ctxPtr.DNSinitialized = true
-		return
-	}
-	log.Infof("handleDNSModify: changed %v",
-		cmp.Diff(*ctxPtr.deviceNetworkStatus, status))
-	*ctxPtr.deviceNetworkStatus = status
-	ctxPtr.DNSinitialized = true
-	log.Infof("handleDNSModify done for %s", key)
-}
-
-func handleDNSDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Infof("handleDNSDelete for %s", key)
-	ctxPtr := ctxArg.(*nodeagentContext)
-
-	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s", key)
-		return
-	}
-	*ctxPtr.deviceNetworkStatus = types.DeviceNetworkStatus{}
-	ctxPtr.DNSinitialized = false
-	log.Infof("handleDNSDelete done for %s", key)
 }
 
 // check whether zedagent module is alive
