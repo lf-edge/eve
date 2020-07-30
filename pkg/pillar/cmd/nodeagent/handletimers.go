@@ -53,7 +53,7 @@ func updateTickerTime(ctxPtr *nodeagentContext) {
 // when baseos upgrade is inprogress
 // on cloud disconnect for a specified amount of time, reset the node
 func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
-	if !ctxPtr.updateInprogress || !ctxPtr.DNSinitialized {
+	if !ctxPtr.updateInprogress {
 		return
 	}
 	// apply the fallback time function,wait for fallback timeout
