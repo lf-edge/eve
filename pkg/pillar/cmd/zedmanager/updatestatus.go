@@ -303,7 +303,7 @@ func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	changed := false
 	if vrs.PendingAdd {
 		MaybeAddVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
-			vrs.VolumeID, vrs.GenerationCounter)
+			vrs.VolumeID, vrs.GenerationCounter, vrs.MountDir)
 		vrs.PendingAdd = false
 		changed = true
 	}

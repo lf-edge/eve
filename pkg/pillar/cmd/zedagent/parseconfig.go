@@ -1006,6 +1006,7 @@ func parseVolumeRefList(volumeRefConfigList []types.VolumeRefConfig,
 		volume.VolumeID, _ = uuid.FromString(volumeRef.Uuid)
 		volume.GenerationCounter = volumeRef.GenerationCount
 		volume.RefCount = 1
+		volume.MountDir = volumeRef.GetMountDir()
 		volumeRefConfigList[idx] = *volume
 		idx++
 	}

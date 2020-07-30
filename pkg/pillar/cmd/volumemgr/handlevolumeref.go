@@ -26,13 +26,13 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			VolumeID:           config.VolumeID,
 			GenerationCounter:  config.GenerationCounter,
 			RefCount:           config.RefCount,
+			MountDir:           config.MountDir,
 			State:              vs.State,
 			ActiveFileLocation: vs.FileLocation,
 			ContentFormat:      vs.ContentFormat,
 			ReadOnly:           vs.ReadOnly,
 			DisplayName:        vs.DisplayName,
 			MaxVolSize:         vs.MaxVolSize,
-			MountDir:           vs.MountDir,
 		}
 		if vs.HasError() {
 			status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
@@ -149,7 +149,6 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				status.ReadOnly = vs.ReadOnly
 				status.DisplayName = vs.DisplayName
 				status.MaxVolSize = vs.MaxVolSize
-				status.MountDir = vs.MountDir
 				if vs.HasError() {
 					status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
 				} else if status.IsErrorSource(types.VolumeStatus{}) {
@@ -162,13 +161,13 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				VolumeID:           config.VolumeID,
 				GenerationCounter:  config.GenerationCounter,
 				RefCount:           config.RefCount,
+				MountDir:           config.MountDir,
 				State:              vs.State,
 				ActiveFileLocation: vs.FileLocation,
 				ContentFormat:      vs.ContentFormat,
 				ReadOnly:           vs.ReadOnly,
 				DisplayName:        vs.DisplayName,
 				MaxVolSize:         vs.MaxVolSize,
-				MountDir:           vs.MountDir,
 			}
 			if vs.HasError() {
 				status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
