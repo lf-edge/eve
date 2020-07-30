@@ -19,44 +19,34 @@ import (
 // ticker function
 func handleDeviceTimers(ctxPtr *nodeagentContext) {
 	updateTickerTime(ctxPtr)
-	handleNetworkUpTimeoutExpiry(ctxPtr)
+
 	handleFallbackOnCloudDisconnect(ctxPtr)
 	handleResetOnCloudDisconnect(ctxPtr)
 	handleUpgradeTestValidation(ctxPtr)
 }
 
 // for every ticker, based on the last config
-// get status received from zedagent,
+// get status received from zedagent since zedagent doesn't notify unless
+// there is a change in the status.
 // update the timers
 func updateTickerTime(ctxPtr *nodeagentContext) {
-	// TBD:XXX time tick may skew, apply the diff value
+	// We track relative time to avoid being confused if the year jumps from
+	// 1970 when NTP sets the time.
 	ctxPtr.timeTickCount += timeTickInterval
 
-	// TBD:XXX get the zedagent status for connectivity health
-	// rather than considering stored value
 	switch ctxPtr.configGetStatus {
 	case types.ConfigGetSuccess:
-		ctxPtr.lastConfigReceivedTime = ctxPtr.timeTickCount
+		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
 
 	case types.ConfigGetTemporaryFail:
+		// We know it is reachable even though it is not (yet) giving
+		// us a config
+		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
+
+		// Make sure we test for N seconds after we have received a
+		// config
 		resetTestStartTime(ctxPtr)
 		setTestStartTime(ctxPtr)
-	}
-}
-
-// handleNetworkUpEvent
-func handleNetworkUpTimeoutExpiry(ctxPtr *nodeagentContext) {
-	if !ctxPtr.updateInprogress || ctxPtr.DNSinitialized {
-		return
-	}
-	// wait for network address assignment timeout
-	expiryLimit := networkUpTimeout
-	timePassed := ctxPtr.timeTickCount - ctxPtr.lastConfigReceivedTime
-	if timePassed > expiryLimit {
-		errStr := fmt.Sprintf("Exceeded network up timeout %d by %d seconds; rebooting\n",
-			expiryLimit, timePassed-expiryLimit)
-		log.Errorf(errStr)
-		scheduleNodeReboot(ctxPtr, errStr)
 	}
 }
 
@@ -68,12 +58,15 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	}
 	// apply the fallback time function,wait for fallback timeout
 	fallbackLimit := ctxPtr.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
-	timePassed := ctxPtr.timeTickCount - ctxPtr.lastConfigReceivedTime
+	timePassed := ctxPtr.timeTickCount - ctxPtr.lastControllerReachableTime
 	if timePassed > fallbackLimit {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
 		log.Errorf(errStr)
 		scheduleNodeReboot(ctxPtr, errStr)
+	} else {
+		log.Infof("handleFallbackOnCloudDisconnect %d seconds remaining",
+			fallbackLimit-timePassed)
 	}
 }
 
@@ -81,12 +74,15 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	// apply the reset time function
 	resetLimit := ctxPtr.globalConfig.GlobalValueInt(types.ResetIfCloudGoneTime)
-	timePassed := ctxPtr.timeTickCount - ctxPtr.lastConfigReceivedTime
+	timePassed := ctxPtr.timeTickCount - ctxPtr.lastControllerReachableTime
 	if timePassed > resetLimit {
 		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
 			resetLimit, timePassed-resetLimit)
 		log.Errorf(errStr)
 		scheduleNodeReboot(ctxPtr, errStr)
+	} else {
+		log.Debugf("handleResetOnCloudDisconnect %d seconds remaining",
+			resetLimit-timePassed)
 	}
 }
 
@@ -152,6 +148,9 @@ func resetTestStartTime(ctxPtr *nodeagentContext) {
 func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	status types.ZedAgentStatus) {
 
+	log.Infof("updateZedagentCloudConnectStatus from %d to %d",
+		ctxPtr.configGetStatus, status.ConfigGetStatus)
+
 	// config Get Status has not changed
 	if ctxPtr.configGetStatus == status.ConfigGetStatus {
 		return
@@ -160,11 +159,17 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	switch ctxPtr.configGetStatus {
 	case types.ConfigGetSuccess:
 		log.Infof("Config get from controller, is successful")
-		ctxPtr.lastConfigReceivedTime = ctxPtr.timeTickCount
+		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
 		setTestStartTime(ctxPtr)
 
 	case types.ConfigGetTemporaryFail:
 		log.Infof("Config get from controller, has temporarily failed")
+		// We know it is reachable even though it is not (yet) giving
+		// us a config
+		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
+
+		// Make sure we test for N seconds after we have received a
+		// config
 		resetTestStartTime(ctxPtr)
 		setTestStartTime(ctxPtr)
 
@@ -172,7 +177,7 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 		log.Infof("Config is read from saved config")
 
 	case types.ConfigGetFail:
-		log.Infof("Config get from controller, has failed")
+		log.Infof("Config get from controller has failed")
 	}
 }
 
@@ -181,6 +186,7 @@ func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
 	if !status.RebootCmd || ctxPtr.rebootCmd {
 		return
 	}
+	log.Infof("handleRebootCmd reason %s", status.RebootReason)
 	ctxPtr.rebootCmd = true
 	scheduleNodeReboot(ctxPtr, status.RebootReason)
 }
