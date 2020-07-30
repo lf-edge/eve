@@ -96,6 +96,7 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 
 	//Step 1: Load blobs into CAS
 	for _, blob := range blobs {
+		log.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
 		//Process the blob only if its not loaded already
 		if blob.State == types.LOADED {
 			log.Infof("IngestBlob(%s): Not loading blob as it is already loaded", blob.Sha256)
@@ -109,7 +110,6 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 			// the sha MUST be lower-case for it to work with the ocispec utils
 			sha = fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blob.Sha256))
 		)
-		log.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
 
 		//Step 1.1: Read the blob from verified dir
 		fileReader, err := os.Open(blobFile)
@@ -548,8 +548,16 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 // this API will GC all blobs that were loaded until that point
 func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*types.BlobStatus) ([]*types.BlobStatus, error) {
 
-	log.Infof("IngestBlobsAndCreateImage: Attempting to Ingest blobs: %v ann add reference: %s", blobs, reference)
-
+	log.Infof("IngestBlobsAndCreateImage: Attempting to Ingest %d blobs and add reference: %s", len(blobs), reference)
+	loadedBlobs := make([]*types.BlobStatus, 0)
+	// This will be called in case of any error.
+	// This is to make sure that we delete loadedBlobs in case of an error as we wouldn't have added a reference
+	// to the blobs, which makes the loadedBlobs vulnerable for garbage collection.
+	var cleanUpLoadedBlobs = func() {
+		for _, blob := range loadedBlobs {
+			c.RemoveBlob(blob.Sha256)
+		}
+	}
 	deleteLease, err := containerd.CtrCreateLease()
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Unable load blobs for reference %s. "+
@@ -558,10 +566,11 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 		return nil, err
 	}
 	defer deleteLease()
-	loadedBlobs, err := c.IngestBlob(blobs...)
+	loadedBlobs, err = c.IngestBlob(blobs...)
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Exception while loading blobs into CAS: %v", err.Error())
 		log.Errorf(err.Error())
+		cleanUpLoadedBlobs()
 		return nil, err
 	}
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blobs[0].Sha256))
@@ -572,6 +581,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			log.Errorf(err.Error())
+			cleanUpLoadedBlobs()
 			return nil, err
 		}
 	} else {
@@ -579,6 +589,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not update reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			log.Errorf(err.Error())
+			cleanUpLoadedBlobs()
 			return nil, err
 		}
 	}

@@ -4,17 +4,12 @@
 package containerd
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/images"
-
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -93,33 +88,8 @@ func UnpackClientImage(clientImage containerd.Image) error {
 	}
 	if !unpacked {
 		if err := clientImage.Unpack(ctrdCtx, defaultSnapshotter); err != nil {
-			return fmt.Errorf("UnpackClientImage: unable to unpack image: %v config: %v", clientImage.Name(), err)
+			return fmt.Errorf("UnpackClientImage: unable to unpack image: %v: %v", clientImage.Name(), err)
 		}
 	}
 	return nil
-}
-
-//GetClientImageSpec returns image spec object for a containerd client image.
-func GetClientImageSpec(clientImage containerd.Image) (v1.Image, error) {
-	log.Infof("GetClientImageSpec: for image :%s", clientImage.Name())
-	var ociimage v1.Image
-	ic, err := clientImage.Config(ctrdCtx)
-	if err != nil {
-		return ociimage, fmt.Errorf("GetClientImageSpec: ubable to fetch image: %v config. %v", clientImage.Name(), err.Error())
-	}
-	switch ic.MediaType {
-	case v1.MediaTypeImageConfig, images.MediaTypeDockerSchema2Config:
-		p, err := content.ReadBlob(ctrdCtx, clientImage.ContentStore(), ic)
-		if err != nil {
-			return ociimage, fmt.Errorf("GetClientImageSpec: ubable to read cotentStore of image: %v config. %v", clientImage.Name(), err.Error())
-		}
-
-		if err := json.Unmarshal(p, &ociimage); err != nil {
-			return ociimage, fmt.Errorf("GetClientImageSpec: ubable to marshal cotentStore of image: %v config. %v", clientImage.Name(), err.Error())
-
-		}
-	default:
-		return ociimage, fmt.Errorf("GetClientImageSpec: unknown image config media type %s", ic.MediaType)
-	}
-	return ociimage, nil
 }

@@ -578,46 +578,6 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	}
 }
 
-func loadBlobsAndCreateRefInCAS(ctx *volumemgrContext, status *types.ContentTreeStatus) error {
-	// get all of the blobs
-	log.Infof("loadBlobsAndCreateRefInCAS(%s): Attempting to load blobs: %v", status.Key(), status.Blobs)
-	loadedBlobs, err := ctx.casClient.IngestBlob(lookupBlobStatuses(ctx, status.Blobs...)...)
-	for _, loadedBlob := range loadedBlobs {
-		log.Infof("loadBlobsAndCreateRefInCAS(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
-		if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
-			MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
-			loadedBlob.HasVerifierRef = false
-		}
-		publishBlobStatus(ctx, loadedBlob)
-	}
-	if err != nil {
-		err = fmt.Errorf("loadBlobsAndCreateRefInCAS(%s) Exception while loading blobs into CAS: %v",
-			status.Key(), err)
-		log.Errorf(err.Error())
-		return err
-	}
-	reference := getReferenceID(status.ContentID.String(), status.RelativeURL)
-	rootBlobSha := checkAndCorrectBlobHash(status.Blobs[0])
-	imageHash, err := ctx.casClient.GetImageHash(reference)
-	log.Infof("loadBlobsAndCreateRefInCAS(%s): creating/updating reference: %s", status.Key(), reference)
-	if err != nil || imageHash == "" {
-		if err := ctx.casClient.CreateImage(reference, rootBlobSha); err != nil {
-			err = fmt.Errorf("loadBlobsAndCreateRefInCAS: could not create image for %s with root %s: %v",
-				reference, rootBlobSha, err.Error())
-			log.Errorf(err.Error())
-			return err
-		}
-	} else {
-		if err := ctx.casClient.ReplaceImage(reference, rootBlobSha); err != nil {
-			err = fmt.Errorf("loadBlobsAndCreateRefInCAS: could not update image for %s with root %s: %v",
-				reference, rootBlobSha, err.Error())
-			log.Errorf(err.Error())
-			return err
-		}
-	}
-	return nil
-}
-
 //getReferenceID returns a unique referenceID for a contentTree.
 //It necessary to prepend contentID as we would get same referenceID in case if 2 contentTree has same relativeURL,
 func getReferenceID(contentID, relativeURL string) string {
