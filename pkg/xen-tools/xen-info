@@ -12,13 +12,24 @@ bail() {
 ID=$(xl domid "$1" 2>/dev/null)
 [ -z "$ID" ] && bail "Couldn't find domain ID for domain $1"
 
-# lets see if this domain is expected to have a device model attached
-if DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid") &&
-   ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-) ;then
-cat <<__EOT__
-Name                                        ID   Mem VCPUs     State    Time(s)
-$1                              $ID   512     1     ----c-       0.0
-__EOT__
-else
-   xl list "$ID"
+# we expect to get rbpscd where every letter can also be a dash (-)
+# Name    ID    Mem    VCPUs    State    Time(s)
+case $(xl list "$ID" | awk '{st=$5;} END {print st;}') in
+   *d) STATUS=halting ;;
+  *c*) STATUS=broken  ;;
+  *s*) STATUS=halting ;;
+  *p*) STATUS=paused  ;;
+  *b*) STATUS=running ;;
+   r*) STATUS=running ;;
+    *) STATUS=$(cat /dev/status) ;;
+esac
+
+# an additional check we do for running domains is to make sure device model is still around
+if [ "$STATUS" = running ] &&
+   DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid") &&
+   ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
+   STATUS=broken
 fi
+
+# finally deposit the current status
+echo "$STATUS" | tee /dev/status
