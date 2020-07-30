@@ -35,5 +35,8 @@ done
 # finally unpause the domain
 xl unpause "$ID"
 
+# declare the status as running
+echo running > /dev/status
+
 # and start watching over the console
 exec xl console "$ID" < /dev/null
