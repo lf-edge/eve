@@ -21,7 +21,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +61,8 @@ type nodeagentContext struct {
 	GCInitialized               bool // Received initial GlobalConfig
 	globalConfig                *types.ConfigItemValueMap
 	subGlobalConfig             pubsub.Subscription
+	onboarded                   bool
+	subOnboardStatus            pubsub.Subscription
 	subZbootStatus              pubsub.Subscription
 	subZedAgentStatus           pubsub.Subscription
 	subDomainStatus             pubsub.Subscription
@@ -191,6 +192,22 @@ func Run(ps *pubsub.PubSub) {
 	nodeagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		CreateHandler: handleOnboardStatusModify,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &nodeagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeagentCtx.subOnboardStatus = subOnboardStatus
+
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
 
@@ -214,12 +231,14 @@ func Run(ps *pubsub.PubSub) {
 	subDomainStatus.Activate()
 
 	// Pick up debug aka log level before we start real work
-	log.Infof("Waiting for GCInitialized")
 	for !nodeagentCtx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Infof("Waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
@@ -244,11 +263,14 @@ func Run(ps *pubsub.PubSub) {
 	// These timer functions will be tracked using
 	// cloud connectionnectivity status.
 
-	log.Infof("Waiting for device registration check")
-	for !nodeagentCtx.deviceRegistered {
+	for !nodeagentCtx.onboarded {
+		log.Infof("Waiting for onboarded aka known device UUID")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
@@ -256,10 +278,11 @@ func Run(ps *pubsub.PubSub) {
 		case <-nodeagentCtx.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
-		if isZedAgentAlive(&nodeagentCtx) {
-			nodeagentCtx.deviceRegistered = true
-		}
 	}
+	log.Infof("Device is onboarded")
+	// Start waiting for controller connectivity
+	nodeagentCtx.lastControllerReachableTime = nodeagentCtx.timeTickCount
+	setTestStartTime(&nodeagentCtx)
 
 	// subscribe to zboot status events
 	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -370,7 +393,7 @@ func handleZedAgentStatusModify(ctxArg interface{},
 	status := statusArg.(types.ZedAgentStatus)
 	handleRebootCmd(ctxPtr, status)
 	updateZedagentCloudConnectStatus(ctxPtr, status)
-	log.Debugf("handleZedAgentStatusModify(%s) done", key)
+	log.Infof("handleZedAgentStatusModify(%s) done", key)
 }
 
 func handleZedAgentStatusDelete(ctxArg interface{}, key string,
@@ -407,17 +430,6 @@ func handleZbootStatusDelete(ctxArg interface{},
 		return
 	}
 	log.Infof("handleZbootStatusDelete(%s) done", key)
-}
-
-// check whether zedagent module is alive
-func isZedAgentAlive(ctxPtr *nodeagentContext) bool {
-	pgrepCmd := exec.Command("pgrep", "zedagent")
-	stdout, err := pgrepCmd.Output()
-	output := string(stdout)
-	if err == nil && output != "" {
-		return true
-	}
-	return false
 }
 
 // If we have a reboot reason from this or the other partition
