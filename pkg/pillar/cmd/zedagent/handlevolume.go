@@ -80,7 +80,6 @@ func parseVolumeConfig(ctx *getconfigContext,
 		} else {
 			volumeConfig.VolumeDir = types.VolumeEncryptedDirName
 		}
-		volumeConfig.MountDir = cfgVolume.GetMountDir()
 		volumeConfig.DisplayName = cfgVolume.GetDisplayName()
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
 		volumeConfig.RefCount = 1

@@ -24,7 +24,6 @@ type VolumeConfig struct {
 	RefCount                uint
 	GenerationCounter       int64
 	VolumeDir               string
-	MountDir                string
 	DisplayName             string
 }
 
@@ -100,7 +99,6 @@ type VolumeStatus struct {
 	ReadOnly                bool
 	GenerationCounter       int64
 	VolumeDir               string
-	MountDir                string
 	DisplayName             string
 	State                   SwState
 	RefCount                uint
@@ -212,6 +210,7 @@ type VolumeRefConfig struct {
 	VolumeID          uuid.UUID
 	GenerationCounter int64
 	RefCount          uint
+	MountDir          string
 }
 
 // Key : VolumeRefConfig unique key
