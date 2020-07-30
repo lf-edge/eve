@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -78,7 +77,6 @@ type nodeagentContext struct {
 	deviceRegistered            bool
 	updateInprogress            bool
 	updateComplete              bool
-	sshAccess                   bool
 	testComplete                bool
 	testInprogress              bool
 	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
@@ -106,7 +104,6 @@ func newNodeagentContext() nodeagentContext {
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
 	nodeagentCtx.domainHaltWaitIncrement = domainHaltWaitIncrement
 
-	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
 	nodeagentCtx.globalConfig = types.DefaultConfigItemValueMap()
 
 	// start the watchdog process timer tick
@@ -328,10 +325,6 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 
 	log.Infof("handleGlobalConfigSynchronized(%v)", done)
 	if done {
-		first := !ctxPtr.GCInitialized
-		if first {
-			iptables.UpdateSshAccess(ctxPtr.sshAccess, first)
-		}
 		ctxPtr.GCInitialized = true
 	}
 }
