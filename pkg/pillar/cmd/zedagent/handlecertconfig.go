@@ -206,7 +206,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	}
 
 	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
+	case http.StatusOK:
 		log.Infof("getCertsFromController: status %s", resp.Status)
 	default:
 		log.Errorf("getCertsFromController: failed, statuscode %d %s",
@@ -214,7 +214,6 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	// XXX http.StatusNotModified?
 	if err := validateProtoMessage(certURL, resp); err != nil {
 		log.Errorf("getCertsFromController: resp header error")
 		return false
