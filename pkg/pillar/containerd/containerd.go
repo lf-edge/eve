@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/containerd/containerd/api/services/tasks/v1"
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
@@ -19,9 +18,11 @@ import (
 	"time"
 
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/snapshots"
@@ -123,6 +124,13 @@ func CtrWriteBlob(blobHash string, expectedSize uint64, reader io.Reader) error 
 	if err := verifyCtr(); err != nil {
 		return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s", err.Error())
 	}
+	// Check if ctrdCtx has a lease before writing a blob to make sure that it doesn't get GCed
+	leaseID, _ := leases.FromContext(ctrdCtx)
+	leaseList, _ := CtrdClient.LeasesService().List(ctrdCtx, fmt.Sprintf("id==%s", leaseID))
+	if len(leaseList) < 1 {
+		return fmt.Errorf("CtrWriteBlob: could not find lease: %s", leaseID)
+	}
+
 	expectedDigest := digest.Digest(blobHash)
 	if err := expectedDigest.Validate(); err != nil {
 		return fmt.Errorf("CtrWriteBlob: exception while validating hash format of %s. %v", blobHash, err)
@@ -656,12 +664,21 @@ func CtrCreateLease() (func() error, error) {
 	if err := verifyCtr(); err != nil {
 		return nil, fmt.Errorf("CtrCreateLease: exception while verifying ctrd client: %s", err.Error())
 	}
-	ctrdCtx, done, err := CtrdClient.WithLease(ctrdCtx)
+	var (
+		err  error
+		done func(context.Context) error
+	)
+	ctrdCtx, done, err = CtrdClient.WithLease(ctrdCtx)
 	if err != nil {
 		return nil, fmt.Errorf("CtrCreateLease: exception while creating lease: %s", err.Error())
 	}
 	return func() error {
-		return done(ctrdCtx)
+		if err := done(ctrdCtx); err != nil {
+			return err
+		}
+		//Reinitializing context to get rid of leaseID
+		ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
+		return nil
 	}, nil
 }
 
