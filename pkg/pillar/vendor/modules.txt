@@ -89,6 +89,7 @@ github.com/containerd/containerd
 github.com/containerd/containerd/api/services/tasks/v1
 github.com/containerd/containerd/cio
 github.com/containerd/containerd/containers
+github.com/containerd/containerd/leases
 github.com/containerd/containerd/mount
 github.com/containerd/containerd/namespaces
 github.com/containerd/containerd/oci
@@ -278,7 +279,7 @@ github.com/opencontainers/runc/libcontainer/user
 github.com/opencontainers/runc/libcontainer/system
 # github.com/opencontainers/runtime-spec v1.0.2
 github.com/opencontainers/runtime-spec/specs-go
-# github.com/packetcap/go-pcap v0.0.0-20200521113507-74d0984aa02c
+# github.com/packetcap/go-pcap v0.0.0-20200802095634-4c3b9511add7
 github.com/packetcap/go-pcap
 github.com/packetcap/go-pcap/filter
 # github.com/pkg/errors v0.9.1
