@@ -390,28 +390,32 @@ func CtrGetContainerMetrics(containerID string) (*v1stat.Metrics, error) {
 	}
 }
 
-// CtrContainerInfo looks up container's info
-func CtrContainerInfo(name string) (int, string, error) {
+// CtrContainerInfo returns PID, exit code and status of a container's main task
+// Status can be one of the: created, running, pausing, paused, stopped, unknown
+// For tasks that are in the running, pausing or paused state the PID is also provided
+// and the exit code is set to 0. For tasks in the stopped state, exit code is provided
+// and the PID is set to 0.
+func CtrContainerInfo(name string) (int, int, string, error) {
 	if err := verifyCtr(); err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: exception while verifying ctrd client: %s", err.Error())
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: exception while verifying ctrd client: %s", err.Error())
 	}
 
 	c, err := CtrLoadContainer(name)
 	if err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't load container %s: %v", name, err)
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't load container %s: %v", name, err)
 	}
 
 	t, err := c.Task(ctrdCtx, nil)
 	if err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't load task for container %s: %v", name, err)
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't load task for container %s: %v", name, err)
 	}
 
 	stat, err := t.Status(ctrdCtx)
 	if err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
 	}
 
-	return int(t.Pid()), string(stat.Status), nil
+	return int(t.Pid()), int(stat.ExitStatus), string(stat.Status), nil
 }
 
 // CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
