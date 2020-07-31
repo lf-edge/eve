@@ -431,8 +431,8 @@ func CtrCreateTask(domainName string) (int, error) {
 	logger := GetLog()
 
 	io := func(id string) (cio.IO, error) {
-		stdoutFile := logger.Path(domainName + ".out")
-		stderrFile := logger.Path(domainName)
+		stdoutFile := logger.Path("guest_vm-" + domainName)
+		stderrFile := logger.Path("guest_vm-" + domainName)
 		return &logio{
 			cio.Config{
 				Stdin:    "/dev/null",
