@@ -84,7 +84,7 @@ func (ctx ctrdContext) Start(domainName string, domainID int) error {
 
 	// now lets wait for task to reach a steady state or for >10sec to elapse
 	for i := 0; i < 10; i++ {
-		_, status, err := containerd.CtrContainerInfo(domainName)
+		_, _, status, err := containerd.CtrContainerInfo(domainName)
 		if err == nil && (status == "running" || status == "stopped" || status == "paused") {
 			return nil
 		}
@@ -103,9 +103,13 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
-	effectiveDomainID, status, err := containerd.CtrContainerInfo(domainName)
+	effectiveDomainID, exit, status, err := containerd.CtrContainerInfo(domainName)
 	if err != nil {
 		return domainID, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
+	}
+
+	if status == "stopped" && exit != 0 {
+		return domainID, types.BROKEN, logError("task broke with exit status %d", exit)
 	}
 
 	if effectiveDomainID != domainID {
