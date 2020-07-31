@@ -19,9 +19,9 @@ FROM ${BUILD_CONTAINER} as build
 # hadolint ignore=DL3018
 RUN apk add --no-cache curl make gcc g++ python libuuid iasl nasm util-linux-dev bash git util-linux
 
-RUN git clone --depth 1 -b edk2-stable201908 https://github.com/tianocore/edk2.git /ws
+RUN git clone --depth 1 -b edk2-stable202005 https://github.com/tianocore/edk2.git /ws
 WORKDIR /ws
-RUN git submodule update --init --depth 1
+RUN git submodule update --init
 COPY build.sh /ws/
 COPY patch /ws/patch
 RUN bash -c 'patch -p0 < patch/*'
