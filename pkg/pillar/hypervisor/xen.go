@@ -430,13 +430,14 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	stdOut, stdErr, err := containerd.CtrExec(domainName,
 		[]string{"/etc/xen/scripts/xen-info", domainName})
 	if err != nil {
+		// XXX state is already stopped; can we get that state?
 		log.Errorln("xen-info ", err)
 		log.Errorln("xen-info output ", stdOut, stdErr)
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s %s", stdOut, stdErr)
+		// XXX better error return
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s", err)
 	}
 	log.Infof("xen-info done. Result %s\n", stdOut)
 
-	//stdoutStderr should have 2 rows separated by '\n'. Where 1st row will be column names and 2nd row will be domain details
 	stateMap := map[string]types.SwState{
 		"running": types.RUNNING,
 		"paused":  types.PAUSED,

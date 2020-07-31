@@ -742,7 +742,8 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
-			if status.IsContainer {
+			// XXX
+			if false && status.IsContainer {
 				status.SetErrorNow("container exited - please restart application instance")
 			}
 
@@ -751,6 +752,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			// NOTE: we don't do anything for repairing tasks in the UNKNOWN state, for those
 			// the only remedy is an explicit user action (delete, restart, etc.)
 			if domainStatus == types.BROKEN {
+				// XXX old error?
 				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
 				log.Errorf(err.Error())
 				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
@@ -1221,6 +1223,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
+		// XXX set BootFailed to cause retry
+		status.BootFailed = true
+		status.State = types.BROKEN
 		return
 	}
 	// The -emu interfaces were most likely created as result of the boot so we
@@ -1228,8 +1233,18 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	domainID, _, err = hyper.Task(status).Info(status.DomainName, status.DomainId)
+	domainID, state, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
 
+	// XXX key missing piece to avoid setting Activated below
+	if err != nil {
+		status.BootFailed = true
+		status.State = state
+		status.Activated = false
+		status.SetErrorNow(err.Error())
+		log.Infof("doActivateTail(%v) failed for %s: %s",
+			status.UUIDandVersion, status.DisplayName, err)
+		return
+	}
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
