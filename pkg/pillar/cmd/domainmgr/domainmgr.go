@@ -742,17 +742,12 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
-			// XXX
-			if false && status.IsContainer {
-				status.SetErrorNow("container exited - please restart application instance")
-			}
 
 			// check if task is in the BROKEN state and kill it (later on we may do some
 			// level of recovery or at least gather some intel on why and how it crashed)
 			// NOTE: we don't do anything for repairing tasks in the UNKNOWN state, for those
 			// the only remedy is an explicit user action (delete, restart, etc.)
 			if domainStatus == types.BROKEN {
-				// XXX old error?
 				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
 				log.Errorf(err.Error())
 				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")

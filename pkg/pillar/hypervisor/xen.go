@@ -430,10 +430,10 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	stdOut, stdErr, err := containerd.CtrExec(domainName,
 		[]string{"/etc/xen/scripts/xen-info", domainName})
 	if err != nil {
-		// XXX state is already stopped; can we get that state?
 		log.Errorln("xen-info ", err)
 		log.Errorln("xen-info output ", stdOut, stdErr)
-		// XXX better error return
+		// XXX this likely means domain has died, we need to fetch its final note
+		// and augment error reported back with it:
 		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s", err)
 	}
 	log.Infof("xen-info done. Result %s\n", stdOut)
