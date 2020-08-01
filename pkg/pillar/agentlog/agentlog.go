@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
@@ -481,16 +482,20 @@ func getOtherIMGdir(inprogressCheck bool) string {
 }
 
 // Debug info to tell how often/late we call stillRunning; keyed by agentName
-var lastStillMap = make(map[string]time.Time)
+var lockedLastStillMap = base.NewLockedStringMap()
 
 // Touch a file per agentName to signal the event loop is still running
 // Could be use by watchdog
 func StillRunning(agentName string, warnTime time.Duration, errTime time.Duration) {
 	log.Debugf("StillRunning(%s)\n", agentName)
 
-	if ls, found := lastStillMap[agentName]; !found {
-		lastStillMap[agentName] = time.Now()
+	if lsValue, found := lockedLastStillMap.Load(agentName); !found {
+		lockedLastStillMap.Store(agentName, time.Now())
 	} else {
+		ls, ok := lsValue.(time.Time)
+		if !ok {
+			log.Fatalf("Unexpected type from lockedLastStillMap: wanted time.Time, got %T", lsValue)
+		}
 		elapsed := time.Since(ls)
 		if elapsed > errTime {
 			log.Errorf("StillRunning(%s) XXX took a long time: %d",
@@ -499,7 +504,7 @@ func StillRunning(agentName string, warnTime time.Duration, errTime time.Duratio
 			log.Warnf("StillRunning(%s) took a long time: %d",
 				agentName, elapsed/time.Second)
 		}
-		lastStillMap[agentName] = time.Now()
+		lockedLastStillMap.Store(agentName, time.Now())
 	}
 
 	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
