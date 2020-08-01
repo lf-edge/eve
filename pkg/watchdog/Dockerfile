@@ -9,12 +9,12 @@ RUN apk add \
     linux-headers \
     tar
 
-# Version 5.15
-ENV WATCHDOGD_VERSION 5.15
+# Version 5.16
+ENV WATCHDOGD_VERSION 5.16
 ENV WATCHDOGD_SRC_DIR watchdog-${WATCHDOGD_VERSION}
 ENV WATCHDOGD_SRC_TAR ${WATCHDOGD_SRC_DIR}.tar
 ENV WATCHDOGD_SRC_TGZ ${WATCHDOGD_SRC_TAR}.gz
-ENV WATCHDOGD_MIRROR_URL https://jaist.dl.sourceforge.net/project/watchdog/watchdog/
+ENV WATCHDOGD_MIRROR_URL https://deac-ams.dl.sourceforge.net/project/watchdog/watchdog/
 ENV WATCHDOGD_SRC_URL ${WATCHDOGD_MIRROR_URL}/${WATCHDOGD_VERSION}/${WATCHDOGD_SRC_TGZ}
 
 WORKDIR /
