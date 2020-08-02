@@ -130,6 +130,15 @@ else
         mkdir $PERSISTDIR/vault
     fi
 fi
+# XXX FIXME: this is an "Indiana Jones snatch" attempt at
+# swapping content and snapshotter folders undeneath containerd.
+# Just like th original Indiana Jones's move this is highly risky.
+for i in io.containerd.snapshotter.v1.overlayfs io.containerd.content.v1.content; do
+    mkdir -p "$PERSISTDIR/vault/containerd/$i"
+    ln -s "../../../containerd/$i.fallback/metadata.db" "$PERSISTDIR/vault/containerd/$i/metadata.db" || :
+    ln -s "../vault/containerd/$i" "$PERSISTDIR/containerd/$i.tmp" 
+    mv -Tf "$PERSISTDIR/containerd/$i.tmp" "$PERSISTDIR/containerd/$i"
+done
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
     echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"

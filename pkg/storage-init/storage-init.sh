@@ -6,15 +6,15 @@
 PERSISTDIR=/var/persist
 CONFIGDIR=/var/config
 
-# The only bit of initialization we do is to point containerd to /persist
-# The trick here is to only do it if /persist is available and otherwise
-# allow containerd to run with /var/lib/containerd on tmpfs (to make sure
-# that the system comes up somehow)
+# XXX FIXME: this is a hack that allows us to delay initializtion of
+# overlayfs snapshotter plugin long enough to allow vault to be unlocked
+# Note that this arrangement makes metadata.db appears in an unecrypted dir
 init_containerd() {
-    mkdir -p "$PERSISTDIR/containerd"
-    mkdir -p /var/lib
-    rm -rf /var/lib/containerd
-    ln -s "$PERSISTDIR/containerd" /var/lib/containerd
+    for i in io.containerd.snapshotter.v1.overlayfs io.containerd.content.v1.content; do
+       mkdir -p "$PERSISTDIR/containerd/$i.fallback"
+       rm -rf "$PERSISTDIR/containerd/$i" 
+       ln -s "$i.fallback" "$PERSISTDIR/containerd/$i"
+    done
 }
 
 mkdir -p $PERSISTDIR
@@ -110,7 +110,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         chroot /hostfs zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
         # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
         #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
-        chroot /hostfs zfs create -p -o mountpoint=/var/lib/containerd/io.containerd.snapshotter.v1.zfs persist/snapshots
+        chroot /hostfs zfs create -p -o mountpoint=/var/persist/containerd/io.containerd.snapshotter.v1.zfs persist/snapshots
         P3_FS_TYPE=zfs_member
     fi
 
