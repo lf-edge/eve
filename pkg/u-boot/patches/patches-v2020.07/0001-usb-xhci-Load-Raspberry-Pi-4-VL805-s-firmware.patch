@@ -1,0 +1,361 @@
+From patchwork Tue May  5 16:26:06 2020
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+X-Patchwork-Submitter: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+X-Patchwork-Id: 1283753
+X-Patchwork-Delegate: marek.vasut@gmail.com
+Return-Path: <u-boot-bounces@lists.denx.de>
+X-Original-To: incoming@patchwork.ozlabs.org
+Delivered-To: patchwork-incoming@bilbo.ozlabs.org
+Authentication-Results: ozlabs.org;
+ spf=pass (sender SPF authorized) smtp.mailfrom=lists.denx.de
+ (client-ip=85.214.62.61; helo=phobos.denx.de;
+ envelope-from=u-boot-bounces@lists.denx.de; receiver=<UNKNOWN>)
+Authentication-Results: ozlabs.org;
+ dmarc=none (p=none dis=none) header.from=suse.de
+Received: from phobos.denx.de (phobos.denx.de [85.214.62.61])
+ (using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 (256/256 bits)
+ key-exchange X25519 server-signature RSA-PSS (4096 bits))
+ (No client certificate requested)
+ by ozlabs.org (Postfix) with ESMTPS id 49GlV44bJCz9sT0
+ for <incoming@patchwork.ozlabs.org>; Wed,  6 May 2020 02:26:36 +1000 (AEST)
+Received: from h2850616.stratoserver.net (localhost [IPv6:::1])
+ by phobos.denx.de (Postfix) with ESMTP id C14658209E;
+ Tue,  5 May 2020 18:26:25 +0200 (CEST)
+Authentication-Results: phobos.denx.de;
+ dmarc=none (p=none dis=none) header.from=suse.de
+Authentication-Results: phobos.denx.de;
+ spf=pass smtp.mailfrom=u-boot-bounces@lists.denx.de
+Received: by phobos.denx.de (Postfix, from userid 109)
+ id 92EA581C4C; Tue,  5 May 2020 18:26:21 +0200 (CEST)
+X-Spam-Checker-Version: SpamAssassin 3.4.2 (2018-09-13) on phobos.denx.de
+X-Spam-Level: 
+X-Spam-Status: No, score=-1.9 required=5.0 tests=BAYES_00,RCVD_IN_MSPIKE_H3,
+ RCVD_IN_MSPIKE_WL,SPF_HELO_NONE,URIBL_BLOCKED autolearn=ham
+ autolearn_force=no version=3.4.2
+Received: from mx2.suse.de (mx2.suse.de [195.135.220.15])
+ (using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+ (No client certificate requested)
+ by phobos.denx.de (Postfix) with ESMTPS id 0042B81A66
+ for <u-boot@lists.denx.de>; Tue,  5 May 2020 18:26:17 +0200 (CEST)
+Authentication-Results: phobos.denx.de;
+ dmarc=none (p=none dis=none) header.from=suse.de
+Authentication-Results: phobos.denx.de;
+ spf=pass smtp.mailfrom=nsaenzjulienne@suse.de
+Received: from relay2.suse.de (unknown [195.135.220.254])
+ by mx2.suse.de (Postfix) with ESMTP id 01199AED5;
+ Tue,  5 May 2020 16:26:19 +0000 (UTC)
+From: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+To: mbrugger@suse.com, u-boot@lists.denx.de, bmeng.cn@gmail.com, marex@denx.de,
+ linux-kernel@vger.kernel.org
+Cc: sjg@chromium.org, m.szyprowski@samsung.com, s.nawrocki@samsung.com,
+ mark.kettenis@xs4all.nl, Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+Subject: [PATCH v3 1/2] arm: rpi: Add function to trigger VL805's firmware load
+Date: Tue,  5 May 2020 18:26:06 +0200
+Message-Id: <20200505162607.334-2-nsaenzjulienne@suse.de>
+X-Mailer: git-send-email 2.26.2
+In-Reply-To: <20200505162607.334-1-nsaenzjulienne@suse.de>
+References: <20200505162607.334-1-nsaenzjulienne@suse.de>
+MIME-Version: 1.0
+X-BeenThere: u-boot@lists.denx.de
+X-Mailman-Version: 2.1.30rc1
+Precedence: list
+List-Id: U-Boot discussion <u-boot.lists.denx.de>
+List-Unsubscribe: <https://lists.denx.de/options/u-boot>,
+ <mailto:u-boot-request@lists.denx.de?subject=unsubscribe>
+List-Archive: <https://lists.denx.de/pipermail/u-boot/>
+List-Post: <mailto:u-boot@lists.denx.de>
+List-Help: <mailto:u-boot-request@lists.denx.de?subject=help>
+List-Subscribe: <https://lists.denx.de/listinfo/u-boot>,
+ <mailto:u-boot-request@lists.denx.de?subject=subscribe>
+Errors-To: u-boot-bounces@lists.denx.de
+Sender: "U-Boot" <u-boot-bounces@lists.denx.de>
+X-Virus-Scanned: clamav-milter 0.102.2 at phobos.denx.de
+X-Virus-Status: Clean
+
+On the Raspberry Pi 4, after a PCI reset, VL805's (a xHCI chip) firmware
+may either be loaded directly from an EEPROM or, if not present, by the
+SoC's VideCore (the SoC's co-processor). Introduce the function that
+informs VideCore that VL805 may need its firmware loaded.
+
+Signed-off-by: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+---
+Changes since v2:
+ - Correct wrong function name in comment
+ - Add better comment on rpi_firmware_init_vl805()
+
+Changes since v1:
+ - Rename function so it's not mistaken with regular firmware loading
+
+ arch/arm/mach-bcm283x/include/mach/mbox.h | 13 +++++++
+ arch/arm/mach-bcm283x/include/mach/msg.h  |  7 ++++
+ arch/arm/mach-bcm283x/msg.c               | 45 +++++++++++++++++++++++
+ 3 files changed, 65 insertions(+)
+
+diff --git a/arch/arm/mach-bcm283x/include/mach/mbox.h b/arch/arm/mach-bcm283x/include/mach/mbox.h
+index 60e226ce1d..2ae2d3d97c 100644
+--- a/arch/arm/mach-bcm283x/include/mach/mbox.h
++++ b/arch/arm/mach-bcm283x/include/mach/mbox.h
+@@ -491,6 +491,19 @@ struct bcm2835_mbox_tag_set_palette {
+ 	} body;
+ };
+ 
++#define BCM2835_MBOX_TAG_NOTIFY_XHCI_RESET          0x00030058
++
++struct bcm2835_mbox_tag_pci_dev_addr {
++	struct bcm2835_mbox_tag_hdr tag_hdr;
++	union {
++		struct {
++			u32 dev_addr;
++		} req;
++		struct {
++		} resp;
++	} body;
++};
++
+ /*
+  * Pass a raw u32 message to the VC, and receive a raw u32 back.
+  *
+diff --git a/arch/arm/mach-bcm283x/include/mach/msg.h b/arch/arm/mach-bcm283x/include/mach/msg.h
+index 4afb08631b..f5213dd0e0 100644
+--- a/arch/arm/mach-bcm283x/include/mach/msg.h
++++ b/arch/arm/mach-bcm283x/include/mach/msg.h
+@@ -48,4 +48,11 @@ int bcm2835_set_video_params(int *widthp, int *heightp, int depth_bpp,
+ 			     int pixel_order, int alpha_mode, ulong *fb_basep,
+ 			     ulong *fb_sizep, int *pitchp);
+ 
++/**
++ * bcm2711_notify_vl805_reset() - get vl805's firmware loaded
++ *
++ * @return 0 if OK, -EIO on error
++ */
++int bcm2711_notify_vl805_reset(void);
++
+ #endif
+diff --git a/arch/arm/mach-bcm283x/msg.c b/arch/arm/mach-bcm283x/msg.c
+index 94b75283f8..f8ef531652 100644
+--- a/arch/arm/mach-bcm283x/msg.c
++++ b/arch/arm/mach-bcm283x/msg.c
+@@ -40,6 +40,12 @@ struct msg_setup {
+ 	u32 end_tag;
+ };
+ 
++struct msg_notify_vl805_reset {
++	struct bcm2835_mbox_hdr hdr;
++	struct bcm2835_mbox_tag_pci_dev_addr dev_addr;
++	u32 end_tag;
++};
++
+ int bcm2835_power_on_module(u32 module)
+ {
+ 	ALLOC_CACHE_ALIGN_BUFFER(struct msg_set_power_state, msg_pwr, 1);
+@@ -151,3 +157,42 @@ int bcm2835_set_video_params(int *widthp, int *heightp, int depth_bpp,
+ 
+ 	return 0;
+ }
++
++/*
++ * The Raspberry Pi 4 gets its USB functionality from VL805, a PCIe chip that
++ * implements xHCI. After a PCI reset, VL805's firmware may either be loaded
++ * directly from an EEPROM or, if not present, by the SoC's co-processor,
++ * VideoCore. RPi4's VideoCore OS contains both the non public firmware load
++ * logic and the VL805 firmware blob. This function triggers the aforementioned
++ * process.
++ */
++int bcm2711_notify_vl805_reset(void)
++{
++	ALLOC_CACHE_ALIGN_BUFFER(struct msg_notify_vl805_reset,
++				 msg_notify_vl805_reset, 1);
++	int ret;
++
++	BCM2835_MBOX_INIT_HDR(msg_notify_vl805_reset);
++	BCM2835_MBOX_INIT_TAG(&msg_notify_vl805_reset->dev_addr,
++			      NOTIFY_XHCI_RESET);
++
++	/*
++	 * The pci device address is expected like this:
++	 *
++	 *   PCI_BUS << 20 | PCI_SLOT << 15 | PCI_FUNC << 12
++	 *
++	 * But since RPi4's PCIe setup is hardwired, we know the address in
++	 * advance.
++	 */
++	msg_notify_vl805_reset->dev_addr.body.req.dev_addr = 0x100000;
++
++	ret = bcm2835_mbox_call_prop(BCM2835_MBOX_PROP_CHAN,
++				     &msg_notify_vl805_reset->hdr);
++	if (ret) {
++		printf("bcm2711: Faild to load vl805's firmware, %d\n", ret);
++		return -EIO;
++	}
++
++	return 0;
++}
++
+
+From patchwork Tue May  5 16:26:07 2020
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+X-Patchwork-Submitter: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+X-Patchwork-Id: 1283757
+X-Patchwork-Delegate: marek.vasut@gmail.com
+Return-Path: <u-boot-bounces@lists.denx.de>
+X-Original-To: incoming@patchwork.ozlabs.org
+Delivered-To: patchwork-incoming@bilbo.ozlabs.org
+Authentication-Results: ozlabs.org;
+ spf=pass (sender SPF authorized) smtp.mailfrom=lists.denx.de
+ (client-ip=2a01:238:438b:c500:173d:9f52:ddab:ee01; helo=phobos.denx.de;
+ envelope-from=u-boot-bounces@lists.denx.de; receiver=<UNKNOWN>)
+Authentication-Results: ozlabs.org;
+ dmarc=none (p=none dis=none) header.from=suse.de
+Received: from phobos.denx.de (phobos.denx.de
+ [IPv6:2a01:238:438b:c500:173d:9f52:ddab:ee01])
+ (using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 (256/256 bits)
+ key-exchange X25519 server-signature RSA-PSS (4096 bits))
+ (No client certificate requested)
+ by ozlabs.org (Postfix) with ESMTPS id 49GlVQ0MyZz9sT0
+ for <incoming@patchwork.ozlabs.org>; Wed,  6 May 2020 02:26:52 +1000 (AEST)
+Received: from h2850616.stratoserver.net (localhost [IPv6:::1])
+ by phobos.denx.de (Postfix) with ESMTP id 40A20820AB;
+ Tue,  5 May 2020 18:26:27 +0200 (CEST)
+Authentication-Results: phobos.denx.de;
+ dmarc=none (p=none dis=none) header.from=suse.de
+Authentication-Results: phobos.denx.de;
+ spf=pass smtp.mailfrom=u-boot-bounces@lists.denx.de
+Received: by phobos.denx.de (Postfix, from userid 109)
+ id A816381C4C; Tue,  5 May 2020 18:26:22 +0200 (CEST)
+X-Spam-Checker-Version: SpamAssassin 3.4.2 (2018-09-13) on phobos.denx.de
+X-Spam-Level: 
+X-Spam-Status: No, score=-1.9 required=5.0 tests=BAYES_00,RCVD_IN_MSPIKE_H3,
+ RCVD_IN_MSPIKE_WL,SPF_HELO_NONE,URIBL_BLOCKED autolearn=ham
+ autolearn_force=no version=3.4.2
+Received: from mx2.suse.de (mx2.suse.de [195.135.220.15])
+ (using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+ (No client certificate requested)
+ by phobos.denx.de (Postfix) with ESMTPS id E5F898196A
+ for <u-boot@lists.denx.de>; Tue,  5 May 2020 18:26:19 +0200 (CEST)
+Authentication-Results: phobos.denx.de;
+ dmarc=none (p=none dis=none) header.from=suse.de
+Authentication-Results: phobos.denx.de;
+ spf=pass smtp.mailfrom=nsaenzjulienne@suse.de
+Received: from relay2.suse.de (unknown [195.135.220.254])
+ by mx2.suse.de (Postfix) with ESMTP id EB82AAF5D;
+ Tue,  5 May 2020 16:26:21 +0000 (UTC)
+From: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+To: mbrugger@suse.com, u-boot@lists.denx.de, bmeng.cn@gmail.com, marex@denx.de,
+ linux-kernel@vger.kernel.org
+Cc: sjg@chromium.org, m.szyprowski@samsung.com, s.nawrocki@samsung.com,
+ mark.kettenis@xs4all.nl, Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+Subject: [PATCH v3 2/2] usb: xhci: Load Raspberry Pi 4 VL805's firmware
+Date: Tue,  5 May 2020 18:26:07 +0200
+Message-Id: <20200505162607.334-3-nsaenzjulienne@suse.de>
+X-Mailer: git-send-email 2.26.2
+In-Reply-To: <20200505162607.334-1-nsaenzjulienne@suse.de>
+References: <20200505162607.334-1-nsaenzjulienne@suse.de>
+MIME-Version: 1.0
+X-BeenThere: u-boot@lists.denx.de
+X-Mailman-Version: 2.1.30rc1
+Precedence: list
+List-Id: U-Boot discussion <u-boot.lists.denx.de>
+List-Unsubscribe: <https://lists.denx.de/options/u-boot>,
+ <mailto:u-boot-request@lists.denx.de?subject=unsubscribe>
+List-Archive: <https://lists.denx.de/pipermail/u-boot/>
+List-Post: <mailto:u-boot@lists.denx.de>
+List-Help: <mailto:u-boot-request@lists.denx.de?subject=help>
+List-Subscribe: <https://lists.denx.de/listinfo/u-boot>,
+ <mailto:u-boot-request@lists.denx.de?subject=subscribe>
+Errors-To: u-boot-bounces@lists.denx.de
+Sender: "U-Boot" <u-boot-bounces@lists.denx.de>
+X-Virus-Scanned: clamav-milter 0.102.2 at phobos.denx.de
+X-Virus-Status: Clean
+
+When needed, RPi4's co-processor (called VideoCore) has to be instructed
+to load VL805's firmware (the chip providing xHCI support). VideCore's
+firmware expects the board's PCIe bus to be already configured in order
+for it to load the xHCI chip firmware. So we have to make sure this
+happens in between the PCIe configuration and xHCI startup.
+
+Introduce a callback in xhci_pci_probe() to run this platform specific
+routine.
+
+Signed-off-by: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+---
+
+Changes since v2:
+ - Get rid of #ifdef CONFIG_BCM2711
+ - Get rid of redundant error message
+
+Changes since v1:
+ - Create callback
+
+ board/raspberrypi/rpi/rpi.c | 6 ++++++
+ drivers/usb/host/xhci-pci.c | 6 ++++++
+ include/usb/xhci.h          | 3 +++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/board/raspberrypi/rpi/rpi.c b/board/raspberrypi/rpi/rpi.c
+index e367ba3092..dcaf45fbf2 100644
+--- a/board/raspberrypi/rpi/rpi.c
++++ b/board/raspberrypi/rpi/rpi.c
+@@ -14,6 +14,7 @@
+ #include <lcd.h>
+ #include <memalign.h>
+ #include <mmc.h>
++#include <usb/xhci.h>
+ #include <asm/gpio.h>
+ #include <asm/arch/mbox.h>
+ #include <asm/arch/msg.h>
+@@ -494,3 +495,8 @@ int ft_board_setup(void *blob, bd_t *bd)
+ 
+ 	return 0;
+ }
++
++void xhci_pci_fixup(struct udevice *dev)
++{
++	bcm2711_notify_vl805_reset();
++}
+diff --git a/drivers/usb/host/xhci-pci.c b/drivers/usb/host/xhci-pci.c
+index c1f60da541..1285dde1ef 100644
+--- a/drivers/usb/host/xhci-pci.c
++++ b/drivers/usb/host/xhci-pci.c
+@@ -11,6 +11,10 @@
+ #include <usb.h>
+ #include <usb/xhci.h>
+ 
++__weak void xhci_pci_fixup(struct udevice *dev)
++{
++}
++
+ static void xhci_pci_init(struct udevice *dev, struct xhci_hccr **ret_hccr,
+ 			  struct xhci_hcor **ret_hcor)
+ {
+@@ -40,6 +44,8 @@ static int xhci_pci_probe(struct udevice *dev)
+ 	struct xhci_hccr *hccr;
+ 	struct xhci_hcor *hcor;
+ 
++	xhci_pci_fixup(dev);
++
+ 	xhci_pci_init(dev, &hccr, &hcor);
+ 
+ 	return xhci_register(dev, hccr, hcor);
+diff --git a/include/usb/xhci.h b/include/usb/xhci.h
+index c16106a2fc..57feed7603 100644
+--- a/include/usb/xhci.h
++++ b/include/usb/xhci.h
+@@ -16,6 +16,7 @@
+ #ifndef HOST_XHCI_H_
+ #define HOST_XHCI_H_
+ 
++#include <usb.h>
+ #include <asm/types.h>
+ #include <asm/cache.h>
+ #include <asm/io.h>
+@@ -1281,4 +1282,6 @@ extern struct dm_usb_ops xhci_usb_ops;
+ 
+ struct xhci_ctrl *xhci_get_ctrl(struct usb_device *udev);
+ 
++extern void xhci_pci_fixup(struct udevice *dev);
++
+ #endif /* HOST_XHCI_H_ */
