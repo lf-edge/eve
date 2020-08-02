@@ -16,12 +16,13 @@
    - GPTTOOLS_TAG
    - DOM0ZTOOLS_TAG
  onboot:
-@@ -46,8 +46,6 @@
-      image: VTPM_TAG
+@@ -56,9 +56,6 @@
     - name: watchdog
       image: WATCHDOG_TAG
+      cgroupsPath: /eve/eve-watchdog
 -   - name: xen-tools
 -     image: XENTOOLS_TAG
+-     cgroupsPath: /eve/eve-xen-tools
  files:
     - path: /etc/eve-release
       contents: 'EVE_VERSION'
