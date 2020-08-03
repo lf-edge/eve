@@ -122,16 +122,16 @@ var mToF = []modelToFuncs{
 		// No dd disk light blinking on QEMU
 	},
 	{
-		model:     "raspberrypi,4-model-b.brcm,bcm2711",
+		model:     "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
-		ledName:   "input0::scrolllock", /// XXX find on-board LED
+		ledName:   "led0",
 	},
 	{
 		model:     "RaspberryPi.RPi4",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
-		ledName:   "input0::scrolllock", /// XXX find on-board LED
+		ledName:   "led0",
 	},
 	{
 		// Last in table as a default
