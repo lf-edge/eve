@@ -361,9 +361,10 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	}
 }
 
-func (ctx kvmContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
-	aa *types.AssignableAdapters, file *os.File) error {
+func (ctx kvmContext) Setup(status *types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
 
+	diskStatusList := status.DiskStatusList
+	domainName := status.DomainName
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(domainName, config, diskStatusList, aa, file); err != nil {
 		return logError("failed to build domain config: %v", err)

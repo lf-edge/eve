@@ -153,7 +153,7 @@ const (
 
 // Task represents any runnable entity on EVE
 type Task interface {
-	Setup(string, DomainConfig, []DiskStatus, *AssignableAdapters, *os.File) error
+	Setup(*DomainStatus, DomainConfig, *AssignableAdapters, *os.File) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string, int) error
 	Stop(string, int, bool) error
