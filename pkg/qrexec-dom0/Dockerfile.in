@@ -12,12 +12,13 @@ RUN apk add --no-cache \
 COPY --from=xentools / /
 COPY --from=qrexec_lib / /
 
-RUN git clone https://github.com/Zededa/qubes-core-admin-linux /qubes-core-admin-linux
+RUN git clone https://github.com/QubesOS/qubes-core-qrexec qubes-core-qrexec
 
 RUN mkdir -p /out/usr/bin
 
-WORKDIR /qubes-core-admin-linux/qrexec
+WORKDIR /qubes-core-qrexec/daemon
 
+RUN sed -i. -e 's#-Wall##' -e 's#-Wextra##' -e 's#-Werror##'  `find . -name Makefile` 
 RUN make BACKEND_VMM=xen
 RUN cp qrexec-daemon qrexec-client /out/usr/bin
 
