@@ -2,6 +2,8 @@ FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 as build
 
 ENV VERSION v2020.07
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
+ENV RAPBERRY_FIRMWARE_BLOBS_VERSION 1.20200601
+ENV RAPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RAPBERRY_FIRMWARE_BLOBS_VERSION}
 ENV TARGET_x86_64 qemu-x86_defconfig
 ENV TARGET_aarch64 rpi_4_defconfig
 
@@ -34,8 +36,11 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 
 # export a final set of u-boot artifacts into /boot
 RUN mkdir /boot && cp /u-boot/u-boot.bin /boot
-# FIXME: copy RPi4 binary blobs for now
+# FIXME: copy RPi4 dtb
 COPY rpi /tmp/rpi
+# download blobs for raspberry
+RUN if [ "$(uname -m)" = aarch64 ]; then curl -fsSLo /tmp/rpi/fixup4.dat ${RAPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat ; fi
+RUN if [ "$(uname -m)" = aarch64 ]; then curl -fsSLo /tmp/rpi/start4.elf ${RAPBERRY_FIRMWARE_BLOBS}/boot/start4.elf ; fi
 RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi/* /boot ; fi
 
 
