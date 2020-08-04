@@ -408,6 +408,14 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 					logSource = splitArr[1]
 				}
 			}
+		} else if strings.HasPrefix(logSource, "guest_vm_err-") {
+			splitArr := strings.SplitN(logSource, "guest_vm_err-", 2)
+			if len(splitArr) == 2 {
+				if splitArr[0] == "" && splitArr[1] != "" {
+					appLog = true
+					logSource = splitArr[1]
+				}
+			}
 		} else if logInfo.Containername != "" {
 			logSource = logInfo.Containername
 			appUUID = logInfo.Appuuid
