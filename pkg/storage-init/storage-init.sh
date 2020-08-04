@@ -6,17 +6,6 @@
 PERSISTDIR=/var/persist
 CONFIGDIR=/var/config
 
-# The only bit of initialization we do is to point containerd to /persist
-# The trick here is to only do it if /persist is available and otherwise
-# allow containerd to run with /var/lib/containerd on tmpfs (to make sure
-# that the system comes up somehow)
-init_containerd() {
-    mkdir -p "$PERSISTDIR/containerd"
-    mkdir -p /var/lib
-    rm -rf /var/lib/containerd
-    ln -s "$PERSISTDIR/containerd" /var/lib/containerd
-}
-
 mkdir -p $PERSISTDIR
 chmod 700 $PERSISTDIR
 mkdir -p $CONFIGDIR
@@ -110,7 +99,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         chroot /hostfs zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
         # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
         #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
-        chroot /hostfs zfs create -p -o mountpoint=/var/lib/containerd/io.containerd.snapshotter.v1.zfs persist/snapshots
+        chroot /hostfs zfs create -p -o mountpoint=/var/persist/containerd/io.containerd.snapshotter.v1.zfs persist/snapshots
         P3_FS_TYPE=zfs_member
     fi
 
@@ -159,8 +148,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
 
     # deposit fs type into /run
     echo "$P3_FS_TYPE" > /run/eve.persist_type
-    # making sure containerd uses P3 for storing its state
-    init_containerd
     # this is safe, since if the mount fails the following will fail too
     # shellcheck disable=SC2046
     rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
