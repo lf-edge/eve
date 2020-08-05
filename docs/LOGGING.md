@@ -26,6 +26,7 @@ Logs coming from xen-tools container are of three kinds:
 * xen hypervisor logs under the name ```hypervisor```
 * each domain launched by xen-tools container also logs under the following names
   * ```guest_vm-[VM_NAME]``` logs the console output for VM_NAME domain
+  * ```guest_vm_err-[VM_NAME]``` logs the console error ouptut for VM_NAME domain
   * ```qemu-dm-[VM_NAME]``` logs the qemu device model output
   * ```qdisk-[VM ID]``` logs the qdisk output
 
