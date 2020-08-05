@@ -46,7 +46,7 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx ctrdContext) Setup(status *types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
+func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 	spec, err := containerd.NewOciSpec(domainName)

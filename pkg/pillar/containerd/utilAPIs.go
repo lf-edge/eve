@@ -93,3 +93,13 @@ func UnpackClientImage(clientImage containerd.Image) error {
 	}
 	return nil
 }
+
+//isFile check if the given path is pointing to a file.
+func isFile(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		log.Errorf("isFile(%s): %s", path, err.Error())
+		return false
+	}
+	return !fileInfo.IsDir()
+}
