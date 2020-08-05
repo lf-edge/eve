@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/containerd/containerd/api/services/tasks/v1"
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
@@ -19,9 +18,11 @@ import (
 	"time"
 
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/snapshots"
@@ -123,6 +124,13 @@ func CtrWriteBlob(blobHash string, expectedSize uint64, reader io.Reader) error 
 	if err := verifyCtr(); err != nil {
 		return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s", err.Error())
 	}
+	// Check if ctrdCtx has a lease before writing a blob to make sure that it doesn't get GCed
+	leaseID, _ := leases.FromContext(ctrdCtx)
+	leaseList, _ := CtrdClient.LeasesService().List(ctrdCtx, fmt.Sprintf("id==%s", leaseID))
+	if len(leaseList) < 1 {
+		return fmt.Errorf("CtrWriteBlob: could not find lease: %s", leaseID)
+	}
+
 	expectedDigest := digest.Digest(blobHash)
 	if err := expectedDigest.Validate(); err != nil {
 		return fmt.Errorf("CtrWriteBlob: exception while validating hash format of %s. %v", blobHash, err)
@@ -382,28 +390,32 @@ func CtrGetContainerMetrics(containerID string) (*v1stat.Metrics, error) {
 	}
 }
 
-// CtrContainerInfo looks up container's info
-func CtrContainerInfo(name string) (int, string, error) {
+// CtrContainerInfo returns PID, exit code and status of a container's main task
+// Status can be one of the: created, running, pausing, paused, stopped, unknown
+// For tasks that are in the running, pausing or paused state the PID is also provided
+// and the exit code is set to 0. For tasks in the stopped state, exit code is provided
+// and the PID is set to 0.
+func CtrContainerInfo(name string) (int, int, string, error) {
 	if err := verifyCtr(); err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: exception while verifying ctrd client: %s", err.Error())
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: exception while verifying ctrd client: %s", err.Error())
 	}
 
 	c, err := CtrLoadContainer(name)
 	if err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't load container %s: %v", name, err)
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't load container %s: %v", name, err)
 	}
 
 	t, err := c.Task(ctrdCtx, nil)
 	if err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't load task for container %s: %v", name, err)
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't load task for container %s: %v", name, err)
 	}
 
 	stat, err := t.Status(ctrdCtx)
 	if err != nil {
-		return 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
+		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
 	}
 
-	return int(t.Pid()), string(stat.Status), nil
+	return int(t.Pid()), int(stat.ExitStatus), string(stat.Status), nil
 }
 
 // CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
@@ -419,8 +431,8 @@ func CtrCreateTask(domainName string) (int, error) {
 	logger := GetLog()
 
 	io := func(id string) (cio.IO, error) {
-		stdoutFile := logger.Path(domainName + ".out")
-		stderrFile := logger.Path(domainName)
+		stdoutFile := logger.Path("guest_vm-" + domainName)
+		stderrFile := logger.Path("guest_vm_err-" + domainName)
 		return &logio{
 			cio.Config{
 				Stdin:    "/dev/null",
@@ -641,6 +653,7 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 		if memOverhead > 0 {
 			spec.AdjustMemLimit(*domSettings, memOverhead)
 		}
+		spec.UpdateMounts(domSettings.DiskConfigList)
 	}
 
 	if args != nil {
@@ -656,12 +669,21 @@ func CtrCreateLease() (func() error, error) {
 	if err := verifyCtr(); err != nil {
 		return nil, fmt.Errorf("CtrCreateLease: exception while verifying ctrd client: %s", err.Error())
 	}
-	ctrdCtx, done, err := CtrdClient.WithLease(ctrdCtx)
+	var (
+		err  error
+		done func(context.Context) error
+	)
+	ctrdCtx, done, err = CtrdClient.WithLease(ctrdCtx)
 	if err != nil {
 		return nil, fmt.Errorf("CtrCreateLease: exception while creating lease: %s", err.Error())
 	}
 	return func() error {
-		return done(ctrdCtx)
+		if err := done(ctrdCtx); err != nil {
+			return err
+		}
+		//Reinitializing context to get rid of leaseID
+		ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
+		return nil
 	}, nil
 }
 

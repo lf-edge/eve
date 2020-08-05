@@ -205,19 +205,29 @@ func getLatestConfig(url string, iteration int,
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := 2
-		if rtf == types.SenderStatusRemTempFail {
-			log.Infof("getLatestConfig remoteTemporaryFailure: %s", err)
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			log.Infof("getLatestConfig : Controller upgrade in progress")
+		case types.SenderStatusRefused:
+			log.Infof("getLatestConfig : Controller returned ECONNREFUSED")
+		case types.SenderStatusCertInvalid:
+			log.Warnf("getLatestConfig : Controller certificate invalid time")
+		case types.SenderStatusCertMiss:
+			log.Infof("getLatestConfig : Controller certificate miss")
+		default:
+			log.Errorf("getLatestConfig  failed: %s", err)
+		}
+		switch rtf {
+		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid:
 			newCount = 3 // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
 				getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
 			}
-		} else if rtf == types.SenderStatusCertMiss {
+		case types.SenderStatusCertMiss:
 			// trigger to acquire new controller certs from cloud
 			triggerControllerCertEvent(getconfigCtx.zedagentCtx)
-		} else {
-			log.Errorf("getLatestConfig failed: %s", err)
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
@@ -246,6 +256,24 @@ func getLatestConfig(url string, iteration int,
 			}
 		}
 		publishZedAgentStatus(getconfigCtx)
+		return false
+	}
+
+	if resp.StatusCode == http.StatusNotModified {
+		log.Debugf("StatusNotModified len %d", len(contents))
+		// Inform ledmanager about config received from cloud
+		utils.UpdateLedManagerConfig(4)
+		getconfigCtx.ledManagerCount = 4
+
+		if !getconfigCtx.configReceived {
+			getconfigCtx.configReceived = true
+		}
+		getconfigCtx.configGetStatus = types.ConfigGetSuccess
+		publishZedAgentStatus(getconfigCtx)
+
+		log.Debugf("Configuration from zedcloud is unchanged")
+		// Update modification time since checked by readSavedProtoMessage
+		touchReceivedProtoMessage()
 		return false
 	}
 
@@ -290,7 +318,7 @@ func getLatestConfig(url string, iteration int,
 }
 
 func validateProtoMessage(url string, r *http.Response) error {
-	//No check Content-Type for empty response
+	// No check Content-Type for empty response
 	if r.ContentLength == 0 {
 		return nil
 	}
@@ -417,11 +445,6 @@ func generateConfigRequest() ([]byte, *zconfig.ConfigRequest, error) {
 // Returns changed, config, error. The changed is based the ConfigRequest vs
 // the ConfigResponse hash
 func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool, *zconfig.EdgeDevConfig, error) {
-
-	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified len %d", len(contents))
-		return false, nil, nil
-	}
 
 	var configResponse = &zconfig.ConfigResponse{}
 	err := proto.Unmarshal(contents, configResponse)

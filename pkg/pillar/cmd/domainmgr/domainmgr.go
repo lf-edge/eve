@@ -742,9 +742,6 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
-			if status.IsContainer {
-				status.SetErrorNow("container exited - please restart application instance")
-			}
 
 			// check if task is in the BROKEN state and kill it (later on we may do some
 			// level of recovery or at least gather some intel on why and how it crashed)
@@ -1169,7 +1166,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).Setup(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
+	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
@@ -1221,6 +1218,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
+		// XXX set BootFailed to cause retry
+		status.BootFailed = true
+		status.State = types.BROKEN
 		return
 	}
 	// The -emu interfaces were most likely created as result of the boot so we
@@ -1228,8 +1228,18 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	domainID, _, err = hyper.Task(status).Info(status.DomainName, status.DomainId)
+	domainID, state, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
 
+	// XXX key missing piece to avoid setting Activated below
+	if err != nil {
+		status.BootFailed = true
+		status.State = state
+		status.Activated = false
+		status.SetErrorNow(err.Error())
+		log.Infof("doActivateTail(%v) failed for %s: %s",
+			status.UUIDandVersion, status.DisplayName, err)
+		return
+	}
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1440,6 +1450,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format
+		ds.MountDir = dc.MountDir
+		ds.DisplayName = dc.DisplayName
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Format == zconfig.Format_CONTAINER {

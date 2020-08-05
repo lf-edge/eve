@@ -210,6 +210,7 @@ type VolumeRefConfig struct {
 	VolumeID          uuid.UUID
 	GenerationCounter int64
 	RefCount          uint
+	MountDir          string
 }
 
 // Key : VolumeRefConfig unique key
@@ -278,6 +279,7 @@ type VolumeRefStatus struct {
 	ReadOnly           bool
 	DisplayName        string
 	MaxVolSize         uint64
+	MountDir           string
 	PendingAdd         bool // Flag to identify whether volume ref config published or not
 
 	ErrorAndTimeWithSource

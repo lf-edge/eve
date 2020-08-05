@@ -72,9 +72,10 @@ func (ctx xenContext) Task(status *types.DomainStatus) types.Task {
 	}
 }
 
-func (ctx xenContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
-	aa *types.AssignableAdapters, file *os.File) error {
+func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
 
+	diskStatusList := status.DiskStatusList
+	domainName := status.DomainName
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(domainName, config, diskStatusList, aa, file); err != nil {
 		return logError("failed to build domain config: %v", err)
@@ -432,51 +433,22 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	if err != nil {
 		log.Errorln("xen-info ", err)
 		log.Errorln("xen-info output ", stdOut, stdErr)
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s %s", stdOut, stdErr)
+		// XXX this likely means domain has died, we need to fetch its final note
+		// and augment error reported back with it:
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s", err)
 	}
 	log.Infof("xen-info done. Result %s\n", stdOut)
 
-	//stdoutStderr should have 2 rows separated by '\n'. Where 1st row will be column names and 2nd row will be domain details
-	cmdResponse := strings.Split(stdOut, "\n")
-	if len(cmdResponse) < 2 {
-		log.Errorln("Info: domain not present in xen-info output", stdOut)
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain not present in xen-info output %s", string(stdOut))
-	}
-	//Removing all extra space between column result and split the result as array.
-	xlDomainResult := regexp.MustCompile(`\s+`).ReplaceAllString(cmdResponse[1], " ")
-	//Domain's status is 5th column in xl list <domain> result
-	domainState := strings.Split(xlDomainResult, " ")[4]
-	//Removing all unset state bits represented by "-"
-	domainState = strings.ReplaceAll(domainState, "-", "")
-	//Domain's ID is the 2nd columd in xl list <domain> result
-	effectiveDomainID, err = strconv.Atoi(strings.Split(xlDomainResult, " ")[1])
-	if len(domainState) < 1 || err != nil {
-		// for case where xl info returns ------ we assume the domain is running
-		log.Infof("Info: domain %s in ------ state with ID %d", domainName, effectiveDomainID)
-		domainState = "r"
-	} else {
-		if effectiveDomainID != domainID {
-			log.Warningf("Info: domainid changed from %d to %d for %s\n",
-				domainID, effectiveDomainID, domainName)
-		}
-	}
-	log.Debugf("Info: domain: %s domainState: %s domainID: %d", domainName, domainState, effectiveDomainID)
-	//In case of more that 1 (logically possible) domain state, will consider the last state.
-	lastState := domainState[len(domainState)-1:]
-	log.Debugf("Info: domain: %s lastState: %s", domainName, lastState)
-	// these states are taken from https://xenbits.xen.org/docs/unstable/man/xl.1.html (scroll to STATES)
 	stateMap := map[string]types.SwState{
-		"r": types.RUNNING,
-		"b": types.RUNNING,
-		"p": types.PAUSED,
-		"s": types.HALTING,
-		"c": types.BROKEN,
-		"d": types.HALTING,
+		"running": types.RUNNING,
+		"paused":  types.PAUSED,
+		"halting": types.HALTING,
+		"broken":  types.BROKEN,
 	}
-	effectiveDomainState, matched := stateMap[lastState]
+	effectiveDomainState, matched := stateMap[strings.TrimSpace(stdOut)]
 	if !matched {
 		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %s",
-			domainName, lastState)
+			domainName, stdOut)
 	}
 
 	return effectiveDomainID, effectiveDomainState, nil

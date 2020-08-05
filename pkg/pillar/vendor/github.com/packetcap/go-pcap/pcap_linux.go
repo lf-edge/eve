@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -51,7 +52,8 @@ type captured struct {
 }
 
 type Handle struct {
-	isOpen          bool
+	// this must be first for atomic to behave nicely
+	isOpen          uint32
 	syscalls        bool
 	promiscuous     bool
 	index           int
@@ -73,7 +75,7 @@ type Handle struct {
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	if !h.isOpen {
+	if atomic.LoadUint32(&h.isOpen) == 0 {
 		return data, ci, io.EOF
 	}
 	if h.syscalls {
@@ -130,10 +132,10 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 	blockBase := h.framePtr * h.blockSize
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
 	flagIndex := blockBase + offsetToBlockStatus
-	for {
+	for atomic.LoadUint32(&h.isOpen) > 0 {
 		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d ring pointer %p", h.framePtr, blockBase, flagIndex, h.ring)
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
-			break
+			return h.processMmapPackets(blockBase, flagIndex)
 		}
 		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
 		val, err := syscall.Poll(h.pollfd, -1)
@@ -161,7 +163,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			}
 			if sockOptVal == int(syscall.ENETDOWN) {
 				logger.Errorf("interface %s is down, marking as closed and returning", h.iface)
-				h.isOpen = false
+				atomic.StoreUint32(&h.isOpen, 0)
 				return nil, nil
 			}
 			// we have no idea what it was, so just return
@@ -169,9 +171,19 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
 			logger.Error("socket closed")
+			atomic.StoreUint32(&h.isOpen, 0)
 			return nil, io.EOF
 		}
 	}
+	// if we got here, it was not 0, so EOF
+	return nil, io.EOF
+}
+
+func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error) {
+	logger := log.WithFields(log.Fields{
+		"method": "mmap-process",
+		"iface":  h.iface,
+	})
 	// read the header
 	logger.Debugf("reading block header into b slice from position %d to position %d", blockBase, blockBase+h.blockSize)
 	b := h.ring[blockBase : blockBase+h.blockSize]
@@ -243,7 +255,7 @@ func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
 		"iface": h.iface,
 	})
-	h.isOpen = false
+	atomic.StoreUint32(&h.isOpen, 0)
 	if h.ring != nil {
 		if err := syscall.Munmap(h.ring); err != nil {
 			logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
@@ -287,6 +299,8 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	})
 	logger.Debug("started")
 	h := Handle{
+		// we start with it not open
+		isOpen:   0,
 		snaplen:  snaplen,
 		syscalls: syscalls,
 		iface:    iface,
@@ -400,7 +414,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
-	h.isOpen = true
+	atomic.StoreUint32(&h.isOpen, 1)
 	return &h, nil
 }
 

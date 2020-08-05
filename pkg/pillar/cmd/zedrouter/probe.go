@@ -400,12 +400,9 @@ func launchHostProbe(ctx *zedrouterContext) {
 					}
 					if foundport {
 						startTime := time.Now()
-						resp, _, rtf, err := zedcloud.SendOnIntf(&zcloudCtx, remoteURL, info.IfName, 0, nil, true)
+						resp, _, _, err := zedcloud.SendOnIntf(&zcloudCtx, remoteURL, info.IfName, 0, nil, true)
 						if err != nil {
 							log.Debugf("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
-						}
-						if rtf == types.SenderStatusRemTempFail {
-							log.Debugf("launchHostProbe: remote temp failure\n")
 						}
 						if resp != nil {
 							log.Debugf("launchHostProbe: server %s status code %d\n", serverNameAndPort, resp.StatusCode)

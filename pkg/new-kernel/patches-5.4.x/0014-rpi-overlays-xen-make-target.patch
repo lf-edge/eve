@@ -1,0 +1,14 @@
+diff --git a/arch/arm/boot/dts/overlays/Makefile b/arch/arm/boot/dts/overlays/Makefile
+index fa6db6eed3e2..cbca43456352 100644
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -200,7 +200,8 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
+ 	w1-gpio.dtbo \
+ 	w1-gpio-pullup.dtbo \
+ 	w5500.dtbo \
+-	wittypi.dtbo
++	wittypi.dtbo \
++	pi4-64-xen.dtbo
+ 
+ targets += dtbs dtbs_install
+ targets += $(dtbo-y)

@@ -21,14 +21,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -39,8 +36,7 @@ import (
 const (
 	agentName                   = "nodeagent"
 	timeTickInterval     uint32 = 10
-	watchdogInterval     uint32 = 25
-	networkUpTimeout     uint32 = 300
+	watchdogInterval     uint32 = 25 // For StillRunning
 	maxRebootStackSize          = 1600
 	maxJSONAttributeSize        = maxRebootStackSize + 100
 	configDir                   = "/config"
@@ -61,40 +57,38 @@ const (
 var Version = "No version specified"
 
 type nodeagentContext struct {
-	agentBaseContext       agentbase.Context
-	GCInitialized          bool // Received initial GlobalConfig
-	DNSinitialized         bool // Received DeviceNetworkStatus
-	globalConfig           *types.ConfigItemValueMap
-	subGlobalConfig        pubsub.Subscription
-	subZbootStatus         pubsub.Subscription
-	subZedAgentStatus      pubsub.Subscription
-	subDeviceNetworkStatus pubsub.Subscription
-	subDomainStatus        pubsub.Subscription
-	pubZbootConfig         pubsub.Publication
-	pubNodeAgentStatus     pubsub.Publication
-	curPart                string
-	upgradeTestStartTime   uint32
-	tickerTimer            *time.Ticker
-	stillRunning           *time.Ticker
-	remainingTestTime      time.Duration
-	lastConfigReceivedTime uint32
-	configGetStatus        types.ConfigGetStatus
-	deviceNetworkStatus    *types.DeviceNetworkStatus
-	deviceRegistered       bool
-	updateInprogress       bool
-	updateComplete         bool
-	sshAccess              bool
-	testComplete           bool
-	testInprogress         bool
-	timeTickCount          uint32
-	rebootCmd              bool // Are we rebooting?
-	deviceReboot           bool
-	currentRebootReason    string    // Reason we are rebooting
-	rebootReason           string    // From last reboot
-	rebootImage            string    // Image from which the last reboot happened
-	rebootStack            string    // From last reboot
-	rebootTime             time.Time // From last reboot
-	restartCounter         uint32
+	agentBaseContext            agentbase.Context
+	GCInitialized               bool // Received initial GlobalConfig
+	globalConfig                *types.ConfigItemValueMap
+	subGlobalConfig             pubsub.Subscription
+	onboarded                   bool
+	subOnboardStatus            pubsub.Subscription
+	subZbootStatus              pubsub.Subscription
+	subZedAgentStatus           pubsub.Subscription
+	subDomainStatus             pubsub.Subscription
+	pubZbootConfig              pubsub.Publication
+	pubNodeAgentStatus          pubsub.Publication
+	curPart                     string
+	upgradeTestStartTime        uint32
+	tickerTimer                 *time.Ticker
+	stillRunning                *time.Ticker
+	remainingTestTime           time.Duration
+	lastControllerReachableTime uint32 // Got a config or some error but can reach controller
+	configGetStatus             types.ConfigGetStatus
+	deviceRegistered            bool
+	updateInprogress            bool
+	updateComplete              bool
+	testComplete                bool
+	testInprogress              bool
+	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
+	rebootCmd                   bool   // Are we rebooting?
+	deviceReboot                bool
+	currentRebootReason         string    // Reason we are rebooting
+	rebootReason                string    // From last reboot
+	rebootImage                 string    // Image from which the last reboot happened
+	rebootStack                 string    // From last reboot
+	rebootTime                  time.Time // From last reboot
+	restartCounter              uint32
 
 	// Some contants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -111,7 +105,6 @@ func newNodeagentContext() nodeagentContext {
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
 	nodeagentCtx.domainHaltWaitIncrement = domainHaltWaitIncrement
 
-	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
 	nodeagentCtx.globalConfig = types.DefaultConfigItemValueMap()
 
 	// start the watchdog process timer tick
@@ -199,6 +192,22 @@ func Run(ps *pubsub.PubSub) {
 	nodeagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		CreateHandler: handleOnboardStatusModify,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &nodeagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeagentCtx.subOnboardStatus = subOnboardStatus
+
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
 
@@ -222,12 +231,14 @@ func Run(ps *pubsub.PubSub) {
 	subDomainStatus.Activate()
 
 	// Pick up debug aka log level before we start real work
-	log.Infof("Waiting for GCInitialized")
 	for !nodeagentCtx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Infof("Waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
@@ -237,12 +248,6 @@ func Run(ps *pubsub.PubSub) {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
-
-	// when the partition status is inprogress state
-	// check network connectivity for 300 seconds
-	if nodeagentCtx.updateInprogress {
-		checkNetworkConnectivity(ps, &nodeagentCtx)
-	}
 
 	// if current partition state is not in-progress,
 	// nothing much to do. Zedcloud connectivity is tracked,
@@ -258,11 +263,14 @@ func Run(ps *pubsub.PubSub) {
 	// These timer functions will be tracked using
 	// cloud connectionnectivity status.
 
-	log.Infof("Waiting for device registration check")
-	for !nodeagentCtx.deviceRegistered {
+	for !nodeagentCtx.onboarded {
+		log.Infof("Waiting for onboarded aka known device UUID")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
@@ -270,10 +278,11 @@ func Run(ps *pubsub.PubSub) {
 		case <-nodeagentCtx.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
-		if isZedAgentAlive(&nodeagentCtx) {
-			nodeagentCtx.deviceRegistered = true
-		}
 	}
+	log.Infof("Device is onboarded")
+	// Start waiting for controller connectivity
+	nodeagentCtx.lastControllerReachableTime = nodeagentCtx.timeTickCount
+	setTestStartTime(&nodeagentCtx)
 
 	// subscribe to zboot status events
 	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -339,10 +348,6 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 
 	log.Infof("handleGlobalConfigSynchronized(%v)", done)
 	if done {
-		first := !ctxPtr.GCInitialized
-		if first {
-			iptables.UpdateSshAccess(ctxPtr.sshAccess, first)
-		}
 		ctxPtr.GCInitialized = true
 	}
 }
@@ -388,7 +393,7 @@ func handleZedAgentStatusModify(ctxArg interface{},
 	status := statusArg.(types.ZedAgentStatus)
 	handleRebootCmd(ctxPtr, status)
 	updateZedagentCloudConnectStatus(ctxPtr, status)
-	log.Debugf("handleZedAgentStatusModify(%s) done", key)
+	log.Infof("handleZedAgentStatusModify(%s) done", key)
 }
 
 func handleZedAgentStatusDelete(ctxArg interface{}, key string,
@@ -425,95 +430,6 @@ func handleZbootStatusDelete(ctxArg interface{},
 		return
 	}
 	log.Infof("handleZbootStatusDelete(%s) done", key)
-}
-
-func checkNetworkConnectivity(ps *pubsub.PubSub, ctxPtr *nodeagentContext) {
-	// for device network status
-	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "nim",
-		TopicImpl:     types.DeviceNetworkStatus{},
-		Activate:      false,
-		Ctx:           ctxPtr,
-		ModifyHandler: handleDNSModify,
-		DeleteHandler: handleDNSDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
-	subDeviceNetworkStatus.Activate()
-
-	ctxPtr.deviceNetworkStatus = &types.DeviceNetworkStatus{}
-	for !ctxPtr.DNSinitialized {
-		log.Infof("Waiting for DeviceNetworkStatus: %v",
-			ctxPtr.DNSinitialized)
-		select {
-		case change := <-ctxPtr.subGlobalConfig.MsgChan():
-			ctxPtr.subGlobalConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-ctxPtr.tickerTimer.C:
-			handleDeviceTimers(ctxPtr)
-
-		case <-ctxPtr.stillRunning.C:
-		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Infof("DeviceNetworkStatus: %v", ctxPtr.DNSinitialized)
-
-	// reset timer tick, for all timer functions
-	ctxPtr.timeTickCount = 0
-}
-
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
-
-	status := statusArg.(types.DeviceNetworkStatus)
-	ctxPtr := ctxArg.(*nodeagentContext)
-	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
-		return
-	}
-	log.Infof("handleDNSModify for %s", key)
-	if cmp.Equal(*ctxPtr.deviceNetworkStatus, status) {
-		log.Infof("handleDNSModify no change")
-		ctxPtr.DNSinitialized = true
-		return
-	}
-	log.Infof("handleDNSModify: changed %v",
-		cmp.Diff(*ctxPtr.deviceNetworkStatus, status))
-	*ctxPtr.deviceNetworkStatus = status
-	ctxPtr.DNSinitialized = true
-	log.Infof("handleDNSModify done for %s", key)
-}
-
-func handleDNSDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Infof("handleDNSDelete for %s", key)
-	ctxPtr := ctxArg.(*nodeagentContext)
-
-	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s", key)
-		return
-	}
-	*ctxPtr.deviceNetworkStatus = types.DeviceNetworkStatus{}
-	ctxPtr.DNSinitialized = false
-	log.Infof("handleDNSDelete done for %s", key)
-}
-
-// check whether zedagent module is alive
-func isZedAgentAlive(ctxPtr *nodeagentContext) bool {
-	pgrepCmd := exec.Command("pgrep", "zedagent")
-	stdout, err := pgrepCmd.Output()
-	output := string(stdout)
-	if err == nil && output != "" {
-		return true
-	}
-	return false
 }
 
 // If we have a reboot reason from this or the other partition

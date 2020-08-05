@@ -46,7 +46,7 @@ index 92e8270..e611c9a 100644
 +			Fd:     int32(f.Fd()),
 +			Events: 0x1, // POLLIN
 +		}}
-+		timeout = 0 // No timeout
++		timeout = -1 // No timeout
  	)
 -	_, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(fd)), uintptr(numFD), uintptr(timeoutMS))
 -	// Convert errno into an error, otherwise err != nil checks up the stack
@@ -86,7 +86,7 @@ index e611c9a..89d3927 100644
 --- a/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
 +++ b/vendor/github.com/google/go-tpm/tpmutil/poll_unix.go
 @@ -19,13 +19,12 @@ func poll(f *os.File) error {
- 		timeout = 0 // No timeout
+ 		timeout = -1 // No timeout
  	)
  
 -	_, err := unix.Poll(fds, timeout)

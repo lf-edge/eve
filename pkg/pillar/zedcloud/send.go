@@ -115,6 +115,10 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 			if rtf != types.SenderStatusNone {
 				remoteTemporaryFailure = rtf
 			}
+			if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
+				remoteTemporaryFailure = types.SenderStatusUpgrade
+			}
+
 			if bailOnHTTPErr && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 600 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
@@ -187,7 +191,11 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			// This VerifyAllIntf() is called for "ping" url only, it does not have
 			// return envelope verifying check. Thus below does not check other values of rtf.
 			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
-			if rtf == types.SenderStatusRemTempFail {
+			switch rtf {
+			case types.SenderStatusRefused, types.SenderStatusCertInvalid:
+				remoteTemporaryFailure = true
+			}
+			if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
 				remoteTemporaryFailure = true
 			}
 			if err != nil {
@@ -427,7 +435,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				// XXX can we ever get this from a proxy?
 				// We assume we reached the controller here
 				log.Errorf("client.Do fail: certFailure")
-				senderStatus = types.SenderStatusRemTempFail
+				senderStatus = types.SenderStatusCertInvalid
 				if cert != nil {
 					errStr := fmt.Sprintf("cert failure for Subject %s NotBefore %v NotAfter %v",
 						cert.Subject, cert.NotBefore,
@@ -449,10 +457,12 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				errorList = append(errorList, err)
 			} else if isECONNREFUSED(err) {
 				if usedProxy {
+					// Must try other interfaces and configs
+					// since the proxy might be broken.
 					log.Errorf("client.Do fail: ECONNREFUSED with proxy")
 				} else {
 					log.Errorf("client.Do fail: ECONNREFUSED")
-					senderStatus = types.SenderStatusRemTempFail
+					senderStatus = types.SenderStatusRefused
 				}
 				errorList = append(errorList, err)
 			} else if isNoSuitableAddress(err) {

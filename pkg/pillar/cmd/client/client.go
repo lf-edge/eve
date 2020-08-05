@@ -451,12 +451,17 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 		requrl, reqlen, b, retryCount, bailOnHTTPErr)
 	if err != nil {
-		if rtf == types.SenderStatusRemTempFail {
-			log.Errorf("remoteTemporaryFailure %s", err)
-		} else if rtf == types.SenderStatusCertMiss {
-			log.Infof("client myPost: Cert Miss")
-		} else {
-			log.Errorln(err)
+		switch rtf {
+		case types.SenderStatusUpgrade:
+			log.Infof("Controller upgrade in progress")
+		case types.SenderStatusRefused:
+			log.Infof("Controller returned ECONNREFUSED")
+		case types.SenderStatusCertInvalid:
+			log.Warnf("Controller certificate invalid time")
+		case types.SenderStatusCertMiss:
+			log.Infof("Controller certificate miss")
+		default:
+			log.Error(err)
 		}
 		return false, resp, rtf, contents
 	}

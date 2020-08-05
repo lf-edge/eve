@@ -1,0 +1,9 @@
+diff --git a/configs/rpi_4_defconfig b/configs/rpi_4_defconfig
+@@ -32,6 +32,7 @@
+ # CONFIG_PINCTRL_GENERIC is not set
+ # CONFIG_REQUIRE_SERIAL_CONSOLE is not set
+ CONFIG_USB=y
++CONFIG_USB_KEYBOARD=y
+ CONFIG_DM_USB=y
+ CONFIG_DM_USB_GADGET=y
+ CONFIG_USB_GADGET=y

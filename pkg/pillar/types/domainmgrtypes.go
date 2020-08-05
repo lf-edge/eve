@@ -153,7 +153,7 @@ const (
 
 // Task represents any runnable entity on EVE
 type Task interface {
-	Setup(string, DomainConfig, []DiskStatus, *AssignableAdapters, *os.File) error
+	Setup(DomainStatus, DomainConfig, *AssignableAdapters, *os.File) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string, int) error
 	Stop(string, int, bool) error
@@ -303,12 +303,16 @@ type DiskConfig struct {
 	FileLocation string // Location of the volume
 	ReadOnly     bool
 	Format       zconfig.Format
+	MountDir     string
+	DisplayName  string
 }
 
 type DiskStatus struct {
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
+	MountDir     string
+	DisplayName  string
 	Devtype      string // XXX used internally by hypervisor; deprecate?
 	Vdev         string // Allocated
 }

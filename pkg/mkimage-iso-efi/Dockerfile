@@ -5,6 +5,7 @@ RUN apk add --no-cache --initdb -p /out \
   dosfstools \
   libarchive-tools \
   binutils \
+  busybox \
   mtools \
   xorriso
 RUN echo "mtools_skip_check=1" >> /out/etc/mtools.conf

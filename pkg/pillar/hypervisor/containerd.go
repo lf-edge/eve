@@ -46,7 +46,9 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx ctrdContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
+	diskStatusList := status.DiskStatusList
+	domainName := status.DomainName
 	spec, err := containerd.NewOciSpec(domainName)
 	if err != nil {
 		return logError("requesting default OCI spec for domain %s failed %v", domainName, err)
@@ -58,7 +60,9 @@ func (ctx ctrdContext) Setup(domainName string, config types.DomainConfig, diskS
 		}
 	}
 
+	spec.UpdateMounts(config.DiskConfigList)
 	spec.UpdateVifList(config)
+	spec.UpdateEnvVar(status.EnvVariables)
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", domainName, config, err)
 	}
@@ -84,7 +88,7 @@ func (ctx ctrdContext) Start(domainName string, domainID int) error {
 
 	// now lets wait for task to reach a steady state or for >10sec to elapse
 	for i := 0; i < 10; i++ {
-		_, status, err := containerd.CtrContainerInfo(domainName)
+		_, _, status, err := containerd.CtrContainerInfo(domainName)
 		if err == nil && (status == "running" || status == "stopped" || status == "paused") {
 			return nil
 		}
@@ -103,9 +107,13 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
-	effectiveDomainID, status, err := containerd.CtrContainerInfo(domainName)
+	effectiveDomainID, exit, status, err := containerd.CtrContainerInfo(domainName)
 	if err != nil {
 		return domainID, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
+	}
+
+	if status == "stopped" && exit != 0 {
+		return domainID, types.BROKEN, logError("task broke with exit status %d", exit)
 	}
 
 	if effectiveDomainID != domainID {

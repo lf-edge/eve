@@ -13,13 +13,16 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/oci"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
-	"os"
 )
 
 const eveScript = "/bin/eve"
@@ -48,6 +51,8 @@ type OCISpec interface {
 	UpdateVifList(types.DomainConfig)
 	UpdateFromDomain(types.DomainConfig)
 	UpdateFromVolume(string) error
+	UpdateMounts([]types.DiskConfig)
+	UpdateEnvVar(map[string]string)
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
@@ -216,4 +221,37 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 		}
 	}
 	return oci.WithAdditionalGIDs("root")(ctrdCtx, CtrdClient, &dummy, &s.Spec)
+}
+
+// UpdateMounts
+func (s *ociSpec) UpdateMounts(disks []types.DiskConfig) {
+	for i := range disks {
+		// Skipping root container disk
+		if i == 0 || isFile(disks[i].FileLocation) {
+			continue
+		}
+		mount := specs.Mount{}
+		access := ""
+		if disks[i].ReadOnly {
+			access = "rbind:ro"
+		} else {
+			access = "rbind:rw"
+		}
+		mount.Type = "bind"
+		mount.Source = path.Join("/var", disks[i].FileLocation)
+		if disks[i].MountDir != "" {
+			mount.Destination = disks[i].MountDir
+		} else {
+			mount.Destination = path.Join("/mnt", disks[i].DisplayName)
+		}
+		mount.Options = strings.Split(access, ":")
+		s.Mounts = append(s.Mounts, mount)
+	}
+}
+
+// UpdateEnvVar adds user specified env variables to the OCI spec.
+func (s *ociSpec) UpdateEnvVar(envVars map[string]string) {
+	for k, v := range envVars {
+		s.Process.Env = append(s.Process.Env, fmt.Sprintf("%s=%s", k, v))
+	}
 }

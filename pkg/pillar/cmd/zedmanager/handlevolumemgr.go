@@ -17,7 +17,7 @@ import (
 // MaybeAddVolumeRefConfig publishes volume ref config with refcount
 // to the volumemgr
 func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
-	volumeID uuid.UUID, generationCounter int64) {
+	volumeID uuid.UUID, generationCounter int64, mountDir string) {
 
 	key := fmt.Sprintf("%s#%d", volumeID.String(), generationCounter)
 	log.Infof("MaybeAddVolumeRefConfig for %s", key)
@@ -33,6 +33,7 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 			VolumeID:          volumeID,
 			GenerationCounter: generationCounter,
 			RefCount:          1,
+			MountDir:          mountDir,
 		}
 		publishVolumeRefConfig(ctx, &vrc)
 	}

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/api/go/info"
@@ -37,25 +38,25 @@ const (
 	fscryptConfFile     = "/etc/fscrypt.conf"
 	keyctlPath          = "/bin/keyctl"
 	mountPoint          = types.PersistDir
-	defaultImgVault     = types.PersistDir + "/img"
+	deprecatedImgVault  = types.PersistDir + "/img"
 	defaultCfgVault     = types.PersistDir + "/config"
 	defaultVault        = types.PersistDir + "/vault"
 	oldKeyDir           = "/TmpVaultDir1"
+	oldKeyFile          = oldKeyDir + "/protector.key"
 	keyDir              = "/TmpVaultDir2"
+	keyFile             = keyDir + "/protector.key"
 	protectorPrefix     = "TheVaultKey"
 	vaultKeyLen         = 32 //bytes
 	vaultHalfKeyLen     = 16 //bytes
-	defaultImgVaultName = "Application Data Store"
+	defaultVaultName    = "Application Data Store"
 	defaultCfgVaultName = "Configuration Data Store"
+	evePersistTypeFile  = "/run/eve.persist_type"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
 
 var (
-	keyFile    = keyDir + "/protector.key"
-	oldKeyFile = oldKeyDir + "/protector.key"
-
 	keyctlParams      = []string{"link", "@u", "@s"}
 	mntPointParams    = []string{"setup", mountPoint, "--quiet"}
 	statusParams      = []string{"status", mountPoint}
@@ -139,7 +140,7 @@ func removeProtectorIfAny(vaultPath string) error {
 			log.Infof("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
 			args := getRemovePolicyParams(policyID[0][1])
 			if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
-				log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
+				log.Errorf("Error changing policy key: %v, %v, %v", err, stdOut, stdErr)
 				return err
 			}
 		}
@@ -343,7 +344,10 @@ func unlockVault(vaultPath string, cloudKeyOnlyMode bool) error {
 
 //createVault expects an empty, existing dir at vaultPath
 func createVault(vaultPath string) error {
-	if err := stageKey(true, keyDir, keyFile); err != nil {
+	if err := removeProtectorIfAny(vaultPath); err != nil {
+		return err
+	}
+	if err := stageKey(false, keyDir, keyFile); err != nil {
 		return err
 	}
 	defer unstageKey(keyDir, keyFile)
@@ -356,22 +360,26 @@ func createVault(vaultPath string) error {
 	return linkKeyrings()
 }
 
-func setupVault(vaultPath string) error {
-	if _, err := os.Stat(vaultPath); os.IsNotExist(err) {
+//if deprecated is set, only unlock will be attempted, and creation of the vault will be skipped
+func setupVault(vaultPath string, deprecated bool) error {
+	_, err := os.Stat(vaultPath)
+	if os.IsNotExist(err) && deprecated {
+		log.Infof("vault %s is marked deprecated, so not creating a new vault", vaultPath)
+		return nil
+	}
+	if err != nil && !deprecated {
 		//Create vault dir
-		if _, _, err := execCmd("mkdir", "-p", vaultPath); err != nil {
-			return err
-		}
-		if err := removeProtectorIfAny(vaultPath); err != nil {
+		if err := os.MkdirAll(vaultPath, 755); err != nil {
 			return err
 		}
 	}
 	args := getStatusParams(vaultPath)
 	if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
 		log.Infof("%v, %v, %v", stdOut, stdErr, err)
-		if !isDirEmpty(vaultPath) {
+		if !isDirEmpty(vaultPath) || deprecated {
 			//Don't disturb existing installations
-			log.Infof("Not disturbing non-empty %s", vaultPath)
+			log.Infof("Not disturbing non-empty or deprecated vault(%s), deprecated=%v",
+				vaultPath, deprecated)
 			return nil
 		}
 		return createVault(vaultPath)
@@ -501,10 +509,32 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 	}
 }
 
+//setup vaults on ext4, using fscrypt
+func setupVaultsOnExt4() {
+	if err := setupFscryptEnv(); err != nil {
+		log.Fatal("Error in setting up fscrypt environment:", err)
+	}
+	if err := setupVault(deprecatedImgVault, true); err != nil {
+		log.Fatalf("Error in setting up vault %s:%v", deprecatedImgVault, err)
+	}
+	if err := setupVault(defaultCfgVault, false); err != nil {
+		log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
+	}
+	if err := setupVault(defaultVault, false); err != nil {
+		log.Fatalf("Error in setting up vault %s:%v", defaultVault, err)
+	}
+}
+
+//setup vaults on zfs, using zfs native encryption support
+func setupVaultsOnZfs() {
+	if err := setupZfsVault(defaultSecretDataset); err != nil {
+		log.Fatalf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
+	}
+}
+
 //Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub) {
 
-	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -524,17 +554,19 @@ func Run(ps *pubsub.PubSub) {
 
 	switch flag.Args()[0] {
 	case "setupVaults":
-		if err = setupFscryptEnv(); err != nil {
-			log.Fatal("Error in setting up fscrypt environment:", err)
+		//start with an assumption that nothing needs to be done
+		persistFsType := ""
+		pBytes, err := ioutil.ReadFile(evePersistTypeFile)
+		if err == nil {
+			persistFsType = strings.TrimSpace(string(pBytes))
 		}
-		if err = setupVault(defaultImgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
-		}
-		if err = setupVault(defaultCfgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
-		}
-		if err = setupVault(defaultVault); err != nil {
-			log.Fatalf("Error in setting up vault %s:%v", defaultVault, err)
+		switch persistFsType {
+		case "ext4":
+			setupVaultsOnExt4()
+		case "zfs":
+			setupVaultsOnZfs()
+		default:
+			log.Infof("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
@@ -583,7 +615,7 @@ func Run(ps *pubsub.PubSub) {
 		initializeSelfPublishHandles(ps, &ctx)
 
 		fscryptStatus, fscryptErr := fetchFscryptStatus()
-		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault,
+		publishVaultStatus(&ctx, defaultVaultName, defaultVault,
 			fscryptStatus, fscryptErr)
 		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault,
 			fscryptStatus, fscryptErr)

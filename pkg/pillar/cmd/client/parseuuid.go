@@ -23,16 +23,16 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	var enterprise string
 	var name string
 
-	if err := validateConfigMessage(configUrl, resp); err != nil {
-		log.Errorln("validateConfigMessage: ", err)
-		return devUUID, hardwaremodel, enterprise, name, err
-	}
-
 	if resp.StatusCode == http.StatusNotModified {
 		log.Debugf("StatusNotModified len %d", len(contents))
 		// Return as error since we are not returning any useful values.
 		return devUUID, hardwaremodel, enterprise, name,
 			fmt.Errorf("Unchanged StatusNotModified")
+	}
+
+	if err := validateConfigMessage(configUrl, resp); err != nil {
+		log.Errorln("validateConfigMessage: ", err)
+		return devUUID, hardwaremodel, enterprise, name, err
 	}
 
 	configResponse, err := readConfigResponseProtoMessage(contents)

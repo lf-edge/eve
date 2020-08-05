@@ -73,7 +73,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG"
+DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -119,12 +119,8 @@ fi
 
 CONFIGDEV=$(zboot partdev CONFIG)
 
-P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
-P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
-if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
-    #It is a device with TPM, and formatted with ext4, setup fscrypt
-    echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
-    #Initialize fscrypt algorithm, hash length etc
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+#It is a device with TPM, enable disk encryption
     if ! $BINDIR/vaultmgr setupVaults; then
         echo "$(date -Ins -u) device-steps: vaultmgr setupVaults failed"
     fi

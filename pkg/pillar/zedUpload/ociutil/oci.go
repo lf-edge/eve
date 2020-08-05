@@ -100,14 +100,34 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 
 	// The OCI distribution spec only uses /blobs/ endpoint for layers or config, not index or manifest.
 	// I have no idea why you cannot get a manifest or index from the /blobs endpoint, but so be it.
-	image := repo
-	if hash != "" {
-		image = fmt.Sprintf("%s@%s", repo, hash)
-	}
-
+	image := fmt.Sprintf("%s/%s", registry, repo)
 	ref, err := name.ParseReference(image)
 	if err != nil {
 		return 0, fmt.Errorf("parsing reference %q: %v", image, err)
+	}
+
+	// If hash is not empty:
+	// if ref is of type Tag then add hash to the image
+	// if ref is of type Digest, check if the given hash and the hash in reference are same
+	if hash != "" {
+		hash = checkAndCorrectHash(hash)
+		if _, ok := ref.(name.Tag); ok {
+			log.Infof("PullBlob: Adding hash %s to image %s", hash, image)
+			image = fmt.Sprintf("%s@%s", image, hash)
+			ref, err = name.ParseReference(image)
+			if err != nil {
+				return 0, fmt.Errorf("parsing reference %q: %v", image, err)
+			}
+		} else {
+			d, ok := ref.(name.Digest)
+			if !ok {
+				return 0, fmt.Errorf("ref %s wasn't a tag or digest", image)
+			}
+			if checkAndCorrectHash(d.DigestStr()) != hash {
+				return 0, fmt.Errorf("PullBlob: given hash %s is different from the hash in reference %s",
+					hash, checkAndCorrectHash(d.DigestStr()))
+			}
+		}
 	}
 
 	// if we have only a tag, we know it is a manifest
@@ -355,4 +375,9 @@ func DockerHashFromManifest(imageManifest []byte) (string, error) {
 		return "", fmt.Errorf("no layers found")
 	}
 	return layers[len(layers)-1].Digest.Hex, nil
+}
+
+//checkAndCorrectHash prepends algo "sha256:" if not already present.
+func checkAndCorrectHash(hash string) string {
+	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(hash, "sha256:"))
 }
