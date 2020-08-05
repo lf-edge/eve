@@ -326,9 +326,8 @@ while [ "$YEAR" = "1970" ]; do
     YEAR=$(date +%Y)
 done
 
-# Restart watchdog ledmanager, client, and nim
-touch "$WATCHDOG_PID/zedclient.pid" \
-      "$WATCHDOG_PID/ntpd.pid"
+# Restart watchdog ledmanager, and nim
+touch "$WATCHDOG_PID/ntpd.pid"
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
@@ -379,6 +378,9 @@ fi
 
 # Deposit any diag information from nim and onboarding
 access_usb
+
+# Restart watchdog ledmanager, client, and nim
+touch "$WATCHDOG_PID/zedclient.pid"
 
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $ZTMPDIR/zedrouterconfig.json
