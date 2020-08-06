@@ -19,17 +19,11 @@ import (
 )
 
 // Indexed by UUID
-// If IsZedmanager is set we do not create boN but instead configure the EID
-// locally. This will go away once ZedManager runs in a domU like any
-// application.
 type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	Activate            bool
-	IsZedmanager        bool
-	LegacyDataPlane     bool
 	GetStatsIPAddr      net.IP
-	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
@@ -47,17 +41,6 @@ func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-func (config *AppNetworkConfig) getOverlayConfig(
-	network uuid.UUID) *OverlayNetworkConfig {
-	for i := range config.OverlayNetworkList {
-		olConfig := &config.OverlayNetworkList[i]
-		if olConfig.Network == network {
-			return olConfig
-		}
-	}
-	return nil
-}
-
 func (config *AppNetworkConfig) getUnderlayConfig(
 	network uuid.UUID) *UnderlayNetworkConfig {
 	for i := range config.UnderlayNetworkList {
@@ -70,10 +53,6 @@ func (config *AppNetworkConfig) getUnderlayConfig(
 }
 
 func (config *AppNetworkConfig) IsNetworkUsed(network uuid.UUID) bool {
-	olConfig := config.getOverlayConfig(network)
-	if olConfig != nil {
-		return true
-	}
 	ulConfig := config.getUnderlayConfig(network)
 	if ulConfig != nil {
 		return true
@@ -108,10 +87,7 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
-	IsZedmanager        bool
-	LegacyDataPlane     bool
 	GetStatsIPAddr      net.IP
-	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
@@ -1532,43 +1508,6 @@ type NetworkInstanceLispConfig struct {
 	EidPrefixLen  uint32
 
 	Experimental bool
-}
-
-type OverlayNetworkConfig struct {
-	Name          string // From proto message
-	EID           net.IP // Always EIDv6
-	LispSignature string
-	ACLs          []ACE
-	AppMacAddr    net.HardwareAddr // If set use it for vif
-	AppIPAddr     net.IP           // EIDv4 or EIDv6
-	Network       uuid.UUID        // Points to a NetworkInstance.
-
-	// XXX Shouldn't we use ErrorAndTime here
-	// Error
-	//	If there is a parsing error and this uLNetwork config cannot be
-	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
-	//	If this is non-empty ( != ""), the network Config should not be
-	// 	processed further. It Should just	be flagged to be in error state
-	//  back to the cloud.
-	Error string
-	// Optional additional information
-	AdditionalInfoDevice *AdditionalInfoDevice
-
-	// These field are only for isMgmt. XXX remove when isMgmt is removed
-	MgmtIID             uint32
-	MgmtDnsNameToIPList []DnsNameToIP // Used to populate DNS for the overlay
-	MgmtMapServers      []MapServer
-}
-
-type OverlayNetworkStatus struct {
-	OverlayNetworkConfig
-	VifInfo
-	BridgeMac    net.HardwareAddr
-	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
-	Assigned     bool   // Set to true once DHCP has assigned EID to domU
-	HostName     string
-	ACLRules     IPTablesRuleList
 }
 
 type DhcpType uint8

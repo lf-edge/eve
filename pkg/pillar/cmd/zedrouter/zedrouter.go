@@ -10,7 +10,6 @@
 package zedrouter
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -652,41 +651,6 @@ func unpublishAppNetworkStatus(ctx *zedrouterContext,
 	pub.Unpublish(key)
 }
 
-// Format a json string with any additional info
-func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.OverlayNetworkConfig) string {
-	additionalInfo := ""
-	if status.IsZedmanager {
-		if olConfig.AdditionalInfoDevice != nil {
-			b, err := json.Marshal(olConfig.AdditionalInfoDevice)
-			if err != nil {
-				log.Fatal(err, "json Marshal AdditionalInfoDevice")
-			}
-			additionalInfo = string(b)
-			log.Debugf("Generated additional info device %s\n",
-				additionalInfo)
-		}
-	} else {
-		// Combine subset of the device and application information
-		addInfoApp := types.AdditionalInfoApp{
-			DeviceEID:   deviceEID,
-			DeviceIID:   deviceIID,
-			DisplayName: status.DisplayName,
-		}
-		if additionalInfoDevice != nil {
-			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
-			addInfoApp.Hostname = additionalInfoDevice.Hostname
-		}
-		b, err := json.Marshal(addInfoApp)
-		if err != nil {
-			log.Fatal(err, "json Marshal AdditionalInfoApp")
-		}
-		additionalInfo = string(b)
-		log.Debugf("Generated additional info app %s\n",
-			additionalInfo)
-	}
-	return additionalInfo
-}
-
 func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -761,8 +725,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 
 	// Pick a local number to identify the application instance
 	// Used for IP addresses as well bridge and file names.
-	appNum := appNumAllocate(ctx, config.UUIDandVersion.UUID,
-		config.IsZedmanager)
+	appNum := appNumAllocate(ctx, config.UUIDandVersion.UUID, false)
 
 	// Start by marking with PendingAdd
 	status := types.AppNetworkStatus{
@@ -770,7 +733,6 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 		AppNum:         appNum,
 		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
-		IsZedmanager:   config.IsZedmanager,
 	}
 	publishAppNetworkStatus(ctx, &status)
 
@@ -792,10 +754,10 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
-	log.Infof("%s-%s: IsZedmanager:%t\n",
-		config.DisplayName, config.UUIDandVersion, config.IsZedmanager)
+	log.Infof("%s-%s\n",
+		config.DisplayName, config.UUIDandVersion)
 
-	// Check that Network exists for all overlays and underlays.
+	// Check that Network exists for all underlays.
 	// We look for MissingNetwork when a NetworkInstance is added
 	allNetworksExist := appNetworkCheckAllNetworksExist(ctx, config, status)
 	if !allNetworksExist {
@@ -817,8 +779,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	// Note that with IPv4/IPv6 interfaces the domU can do
 	// dns lookups on either IPv4 and IPv6 on any interface, hence we
 	// configure the ipsets for all the domU's interfaces/bridges.
-	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
-		config.UnderlayNetworkList)
+	ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
 
 	appNetworkDoActivateAllUnderlayNetworks(ctx, config, status, ipsets)
 
@@ -1089,9 +1050,6 @@ func checkAndRecreateAppNetwork(
 		log.Infof("checkAndRecreateAppNetwork(%s) missing for %s\n",
 			network.String(), status.DisplayName)
 
-		if status.IsZedmanager {
-			continue
-		}
 		config := lookupAppNetworkConfig(ctx, status.Key())
 		if config == nil {
 			log.Warnf("checkAndRecreateAppNetwork(%s) no config for %s\n",
@@ -1244,8 +1202,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	// Note that with IPv4/IPv6 interfaces the domU can do
 	// dns lookups on either IPv4 and IPv6 on any interface, hence should
 	// configure the ipsets for all the domU's interfaces/bridges.
-	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
-		config.UnderlayNetworkList)
+	ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
 
 	// If we are not activated, then the doActivate below will set up
 	// the ACLs
@@ -1288,13 +1245,6 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 
 func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	config types.AppNetworkConfig, status *types.AppNetworkStatus) bool {
-	if config.IsZedmanager != status.IsZedmanager {
-		errStr := fmt.Sprintf("Unsupported: IsZedmanager changed for %s",
-			config.UUIDandVersion)
-		addError(ctx, status, "handleModify", errors.New(errStr))
-		log.Infof("handleModify done for %s\n", config.DisplayName)
-		return false
-	}
 	// XXX what about changing the number of interfaces as
 	// part of an inactive/active transition?
 	// XXX We could should we allow the addition of interfaces
@@ -1447,8 +1397,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 func doInactivateAppNetwork(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
-	log.Infof("doInactivate(%v) for %s, IsZedManager:%t\n",
-		status.UUIDandVersion, status.DisplayName, status.IsZedmanager)
+	log.Infof("doInactivate(%v) for %s\n",
+		status.UUIDandVersion, status.DisplayName)
 
 	// remove app container stats collection items
 	appCheckStatsCollect(ctx, nil, status)
@@ -1457,8 +1407,7 @@ func doInactivateAppNetwork(ctx *zedrouterContext,
 	// dns lookups on either IPv4 and IPv6 on any interface, hence should
 	// configure the ipsets for all the domU's interfaces/bridges.
 	// We skip our own contributions since we're going away
-	ipsets := compileOldAppInstanceIpsets(ctx, status.OverlayNetworkList,
-		status.UnderlayNetworkList, status.Key())
+	ipsets := compileOldAppInstanceIpsets(ctx, status.UnderlayNetworkList, status.Key())
 
 	// Delete everything in underlay
 	appNetworkDoInactivateAllUnderlayNetworks(ctx, status, ipsets)
@@ -1825,7 +1774,7 @@ func checkAppNetworkErrorAndStartTimer(ctx *zedrouterContext) {
 		if config == nil || !config.Activate || !status.HasError() {
 			continue
 		}
-		// We wouldn't have even copied underlay/overlay
+		// We wouldn't have even copied underlay
 		// networks into status. This is as good as starting
 		// from scratch all over. App num that would have been
 		// allocated will be used this time also, since the app UUID
@@ -1868,15 +1817,6 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 			addError(ctx, status, "deleteACL", err)
 		}
 		status.UnderlayNetworkList[idx].ACLRules = ruleList
-	}
-	for idx, olStatus := range status.OverlayNetworkList {
-		aclArgs := types.AppNetworkACLArgs{BridgeName: olStatus.Bridge,
-			VifName: olStatus.Vif}
-		ruleList, err := deleteACLConfiglet(aclArgs, olStatus.ACLRules)
-		if err != nil {
-			addError(ctx, status, "deleteACL", err)
-		}
-		status.OverlayNetworkList[idx].ACLRules = ruleList
 	}
 	publishAppNetworkStatus(ctx, status)
 }

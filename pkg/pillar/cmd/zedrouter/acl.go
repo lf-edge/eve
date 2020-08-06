@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// ACL configlet for overlay and underlay interface towards domU
+// ACL configlet for underlay interface towards domU
 
 package zedrouter
 
@@ -136,7 +136,6 @@ func compileUnderlayIpsets(ctx *zedrouterContext,
 }
 
 func compileAppInstanceIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkConfig,
 	ullist []types.UnderlayNetworkConfig) []string {
 
 	ipsets := []string{}
@@ -163,13 +162,6 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 			continue
 		}
 
-		for _, olStatus := range status.OverlayNetworkList {
-			if olStatus.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(olStatus.ACLs)...)
-		}
 		for _, ulStatus := range status.UnderlayNetworkList {
 			if ulStatus.Network != netconfig.UUID {
 				continue
@@ -193,13 +185,6 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	items := sub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppNetworkConfig)
-		for _, olConfig := range config.OverlayNetworkList {
-			if olConfig.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(olConfig.ACLs)...)
-		}
 		for _, ulConfig := range config.UnderlayNetworkList {
 			if ulConfig.Network != netconfig.UUID {
 				continue
@@ -233,7 +218,6 @@ func compileOldUnderlayIpsets(ctx *zedrouterContext,
 
 // If skipKey is set ignore any AppNetworkStatus with that key
 func compileOldAppInstanceIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkStatus,
 	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
 
 	ipsets := []string{}

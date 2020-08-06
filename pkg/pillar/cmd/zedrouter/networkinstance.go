@@ -139,22 +139,10 @@ func checkPortAvailable(
 	return nil
 }
 
-func isOverlay(netType types.NetworkInstanceType) bool {
-	if netType == types.NetworkInstanceTypeMesh {
-		return true
-	}
-	return false
-}
-
 // doCreateBridge
 //		returns (error, bridgeMac-string)
 func doCreateBridge(bridgeName string, bridgeNum int,
 	status *types.NetworkInstanceStatus) (error, string) {
-	Ipv4Eid := false
-	if isOverlay(status.Type) && status.Subnet.IP != nil {
-		Ipv4Eid = (status.Subnet.IP.To4() != nil)
-		status.Ipv4Eid = Ipv4Eid
-	}
 
 	// Start clean
 	// delete the bridge
@@ -330,25 +318,6 @@ func doBridgeAclsDelete(
 	for _, ans := range items {
 		appNetStatus := ans.(types.AppNetworkStatus)
 
-		for _, olStatus := range appNetStatus.OverlayNetworkList {
-			if olStatus.Network != status.UUID {
-				continue
-			}
-			if olStatus.Bridge == "" {
-				continue
-			}
-			log.Infof("NetworkInstance - deleting Acls for OL Interface(%s)",
-				olStatus.Name)
-			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: olStatus.Bridge,
-				VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olStatus.EID.String(),
-				UpLinks: status.IfNameList}
-			ruleList, err := deleteACLConfiglet(aclArgs, olStatus.ACLRules)
-			if err != nil {
-				log.Errorf("doNetworkDelete ACL failed: %s\n",
-					err)
-			}
-			olStatus.ACLRules = ruleList
-		}
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
 			if ulStatus.Network != status.UUID {
 				continue
@@ -1792,8 +1761,7 @@ func doNetworkInstanceFallback(
 				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
 				if uuid.Equal(ulStatus.Network, status.UUID) {
 					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
-					ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
-						config.UnderlayNetworkList)
+					ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
 					ulConfig := &config.UnderlayNetworkList[i]
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
@@ -1844,8 +1812,7 @@ func doNetworkInstanceFallback(
 				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
 				if uuid.Equal(ulStatus.Network, status.UUID) {
 					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
-					ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
-						config.UnderlayNetworkList)
+					ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
 					ulConfig := &config.UnderlayNetworkList[i]
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.

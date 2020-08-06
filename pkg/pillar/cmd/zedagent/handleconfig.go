@@ -494,7 +494,6 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 		}
 	}
-	handleLookupParam(getconfigCtx, config)
 
 	// add new BaseOS/App instances; returns rebootFlag
 	return parseConfig(config, getconfigCtx, usingSaved)

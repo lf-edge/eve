@@ -68,16 +68,12 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
 	}
 	if ns != nil {
-		olNum := len(ns.OverlayNetworkList)
 		ulNum := len(ns.UnderlayNetworkList)
 
-		dc.VifList = make([]types.VifInfo, olNum+ulNum)
+		dc.VifList = make([]types.VifInfo, ulNum)
 		// Put UL before OL
 		for i, ul := range ns.UnderlayNetworkList {
 			dc.VifList[i] = ul.VifInfo
-		}
-		for i, ol := range ns.OverlayNetworkList {
-			dc.VifList[i+ulNum] = ol.VifInfo
 		}
 	}
 	publishDomainConfig(ctx, &dc)
