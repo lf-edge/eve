@@ -96,17 +96,6 @@ services:
         networks:
             - eve
 
-    lisp:
-        image: LISP_TAG
-        privileged: true
-        volumes:
-            - persist:/persist
-            - config:/config
-            - run:/run
-        # network_mode: host
-        networks:
-            - eve
-
     guacd:
         image: GUACD_TAG
         privileged: true

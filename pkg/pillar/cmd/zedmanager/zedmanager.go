@@ -42,8 +42,6 @@ type zedmanagerContext struct {
 	subAppNetworkStatus  pubsub.Subscription
 	pubDomainConfig      pubsub.Publication
 	subDomainStatus      pubsub.Subscription
-	pubEIDConfig         pubsub.Publication
-	subEIDStatus         pubsub.Subscription
 	subGlobalConfig      pubsub.Subscription
 	globalConfig         *types.ConfigItemValueMap
 	pubUuidToNum         pubsub.Publication
@@ -123,16 +121,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
-
-	pubEIDConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.EIDConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubEIDConfig = pubEIDConfig
-	pubEIDConfig.ClearRestarted()
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -238,25 +226,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Get IdentityStatus from identitymgr
-	subEIDStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "identitymgr",
-		TopicImpl:      types.EIDStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		CreateHandler:  handleEIDStatusModify,
-		ModifyHandler:  handleEIDStatusModify,
-		DeleteHandler:  handleEIDStatusDelete,
-		RestartHandler: handleIdentitymgrRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subEIDStatus = subEIDStatus
-	subEIDStatus.Activate()
-
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -275,9 +244,6 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subVolumeRefStatus.MsgChan():
 			subVolumeRefStatus.ProcessChange(change)
-
-		case change := <-subEIDStatus.MsgChan():
-			subEIDStatus.ProcessChange(change)
 
 		case change := <-subAppNetworkStatus.MsgChan():
 			subAppNetworkStatus.ProcessChange(change)
@@ -304,10 +270,9 @@ func Run(ps *pubsub.PubSub) {
 // Need EIDs before zedrouter ...
 func handleConfigRestart(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
-
 	log.Infof("handleConfigRestart(%v)", done)
 	if done {
-		ctx.pubEIDConfig.SignalRestarted()
+		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
 }
 

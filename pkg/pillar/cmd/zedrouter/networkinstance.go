@@ -12,7 +12,6 @@ import (
 	"fmt"
 	uuid "github.com/satori/go.uuid"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 
@@ -1190,8 +1189,6 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		err = natActivate(ctx, status)
 	case types.NetworkInstanceTypeCloud:
 		err = vpnActivate(ctx, status)
-	case types.NetworkInstanceTypeMesh:
-		err = lispActivate(ctx, status)
 	default:
 		errStr := fmt.Sprintf("doNetworkInstanceActivate: NetworkInstance %d not yet supported",
 			status.Type)
@@ -1267,8 +1264,6 @@ func doNetworkInstanceInactivate(
 		natInactivate(ctx, status, false)
 	case types.NetworkInstanceTypeCloud:
 		vpnInactivate(ctx, status)
-	case types.NetworkInstanceTypeMesh:
-		lispInactivate(ctx, status)
 	}
 
 	return
@@ -1465,49 +1460,6 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 		status.Logicallabel, ifname)
 }
 
-// ==== Lisp
-
-func lispActivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-
-	log.Infof("lispActivate(%s)\n", status.DisplayName)
-
-	// Create Lisp IID & map-server configlets
-	iid := status.LispConfig.IID
-	mapServers := status.LispConfig.MapServers
-	cfgPathnameIID := lispRunDirname + "/" +
-		strconv.FormatUint(uint64(iid), 10)
-	file, err := os.Create(cfgPathnameIID)
-	if err != nil {
-		log.Errorf("lispActivate failed: %s ", err)
-		return err
-	}
-	defer file.Close()
-
-	// Write map-servers to configlet
-	for _, ms := range mapServers {
-		msConfigLine := fmt.Sprintf(lispMStemplate, iid,
-			ms.NameOrIp, ms.Credential)
-		file.WriteString(msConfigLine)
-	}
-
-	// Write Lisp IID template
-	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
-	file.WriteString(iidConfig)
-
-	if status.Ipv4Eid {
-		ipv4Network := status.Subnet.IP.Mask(status.Subnet.Mask)
-		maskLen, _ := status.Subnet.Mask.Size()
-		subnet := fmt.Sprintf("%s/%d",
-			ipv4Network.String(), maskLen)
-		file.WriteString(fmt.Sprintf(
-			lispIPv4IIDtemplate, iid, subnet))
-	}
-
-	log.Infof("lispActivate(%s)\n", status.DisplayName)
-	return nil
-}
-
 // ==== Nat
 
 // XXX need to redo this when MgmtPorts/FreeMgmtPorts changes?
@@ -1543,41 +1495,6 @@ func natActivate(ctx *zedrouterContext,
 		}
 	}
 	return nil
-}
-
-func lispInactivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
-	// Go through the AppNetworkConfigs and delete Lisp parameters
-	// that use this service.
-	pub := ctx.pubAppNetworkStatus
-	items := pub.GetAll()
-
-	// When service is deactivated we should delete IID and map-server
-	// configuration also
-	cfgPathnameIID := lispRunDirname + "/" +
-		strconv.FormatUint(uint64(status.LispStatus.IID), 10)
-	if err := os.Remove(cfgPathnameIID); err != nil {
-		log.Errorln(err)
-	}
-
-	for _, ans := range items {
-		appNetStatus := ans.(types.AppNetworkStatus)
-		if len(appNetStatus.OverlayNetworkList) == 0 {
-			continue
-		}
-		for _, olStatus := range appNetStatus.OverlayNetworkList {
-			if olStatus.Network == status.UUID {
-				// Pass global deviceNetworkStatus
-				deleteLispConfiglet(lispRunDirname, false,
-					status.LispStatus.IID, olStatus.EID,
-					olStatus.AppIPAddr,
-					*ctx.deviceNetworkStatus,
-					ctx.legacyDataPlane)
-			}
-		}
-	}
-
-	log.Infof("lispInactivate(%s)\n", status.DisplayName)
 }
 
 func natInactivate(ctx *zedrouterContext,
