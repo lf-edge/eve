@@ -449,18 +449,6 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 				changed = true
 			}
 		}
-		for i := range status.OverlayNetworkList {
-			olStatus := &status.OverlayNetworkList[i]
-			l := findLease(ctx.dhcpLeases, status.Key(), olStatus.Mac)
-			assigned := (l != nil)
-			if olStatus.Assigned != assigned {
-				log.Infof("Changing(%s) %s mac %s to %t",
-					status.Key(), status.DisplayName,
-					olStatus.Mac, assigned)
-				olStatus.Assigned = assigned
-				changed = true
-			}
-		}
 		if changed {
 			publishAppNetworkStatus(ctx, &status)
 		}

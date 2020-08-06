@@ -577,17 +577,6 @@ func updateVifUsed(statusPtr *types.AppInstanceStatus, ds types.DomainStatus) bo
 			changed = true
 		}
 	}
-	for i := range statusPtr.OverlayNetworks {
-		olStatus := &statusPtr.OverlayNetworks[i]
-		net := ds.VifInfoByVif(olStatus.Vif)
-		if net != nil && net.VifUsed != olStatus.VifUsed {
-			log.Infof("Found VifUsed %s for Vif %s", net.VifUsed, olStatus.Vif)
-			olStatus.VifUsed = net.VifUsed
-			changed = true
-		}
-	}
-
-	// for _, ec := range config.OverlayNetworkList {
 	return changed
 }
 

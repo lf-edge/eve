@@ -23,11 +23,6 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	m := lookupAppNetworkConfig(ctx, key)
 	if m != nil {
 		log.Infof("appNetwork config already exists for %s", key)
-		if len(aiConfig.OverlayNetworkList) != len(m.OverlayNetworkList) {
-			log.Errorln("Unsupported: Changed number of overlays for ",
-				aiConfig.UUIDandVersion)
-			return
-		}
 		if len(aiConfig.UnderlayNetworkList) != len(m.UnderlayNetworkList) {
 			log.Errorln("Unsupported: Changed number of underlays for ",
 				aiConfig.UUIDandVersion)
@@ -42,15 +37,6 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			log.Infof("MaybeAddAppNetworkConfig: stats ip changed from  %s to %s",
 				m.GetStatsIPAddr.String(), aiConfig.CollectStatsIPAddr.String())
 			changed = true
-		}
-		for i, new := range aiConfig.OverlayNetworkList {
-			old := m.OverlayNetworkList[i]
-			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
-				log.Infof("Over ACLs changed from %v to %v",
-					old.ACLs, new.ACLs)
-				changed = true
-				break
-			}
 		}
 		for i, new := range aiConfig.UnderlayNetworkList {
 			old := m.UnderlayNetworkList[i]
@@ -69,23 +55,8 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		nc := types.AppNetworkConfig{
 			UUIDandVersion: aiConfig.UUIDandVersion,
 			DisplayName:    aiConfig.DisplayName,
-			IsZedmanager:   false,
 			Activate:       aiConfig.Activate,
 			GetStatsIPAddr: aiConfig.CollectStatsIPAddr,
-		}
-		nc.OverlayNetworkList = make([]types.OverlayNetworkConfig,
-			len(aiStatus.EIDList))
-		for i, ols := range aiStatus.EIDList {
-			olc := &aiConfig.OverlayNetworkList[i]
-			ol := &nc.OverlayNetworkList[i]
-			ol.Name = olc.Name
-			ol.EID = ols.EID
-			ol.LispSignature = ols.LispSignature
-			ol.ACLs = olc.ACLs
-			ol.AppMacAddr = olc.AppMacAddr
-			ol.AppIPAddr = olc.AppIPAddr
-			ol.Network = olc.Network
-			ol.MgmtIID = ols.IID
 		}
 		nc.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
 			len(aiConfig.UnderlayNetworkList))
@@ -157,11 +128,6 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 			status.PendingModify, status.PendingDelete, status.DisplayName, key)
 		return
 	}
-	if status.IsZedmanager {
-		log.Infof("Ignoring IsZedmanager appNetwork status for %v",
-			key)
-		return
-	}
 	updateAIStatusUUID(ctx, status.Key())
 	log.Infof("handleAppNetworkStatusModify done for %s", key)
 }
@@ -178,6 +144,5 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
 func updateAppNetworkStatus(aiStatus *types.AppInstanceStatus,
 	ns *types.AppNetworkStatus) {
 
-	aiStatus.OverlayNetworks = ns.OverlayNetworkList
 	aiStatus.UnderlayNetworks = ns.UnderlayNetworkList
 }

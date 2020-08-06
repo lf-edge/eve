@@ -1718,11 +1718,6 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 			return ulStatus.Name
 		}
 	}
-	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.VifUsed == vifname {
-			return olStatus.Name
-		}
-	}
 	return ""
 }
 
@@ -1780,7 +1775,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	}
 }
 
-// Use the ifname/vifname to find the overlay or underlay status
+// Use the ifname/vifname to find the underlay status
 // and from there the (ip, allocated, mac) addresses for the app
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	vifname string) (string, bool, string) {
@@ -1793,15 +1788,6 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s",
 			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
 		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
-	}
-	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.VifUsed != vifname {
-			continue
-		}
-		log.Debugf("getAppIP(%s, %s) found overlay %s assigned %v mac %s",
-			aiStatus.Key(), vifname,
-			olStatus.EID.String(), olStatus.Assigned, olStatus.Mac)
-		return olStatus.EID.String(), olStatus.Assigned, olStatus.Mac
 	}
 	return "", false, ""
 }
