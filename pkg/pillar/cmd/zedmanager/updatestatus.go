@@ -338,46 +338,6 @@ func doPrepare(ctx *zedmanagerContext,
 	log.Infof("doPrepare for %s", uuidStr)
 	changed := false
 
-	if len(config.OverlayNetworkList) != len(status.EIDList) {
-		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d",
-			len(config.OverlayNetworkList),
-			len(status.EIDList))
-		log.Error(errString)
-		status.SetError(errString, time.Now())
-		changed = true
-		return changed, false
-	}
-
-	// Make sure we have an EIDConfig for each overlay
-	for _, ec := range config.OverlayNetworkList {
-		MaybeAddEIDConfig(ctx, config.UUIDandVersion,
-			config.DisplayName, &ec)
-	}
-	// Check EIDStatus for each overlay; update AppInstanceStatus
-	eidsAllocated := true
-	for i, ec := range config.OverlayNetworkList {
-		key := types.EidKey(config.UUIDandVersion, ec.IID)
-		es := lookupEIDStatus(ctx, key)
-		if es == nil || es.Pending() {
-			log.Infof("lookupEIDStatus %s failed",
-				key)
-			eidsAllocated = false
-			continue
-		}
-		status.EIDList[i] = es.EIDStatusDetails
-		if status.EIDList[i].EID == nil {
-			log.Infof("Missing EID for %s", key)
-			eidsAllocated = false
-		} else {
-			log.Infof("Found EID %v for %s",
-				status.EIDList[i].EID, key)
-			changed = true
-		}
-	}
-	if !eidsAllocated {
-		log.Infof("Waiting for all EID allocations for %s", uuidStr)
-		return changed, false
-	}
 	// Automatically move from VERIFIED to INSTALLED
 	if status.State >= types.BOOTING {
 		// Leave unchanged
@@ -386,7 +346,6 @@ func doPrepare(ctx *zedmanagerContext,
 		changed = true
 	}
 	changed = true
-	log.Infof("Done with EID allocations for %s", uuidStr)
 	log.Infof("doPrepare done for %s", uuidStr)
 	return changed, true
 }
@@ -819,32 +778,6 @@ func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 
 	log.Infof("doUnprepare for %s", uuidStr)
 	changed := false
-
-	// Remove the EIDConfig for each overlay
-	for _, es := range status.EIDList {
-		unpublishEIDConfig(ctx, status.UUIDandVersion, &es)
-	}
-	// Check EIDStatus for each overlay; update AppInstanceStatus
-	eidsFreed := true
-	for i, es := range status.EIDList {
-		key := types.EidKey(status.UUIDandVersion, es.IID)
-		es := lookupEIDStatus(ctx, key)
-		if es != nil {
-			log.Infof("lookupEIDStatus not gone on remove for %s",
-				key)
-			// Could it have changed?
-			changed = true
-			status.EIDList[i] = es.EIDStatusDetails
-			eidsFreed = false
-			continue
-		}
-		changed = true
-	}
-	if !eidsFreed {
-		log.Infof("Waiting for all EID frees for %s", uuidStr)
-		return changed
-	}
-	log.Debugf("Done with EID frees for %s", uuidStr)
 
 	log.Infof("doUnprepare done for %s", uuidStr)
 	return changed

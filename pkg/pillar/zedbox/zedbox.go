@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/downloader"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/executor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/hardwaremodel"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/identitymgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/logmanager"
@@ -45,7 +44,6 @@ var entrypoints = map[string]func(*pubsub.PubSub){
 	"downloader":       downloader.Run,
 	"executor":         executor.Run,
 	"hardwaremodel":    hardwaremodel.Run,
-	"identitymgr":      identitymgr.Run,
 	"ledmanager":       ledmanager.Run,
 	"logmanager":       logmanager.Run,
 	"nim":              nim.Run,

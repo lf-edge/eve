@@ -41,9 +41,6 @@ services:
    - name: wlan
      image: WLAN_TAG
      cgroupsPath: /eve/eve-wlan
-   - name: lisp
-     image: LISP_TAG
-     cgroupsPath: /eve/eve-lisp
    - name: guacd
      image: GUACD_TAG
      cgroupsPath: /eve/eve-guacd
