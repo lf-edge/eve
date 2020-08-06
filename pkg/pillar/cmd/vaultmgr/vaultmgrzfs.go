@@ -11,13 +11,12 @@ const (
 	zfsPath              = "/usr/sbin/chroot"
 	defaultZpool         = "persist"
 	defaultSecretDataset = defaultZpool + "/vault"
-	zfsHostfsKeyFile     = "/containers/services/pillar/rootfs/var/run/TmpVaultDir2/protector.key"
 	zfsKeyFile           = zfsKeyDir + "/protector.key"
-	zfsKeyDir            = "/var/run/TmpVaultDir2"
+	zfsKeyDir            = "/run/TmpVaultDir2"
 )
 
 func getCreateParams(vaultPath string) []string {
-	args := []string{"/hostfs", "zfs", "create", "-o", "encryption=aes-256-gcm", "-o", "keylocation=file://" + zfsHostfsKeyFile, "-o", "keyformat=raw", vaultPath}
+	args := []string{"/hostfs", "zfs", "create", "-o", "encryption=aes-256-gcm", "-o", "keylocation=file://" + zfsKeyFile, "-o", "keyformat=raw", vaultPath}
 	return args
 }
 

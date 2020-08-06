@@ -52,6 +52,7 @@ type OCISpec interface {
 	UpdateFromDomain(types.DomainConfig)
 	UpdateFromVolume(string) error
 	UpdateMounts([]types.DiskConfig)
+	UpdateEnvVar(map[string]string)
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
@@ -226,7 +227,7 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 func (s *ociSpec) UpdateMounts(disks []types.DiskConfig) {
 	for i := range disks {
 		// Skipping root container disk
-		if i == 0 {
+		if i == 0 || isFile(disks[i].FileLocation) {
 			continue
 		}
 		mount := specs.Mount{}
@@ -245,5 +246,12 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskConfig) {
 		}
 		mount.Options = strings.Split(access, ":")
 		s.Mounts = append(s.Mounts, mount)
+	}
+}
+
+// UpdateEnvVar adds user specified env variables to the OCI spec.
+func (s *ociSpec) UpdateEnvVar(envVars map[string]string) {
+	for k, v := range envVars {
+		s.Process.Env = append(s.Process.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 }

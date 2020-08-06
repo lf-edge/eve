@@ -73,7 +73,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG"
+DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -202,7 +202,7 @@ wait_for_touch nodeagent
 
 mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
-      "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch"
+      "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch" \
       "$WATCHDOG_PID/domainmgr.pid" "$WATCHDOG_FILE/domainmgr.touch"
 
 mkdir -p $DPCDIR
@@ -326,9 +326,8 @@ while [ "$YEAR" = "1970" ]; do
     YEAR=$(date +%Y)
 done
 
-# Restart watchdog ledmanager, client, and nim
-touch "$WATCHDOG_PID/zedclient.pid" \
-      "$WATCHDOG_PID/ntpd.pid"
+# Restart watchdog ledmanager, and nim
+touch "$WATCHDOG_PID/ntpd.pid"
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
@@ -379,6 +378,9 @@ fi
 
 # Deposit any diag information from nim and onboarding
 access_usb
+
+# Restart watchdog ledmanager, client, and nim
+touch "$WATCHDOG_PID/zedclient.pid"
 
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $ZTMPDIR/zedrouterconfig.json

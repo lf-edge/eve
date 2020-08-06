@@ -46,7 +46,9 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx ctrdContext) Setup(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
+	diskStatusList := status.DiskStatusList
+	domainName := status.DomainName
 	spec, err := containerd.NewOciSpec(domainName)
 	if err != nil {
 		return logError("requesting default OCI spec for domain %s failed %v", domainName, err)
@@ -60,6 +62,7 @@ func (ctx ctrdContext) Setup(domainName string, config types.DomainConfig, diskS
 
 	spec.UpdateMounts(config.DiskConfigList)
 	spec.UpdateVifList(config)
+	spec.UpdateEnvVar(status.EnvVariables)
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", domainName, config, err)
 	}
