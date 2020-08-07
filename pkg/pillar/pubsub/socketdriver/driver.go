@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
@@ -162,14 +163,22 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 	// Special case for files in /var/tmp/zededa/ and also
 	// for zedclient going away yet metrics being read after it
 	// is gone.
-	agentName := name
+	var agentName string
+	names := strings.Split(name, "/")
+	if len(names) > 0 {
+		agentName = names[0]
+	}
 
 	if global {
 		subFromDir = true
 		dirName = s.fixedDirName(name)
 	} else if agentName == "zedclient" {
 		subFromDir = true
-		dirName = s.pubDirName(name)
+		if persistent {
+			dirName = s.persistentDirName(name)
+		} else {
+			dirName = s.pubDirName(name)
+		}
 	} else if persistent {
 		// We do the initial Load from the directory if it
 		// exists, but subsequent updates come over IPC
