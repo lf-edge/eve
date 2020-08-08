@@ -24,7 +24,7 @@ reload_watchdog() {
     cp -f "$1" /etc/watchdog.conf
 
     # And finally re-start
-    /usr/sbin/watchdog -F -s &
+    /usr/sbin/watchdog -F &
 }
 
 log() {
