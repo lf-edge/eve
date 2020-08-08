@@ -454,7 +454,7 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 		_, err := os.Stat(etpm.TpmDevicePath)
 		if err != nil {
 			//This is due to lack of TPM
-			log.Debug("Setting status to disabled, HSM is not in use")
+			log.Debug("Setting status to disabled, TPM is not in use")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 				"No active TPM found, but needed for key generation"
 		} else {
@@ -479,33 +479,61 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	ctx.pubVaultStatus = pubVaultStatus
 }
 
-//GetOperInfo gets the current operational state of fscrypt. (Deprecated)
-func GetOperInfo() (info.DataSecAtRestStatus, string) {
+//getFscryptOperInfo returns operational status of fscrypt encryption
+func getFscryptOperInfo() (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
 			//fscrypt is setup, but not being used
 			log.Debug("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Initialization failure"
+				"Fscrypt Encryption is not setup"
 		} else {
 			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
+				"Fscrypt is enabled and active"
 		}
 	} else {
-		if !etpm.IsTpmEnabled() {
-			//This is due to ext3 partition
-			log.Debug("Setting status to disabled, HSM is not in use")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"HSM is either absent or not in use"
-		} else {
-			//This is due to ext3 partition
-			log.Debug("setting status to disabled, ext3 partition")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"File system is incompatible, needs a disruptive upgrade"
-		}
+		return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
+			"Fscrypt is not enabled"
+
+	}
+}
+
+//getZfsOperInfo returns operational status of ZFS encryption
+func getZfsOperInfo() (info.DataSecAtRestStatus, string) {
+	//Check if default zpool (i.e. "persist" dataset) is setup
+	_, err := checkOperStatus(defaultZpool)
+	if err != nil {
+		log.Errorf("default zpool status returns error %v", err)
+		return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
+			"Default ZFS zpool is not setup"
+	}
+	return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
+		"ZFS Encryption is enabled for vaults"
+
+}
+
+//GetOperInfo gets the current operational state of encryption tool
+func GetOperInfo() (info.DataSecAtRestStatus, string) {
+	if !etpm.IsTpmEnabled() {
+		//No encryption on plaforms without a (working) TPM
+		log.Debug("Setting status to disabled, TPM is not in use")
+		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+			"TPM is either absent or not in use"
+	}
+	persistFsType := readPersistType()
+	switch persistFsType {
+	case "ext4":
+		return getFscryptOperInfo()
+	case "zfs":
+		return getZfsOperInfo()
+	default:
+		log.Debugf("Unsupported filesystem (%s), setting status to disabled",
+			persistFsType)
+		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+			"Current filesystem does not support encryption"
 	}
 }
 
@@ -530,6 +558,51 @@ func setupVaultsOnZfs() {
 	if err := setupZfsVault(defaultSecretDataset); err != nil {
 		log.Fatalf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
 	}
+	//XXX: We are deprecating persist/config as a vault soon, till then set it up
+	if err := setupZfsVault(defaultCfgSecretDataset); err != nil {
+		log.Fatalf("Error in setting up ZFS vault %s:%v", defaultCfgSecretDataset, err)
+	}
+}
+
+func publishAllFscryptVaultStatus(ctx *vaultMgrContext) {
+	fscryptStatus, fscryptErr := fetchFscryptStatus()
+	publishVaultStatus(ctx, defaultVaultName, defaultVault,
+		fscryptStatus, fscryptErr)
+	publishVaultStatus(ctx, defaultCfgVaultName, defaultCfgVault,
+		fscryptStatus, fscryptErr)
+}
+
+func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
+	//XXX: till Controller deprecates handling status of persist/config, keep sending
+	publishZfsVaultStatus(ctx, defaultCfgVaultName, defaultCfgSecretDataset)
+	publishZfsVaultStatus(ctx, defaultVaultName, defaultSecretDataset)
+}
+
+func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
+	status := types.VaultStatus{}
+	status.Name = vaultName
+	zfsEncryptStatus, zfsEncryptError := GetOperInfo()
+	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
+		status.Status = zfsEncryptStatus
+		status.SetErrorNow(zfsEncryptError)
+	} else {
+		datasetStatus, err := checkOperStatus(vaultPath)
+		if err == nil {
+			log.Infof("checkOperStatus returns %s for %s", datasetStatus, vaultPath)
+			datasetStatus = processOperStatus(datasetStatus)
+		}
+		if datasetStatus != "" {
+			log.Errorf("Status failed, %s", datasetStatus)
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+			status.SetErrorNow(datasetStatus)
+		} else {
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
+		}
+	}
+	key := status.Key()
+	log.Debugf("Publishing VaultStatus %s\n", key)
+	pub := ctx.pubVaultStatus
+	pub.Publish(key, status)
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
@@ -555,11 +628,7 @@ func Run(ps *pubsub.PubSub) {
 	switch flag.Args()[0] {
 	case "setupVaults":
 		//start with an assumption that nothing needs to be done
-		persistFsType := ""
-		pBytes, err := ioutil.ReadFile(evePersistTypeFile)
-		if err == nil {
-			persistFsType = strings.TrimSpace(string(pBytes))
-		}
+		persistFsType := readPersistType()
 		switch persistFsType {
 		case "ext4":
 			setupVaultsOnExt4()
@@ -614,11 +683,15 @@ func Run(ps *pubsub.PubSub) {
 		// initialize publishing handles
 		initializeSelfPublishHandles(ps, &ctx)
 
-		fscryptStatus, fscryptErr := fetchFscryptStatus()
-		publishVaultStatus(&ctx, defaultVaultName, defaultVault,
-			fscryptStatus, fscryptErr)
-		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault,
-			fscryptStatus, fscryptErr)
+		persistFsType := readPersistType()
+		switch persistFsType {
+		case "ext4":
+			publishAllFscryptVaultStatus(&ctx)
+		case "zfs":
+			publishAllZfsVaultStatus(&ctx)
+		default:
+			log.Warnf("Ignoring unknown filesystem type %s", persistFsType)
+		}
 		for {
 			select {
 			case <-stillRunning.C:
@@ -661,4 +734,16 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+//readPersistType returns the persist filesystem type
+//e.g ext4, zfs, ext3 etc.
+//returns "" in case of read error
+func readPersistType() string {
+	persistFsType := ""
+	pBytes, err := ioutil.ReadFile(evePersistTypeFile)
+	if err == nil {
+		persistFsType = strings.TrimSpace(string(pBytes))
+	}
+	return persistFsType
 }
