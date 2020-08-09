@@ -66,9 +66,6 @@ fi
 mkdir -p $TMPDIR
 export TMPDIR
 
-mkdir -p $PERSISTDIR/containerd
-ln -s $PERSISTDIR/containerd /var/lib/containerd
-
 if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
