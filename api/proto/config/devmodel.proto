@@ -5,6 +5,7 @@ syntax = "proto3";
 
 import "evecommon/devmodelcommon.proto";
 
+package org.lfedge.eve.config;
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "org.lfedge.eve.config";
 

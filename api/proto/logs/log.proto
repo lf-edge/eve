@@ -4,8 +4,9 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-option go_package  = "github.com/lf-edge/eve/api/go/logs";
 
+package org.lfedge.eve.logs;
+option go_package  = "github.com/lf-edge/eve/api/go/logs";
 option java_package = "org.lfedge.eve.logs";
 
 message LogEntry {
