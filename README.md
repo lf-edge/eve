@@ -199,6 +199,17 @@ make run CONF_PART=/path/to/partition
 
 Note that the directory must exist to be mounted; if not, it will be ignored. The most common use case is a config directory output on the run of [adam](https://github.com/zededa/adam).
 
+The above requires that you use a version of QEMU with virtfs support built-in. As of this writing, the default qemu on Ubuntu
+and RedHat (and their variants), as well as the default build-from-source on those, as well as the version on macOS, do not
+support it.
+
+To support it on Linux, follow the instructions to download from source at [qemu.org](https://www.qemu.org/download/#source),
+and when running `./configure`, pass it the option to enable virtfs:
+
+```sh
+./configure --enable-virtfs
+```
+
 While running everything on your laptop with QEMU could be fun, nothing beats real hardware. The most cost-effective option, not surprisingly, is ARM. We recommend two popular board [HiKey](http://www.lenovator.com/product/90.html) and [Raspberry Pi 4](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/). The biggest difference between the two is that on Raspberry Pi (since it doesn't have any built-in flash storage) you won't be able to utlize EVE's installer and you'll have to build a live image. With HiKey you can use a standard EVE's installer. The steps to do both are outlined below:
 
 ## How to use on a Raspberry Pi 4 ARM board

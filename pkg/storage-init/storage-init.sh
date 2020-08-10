@@ -11,15 +11,21 @@ chmod 700 $PERSISTDIR
 mkdir -p $CONFIGDIR
 chmod 700 $CONFIGDIR
 
-if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
-    if ! fsck.vfat -y "$CONFIG"; then
-        echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
-    fi
-    if ! mount -t vfat -o dirsync,noatime "$CONFIG" $CONFIGDIR; then
-        echo "$(date -Ins -u) mount $CONFIG failed"
-    fi
+# first look for a p9 config partition for override
+if grep -s -q CONFIG /sys/bus/virtio/drivers/9pnet_virtio/virtio*/mount_tag; then
+  if ! mount -t 9p -o msize=4096,trans=virtio,version=9p2000.L CONFIG $CONFIGDIR; then
+    echo "$(date -Ins -u) mount p9 $CONFIG failed"
+  fi
+# if we did not find a plan9 shared partition, then look for a partition with the right label
+elif CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
+  if ! fsck.vfat -y "$CONFIG"; then
+     echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
+  fi
+  if ! mount -t vfat -o dirsync,noatime "$CONFIG" $CONFIGDIR; then
+     echo "$(date -Ins -u) mount $CONFIG failed"
+  fi
 else
-    echo "$(date -Ins -u) No separate $CONFIGDIR partition"
+  echo "$(date -Ins -u) No separate $CONFIGDIR partition"
 fi
 
 P3_FS_TYPE="ext3"
