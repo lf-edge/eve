@@ -433,6 +433,9 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		tmplCtx.Kernel = "/hostfs/boot/kernel"
 		tmplCtx.Ramdisk = "/usr/lib/xen/boot/runx-initrd"
 		tmplCtx.ExtraArgs = config.ExtraArgs + " console=hvc0 root=9p-kvm dhcp=1"
+		if config.EnableVnc {
+			tmplCtx.ExtraArgs = config.ExtraArgs + " console=tty0"
+		}
 	}
 
 	// render global device model settings
