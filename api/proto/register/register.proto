@@ -3,6 +3,7 @@
 
 syntax = "proto3";
 
+package org.lfedge.eve.register;
 option go_package  = "github.com/lf-edge/eve/api/go/register";
 option java_package = "org.lfedge.eve.register";
 
