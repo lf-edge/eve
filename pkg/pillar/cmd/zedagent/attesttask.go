@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 )
@@ -209,7 +210,8 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		log.Errorf("[ATTEST] Invalid response code")
 		return zattest.ErrControllerReqFailed
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_SUCCESS:
-		//XXX Retrieve Storage keys, and integrity token
+		//Retrieve integrity token
+		storeIntegrityToken(quoteResp.GetIntegrityToken())
 		log.Infof("[ATTEST] Attestation successful")
 		return nil
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH:
@@ -402,4 +404,20 @@ func unpublishAttestNonce(ctx *attestContext) {
 		log.Fatal("[ATTEST] Stale nonce items found after unpublishing")
 	}
 	log.Debugf("[ATTEST] unpublishAttestNonce done for %s", key)
+}
+
+//helper to set IntegrityToken
+func storeIntegrityToken(token []byte) {
+	if len(token) == 0 {
+		log.Warnf("[ATTEST] Received empty integrity token")
+	}
+	err := ioutil.WriteFile(types.ITokenFile, token, 644)
+	if err != nil {
+		log.Fatalf("Failed to store integrity token, err: %v", err)
+	}
+}
+
+//helper to get IntegrityToken
+func readIntegrityToken() ([]byte, error) {
+	return ioutil.ReadFile(types.ITokenFile)
 }
