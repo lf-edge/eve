@@ -21,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/logmanager"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/newlogmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
@@ -48,6 +49,7 @@ var entrypoints = map[string]func(*pubsub.PubSub){
 	"identitymgr":      identitymgr.Run,
 	"ledmanager":       ledmanager.Run,
 	"logmanager":       logmanager.Run,
+	"newlogmgr":        newlogmgr.Run,
 	"nim":              nim.Run,
 	"nodeagent":        nodeagent.Run,
 	"verifier":         verifier.Run,

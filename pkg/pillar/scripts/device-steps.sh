@@ -15,7 +15,7 @@ ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
-AGENTS0="logmanager ledmanager nim nodeagent domainmgr"
+AGENTS0="logmanager newlogmgr ledmanager nim nodeagent domainmgr"
 AGENTS1="zedmanager zedrouter downloader verifier identitymgr zedagent baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
@@ -454,6 +454,17 @@ if ! pgrep logmanager >/dev/null; then
     wait_for_touch logmanager
     touch "$WATCHDOG_PID/logmanager.pid" "$WATCHDOG_FILE/logmanager.touch"
 fi
+
+#If newlogmgr is already running we don't have to start it.
+if ! pgrep newlogmgr >/dev/null; then
+    echo "$(date -Ins -u) Starting newlogmgr"
+    $BINDIR/newlogmgr &
+    wait_for_touch newlogmgr
+    touch "$WATCHDOG_PID/newlogmgr.pid" "$WATCHDOG_FILE/newlogmgr.touch"
+fi
+
+echo '$(date -Ins -u) Starting monitor-newlogmgr'
+/opt/zededa/bin/monitor-newlogmgr.sh &
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
