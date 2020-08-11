@@ -18,16 +18,16 @@ from evecommon import devmodelcommon_pb2 as evecommon_dot_devmodelcommon__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/devmodel.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x15\x63onfig/devmodel.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"n\n\x0fsWAdapterParams\x12\x1d\n\x05\x61Type\x18\x01 \x01(\x0e\x32\x0e.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x8b\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\x8e\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12+\n\x08phyaddrs\x18\x03 \x03(\x0b\x32\x19.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12&\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\x11.PhyIOUsagePolicy\x12\'\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32\x17.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x15\x63onfig/devmodel.proto\x12\x15org.lfedge.eve.config\x1a\x1e\x65vecommon/devmodelcommon.proto\"\x84\x01\n\x0fsWAdapterParams\x12\x33\n\x05\x61Type\x18\x01 \x01(\x0e\x32$.org.lfedge.eve.config.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x8b\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\xd0\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12\x41\n\x08phyaddrs\x18\x03 \x03(\x0b\x32/.org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12<\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\'.org.lfedge.eve.config.PhyIOUsagePolicy\x12=\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32-.org.lfedge.eve.config.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
 _SWADAPTERTYPE = _descriptor.EnumDescriptor(
   name='sWAdapterType',
-  full_name='sWAdapterType',
+  full_name='org.lfedge.eve.config.sWAdapterType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -46,8 +46,8 @@ _SWADAPTERTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=778,
-  serialized_end=825,
+  serialized_start=890,
+  serialized_end=937,
 )
 _sym_db.RegisterEnumDescriptor(_SWADAPTERTYPE)
 
@@ -60,34 +60,34 @@ BOND = 2
 
 _SWADAPTERPARAMS = _descriptor.Descriptor(
   name='sWAdapterParams',
-  full_name='sWAdapterParams',
+  full_name='org.lfedge.eve.config.sWAdapterParams',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='aType', full_name='sWAdapterParams.aType', index=0,
+      name='aType', full_name='org.lfedge.eve.config.sWAdapterParams.aType', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='underlayInterface', full_name='sWAdapterParams.underlayInterface', index=1,
+      name='underlayInterface', full_name='org.lfedge.eve.config.sWAdapterParams.underlayInterface', index=1,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vlanId', full_name='sWAdapterParams.vlanId', index=2,
+      name='vlanId', full_name='org.lfedge.eve.config.sWAdapterParams.vlanId', index=2,
       number=9, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bondgroup', full_name='sWAdapterParams.bondgroup', index=3,
+      name='bondgroup', full_name='org.lfedge.eve.config.sWAdapterParams.bondgroup', index=3,
       number=10, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -105,62 +105,62 @@ _SWADAPTERPARAMS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=57,
-  serialized_end=167,
+  serialized_start=81,
+  serialized_end=213,
 )
 
 
 _SYSTEMADAPTER = _descriptor.Descriptor(
   name='SystemAdapter',
-  full_name='SystemAdapter',
+  full_name='org.lfedge.eve.config.SystemAdapter',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='name', full_name='SystemAdapter.name', index=0,
+      name='name', full_name='org.lfedge.eve.config.SystemAdapter.name', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='freeUplink', full_name='SystemAdapter.freeUplink', index=1,
+      name='freeUplink', full_name='org.lfedge.eve.config.SystemAdapter.freeUplink', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uplink', full_name='SystemAdapter.uplink', index=2,
+      name='uplink', full_name='org.lfedge.eve.config.SystemAdapter.uplink', index=2,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkUUID', full_name='SystemAdapter.networkUUID', index=3,
+      name='networkUUID', full_name='org.lfedge.eve.config.SystemAdapter.networkUUID', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='addr', full_name='SystemAdapter.addr', index=4,
+      name='addr', full_name='org.lfedge.eve.config.SystemAdapter.addr', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='alias', full_name='SystemAdapter.alias', index=5,
+      name='alias', full_name='org.lfedge.eve.config.SystemAdapter.alias', index=5,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lowerLayerName', full_name='SystemAdapter.lowerLayerName', index=6,
+      name='lowerLayerName', full_name='org.lfedge.eve.config.SystemAdapter.lowerLayerName', index=6,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -178,27 +178,27 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=170,
-  serialized_end=309,
+  serialized_start=216,
+  serialized_end=355,
 )
 
 
 _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
   name='PhyIOUsagePolicy',
-  full_name='PhyIOUsagePolicy',
+  full_name='org.lfedge.eve.config.PhyIOUsagePolicy',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='freeUplink', full_name='PhyIOUsagePolicy.freeUplink', index=0,
+      name='freeUplink', full_name='org.lfedge.eve.config.PhyIOUsagePolicy.freeUplink', index=0,
       number=1, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='fallBackPriority', full_name='PhyIOUsagePolicy.fallBackPriority', index=1,
+      name='fallBackPriority', full_name='org.lfedge.eve.config.PhyIOUsagePolicy.fallBackPriority', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -216,27 +216,27 @@ _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=311,
-  serialized_end=375,
+  serialized_start=357,
+  serialized_end=421,
 )
 
 
 _PHYSICALIO_PHYADDRSENTRY = _descriptor.Descriptor(
   name='PhyaddrsEntry',
-  full_name='PhysicalIO.PhyaddrsEntry',
+  full_name='org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='PhysicalIO.PhyaddrsEntry.key', index=0,
+      name='key', full_name='org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='PhysicalIO.PhyaddrsEntry.value', index=1,
+      name='value', full_name='org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry.value', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -254,26 +254,26 @@ _PHYSICALIO_PHYADDRSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=682,
-  serialized_end=729,
+  serialized_start=794,
+  serialized_end=841,
 )
 
 _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
   name='CbattrEntry',
-  full_name='PhysicalIO.CbattrEntry',
+  full_name='org.lfedge.eve.config.PhysicalIO.CbattrEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='PhysicalIO.CbattrEntry.key', index=0,
+      name='key', full_name='org.lfedge.eve.config.PhysicalIO.CbattrEntry.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='PhysicalIO.CbattrEntry.value', index=1,
+      name='value', full_name='org.lfedge.eve.config.PhysicalIO.CbattrEntry.value', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -291,68 +291,68 @@ _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=731,
-  serialized_end=776,
+  serialized_start=843,
+  serialized_end=888,
 )
 
 _PHYSICALIO = _descriptor.Descriptor(
   name='PhysicalIO',
-  full_name='PhysicalIO',
+  full_name='org.lfedge.eve.config.PhysicalIO',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ptype', full_name='PhysicalIO.ptype', index=0,
+      name='ptype', full_name='org.lfedge.eve.config.PhysicalIO.ptype', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='phylabel', full_name='PhysicalIO.phylabel', index=1,
+      name='phylabel', full_name='org.lfedge.eve.config.PhysicalIO.phylabel', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='phyaddrs', full_name='PhysicalIO.phyaddrs', index=2,
+      name='phyaddrs', full_name='org.lfedge.eve.config.PhysicalIO.phyaddrs', index=2,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='logicallabel', full_name='PhysicalIO.logicallabel', index=3,
+      name='logicallabel', full_name='org.lfedge.eve.config.PhysicalIO.logicallabel', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='assigngrp', full_name='PhysicalIO.assigngrp', index=4,
+      name='assigngrp', full_name='org.lfedge.eve.config.PhysicalIO.assigngrp', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usage', full_name='PhysicalIO.usage', index=5,
+      name='usage', full_name='org.lfedge.eve.config.PhysicalIO.usage', index=5,
       number=6, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usagePolicy', full_name='PhysicalIO.usagePolicy', index=6,
+      name='usagePolicy', full_name='org.lfedge.eve.config.PhysicalIO.usagePolicy', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cbattr', full_name='PhysicalIO.cbattr', index=7,
+      name='cbattr', full_name='org.lfedge.eve.config.PhysicalIO.cbattr', index=7,
       number=8, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -370,8 +370,8 @@ _PHYSICALIO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=378,
-  serialized_end=776,
+  serialized_start=424,
+  serialized_end=888,
 )
 
 _SWADAPTERPARAMS.fields_by_name['aType'].enum_type = _SWADAPTERTYPE
@@ -392,21 +392,21 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 sWAdapterParams = _reflection.GeneratedProtocolMessageType('sWAdapterParams', (_message.Message,), dict(
   DESCRIPTOR = _SWADAPTERPARAMS,
   __module__ = 'config.devmodel_pb2'
-  # @@protoc_insertion_point(class_scope:sWAdapterParams)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.sWAdapterParams)
   ))
 _sym_db.RegisterMessage(sWAdapterParams)
 
 SystemAdapter = _reflection.GeneratedProtocolMessageType('SystemAdapter', (_message.Message,), dict(
   DESCRIPTOR = _SYSTEMADAPTER,
   __module__ = 'config.devmodel_pb2'
-  # @@protoc_insertion_point(class_scope:SystemAdapter)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.SystemAdapter)
   ))
 _sym_db.RegisterMessage(SystemAdapter)
 
 PhyIOUsagePolicy = _reflection.GeneratedProtocolMessageType('PhyIOUsagePolicy', (_message.Message,), dict(
   DESCRIPTOR = _PHYIOUSAGEPOLICY,
   __module__ = 'config.devmodel_pb2'
-  # @@protoc_insertion_point(class_scope:PhyIOUsagePolicy)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.PhyIOUsagePolicy)
   ))
 _sym_db.RegisterMessage(PhyIOUsagePolicy)
 
@@ -415,19 +415,19 @@ PhysicalIO = _reflection.GeneratedProtocolMessageType('PhysicalIO', (_message.Me
   PhyaddrsEntry = _reflection.GeneratedProtocolMessageType('PhyaddrsEntry', (_message.Message,), dict(
     DESCRIPTOR = _PHYSICALIO_PHYADDRSENTRY,
     __module__ = 'config.devmodel_pb2'
-    # @@protoc_insertion_point(class_scope:PhysicalIO.PhyaddrsEntry)
+    # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry)
     ))
   ,
 
   CbattrEntry = _reflection.GeneratedProtocolMessageType('CbattrEntry', (_message.Message,), dict(
     DESCRIPTOR = _PHYSICALIO_CBATTRENTRY,
     __module__ = 'config.devmodel_pb2'
-    # @@protoc_insertion_point(class_scope:PhysicalIO.CbattrEntry)
+    # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.PhysicalIO.CbattrEntry)
     ))
   ,
   DESCRIPTOR = _PHYSICALIO,
   __module__ = 'config.devmodel_pb2'
-  # @@protoc_insertion_point(class_scope:PhysicalIO)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.PhysicalIO)
   ))
 _sym_db.RegisterMessage(PhysicalIO)
 _sym_db.RegisterMessage(PhysicalIO.PhyaddrsEntry)

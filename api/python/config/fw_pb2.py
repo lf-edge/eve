@@ -17,15 +17,15 @@ _sym_db = _symbol_database.Default()
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/fw.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x0f\x63onfig/fw.proto\"\'\n\x08\x41\x43\x45Match\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x84\x01\n\tACEAction\x12\x0c\n\x04\x64rop\x18\x01 \x01(\x08\x12\r\n\x05limit\x18\x02 \x01(\x08\x12\x11\n\tlimitrate\x18\x03 \x01(\r\x12\x11\n\tlimitunit\x18\x04 \x01(\t\x12\x12\n\nlimitburst\x18\x05 \x01(\r\x12\x0f\n\x07portmap\x18\x06 \x01(\x08\x12\x0f\n\x07\x61ppPort\x18\x07 \x01(\r\"t\n\x03\x41\x43\x45\x12\x1a\n\x07matches\x18\x01 \x03(\x0b\x32\t.ACEMatch\x12\x1b\n\x07\x61\x63tions\x18\x02 \x03(\x0b\x32\n.ACEAction\x12\x0c\n\x04name\x18\x03 \x01(\t\x12\n\n\x02id\x18\x04 \x01(\x05\x12\x1a\n\x03\x64ir\x18\x05 \x01(\x0e\x32\r.ACEDirection*1\n\x0c\x41\x43\x45\x44irection\x12\x08\n\x04\x42OTH\x10\x00\x12\x0b\n\x07INGRESS\x10\x01\x12\n\n\x06\x45GRESS\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x0f\x63onfig/fw.proto\x12\x15org.lfedge.eve.config\"\'\n\x08\x41\x43\x45Match\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x84\x01\n\tACEAction\x12\x0c\n\x04\x64rop\x18\x01 \x01(\x08\x12\r\n\x05limit\x18\x02 \x01(\x08\x12\x11\n\tlimitrate\x18\x03 \x01(\r\x12\x11\n\tlimitunit\x18\x04 \x01(\t\x12\x12\n\nlimitburst\x18\x05 \x01(\r\x12\x0f\n\x07portmap\x18\x06 \x01(\x08\x12\x0f\n\x07\x61ppPort\x18\x07 \x01(\r\"\xb6\x01\n\x03\x41\x43\x45\x12\x30\n\x07matches\x18\x01 \x03(\x0b\x32\x1f.org.lfedge.eve.config.ACEMatch\x12\x31\n\x07\x61\x63tions\x18\x02 \x03(\x0b\x32 .org.lfedge.eve.config.ACEAction\x12\x0c\n\x04name\x18\x03 \x01(\t\x12\n\n\x02id\x18\x04 \x01(\x05\x12\x30\n\x03\x64ir\x18\x05 \x01(\x0e\x32#.org.lfedge.eve.config.ACEDirection*1\n\x0c\x41\x43\x45\x44irection\x12\x08\n\x04\x42OTH\x10\x00\x12\x0b\n\x07INGRESS\x10\x01\x12\n\n\x06\x45GRESS\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _ACEDIRECTION = _descriptor.EnumDescriptor(
   name='ACEDirection',
-  full_name='ACEDirection',
+  full_name='org.lfedge.eve.config.ACEDirection',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -44,8 +44,8 @@ _ACEDIRECTION = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=313,
-  serialized_end=362,
+  serialized_start=403,
+  serialized_end=452,
 )
 _sym_db.RegisterEnumDescriptor(_ACEDIRECTION)
 
@@ -58,20 +58,20 @@ EGRESS = 2
 
 _ACEMATCH = _descriptor.Descriptor(
   name='ACEMatch',
-  full_name='ACEMatch',
+  full_name='org.lfedge.eve.config.ACEMatch',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='type', full_name='ACEMatch.type', index=0,
+      name='type', full_name='org.lfedge.eve.config.ACEMatch.type', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='ACEMatch.value', index=1,
+      name='value', full_name='org.lfedge.eve.config.ACEMatch.value', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -89,62 +89,62 @@ _ACEMATCH = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=19,
-  serialized_end=58,
+  serialized_start=42,
+  serialized_end=81,
 )
 
 
 _ACEACTION = _descriptor.Descriptor(
   name='ACEAction',
-  full_name='ACEAction',
+  full_name='org.lfedge.eve.config.ACEAction',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='drop', full_name='ACEAction.drop', index=0,
+      name='drop', full_name='org.lfedge.eve.config.ACEAction.drop', index=0,
       number=1, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='limit', full_name='ACEAction.limit', index=1,
+      name='limit', full_name='org.lfedge.eve.config.ACEAction.limit', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='limitrate', full_name='ACEAction.limitrate', index=2,
+      name='limitrate', full_name='org.lfedge.eve.config.ACEAction.limitrate', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='limitunit', full_name='ACEAction.limitunit', index=3,
+      name='limitunit', full_name='org.lfedge.eve.config.ACEAction.limitunit', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='limitburst', full_name='ACEAction.limitburst', index=4,
+      name='limitburst', full_name='org.lfedge.eve.config.ACEAction.limitburst', index=4,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='portmap', full_name='ACEAction.portmap', index=5,
+      name='portmap', full_name='org.lfedge.eve.config.ACEAction.portmap', index=5,
       number=6, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appPort', full_name='ACEAction.appPort', index=6,
+      name='appPort', full_name='org.lfedge.eve.config.ACEAction.appPort', index=6,
       number=7, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -162,48 +162,48 @@ _ACEACTION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=61,
-  serialized_end=193,
+  serialized_start=84,
+  serialized_end=216,
 )
 
 
 _ACE = _descriptor.Descriptor(
   name='ACE',
-  full_name='ACE',
+  full_name='org.lfedge.eve.config.ACE',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='matches', full_name='ACE.matches', index=0,
+      name='matches', full_name='org.lfedge.eve.config.ACE.matches', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='actions', full_name='ACE.actions', index=1,
+      name='actions', full_name='org.lfedge.eve.config.ACE.actions', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='ACE.name', index=2,
+      name='name', full_name='org.lfedge.eve.config.ACE.name', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='id', full_name='ACE.id', index=3,
+      name='id', full_name='org.lfedge.eve.config.ACE.id', index=3,
       number=4, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dir', full_name='ACE.dir', index=4,
+      name='dir', full_name='org.lfedge.eve.config.ACE.dir', index=4,
       number=5, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -221,8 +221,8 @@ _ACE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=195,
-  serialized_end=311,
+  serialized_start=219,
+  serialized_end=401,
 )
 
 _ACE.fields_by_name['matches'].message_type = _ACEMATCH
@@ -237,21 +237,21 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 ACEMatch = _reflection.GeneratedProtocolMessageType('ACEMatch', (_message.Message,), dict(
   DESCRIPTOR = _ACEMATCH,
   __module__ = 'config.fw_pb2'
-  # @@protoc_insertion_point(class_scope:ACEMatch)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ACEMatch)
   ))
 _sym_db.RegisterMessage(ACEMatch)
 
 ACEAction = _reflection.GeneratedProtocolMessageType('ACEAction', (_message.Message,), dict(
   DESCRIPTOR = _ACEACTION,
   __module__ = 'config.fw_pb2'
-  # @@protoc_insertion_point(class_scope:ACEAction)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ACEAction)
   ))
 _sym_db.RegisterMessage(ACEAction)
 
 ACE = _reflection.GeneratedProtocolMessageType('ACE', (_message.Message,), dict(
   DESCRIPTOR = _ACE,
   __module__ = 'config.fw_pb2'
-  # @@protoc_insertion_point(class_scope:ACE)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ACE)
   ))
 _sym_db.RegisterMessage(ACE)
 

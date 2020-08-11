@@ -18,16 +18,16 @@ from evecommon import evecommon_pb2 as evecommon_dot_evecommon__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/acipherinfo.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x18\x63onfig/acipherinfo.proto\x1a\x19\x65vecommon/evecommon.proto\"\xec\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12\x38\n\nhashScheme\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x18\x63onfig/acipherinfo.proto\x12\x15org.lfedge.eve.config\x1a\x19\x65vecommon/evecommon.proto\"\x98\x02\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12\x38\n\nhashScheme\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x43\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32(.org.lfedge.eve.config.KeyExchangeScheme\x12\x41\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\'.org.lfedge.eve.config.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[evecommon_dot_evecommon__pb2.DESCRIPTOR,])
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   name='KeyExchangeScheme',
-  full_name='KeyExchangeScheme',
+  full_name='org.lfedge.eve.config.KeyExchangeScheme',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -42,15 +42,15 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=529,
-  serialized_end=576,
+  serialized_start=596,
+  serialized_end=643,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
 KeyExchangeScheme = enum_type_wrapper.EnumTypeWrapper(_KEYEXCHANGESCHEME)
 _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   name='EncryptionScheme',
-  full_name='EncryptionScheme',
+  full_name='org.lfedge.eve.config.EncryptionScheme',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -65,8 +65,8 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=578,
-  serialized_end=629,
+  serialized_start=645,
+  serialized_end=696,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
@@ -80,48 +80,48 @@ SA_AES_256_CFB = 1
 
 _CIPHERCONTEXT = _descriptor.Descriptor(
   name='CipherContext',
-  full_name='CipherContext',
+  full_name='org.lfedge.eve.config.CipherContext',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='contextId', full_name='CipherContext.contextId', index=0,
+      name='contextId', full_name='org.lfedge.eve.config.CipherContext.contextId', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='hashScheme', full_name='CipherContext.hashScheme', index=1,
+      name='hashScheme', full_name='org.lfedge.eve.config.CipherContext.hashScheme', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='keyExchangeScheme', full_name='CipherContext.keyExchangeScheme', index=2,
+      name='keyExchangeScheme', full_name='org.lfedge.eve.config.CipherContext.keyExchangeScheme', index=2,
       number=3, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='encryptionScheme', full_name='CipherContext.encryptionScheme', index=3,
+      name='encryptionScheme', full_name='org.lfedge.eve.config.CipherContext.encryptionScheme', index=3,
       number=4, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='deviceCertHash', full_name='CipherContext.deviceCertHash', index=4,
+      name='deviceCertHash', full_name='org.lfedge.eve.config.CipherContext.deviceCertHash', index=4,
       number=5, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='controllerCertHash', full_name='CipherContext.controllerCertHash', index=5,
+      name='controllerCertHash', full_name='org.lfedge.eve.config.CipherContext.controllerCertHash', index=5,
       number=6, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
@@ -139,41 +139,41 @@ _CIPHERCONTEXT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=56,
-  serialized_end=292,
+  serialized_start=79,
+  serialized_end=359,
 )
 
 
 _CIPHERBLOCK = _descriptor.Descriptor(
   name='CipherBlock',
-  full_name='CipherBlock',
+  full_name='org.lfedge.eve.config.CipherBlock',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='cipherContextId', full_name='CipherBlock.cipherContextId', index=0,
+      name='cipherContextId', full_name='org.lfedge.eve.config.CipherBlock.cipherContextId', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='initialValue', full_name='CipherBlock.initialValue', index=1,
+      name='initialValue', full_name='org.lfedge.eve.config.CipherBlock.initialValue', index=1,
       number=2, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cipherData', full_name='CipherBlock.cipherData', index=2,
+      name='cipherData', full_name='org.lfedge.eve.config.CipherBlock.cipherData', index=2,
       number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='clearTextSha256', full_name='CipherBlock.clearTextSha256', index=3,
+      name='clearTextSha256', full_name='org.lfedge.eve.config.CipherBlock.clearTextSha256', index=3,
       number=4, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
@@ -191,48 +191,48 @@ _CIPHERBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=294,
-  serialized_end=399,
+  serialized_start=361,
+  serialized_end=466,
 )
 
 
 _ENCRYPTIONBLOCK = _descriptor.Descriptor(
   name='EncryptionBlock',
-  full_name='EncryptionBlock',
+  full_name='org.lfedge.eve.config.EncryptionBlock',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='dsAPIKey', full_name='EncryptionBlock.dsAPIKey', index=0,
+      name='dsAPIKey', full_name='org.lfedge.eve.config.EncryptionBlock.dsAPIKey', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dsPassword', full_name='EncryptionBlock.dsPassword', index=1,
+      name='dsPassword', full_name='org.lfedge.eve.config.EncryptionBlock.dsPassword', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='wifiUserName', full_name='EncryptionBlock.wifiUserName', index=2,
+      name='wifiUserName', full_name='org.lfedge.eve.config.EncryptionBlock.wifiUserName', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='wifiPassword', full_name='EncryptionBlock.wifiPassword', index=3,
+      name='wifiPassword', full_name='org.lfedge.eve.config.EncryptionBlock.wifiPassword', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='protectedUserData', full_name='EncryptionBlock.protectedUserData', index=4,
+      name='protectedUserData', full_name='org.lfedge.eve.config.EncryptionBlock.protectedUserData', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -250,8 +250,8 @@ _ENCRYPTIONBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=401,
-  serialized_end=527,
+  serialized_start=468,
+  serialized_end=594,
 )
 
 _CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = evecommon_dot_evecommon__pb2._HASHALGORITHM
@@ -267,21 +267,21 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 CipherContext = _reflection.GeneratedProtocolMessageType('CipherContext', (_message.Message,), dict(
   DESCRIPTOR = _CIPHERCONTEXT,
   __module__ = 'config.acipherinfo_pb2'
-  # @@protoc_insertion_point(class_scope:CipherContext)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.CipherContext)
   ))
 _sym_db.RegisterMessage(CipherContext)
 
 CipherBlock = _reflection.GeneratedProtocolMessageType('CipherBlock', (_message.Message,), dict(
   DESCRIPTOR = _CIPHERBLOCK,
   __module__ = 'config.acipherinfo_pb2'
-  # @@protoc_insertion_point(class_scope:CipherBlock)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.CipherBlock)
   ))
 _sym_db.RegisterMessage(CipherBlock)
 
 EncryptionBlock = _reflection.GeneratedProtocolMessageType('EncryptionBlock', (_message.Message,), dict(
   DESCRIPTOR = _ENCRYPTIONBLOCK,
   __module__ = 'config.acipherinfo_pb2'
-  # @@protoc_insertion_point(class_scope:EncryptionBlock)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.EncryptionBlock)
   ))
 _sym_db.RegisterMessage(EncryptionBlock)
 

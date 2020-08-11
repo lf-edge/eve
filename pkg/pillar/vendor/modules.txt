@@ -116,7 +116,6 @@ github.com/containerd/containerd/defaults
 github.com/containerd/containerd/diff
 github.com/containerd/containerd/events
 github.com/containerd/containerd/images/archive
-github.com/containerd/containerd/leases
 github.com/containerd/containerd/leases/proxy
 github.com/containerd/containerd/pkg/dialer
 github.com/containerd/containerd/plugin

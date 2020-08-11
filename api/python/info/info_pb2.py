@@ -19,16 +19,16 @@ from evecommon import devmodelcommon_pb2 as evecommon_dot_devmodelcommon__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='info/info.proto',
-  package='',
+  package='org.lfedge.eve.info',
   syntax='proto3',
   serialized_options=_b('\n\023org.lfedge.eve.infoZ\"github.com/lf-edge/eve/api/go/info'),
-  serialized_pb=_b('\n\x0finfo/info.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"\xc8\x01\n\x14\x64\x65precatedMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12 \n\x04type\x18\x02 \x01(\x0e\x32\x12.DepMetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\xfd\x01\n\tZioBundle\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\x12#\n\rioAddressList\x18\x06 \x03(\x0b\x32\x0c.IoAddresses\x12\x36\n\x05usage\x18\x07 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12\x17\n\x03\x65rr\x18\x08 \x01(\x0b\x32\n.ErrorInfo\"!\n\x0bIoAddresses\x12\x12\n\nmacAddress\x18\x01 \x01(\t\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\x87\x02\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\r\n\x05\x61lias\x18( \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x1e\n\nnetworkErr\x18\x0b \x01(\x0b\x32\n.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\x12\x1b\n\x05proxy\x18\r \x01(\x0b\x32\x0c.ProxyStatus\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"\x91\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"]\n\tVaultInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12$\n\x06status\x18\x02 \x01(\x0e\x32\x14.DataSecAtRestStatus\x12\x1c\n\x08vaultErr\x18\x03 \x01(\x0b\x32\n.ErrorInfo\"b\n\rDataSecAtRest\x12$\n\x06status\x18\x01 \x01(\x0e\x32\x14.DataSecAtRestStatus\x12\x0c\n\x04info\x18\x02 \x01(\t\x12\x1d\n\tvaultList\x18\x03 \x03(\x0b\x32\n.VaultInfo\"/\n\x0fZInfoConfigItem\x12\r\n\x05value\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\xb4\x02\n\x15ZInfoConfigItemStatus\x12<\n\x0b\x63onfigItems\x18\x01 \x03(\x0b\x32\'.ZInfoConfigItemStatus.ConfigItemsEntry\x12J\n\x12unknownConfigItems\x18\x02 \x03(\x0b\x32..ZInfoConfigItemStatus.UnknownConfigItemsEntry\x1a\x44\n\x10\x43onfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.ZInfoConfigItem:\x02\x38\x01\x1aK\n\x17UnknownConfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.ZInfoConfigItem:\x02\x38\x01\"B\n\x10ZInfoAppInstance\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\ndomainName\x18\x03 \x01(\t\"\xae\x06\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12*\n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x15.deprecatedMetricItem\x12\x18\n\x10lastRebootReason\x18\x16 \x01(\t\x12\x32\n\x0elastRebootTime\x18\x17 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\rsystemAdapter\x18\x18 \x01(\x0b\x32\x12.SystemAdapterInfo\x12\x16\n\x0erestartCounter\x18\x19 \x01(\r\x12*\n\tHSMStatus\x18\x1a \x01(\x0e\x32\x17.HwSecurityModuleStatus\x12\x0f\n\x07HSMInfo\x18\x1b \x01(\t\x12\x17\n\x0flastRebootStack\x18\x1c \x01(\t\x12)\n\x11\x64\x61taSecAtRestInfo\x18\x1d \x01(\x0b\x32\x0e.DataSecAtRest\x12\x30\n\x10\x63onfigItemStatus\x18\x1f \x01(\x0b\x32\x16.ZInfoConfigItemStatus\x12\'\n\x0c\x61ppInstances\x18  \x03(\x0b\x32\x11.ZInfoAppInstance\x12\x1b\n\x13rebootConfigCounter\x18! \x01(\r\"L\n\x11SystemAdapterInfo\x12\x14\n\x0c\x63urrentIndex\x18\x01 \x01(\r\x12!\n\x06status\x18\x02 \x03(\x0b\x32\x11.DevicePortStatus\"\xf4\x01\n\x10\x44\x65vicePortStatus\x12\x0f\n\x07version\x18\x01 \x01(\r\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\x30\n\x0ctimePriority\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nlastFailed\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\rlastSucceeded\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1a\n\x05ports\x18\x06 \x03(\x0b\x32\x0b.DevicePort\x12\x11\n\tlastError\x18\x07 \x01(\t\"\xdf\x03\n\nDevicePort\x12\x0e\n\x06ifname\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06isMgmt\x18\x03 \x01(\x08\x12\x0c\n\x04\x66ree\x18\x04 \x01(\x08\x12\x10\n\x08\x64hcpType\x18\x0b \x01(\r\x12\x0e\n\x06subnet\x18\x0c \x01(\t\x12\x0f\n\x07gateway\x18\r \x01(\t\x12\x12\n\ndomainname\x18\x0e \x01(\t\x12\x11\n\tntpServer\x18\x0f \x01(\t\x12\x12\n\ndnsServers\x18\x10 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\x11 \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\x12 \x01(\t\x12\x1b\n\x05proxy\x18\x15 \x01(\x0b\x32\x0c.ProxyStatus\x12\x0f\n\x07macAddr\x18\x16 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x17 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x18 \x03(\t\x12\x16\n\x03\x64ns\x18\x19 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x1a \x01(\x08\x12\x19\n\x08location\x18\x1b \x01(\x0b\x32\x07.GeoLoc\x12\x17\n\x03\x65rr\x18\x1d \x01(\x0b\x32\n.ErrorInfo\x12\x36\n\x05usage\x18\x1e \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12\x13\n\x0bnetworkUUID\x18\x1f \x01(\t\"\x96\x01\n\x0bProxyStatus\x12\x1c\n\x07proxies\x18\x01 \x03(\x0b\x32\x0b.ProxyEntry\x12\x12\n\nexceptions\x18\x02 \x01(\t\x12\x0f\n\x07pacfile\x18\x03 \x01(\t\x12\x1a\n\x12networkProxyEnable\x18\x04 \x01(\x08\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x0f\n\x07wpadURL\x18\x06 \x01(\t\"8\n\nProxyEntry\x12\x0c\n\x04type\x18\x01 \x01(\r\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xdc\x02\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\x12!\n\nuserStatus\x18\x0b \x01(\x0e\x32\r.BaseOsStatus\x12\x14\n\x0csubStatusStr\x18\x0c \x01(\t\x12#\n\tsubStatus\x18\r \x01(\x0e\x32\x10.BaseOsSubStatus\x12\x19\n\x11subStatusProgress\x18\x0e \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\xaf\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\x12\x18\n\x05state\x18\x0f \x01(\x0e\x32\t.ZSwState\x12\x1e\n\x07network\x18\x10 \x03(\x0b\x32\r.ZInfoNetwork\x12\x12\n\nvolumeRefs\x18\x11 \x03(\t\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xbd\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\n \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\x12 \n\x05rInfo\x18\x0b \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xd9\x01\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\x07 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12 \n\x05rInfo\x18\x08 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12\x1c\n\x05links\x18\n \x03(\x0b\x32\r.ZInfoVpnLink\"f\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12\x1b\n\x04\x63onn\x18\n \x03(\x0b\x32\r.ZInfoVpnConn\",\n\tRlocState\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x11\n\tReachable\x18\x02 \x01(\x08\"7\n\rMapCacheEntry\x12\x0b\n\x03\x45ID\x18\x01 \x01(\t\x12\x19\n\x05Rlocs\x18\x02 \x03(\x0b\x32\n.RlocState\"C\n\x0b\x44\x61tabaseMap\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\'\n\x0fMapCacheEntries\x18\x02 \x03(\x0b\x32\x0e.MapCacheEntry\"8\n\x08\x44\x65\x63\x61pKey\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x0c\n\x04Port\x18\x02 \x01(\x04\x12\x10\n\x08KeyCount\x18\x03 \x01(\x04\"\x8c\x01\n\tZInfoLisp\x12\x15\n\rItrCryptoPort\x18\x01 \x01(\x04\x12\x12\n\nEtrNatPort\x18\x02 \x01(\x04\x12\x12\n\nInterfaces\x18\x03 \x03(\t\x12\"\n\x0c\x44\x61tabaseMaps\x18\x04 \x03(\x0b\x32\x0c.DatabaseMap\x12\x1c\n\tDecapKeys\x18\x05 \x03(\x0b\x32\t.DecapKey\"\xc0\x04\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1e\n\x0csoftwareList\x18\t \x01(\x0b\x32\x08.ZInfoSW\x12\x19\n\x11\x43urrentUplinkIntf\x18\n \x01(\t\x12\x1a\n\x12\x43urrentUplinkAlias\x18\x0b \x01(\t\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12-\n\ripAssignments\x18\x17 \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12$\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x05vinfo\x18\x1f \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18  \x01(\x0b\x32\n.ZInfoLispH\x00\x12\x1e\n\nnetworkErr\x18( \x03(\x0b\x32\n.ErrorInfoB\r\n\x0bInfoContent\"\x89\x01\n\tUsageInfo\x12.\n\ncreateTime\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08refCount\x18\x02 \x01(\r\x12:\n\x16lastRefcountChangeTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"=\n\x0fVolumeResources\x12\x14\n\x0cmaxSizeBytes\x18\x01 \x01(\x04\x12\x14\n\x0c\x63urSizeBytes\x18\x02 \x01(\x04\"\xdf\x01\n\x0bZInfoVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x19\n\x05usage\x18\x03 \x01(\x0b\x32\n.UsageInfo\x12#\n\tresources\x18\x04 \x01(\x0b\x32\x10.VolumeResources\x12\x18\n\x05state\x18\x05 \x01(\x0e\x32\t.ZSwState\x12\x1a\n\x12progressPercentage\x18\x06 \x01(\r\x12\x1d\n\tvolumeErr\x18\x07 \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10generation_count\x18\x08 \x01(\x03\"(\n\x10\x43ontentResources\x12\x14\n\x0c\x63urSizeBytes\x18\x01 \x01(\x04\"\x89\x02\n\x10ZInfoContentTree\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12$\n\tresources\x18\x04 \x01(\x0b\x32\x11.ContentResources\x12\x19\n\x05usage\x18\x05 \x01(\x0b\x32\n.UsageInfo\x12\x18\n\x05state\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x1a\n\x12progressPercentage\x18\x07 \x01(\r\x12\x17\n\x03\x65rr\x18\x08 \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10\x63omponentShaList\x18\t \x03(\t\x12\x18\n\x10generation_count\x18\n \x01(\x03\"\xab\x01\n\tZInfoBlob\x12\x0e\n\x06sha256\x18\x01 \x01(\t\x12$\n\tresources\x18\x02 \x01(\x0b\x32\x11.ContentResources\x12\x19\n\x05usage\x18\x03 \x01(\x0b\x32\n.UsageInfo\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x1a\n\x12progressPercentage\x18\x05 \x01(\r\x12\x17\n\x03\x65rr\x18\x06 \x01(\x0b\x32\n.ErrorInfo\")\n\rZInfoBlobList\x12\x18\n\x04\x62lob\x18\x01 \x03(\x0b\x32\n.ZInfoBlob\"\xbd\x02\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12\'\n\x06niinfo\x18\x0c \x01(\x0b\x32\x15.ZInfoNetworkInstanceH\x00\x12\x1d\n\x05vinfo\x18\r \x01(\x0b\x32\x0c.ZInfoVolumeH\x00\x12\"\n\x05\x63info\x18\x0e \x01(\x0b\x32\x11.ZInfoContentTreeH\x00\x12\x1f\n\x05\x62info\x18\x0f \x01(\x0b\x32\x0e.ZInfoBlobListH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent*u\n\x11\x44\x65pMetricItemType\x12\x16\n\x12\x44\x65pMetricItemOther\x10\x00\x12\x16\n\x12\x44\x65pMetricItemGauge\x10\x01\x12\x18\n\x14\x44\x65pMetricItemCounter\x10\x02\x12\x16\n\x12\x44\x65pMetricItemState\x10\x03*x\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\x15\n\x11ZiNetworkInstance\x10\x06\x12\x0c\n\x08ZiVolume\x10\x07\x12\x11\n\rZiContentTree\x10\x08\x12\x0e\n\nZiBlobList\x10\t*\x86\x02\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b\x12\x11\n\rRESOLVING_TAG\x10\x0c\x12\x10\n\x0cRESOLVED_TAG\x10\r\x12\x13\n\x0f\x43REATING_VOLUME\x10\x0e\x12\x12\n\x0e\x43REATED_VOLUME\x10\x0f*N\n\x16HwSecurityModuleStatus\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0c\n\x08NOTFOUND\x10\x01\x12\x0c\n\x08\x44ISABLED\x10\x02\x12\x0b\n\x07\x45NABLED\x10\x03*\x88\x01\n\x13\x44\x61taSecAtRestStatus\x12\x1b\n\x17\x44\x41TASEC_AT_REST_UNKNOWN\x10\x00\x12\x1c\n\x18\x44\x41TASEC_AT_REST_DISABLED\x10\x01\x12\x1b\n\x17\x44\x41TASEC_AT_REST_ENABLED\x10\x02\x12\x19\n\x15\x44\x41TASEC_AT_REST_ERROR\x10\x04*q\n\x0c\x42\x61seOsStatus\x12\x08\n\x04NONE\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\x11\n\rDOWNLOAD_DONE\x10\x02\x12\x0c\n\x08UPDATING\x10\x03\x12\x0b\n\x07UPDATED\x10\x04\x12\x0c\n\x08\x46\x41LLBACK\x10\x05\x12\n\n\x06\x46\x41ILED\x10\x06*\xb6\x01\n\x0f\x42\x61seOsSubStatus\x12\x12\n\x0eNONE_SUBSTATUS\x10\x00\x12\x17\n\x13\x44OWNLOAD_INPROGRESS\x10\x01\x12\x15\n\x11VERIFY_INPROGRESS\x10\x02\x12\x17\n\x13UPDATE_INITIALIZING\x10\x03\x12\x14\n\x10UPDATE_REBOOTING\x10\x04\x12\x12\n\x0eUPDATE_TESTING\x10\x05\x12\x1c\n\x18UPDATE_NEED_TEST_CONFIRM\x10\x06*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\nB9\n\x13org.lfedge.eve.infoZ\"github.com/lf-edge/eve/api/go/infob\x06proto3')
+  serialized_pb=_b('\n\x0finfo/info.proto\x12\x13org.lfedge.eve.info\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"\xdc\x01\n\x14\x64\x65precatedMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.org.lfedge.eve.info.DepMetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\xa5\x02\n\tZioBundle\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\x12\x37\n\rioAddressList\x18\x06 \x03(\x0b\x32 .org.lfedge.eve.info.IoAddresses\x12\x36\n\x05usage\x18\x07 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12+\n\x03\x65rr\x18\x08 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"!\n\x0bIoAddresses\x12\x12\n\nmacAddress\x18\x01 \x01(\t\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xd7\x02\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\r\n\x05\x61lias\x18( \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12*\n\x03\x64ns\x18\x07 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12-\n\x08location\x18\t \x01(\x0b\x32\x1b.org.lfedge.eve.info.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x32\n\nnetworkErr\x18\x0b \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\x12/\n\x05proxy\x18\r \x01(\x0b\x32 .org.lfedge.eve.info.ProxyStatus\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"\xa5\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12,\n\x05state\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x85\x01\n\tVaultInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x38\n\x06status\x18\x02 \x01(\x0e\x32(.org.lfedge.eve.info.DataSecAtRestStatus\x12\x30\n\x08vaultErr\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"\x8a\x01\n\rDataSecAtRest\x12\x38\n\x06status\x18\x01 \x01(\x0e\x32(.org.lfedge.eve.info.DataSecAtRestStatus\x12\x0c\n\x04info\x18\x02 \x01(\t\x12\x31\n\tvaultList\x18\x03 \x03(\x0b\x32\x1e.org.lfedge.eve.info.VaultInfo\"/\n\x0fZInfoConfigItem\x12\r\n\x05value\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\x84\x03\n\x15ZInfoConfigItemStatus\x12P\n\x0b\x63onfigItems\x18\x01 \x03(\x0b\x32;.org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry\x12^\n\x12unknownConfigItems\x18\x02 \x03(\x0b\x32\x42.org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry\x1aX\n\x10\x43onfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.info.ZInfoConfigItem:\x02\x38\x01\x1a_\n\x17UnknownConfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.info.ZInfoConfigItem:\x02\x38\x01\"B\n\x10ZInfoAppInstance\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\ndomainName\x18\x03 \x01(\t\"\x9e\x08\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12\x35\n\x05minfo\x18\x0b \x01(\x0b\x32&.org.lfedge.eve.info.ZInfoManufacturer\x12\x32\n\x07network\x18\r \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoNetwork\x12:\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12*\n\x03\x64ns\x18\x10 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\x36\n\x0bstorageList\x18\x11 \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x06swList\x18\x13 \x03(\x0b\x32\x1f.org.lfedge.eve.info.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12>\n\x0bmetricItems\x18\x15 \x03(\x0b\x32).org.lfedge.eve.info.deprecatedMetricItem\x12\x18\n\x10lastRebootReason\x18\x16 \x01(\t\x12\x32\n\x0elastRebootTime\x18\x17 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12=\n\rsystemAdapter\x18\x18 \x01(\x0b\x32&.org.lfedge.eve.info.SystemAdapterInfo\x12\x16\n\x0erestartCounter\x18\x19 \x01(\r\x12>\n\tHSMStatus\x18\x1a \x01(\x0e\x32+.org.lfedge.eve.info.HwSecurityModuleStatus\x12\x0f\n\x07HSMInfo\x18\x1b \x01(\t\x12\x17\n\x0flastRebootStack\x18\x1c \x01(\t\x12=\n\x11\x64\x61taSecAtRestInfo\x18\x1d \x01(\x0b\x32\".org.lfedge.eve.info.DataSecAtRest\x12\x44\n\x10\x63onfigItemStatus\x18\x1f \x01(\x0b\x32*.org.lfedge.eve.info.ZInfoConfigItemStatus\x12;\n\x0c\x61ppInstances\x18  \x03(\x0b\x32%.org.lfedge.eve.info.ZInfoAppInstance\x12\x1b\n\x13rebootConfigCounter\x18! \x01(\r\"`\n\x11SystemAdapterInfo\x12\x14\n\x0c\x63urrentIndex\x18\x01 \x01(\r\x12\x35\n\x06status\x18\x02 \x03(\x0b\x32%.org.lfedge.eve.info.DevicePortStatus\"\x88\x02\n\x10\x44\x65vicePortStatus\x12\x0f\n\x07version\x18\x01 \x01(\r\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\x30\n\x0ctimePriority\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nlastFailed\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\rlastSucceeded\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\x05ports\x18\x06 \x03(\x0b\x32\x1f.org.lfedge.eve.info.DevicePort\x12\x11\n\tlastError\x18\x07 \x01(\t\"\xaf\x04\n\nDevicePort\x12\x0e\n\x06ifname\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06isMgmt\x18\x03 \x01(\x08\x12\x0c\n\x04\x66ree\x18\x04 \x01(\x08\x12\x10\n\x08\x64hcpType\x18\x0b \x01(\r\x12\x0e\n\x06subnet\x18\x0c \x01(\t\x12\x0f\n\x07gateway\x18\r \x01(\t\x12\x12\n\ndomainname\x18\x0e \x01(\t\x12\x11\n\tntpServer\x18\x0f \x01(\t\x12\x12\n\ndnsServers\x18\x10 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\x11 \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\x12 \x01(\t\x12/\n\x05proxy\x18\x15 \x01(\x0b\x32 .org.lfedge.eve.info.ProxyStatus\x12\x0f\n\x07macAddr\x18\x16 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x17 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x18 \x03(\t\x12*\n\x03\x64ns\x18\x19 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\n\n\x02up\x18\x1a \x01(\x08\x12-\n\x08location\x18\x1b \x01(\x0b\x32\x1b.org.lfedge.eve.info.GeoLoc\x12+\n\x03\x65rr\x18\x1d \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x36\n\x05usage\x18\x1e \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12\x13\n\x0bnetworkUUID\x18\x1f \x01(\t\"\xaa\x01\n\x0bProxyStatus\x12\x30\n\x07proxies\x18\x01 \x03(\x0b\x32\x1f.org.lfedge.eve.info.ProxyEntry\x12\x12\n\nexceptions\x18\x02 \x01(\t\x12\x0f\n\x07pacfile\x18\x03 \x01(\t\x12\x1a\n\x12networkProxyEnable\x18\x04 \x01(\x08\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x0f\n\x07wpadURL\x18\x06 \x01(\t\"8\n\nProxyEntry\x12\x0c\n\x04type\x18\x01 \x01(\r\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xac\x03\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12-\n\x06status\x18\x06 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12-\n\x05swErr\x18\t \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\x12\x35\n\nuserStatus\x18\x0b \x01(\x0e\x32!.org.lfedge.eve.info.BaseOsStatus\x12\x14\n\x0csubStatusStr\x18\x0c \x01(\t\x12\x37\n\tsubStatus\x18\r \x01(\x0e\x32$.org.lfedge.eve.info.BaseOsSubStatus\x12\x19\n\x11subStatusProgress\x18\x0e \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x93\x03\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x32\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x1c.org.lfedge.eve.info.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12.\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x0f \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x32\n\x07network\x18\x10 \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoNetwork\x12\x12\n\nvolumeRefs\x18\x11 \x03(\t\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xf9\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x31\n\x05state\x18\x06 \x01(\x0e\x32\".org.lfedge.eve.info.ZInfoVpnState\x12\x34\n\x05lInfo\x18\n \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnLinkInfo\x12\x34\n\x05rInfo\x18\x0b \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xa9\x02\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x31\n\x05state\x18\x06 \x01(\x0e\x32\".org.lfedge.eve.info.ZInfoVpnState\x12\x34\n\x05lInfo\x18\x07 \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnEndPoint\x12\x34\n\x05rInfo\x18\x08 \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnEndPoint\x12\x30\n\x05links\x18\n \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoVpnLink\"z\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12/\n\x04\x63onn\x18\n \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoVpnConn\",\n\tRlocState\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x11\n\tReachable\x18\x02 \x01(\x08\"K\n\rMapCacheEntry\x12\x0b\n\x03\x45ID\x18\x01 \x01(\t\x12-\n\x05Rlocs\x18\x02 \x03(\x0b\x32\x1e.org.lfedge.eve.info.RlocState\"W\n\x0b\x44\x61tabaseMap\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12;\n\x0fMapCacheEntries\x18\x02 \x03(\x0b\x32\".org.lfedge.eve.info.MapCacheEntry\"8\n\x08\x44\x65\x63\x61pKey\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x0c\n\x04Port\x18\x02 \x01(\x04\x12\x10\n\x08KeyCount\x18\x03 \x01(\x04\"\xb4\x01\n\tZInfoLisp\x12\x15\n\rItrCryptoPort\x18\x01 \x01(\x04\x12\x12\n\nEtrNatPort\x18\x02 \x01(\x04\x12\x12\n\nInterfaces\x18\x03 \x03(\t\x12\x36\n\x0c\x44\x61tabaseMaps\x18\x04 \x03(\x0b\x32 .org.lfedge.eve.info.DatabaseMap\x12\x30\n\tDecapKeys\x18\x05 \x03(\x0b\x32\x1d.org.lfedge.eve.info.DecapKey\"\xcc\x05\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x0csoftwareList\x18\t \x01(\x0b\x32\x1c.org.lfedge.eve.info.ZInfoSW\x12\x19\n\x11\x43urrentUplinkIntf\x18\n \x01(\t\x12\x1a\n\x12\x43urrentUplinkAlias\x18\x0b \x01(\t\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12\x41\n\ripAssignments\x18\x17 \x03(\x0b\x32*.org.lfedge.eve.info.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12.\n\x04vifs\x18\x19 \x03(\x0b\x32 .org.lfedge.eve.info.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12\x38\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12.\n\x05vinfo\x18\x1f \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoVpnH\x00\x12/\n\x05linfo\x18  \x01(\x0b\x32\x1e.org.lfedge.eve.info.ZInfoLispH\x00\x12\x32\n\nnetworkErr\x18( \x03(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfoB\r\n\x0bInfoContent\"\x89\x01\n\tUsageInfo\x12.\n\ncreateTime\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08refCount\x18\x02 \x01(\r\x12:\n\x16lastRefcountChangeTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"=\n\x0fVolumeResources\x12\x14\n\x0cmaxSizeBytes\x18\x01 \x01(\x04\x12\x14\n\x0c\x63urSizeBytes\x18\x02 \x01(\x04\"\xaf\x02\n\x0bZInfoVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12-\n\x05usage\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12\x37\n\tresources\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.info.VolumeResources\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x06 \x01(\r\x12\x31\n\tvolumeErr\x18\x07 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10generation_count\x18\x08 \x01(\x03\"(\n\x10\x43ontentResources\x12\x14\n\x0c\x63urSizeBytes\x18\x01 \x01(\x04\"\xd9\x02\n\x10ZInfoContentTree\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12\x38\n\tresources\x18\x04 \x01(\x0b\x32%.org.lfedge.eve.info.ContentResources\x12-\n\x05usage\x18\x05 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12,\n\x05state\x18\x06 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x07 \x01(\r\x12+\n\x03\x65rr\x18\x08 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10\x63omponentShaList\x18\t \x03(\t\x12\x18\n\x10generation_count\x18\n \x01(\x03\"\xfb\x01\n\tZInfoBlob\x12\x0e\n\x06sha256\x18\x01 \x01(\t\x12\x38\n\tresources\x18\x02 \x01(\x0b\x32%.org.lfedge.eve.info.ContentResources\x12-\n\x05usage\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12,\n\x05state\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x05 \x01(\r\x12+\n\x03\x65rr\x18\x06 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"=\n\rZInfoBlobList\x12,\n\x04\x62lob\x18\x01 \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZInfoBlob\"\xc9\x03\n\x08ZInfoMsg\x12.\n\x05ztype\x18\x01 \x01(\x0e\x32\x1f.org.lfedge.eve.info.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x31\n\x05\x64info\x18\x03 \x01(\x0b\x32 .org.lfedge.eve.info.ZInfoDeviceH\x00\x12.\n\x05\x61info\x18\x05 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoAppH\x00\x12;\n\x06niinfo\x18\x0c \x01(\x0b\x32).org.lfedge.eve.info.ZInfoNetworkInstanceH\x00\x12\x31\n\x05vinfo\x18\r \x01(\x0b\x32 .org.lfedge.eve.info.ZInfoVolumeH\x00\x12\x36\n\x05\x63info\x18\x0e \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoContentTreeH\x00\x12\x33\n\x05\x62info\x18\x0f \x01(\x0b\x32\".org.lfedge.eve.info.ZInfoBlobListH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent*u\n\x11\x44\x65pMetricItemType\x12\x16\n\x12\x44\x65pMetricItemOther\x10\x00\x12\x16\n\x12\x44\x65pMetricItemGauge\x10\x01\x12\x18\n\x14\x44\x65pMetricItemCounter\x10\x02\x12\x16\n\x12\x44\x65pMetricItemState\x10\x03*x\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\x15\n\x11ZiNetworkInstance\x10\x06\x12\x0c\n\x08ZiVolume\x10\x07\x12\x11\n\rZiContentTree\x10\x08\x12\x0e\n\nZiBlobList\x10\t*\x86\x02\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b\x12\x11\n\rRESOLVING_TAG\x10\x0c\x12\x10\n\x0cRESOLVED_TAG\x10\r\x12\x13\n\x0f\x43REATING_VOLUME\x10\x0e\x12\x12\n\x0e\x43REATED_VOLUME\x10\x0f*N\n\x16HwSecurityModuleStatus\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0c\n\x08NOTFOUND\x10\x01\x12\x0c\n\x08\x44ISABLED\x10\x02\x12\x0b\n\x07\x45NABLED\x10\x03*\x88\x01\n\x13\x44\x61taSecAtRestStatus\x12\x1b\n\x17\x44\x41TASEC_AT_REST_UNKNOWN\x10\x00\x12\x1c\n\x18\x44\x41TASEC_AT_REST_DISABLED\x10\x01\x12\x1b\n\x17\x44\x41TASEC_AT_REST_ENABLED\x10\x02\x12\x19\n\x15\x44\x41TASEC_AT_REST_ERROR\x10\x04*q\n\x0c\x42\x61seOsStatus\x12\x08\n\x04NONE\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\x11\n\rDOWNLOAD_DONE\x10\x02\x12\x0c\n\x08UPDATING\x10\x03\x12\x0b\n\x07UPDATED\x10\x04\x12\x0c\n\x08\x46\x41LLBACK\x10\x05\x12\n\n\x06\x46\x41ILED\x10\x06*\xb6\x01\n\x0f\x42\x61seOsSubStatus\x12\x12\n\x0eNONE_SUBSTATUS\x10\x00\x12\x17\n\x13\x44OWNLOAD_INPROGRESS\x10\x01\x12\x15\n\x11VERIFY_INPROGRESS\x10\x02\x12\x17\n\x13UPDATE_INITIALIZING\x10\x03\x12\x14\n\x10UPDATE_REBOOTING\x10\x04\x12\x12\n\x0eUPDATE_TESTING\x10\x05\x12\x1c\n\x18UPDATE_NEED_TEST_CONFIRM\x10\x06*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\nB9\n\x13org.lfedge.eve.infoZ\"github.com/lf-edge/eve/api/go/infob\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
 _DEPMETRICITEMTYPE = _descriptor.EnumDescriptor(
   name='DepMetricItemType',
-  full_name='DepMetricItemType',
+  full_name='org.lfedge.eve.info.DepMetricItemType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -51,15 +51,15 @@ _DEPMETRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=7698,
-  serialized_end=7815,
+  serialized_start=9381,
+  serialized_end=9498,
 )
 _sym_db.RegisterEnumDescriptor(_DEPMETRICITEMTYPE)
 
 DepMetricItemType = enum_type_wrapper.EnumTypeWrapper(_DEPMETRICITEMTYPE)
 _ZINFOTYPES = _descriptor.EnumDescriptor(
   name='ZInfoTypes',
-  full_name='ZInfoTypes',
+  full_name='org.lfedge.eve.info.ZInfoTypes',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -94,15 +94,15 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=7817,
-  serialized_end=7937,
+  serialized_start=9500,
+  serialized_end=9620,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
 ZInfoTypes = enum_type_wrapper.EnumTypeWrapper(_ZINFOTYPES)
 _ZSWSTATE = _descriptor.EnumDescriptor(
   name='ZSwState',
-  full_name='ZSwState',
+  full_name='org.lfedge.eve.info.ZSwState',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -173,15 +173,15 @@ _ZSWSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=7940,
-  serialized_end=8202,
+  serialized_start=9623,
+  serialized_end=9885,
 )
 _sym_db.RegisterEnumDescriptor(_ZSWSTATE)
 
 ZSwState = enum_type_wrapper.EnumTypeWrapper(_ZSWSTATE)
 _HWSECURITYMODULESTATUS = _descriptor.EnumDescriptor(
   name='HwSecurityModuleStatus',
-  full_name='HwSecurityModuleStatus',
+  full_name='org.lfedge.eve.info.HwSecurityModuleStatus',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -204,15 +204,15 @@ _HWSECURITYMODULESTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=8204,
-  serialized_end=8282,
+  serialized_start=9887,
+  serialized_end=9965,
 )
 _sym_db.RegisterEnumDescriptor(_HWSECURITYMODULESTATUS)
 
 HwSecurityModuleStatus = enum_type_wrapper.EnumTypeWrapper(_HWSECURITYMODULESTATUS)
 _DATASECATRESTSTATUS = _descriptor.EnumDescriptor(
   name='DataSecAtRestStatus',
-  full_name='DataSecAtRestStatus',
+  full_name='org.lfedge.eve.info.DataSecAtRestStatus',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -235,15 +235,15 @@ _DATASECATRESTSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=8285,
-  serialized_end=8421,
+  serialized_start=9968,
+  serialized_end=10104,
 )
 _sym_db.RegisterEnumDescriptor(_DATASECATRESTSTATUS)
 
 DataSecAtRestStatus = enum_type_wrapper.EnumTypeWrapper(_DATASECATRESTSTATUS)
 _BASEOSSTATUS = _descriptor.EnumDescriptor(
   name='BaseOsStatus',
-  full_name='BaseOsStatus',
+  full_name='org.lfedge.eve.info.BaseOsStatus',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -278,15 +278,15 @@ _BASEOSSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=8423,
-  serialized_end=8536,
+  serialized_start=10106,
+  serialized_end=10219,
 )
 _sym_db.RegisterEnumDescriptor(_BASEOSSTATUS)
 
 BaseOsStatus = enum_type_wrapper.EnumTypeWrapper(_BASEOSSTATUS)
 _BASEOSSUBSTATUS = _descriptor.EnumDescriptor(
   name='BaseOsSubStatus',
-  full_name='BaseOsSubStatus',
+  full_name='org.lfedge.eve.info.BaseOsSubStatus',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -321,15 +321,15 @@ _BASEOSSUBSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=8539,
-  serialized_end=8721,
+  serialized_start=10222,
+  serialized_end=10404,
 )
 _sym_db.RegisterEnumDescriptor(_BASEOSSUBSTATUS)
 
 BaseOsSubStatus = enum_type_wrapper.EnumTypeWrapper(_BASEOSSUBSTATUS)
 _ZINFOVPNSTATE = _descriptor.EnumDescriptor(
   name='ZInfoVpnState',
-  full_name='ZInfoVpnState',
+  full_name='org.lfedge.eve.info.ZInfoVpnState',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -364,8 +364,8 @@ _ZINFOVPNSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=8724,
-  serialized_end=8867,
+  serialized_start=10407,
+  serialized_end=10550,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOVPNSTATE)
 
@@ -431,55 +431,55 @@ VPN_DELETED = 10
 
 _DEPRECATEDMETRICITEM = _descriptor.Descriptor(
   name='deprecatedMetricItem',
-  full_name='deprecatedMetricItem',
+  full_name='org.lfedge.eve.info.deprecatedMetricItem',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='deprecatedMetricItem.key', index=0,
+      name='key', full_name='org.lfedge.eve.info.deprecatedMetricItem.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='type', full_name='deprecatedMetricItem.type', index=1,
+      name='type', full_name='org.lfedge.eve.info.deprecatedMetricItem.type', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='boolValue', full_name='deprecatedMetricItem.boolValue', index=2,
+      name='boolValue', full_name='org.lfedge.eve.info.deprecatedMetricItem.boolValue', index=2,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uint32Value', full_name='deprecatedMetricItem.uint32Value', index=3,
+      name='uint32Value', full_name='org.lfedge.eve.info.deprecatedMetricItem.uint32Value', index=3,
       number=4, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uint64Value', full_name='deprecatedMetricItem.uint64Value', index=4,
+      name='uint64Value', full_name='org.lfedge.eve.info.deprecatedMetricItem.uint64Value', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='floatValue', full_name='deprecatedMetricItem.floatValue', index=5,
+      name='floatValue', full_name='org.lfedge.eve.info.deprecatedMetricItem.floatValue', index=5,
       number=6, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='stringValue', full_name='deprecatedMetricItem.stringValue', index=6,
+      name='stringValue', full_name='org.lfedge.eve.info.deprecatedMetricItem.stringValue', index=6,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -497,30 +497,30 @@ _DEPRECATEDMETRICITEM = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='metricItemValue', full_name='deprecatedMetricItem.metricItemValue',
+      name='metricItemValue', full_name='org.lfedge.eve.info.deprecatedMetricItem.metricItemValue',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=85,
-  serialized_end=285,
+  serialized_start=106,
+  serialized_end=326,
 )
 
 
 _ZMETIPASSIGNMENTENTRY = _descriptor.Descriptor(
   name='ZmetIPAssignmentEntry',
-  full_name='ZmetIPAssignmentEntry',
+  full_name='org.lfedge.eve.info.ZmetIPAssignmentEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='macAddress', full_name='ZmetIPAssignmentEntry.macAddress', index=0,
+      name='macAddress', full_name='org.lfedge.eve.info.ZmetIPAssignmentEntry.macAddress', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipAddress', full_name='ZmetIPAssignmentEntry.ipAddress', index=1,
+      name='ipAddress', full_name='org.lfedge.eve.info.ZmetIPAssignmentEntry.ipAddress', index=1,
       number=2, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -538,34 +538,34 @@ _ZMETIPASSIGNMENTENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=287,
-  serialized_end=349,
+  serialized_start=328,
+  serialized_end=390,
 )
 
 
 _ZMETVIFINFO = _descriptor.Descriptor(
   name='ZmetVifInfo',
-  full_name='ZmetVifInfo',
+  full_name='org.lfedge.eve.info.ZmetVifInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='vifName', full_name='ZmetVifInfo.vifName', index=0,
+      name='vifName', full_name='org.lfedge.eve.info.ZmetVifInfo.vifName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='macAddress', full_name='ZmetVifInfo.macAddress', index=1,
+      name='macAddress', full_name='org.lfedge.eve.info.ZmetVifInfo.macAddress', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appID', full_name='ZmetVifInfo.appID', index=2,
+      name='appID', full_name='org.lfedge.eve.info.ZmetVifInfo.appID', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -583,69 +583,69 @@ _ZMETVIFINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=351,
-  serialized_end=416,
+  serialized_start=392,
+  serialized_end=457,
 )
 
 
 _ZIOBUNDLE = _descriptor.Descriptor(
   name='ZioBundle',
-  full_name='ZioBundle',
+  full_name='org.lfedge.eve.info.ZioBundle',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='type', full_name='ZioBundle.type', index=0,
+      name='type', full_name='org.lfedge.eve.info.ZioBundle.type', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='ZioBundle.name', index=1,
+      name='name', full_name='org.lfedge.eve.info.ZioBundle.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='members', full_name='ZioBundle.members', index=2,
+      name='members', full_name='org.lfedge.eve.info.ZioBundle.members', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usedByAppUUID', full_name='ZioBundle.usedByAppUUID', index=3,
+      name='usedByAppUUID', full_name='org.lfedge.eve.info.ZioBundle.usedByAppUUID', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usedByBaseOS', full_name='ZioBundle.usedByBaseOS', index=4,
+      name='usedByBaseOS', full_name='org.lfedge.eve.info.ZioBundle.usedByBaseOS', index=4,
       number=5, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ioAddressList', full_name='ZioBundle.ioAddressList', index=5,
+      name='ioAddressList', full_name='org.lfedge.eve.info.ZioBundle.ioAddressList', index=5,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usage', full_name='ZioBundle.usage', index=6,
+      name='usage', full_name='org.lfedge.eve.info.ZioBundle.usage', index=6,
       number=7, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='err', full_name='ZioBundle.err', index=7,
+      name='err', full_name='org.lfedge.eve.info.ZioBundle.err', index=7,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -663,20 +663,20 @@ _ZIOBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=419,
-  serialized_end=672,
+  serialized_start=460,
+  serialized_end=753,
 )
 
 
 _IOADDRESSES = _descriptor.Descriptor(
   name='IoAddresses',
-  full_name='IoAddresses',
+  full_name='org.lfedge.eve.info.IoAddresses',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='macAddress', full_name='IoAddresses.macAddress', index=0,
+      name='macAddress', full_name='org.lfedge.eve.info.IoAddresses.macAddress', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -694,76 +694,76 @@ _IOADDRESSES = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=674,
-  serialized_end=707,
+  serialized_start=755,
+  serialized_end=788,
 )
 
 
 _ZINFOMANUFACTURER = _descriptor.Descriptor(
   name='ZInfoManufacturer',
-  full_name='ZInfoManufacturer',
+  full_name='org.lfedge.eve.info.ZInfoManufacturer',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='manufacturer', full_name='ZInfoManufacturer.manufacturer', index=0,
+      name='manufacturer', full_name='org.lfedge.eve.info.ZInfoManufacturer.manufacturer', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='productName', full_name='ZInfoManufacturer.productName', index=1,
+      name='productName', full_name='org.lfedge.eve.info.ZInfoManufacturer.productName', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='version', full_name='ZInfoManufacturer.version', index=2,
+      name='version', full_name='org.lfedge.eve.info.ZInfoManufacturer.version', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='serialNumber', full_name='ZInfoManufacturer.serialNumber', index=3,
+      name='serialNumber', full_name='org.lfedge.eve.info.ZInfoManufacturer.serialNumber', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='UUID', full_name='ZInfoManufacturer.UUID', index=4,
+      name='UUID', full_name='org.lfedge.eve.info.ZInfoManufacturer.UUID', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='compatible', full_name='ZInfoManufacturer.compatible', index=5,
+      name='compatible', full_name='org.lfedge.eve.info.ZInfoManufacturer.compatible', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='biosVendor', full_name='ZInfoManufacturer.biosVendor', index=6,
+      name='biosVendor', full_name='org.lfedge.eve.info.ZInfoManufacturer.biosVendor', index=6,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='biosVersion', full_name='ZInfoManufacturer.biosVersion', index=7,
+      name='biosVersion', full_name='org.lfedge.eve.info.ZInfoManufacturer.biosVersion', index=7,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='biosReleaseDate', full_name='ZInfoManufacturer.biosReleaseDate', index=8,
+      name='biosReleaseDate', full_name='org.lfedge.eve.info.ZInfoManufacturer.biosReleaseDate', index=8,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -781,97 +781,97 @@ _ZINFOMANUFACTURER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=710,
-  serialized_end=911,
+  serialized_start=791,
+  serialized_end=992,
 )
 
 
 _ZINFONETWORK = _descriptor.Descriptor(
   name='ZInfoNetwork',
-  full_name='ZInfoNetwork',
+  full_name='org.lfedge.eve.info.ZInfoNetwork',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='macAddr', full_name='ZInfoNetwork.macAddr', index=0,
+      name='macAddr', full_name='org.lfedge.eve.info.ZInfoNetwork.macAddr', index=0,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='devName', full_name='ZInfoNetwork.devName', index=1,
+      name='devName', full_name='org.lfedge.eve.info.ZInfoNetwork.devName', index=1,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='alias', full_name='ZInfoNetwork.alias', index=2,
+      name='alias', full_name='org.lfedge.eve.info.ZInfoNetwork.alias', index=2,
       number=40, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='IPAddrs', full_name='ZInfoNetwork.IPAddrs', index=3,
+      name='IPAddrs', full_name='org.lfedge.eve.info.ZInfoNetwork.IPAddrs', index=3,
       number=5, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='defaultRouters', full_name='ZInfoNetwork.defaultRouters', index=4,
+      name='defaultRouters', full_name='org.lfedge.eve.info.ZInfoNetwork.defaultRouters', index=4,
       number=6, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='ZInfoNetwork.dns', index=5,
+      name='dns', full_name='org.lfedge.eve.info.ZInfoNetwork.dns', index=5,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='up', full_name='ZInfoNetwork.up', index=6,
+      name='up', full_name='org.lfedge.eve.info.ZInfoNetwork.up', index=6,
       number=8, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='location', full_name='ZInfoNetwork.location', index=7,
+      name='location', full_name='org.lfedge.eve.info.ZInfoNetwork.location', index=7,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uplink', full_name='ZInfoNetwork.uplink', index=8,
+      name='uplink', full_name='org.lfedge.eve.info.ZInfoNetwork.uplink', index=8,
       number=10, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkErr', full_name='ZInfoNetwork.networkErr', index=9,
+      name='networkErr', full_name='org.lfedge.eve.info.ZInfoNetwork.networkErr', index=9,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='localName', full_name='ZInfoNetwork.localName', index=10,
+      name='localName', full_name='org.lfedge.eve.info.ZInfoNetwork.localName', index=10,
       number=12, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='proxy', full_name='ZInfoNetwork.proxy', index=11,
+      name='proxy', full_name='org.lfedge.eve.info.ZInfoNetwork.proxy', index=11,
       number=13, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -889,69 +889,69 @@ _ZINFONETWORK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=914,
-  serialized_end=1177,
+  serialized_start=995,
+  serialized_end=1338,
 )
 
 
 _GEOLOC = _descriptor.Descriptor(
   name='GeoLoc',
-  full_name='GeoLoc',
+  full_name='org.lfedge.eve.info.GeoLoc',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='UnderlayIP', full_name='GeoLoc.UnderlayIP', index=0,
+      name='UnderlayIP', full_name='org.lfedge.eve.info.GeoLoc.UnderlayIP', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Hostname', full_name='GeoLoc.Hostname', index=1,
+      name='Hostname', full_name='org.lfedge.eve.info.GeoLoc.Hostname', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='City', full_name='GeoLoc.City', index=2,
+      name='City', full_name='org.lfedge.eve.info.GeoLoc.City', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Region', full_name='GeoLoc.Region', index=3,
+      name='Region', full_name='org.lfedge.eve.info.GeoLoc.Region', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Country', full_name='GeoLoc.Country', index=4,
+      name='Country', full_name='org.lfedge.eve.info.GeoLoc.Country', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Loc', full_name='GeoLoc.Loc', index=5,
+      name='Loc', full_name='org.lfedge.eve.info.GeoLoc.Loc', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Org', full_name='GeoLoc.Org', index=6,
+      name='Org', full_name='org.lfedge.eve.info.GeoLoc.Org', index=6,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Postal', full_name='GeoLoc.Postal', index=7,
+      name='Postal', full_name='org.lfedge.eve.info.GeoLoc.Postal', index=7,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -969,34 +969,34 @@ _GEOLOC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1180,
-  serialized_end=1315,
+  serialized_start=1341,
+  serialized_end=1476,
 )
 
 
 _ZINFODNS = _descriptor.Descriptor(
   name='ZInfoDNS',
-  full_name='ZInfoDNS',
+  full_name='org.lfedge.eve.info.ZInfoDNS',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='DNSservers', full_name='ZInfoDNS.DNSservers', index=0,
+      name='DNSservers', full_name='org.lfedge.eve.info.ZInfoDNS.DNSservers', index=0,
       number=1, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DNSdomain', full_name='ZInfoDNS.DNSdomain', index=1,
+      name='DNSdomain', full_name='org.lfedge.eve.info.ZInfoDNS.DNSdomain', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DNSsearch', full_name='ZInfoDNS.DNSsearch', index=2,
+      name='DNSsearch', full_name='org.lfedge.eve.info.ZInfoDNS.DNSsearch', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1014,62 +1014,62 @@ _ZINFODNS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1317,
-  serialized_end=1385,
+  serialized_start=1478,
+  serialized_end=1546,
 )
 
 
 _ZINFOSW = _descriptor.Descriptor(
   name='ZInfoSW',
-  full_name='ZInfoSW',
+  full_name='org.lfedge.eve.info.ZInfoSW',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='swVersion', full_name='ZInfoSW.swVersion', index=0,
+      name='swVersion', full_name='org.lfedge.eve.info.ZInfoSW.swVersion', index=0,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='swHash', full_name='ZInfoSW.swHash', index=1,
+      name='swHash', full_name='org.lfedge.eve.info.ZInfoSW.swHash', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoSW.state', index=2,
+      name='state', full_name='org.lfedge.eve.info.ZInfoSW.state', index=2,
       number=4, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='target', full_name='ZInfoSW.target', index=3,
+      name='target', full_name='org.lfedge.eve.info.ZInfoSW.target', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vdev', full_name='ZInfoSW.vdev', index=4,
+      name='vdev', full_name='org.lfedge.eve.info.ZInfoSW.vdev', index=4,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='downloadProgress', full_name='ZInfoSW.downloadProgress', index=5,
+      name='downloadProgress', full_name='org.lfedge.eve.info.ZInfoSW.downloadProgress', index=5,
       number=8, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='imageName', full_name='ZInfoSW.imageName', index=6,
+      name='imageName', full_name='org.lfedge.eve.info.ZInfoSW.imageName', index=6,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1087,27 +1087,27 @@ _ZINFOSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1388,
-  serialized_end=1533,
+  serialized_start=1549,
+  serialized_end=1714,
 )
 
 
 _ERRORINFO = _descriptor.Descriptor(
   name='ErrorInfo',
-  full_name='ErrorInfo',
+  full_name='org.lfedge.eve.info.ErrorInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='description', full_name='ErrorInfo.description', index=0,
+      name='description', full_name='org.lfedge.eve.info.ErrorInfo.description', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='timestamp', full_name='ErrorInfo.timestamp', index=1,
+      name='timestamp', full_name='org.lfedge.eve.info.ErrorInfo.timestamp', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1125,34 +1125,34 @@ _ERRORINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1535,
-  serialized_end=1614,
+  serialized_start=1716,
+  serialized_end=1795,
 )
 
 
 _VAULTINFO = _descriptor.Descriptor(
   name='VaultInfo',
-  full_name='VaultInfo',
+  full_name='org.lfedge.eve.info.VaultInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='name', full_name='VaultInfo.name', index=0,
+      name='name', full_name='org.lfedge.eve.info.VaultInfo.name', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='status', full_name='VaultInfo.status', index=1,
+      name='status', full_name='org.lfedge.eve.info.VaultInfo.status', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vaultErr', full_name='VaultInfo.vaultErr', index=2,
+      name='vaultErr', full_name='org.lfedge.eve.info.VaultInfo.vaultErr', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1170,34 +1170,34 @@ _VAULTINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1616,
-  serialized_end=1709,
+  serialized_start=1798,
+  serialized_end=1931,
 )
 
 
 _DATASECATREST = _descriptor.Descriptor(
   name='DataSecAtRest',
-  full_name='DataSecAtRest',
+  full_name='org.lfedge.eve.info.DataSecAtRest',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='status', full_name='DataSecAtRest.status', index=0,
+      name='status', full_name='org.lfedge.eve.info.DataSecAtRest.status', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='info', full_name='DataSecAtRest.info', index=1,
+      name='info', full_name='org.lfedge.eve.info.DataSecAtRest.info', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vaultList', full_name='DataSecAtRest.vaultList', index=2,
+      name='vaultList', full_name='org.lfedge.eve.info.DataSecAtRest.vaultList', index=2,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1215,27 +1215,27 @@ _DATASECATREST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1711,
-  serialized_end=1809,
+  serialized_start=1934,
+  serialized_end=2072,
 )
 
 
 _ZINFOCONFIGITEM = _descriptor.Descriptor(
   name='ZInfoConfigItem',
-  full_name='ZInfoConfigItem',
+  full_name='org.lfedge.eve.info.ZInfoConfigItem',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='value', full_name='ZInfoConfigItem.value', index=0,
+      name='value', full_name='org.lfedge.eve.info.ZInfoConfigItem.value', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='error', full_name='ZInfoConfigItem.error', index=1,
+      name='error', full_name='org.lfedge.eve.info.ZInfoConfigItem.error', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1253,27 +1253,27 @@ _ZINFOCONFIGITEM = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1811,
-  serialized_end=1858,
+  serialized_start=2074,
+  serialized_end=2121,
 )
 
 
 _ZINFOCONFIGITEMSTATUS_CONFIGITEMSENTRY = _descriptor.Descriptor(
   name='ConfigItemsEntry',
-  full_name='ZInfoConfigItemStatus.ConfigItemsEntry',
+  full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='ZInfoConfigItemStatus.ConfigItemsEntry.key', index=0,
+      name='key', full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='ZInfoConfigItemStatus.ConfigItemsEntry.value', index=1,
+      name='value', full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry.value', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1291,26 +1291,26 @@ _ZINFOCONFIGITEMSTATUS_CONFIGITEMSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2024,
-  serialized_end=2092,
+  serialized_start=2327,
+  serialized_end=2415,
 )
 
 _ZINFOCONFIGITEMSTATUS_UNKNOWNCONFIGITEMSENTRY = _descriptor.Descriptor(
   name='UnknownConfigItemsEntry',
-  full_name='ZInfoConfigItemStatus.UnknownConfigItemsEntry',
+  full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='ZInfoConfigItemStatus.UnknownConfigItemsEntry.key', index=0,
+      name='key', full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='ZInfoConfigItemStatus.UnknownConfigItemsEntry.value', index=1,
+      name='value', full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry.value', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1328,26 +1328,26 @@ _ZINFOCONFIGITEMSTATUS_UNKNOWNCONFIGITEMSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2094,
-  serialized_end=2169,
+  serialized_start=2417,
+  serialized_end=2512,
 )
 
 _ZINFOCONFIGITEMSTATUS = _descriptor.Descriptor(
   name='ZInfoConfigItemStatus',
-  full_name='ZInfoConfigItemStatus',
+  full_name='org.lfedge.eve.info.ZInfoConfigItemStatus',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='configItems', full_name='ZInfoConfigItemStatus.configItems', index=0,
+      name='configItems', full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.configItems', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='unknownConfigItems', full_name='ZInfoConfigItemStatus.unknownConfigItems', index=1,
+      name='unknownConfigItems', full_name='org.lfedge.eve.info.ZInfoConfigItemStatus.unknownConfigItems', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1365,34 +1365,34 @@ _ZINFOCONFIGITEMSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1861,
-  serialized_end=2169,
+  serialized_start=2124,
+  serialized_end=2512,
 )
 
 
 _ZINFOAPPINSTANCE = _descriptor.Descriptor(
   name='ZInfoAppInstance',
-  full_name='ZInfoAppInstance',
+  full_name='org.lfedge.eve.info.ZInfoAppInstance',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='ZInfoAppInstance.uuid', index=0,
+      name='uuid', full_name='org.lfedge.eve.info.ZInfoAppInstance.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='ZInfoAppInstance.name', index=1,
+      name='name', full_name='org.lfedge.eve.info.ZInfoAppInstance.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='domainName', full_name='ZInfoAppInstance.domainName', index=2,
+      name='domainName', full_name='org.lfedge.eve.info.ZInfoAppInstance.domainName', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1410,195 +1410,195 @@ _ZINFOAPPINSTANCE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2171,
-  serialized_end=2237,
+  serialized_start=2514,
+  serialized_end=2580,
 )
 
 
 _ZINFODEVICE = _descriptor.Descriptor(
   name='ZInfoDevice',
-  full_name='ZInfoDevice',
+  full_name='org.lfedge.eve.info.ZInfoDevice',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='machineArch', full_name='ZInfoDevice.machineArch', index=0,
+      name='machineArch', full_name='org.lfedge.eve.info.ZInfoDevice.machineArch', index=0,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cpuArch', full_name='ZInfoDevice.cpuArch', index=1,
+      name='cpuArch', full_name='org.lfedge.eve.info.ZInfoDevice.cpuArch', index=1,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='platform', full_name='ZInfoDevice.platform', index=2,
+      name='platform', full_name='org.lfedge.eve.info.ZInfoDevice.platform', index=2,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ncpu', full_name='ZInfoDevice.ncpu', index=3,
+      name='ncpu', full_name='org.lfedge.eve.info.ZInfoDevice.ncpu', index=3,
       number=7, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='memory', full_name='ZInfoDevice.memory', index=4,
+      name='memory', full_name='org.lfedge.eve.info.ZInfoDevice.memory', index=4,
       number=8, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='storage', full_name='ZInfoDevice.storage', index=5,
+      name='storage', full_name='org.lfedge.eve.info.ZInfoDevice.storage', index=5,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='minfo', full_name='ZInfoDevice.minfo', index=6,
+      name='minfo', full_name='org.lfedge.eve.info.ZInfoDevice.minfo', index=6,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='ZInfoDevice.network', index=7,
+      name='network', full_name='org.lfedge.eve.info.ZInfoDevice.network', index=7,
       number=13, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='assignableAdapters', full_name='ZInfoDevice.assignableAdapters', index=8,
+      name='assignableAdapters', full_name='org.lfedge.eve.info.ZInfoDevice.assignableAdapters', index=8,
       number=15, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='ZInfoDevice.dns', index=9,
+      name='dns', full_name='org.lfedge.eve.info.ZInfoDevice.dns', index=9,
       number=16, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='storageList', full_name='ZInfoDevice.storageList', index=10,
+      name='storageList', full_name='org.lfedge.eve.info.ZInfoDevice.storageList', index=10,
       number=17, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bootTime', full_name='ZInfoDevice.bootTime', index=11,
+      name='bootTime', full_name='org.lfedge.eve.info.ZInfoDevice.bootTime', index=11,
       number=18, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='swList', full_name='ZInfoDevice.swList', index=12,
+      name='swList', full_name='org.lfedge.eve.info.ZInfoDevice.swList', index=12,
       number=19, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='HostName', full_name='ZInfoDevice.HostName', index=13,
+      name='HostName', full_name='org.lfedge.eve.info.ZInfoDevice.HostName', index=13,
       number=20, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='metricItems', full_name='ZInfoDevice.metricItems', index=14,
+      name='metricItems', full_name='org.lfedge.eve.info.ZInfoDevice.metricItems', index=14,
       number=21, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastRebootReason', full_name='ZInfoDevice.lastRebootReason', index=15,
+      name='lastRebootReason', full_name='org.lfedge.eve.info.ZInfoDevice.lastRebootReason', index=15,
       number=22, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastRebootTime', full_name='ZInfoDevice.lastRebootTime', index=16,
+      name='lastRebootTime', full_name='org.lfedge.eve.info.ZInfoDevice.lastRebootTime', index=16,
       number=23, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='systemAdapter', full_name='ZInfoDevice.systemAdapter', index=17,
+      name='systemAdapter', full_name='org.lfedge.eve.info.ZInfoDevice.systemAdapter', index=17,
       number=24, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='restartCounter', full_name='ZInfoDevice.restartCounter', index=18,
+      name='restartCounter', full_name='org.lfedge.eve.info.ZInfoDevice.restartCounter', index=18,
       number=25, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='HSMStatus', full_name='ZInfoDevice.HSMStatus', index=19,
+      name='HSMStatus', full_name='org.lfedge.eve.info.ZInfoDevice.HSMStatus', index=19,
       number=26, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='HSMInfo', full_name='ZInfoDevice.HSMInfo', index=20,
+      name='HSMInfo', full_name='org.lfedge.eve.info.ZInfoDevice.HSMInfo', index=20,
       number=27, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastRebootStack', full_name='ZInfoDevice.lastRebootStack', index=21,
+      name='lastRebootStack', full_name='org.lfedge.eve.info.ZInfoDevice.lastRebootStack', index=21,
       number=28, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dataSecAtRestInfo', full_name='ZInfoDevice.dataSecAtRestInfo', index=22,
+      name='dataSecAtRestInfo', full_name='org.lfedge.eve.info.ZInfoDevice.dataSecAtRestInfo', index=22,
       number=29, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='configItemStatus', full_name='ZInfoDevice.configItemStatus', index=23,
+      name='configItemStatus', full_name='org.lfedge.eve.info.ZInfoDevice.configItemStatus', index=23,
       number=31, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appInstances', full_name='ZInfoDevice.appInstances', index=24,
+      name='appInstances', full_name='org.lfedge.eve.info.ZInfoDevice.appInstances', index=24,
       number=32, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rebootConfigCounter', full_name='ZInfoDevice.rebootConfigCounter', index=25,
+      name='rebootConfigCounter', full_name='org.lfedge.eve.info.ZInfoDevice.rebootConfigCounter', index=25,
       number=33, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -1616,27 +1616,27 @@ _ZINFODEVICE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2240,
-  serialized_end=3054,
+  serialized_start=2583,
+  serialized_end=3637,
 )
 
 
 _SYSTEMADAPTERINFO = _descriptor.Descriptor(
   name='SystemAdapterInfo',
-  full_name='SystemAdapterInfo',
+  full_name='org.lfedge.eve.info.SystemAdapterInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='currentIndex', full_name='SystemAdapterInfo.currentIndex', index=0,
+      name='currentIndex', full_name='org.lfedge.eve.info.SystemAdapterInfo.currentIndex', index=0,
       number=1, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='status', full_name='SystemAdapterInfo.status', index=1,
+      name='status', full_name='org.lfedge.eve.info.SystemAdapterInfo.status', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1654,62 +1654,62 @@ _SYSTEMADAPTERINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3056,
-  serialized_end=3132,
+  serialized_start=3639,
+  serialized_end=3735,
 )
 
 
 _DEVICEPORTSTATUS = _descriptor.Descriptor(
   name='DevicePortStatus',
-  full_name='DevicePortStatus',
+  full_name='org.lfedge.eve.info.DevicePortStatus',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='version', full_name='DevicePortStatus.version', index=0,
+      name='version', full_name='org.lfedge.eve.info.DevicePortStatus.version', index=0,
       number=1, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='key', full_name='DevicePortStatus.key', index=1,
+      name='key', full_name='org.lfedge.eve.info.DevicePortStatus.key', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='timePriority', full_name='DevicePortStatus.timePriority', index=2,
+      name='timePriority', full_name='org.lfedge.eve.info.DevicePortStatus.timePriority', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastFailed', full_name='DevicePortStatus.lastFailed', index=3,
+      name='lastFailed', full_name='org.lfedge.eve.info.DevicePortStatus.lastFailed', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastSucceeded', full_name='DevicePortStatus.lastSucceeded', index=4,
+      name='lastSucceeded', full_name='org.lfedge.eve.info.DevicePortStatus.lastSucceeded', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ports', full_name='DevicePortStatus.ports', index=5,
+      name='ports', full_name='org.lfedge.eve.info.DevicePortStatus.ports', index=5,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastError', full_name='DevicePortStatus.lastError', index=6,
+      name='lastError', full_name='org.lfedge.eve.info.DevicePortStatus.lastError', index=6,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1727,167 +1727,167 @@ _DEVICEPORTSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3135,
-  serialized_end=3379,
+  serialized_start=3738,
+  serialized_end=4002,
 )
 
 
 _DEVICEPORT = _descriptor.Descriptor(
   name='DevicePort',
-  full_name='DevicePort',
+  full_name='org.lfedge.eve.info.DevicePort',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ifname', full_name='DevicePort.ifname', index=0,
+      name='ifname', full_name='org.lfedge.eve.info.DevicePort.ifname', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='DevicePort.name', index=1,
+      name='name', full_name='org.lfedge.eve.info.DevicePort.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='isMgmt', full_name='DevicePort.isMgmt', index=2,
+      name='isMgmt', full_name='org.lfedge.eve.info.DevicePort.isMgmt', index=2,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='free', full_name='DevicePort.free', index=3,
+      name='free', full_name='org.lfedge.eve.info.DevicePort.free', index=3,
       number=4, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dhcpType', full_name='DevicePort.dhcpType', index=4,
+      name='dhcpType', full_name='org.lfedge.eve.info.DevicePort.dhcpType', index=4,
       number=11, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='subnet', full_name='DevicePort.subnet', index=5,
+      name='subnet', full_name='org.lfedge.eve.info.DevicePort.subnet', index=5,
       number=12, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='gateway', full_name='DevicePort.gateway', index=6,
+      name='gateway', full_name='org.lfedge.eve.info.DevicePort.gateway', index=6,
       number=13, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='domainname', full_name='DevicePort.domainname', index=7,
+      name='domainname', full_name='org.lfedge.eve.info.DevicePort.domainname', index=7,
       number=14, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ntpServer', full_name='DevicePort.ntpServer', index=8,
+      name='ntpServer', full_name='org.lfedge.eve.info.DevicePort.ntpServer', index=8,
       number=15, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dnsServers', full_name='DevicePort.dnsServers', index=9,
+      name='dnsServers', full_name='org.lfedge.eve.info.DevicePort.dnsServers', index=9,
       number=16, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dhcpRangeLow', full_name='DevicePort.dhcpRangeLow', index=10,
+      name='dhcpRangeLow', full_name='org.lfedge.eve.info.DevicePort.dhcpRangeLow', index=10,
       number=17, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dhcpRangeHigh', full_name='DevicePort.dhcpRangeHigh', index=11,
+      name='dhcpRangeHigh', full_name='org.lfedge.eve.info.DevicePort.dhcpRangeHigh', index=11,
       number=18, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='proxy', full_name='DevicePort.proxy', index=12,
+      name='proxy', full_name='org.lfedge.eve.info.DevicePort.proxy', index=12,
       number=21, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='macAddr', full_name='DevicePort.macAddr', index=13,
+      name='macAddr', full_name='org.lfedge.eve.info.DevicePort.macAddr', index=13,
       number=22, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='IPAddrs', full_name='DevicePort.IPAddrs', index=14,
+      name='IPAddrs', full_name='org.lfedge.eve.info.DevicePort.IPAddrs', index=14,
       number=23, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='defaultRouters', full_name='DevicePort.defaultRouters', index=15,
+      name='defaultRouters', full_name='org.lfedge.eve.info.DevicePort.defaultRouters', index=15,
       number=24, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='DevicePort.dns', index=16,
+      name='dns', full_name='org.lfedge.eve.info.DevicePort.dns', index=16,
       number=25, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='up', full_name='DevicePort.up', index=17,
+      name='up', full_name='org.lfedge.eve.info.DevicePort.up', index=17,
       number=26, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='location', full_name='DevicePort.location', index=18,
+      name='location', full_name='org.lfedge.eve.info.DevicePort.location', index=18,
       number=27, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='err', full_name='DevicePort.err', index=19,
+      name='err', full_name='org.lfedge.eve.info.DevicePort.err', index=19,
       number=29, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usage', full_name='DevicePort.usage', index=20,
+      name='usage', full_name='org.lfedge.eve.info.DevicePort.usage', index=20,
       number=30, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkUUID', full_name='DevicePort.networkUUID', index=21,
+      name='networkUUID', full_name='org.lfedge.eve.info.DevicePort.networkUUID', index=21,
       number=31, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1905,55 +1905,55 @@ _DEVICEPORT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3382,
-  serialized_end=3861,
+  serialized_start=4005,
+  serialized_end=4564,
 )
 
 
 _PROXYSTATUS = _descriptor.Descriptor(
   name='ProxyStatus',
-  full_name='ProxyStatus',
+  full_name='org.lfedge.eve.info.ProxyStatus',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='proxies', full_name='ProxyStatus.proxies', index=0,
+      name='proxies', full_name='org.lfedge.eve.info.ProxyStatus.proxies', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='exceptions', full_name='ProxyStatus.exceptions', index=1,
+      name='exceptions', full_name='org.lfedge.eve.info.ProxyStatus.exceptions', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='pacfile', full_name='ProxyStatus.pacfile', index=2,
+      name='pacfile', full_name='org.lfedge.eve.info.ProxyStatus.pacfile', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkProxyEnable', full_name='ProxyStatus.networkProxyEnable', index=3,
+      name='networkProxyEnable', full_name='org.lfedge.eve.info.ProxyStatus.networkProxyEnable', index=3,
       number=4, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkProxyURL', full_name='ProxyStatus.networkProxyURL', index=4,
+      name='networkProxyURL', full_name='org.lfedge.eve.info.ProxyStatus.networkProxyURL', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='wpadURL', full_name='ProxyStatus.wpadURL', index=5,
+      name='wpadURL', full_name='org.lfedge.eve.info.ProxyStatus.wpadURL', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1971,34 +1971,34 @@ _PROXYSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3864,
-  serialized_end=4014,
+  serialized_start=4567,
+  serialized_end=4737,
 )
 
 
 _PROXYENTRY = _descriptor.Descriptor(
   name='ProxyEntry',
-  full_name='ProxyEntry',
+  full_name='org.lfedge.eve.info.ProxyEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='type', full_name='ProxyEntry.type', index=0,
+      name='type', full_name='org.lfedge.eve.info.ProxyEntry.type', index=0,
       number=1, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='server', full_name='ProxyEntry.server', index=1,
+      name='server', full_name='org.lfedge.eve.info.ProxyEntry.server', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='port', full_name='ProxyEntry.port', index=2,
+      name='port', full_name='org.lfedge.eve.info.ProxyEntry.port', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -2016,104 +2016,104 @@ _PROXYENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4016,
-  serialized_end=4072,
+  serialized_start=4739,
+  serialized_end=4795,
 )
 
 
 _ZINFODEVSW = _descriptor.Descriptor(
   name='ZInfoDevSW',
-  full_name='ZInfoDevSW',
+  full_name='org.lfedge.eve.info.ZInfoDevSW',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='activated', full_name='ZInfoDevSW.activated', index=0,
+      name='activated', full_name='org.lfedge.eve.info.ZInfoDevSW.activated', index=0,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='partitionLabel', full_name='ZInfoDevSW.partitionLabel', index=1,
+      name='partitionLabel', full_name='org.lfedge.eve.info.ZInfoDevSW.partitionLabel', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='partitionDevice', full_name='ZInfoDevSW.partitionDevice', index=2,
+      name='partitionDevice', full_name='org.lfedge.eve.info.ZInfoDevSW.partitionDevice', index=2,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='partitionState', full_name='ZInfoDevSW.partitionState', index=3,
+      name='partitionState', full_name='org.lfedge.eve.info.ZInfoDevSW.partitionState', index=3,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='status', full_name='ZInfoDevSW.status', index=4,
+      name='status', full_name='org.lfedge.eve.info.ZInfoDevSW.status', index=4,
       number=6, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='shortVersion', full_name='ZInfoDevSW.shortVersion', index=5,
+      name='shortVersion', full_name='org.lfedge.eve.info.ZInfoDevSW.shortVersion', index=5,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='longVersion', full_name='ZInfoDevSW.longVersion', index=6,
+      name='longVersion', full_name='org.lfedge.eve.info.ZInfoDevSW.longVersion', index=6,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='swErr', full_name='ZInfoDevSW.swErr', index=7,
+      name='swErr', full_name='org.lfedge.eve.info.ZInfoDevSW.swErr', index=7,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='downloadProgress', full_name='ZInfoDevSW.downloadProgress', index=8,
+      name='downloadProgress', full_name='org.lfedge.eve.info.ZInfoDevSW.downloadProgress', index=8,
       number=10, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='userStatus', full_name='ZInfoDevSW.userStatus', index=9,
+      name='userStatus', full_name='org.lfedge.eve.info.ZInfoDevSW.userStatus', index=9,
       number=11, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='subStatusStr', full_name='ZInfoDevSW.subStatusStr', index=10,
+      name='subStatusStr', full_name='org.lfedge.eve.info.ZInfoDevSW.subStatusStr', index=10,
       number=12, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='subStatus', full_name='ZInfoDevSW.subStatus', index=11,
+      name='subStatus', full_name='org.lfedge.eve.info.ZInfoDevSW.subStatus', index=11,
       number=13, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='subStatusProgress', full_name='ZInfoDevSW.subStatusProgress', index=12,
+      name='subStatusProgress', full_name='org.lfedge.eve.info.ZInfoDevSW.subStatusProgress', index=12,
       number=14, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -2131,41 +2131,41 @@ _ZINFODEVSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4075,
-  serialized_end=4423,
+  serialized_start=4798,
+  serialized_end=5226,
 )
 
 
 _ZINFOSTORAGE = _descriptor.Descriptor(
   name='ZInfoStorage',
-  full_name='ZInfoStorage',
+  full_name='org.lfedge.eve.info.ZInfoStorage',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='device', full_name='ZInfoStorage.device', index=0,
+      name='device', full_name='org.lfedge.eve.info.ZInfoStorage.device', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='mountPath', full_name='ZInfoStorage.mountPath', index=1,
+      name='mountPath', full_name='org.lfedge.eve.info.ZInfoStorage.mountPath', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='total', full_name='ZInfoStorage.total', index=2,
+      name='total', full_name='org.lfedge.eve.info.ZInfoStorage.total', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='storageLocation', full_name='ZInfoStorage.storageLocation', index=3,
+      name='storageLocation', full_name='org.lfedge.eve.info.ZInfoStorage.storageLocation', index=3,
       number=4, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -2183,90 +2183,90 @@ _ZINFOSTORAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4425,
-  serialized_end=4514,
+  serialized_start=5228,
+  serialized_end=5317,
 )
 
 
 _ZINFOAPP = _descriptor.Descriptor(
   name='ZInfoApp',
-  full_name='ZInfoApp',
+  full_name='org.lfedge.eve.info.ZInfoApp',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='AppID', full_name='ZInfoApp.AppID', index=0,
+      name='AppID', full_name='org.lfedge.eve.info.ZInfoApp.AppID', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appVersion', full_name='ZInfoApp.appVersion', index=1,
+      name='appVersion', full_name='org.lfedge.eve.info.ZInfoApp.appVersion', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='systemApp', full_name='ZInfoApp.systemApp', index=2,
+      name='systemApp', full_name='org.lfedge.eve.info.ZInfoApp.systemApp', index=2,
       number=6, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='AppName', full_name='ZInfoApp.AppName', index=3,
+      name='AppName', full_name='org.lfedge.eve.info.ZInfoApp.AppName', index=3,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='softwareList', full_name='ZInfoApp.softwareList', index=4,
+      name='softwareList', full_name='org.lfedge.eve.info.ZInfoApp.softwareList', index=4,
       number=8, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bootTime', full_name='ZInfoApp.bootTime', index=5,
+      name='bootTime', full_name='org.lfedge.eve.info.ZInfoApp.bootTime', index=5,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='assignedAdapters', full_name='ZInfoApp.assignedAdapters', index=6,
+      name='assignedAdapters', full_name='org.lfedge.eve.info.ZInfoApp.assignedAdapters', index=6,
       number=13, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appErr', full_name='ZInfoApp.appErr', index=7,
+      name='appErr', full_name='org.lfedge.eve.info.ZInfoApp.appErr', index=7,
       number=14, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoApp.state', index=8,
+      name='state', full_name='org.lfedge.eve.info.ZInfoApp.state', index=8,
       number=15, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='ZInfoApp.network', index=9,
+      name='network', full_name='org.lfedge.eve.info.ZInfoApp.network', index=9,
       number=16, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='volumeRefs', full_name='ZInfoApp.volumeRefs', index=10,
+      name='volumeRefs', full_name='org.lfedge.eve.info.ZInfoApp.volumeRefs', index=10,
       number=17, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2284,34 +2284,34 @@ _ZINFOAPP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4517,
-  serialized_end=4820,
+  serialized_start=5320,
+  serialized_end=5723,
 )
 
 
 _ZINFOVPNLINKINFO = _descriptor.Descriptor(
   name='ZInfoVpnLinkInfo',
-  full_name='ZInfoVpnLinkInfo',
+  full_name='org.lfedge.eve.info.ZInfoVpnLinkInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='spiId', full_name='ZInfoVpnLinkInfo.spiId', index=0,
+      name='spiId', full_name='org.lfedge.eve.info.ZInfoVpnLinkInfo.spiId', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='subNet', full_name='ZInfoVpnLinkInfo.subNet', index=1,
+      name='subNet', full_name='org.lfedge.eve.info.ZInfoVpnLinkInfo.subNet', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='direction', full_name='ZInfoVpnLinkInfo.direction', index=2,
+      name='direction', full_name='org.lfedge.eve.info.ZInfoVpnLinkInfo.direction', index=2,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -2329,69 +2329,69 @@ _ZINFOVPNLINKINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4822,
-  serialized_end=4890,
+  serialized_start=5725,
+  serialized_end=5793,
 )
 
 
 _ZINFOVPNLINK = _descriptor.Descriptor(
   name='ZInfoVpnLink',
-  full_name='ZInfoVpnLink',
+  full_name='org.lfedge.eve.info.ZInfoVpnLink',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='id', full_name='ZInfoVpnLink.id', index=0,
+      name='id', full_name='org.lfedge.eve.info.ZInfoVpnLink.id', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='ZInfoVpnLink.name', index=1,
+      name='name', full_name='org.lfedge.eve.info.ZInfoVpnLink.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='reqId', full_name='ZInfoVpnLink.reqId', index=2,
+      name='reqId', full_name='org.lfedge.eve.info.ZInfoVpnLink.reqId', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instTime', full_name='ZInfoVpnLink.instTime', index=3,
+      name='instTime', full_name='org.lfedge.eve.info.ZInfoVpnLink.instTime', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='espInfo', full_name='ZInfoVpnLink.espInfo', index=4,
+      name='espInfo', full_name='org.lfedge.eve.info.ZInfoVpnLink.espInfo', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoVpnLink.state', index=5,
+      name='state', full_name='org.lfedge.eve.info.ZInfoVpnLink.state', index=5,
       number=6, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lInfo', full_name='ZInfoVpnLink.lInfo', index=6,
+      name='lInfo', full_name='org.lfedge.eve.info.ZInfoVpnLink.lInfo', index=6,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rInfo', full_name='ZInfoVpnLink.rInfo', index=7,
+      name='rInfo', full_name='org.lfedge.eve.info.ZInfoVpnLink.rInfo', index=7,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -2409,34 +2409,34 @@ _ZINFOVPNLINK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4893,
-  serialized_end=5082,
+  serialized_start=5796,
+  serialized_end=6045,
 )
 
 
 _ZINFOVPNENDPOINT = _descriptor.Descriptor(
   name='ZInfoVpnEndPoint',
-  full_name='ZInfoVpnEndPoint',
+  full_name='org.lfedge.eve.info.ZInfoVpnEndPoint',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='id', full_name='ZInfoVpnEndPoint.id', index=0,
+      name='id', full_name='org.lfedge.eve.info.ZInfoVpnEndPoint.id', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipAddr', full_name='ZInfoVpnEndPoint.ipAddr', index=1,
+      name='ipAddr', full_name='org.lfedge.eve.info.ZInfoVpnEndPoint.ipAddr', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='port', full_name='ZInfoVpnEndPoint.port', index=2,
+      name='port', full_name='org.lfedge.eve.info.ZInfoVpnEndPoint.port', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -2454,76 +2454,76 @@ _ZINFOVPNENDPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5084,
-  serialized_end=5144,
+  serialized_start=6047,
+  serialized_end=6107,
 )
 
 
 _ZINFOVPNCONN = _descriptor.Descriptor(
   name='ZInfoVpnConn',
-  full_name='ZInfoVpnConn',
+  full_name='org.lfedge.eve.info.ZInfoVpnConn',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='id', full_name='ZInfoVpnConn.id', index=0,
+      name='id', full_name='org.lfedge.eve.info.ZInfoVpnConn.id', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='ZInfoVpnConn.name', index=1,
+      name='name', full_name='org.lfedge.eve.info.ZInfoVpnConn.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='version', full_name='ZInfoVpnConn.version', index=2,
+      name='version', full_name='org.lfedge.eve.info.ZInfoVpnConn.version', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='estTime', full_name='ZInfoVpnConn.estTime', index=3,
+      name='estTime', full_name='org.lfedge.eve.info.ZInfoVpnConn.estTime', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ikes', full_name='ZInfoVpnConn.ikes', index=4,
+      name='ikes', full_name='org.lfedge.eve.info.ZInfoVpnConn.ikes', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoVpnConn.state', index=5,
+      name='state', full_name='org.lfedge.eve.info.ZInfoVpnConn.state', index=5,
       number=6, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lInfo', full_name='ZInfoVpnConn.lInfo', index=6,
+      name='lInfo', full_name='org.lfedge.eve.info.ZInfoVpnConn.lInfo', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rInfo', full_name='ZInfoVpnConn.rInfo', index=7,
+      name='rInfo', full_name='org.lfedge.eve.info.ZInfoVpnConn.rInfo', index=7,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='links', full_name='ZInfoVpnConn.links', index=8,
+      name='links', full_name='org.lfedge.eve.info.ZInfoVpnConn.links', index=8,
       number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2541,41 +2541,41 @@ _ZINFOVPNCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5147,
-  serialized_end=5364,
+  serialized_start=6110,
+  serialized_end=6407,
 )
 
 
 _ZINFOVPN = _descriptor.Descriptor(
   name='ZInfoVpn',
-  full_name='ZInfoVpn',
+  full_name='org.lfedge.eve.info.ZInfoVpn',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='upTime', full_name='ZInfoVpn.upTime', index=0,
+      name='upTime', full_name='org.lfedge.eve.info.ZInfoVpn.upTime', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='policyBased', full_name='ZInfoVpn.policyBased', index=1,
+      name='policyBased', full_name='org.lfedge.eve.info.ZInfoVpn.policyBased', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='listeningIpAddrs', full_name='ZInfoVpn.listeningIpAddrs', index=2,
+      name='listeningIpAddrs', full_name='org.lfedge.eve.info.ZInfoVpn.listeningIpAddrs', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='conn', full_name='ZInfoVpn.conn', index=3,
+      name='conn', full_name='org.lfedge.eve.info.ZInfoVpn.conn', index=3,
       number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2593,27 +2593,27 @@ _ZINFOVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5366,
-  serialized_end=5468,
+  serialized_start=6409,
+  serialized_end=6531,
 )
 
 
 _RLOCSTATE = _descriptor.Descriptor(
   name='RlocState',
-  full_name='RlocState',
+  full_name='org.lfedge.eve.info.RlocState',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='Rloc', full_name='RlocState.Rloc', index=0,
+      name='Rloc', full_name='org.lfedge.eve.info.RlocState.Rloc', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Reachable', full_name='RlocState.Reachable', index=1,
+      name='Reachable', full_name='org.lfedge.eve.info.RlocState.Reachable', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -2631,27 +2631,27 @@ _RLOCSTATE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5470,
-  serialized_end=5514,
+  serialized_start=6533,
+  serialized_end=6577,
 )
 
 
 _MAPCACHEENTRY = _descriptor.Descriptor(
   name='MapCacheEntry',
-  full_name='MapCacheEntry',
+  full_name='org.lfedge.eve.info.MapCacheEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='EID', full_name='MapCacheEntry.EID', index=0,
+      name='EID', full_name='org.lfedge.eve.info.MapCacheEntry.EID', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Rlocs', full_name='MapCacheEntry.Rlocs', index=1,
+      name='Rlocs', full_name='org.lfedge.eve.info.MapCacheEntry.Rlocs', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2669,27 +2669,27 @@ _MAPCACHEENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5516,
-  serialized_end=5571,
+  serialized_start=6579,
+  serialized_end=6654,
 )
 
 
 _DATABASEMAP = _descriptor.Descriptor(
   name='DatabaseMap',
-  full_name='DatabaseMap',
+  full_name='org.lfedge.eve.info.DatabaseMap',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='IID', full_name='DatabaseMap.IID', index=0,
+      name='IID', full_name='org.lfedge.eve.info.DatabaseMap.IID', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='MapCacheEntries', full_name='DatabaseMap.MapCacheEntries', index=1,
+      name='MapCacheEntries', full_name='org.lfedge.eve.info.DatabaseMap.MapCacheEntries', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2707,34 +2707,34 @@ _DATABASEMAP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5573,
-  serialized_end=5640,
+  serialized_start=6656,
+  serialized_end=6743,
 )
 
 
 _DECAPKEY = _descriptor.Descriptor(
   name='DecapKey',
-  full_name='DecapKey',
+  full_name='org.lfedge.eve.info.DecapKey',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='Rloc', full_name='DecapKey.Rloc', index=0,
+      name='Rloc', full_name='org.lfedge.eve.info.DecapKey.Rloc', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Port', full_name='DecapKey.Port', index=1,
+      name='Port', full_name='org.lfedge.eve.info.DecapKey.Port', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='KeyCount', full_name='DecapKey.KeyCount', index=2,
+      name='KeyCount', full_name='org.lfedge.eve.info.DecapKey.KeyCount', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -2752,48 +2752,48 @@ _DECAPKEY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5642,
-  serialized_end=5698,
+  serialized_start=6745,
+  serialized_end=6801,
 )
 
 
 _ZINFOLISP = _descriptor.Descriptor(
   name='ZInfoLisp',
-  full_name='ZInfoLisp',
+  full_name='org.lfedge.eve.info.ZInfoLisp',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ItrCryptoPort', full_name='ZInfoLisp.ItrCryptoPort', index=0,
+      name='ItrCryptoPort', full_name='org.lfedge.eve.info.ZInfoLisp.ItrCryptoPort', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='EtrNatPort', full_name='ZInfoLisp.EtrNatPort', index=1,
+      name='EtrNatPort', full_name='org.lfedge.eve.info.ZInfoLisp.EtrNatPort', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Interfaces', full_name='ZInfoLisp.Interfaces', index=2,
+      name='Interfaces', full_name='org.lfedge.eve.info.ZInfoLisp.Interfaces', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DatabaseMaps', full_name='ZInfoLisp.DatabaseMaps', index=3,
+      name='DatabaseMaps', full_name='org.lfedge.eve.info.ZInfoLisp.DatabaseMaps', index=3,
       number=4, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DecapKeys', full_name='ZInfoLisp.DecapKeys', index=4,
+      name='DecapKeys', full_name='org.lfedge.eve.info.ZInfoLisp.DecapKeys', index=4,
       number=5, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2811,153 +2811,153 @@ _ZINFOLISP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5701,
-  serialized_end=5841,
+  serialized_start=6804,
+  serialized_end=6984,
 )
 
 
 _ZINFONETWORKINSTANCE = _descriptor.Descriptor(
   name='ZInfoNetworkInstance',
-  full_name='ZInfoNetworkInstance',
+  full_name='org.lfedge.eve.info.ZInfoNetworkInstance',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='networkID', full_name='ZInfoNetworkInstance.networkID', index=0,
+      name='networkID', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.networkID', index=0,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkVersion', full_name='ZInfoNetworkInstance.networkVersion', index=1,
+      name='networkVersion', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.networkVersion', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instType', full_name='ZInfoNetworkInstance.instType', index=2,
+      name='instType', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.instType', index=2,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayname', full_name='ZInfoNetworkInstance.displayname', index=3,
+      name='displayname', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.displayname', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activated', full_name='ZInfoNetworkInstance.activated', index=4,
+      name='activated', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.activated', index=4,
       number=7, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='upTimeStamp', full_name='ZInfoNetworkInstance.upTimeStamp', index=5,
+      name='upTimeStamp', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.upTimeStamp', index=5,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='softwareList', full_name='ZInfoNetworkInstance.softwareList', index=6,
+      name='softwareList', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.softwareList', index=6,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='CurrentUplinkIntf', full_name='ZInfoNetworkInstance.CurrentUplinkIntf', index=7,
+      name='CurrentUplinkIntf', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.CurrentUplinkIntf', index=7,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='CurrentUplinkAlias', full_name='ZInfoNetworkInstance.CurrentUplinkAlias', index=8,
+      name='CurrentUplinkAlias', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.CurrentUplinkAlias', index=8,
       number=11, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeNum', full_name='ZInfoNetworkInstance.bridgeNum', index=9,
+      name='bridgeNum', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.bridgeNum', index=9,
       number=20, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeName', full_name='ZInfoNetworkInstance.bridgeName', index=10,
+      name='bridgeName', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.bridgeName', index=10,
       number=21, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeIPAddr', full_name='ZInfoNetworkInstance.bridgeIPAddr', index=11,
+      name='bridgeIPAddr', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.bridgeIPAddr', index=11,
       number=22, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipAssignments', full_name='ZInfoNetworkInstance.ipAssignments', index=12,
+      name='ipAssignments', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.ipAssignments', index=12,
       number=23, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeIPSets', full_name='ZInfoNetworkInstance.bridgeIPSets', index=13,
+      name='bridgeIPSets', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.bridgeIPSets', index=13,
       number=24, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vifs', full_name='ZInfoNetworkInstance.vifs', index=14,
+      name='vifs', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.vifs', index=14,
       number=25, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipv4Eid', full_name='ZInfoNetworkInstance.ipv4Eid', index=15,
+      name='ipv4Eid', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.ipv4Eid', index=15,
       number=26, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='assignedAdapters', full_name='ZInfoNetworkInstance.assignedAdapters', index=16,
+      name='assignedAdapters', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.assignedAdapters', index=16,
       number=30, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vinfo', full_name='ZInfoNetworkInstance.vinfo', index=17,
+      name='vinfo', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.vinfo', index=17,
       number=31, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='linfo', full_name='ZInfoNetworkInstance.linfo', index=18,
+      name='linfo', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.linfo', index=18,
       number=32, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkErr', full_name='ZInfoNetworkInstance.networkErr', index=19,
+      name='networkErr', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.networkErr', index=19,
       number=40, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2975,37 +2975,37 @@ _ZINFONETWORKINSTANCE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='InfoContent', full_name='ZInfoNetworkInstance.InfoContent',
+      name='InfoContent', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=5844,
-  serialized_end=6420,
+  serialized_start=6987,
+  serialized_end=7703,
 )
 
 
 _USAGEINFO = _descriptor.Descriptor(
   name='UsageInfo',
-  full_name='UsageInfo',
+  full_name='org.lfedge.eve.info.UsageInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='createTime', full_name='UsageInfo.createTime', index=0,
+      name='createTime', full_name='org.lfedge.eve.info.UsageInfo.createTime', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='refCount', full_name='UsageInfo.refCount', index=1,
+      name='refCount', full_name='org.lfedge.eve.info.UsageInfo.refCount', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastRefcountChangeTime', full_name='UsageInfo.lastRefcountChangeTime', index=2,
+      name='lastRefcountChangeTime', full_name='org.lfedge.eve.info.UsageInfo.lastRefcountChangeTime', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -3023,27 +3023,27 @@ _USAGEINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6423,
-  serialized_end=6560,
+  serialized_start=7706,
+  serialized_end=7843,
 )
 
 
 _VOLUMERESOURCES = _descriptor.Descriptor(
   name='VolumeResources',
-  full_name='VolumeResources',
+  full_name='org.lfedge.eve.info.VolumeResources',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='maxSizeBytes', full_name='VolumeResources.maxSizeBytes', index=0,
+      name='maxSizeBytes', full_name='org.lfedge.eve.info.VolumeResources.maxSizeBytes', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='curSizeBytes', full_name='VolumeResources.curSizeBytes', index=1,
+      name='curSizeBytes', full_name='org.lfedge.eve.info.VolumeResources.curSizeBytes', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -3061,69 +3061,69 @@ _VOLUMERESOURCES = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6562,
-  serialized_end=6623,
+  serialized_start=7845,
+  serialized_end=7906,
 )
 
 
 _ZINFOVOLUME = _descriptor.Descriptor(
   name='ZInfoVolume',
-  full_name='ZInfoVolume',
+  full_name='org.lfedge.eve.info.ZInfoVolume',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='ZInfoVolume.uuid', index=0,
+      name='uuid', full_name='org.lfedge.eve.info.ZInfoVolume.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayName', full_name='ZInfoVolume.displayName', index=1,
+      name='displayName', full_name='org.lfedge.eve.info.ZInfoVolume.displayName', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usage', full_name='ZInfoVolume.usage', index=2,
+      name='usage', full_name='org.lfedge.eve.info.ZInfoVolume.usage', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='resources', full_name='ZInfoVolume.resources', index=3,
+      name='resources', full_name='org.lfedge.eve.info.ZInfoVolume.resources', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoVolume.state', index=4,
+      name='state', full_name='org.lfedge.eve.info.ZInfoVolume.state', index=4,
       number=5, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='progressPercentage', full_name='ZInfoVolume.progressPercentage', index=5,
+      name='progressPercentage', full_name='org.lfedge.eve.info.ZInfoVolume.progressPercentage', index=5,
       number=6, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='volumeErr', full_name='ZInfoVolume.volumeErr', index=6,
+      name='volumeErr', full_name='org.lfedge.eve.info.ZInfoVolume.volumeErr', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='generation_count', full_name='ZInfoVolume.generation_count', index=7,
+      name='generation_count', full_name='org.lfedge.eve.info.ZInfoVolume.generation_count', index=7,
       number=8, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -3141,20 +3141,20 @@ _ZINFOVOLUME = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6626,
-  serialized_end=6849,
+  serialized_start=7909,
+  serialized_end=8212,
 )
 
 
 _CONTENTRESOURCES = _descriptor.Descriptor(
   name='ContentResources',
-  full_name='ContentResources',
+  full_name='org.lfedge.eve.info.ContentResources',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='curSizeBytes', full_name='ContentResources.curSizeBytes', index=0,
+      name='curSizeBytes', full_name='org.lfedge.eve.info.ContentResources.curSizeBytes', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -3172,83 +3172,83 @@ _CONTENTRESOURCES = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6851,
-  serialized_end=6891,
+  serialized_start=8214,
+  serialized_end=8254,
 )
 
 
 _ZINFOCONTENTTREE = _descriptor.Descriptor(
   name='ZInfoContentTree',
-  full_name='ZInfoContentTree',
+  full_name='org.lfedge.eve.info.ZInfoContentTree',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='ZInfoContentTree.uuid', index=0,
+      name='uuid', full_name='org.lfedge.eve.info.ZInfoContentTree.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayName', full_name='ZInfoContentTree.displayName', index=1,
+      name='displayName', full_name='org.lfedge.eve.info.ZInfoContentTree.displayName', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sha256', full_name='ZInfoContentTree.sha256', index=2,
+      name='sha256', full_name='org.lfedge.eve.info.ZInfoContentTree.sha256', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='resources', full_name='ZInfoContentTree.resources', index=3,
+      name='resources', full_name='org.lfedge.eve.info.ZInfoContentTree.resources', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usage', full_name='ZInfoContentTree.usage', index=4,
+      name='usage', full_name='org.lfedge.eve.info.ZInfoContentTree.usage', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoContentTree.state', index=5,
+      name='state', full_name='org.lfedge.eve.info.ZInfoContentTree.state', index=5,
       number=6, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='progressPercentage', full_name='ZInfoContentTree.progressPercentage', index=6,
+      name='progressPercentage', full_name='org.lfedge.eve.info.ZInfoContentTree.progressPercentage', index=6,
       number=7, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='err', full_name='ZInfoContentTree.err', index=7,
+      name='err', full_name='org.lfedge.eve.info.ZInfoContentTree.err', index=7,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='componentShaList', full_name='ZInfoContentTree.componentShaList', index=8,
+      name='componentShaList', full_name='org.lfedge.eve.info.ZInfoContentTree.componentShaList', index=8,
       number=9, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='generation_count', full_name='ZInfoContentTree.generation_count', index=9,
+      name='generation_count', full_name='org.lfedge.eve.info.ZInfoContentTree.generation_count', index=9,
       number=10, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -3266,55 +3266,55 @@ _ZINFOCONTENTTREE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6894,
-  serialized_end=7159,
+  serialized_start=8257,
+  serialized_end=8602,
 )
 
 
 _ZINFOBLOB = _descriptor.Descriptor(
   name='ZInfoBlob',
-  full_name='ZInfoBlob',
+  full_name='org.lfedge.eve.info.ZInfoBlob',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='sha256', full_name='ZInfoBlob.sha256', index=0,
+      name='sha256', full_name='org.lfedge.eve.info.ZInfoBlob.sha256', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='resources', full_name='ZInfoBlob.resources', index=1,
+      name='resources', full_name='org.lfedge.eve.info.ZInfoBlob.resources', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usage', full_name='ZInfoBlob.usage', index=2,
+      name='usage', full_name='org.lfedge.eve.info.ZInfoBlob.usage', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='state', full_name='ZInfoBlob.state', index=3,
+      name='state', full_name='org.lfedge.eve.info.ZInfoBlob.state', index=3,
       number=4, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='progressPercentage', full_name='ZInfoBlob.progressPercentage', index=4,
+      name='progressPercentage', full_name='org.lfedge.eve.info.ZInfoBlob.progressPercentage', index=4,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='err', full_name='ZInfoBlob.err', index=5,
+      name='err', full_name='org.lfedge.eve.info.ZInfoBlob.err', index=5,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -3332,20 +3332,20 @@ _ZINFOBLOB = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7162,
-  serialized_end=7333,
+  serialized_start=8605,
+  serialized_end=8856,
 )
 
 
 _ZINFOBLOBLIST = _descriptor.Descriptor(
   name='ZInfoBlobList',
-  full_name='ZInfoBlobList',
+  full_name='org.lfedge.eve.info.ZInfoBlobList',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='blob', full_name='ZInfoBlobList.blob', index=0,
+      name='blob', full_name='org.lfedge.eve.info.ZInfoBlobList.blob', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -3363,76 +3363,76 @@ _ZINFOBLOBLIST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7335,
-  serialized_end=7376,
+  serialized_start=8858,
+  serialized_end=8919,
 )
 
 
 _ZINFOMSG = _descriptor.Descriptor(
   name='ZInfoMsg',
-  full_name='ZInfoMsg',
+  full_name='org.lfedge.eve.info.ZInfoMsg',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ztype', full_name='ZInfoMsg.ztype', index=0,
+      name='ztype', full_name='org.lfedge.eve.info.ZInfoMsg.ztype', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='devId', full_name='ZInfoMsg.devId', index=1,
+      name='devId', full_name='org.lfedge.eve.info.ZInfoMsg.devId', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dinfo', full_name='ZInfoMsg.dinfo', index=2,
+      name='dinfo', full_name='org.lfedge.eve.info.ZInfoMsg.dinfo', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ainfo', full_name='ZInfoMsg.ainfo', index=3,
+      name='ainfo', full_name='org.lfedge.eve.info.ZInfoMsg.ainfo', index=3,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='niinfo', full_name='ZInfoMsg.niinfo', index=4,
+      name='niinfo', full_name='org.lfedge.eve.info.ZInfoMsg.niinfo', index=4,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vinfo', full_name='ZInfoMsg.vinfo', index=5,
+      name='vinfo', full_name='org.lfedge.eve.info.ZInfoMsg.vinfo', index=5,
       number=13, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cinfo', full_name='ZInfoMsg.cinfo', index=6,
+      name='cinfo', full_name='org.lfedge.eve.info.ZInfoMsg.cinfo', index=6,
       number=14, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='binfo', full_name='ZInfoMsg.binfo', index=7,
+      name='binfo', full_name='org.lfedge.eve.info.ZInfoMsg.binfo', index=7,
       number=15, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='atTimeStamp', full_name='ZInfoMsg.atTimeStamp', index=8,
+      name='atTimeStamp', full_name='org.lfedge.eve.info.ZInfoMsg.atTimeStamp', index=8,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -3450,11 +3450,11 @@ _ZINFOMSG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='InfoContent', full_name='ZInfoMsg.InfoContent',
+      name='InfoContent', full_name='org.lfedge.eve.info.ZInfoMsg.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=7379,
-  serialized_end=7696,
+  serialized_start=8922,
+  serialized_end=9379,
 )
 
 _DEPRECATEDMETRICITEM.fields_by_name['type'].enum_type = _DEPMETRICITEMTYPE
@@ -3652,98 +3652,98 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 deprecatedMetricItem = _reflection.GeneratedProtocolMessageType('deprecatedMetricItem', (_message.Message,), dict(
   DESCRIPTOR = _DEPRECATEDMETRICITEM,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:deprecatedMetricItem)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.deprecatedMetricItem)
   ))
 _sym_db.RegisterMessage(deprecatedMetricItem)
 
 ZmetIPAssignmentEntry = _reflection.GeneratedProtocolMessageType('ZmetIPAssignmentEntry', (_message.Message,), dict(
   DESCRIPTOR = _ZMETIPASSIGNMENTENTRY,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZmetIPAssignmentEntry)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZmetIPAssignmentEntry)
   ))
 _sym_db.RegisterMessage(ZmetIPAssignmentEntry)
 
 ZmetVifInfo = _reflection.GeneratedProtocolMessageType('ZmetVifInfo', (_message.Message,), dict(
   DESCRIPTOR = _ZMETVIFINFO,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZmetVifInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZmetVifInfo)
   ))
 _sym_db.RegisterMessage(ZmetVifInfo)
 
 ZioBundle = _reflection.GeneratedProtocolMessageType('ZioBundle', (_message.Message,), dict(
   DESCRIPTOR = _ZIOBUNDLE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZioBundle)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZioBundle)
   ))
 _sym_db.RegisterMessage(ZioBundle)
 
 IoAddresses = _reflection.GeneratedProtocolMessageType('IoAddresses', (_message.Message,), dict(
   DESCRIPTOR = _IOADDRESSES,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:IoAddresses)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.IoAddresses)
   ))
 _sym_db.RegisterMessage(IoAddresses)
 
 ZInfoManufacturer = _reflection.GeneratedProtocolMessageType('ZInfoManufacturer', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOMANUFACTURER,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoManufacturer)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoManufacturer)
   ))
 _sym_db.RegisterMessage(ZInfoManufacturer)
 
 ZInfoNetwork = _reflection.GeneratedProtocolMessageType('ZInfoNetwork', (_message.Message,), dict(
   DESCRIPTOR = _ZINFONETWORK,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoNetwork)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoNetwork)
   ))
 _sym_db.RegisterMessage(ZInfoNetwork)
 
 GeoLoc = _reflection.GeneratedProtocolMessageType('GeoLoc', (_message.Message,), dict(
   DESCRIPTOR = _GEOLOC,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:GeoLoc)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.GeoLoc)
   ))
 _sym_db.RegisterMessage(GeoLoc)
 
 ZInfoDNS = _reflection.GeneratedProtocolMessageType('ZInfoDNS', (_message.Message,), dict(
   DESCRIPTOR = _ZINFODNS,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoDNS)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoDNS)
   ))
 _sym_db.RegisterMessage(ZInfoDNS)
 
 ZInfoSW = _reflection.GeneratedProtocolMessageType('ZInfoSW', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOSW,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoSW)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoSW)
   ))
 _sym_db.RegisterMessage(ZInfoSW)
 
 ErrorInfo = _reflection.GeneratedProtocolMessageType('ErrorInfo', (_message.Message,), dict(
   DESCRIPTOR = _ERRORINFO,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ErrorInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ErrorInfo)
   ))
 _sym_db.RegisterMessage(ErrorInfo)
 
 VaultInfo = _reflection.GeneratedProtocolMessageType('VaultInfo', (_message.Message,), dict(
   DESCRIPTOR = _VAULTINFO,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:VaultInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.VaultInfo)
   ))
 _sym_db.RegisterMessage(VaultInfo)
 
 DataSecAtRest = _reflection.GeneratedProtocolMessageType('DataSecAtRest', (_message.Message,), dict(
   DESCRIPTOR = _DATASECATREST,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:DataSecAtRest)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.DataSecAtRest)
   ))
 _sym_db.RegisterMessage(DataSecAtRest)
 
 ZInfoConfigItem = _reflection.GeneratedProtocolMessageType('ZInfoConfigItem', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOCONFIGITEM,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoConfigItem)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoConfigItem)
   ))
 _sym_db.RegisterMessage(ZInfoConfigItem)
 
@@ -3752,19 +3752,19 @@ ZInfoConfigItemStatus = _reflection.GeneratedProtocolMessageType('ZInfoConfigIte
   ConfigItemsEntry = _reflection.GeneratedProtocolMessageType('ConfigItemsEntry', (_message.Message,), dict(
     DESCRIPTOR = _ZINFOCONFIGITEMSTATUS_CONFIGITEMSENTRY,
     __module__ = 'info.info_pb2'
-    # @@protoc_insertion_point(class_scope:ZInfoConfigItemStatus.ConfigItemsEntry)
+    # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry)
     ))
   ,
 
   UnknownConfigItemsEntry = _reflection.GeneratedProtocolMessageType('UnknownConfigItemsEntry', (_message.Message,), dict(
     DESCRIPTOR = _ZINFOCONFIGITEMSTATUS_UNKNOWNCONFIGITEMSENTRY,
     __module__ = 'info.info_pb2'
-    # @@protoc_insertion_point(class_scope:ZInfoConfigItemStatus.UnknownConfigItemsEntry)
+    # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry)
     ))
   ,
   DESCRIPTOR = _ZINFOCONFIGITEMSTATUS,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoConfigItemStatus)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoConfigItemStatus)
   ))
 _sym_db.RegisterMessage(ZInfoConfigItemStatus)
 _sym_db.RegisterMessage(ZInfoConfigItemStatus.ConfigItemsEntry)
@@ -3773,203 +3773,203 @@ _sym_db.RegisterMessage(ZInfoConfigItemStatus.UnknownConfigItemsEntry)
 ZInfoAppInstance = _reflection.GeneratedProtocolMessageType('ZInfoAppInstance', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOAPPINSTANCE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoAppInstance)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoAppInstance)
   ))
 _sym_db.RegisterMessage(ZInfoAppInstance)
 
 ZInfoDevice = _reflection.GeneratedProtocolMessageType('ZInfoDevice', (_message.Message,), dict(
   DESCRIPTOR = _ZINFODEVICE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoDevice)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoDevice)
   ))
 _sym_db.RegisterMessage(ZInfoDevice)
 
 SystemAdapterInfo = _reflection.GeneratedProtocolMessageType('SystemAdapterInfo', (_message.Message,), dict(
   DESCRIPTOR = _SYSTEMADAPTERINFO,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:SystemAdapterInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.SystemAdapterInfo)
   ))
 _sym_db.RegisterMessage(SystemAdapterInfo)
 
 DevicePortStatus = _reflection.GeneratedProtocolMessageType('DevicePortStatus', (_message.Message,), dict(
   DESCRIPTOR = _DEVICEPORTSTATUS,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:DevicePortStatus)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.DevicePortStatus)
   ))
 _sym_db.RegisterMessage(DevicePortStatus)
 
 DevicePort = _reflection.GeneratedProtocolMessageType('DevicePort', (_message.Message,), dict(
   DESCRIPTOR = _DEVICEPORT,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:DevicePort)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.DevicePort)
   ))
 _sym_db.RegisterMessage(DevicePort)
 
 ProxyStatus = _reflection.GeneratedProtocolMessageType('ProxyStatus', (_message.Message,), dict(
   DESCRIPTOR = _PROXYSTATUS,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ProxyStatus)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ProxyStatus)
   ))
 _sym_db.RegisterMessage(ProxyStatus)
 
 ProxyEntry = _reflection.GeneratedProtocolMessageType('ProxyEntry', (_message.Message,), dict(
   DESCRIPTOR = _PROXYENTRY,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ProxyEntry)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ProxyEntry)
   ))
 _sym_db.RegisterMessage(ProxyEntry)
 
 ZInfoDevSW = _reflection.GeneratedProtocolMessageType('ZInfoDevSW', (_message.Message,), dict(
   DESCRIPTOR = _ZINFODEVSW,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoDevSW)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoDevSW)
   ))
 _sym_db.RegisterMessage(ZInfoDevSW)
 
 ZInfoStorage = _reflection.GeneratedProtocolMessageType('ZInfoStorage', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOSTORAGE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoStorage)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoStorage)
   ))
 _sym_db.RegisterMessage(ZInfoStorage)
 
 ZInfoApp = _reflection.GeneratedProtocolMessageType('ZInfoApp', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOAPP,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoApp)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoApp)
   ))
 _sym_db.RegisterMessage(ZInfoApp)
 
 ZInfoVpnLinkInfo = _reflection.GeneratedProtocolMessageType('ZInfoVpnLinkInfo', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOVPNLINKINFO,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoVpnLinkInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoVpnLinkInfo)
   ))
 _sym_db.RegisterMessage(ZInfoVpnLinkInfo)
 
 ZInfoVpnLink = _reflection.GeneratedProtocolMessageType('ZInfoVpnLink', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOVPNLINK,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoVpnLink)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoVpnLink)
   ))
 _sym_db.RegisterMessage(ZInfoVpnLink)
 
 ZInfoVpnEndPoint = _reflection.GeneratedProtocolMessageType('ZInfoVpnEndPoint', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOVPNENDPOINT,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoVpnEndPoint)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoVpnEndPoint)
   ))
 _sym_db.RegisterMessage(ZInfoVpnEndPoint)
 
 ZInfoVpnConn = _reflection.GeneratedProtocolMessageType('ZInfoVpnConn', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOVPNCONN,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoVpnConn)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoVpnConn)
   ))
 _sym_db.RegisterMessage(ZInfoVpnConn)
 
 ZInfoVpn = _reflection.GeneratedProtocolMessageType('ZInfoVpn', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOVPN,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoVpn)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoVpn)
   ))
 _sym_db.RegisterMessage(ZInfoVpn)
 
 RlocState = _reflection.GeneratedProtocolMessageType('RlocState', (_message.Message,), dict(
   DESCRIPTOR = _RLOCSTATE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:RlocState)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.RlocState)
   ))
 _sym_db.RegisterMessage(RlocState)
 
 MapCacheEntry = _reflection.GeneratedProtocolMessageType('MapCacheEntry', (_message.Message,), dict(
   DESCRIPTOR = _MAPCACHEENTRY,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:MapCacheEntry)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.MapCacheEntry)
   ))
 _sym_db.RegisterMessage(MapCacheEntry)
 
 DatabaseMap = _reflection.GeneratedProtocolMessageType('DatabaseMap', (_message.Message,), dict(
   DESCRIPTOR = _DATABASEMAP,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:DatabaseMap)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.DatabaseMap)
   ))
 _sym_db.RegisterMessage(DatabaseMap)
 
 DecapKey = _reflection.GeneratedProtocolMessageType('DecapKey', (_message.Message,), dict(
   DESCRIPTOR = _DECAPKEY,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:DecapKey)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.DecapKey)
   ))
 _sym_db.RegisterMessage(DecapKey)
 
 ZInfoLisp = _reflection.GeneratedProtocolMessageType('ZInfoLisp', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOLISP,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoLisp)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoLisp)
   ))
 _sym_db.RegisterMessage(ZInfoLisp)
 
 ZInfoNetworkInstance = _reflection.GeneratedProtocolMessageType('ZInfoNetworkInstance', (_message.Message,), dict(
   DESCRIPTOR = _ZINFONETWORKINSTANCE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoNetworkInstance)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoNetworkInstance)
   ))
 _sym_db.RegisterMessage(ZInfoNetworkInstance)
 
 UsageInfo = _reflection.GeneratedProtocolMessageType('UsageInfo', (_message.Message,), dict(
   DESCRIPTOR = _USAGEINFO,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:UsageInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.UsageInfo)
   ))
 _sym_db.RegisterMessage(UsageInfo)
 
 VolumeResources = _reflection.GeneratedProtocolMessageType('VolumeResources', (_message.Message,), dict(
   DESCRIPTOR = _VOLUMERESOURCES,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:VolumeResources)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.VolumeResources)
   ))
 _sym_db.RegisterMessage(VolumeResources)
 
 ZInfoVolume = _reflection.GeneratedProtocolMessageType('ZInfoVolume', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOVOLUME,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoVolume)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoVolume)
   ))
 _sym_db.RegisterMessage(ZInfoVolume)
 
 ContentResources = _reflection.GeneratedProtocolMessageType('ContentResources', (_message.Message,), dict(
   DESCRIPTOR = _CONTENTRESOURCES,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ContentResources)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ContentResources)
   ))
 _sym_db.RegisterMessage(ContentResources)
 
 ZInfoContentTree = _reflection.GeneratedProtocolMessageType('ZInfoContentTree', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOCONTENTTREE,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoContentTree)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoContentTree)
   ))
 _sym_db.RegisterMessage(ZInfoContentTree)
 
 ZInfoBlob = _reflection.GeneratedProtocolMessageType('ZInfoBlob', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOBLOB,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoBlob)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoBlob)
   ))
 _sym_db.RegisterMessage(ZInfoBlob)
 
 ZInfoBlobList = _reflection.GeneratedProtocolMessageType('ZInfoBlobList', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOBLOBLIST,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoBlobList)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoBlobList)
   ))
 _sym_db.RegisterMessage(ZInfoBlobList)
 
 ZInfoMsg = _reflection.GeneratedProtocolMessageType('ZInfoMsg', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOMSG,
   __module__ = 'info.info_pb2'
-  # @@protoc_insertion_point(class_scope:ZInfoMsg)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.info.ZInfoMsg)
   ))
 _sym_db.RegisterMessage(ZInfoMsg)
 

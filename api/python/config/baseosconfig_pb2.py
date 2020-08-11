@@ -18,10 +18,10 @@ from config import storage_pb2 as config_dot_storage__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/baseosconfig.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\"1\n\tOSKeyTags\x12\x10\n\x08OSVerKey\x18\x01 \x01(\t\x12\x12\n\nOSVerValue\x18\x02 \x01(\t\"0\n\x0cOSVerDetails\x12 \n\x0c\x62\x61seOSParams\x18\x0c \x03(\x0b\x32\n.OSKeyTags\"\x9e\x01\n\x0c\x42\x61seOSConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x16\n\x06\x64rives\x18\x03 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x04 \x01(\x08\x12\x15\n\rbaseOSVersion\x18\n \x01(\t\x12$\n\rbaseOSDetails\x18\x0b \x01(\x0b\x32\r.OSVerDetailsB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x19\x63onfig/baseosconfig.proto\x12\x15org.lfedge.eve.config\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\"1\n\tOSKeyTags\x12\x10\n\x08OSVerKey\x18\x01 \x01(\t\x12\x12\n\nOSVerValue\x18\x02 \x01(\t\"F\n\x0cOSVerDetails\x12\x36\n\x0c\x62\x61seOSParams\x18\x0c \x03(\x0b\x32 .org.lfedge.eve.config.OSKeyTags\"\xe0\x01\n\x0c\x42\x61seOSConfig\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12,\n\x06\x64rives\x18\x03 \x03(\x0b\x32\x1c.org.lfedge.eve.config.Drive\x12\x10\n\x08\x61\x63tivate\x18\x04 \x01(\x08\x12\x15\n\rbaseOSVersion\x18\n \x01(\t\x12:\n\rbaseOSDetails\x18\x0b \x01(\x0b\x32#.org.lfedge.eve.config.OSVerDetailsB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_devcommon__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,])
 
@@ -30,20 +30,20 @@ DESCRIPTOR = _descriptor.FileDescriptor(
 
 _OSKEYTAGS = _descriptor.Descriptor(
   name='OSKeyTags',
-  full_name='OSKeyTags',
+  full_name='org.lfedge.eve.config.OSKeyTags',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='OSVerKey', full_name='OSKeyTags.OSVerKey', index=0,
+      name='OSVerKey', full_name='org.lfedge.eve.config.OSKeyTags.OSVerKey', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='OSVerValue', full_name='OSKeyTags.OSVerValue', index=1,
+      name='OSVerValue', full_name='org.lfedge.eve.config.OSKeyTags.OSVerValue', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -61,20 +61,20 @@ _OSKEYTAGS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=75,
-  serialized_end=124,
+  serialized_start=98,
+  serialized_end=147,
 )
 
 
 _OSVERDETAILS = _descriptor.Descriptor(
   name='OSVerDetails',
-  full_name='OSVerDetails',
+  full_name='org.lfedge.eve.config.OSVerDetails',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='baseOSParams', full_name='OSVerDetails.baseOSParams', index=0,
+      name='baseOSParams', full_name='org.lfedge.eve.config.OSVerDetails.baseOSParams', index=0,
       number=12, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -92,48 +92,48 @@ _OSVERDETAILS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=126,
-  serialized_end=174,
+  serialized_start=149,
+  serialized_end=219,
 )
 
 
 _BASEOSCONFIG = _descriptor.Descriptor(
   name='BaseOSConfig',
-  full_name='BaseOSConfig',
+  full_name='org.lfedge.eve.config.BaseOSConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuidandversion', full_name='BaseOSConfig.uuidandversion', index=0,
+      name='uuidandversion', full_name='org.lfedge.eve.config.BaseOSConfig.uuidandversion', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='drives', full_name='BaseOSConfig.drives', index=1,
+      name='drives', full_name='org.lfedge.eve.config.BaseOSConfig.drives', index=1,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activate', full_name='BaseOSConfig.activate', index=2,
+      name='activate', full_name='org.lfedge.eve.config.BaseOSConfig.activate', index=2,
       number=4, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='baseOSVersion', full_name='BaseOSConfig.baseOSVersion', index=3,
+      name='baseOSVersion', full_name='org.lfedge.eve.config.BaseOSConfig.baseOSVersion', index=3,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='baseOSDetails', full_name='BaseOSConfig.baseOSDetails', index=4,
+      name='baseOSDetails', full_name='org.lfedge.eve.config.BaseOSConfig.baseOSDetails', index=4,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -151,8 +151,8 @@ _BASEOSCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=177,
-  serialized_end=335,
+  serialized_start=222,
+  serialized_end=446,
 )
 
 _OSVERDETAILS.fields_by_name['baseOSParams'].message_type = _OSKEYTAGS
@@ -167,21 +167,21 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 OSKeyTags = _reflection.GeneratedProtocolMessageType('OSKeyTags', (_message.Message,), dict(
   DESCRIPTOR = _OSKEYTAGS,
   __module__ = 'config.baseosconfig_pb2'
-  # @@protoc_insertion_point(class_scope:OSKeyTags)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.OSKeyTags)
   ))
 _sym_db.RegisterMessage(OSKeyTags)
 
 OSVerDetails = _reflection.GeneratedProtocolMessageType('OSVerDetails', (_message.Message,), dict(
   DESCRIPTOR = _OSVERDETAILS,
   __module__ = 'config.baseosconfig_pb2'
-  # @@protoc_insertion_point(class_scope:OSVerDetails)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.OSVerDetails)
   ))
 _sym_db.RegisterMessage(OSVerDetails)
 
 BaseOSConfig = _reflection.GeneratedProtocolMessageType('BaseOSConfig', (_message.Message,), dict(
   DESCRIPTOR = _BASEOSCONFIG,
   __module__ = 'config.baseosconfig_pb2'
-  # @@protoc_insertion_point(class_scope:BaseOSConfig)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.BaseOSConfig)
   ))
 _sym_db.RegisterMessage(BaseOSConfig)
 
