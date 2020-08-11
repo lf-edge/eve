@@ -21,7 +21,8 @@ dump() {
             INAME="$INAME.qcow2"
             ONAME="$ONAME.qcow2"
             ;;
-       gcp) tar --mode=644 --owner=root --group=root -S -h -czvf "$INAME.img.tar.gz" "$INAME"
+       gcp) mv "$INAME" disk.raw
+            tar --mode=644 --owner=root --group=root -S -h -czvf "$INAME.img.tar.gz" "disk.raw"
             INAME="$INAME.img.tar.gz"
             ONAME="$ONAME.img.tar.gz"
             ;;
