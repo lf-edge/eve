@@ -17,10 +17,10 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='logs/log.proto',
-  package='',
+  package='org.lfedge.eve.logs',
   syntax='proto3',
   serialized_options=_b('\n\023org.lfedge.eve.logsZ\"github.com/lf-edge/eve/api/go/logs'),
-  serialized_pb=_b('\n\x0elogs/log.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x01\n\x08LogEntry\x12\x10\n\x08severity\x18\x01 \x01(\t\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x0b\n\x03iid\x18\x03 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x04 \x01(\t\x12\r\n\x05msgid\x18\x05 \x01(\x04\x12!\n\x04tags\x18\x06 \x03(\x0b\x32\x13.LogEntry.TagsEntry\x12-\n\ttimestamp\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08\x66ilename\x18\x08 \x01(\t\x12\x10\n\x08\x66unction\x18\t \x01(\t\x1a+\n\tTagsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x84\x01\n\tLogBundle\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\r\n\x05image\x18\x02 \x01(\t\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x12\n\neveVersion\x18\x05 \x01(\t\"]\n\x14\x41ppInstanceLogBundle\x12\x16\n\x03log\x18\x01 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampB9\n\x13org.lfedge.eve.logsZ\"github.com/lf-edge/eve/api/go/logsb\x06proto3')
+  serialized_pb=_b('\n\x0elogs/log.proto\x12\x13org.lfedge.eve.logs\x1a\x1fgoogle/protobuf/timestamp.proto\"\x90\x02\n\x08LogEntry\x12\x10\n\x08severity\x18\x01 \x01(\t\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x0b\n\x03iid\x18\x03 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x04 \x01(\t\x12\r\n\x05msgid\x18\x05 \x01(\x04\x12\x35\n\x04tags\x18\x06 \x03(\x0b\x32\'.org.lfedge.eve.logs.LogEntry.TagsEntry\x12-\n\ttimestamp\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08\x66ilename\x18\x08 \x01(\t\x12\x10\n\x08\x66unction\x18\t \x01(\t\x1a+\n\tTagsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x98\x01\n\tLogBundle\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\r\n\x05image\x18\x02 \x01(\t\x12*\n\x03log\x18\x03 \x03(\x0b\x32\x1d.org.lfedge.eve.logs.LogEntry\x12-\n\ttimestamp\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x12\n\neveVersion\x18\x05 \x01(\t\"q\n\x14\x41ppInstanceLogBundle\x12*\n\x03log\x18\x01 \x03(\x0b\x32\x1d.org.lfedge.eve.logs.LogEntry\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampB9\n\x13org.lfedge.eve.logsZ\"github.com/lf-edge/eve/api/go/logsb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -29,20 +29,20 @@ DESCRIPTOR = _descriptor.FileDescriptor(
 
 _LOGENTRY_TAGSENTRY = _descriptor.Descriptor(
   name='TagsEntry',
-  full_name='LogEntry.TagsEntry',
+  full_name='org.lfedge.eve.logs.LogEntry.TagsEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='LogEntry.TagsEntry.key', index=0,
+      name='key', full_name='org.lfedge.eve.logs.LogEntry.TagsEntry.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='LogEntry.TagsEntry.value', index=1,
+      name='value', full_name='org.lfedge.eve.logs.LogEntry.TagsEntry.value', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -60,75 +60,75 @@ _LOGENTRY_TAGSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=261,
-  serialized_end=304,
+  serialized_start=302,
+  serialized_end=345,
 )
 
 _LOGENTRY = _descriptor.Descriptor(
   name='LogEntry',
-  full_name='LogEntry',
+  full_name='org.lfedge.eve.logs.LogEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='severity', full_name='LogEntry.severity', index=0,
+      name='severity', full_name='org.lfedge.eve.logs.LogEntry.severity', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='source', full_name='LogEntry.source', index=1,
+      name='source', full_name='org.lfedge.eve.logs.LogEntry.source', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='iid', full_name='LogEntry.iid', index=2,
+      name='iid', full_name='org.lfedge.eve.logs.LogEntry.iid', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='content', full_name='LogEntry.content', index=3,
+      name='content', full_name='org.lfedge.eve.logs.LogEntry.content', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='msgid', full_name='LogEntry.msgid', index=4,
+      name='msgid', full_name='org.lfedge.eve.logs.LogEntry.msgid', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='tags', full_name='LogEntry.tags', index=5,
+      name='tags', full_name='org.lfedge.eve.logs.LogEntry.tags', index=5,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='timestamp', full_name='LogEntry.timestamp', index=6,
+      name='timestamp', full_name='org.lfedge.eve.logs.LogEntry.timestamp', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='filename', full_name='LogEntry.filename', index=7,
+      name='filename', full_name='org.lfedge.eve.logs.LogEntry.filename', index=7,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='function', full_name='LogEntry.function', index=8,
+      name='function', full_name='org.lfedge.eve.logs.LogEntry.function', index=8,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -146,48 +146,48 @@ _LOGENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=52,
-  serialized_end=304,
+  serialized_start=73,
+  serialized_end=345,
 )
 
 
 _LOGBUNDLE = _descriptor.Descriptor(
   name='LogBundle',
-  full_name='LogBundle',
+  full_name='org.lfedge.eve.logs.LogBundle',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='devID', full_name='LogBundle.devID', index=0,
+      name='devID', full_name='org.lfedge.eve.logs.LogBundle.devID', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='image', full_name='LogBundle.image', index=1,
+      name='image', full_name='org.lfedge.eve.logs.LogBundle.image', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='log', full_name='LogBundle.log', index=2,
+      name='log', full_name='org.lfedge.eve.logs.LogBundle.log', index=2,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='timestamp', full_name='LogBundle.timestamp', index=3,
+      name='timestamp', full_name='org.lfedge.eve.logs.LogBundle.timestamp', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='eveVersion', full_name='LogBundle.eveVersion', index=4,
+      name='eveVersion', full_name='org.lfedge.eve.logs.LogBundle.eveVersion', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -205,27 +205,27 @@ _LOGBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=307,
-  serialized_end=439,
+  serialized_start=348,
+  serialized_end=500,
 )
 
 
 _APPINSTANCELOGBUNDLE = _descriptor.Descriptor(
   name='AppInstanceLogBundle',
-  full_name='AppInstanceLogBundle',
+  full_name='org.lfedge.eve.logs.AppInstanceLogBundle',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='log', full_name='AppInstanceLogBundle.log', index=0,
+      name='log', full_name='org.lfedge.eve.logs.AppInstanceLogBundle.log', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='timestamp', full_name='AppInstanceLogBundle.timestamp', index=1,
+      name='timestamp', full_name='org.lfedge.eve.logs.AppInstanceLogBundle.timestamp', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -243,8 +243,8 @@ _APPINSTANCELOGBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=441,
-  serialized_end=534,
+  serialized_start=502,
+  serialized_end=615,
 )
 
 _LOGENTRY_TAGSENTRY.containing_type = _LOGENTRY
@@ -264,12 +264,12 @@ LogEntry = _reflection.GeneratedProtocolMessageType('LogEntry', (_message.Messag
   TagsEntry = _reflection.GeneratedProtocolMessageType('TagsEntry', (_message.Message,), dict(
     DESCRIPTOR = _LOGENTRY_TAGSENTRY,
     __module__ = 'logs.log_pb2'
-    # @@protoc_insertion_point(class_scope:LogEntry.TagsEntry)
+    # @@protoc_insertion_point(class_scope:org.lfedge.eve.logs.LogEntry.TagsEntry)
     ))
   ,
   DESCRIPTOR = _LOGENTRY,
   __module__ = 'logs.log_pb2'
-  # @@protoc_insertion_point(class_scope:LogEntry)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.logs.LogEntry)
   ))
 _sym_db.RegisterMessage(LogEntry)
 _sym_db.RegisterMessage(LogEntry.TagsEntry)
@@ -277,14 +277,14 @@ _sym_db.RegisterMessage(LogEntry.TagsEntry)
 LogBundle = _reflection.GeneratedProtocolMessageType('LogBundle', (_message.Message,), dict(
   DESCRIPTOR = _LOGBUNDLE,
   __module__ = 'logs.log_pb2'
-  # @@protoc_insertion_point(class_scope:LogBundle)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.logs.LogBundle)
   ))
 _sym_db.RegisterMessage(LogBundle)
 
 AppInstanceLogBundle = _reflection.GeneratedProtocolMessageType('AppInstanceLogBundle', (_message.Message,), dict(
   DESCRIPTOR = _APPINSTANCELOGBUNDLE,
   __module__ = 'logs.log_pb2'
-  # @@protoc_insertion_point(class_scope:AppInstanceLogBundle)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.logs.AppInstanceLogBundle)
   ))
 _sym_db.RegisterMessage(AppInstanceLogBundle)
 

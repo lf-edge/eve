@@ -18,16 +18,16 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='flowlog/flowlog.proto',
-  package='',
+  package='org.lfedge.eve.flowlog',
   syntax='proto3',
   serialized_options=_b('\n\026org.lfedge.eve.flowlogZ%github.com/lf-edge/eve/api/go/flowlog'),
-  serialized_pb=_b('\n\x15\x66lowlog/flowlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n\x06IpFlow\x12\x0b\n\x03src\x18\x01 \x01(\t\x12\x0f\n\x07srcPort\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x65st\x18\x03 \x01(\t\x12\x10\n\x08\x64\x65stPort\x18\x04 \x01(\x05\x12\x10\n\x08protocol\x18\x05 \x01(\x05\"O\n\tScopeInfo\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04intf\x18\x02 \x01(\t\x12\x11\n\tlocalIntf\x18\x03 \x01(\t\x12\x13\n\x0bnetInstUUID\x18\x04 \x01(\t\"\x8e\x02\n\nFlowRecord\x12\x15\n\x04\x66low\x18\x01 \x01(\x0b\x32\x07.IpFlow\x12\x0f\n\x07inbound\x18\x02 \x01(\x08\x12\r\n\x05\x61\x63lId\x18\x03 \x01(\x05\x12\x0f\n\x07\x61\x63lName\x18\x04 \x01(\t\x12-\n\tstartTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65ndTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07txBytes\x18\x08 \x01(\x03\x12\x0e\n\x06txPkts\x18\t \x01(\x03\x12\x0f\n\x07rxBytes\x18\n \x01(\x03\x12\x0e\n\x06rxPkts\x18\x0b \x01(\x03\x12\x1a\n\x06\x61\x63tion\x18\x0c \x01(\x0e\x32\n.ACLAction\"n\n\nDnsRequest\x12\x10\n\x08hostName\x18\x01 \x01(\t\x12\r\n\x05\x61\x64\x64rs\x18\x02 \x03(\t\x12/\n\x0brequestTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06\x61\x63lNum\x18\x04 \x01(\x05\"q\n\x0b\x46lowMessage\x12\r\n\x05\x64\x65vId\x18\x01 \x01(\t\x12\x19\n\x05scope\x18\x02 \x01(\x0b\x32\n.ScopeInfo\x12\x1a\n\x05\x66lows\x18\x03 \x03(\x0b\x32\x0b.FlowRecord\x12\x1c\n\x07\x64nsReqs\x18\x04 \x03(\x0b\x32\x0b.DnsRequest*@\n\tACLAction\x12\x11\n\rActionUnknown\x10\x00\x12\x0e\n\nActionDrop\x10\x01\x12\x10\n\x0c\x41\x63tionAccept\x10\x02\x42?\n\x16org.lfedge.eve.flowlogZ%github.com/lf-edge/eve/api/go/flowlogb\x06proto3')
+  serialized_pb=_b('\n\x15\x66lowlog/flowlog.proto\x12\x16org.lfedge.eve.flowlog\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n\x06IpFlow\x12\x0b\n\x03src\x18\x01 \x01(\t\x12\x0f\n\x07srcPort\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x65st\x18\x03 \x01(\t\x12\x10\n\x08\x64\x65stPort\x18\x04 \x01(\x05\x12\x10\n\x08protocol\x18\x05 \x01(\x05\"O\n\tScopeInfo\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04intf\x18\x02 \x01(\t\x12\x11\n\tlocalIntf\x18\x03 \x01(\t\x12\x13\n\x0bnetInstUUID\x18\x04 \x01(\t\"\xbc\x02\n\nFlowRecord\x12,\n\x04\x66low\x18\x01 \x01(\x0b\x32\x1e.org.lfedge.eve.flowlog.IpFlow\x12\x0f\n\x07inbound\x18\x02 \x01(\x08\x12\r\n\x05\x61\x63lId\x18\x03 \x01(\x05\x12\x0f\n\x07\x61\x63lName\x18\x04 \x01(\t\x12-\n\tstartTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65ndTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07txBytes\x18\x08 \x01(\x03\x12\x0e\n\x06txPkts\x18\t \x01(\x03\x12\x0f\n\x07rxBytes\x18\n \x01(\x03\x12\x0e\n\x06rxPkts\x18\x0b \x01(\x03\x12\x31\n\x06\x61\x63tion\x18\x0c \x01(\x0e\x32!.org.lfedge.eve.flowlog.ACLAction\"n\n\nDnsRequest\x12\x10\n\x08hostName\x18\x01 \x01(\t\x12\r\n\x05\x61\x64\x64rs\x18\x02 \x03(\t\x12/\n\x0brequestTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06\x61\x63lNum\x18\x04 \x01(\x05\"\xb6\x01\n\x0b\x46lowMessage\x12\r\n\x05\x64\x65vId\x18\x01 \x01(\t\x12\x30\n\x05scope\x18\x02 \x01(\x0b\x32!.org.lfedge.eve.flowlog.ScopeInfo\x12\x31\n\x05\x66lows\x18\x03 \x03(\x0b\x32\".org.lfedge.eve.flowlog.FlowRecord\x12\x33\n\x07\x64nsReqs\x18\x04 \x03(\x0b\x32\".org.lfedge.eve.flowlog.DnsRequest*@\n\tACLAction\x12\x11\n\rActionUnknown\x10\x00\x12\x0e\n\nActionDrop\x10\x01\x12\x10\n\x0c\x41\x63tionAccept\x10\x02\x42?\n\x16org.lfedge.eve.flowlogZ%github.com/lf-edge/eve/api/go/flowlogb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
 _ACLACTION = _descriptor.EnumDescriptor(
   name='ACLAction',
-  full_name='ACLAction',
+  full_name='org.lfedge.eve.flowlog.ACLAction',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -46,8 +46,8 @@ _ACLACTION = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=729,
-  serialized_end=793,
+  serialized_start=869,
+  serialized_end=933,
 )
 _sym_db.RegisterEnumDescriptor(_ACLACTION)
 
@@ -60,41 +60,41 @@ ActionAccept = 2
 
 _IPFLOW = _descriptor.Descriptor(
   name='IpFlow',
-  full_name='IpFlow',
+  full_name='org.lfedge.eve.flowlog.IpFlow',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='src', full_name='IpFlow.src', index=0,
+      name='src', full_name='org.lfedge.eve.flowlog.IpFlow.src', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='srcPort', full_name='IpFlow.srcPort', index=1,
+      name='srcPort', full_name='org.lfedge.eve.flowlog.IpFlow.srcPort', index=1,
       number=2, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dest', full_name='IpFlow.dest', index=2,
+      name='dest', full_name='org.lfedge.eve.flowlog.IpFlow.dest', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='destPort', full_name='IpFlow.destPort', index=3,
+      name='destPort', full_name='org.lfedge.eve.flowlog.IpFlow.destPort', index=3,
       number=4, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='protocol', full_name='IpFlow.protocol', index=4,
+      name='protocol', full_name='org.lfedge.eve.flowlog.IpFlow.protocol', index=4,
       number=5, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -112,41 +112,41 @@ _IPFLOW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=58,
-  serialized_end=146,
+  serialized_start=82,
+  serialized_end=170,
 )
 
 
 _SCOPEINFO = _descriptor.Descriptor(
   name='ScopeInfo',
-  full_name='ScopeInfo',
+  full_name='org.lfedge.eve.flowlog.ScopeInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='ScopeInfo.uuid', index=0,
+      name='uuid', full_name='org.lfedge.eve.flowlog.ScopeInfo.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='intf', full_name='ScopeInfo.intf', index=1,
+      name='intf', full_name='org.lfedge.eve.flowlog.ScopeInfo.intf', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='localIntf', full_name='ScopeInfo.localIntf', index=2,
+      name='localIntf', full_name='org.lfedge.eve.flowlog.ScopeInfo.localIntf', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='netInstUUID', full_name='ScopeInfo.netInstUUID', index=3,
+      name='netInstUUID', full_name='org.lfedge.eve.flowlog.ScopeInfo.netInstUUID', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -164,90 +164,90 @@ _SCOPEINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=148,
-  serialized_end=227,
+  serialized_start=172,
+  serialized_end=251,
 )
 
 
 _FLOWRECORD = _descriptor.Descriptor(
   name='FlowRecord',
-  full_name='FlowRecord',
+  full_name='org.lfedge.eve.flowlog.FlowRecord',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='flow', full_name='FlowRecord.flow', index=0,
+      name='flow', full_name='org.lfedge.eve.flowlog.FlowRecord.flow', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='inbound', full_name='FlowRecord.inbound', index=1,
+      name='inbound', full_name='org.lfedge.eve.flowlog.FlowRecord.inbound', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='aclId', full_name='FlowRecord.aclId', index=2,
+      name='aclId', full_name='org.lfedge.eve.flowlog.FlowRecord.aclId', index=2,
       number=3, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='aclName', full_name='FlowRecord.aclName', index=3,
+      name='aclName', full_name='org.lfedge.eve.flowlog.FlowRecord.aclName', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='startTime', full_name='FlowRecord.startTime', index=4,
+      name='startTime', full_name='org.lfedge.eve.flowlog.FlowRecord.startTime', index=4,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='endTime', full_name='FlowRecord.endTime', index=5,
+      name='endTime', full_name='org.lfedge.eve.flowlog.FlowRecord.endTime', index=5,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txBytes', full_name='FlowRecord.txBytes', index=6,
+      name='txBytes', full_name='org.lfedge.eve.flowlog.FlowRecord.txBytes', index=6,
       number=8, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txPkts', full_name='FlowRecord.txPkts', index=7,
+      name='txPkts', full_name='org.lfedge.eve.flowlog.FlowRecord.txPkts', index=7,
       number=9, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxBytes', full_name='FlowRecord.rxBytes', index=8,
+      name='rxBytes', full_name='org.lfedge.eve.flowlog.FlowRecord.rxBytes', index=8,
       number=10, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxPkts', full_name='FlowRecord.rxPkts', index=9,
+      name='rxPkts', full_name='org.lfedge.eve.flowlog.FlowRecord.rxPkts', index=9,
       number=11, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='action', full_name='FlowRecord.action', index=10,
+      name='action', full_name='org.lfedge.eve.flowlog.FlowRecord.action', index=10,
       number=12, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -265,41 +265,41 @@ _FLOWRECORD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=230,
-  serialized_end=500,
+  serialized_start=254,
+  serialized_end=570,
 )
 
 
 _DNSREQUEST = _descriptor.Descriptor(
   name='DnsRequest',
-  full_name='DnsRequest',
+  full_name='org.lfedge.eve.flowlog.DnsRequest',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='hostName', full_name='DnsRequest.hostName', index=0,
+      name='hostName', full_name='org.lfedge.eve.flowlog.DnsRequest.hostName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='addrs', full_name='DnsRequest.addrs', index=1,
+      name='addrs', full_name='org.lfedge.eve.flowlog.DnsRequest.addrs', index=1,
       number=2, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='requestTime', full_name='DnsRequest.requestTime', index=2,
+      name='requestTime', full_name='org.lfedge.eve.flowlog.DnsRequest.requestTime', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='aclNum', full_name='DnsRequest.aclNum', index=3,
+      name='aclNum', full_name='org.lfedge.eve.flowlog.DnsRequest.aclNum', index=3,
       number=4, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -317,41 +317,41 @@ _DNSREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=502,
-  serialized_end=612,
+  serialized_start=572,
+  serialized_end=682,
 )
 
 
 _FLOWMESSAGE = _descriptor.Descriptor(
   name='FlowMessage',
-  full_name='FlowMessage',
+  full_name='org.lfedge.eve.flowlog.FlowMessage',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='devId', full_name='FlowMessage.devId', index=0,
+      name='devId', full_name='org.lfedge.eve.flowlog.FlowMessage.devId', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='scope', full_name='FlowMessage.scope', index=1,
+      name='scope', full_name='org.lfedge.eve.flowlog.FlowMessage.scope', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='flows', full_name='FlowMessage.flows', index=2,
+      name='flows', full_name='org.lfedge.eve.flowlog.FlowMessage.flows', index=2,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dnsReqs', full_name='FlowMessage.dnsReqs', index=3,
+      name='dnsReqs', full_name='org.lfedge.eve.flowlog.FlowMessage.dnsReqs', index=3,
       number=4, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -369,8 +369,8 @@ _FLOWMESSAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=614,
-  serialized_end=727,
+  serialized_start=685,
+  serialized_end=867,
 )
 
 _FLOWRECORD.fields_by_name['flow'].message_type = _IPFLOW
@@ -392,35 +392,35 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 IpFlow = _reflection.GeneratedProtocolMessageType('IpFlow', (_message.Message,), dict(
   DESCRIPTOR = _IPFLOW,
   __module__ = 'flowlog.flowlog_pb2'
-  # @@protoc_insertion_point(class_scope:IpFlow)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.flowlog.IpFlow)
   ))
 _sym_db.RegisterMessage(IpFlow)
 
 ScopeInfo = _reflection.GeneratedProtocolMessageType('ScopeInfo', (_message.Message,), dict(
   DESCRIPTOR = _SCOPEINFO,
   __module__ = 'flowlog.flowlog_pb2'
-  # @@protoc_insertion_point(class_scope:ScopeInfo)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.flowlog.ScopeInfo)
   ))
 _sym_db.RegisterMessage(ScopeInfo)
 
 FlowRecord = _reflection.GeneratedProtocolMessageType('FlowRecord', (_message.Message,), dict(
   DESCRIPTOR = _FLOWRECORD,
   __module__ = 'flowlog.flowlog_pb2'
-  # @@protoc_insertion_point(class_scope:FlowRecord)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.flowlog.FlowRecord)
   ))
 _sym_db.RegisterMessage(FlowRecord)
 
 DnsRequest = _reflection.GeneratedProtocolMessageType('DnsRequest', (_message.Message,), dict(
   DESCRIPTOR = _DNSREQUEST,
   __module__ = 'flowlog.flowlog_pb2'
-  # @@protoc_insertion_point(class_scope:DnsRequest)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.flowlog.DnsRequest)
   ))
 _sym_db.RegisterMessage(DnsRequest)
 
 FlowMessage = _reflection.GeneratedProtocolMessageType('FlowMessage', (_message.Message,), dict(
   DESCRIPTOR = _FLOWMESSAGE,
   __module__ = 'flowlog.flowlog_pb2'
-  # @@protoc_insertion_point(class_scope:FlowMessage)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.flowlog.FlowMessage)
   ))
 _sym_db.RegisterMessage(FlowMessage)
 

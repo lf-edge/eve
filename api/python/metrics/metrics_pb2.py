@@ -18,16 +18,16 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='metrics/metrics.proto',
-  package='',
+  package='org.lfedge.eve.metrics',
   syntax='proto3',
   serialized_options=_b('\n\026org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metrics'),
-  serialized_pb=_b('\n\x15metrics/metrics.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xaa\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\r\n\x05\x61lias\x18\x14 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xe5\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\nurlMetrics\x18\x06 \x03(\x0b\x32\x0f.urlcloudMetric\x12\x19\n\x11\x61uthVerifyFailure\x18\x07 \x01(\x04\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"\xce\x01\n\x0c\x43ipherMetric\x12\x12\n\nagent_name\x18\x01 \x01(\t\x12\x15\n\rfailure_count\x18\x02 \x01(\x04\x12\x15\n\rsuccess_count\x18\x03 \x01(\x04\x12\x30\n\x0clast_failure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x30\n\x0clast_success\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x18\n\x02tc\x18\x06 \x03(\x0b\x32\x0c.TypeCounter\">\n\x0bTypeCounter\x12 \n\nerror_code\x18\x01 \x01(\x0e\x32\x0c.CipherError\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\"^\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\x12\x13\n\x0bsystemTotal\x18\x06 \x01(\x04\"\xf6\x02\n\x0c\x64\x65viceMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\x12 \n\x18runtimeStorageOverheadMB\x18\t \x01(\x04\x12\x1b\n\x13\x61ppRunTimeStorageMB\x18\n \x01(\x04\x12-\n\x16systemServicesMemoryMB\x18\x0b \x01(\x0b\x32\r.memoryMetric\x12\x17\n\x03log\x18\x0c \x01(\x0b\x32\n.logMetric\x12\x1d\n\x06\x63ipher\x18\r \x03(\x0b\x32\r.CipherMetric\"\xc3\x01\n\x12\x61ppContainerMetric\x12\x18\n\x10\x61ppContainerName\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0c\n\x04PIDs\x18\x03 \x01(\r\x12\x1a\n\x03\x63pu\x18\x04 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x05 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x06 \x01(\x0b\x32\x0e.networkMetric\x12\x19\n\x04\x64isk\x18\x07 \x01(\x0b\x32\x0b.diskMetric\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\xe1\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\x12\x1c\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0e.appDiskMetric\x12&\n\tcontainer\x18\x07 \x03(\x0b\x32\x13.appContainerMetric\"\xb9\x04\n\tlogMetric\x12\x1b\n\x13numDeviceEventsSent\x18\x01 \x01(\x04\x12\x1c\n\x14numDeviceBundlesSent\x18\x02 \x01(\x04\x12\x18\n\x10numAppEventsSent\x18\x03 \x01(\x04\x12\x19\n\x11numAppBundlesSent\x18\x04 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x05 \x01(\x04\x12<\n\x18lastDeviceBundleSendTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15lastAppBundleSendTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1f\n\x17isLogProcessingDeferred\x18\x08 \x01(\x08\x12\x18\n\x10numTimesDeferred\x18\t \x01(\x04\x12\x34\n\x10lastLogDeferTime\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x13totalDeviceLogInput\x18\r \x01(\x04\x12\x18\n\x10totalAppLogInput\x18\x0e \x01(\x04\x12\x1c\n\x14numDeviceEventErrors\x18\x0f \x01(\x04\x12\x19\n\x11numAppEventErrors\x18\x10 \x01(\x04\x12%\n\x1dnumDeviceBundleProtoBytesSent\x18\x11 \x01(\x04\x12\"\n\x1anumAppBundleProtoBytesSent\x18\x12 \x01(\x04\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"R\n\tRlocStats\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x17\n\x05Stats\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x16SecondsSinceLastPacket\x18\x03 \x01(\x04\"J\n\x08\x45idStats\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\x0b\n\x03\x45ID\x18\x02 \x01(\t\x12$\n\x10RlocStatsEntries\x18\x03 \x03(\x0b\x32\n.RlocStats\"\xa6\x03\n\x0bZMetricLisp\x12\"\n\x0f\x45idStatsEntries\x18\x01 \x03(\x0b\x32\t.EidStats\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"~\n\x0bZMetricConn\x12\x18\n\x06InPkts\x18\x01 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x08.PktStat\"\x8a\x01\n\nZMetricVpn\x12\x1e\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07IkeStat\x18\x02 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1e\n\x08NatTStat\x18\x03 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07\x45spStat\x18\x04 \x01(\x0b\x32\x0c.ZMetricConn\"\r\n\x0bZMetricNone\"I\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x03\x65id\x18\x02 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"|\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x0e\n\x04rloc\x18\x02 \x01(\tH\x00\x12\x1e\n\x04link\x18\x05 \x03(\x0b\x32\x10.ZMetricFlowLink\x12\x17\n\x05stats\x18\n \x01(\x0b\x32\x08.PktStatB\n\n\x08\x45ndpoint\"\xa5\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0b\n\x03iid\x18\x04 \x01(\x04\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12\'\n\tlEndPoint\x18\n \x01(\x0b\x32\x14.ZMetricFlowEndPoint\x12\'\n\trEndPoint\x18\x0b \x03(\x0b\x32\x14.ZMetricFlowEndPoint\"\x88\x03\n\x11ZMetricLispGlobal\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"W\n\x0cNetworkStats\x12\x14\n\x0ctotalPackets\x18\x01 \x01(\x04\x12\x0e\n\x06\x65rrors\x18\x02 \x01(\x04\x12\r\n\x05\x64rops\x18\x03 \x01(\x04\x12\x12\n\ntotalBytes\x18\x04 \x01(\x04\"K\n\x13ZMetricNetworkStats\x12\x19\n\x02rx\x18\x01 \x01(\x0b\x32\r.NetworkStats\x12\x19\n\x02tx\x18\x02 \x01(\x0b\x32\r.NetworkStats\"\x98\x03\n\x0fZProbeNIMetrics\x12\x13\n\x0b\x63urrentIntf\x18\x01 \x01(\t\x12\x16\n\x0eremoteEndpoint\x18\x02 \x01(\t\x12\x10\n\x08pingIntv\x18\x03 \x01(\r\x12\x16\n\x0eremotePingIntv\x18\x04 \x01(\r\x12\x11\n\tuplinkCnt\x18\x05 \x01(\r\x12\x35\n\nintfMetric\x18\n \x03(\x0b\x32!.ZProbeNIMetrics.ZProbeIntfMetric\x1a\xe3\x01\n\x10ZProbeIntfMetric\x12\x10\n\x08intfName\x18\x0b \x01(\t\x12\x16\n\x0egatewayNexhtop\x18\x0c \x01(\t\x12\x11\n\tgatewayUP\x18\r \x01(\x08\x12\x14\n\x0cremoteHostUP\x18\x0e \x01(\x08\x12\x16\n\x0enexthopUpCount\x18\x0f \x01(\r\x12\x18\n\x10nexthopDownCount\x18\x10 \x01(\r\x12\x15\n\rremoteUpCount\x18\x11 \x01(\r\x12\x17\n\x0fremoteDownCount\x18\x12 \x01(\r\x12\x1a\n\x12remoteProbeLatency\x18\x13 \x01(\r\"\xad\x03\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x1f\n\x07network\x18\n \x03(\x0b\x32\x0e.networkMetric\x12%\n\x0bprobeMetric\x18\x0c \x01(\x0b\x32\x10.ZProbeNIMetrics\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1d\n\x05nonem\x18\x16 \x01(\x0b\x32\x0c.ZMetricNoneH\x00\x12\x1f\n\tflowStats\x18\x1e \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x1f \x01(\x0b\x32\x12.ZMetricLispGlobal\x12*\n\x0cnetworkStats\x18( \x01(\x0b\x32\x14.ZMetricNetworkStatsB\x11\n\x0fInstanceContent\"\xba\x01\n\rZMetricVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\x12\n\ntotalBytes\x18\x07 \x01(\x04\x12\x11\n\tusedBytes\x18\x08 \x01(\x04\x12\x11\n\tfreeBytes\x18\t \x01(\x04\"\xd3\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetric\x12#\n\x02nm\x18\x07 \x03(\x0b\x32\x17.ZMetricNetworkInstance\x12\x1a\n\x02vm\x18\x08 \x03(\x0b\x32\x0e.ZMetricVolumeB\x0f\n\rMetricContent*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*\x85\x02\n\x0b\x43ipherError\x12\x18\n\x14\x43IPHER_ERROR_INVALID\x10\x00\x12\x1a\n\x16\x43IPHER_ERROR_NOT_READY\x10\x01\x12\x1f\n\x1b\x43IPHER_ERROR_DECRYPT_FAILED\x10\x02\x12!\n\x1d\x43IPHER_ERROR_UNMARSHAL_FAILED\x10\x03\x12#\n\x1f\x43IPHER_ERROR_CLEARTEXT_FALLBACK\x10\x04\x12!\n\x1d\x43IPHER_ERROR_MISSING_FALLBACK\x10\x05\x12\x1a\n\x16\x43IPHER_ERROR_NO_CIPHER\x10\x06\x12\x18\n\x14\x43IPHER_ERROR_NO_DATA\x10\x07*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42?\n\x16org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metricsb\x06proto3')
+  serialized_pb=_b('\n\x15metrics/metrics.proto\x12\x16org.lfedge.eve.metrics\x1a\x1fgoogle/protobuf/timestamp.proto\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xaa\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\r\n\x05\x61lias\x18\x14 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xfc\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12:\n\nurlMetrics\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.metrics.urlcloudMetric\x12\x19\n\x11\x61uthVerifyFailure\x18\x07 \x01(\x04\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"\xe5\x01\n\x0c\x43ipherMetric\x12\x12\n\nagent_name\x18\x01 \x01(\t\x12\x15\n\rfailure_count\x18\x02 \x01(\x04\x12\x15\n\rsuccess_count\x18\x03 \x01(\x04\x12\x30\n\x0clast_failure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x30\n\x0clast_success\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x02tc\x18\x06 \x03(\x0b\x32#.org.lfedge.eve.metrics.TypeCounter\"U\n\x0bTypeCounter\x12\x37\n\nerror_code\x18\x01 \x01(\x0e\x32#.org.lfedge.eve.metrics.CipherError\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\"^\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\x12\x13\n\x0bsystemTotal\x18\x06 \x01(\x04\"\xc5\x04\n\x0c\x64\x65viceMetric\x12\x34\n\x06memory\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x03 \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x38\n\x08zedcloud\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.metrics.zedcloudMetric\x12\x30\n\x04\x64isk\x18\x06 \x03(\x0b\x32\".org.lfedge.eve.metrics.diskMetric\x12\x37\n\tcpuMetric\x18\x07 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x37\n\x0bmetricItems\x18\x08 \x03(\x0b\x32\".org.lfedge.eve.metrics.MetricItem\x12 \n\x18runtimeStorageOverheadMB\x18\t \x01(\x04\x12\x1b\n\x13\x61ppRunTimeStorageMB\x18\n \x01(\x04\x12\x44\n\x16systemServicesMemoryMB\x18\x0b \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12.\n\x03log\x18\x0c \x01(\x0b\x32!.org.lfedge.eve.metrics.logMetric\x12\x34\n\x06\x63ipher\x18\r \x03(\x0b\x32$.org.lfedge.eve.metrics.CipherMetric\"\x9f\x02\n\x12\x61ppContainerMetric\x12\x18\n\x10\x61ppContainerName\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0c\n\x04PIDs\x18\x03 \x01(\r\x12\x31\n\x03\x63pu\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x34\n\x06memory\x18\x05 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x06 \x01(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x30\n\x04\x64isk\x18\x07 \x01(\x0b\x32\".org.lfedge.eve.metrics.diskMetric\"\xd2\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.org.lfedge.eve.metrics.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\xd4\x02\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x31\n\x03\x63pu\x18\x03 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x34\n\x06memory\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x05 \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x33\n\x04\x64isk\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.metrics.appDiskMetric\x12=\n\tcontainer\x18\x07 \x03(\x0b\x32*.org.lfedge.eve.metrics.appContainerMetric\"\xb9\x04\n\tlogMetric\x12\x1b\n\x13numDeviceEventsSent\x18\x01 \x01(\x04\x12\x1c\n\x14numDeviceBundlesSent\x18\x02 \x01(\x04\x12\x18\n\x10numAppEventsSent\x18\x03 \x01(\x04\x12\x19\n\x11numAppBundlesSent\x18\x04 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x05 \x01(\x04\x12<\n\x18lastDeviceBundleSendTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15lastAppBundleSendTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1f\n\x17isLogProcessingDeferred\x18\x08 \x01(\x08\x12\x18\n\x10numTimesDeferred\x18\t \x01(\x04\x12\x34\n\x10lastLogDeferTime\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x13totalDeviceLogInput\x18\r \x01(\x04\x12\x18\n\x10totalAppLogInput\x18\x0e \x01(\x04\x12\x1c\n\x14numDeviceEventErrors\x18\x0f \x01(\x04\x12\x19\n\x11numAppEventErrors\x18\x10 \x01(\x04\x12%\n\x1dnumDeviceBundleProtoBytesSent\x18\x11 \x01(\x04\x12\"\n\x1anumAppBundleProtoBytesSent\x18\x12 \x01(\x04\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"i\n\tRlocStats\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12.\n\x05Stats\x18\x02 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x1e\n\x16SecondsSinceLastPacket\x18\x03 \x01(\x04\"a\n\x08\x45idStats\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\x0b\n\x03\x45ID\x18\x02 \x01(\t\x12;\n\x10RlocStatsEntries\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.metrics.RlocStats\"\xba\x05\n\x0bZMetricLisp\x12\x39\n\x0f\x45idStatsEntries\x18\x01 \x03(\x0b\x32 .org.lfedge.eve.metrics.EidStats\x12;\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x38\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x35\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x39\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x38\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x34\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x31\n\x08ICVError\x18\x08 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x38\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x36\n\rCheckSumError\x18\n \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12;\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x35\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\"\xda\x01\n\x0bZMetricConn\x12/\n\x06InPkts\x18\x01 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x30\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x30\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x36\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\"\xe6\x01\n\nZMetricVpn\x12\x35\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x34\n\x07IkeStat\x18\x02 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x35\n\x08NatTStat\x18\x03 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x34\n\x07\x45spStat\x18\x04 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\"\r\n\x0bZMetricNone\"I\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x03\x65id\x18\x02 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"\xaa\x01\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x0e\n\x04rloc\x18\x02 \x01(\tH\x00\x12\x35\n\x04link\x18\x05 \x03(\x0b\x32\'.org.lfedge.eve.metrics.ZMetricFlowLink\x12.\n\x05stats\x18\n \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStatB\n\n\x08\x45ndpoint\"\xd3\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0b\n\x03iid\x18\x04 \x01(\x04\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12>\n\tlEndPoint\x18\n \x01(\x0b\x32+.org.lfedge.eve.metrics.ZMetricFlowEndPoint\x12>\n\trEndPoint\x18\x0b \x03(\x0b\x32+.org.lfedge.eve.metrics.ZMetricFlowEndPoint\"\x85\x05\n\x11ZMetricLispGlobal\x12;\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x38\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x35\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x39\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x38\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x34\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x31\n\x08ICVError\x18\x08 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x38\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x36\n\rCheckSumError\x18\n \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12;\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x35\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\"W\n\x0cNetworkStats\x12\x14\n\x0ctotalPackets\x18\x01 \x01(\x04\x12\x0e\n\x06\x65rrors\x18\x02 \x01(\x04\x12\r\n\x05\x64rops\x18\x03 \x01(\x04\x12\x12\n\ntotalBytes\x18\x04 \x01(\x04\"y\n\x13ZMetricNetworkStats\x12\x30\n\x02rx\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\x12\x30\n\x02tx\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\"\xaf\x03\n\x0fZProbeNIMetrics\x12\x13\n\x0b\x63urrentIntf\x18\x01 \x01(\t\x12\x16\n\x0eremoteEndpoint\x18\x02 \x01(\t\x12\x10\n\x08pingIntv\x18\x03 \x01(\r\x12\x16\n\x0eremotePingIntv\x18\x04 \x01(\r\x12\x11\n\tuplinkCnt\x18\x05 \x01(\r\x12L\n\nintfMetric\x18\n \x03(\x0b\x32\x38.org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric\x1a\xe3\x01\n\x10ZProbeIntfMetric\x12\x10\n\x08intfName\x18\x0b \x01(\t\x12\x16\n\x0egatewayNexhtop\x18\x0c \x01(\t\x12\x11\n\tgatewayUP\x18\r \x01(\x08\x12\x14\n\x0cremoteHostUP\x18\x0e \x01(\x08\x12\x16\n\x0enexthopUpCount\x18\x0f \x01(\r\x12\x18\n\x10nexthopDownCount\x18\x10 \x01(\r\x12\x15\n\rremoteUpCount\x18\x11 \x01(\r\x12\x17\n\x0fremoteDownCount\x18\x12 \x01(\r\x12\x1a\n\x12remoteProbeLatency\x18\x13 \x01(\r\"\xe5\x04\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x36\n\x07network\x18\n \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12<\n\x0bprobeMetric\x18\x0c \x01(\x0b\x32\'.org.lfedge.eve.metrics.ZProbeNIMetrics\x12\x32\n\x04vpnm\x18\x14 \x01(\x0b\x32\".org.lfedge.eve.metrics.ZMetricVpnH\x00\x12\x34\n\x05lispm\x18\x15 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricLispH\x00\x12\x34\n\x05nonem\x18\x16 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricNoneH\x00\x12\x36\n\tflowStats\x18\x1e \x03(\x0b\x32#.org.lfedge.eve.metrics.ZMetricFlow\x12\x42\n\x0flispGlobalStats\x18\x1f \x01(\x0b\x32).org.lfedge.eve.metrics.ZMetricLispGlobal\x12\x41\n\x0cnetworkStats\x18( \x01(\x0b\x32+.org.lfedge.eve.metrics.ZMetricNetworkStatsB\x11\n\x0fInstanceContent\"\xba\x01\n\rZMetricVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\x12\n\ntotalBytes\x18\x07 \x01(\x04\x12\x11\n\tusedBytes\x18\x08 \x01(\x04\x12\x11\n\tfreeBytes\x18\t \x01(\x04\"\xaf\x02\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x02\x64m\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.deviceMetricH\x00\x12-\n\x02\x61m\x18\x05 \x03(\x0b\x32!.org.lfedge.eve.metrics.appMetric\x12:\n\x02nm\x18\x07 \x03(\x0b\x32..org.lfedge.eve.metrics.ZMetricNetworkInstance\x12\x31\n\x02vm\x18\x08 \x03(\x0b\x32%.org.lfedge.eve.metrics.ZMetricVolumeB\x0f\n\rMetricContent*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*\x85\x02\n\x0b\x43ipherError\x12\x18\n\x14\x43IPHER_ERROR_INVALID\x10\x00\x12\x1a\n\x16\x43IPHER_ERROR_NOT_READY\x10\x01\x12\x1f\n\x1b\x43IPHER_ERROR_DECRYPT_FAILED\x10\x02\x12!\n\x1d\x43IPHER_ERROR_UNMARSHAL_FAILED\x10\x03\x12#\n\x1f\x43IPHER_ERROR_CLEARTEXT_FALLBACK\x10\x04\x12!\n\x1d\x43IPHER_ERROR_MISSING_FALLBACK\x10\x05\x12\x1a\n\x16\x43IPHER_ERROR_NO_CIPHER\x10\x06\x12\x18\n\x14\x43IPHER_ERROR_NO_DATA\x10\x07*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42?\n\x16org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metricsb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
 _ZMETRICTYPES = _descriptor.EnumDescriptor(
   name='ZmetricTypes',
-  full_name='ZmetricTypes',
+  full_name='org.lfedge.eve.metrics.ZmetricTypes',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -46,15 +46,15 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6146,
-  serialized_end=6196,
+  serialized_start=7874,
+  serialized_end=7924,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
 ZmetricTypes = enum_type_wrapper.EnumTypeWrapper(_ZMETRICTYPES)
 _CIPHERERROR = _descriptor.EnumDescriptor(
   name='CipherError',
-  full_name='CipherError',
+  full_name='org.lfedge.eve.metrics.CipherError',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -93,15 +93,15 @@ _CIPHERERROR = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6199,
-  serialized_end=6460,
+  serialized_start=7927,
+  serialized_end=8188,
 )
 _sym_db.RegisterEnumDescriptor(_CIPHERERROR)
 
 CipherError = enum_type_wrapper.EnumTypeWrapper(_CIPHERERROR)
 _METRICITEMTYPE = _descriptor.EnumDescriptor(
   name='MetricItemType',
-  full_name='MetricItemType',
+  full_name='org.lfedge.eve.metrics.MetricItemType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -124,8 +124,8 @@ _METRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6462,
-  serialized_end=6564,
+  serialized_start=8190,
+  serialized_end=8292,
 )
 _sym_db.RegisterEnumDescriptor(_METRICITEMTYPE)
 
@@ -150,34 +150,34 @@ MetricItemState = 3
 
 _MEMORYMETRIC = _descriptor.Descriptor(
   name='memoryMetric',
-  full_name='memoryMetric',
+  full_name='org.lfedge.eve.metrics.memoryMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='usedMem', full_name='memoryMetric.usedMem', index=0,
+      name='usedMem', full_name='org.lfedge.eve.metrics.memoryMetric.usedMem', index=0,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='availMem', full_name='memoryMetric.availMem', index=1,
+      name='availMem', full_name='org.lfedge.eve.metrics.memoryMetric.availMem', index=1,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usedPercentage', full_name='memoryMetric.usedPercentage', index=2,
+      name='usedPercentage', full_name='org.lfedge.eve.metrics.memoryMetric.usedPercentage', index=2,
       number=4, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='availPercentage', full_name='memoryMetric.availPercentage', index=3,
+      name='availPercentage', full_name='org.lfedge.eve.metrics.memoryMetric.availPercentage', index=3,
       number=5, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
@@ -195,118 +195,118 @@ _MEMORYMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=58,
-  serialized_end=156,
+  serialized_start=82,
+  serialized_end=180,
 )
 
 
 _NETWORKMETRIC = _descriptor.Descriptor(
   name='networkMetric',
-  full_name='networkMetric',
+  full_name='org.lfedge.eve.metrics.networkMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='iName', full_name='networkMetric.iName', index=0,
+      name='iName', full_name='org.lfedge.eve.metrics.networkMetric.iName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='alias', full_name='networkMetric.alias', index=1,
+      name='alias', full_name='org.lfedge.eve.metrics.networkMetric.alias', index=1,
       number=20, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txBytes', full_name='networkMetric.txBytes', index=2,
+      name='txBytes', full_name='org.lfedge.eve.metrics.networkMetric.txBytes', index=2,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxBytes', full_name='networkMetric.rxBytes', index=3,
+      name='rxBytes', full_name='org.lfedge.eve.metrics.networkMetric.rxBytes', index=3,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txDrops', full_name='networkMetric.txDrops', index=4,
+      name='txDrops', full_name='org.lfedge.eve.metrics.networkMetric.txDrops', index=4,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxDrops', full_name='networkMetric.rxDrops', index=5,
+      name='rxDrops', full_name='org.lfedge.eve.metrics.networkMetric.rxDrops', index=5,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txPkts', full_name='networkMetric.txPkts', index=6,
+      name='txPkts', full_name='org.lfedge.eve.metrics.networkMetric.txPkts', index=6,
       number=8, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxPkts', full_name='networkMetric.rxPkts', index=7,
+      name='rxPkts', full_name='org.lfedge.eve.metrics.networkMetric.rxPkts', index=7,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txErrors', full_name='networkMetric.txErrors', index=8,
+      name='txErrors', full_name='org.lfedge.eve.metrics.networkMetric.txErrors', index=8,
       number=10, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxErrors', full_name='networkMetric.rxErrors', index=9,
+      name='rxErrors', full_name='org.lfedge.eve.metrics.networkMetric.rxErrors', index=9,
       number=11, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txAclDrops', full_name='networkMetric.txAclDrops', index=10,
+      name='txAclDrops', full_name='org.lfedge.eve.metrics.networkMetric.txAclDrops', index=10,
       number=12, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxAclDrops', full_name='networkMetric.rxAclDrops', index=11,
+      name='rxAclDrops', full_name='org.lfedge.eve.metrics.networkMetric.rxAclDrops', index=11,
       number=13, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txAclRateLimitDrops', full_name='networkMetric.txAclRateLimitDrops', index=12,
+      name='txAclRateLimitDrops', full_name='org.lfedge.eve.metrics.networkMetric.txAclRateLimitDrops', index=12,
       number=14, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxAclRateLimitDrops', full_name='networkMetric.rxAclRateLimitDrops', index=13,
+      name='rxAclRateLimitDrops', full_name='org.lfedge.eve.metrics.networkMetric.rxAclRateLimitDrops', index=13,
       number=15, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='localName', full_name='networkMetric.localName', index=14,
+      name='localName', full_name='org.lfedge.eve.metrics.networkMetric.localName', index=14,
       number=16, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -324,62 +324,62 @@ _NETWORKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=159,
-  serialized_end=457,
+  serialized_start=183,
+  serialized_end=481,
 )
 
 
 _ZEDCLOUDMETRIC = _descriptor.Descriptor(
   name='zedcloudMetric',
-  full_name='zedcloudMetric',
+  full_name='org.lfedge.eve.metrics.zedcloudMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ifName', full_name='zedcloudMetric.ifName', index=0,
+      name='ifName', full_name='org.lfedge.eve.metrics.zedcloudMetric.ifName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='failures', full_name='zedcloudMetric.failures', index=1,
+      name='failures', full_name='org.lfedge.eve.metrics.zedcloudMetric.failures', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='success', full_name='zedcloudMetric.success', index=2,
+      name='success', full_name='org.lfedge.eve.metrics.zedcloudMetric.success', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastFailure', full_name='zedcloudMetric.lastFailure', index=3,
+      name='lastFailure', full_name='org.lfedge.eve.metrics.zedcloudMetric.lastFailure', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastSuccess', full_name='zedcloudMetric.lastSuccess', index=4,
+      name='lastSuccess', full_name='org.lfedge.eve.metrics.zedcloudMetric.lastSuccess', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='urlMetrics', full_name='zedcloudMetric.urlMetrics', index=5,
+      name='urlMetrics', full_name='org.lfedge.eve.metrics.zedcloudMetric.urlMetrics', index=5,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='authVerifyFailure', full_name='zedcloudMetric.authVerifyFailure', index=6,
+      name='authVerifyFailure', full_name='org.lfedge.eve.metrics.zedcloudMetric.authVerifyFailure', index=6,
       number=7, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -397,62 +397,62 @@ _ZEDCLOUDMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=460,
-  serialized_end=689,
+  serialized_start=484,
+  serialized_end=736,
 )
 
 
 _URLCLOUDMETRIC = _descriptor.Descriptor(
   name='urlcloudMetric',
-  full_name='urlcloudMetric',
+  full_name='org.lfedge.eve.metrics.urlcloudMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='url', full_name='urlcloudMetric.url', index=0,
+      name='url', full_name='org.lfedge.eve.metrics.urlcloudMetric.url', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='tryMsgCount', full_name='urlcloudMetric.tryMsgCount', index=1,
+      name='tryMsgCount', full_name='org.lfedge.eve.metrics.urlcloudMetric.tryMsgCount', index=1,
       number=2, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='tryByteCount', full_name='urlcloudMetric.tryByteCount', index=2,
+      name='tryByteCount', full_name='org.lfedge.eve.metrics.urlcloudMetric.tryByteCount', index=2,
       number=3, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sentMsgCount', full_name='urlcloudMetric.sentMsgCount', index=3,
+      name='sentMsgCount', full_name='org.lfedge.eve.metrics.urlcloudMetric.sentMsgCount', index=3,
       number=4, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sentByteCount', full_name='urlcloudMetric.sentByteCount', index=4,
+      name='sentByteCount', full_name='org.lfedge.eve.metrics.urlcloudMetric.sentByteCount', index=4,
       number=5, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='recvMsgCount', full_name='urlcloudMetric.recvMsgCount', index=5,
+      name='recvMsgCount', full_name='org.lfedge.eve.metrics.urlcloudMetric.recvMsgCount', index=5,
       number=6, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='recvByteCount', full_name='urlcloudMetric.recvByteCount', index=6,
+      name='recvByteCount', full_name='org.lfedge.eve.metrics.urlcloudMetric.recvByteCount', index=6,
       number=7, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -470,55 +470,55 @@ _URLCLOUDMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=692,
-  serialized_end=854,
+  serialized_start=739,
+  serialized_end=901,
 )
 
 
 _CIPHERMETRIC = _descriptor.Descriptor(
   name='CipherMetric',
-  full_name='CipherMetric',
+  full_name='org.lfedge.eve.metrics.CipherMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='agent_name', full_name='CipherMetric.agent_name', index=0,
+      name='agent_name', full_name='org.lfedge.eve.metrics.CipherMetric.agent_name', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='failure_count', full_name='CipherMetric.failure_count', index=1,
+      name='failure_count', full_name='org.lfedge.eve.metrics.CipherMetric.failure_count', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='success_count', full_name='CipherMetric.success_count', index=2,
+      name='success_count', full_name='org.lfedge.eve.metrics.CipherMetric.success_count', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='last_failure', full_name='CipherMetric.last_failure', index=3,
+      name='last_failure', full_name='org.lfedge.eve.metrics.CipherMetric.last_failure', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='last_success', full_name='CipherMetric.last_success', index=4,
+      name='last_success', full_name='org.lfedge.eve.metrics.CipherMetric.last_success', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='tc', full_name='CipherMetric.tc', index=5,
+      name='tc', full_name='org.lfedge.eve.metrics.CipherMetric.tc', index=5,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -536,27 +536,27 @@ _CIPHERMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=857,
-  serialized_end=1063,
+  serialized_start=904,
+  serialized_end=1133,
 )
 
 
 _TYPECOUNTER = _descriptor.Descriptor(
   name='TypeCounter',
-  full_name='TypeCounter',
+  full_name='org.lfedge.eve.metrics.TypeCounter',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='error_code', full_name='TypeCounter.error_code', index=0,
+      name='error_code', full_name='org.lfedge.eve.metrics.TypeCounter.error_code', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='count', full_name='TypeCounter.count', index=1,
+      name='count', full_name='org.lfedge.eve.metrics.TypeCounter.count', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -574,34 +574,34 @@ _TYPECOUNTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1065,
-  serialized_end=1127,
+  serialized_start=1135,
+  serialized_end=1220,
 )
 
 
 _APPCPUMETRIC = _descriptor.Descriptor(
   name='appCpuMetric',
-  full_name='appCpuMetric',
+  full_name='org.lfedge.eve.metrics.appCpuMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='upTime', full_name='appCpuMetric.upTime', index=0,
+      name='upTime', full_name='org.lfedge.eve.metrics.appCpuMetric.upTime', index=0,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='total', full_name='appCpuMetric.total', index=1,
+      name='total', full_name='org.lfedge.eve.metrics.appCpuMetric.total', index=1,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='systemTotal', full_name='appCpuMetric.systemTotal', index=2,
+      name='systemTotal', full_name='org.lfedge.eve.metrics.appCpuMetric.systemTotal', index=2,
       number=6, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -619,90 +619,90 @@ _APPCPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1129,
-  serialized_end=1223,
+  serialized_start=1222,
+  serialized_end=1316,
 )
 
 
 _DEVICEMETRIC = _descriptor.Descriptor(
   name='deviceMetric',
-  full_name='deviceMetric',
+  full_name='org.lfedge.eve.metrics.deviceMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='memory', full_name='deviceMetric.memory', index=0,
+      name='memory', full_name='org.lfedge.eve.metrics.deviceMetric.memory', index=0,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='deviceMetric.network', index=1,
+      name='network', full_name='org.lfedge.eve.metrics.deviceMetric.network', index=1,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='zedcloud', full_name='deviceMetric.zedcloud', index=2,
+      name='zedcloud', full_name='org.lfedge.eve.metrics.deviceMetric.zedcloud', index=2,
       number=4, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='disk', full_name='deviceMetric.disk', index=3,
+      name='disk', full_name='org.lfedge.eve.metrics.deviceMetric.disk', index=3,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cpuMetric', full_name='deviceMetric.cpuMetric', index=4,
+      name='cpuMetric', full_name='org.lfedge.eve.metrics.deviceMetric.cpuMetric', index=4,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='metricItems', full_name='deviceMetric.metricItems', index=5,
+      name='metricItems', full_name='org.lfedge.eve.metrics.deviceMetric.metricItems', index=5,
       number=8, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='runtimeStorageOverheadMB', full_name='deviceMetric.runtimeStorageOverheadMB', index=6,
+      name='runtimeStorageOverheadMB', full_name='org.lfedge.eve.metrics.deviceMetric.runtimeStorageOverheadMB', index=6,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appRunTimeStorageMB', full_name='deviceMetric.appRunTimeStorageMB', index=7,
+      name='appRunTimeStorageMB', full_name='org.lfedge.eve.metrics.deviceMetric.appRunTimeStorageMB', index=7,
       number=10, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='systemServicesMemoryMB', full_name='deviceMetric.systemServicesMemoryMB', index=8,
+      name='systemServicesMemoryMB', full_name='org.lfedge.eve.metrics.deviceMetric.systemServicesMemoryMB', index=8,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='log', full_name='deviceMetric.log', index=9,
+      name='log', full_name='org.lfedge.eve.metrics.deviceMetric.log', index=9,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cipher', full_name='deviceMetric.cipher', index=10,
+      name='cipher', full_name='org.lfedge.eve.metrics.deviceMetric.cipher', index=10,
       number=13, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -720,62 +720,62 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1226,
-  serialized_end=1600,
+  serialized_start=1319,
+  serialized_end=1900,
 )
 
 
 _APPCONTAINERMETRIC = _descriptor.Descriptor(
   name='appContainerMetric',
-  full_name='appContainerMetric',
+  full_name='org.lfedge.eve.metrics.appContainerMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='appContainerName', full_name='appContainerMetric.appContainerName', index=0,
+      name='appContainerName', full_name='org.lfedge.eve.metrics.appContainerMetric.appContainerName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='status', full_name='appContainerMetric.status', index=1,
+      name='status', full_name='org.lfedge.eve.metrics.appContainerMetric.status', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='PIDs', full_name='appContainerMetric.PIDs', index=2,
+      name='PIDs', full_name='org.lfedge.eve.metrics.appContainerMetric.PIDs', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cpu', full_name='appContainerMetric.cpu', index=3,
+      name='cpu', full_name='org.lfedge.eve.metrics.appContainerMetric.cpu', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='memory', full_name='appContainerMetric.memory', index=4,
+      name='memory', full_name='org.lfedge.eve.metrics.appContainerMetric.memory', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='appContainerMetric.network', index=5,
+      name='network', full_name='org.lfedge.eve.metrics.appContainerMetric.network', index=5,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='disk', full_name='appContainerMetric.disk', index=6,
+      name='disk', full_name='org.lfedge.eve.metrics.appContainerMetric.disk', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -793,62 +793,62 @@ _APPCONTAINERMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1603,
-  serialized_end=1798,
+  serialized_start=1903,
+  serialized_end=2190,
 )
 
 
 _METRICITEM = _descriptor.Descriptor(
   name='MetricItem',
-  full_name='MetricItem',
+  full_name='org.lfedge.eve.metrics.MetricItem',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='MetricItem.key', index=0,
+      name='key', full_name='org.lfedge.eve.metrics.MetricItem.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='type', full_name='MetricItem.type', index=1,
+      name='type', full_name='org.lfedge.eve.metrics.MetricItem.type', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='boolValue', full_name='MetricItem.boolValue', index=2,
+      name='boolValue', full_name='org.lfedge.eve.metrics.MetricItem.boolValue', index=2,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uint32Value', full_name='MetricItem.uint32Value', index=3,
+      name='uint32Value', full_name='org.lfedge.eve.metrics.MetricItem.uint32Value', index=3,
       number=4, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uint64Value', full_name='MetricItem.uint64Value', index=4,
+      name='uint64Value', full_name='org.lfedge.eve.metrics.MetricItem.uint64Value', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='floatValue', full_name='MetricItem.floatValue', index=5,
+      name='floatValue', full_name='org.lfedge.eve.metrics.MetricItem.floatValue', index=5,
       number=6, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='stringValue', full_name='MetricItem.stringValue', index=6,
+      name='stringValue', full_name='org.lfedge.eve.metrics.MetricItem.stringValue', index=6,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -866,79 +866,79 @@ _METRICITEM = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='metricItemValue', full_name='MetricItem.metricItemValue',
+      name='metricItemValue', full_name='org.lfedge.eve.metrics.MetricItem.metricItemValue',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=1801,
-  serialized_end=1988,
+  serialized_start=2193,
+  serialized_end=2403,
 )
 
 
 _DISKMETRIC = _descriptor.Descriptor(
   name='diskMetric',
-  full_name='diskMetric',
+  full_name='org.lfedge.eve.metrics.diskMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='disk', full_name='diskMetric.disk', index=0,
+      name='disk', full_name='org.lfedge.eve.metrics.diskMetric.disk', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='mountPath', full_name='diskMetric.mountPath', index=1,
+      name='mountPath', full_name='org.lfedge.eve.metrics.diskMetric.mountPath', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='readBytes', full_name='diskMetric.readBytes', index=2,
+      name='readBytes', full_name='org.lfedge.eve.metrics.diskMetric.readBytes', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='writeBytes', full_name='diskMetric.writeBytes', index=3,
+      name='writeBytes', full_name='org.lfedge.eve.metrics.diskMetric.writeBytes', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='readCount', full_name='diskMetric.readCount', index=4,
+      name='readCount', full_name='org.lfedge.eve.metrics.diskMetric.readCount', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='writeCount', full_name='diskMetric.writeCount', index=5,
+      name='writeCount', full_name='org.lfedge.eve.metrics.diskMetric.writeCount', index=5,
       number=6, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='total', full_name='diskMetric.total', index=6,
+      name='total', full_name='org.lfedge.eve.metrics.diskMetric.total', index=6,
       number=7, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='used', full_name='diskMetric.used', index=7,
+      name='used', full_name='org.lfedge.eve.metrics.diskMetric.used', index=7,
       number=8, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='free', full_name='diskMetric.free', index=8,
+      name='free', full_name='org.lfedge.eve.metrics.diskMetric.free', index=8,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -956,48 +956,48 @@ _DISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1991,
-  serialized_end=2157,
+  serialized_start=2406,
+  serialized_end=2572,
 )
 
 
 _APPDISKMETRIC = _descriptor.Descriptor(
   name='appDiskMetric',
-  full_name='appDiskMetric',
+  full_name='org.lfedge.eve.metrics.appDiskMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='disk', full_name='appDiskMetric.disk', index=0,
+      name='disk', full_name='org.lfedge.eve.metrics.appDiskMetric.disk', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='provisioned', full_name='appDiskMetric.provisioned', index=1,
+      name='provisioned', full_name='org.lfedge.eve.metrics.appDiskMetric.provisioned', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='used', full_name='appDiskMetric.used', index=2,
+      name='used', full_name='org.lfedge.eve.metrics.appDiskMetric.used', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='diskType', full_name='appDiskMetric.diskType', index=3,
+      name='diskType', full_name='org.lfedge.eve.metrics.appDiskMetric.diskType', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dirty', full_name='appDiskMetric.dirty', index=4,
+      name='dirty', full_name='org.lfedge.eve.metrics.appDiskMetric.dirty', index=4,
       number=5, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -1015,69 +1015,69 @@ _APPDISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2159,
-  serialized_end=2256,
+  serialized_start=2574,
+  serialized_end=2671,
 )
 
 
 _APPMETRIC = _descriptor.Descriptor(
   name='appMetric',
-  full_name='appMetric',
+  full_name='org.lfedge.eve.metrics.appMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='AppID', full_name='appMetric.AppID', index=0,
+      name='AppID', full_name='org.lfedge.eve.metrics.appMetric.AppID', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='appVersion', full_name='appMetric.appVersion', index=1,
+      name='appVersion', full_name='org.lfedge.eve.metrics.appMetric.appVersion', index=1,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='AppName', full_name='appMetric.AppName', index=2,
+      name='AppName', full_name='org.lfedge.eve.metrics.appMetric.AppName', index=2,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cpu', full_name='appMetric.cpu', index=3,
+      name='cpu', full_name='org.lfedge.eve.metrics.appMetric.cpu', index=3,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='memory', full_name='appMetric.memory', index=4,
+      name='memory', full_name='org.lfedge.eve.metrics.appMetric.memory', index=4,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='appMetric.network', index=5,
+      name='network', full_name='org.lfedge.eve.metrics.appMetric.network', index=5,
       number=5, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='disk', full_name='appMetric.disk', index=6,
+      name='disk', full_name='org.lfedge.eve.metrics.appMetric.disk', index=6,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='container', full_name='appMetric.container', index=7,
+      name='container', full_name='org.lfedge.eve.metrics.appMetric.container', index=7,
       number=7, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1095,125 +1095,125 @@ _APPMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2259,
-  serialized_end=2484,
+  serialized_start=2674,
+  serialized_end=3014,
 )
 
 
 _LOGMETRIC = _descriptor.Descriptor(
   name='logMetric',
-  full_name='logMetric',
+  full_name='org.lfedge.eve.metrics.logMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='numDeviceEventsSent', full_name='logMetric.numDeviceEventsSent', index=0,
+      name='numDeviceEventsSent', full_name='org.lfedge.eve.metrics.logMetric.numDeviceEventsSent', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numDeviceBundlesSent', full_name='logMetric.numDeviceBundlesSent', index=1,
+      name='numDeviceBundlesSent', full_name='org.lfedge.eve.metrics.logMetric.numDeviceBundlesSent', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numAppEventsSent', full_name='logMetric.numAppEventsSent', index=2,
+      name='numAppEventsSent', full_name='org.lfedge.eve.metrics.logMetric.numAppEventsSent', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numAppBundlesSent', full_name='logMetric.numAppBundlesSent', index=3,
+      name='numAppBundlesSent', full_name='org.lfedge.eve.metrics.logMetric.numAppBundlesSent', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='num4xxResponses', full_name='logMetric.num4xxResponses', index=4,
+      name='num4xxResponses', full_name='org.lfedge.eve.metrics.logMetric.num4xxResponses', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastDeviceBundleSendTime', full_name='logMetric.lastDeviceBundleSendTime', index=5,
+      name='lastDeviceBundleSendTime', full_name='org.lfedge.eve.metrics.logMetric.lastDeviceBundleSendTime', index=5,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastAppBundleSendTime', full_name='logMetric.lastAppBundleSendTime', index=6,
+      name='lastAppBundleSendTime', full_name='org.lfedge.eve.metrics.logMetric.lastAppBundleSendTime', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='isLogProcessingDeferred', full_name='logMetric.isLogProcessingDeferred', index=7,
+      name='isLogProcessingDeferred', full_name='org.lfedge.eve.metrics.logMetric.isLogProcessingDeferred', index=7,
       number=8, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numTimesDeferred', full_name='logMetric.numTimesDeferred', index=8,
+      name='numTimesDeferred', full_name='org.lfedge.eve.metrics.logMetric.numTimesDeferred', index=8,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lastLogDeferTime', full_name='logMetric.lastLogDeferTime', index=9,
+      name='lastLogDeferTime', full_name='org.lfedge.eve.metrics.logMetric.lastLogDeferTime', index=9,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='totalDeviceLogInput', full_name='logMetric.totalDeviceLogInput', index=10,
+      name='totalDeviceLogInput', full_name='org.lfedge.eve.metrics.logMetric.totalDeviceLogInput', index=10,
       number=13, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='totalAppLogInput', full_name='logMetric.totalAppLogInput', index=11,
+      name='totalAppLogInput', full_name='org.lfedge.eve.metrics.logMetric.totalAppLogInput', index=11,
       number=14, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numDeviceEventErrors', full_name='logMetric.numDeviceEventErrors', index=12,
+      name='numDeviceEventErrors', full_name='org.lfedge.eve.metrics.logMetric.numDeviceEventErrors', index=12,
       number=15, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numAppEventErrors', full_name='logMetric.numAppEventErrors', index=13,
+      name='numAppEventErrors', full_name='org.lfedge.eve.metrics.logMetric.numAppEventErrors', index=13,
       number=16, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numDeviceBundleProtoBytesSent', full_name='logMetric.numDeviceBundleProtoBytesSent', index=14,
+      name='numDeviceBundleProtoBytesSent', full_name='org.lfedge.eve.metrics.logMetric.numDeviceBundleProtoBytesSent', index=14,
       number=17, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='numAppBundleProtoBytesSent', full_name='logMetric.numAppBundleProtoBytesSent', index=15,
+      name='numAppBundleProtoBytesSent', full_name='org.lfedge.eve.metrics.logMetric.numAppBundleProtoBytesSent', index=15,
       number=18, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -1231,27 +1231,27 @@ _LOGMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2487,
-  serialized_end=3056,
+  serialized_start=3017,
+  serialized_end=3586,
 )
 
 
 _PKTSTAT = _descriptor.Descriptor(
   name='PktStat',
-  full_name='PktStat',
+  full_name='org.lfedge.eve.metrics.PktStat',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='Packets', full_name='PktStat.Packets', index=0,
+      name='Packets', full_name='org.lfedge.eve.metrics.PktStat.Packets', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Bytes', full_name='PktStat.Bytes', index=1,
+      name='Bytes', full_name='org.lfedge.eve.metrics.PktStat.Bytes', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -1269,34 +1269,34 @@ _PKTSTAT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3058,
-  serialized_end=3099,
+  serialized_start=3588,
+  serialized_end=3629,
 )
 
 
 _RLOCSTATS = _descriptor.Descriptor(
   name='RlocStats',
-  full_name='RlocStats',
+  full_name='org.lfedge.eve.metrics.RlocStats',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='Rloc', full_name='RlocStats.Rloc', index=0,
+      name='Rloc', full_name='org.lfedge.eve.metrics.RlocStats.Rloc', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Stats', full_name='RlocStats.Stats', index=1,
+      name='Stats', full_name='org.lfedge.eve.metrics.RlocStats.Stats', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='SecondsSinceLastPacket', full_name='RlocStats.SecondsSinceLastPacket', index=2,
+      name='SecondsSinceLastPacket', full_name='org.lfedge.eve.metrics.RlocStats.SecondsSinceLastPacket', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -1314,34 +1314,34 @@ _RLOCSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3101,
-  serialized_end=3183,
+  serialized_start=3631,
+  serialized_end=3736,
 )
 
 
 _EIDSTATS = _descriptor.Descriptor(
   name='EidStats',
-  full_name='EidStats',
+  full_name='org.lfedge.eve.metrics.EidStats',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='IID', full_name='EidStats.IID', index=0,
+      name='IID', full_name='org.lfedge.eve.metrics.EidStats.IID', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='EID', full_name='EidStats.EID', index=1,
+      name='EID', full_name='org.lfedge.eve.metrics.EidStats.EID', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='RlocStatsEntries', full_name='EidStats.RlocStatsEntries', index=2,
+      name='RlocStatsEntries', full_name='org.lfedge.eve.metrics.EidStats.RlocStatsEntries', index=2,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1359,97 +1359,97 @@ _EIDSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3185,
-  serialized_end=3259,
+  serialized_start=3738,
+  serialized_end=3835,
 )
 
 
 _ZMETRICLISP = _descriptor.Descriptor(
   name='ZMetricLisp',
-  full_name='ZMetricLisp',
+  full_name='org.lfedge.eve.metrics.ZMetricLisp',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='EidStatsEntries', full_name='ZMetricLisp.EidStatsEntries', index=0,
+      name='EidStatsEntries', full_name='org.lfedge.eve.metrics.ZMetricLisp.EidStatsEntries', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ItrPacketSendError', full_name='ZMetricLisp.ItrPacketSendError', index=1,
+      name='ItrPacketSendError', full_name='org.lfedge.eve.metrics.ZMetricLisp.ItrPacketSendError', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='InvalidEidError', full_name='ZMetricLisp.InvalidEidError', index=2,
+      name='InvalidEidError', full_name='org.lfedge.eve.metrics.ZMetricLisp.InvalidEidError', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='NoDecryptKey', full_name='ZMetricLisp.NoDecryptKey', index=3,
+      name='NoDecryptKey', full_name='org.lfedge.eve.metrics.ZMetricLisp.NoDecryptKey', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='OuterHeaderError', full_name='ZMetricLisp.OuterHeaderError', index=4,
+      name='OuterHeaderError', full_name='org.lfedge.eve.metrics.ZMetricLisp.OuterHeaderError', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='BadInnerVersion', full_name='ZMetricLisp.BadInnerVersion', index=5,
+      name='BadInnerVersion', full_name='org.lfedge.eve.metrics.ZMetricLisp.BadInnerVersion', index=5,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='GoodPackets', full_name='ZMetricLisp.GoodPackets', index=6,
+      name='GoodPackets', full_name='org.lfedge.eve.metrics.ZMetricLisp.GoodPackets', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ICVError', full_name='ZMetricLisp.ICVError', index=7,
+      name='ICVError', full_name='org.lfedge.eve.metrics.ZMetricLisp.ICVError', index=7,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='LispHeaderError', full_name='ZMetricLisp.LispHeaderError', index=8,
+      name='LispHeaderError', full_name='org.lfedge.eve.metrics.ZMetricLisp.LispHeaderError', index=8,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='CheckSumError', full_name='ZMetricLisp.CheckSumError', index=9,
+      name='CheckSumError', full_name='org.lfedge.eve.metrics.ZMetricLisp.CheckSumError', index=9,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DecapReInjectError', full_name='ZMetricLisp.DecapReInjectError', index=10,
+      name='DecapReInjectError', full_name='org.lfedge.eve.metrics.ZMetricLisp.DecapReInjectError', index=10,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DecryptError', full_name='ZMetricLisp.DecryptError', index=11,
+      name='DecryptError', full_name='org.lfedge.eve.metrics.ZMetricLisp.DecryptError', index=11,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1467,41 +1467,41 @@ _ZMETRICLISP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3262,
-  serialized_end=3684,
+  serialized_start=3838,
+  serialized_end=4536,
 )
 
 
 _ZMETRICCONN = _descriptor.Descriptor(
   name='ZMetricConn',
-  full_name='ZMetricConn',
+  full_name='org.lfedge.eve.metrics.ZMetricConn',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='InPkts', full_name='ZMetricConn.InPkts', index=0,
+      name='InPkts', full_name='org.lfedge.eve.metrics.ZMetricConn.InPkts', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='OutPkts', full_name='ZMetricConn.OutPkts', index=1,
+      name='OutPkts', full_name='org.lfedge.eve.metrics.ZMetricConn.OutPkts', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ErrPkts', full_name='ZMetricConn.ErrPkts', index=2,
+      name='ErrPkts', full_name='org.lfedge.eve.metrics.ZMetricConn.ErrPkts', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='CarierErrPkts', full_name='ZMetricConn.CarierErrPkts', index=3,
+      name='CarierErrPkts', full_name='org.lfedge.eve.metrics.ZMetricConn.CarierErrPkts', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1519,41 +1519,41 @@ _ZMETRICCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3686,
-  serialized_end=3812,
+  serialized_start=4539,
+  serialized_end=4757,
 )
 
 
 _ZMETRICVPN = _descriptor.Descriptor(
   name='ZMetricVpn',
-  full_name='ZMetricVpn',
+  full_name='org.lfedge.eve.metrics.ZMetricVpn',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ConnStat', full_name='ZMetricVpn.ConnStat', index=0,
+      name='ConnStat', full_name='org.lfedge.eve.metrics.ZMetricVpn.ConnStat', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='IkeStat', full_name='ZMetricVpn.IkeStat', index=1,
+      name='IkeStat', full_name='org.lfedge.eve.metrics.ZMetricVpn.IkeStat', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='NatTStat', full_name='ZMetricVpn.NatTStat', index=2,
+      name='NatTStat', full_name='org.lfedge.eve.metrics.ZMetricVpn.NatTStat', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='EspStat', full_name='ZMetricVpn.EspStat', index=3,
+      name='EspStat', full_name='org.lfedge.eve.metrics.ZMetricVpn.EspStat', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1571,14 +1571,14 @@ _ZMETRICVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3815,
-  serialized_end=3953,
+  serialized_start=4760,
+  serialized_end=4990,
 )
 
 
 _ZMETRICNONE = _descriptor.Descriptor(
   name='ZMetricNone',
-  full_name='ZMetricNone',
+  full_name='org.lfedge.eve.metrics.ZMetricNone',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
@@ -1595,34 +1595,34 @@ _ZMETRICNONE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3955,
-  serialized_end=3968,
+  serialized_start=4992,
+  serialized_end=5005,
 )
 
 
 _ZMETRICFLOWLINK = _descriptor.Descriptor(
   name='ZMetricFlowLink',
-  full_name='ZMetricFlowLink',
+  full_name='org.lfedge.eve.metrics.ZMetricFlowLink',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='subNet', full_name='ZMetricFlowLink.subNet', index=0,
+      name='subNet', full_name='org.lfedge.eve.metrics.ZMetricFlowLink.subNet', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='eid', full_name='ZMetricFlowLink.eid', index=1,
+      name='eid', full_name='org.lfedge.eve.metrics.ZMetricFlowLink.eid', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='spiId', full_name='ZMetricFlowLink.spiId', index=2,
+      name='spiId', full_name='org.lfedge.eve.metrics.ZMetricFlowLink.spiId', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -1640,44 +1640,44 @@ _ZMETRICFLOWLINK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='Link', full_name='ZMetricFlowLink.Link',
+      name='Link', full_name='org.lfedge.eve.metrics.ZMetricFlowLink.Link',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=3970,
-  serialized_end=4043,
+  serialized_start=5007,
+  serialized_end=5080,
 )
 
 
 _ZMETRICFLOWENDPOINT = _descriptor.Descriptor(
   name='ZMetricFlowEndPoint',
-  full_name='ZMetricFlowEndPoint',
+  full_name='org.lfedge.eve.metrics.ZMetricFlowEndPoint',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ipAddr', full_name='ZMetricFlowEndPoint.ipAddr', index=0,
+      name='ipAddr', full_name='org.lfedge.eve.metrics.ZMetricFlowEndPoint.ipAddr', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rloc', full_name='ZMetricFlowEndPoint.rloc', index=1,
+      name='rloc', full_name='org.lfedge.eve.metrics.ZMetricFlowEndPoint.rloc', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='link', full_name='ZMetricFlowEndPoint.link', index=2,
+      name='link', full_name='org.lfedge.eve.metrics.ZMetricFlowEndPoint.link', index=2,
       number=5, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='stats', full_name='ZMetricFlowEndPoint.stats', index=3,
+      name='stats', full_name='org.lfedge.eve.metrics.ZMetricFlowEndPoint.stats', index=3,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1695,65 +1695,65 @@ _ZMETRICFLOWENDPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='Endpoint', full_name='ZMetricFlowEndPoint.Endpoint',
+      name='Endpoint', full_name='org.lfedge.eve.metrics.ZMetricFlowEndPoint.Endpoint',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=4045,
-  serialized_end=4169,
+  serialized_start=5083,
+  serialized_end=5253,
 )
 
 
 _ZMETRICFLOW = _descriptor.Descriptor(
   name='ZMetricFlow',
-  full_name='ZMetricFlow',
+  full_name='org.lfedge.eve.metrics.ZMetricFlow',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='id', full_name='ZMetricFlow.id', index=0,
+      name='id', full_name='org.lfedge.eve.metrics.ZMetricFlow.id', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='ZMetricFlow.name', index=1,
+      name='name', full_name='org.lfedge.eve.metrics.ZMetricFlow.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='type', full_name='ZMetricFlow.type', index=2,
+      name='type', full_name='org.lfedge.eve.metrics.ZMetricFlow.type', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='iid', full_name='ZMetricFlow.iid', index=3,
+      name='iid', full_name='org.lfedge.eve.metrics.ZMetricFlow.iid', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='estTime', full_name='ZMetricFlow.estTime', index=4,
+      name='estTime', full_name='org.lfedge.eve.metrics.ZMetricFlow.estTime', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lEndPoint', full_name='ZMetricFlow.lEndPoint', index=5,
+      name='lEndPoint', full_name='org.lfedge.eve.metrics.ZMetricFlow.lEndPoint', index=5,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rEndPoint', full_name='ZMetricFlow.rEndPoint', index=6,
+      name='rEndPoint', full_name='org.lfedge.eve.metrics.ZMetricFlow.rEndPoint', index=6,
       number=11, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -1771,90 +1771,90 @@ _ZMETRICFLOW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4172,
-  serialized_end=4337,
+  serialized_start=5256,
+  serialized_end=5467,
 )
 
 
 _ZMETRICLISPGLOBAL = _descriptor.Descriptor(
   name='ZMetricLispGlobal',
-  full_name='ZMetricLispGlobal',
+  full_name='org.lfedge.eve.metrics.ZMetricLispGlobal',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='ItrPacketSendError', full_name='ZMetricLispGlobal.ItrPacketSendError', index=0,
+      name='ItrPacketSendError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.ItrPacketSendError', index=0,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='InvalidEidError', full_name='ZMetricLispGlobal.InvalidEidError', index=1,
+      name='InvalidEidError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.InvalidEidError', index=1,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='NoDecryptKey', full_name='ZMetricLispGlobal.NoDecryptKey', index=2,
+      name='NoDecryptKey', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.NoDecryptKey', index=2,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='OuterHeaderError', full_name='ZMetricLispGlobal.OuterHeaderError', index=3,
+      name='OuterHeaderError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.OuterHeaderError', index=3,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='BadInnerVersion', full_name='ZMetricLispGlobal.BadInnerVersion', index=4,
+      name='BadInnerVersion', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.BadInnerVersion', index=4,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='GoodPackets', full_name='ZMetricLispGlobal.GoodPackets', index=5,
+      name='GoodPackets', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.GoodPackets', index=5,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ICVError', full_name='ZMetricLispGlobal.ICVError', index=6,
+      name='ICVError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.ICVError', index=6,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='LispHeaderError', full_name='ZMetricLispGlobal.LispHeaderError', index=7,
+      name='LispHeaderError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.LispHeaderError', index=7,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='CheckSumError', full_name='ZMetricLispGlobal.CheckSumError', index=8,
+      name='CheckSumError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.CheckSumError', index=8,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DecapReInjectError', full_name='ZMetricLispGlobal.DecapReInjectError', index=9,
+      name='DecapReInjectError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.DecapReInjectError', index=9,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='DecryptError', full_name='ZMetricLispGlobal.DecryptError', index=10,
+      name='DecryptError', full_name='org.lfedge.eve.metrics.ZMetricLispGlobal.DecryptError', index=10,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1872,41 +1872,41 @@ _ZMETRICLISPGLOBAL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4340,
-  serialized_end=4732,
+  serialized_start=5470,
+  serialized_end=6115,
 )
 
 
 _NETWORKSTATS = _descriptor.Descriptor(
   name='NetworkStats',
-  full_name='NetworkStats',
+  full_name='org.lfedge.eve.metrics.NetworkStats',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='totalPackets', full_name='NetworkStats.totalPackets', index=0,
+      name='totalPackets', full_name='org.lfedge.eve.metrics.NetworkStats.totalPackets', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='errors', full_name='NetworkStats.errors', index=1,
+      name='errors', full_name='org.lfedge.eve.metrics.NetworkStats.errors', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='drops', full_name='NetworkStats.drops', index=2,
+      name='drops', full_name='org.lfedge.eve.metrics.NetworkStats.drops', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='totalBytes', full_name='NetworkStats.totalBytes', index=3,
+      name='totalBytes', full_name='org.lfedge.eve.metrics.NetworkStats.totalBytes', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -1924,27 +1924,27 @@ _NETWORKSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4734,
-  serialized_end=4821,
+  serialized_start=6117,
+  serialized_end=6204,
 )
 
 
 _ZMETRICNETWORKSTATS = _descriptor.Descriptor(
   name='ZMetricNetworkStats',
-  full_name='ZMetricNetworkStats',
+  full_name='org.lfedge.eve.metrics.ZMetricNetworkStats',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='rx', full_name='ZMetricNetworkStats.rx', index=0,
+      name='rx', full_name='org.lfedge.eve.metrics.ZMetricNetworkStats.rx', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='tx', full_name='ZMetricNetworkStats.tx', index=1,
+      name='tx', full_name='org.lfedge.eve.metrics.ZMetricNetworkStats.tx', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -1962,76 +1962,76 @@ _ZMETRICNETWORKSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4823,
-  serialized_end=4898,
+  serialized_start=6206,
+  serialized_end=6327,
 )
 
 
 _ZPROBENIMETRICS_ZPROBEINTFMETRIC = _descriptor.Descriptor(
   name='ZProbeIntfMetric',
-  full_name='ZProbeNIMetrics.ZProbeIntfMetric',
+  full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='intfName', full_name='ZProbeNIMetrics.ZProbeIntfMetric.intfName', index=0,
+      name='intfName', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.intfName', index=0,
       number=11, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='gatewayNexhtop', full_name='ZProbeNIMetrics.ZProbeIntfMetric.gatewayNexhtop', index=1,
+      name='gatewayNexhtop', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.gatewayNexhtop', index=1,
       number=12, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='gatewayUP', full_name='ZProbeNIMetrics.ZProbeIntfMetric.gatewayUP', index=2,
+      name='gatewayUP', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.gatewayUP', index=2,
       number=13, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='remoteHostUP', full_name='ZProbeNIMetrics.ZProbeIntfMetric.remoteHostUP', index=3,
+      name='remoteHostUP', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.remoteHostUP', index=3,
       number=14, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nexthopUpCount', full_name='ZProbeNIMetrics.ZProbeIntfMetric.nexthopUpCount', index=4,
+      name='nexthopUpCount', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.nexthopUpCount', index=4,
       number=15, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nexthopDownCount', full_name='ZProbeNIMetrics.ZProbeIntfMetric.nexthopDownCount', index=5,
+      name='nexthopDownCount', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.nexthopDownCount', index=5,
       number=16, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='remoteUpCount', full_name='ZProbeNIMetrics.ZProbeIntfMetric.remoteUpCount', index=6,
+      name='remoteUpCount', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.remoteUpCount', index=6,
       number=17, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='remoteDownCount', full_name='ZProbeNIMetrics.ZProbeIntfMetric.remoteDownCount', index=7,
+      name='remoteDownCount', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.remoteDownCount', index=7,
       number=18, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='remoteProbeLatency', full_name='ZProbeNIMetrics.ZProbeIntfMetric.remoteProbeLatency', index=8,
+      name='remoteProbeLatency', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric.remoteProbeLatency', index=8,
       number=19, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -2049,54 +2049,54 @@ _ZPROBENIMETRICS_ZPROBEINTFMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5082,
-  serialized_end=5309,
+  serialized_start=6534,
+  serialized_end=6761,
 )
 
 _ZPROBENIMETRICS = _descriptor.Descriptor(
   name='ZProbeNIMetrics',
-  full_name='ZProbeNIMetrics',
+  full_name='org.lfedge.eve.metrics.ZProbeNIMetrics',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='currentIntf', full_name='ZProbeNIMetrics.currentIntf', index=0,
+      name='currentIntf', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.currentIntf', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='remoteEndpoint', full_name='ZProbeNIMetrics.remoteEndpoint', index=1,
+      name='remoteEndpoint', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.remoteEndpoint', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='pingIntv', full_name='ZProbeNIMetrics.pingIntv', index=2,
+      name='pingIntv', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.pingIntv', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='remotePingIntv', full_name='ZProbeNIMetrics.remotePingIntv', index=3,
+      name='remotePingIntv', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.remotePingIntv', index=3,
       number=4, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uplinkCnt', full_name='ZProbeNIMetrics.uplinkCnt', index=4,
+      name='uplinkCnt', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.uplinkCnt', index=4,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='intfMetric', full_name='ZProbeNIMetrics.intfMetric', index=5,
+      name='intfMetric', full_name='org.lfedge.eve.metrics.ZProbeNIMetrics.intfMetric', index=5,
       number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2114,104 +2114,104 @@ _ZPROBENIMETRICS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4901,
-  serialized_end=5309,
+  serialized_start=6330,
+  serialized_end=6761,
 )
 
 
 _ZMETRICNETWORKINSTANCE = _descriptor.Descriptor(
   name='ZMetricNetworkInstance',
-  full_name='ZMetricNetworkInstance',
+  full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='networkID', full_name='ZMetricNetworkInstance.networkID', index=0,
+      name='networkID', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.networkID', index=0,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkVersion', full_name='ZMetricNetworkInstance.networkVersion', index=1,
+      name='networkVersion', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.networkVersion', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instType', full_name='ZMetricNetworkInstance.instType', index=2,
+      name='instType', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.instType', index=2,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayname', full_name='ZMetricNetworkInstance.displayname', index=3,
+      name='displayname', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.displayname', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activated', full_name='ZMetricNetworkInstance.activated', index=4,
+      name='activated', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.activated', index=4,
       number=7, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='ZMetricNetworkInstance.network', index=5,
+      name='network', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.network', index=5,
       number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='probeMetric', full_name='ZMetricNetworkInstance.probeMetric', index=6,
+      name='probeMetric', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.probeMetric', index=6,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vpnm', full_name='ZMetricNetworkInstance.vpnm', index=7,
+      name='vpnm', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.vpnm', index=7,
       number=20, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lispm', full_name='ZMetricNetworkInstance.lispm', index=8,
+      name='lispm', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.lispm', index=8,
       number=21, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nonem', full_name='ZMetricNetworkInstance.nonem', index=9,
+      name='nonem', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.nonem', index=9,
       number=22, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='flowStats', full_name='ZMetricNetworkInstance.flowStats', index=10,
+      name='flowStats', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.flowStats', index=10,
       number=30, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lispGlobalStats', full_name='ZMetricNetworkInstance.lispGlobalStats', index=11,
+      name='lispGlobalStats', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.lispGlobalStats', index=11,
       number=31, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkStats', full_name='ZMetricNetworkInstance.networkStats', index=12,
+      name='networkStats', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.networkStats', index=12,
       number=40, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -2229,79 +2229,79 @@ _ZMETRICNETWORKINSTANCE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='InstanceContent', full_name='ZMetricNetworkInstance.InstanceContent',
+      name='InstanceContent', full_name='org.lfedge.eve.metrics.ZMetricNetworkInstance.InstanceContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=5312,
-  serialized_end=5741,
+  serialized_start=6764,
+  serialized_end=7377,
 )
 
 
 _ZMETRICVOLUME = _descriptor.Descriptor(
   name='ZMetricVolume',
-  full_name='ZMetricVolume',
+  full_name='org.lfedge.eve.metrics.ZMetricVolume',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='ZMetricVolume.uuid', index=0,
+      name='uuid', full_name='org.lfedge.eve.metrics.ZMetricVolume.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayName', full_name='ZMetricVolume.displayName', index=1,
+      name='displayName', full_name='org.lfedge.eve.metrics.ZMetricVolume.displayName', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='readBytes', full_name='ZMetricVolume.readBytes', index=2,
+      name='readBytes', full_name='org.lfedge.eve.metrics.ZMetricVolume.readBytes', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='writeBytes', full_name='ZMetricVolume.writeBytes', index=3,
+      name='writeBytes', full_name='org.lfedge.eve.metrics.ZMetricVolume.writeBytes', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='readCount', full_name='ZMetricVolume.readCount', index=4,
+      name='readCount', full_name='org.lfedge.eve.metrics.ZMetricVolume.readCount', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='writeCount', full_name='ZMetricVolume.writeCount', index=5,
+      name='writeCount', full_name='org.lfedge.eve.metrics.ZMetricVolume.writeCount', index=5,
       number=6, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='totalBytes', full_name='ZMetricVolume.totalBytes', index=6,
+      name='totalBytes', full_name='org.lfedge.eve.metrics.ZMetricVolume.totalBytes', index=6,
       number=7, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='usedBytes', full_name='ZMetricVolume.usedBytes', index=7,
+      name='usedBytes', full_name='org.lfedge.eve.metrics.ZMetricVolume.usedBytes', index=7,
       number=8, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='freeBytes', full_name='ZMetricVolume.freeBytes', index=8,
+      name='freeBytes', full_name='org.lfedge.eve.metrics.ZMetricVolume.freeBytes', index=8,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -2319,55 +2319,55 @@ _ZMETRICVOLUME = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5744,
-  serialized_end=5930,
+  serialized_start=7380,
+  serialized_end=7566,
 )
 
 
 _ZMETRICMSG = _descriptor.Descriptor(
   name='ZMetricMsg',
-  full_name='ZMetricMsg',
+  full_name='org.lfedge.eve.metrics.ZMetricMsg',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='devID', full_name='ZMetricMsg.devID', index=0,
+      name='devID', full_name='org.lfedge.eve.metrics.ZMetricMsg.devID', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='atTimeStamp', full_name='ZMetricMsg.atTimeStamp', index=1,
+      name='atTimeStamp', full_name='org.lfedge.eve.metrics.ZMetricMsg.atTimeStamp', index=1,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dm', full_name='ZMetricMsg.dm', index=2,
+      name='dm', full_name='org.lfedge.eve.metrics.ZMetricMsg.dm', index=2,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='am', full_name='ZMetricMsg.am', index=3,
+      name='am', full_name='org.lfedge.eve.metrics.ZMetricMsg.am', index=3,
       number=5, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nm', full_name='ZMetricMsg.nm', index=4,
+      name='nm', full_name='org.lfedge.eve.metrics.ZMetricMsg.nm', index=4,
       number=7, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vm', full_name='ZMetricMsg.vm', index=5,
+      name='vm', full_name='org.lfedge.eve.metrics.ZMetricMsg.vm', index=5,
       number=8, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2385,11 +2385,11 @@ _ZMETRICMSG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='MetricContent', full_name='ZMetricMsg.MetricContent',
+      name='MetricContent', full_name='org.lfedge.eve.metrics.ZMetricMsg.MetricContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=5933,
-  serialized_end=6144,
+  serialized_start=7569,
+  serialized_end=7872,
 )
 
 _ZEDCLOUDMETRIC.fields_by_name['lastFailure'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
@@ -2554,189 +2554,189 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 memoryMetric = _reflection.GeneratedProtocolMessageType('memoryMetric', (_message.Message,), dict(
   DESCRIPTOR = _MEMORYMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:memoryMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.memoryMetric)
   ))
 _sym_db.RegisterMessage(memoryMetric)
 
 networkMetric = _reflection.GeneratedProtocolMessageType('networkMetric', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:networkMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.networkMetric)
   ))
 _sym_db.RegisterMessage(networkMetric)
 
 zedcloudMetric = _reflection.GeneratedProtocolMessageType('zedcloudMetric', (_message.Message,), dict(
   DESCRIPTOR = _ZEDCLOUDMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:zedcloudMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.zedcloudMetric)
   ))
 _sym_db.RegisterMessage(zedcloudMetric)
 
 urlcloudMetric = _reflection.GeneratedProtocolMessageType('urlcloudMetric', (_message.Message,), dict(
   DESCRIPTOR = _URLCLOUDMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:urlcloudMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.urlcloudMetric)
   ))
 _sym_db.RegisterMessage(urlcloudMetric)
 
 CipherMetric = _reflection.GeneratedProtocolMessageType('CipherMetric', (_message.Message,), dict(
   DESCRIPTOR = _CIPHERMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:CipherMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.CipherMetric)
   ))
 _sym_db.RegisterMessage(CipherMetric)
 
 TypeCounter = _reflection.GeneratedProtocolMessageType('TypeCounter', (_message.Message,), dict(
   DESCRIPTOR = _TYPECOUNTER,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:TypeCounter)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.TypeCounter)
   ))
 _sym_db.RegisterMessage(TypeCounter)
 
 appCpuMetric = _reflection.GeneratedProtocolMessageType('appCpuMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPCPUMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:appCpuMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.appCpuMetric)
   ))
 _sym_db.RegisterMessage(appCpuMetric)
 
 deviceMetric = _reflection.GeneratedProtocolMessageType('deviceMetric', (_message.Message,), dict(
   DESCRIPTOR = _DEVICEMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:deviceMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.deviceMetric)
   ))
 _sym_db.RegisterMessage(deviceMetric)
 
 appContainerMetric = _reflection.GeneratedProtocolMessageType('appContainerMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPCONTAINERMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:appContainerMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.appContainerMetric)
   ))
 _sym_db.RegisterMessage(appContainerMetric)
 
 MetricItem = _reflection.GeneratedProtocolMessageType('MetricItem', (_message.Message,), dict(
   DESCRIPTOR = _METRICITEM,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:MetricItem)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.MetricItem)
   ))
 _sym_db.RegisterMessage(MetricItem)
 
 diskMetric = _reflection.GeneratedProtocolMessageType('diskMetric', (_message.Message,), dict(
   DESCRIPTOR = _DISKMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:diskMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.diskMetric)
   ))
 _sym_db.RegisterMessage(diskMetric)
 
 appDiskMetric = _reflection.GeneratedProtocolMessageType('appDiskMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPDISKMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:appDiskMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.appDiskMetric)
   ))
 _sym_db.RegisterMessage(appDiskMetric)
 
 appMetric = _reflection.GeneratedProtocolMessageType('appMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:appMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.appMetric)
   ))
 _sym_db.RegisterMessage(appMetric)
 
 logMetric = _reflection.GeneratedProtocolMessageType('logMetric', (_message.Message,), dict(
   DESCRIPTOR = _LOGMETRIC,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:logMetric)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.logMetric)
   ))
 _sym_db.RegisterMessage(logMetric)
 
 PktStat = _reflection.GeneratedProtocolMessageType('PktStat', (_message.Message,), dict(
   DESCRIPTOR = _PKTSTAT,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:PktStat)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.PktStat)
   ))
 _sym_db.RegisterMessage(PktStat)
 
 RlocStats = _reflection.GeneratedProtocolMessageType('RlocStats', (_message.Message,), dict(
   DESCRIPTOR = _RLOCSTATS,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:RlocStats)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.RlocStats)
   ))
 _sym_db.RegisterMessage(RlocStats)
 
 EidStats = _reflection.GeneratedProtocolMessageType('EidStats', (_message.Message,), dict(
   DESCRIPTOR = _EIDSTATS,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:EidStats)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.EidStats)
   ))
 _sym_db.RegisterMessage(EidStats)
 
 ZMetricLisp = _reflection.GeneratedProtocolMessageType('ZMetricLisp', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICLISP,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricLisp)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricLisp)
   ))
 _sym_db.RegisterMessage(ZMetricLisp)
 
 ZMetricConn = _reflection.GeneratedProtocolMessageType('ZMetricConn', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICCONN,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricConn)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricConn)
   ))
 _sym_db.RegisterMessage(ZMetricConn)
 
 ZMetricVpn = _reflection.GeneratedProtocolMessageType('ZMetricVpn', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICVPN,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricVpn)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricVpn)
   ))
 _sym_db.RegisterMessage(ZMetricVpn)
 
 ZMetricNone = _reflection.GeneratedProtocolMessageType('ZMetricNone', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICNONE,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricNone)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricNone)
   ))
 _sym_db.RegisterMessage(ZMetricNone)
 
 ZMetricFlowLink = _reflection.GeneratedProtocolMessageType('ZMetricFlowLink', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICFLOWLINK,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricFlowLink)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricFlowLink)
   ))
 _sym_db.RegisterMessage(ZMetricFlowLink)
 
 ZMetricFlowEndPoint = _reflection.GeneratedProtocolMessageType('ZMetricFlowEndPoint', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICFLOWENDPOINT,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricFlowEndPoint)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricFlowEndPoint)
   ))
 _sym_db.RegisterMessage(ZMetricFlowEndPoint)
 
 ZMetricFlow = _reflection.GeneratedProtocolMessageType('ZMetricFlow', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICFLOW,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricFlow)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricFlow)
   ))
 _sym_db.RegisterMessage(ZMetricFlow)
 
 ZMetricLispGlobal = _reflection.GeneratedProtocolMessageType('ZMetricLispGlobal', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICLISPGLOBAL,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricLispGlobal)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricLispGlobal)
   ))
 _sym_db.RegisterMessage(ZMetricLispGlobal)
 
 NetworkStats = _reflection.GeneratedProtocolMessageType('NetworkStats', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKSTATS,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:NetworkStats)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.NetworkStats)
   ))
 _sym_db.RegisterMessage(NetworkStats)
 
 ZMetricNetworkStats = _reflection.GeneratedProtocolMessageType('ZMetricNetworkStats', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICNETWORKSTATS,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricNetworkStats)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricNetworkStats)
   ))
 _sym_db.RegisterMessage(ZMetricNetworkStats)
 
@@ -2745,12 +2745,12 @@ ZProbeNIMetrics = _reflection.GeneratedProtocolMessageType('ZProbeNIMetrics', (_
   ZProbeIntfMetric = _reflection.GeneratedProtocolMessageType('ZProbeIntfMetric', (_message.Message,), dict(
     DESCRIPTOR = _ZPROBENIMETRICS_ZPROBEINTFMETRIC,
     __module__ = 'metrics.metrics_pb2'
-    # @@protoc_insertion_point(class_scope:ZProbeNIMetrics.ZProbeIntfMetric)
+    # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric)
     ))
   ,
   DESCRIPTOR = _ZPROBENIMETRICS,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZProbeNIMetrics)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZProbeNIMetrics)
   ))
 _sym_db.RegisterMessage(ZProbeNIMetrics)
 _sym_db.RegisterMessage(ZProbeNIMetrics.ZProbeIntfMetric)
@@ -2758,21 +2758,21 @@ _sym_db.RegisterMessage(ZProbeNIMetrics.ZProbeIntfMetric)
 ZMetricNetworkInstance = _reflection.GeneratedProtocolMessageType('ZMetricNetworkInstance', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICNETWORKINSTANCE,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricNetworkInstance)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricNetworkInstance)
   ))
 _sym_db.RegisterMessage(ZMetricNetworkInstance)
 
 ZMetricVolume = _reflection.GeneratedProtocolMessageType('ZMetricVolume', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICVOLUME,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricVolume)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricVolume)
   ))
 _sym_db.RegisterMessage(ZMetricVolume)
 
 ZMetricMsg = _reflection.GeneratedProtocolMessageType('ZMetricMsg', (_message.Message,), dict(
   DESCRIPTOR = _ZMETRICMSG,
   __module__ = 'metrics.metrics_pb2'
-  # @@protoc_insertion_point(class_scope:ZMetricMsg)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.ZMetricMsg)
   ))
 _sym_db.RegisterMessage(ZMetricMsg)
 

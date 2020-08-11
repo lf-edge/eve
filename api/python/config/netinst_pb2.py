@@ -19,16 +19,16 @@ from config import netcmn_pb2 as config_dot_netcmn__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/netinst.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x14\x63onfig/netinst.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x13\x63onfig/netcmn.proto\"\x87\x01\n\x1bNetworkInstanceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\x12.\n\nlispConfig\x18\x02 \x01(\x0b\x32\x1a.NetworkInstanceLispConfig\x12\'\n\x04type\x18\x03 \x01(\x0e\x32\x19.ZNetworkOpaqueConfigType\"V\n\x0eZcServicePoint\x12\x1e\n\x06zsType\x18\x03 \x01(\x0e\x32\x0e.ZcServiceType\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"\xcb\x01\n\x19NetworkInstanceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xa4\x02\n\x15NetworkInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12#\n\x08instType\x18\x04 \x01(\x0e\x32\x11.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x16\n\x04port\x18\x14 \x01(\x0b\x32\x08.Adapter\x12)\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x1c.NetworkInstanceOpaqueConfig\x12\x1c\n\x06ipType\x18\' \x01(\x0e\x32\x0c.AddressType\x12\x13\n\x02ip\x18( \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18) \x03(\x0b\x32\x13.ZnetStaticDNSEntry*\xb3\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x17\n\x13ZnetInstTransparent\x10\x06\x12\x11\n\x0cZNetInstLast\x10\xff\x01*W\n\x0b\x41\x64\x64ressType\x12\t\n\x05\x46irst\x10\x00\x12\x08\n\x04IPV4\x10\x01\x12\x08\n\x04IPV6\x10\x02\x12\x0e\n\nCryptoIPV4\x10\x03\x12\x0e\n\nCryptoIPV6\x10\x04\x12\t\n\x04Last\x10\xff\x01*C\n\x18ZNetworkOpaqueConfigType\x12\x12\n\x0eZNetOConfigVPN\x10\x00\x12\x13\n\x0fZNetOConfigLisp\x10\x01*G\n\rZcServiceType\x12\x14\n\x10zcloudInvalidSrv\x10\x00\x12\r\n\tmapServer\x10\x01\x12\x11\n\rsupportServer\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x14\x63onfig/netinst.proto\x12\x15org.lfedge.eve.config\x1a\x16\x63onfig/devcommon.proto\x1a\x13\x63onfig/netcmn.proto\"\xb3\x01\n\x1bNetworkInstanceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\x12\x44\n\nlispConfig\x18\x02 \x01(\x0b\x32\x30.org.lfedge.eve.config.NetworkInstanceLispConfig\x12=\n\x04type\x18\x03 \x01(\x0e\x32/.org.lfedge.eve.config.ZNetworkOpaqueConfigType\"l\n\x0eZcServicePoint\x12\x34\n\x06zsType\x18\x03 \x01(\x0e\x32$.org.lfedge.eve.config.ZcServiceType\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"\xe1\x01\n\x19NetworkInstanceLispConfig\x12\x36\n\x07LispMSs\x18\x01 \x03(\x0b\x32%.org.lfedge.eve.config.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xbe\x03\n\x15NetworkInstanceConfig\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x39\n\x08instType\x18\x04 \x01(\x0e\x32\'.org.lfedge.eve.config.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12,\n\x04port\x18\x14 \x01(\x0b\x32\x1e.org.lfedge.eve.config.Adapter\x12?\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x32.org.lfedge.eve.config.NetworkInstanceOpaqueConfig\x12\x32\n\x06ipType\x18\' \x01(\x0e\x32\".org.lfedge.eve.config.AddressType\x12)\n\x02ip\x18( \x01(\x0b\x32\x1d.org.lfedge.eve.config.ipspec\x12\x36\n\x03\x64ns\x18) \x03(\x0b\x32).org.lfedge.eve.config.ZnetStaticDNSEntry*\xb3\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x17\n\x13ZnetInstTransparent\x10\x06\x12\x11\n\x0cZNetInstLast\x10\xff\x01*W\n\x0b\x41\x64\x64ressType\x12\t\n\x05\x46irst\x10\x00\x12\x08\n\x04IPV4\x10\x01\x12\x08\n\x04IPV6\x10\x02\x12\x0e\n\nCryptoIPV4\x10\x03\x12\x0e\n\nCryptoIPV6\x10\x04\x12\t\n\x04Last\x10\xff\x01*C\n\x18ZNetworkOpaqueConfigType\x12\x12\n\x0eZNetOConfigVPN\x10\x00\x12\x13\n\x0fZNetOConfigLisp\x10\x01*G\n\rZcServiceType\x12\x14\n\x10zcloudInvalidSrv\x10\x00\x12\r\n\tmapServer\x10\x01\x12\x11\n\rsupportServer\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_devcommon__pb2.DESCRIPTOR,config_dot_netcmn__pb2.DESCRIPTOR,])
 
 _ZNETWORKINSTTYPE = _descriptor.EnumDescriptor(
   name='ZNetworkInstType',
-  full_name='ZNetworkInstType',
+  full_name='org.lfedge.eve.config.ZNetworkInstType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -67,15 +67,15 @@ _ZNETWORKINSTTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=797,
-  serialized_end=976,
+  serialized_start=1062,
+  serialized_end=1241,
 )
 _sym_db.RegisterEnumDescriptor(_ZNETWORKINSTTYPE)
 
 ZNetworkInstType = enum_type_wrapper.EnumTypeWrapper(_ZNETWORKINSTTYPE)
 _ADDRESSTYPE = _descriptor.EnumDescriptor(
   name='AddressType',
-  full_name='AddressType',
+  full_name='org.lfedge.eve.config.AddressType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -106,15 +106,15 @@ _ADDRESSTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=978,
-  serialized_end=1065,
+  serialized_start=1243,
+  serialized_end=1330,
 )
 _sym_db.RegisterEnumDescriptor(_ADDRESSTYPE)
 
 AddressType = enum_type_wrapper.EnumTypeWrapper(_ADDRESSTYPE)
 _ZNETWORKOPAQUECONFIGTYPE = _descriptor.EnumDescriptor(
   name='ZNetworkOpaqueConfigType',
-  full_name='ZNetworkOpaqueConfigType',
+  full_name='org.lfedge.eve.config.ZNetworkOpaqueConfigType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -129,15 +129,15 @@ _ZNETWORKOPAQUECONFIGTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1067,
-  serialized_end=1134,
+  serialized_start=1332,
+  serialized_end=1399,
 )
 _sym_db.RegisterEnumDescriptor(_ZNETWORKOPAQUECONFIGTYPE)
 
 ZNetworkOpaqueConfigType = enum_type_wrapper.EnumTypeWrapper(_ZNETWORKOPAQUECONFIGTYPE)
 _ZCSERVICETYPE = _descriptor.EnumDescriptor(
   name='ZcServiceType',
-  full_name='ZcServiceType',
+  full_name='org.lfedge.eve.config.ZcServiceType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -156,8 +156,8 @@ _ZCSERVICETYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1136,
-  serialized_end=1207,
+  serialized_start=1401,
+  serialized_end=1472,
 )
 _sym_db.RegisterEnumDescriptor(_ZCSERVICETYPE)
 
@@ -186,27 +186,27 @@ supportServer = 2
 
 _NETWORKINSTANCEOPAQUECONFIG = _descriptor.Descriptor(
   name='NetworkInstanceOpaqueConfig',
-  full_name='NetworkInstanceOpaqueConfig',
+  full_name='org.lfedge.eve.config.NetworkInstanceOpaqueConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='oconfig', full_name='NetworkInstanceOpaqueConfig.oconfig', index=0,
+      name='oconfig', full_name='org.lfedge.eve.config.NetworkInstanceOpaqueConfig.oconfig', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lispConfig', full_name='NetworkInstanceOpaqueConfig.lispConfig', index=1,
+      name='lispConfig', full_name='org.lfedge.eve.config.NetworkInstanceOpaqueConfig.lispConfig', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='type', full_name='NetworkInstanceOpaqueConfig.type', index=2,
+      name='type', full_name='org.lfedge.eve.config.NetworkInstanceOpaqueConfig.type', index=2,
       number=3, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -224,34 +224,34 @@ _NETWORKINSTANCEOPAQUECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=70,
-  serialized_end=205,
+  serialized_start=93,
+  serialized_end=272,
 )
 
 
 _ZCSERVICEPOINT = _descriptor.Descriptor(
   name='ZcServicePoint',
-  full_name='ZcServicePoint',
+  full_name='org.lfedge.eve.config.ZcServicePoint',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='zsType', full_name='ZcServicePoint.zsType', index=0,
+      name='zsType', full_name='org.lfedge.eve.config.ZcServicePoint.zsType', index=0,
       number=3, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='NameOrIp', full_name='ZcServicePoint.NameOrIp', index=1,
+      name='NameOrIp', full_name='org.lfedge.eve.config.ZcServicePoint.NameOrIp', index=1,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Credential', full_name='ZcServicePoint.Credential', index=2,
+      name='Credential', full_name='org.lfedge.eve.config.ZcServicePoint.Credential', index=2,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -269,62 +269,62 @@ _ZCSERVICEPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=207,
-  serialized_end=293,
+  serialized_start=274,
+  serialized_end=382,
 )
 
 
 _NETWORKINSTANCELISPCONFIG = _descriptor.Descriptor(
   name='NetworkInstanceLispConfig',
-  full_name='NetworkInstanceLispConfig',
+  full_name='org.lfedge.eve.config.NetworkInstanceLispConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='LispMSs', full_name='NetworkInstanceLispConfig.LispMSs', index=0,
+      name='LispMSs', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.LispMSs', index=0,
       number=1, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='LispInstanceId', full_name='NetworkInstanceLispConfig.LispInstanceId', index=1,
+      name='LispInstanceId', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.LispInstanceId', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='allocate', full_name='NetworkInstanceLispConfig.allocate', index=2,
+      name='allocate', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.allocate', index=2,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='exportprivate', full_name='NetworkInstanceLispConfig.exportprivate', index=3,
+      name='exportprivate', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.exportprivate', index=3,
       number=4, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='allocationprefix', full_name='NetworkInstanceLispConfig.allocationprefix', index=4,
+      name='allocationprefix', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.allocationprefix', index=4,
       number=5, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='allocationprefixlen', full_name='NetworkInstanceLispConfig.allocationprefixlen', index=5,
+      name='allocationprefixlen', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.allocationprefixlen', index=5,
       number=6, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='experimental', full_name='NetworkInstanceLispConfig.experimental', index=6,
+      name='experimental', full_name='org.lfedge.eve.config.NetworkInstanceLispConfig.experimental', index=6,
       number=20, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -342,76 +342,76 @@ _NETWORKINSTANCELISPCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=296,
-  serialized_end=499,
+  serialized_start=385,
+  serialized_end=610,
 )
 
 
 _NETWORKINSTANCECONFIG = _descriptor.Descriptor(
   name='NetworkInstanceConfig',
-  full_name='NetworkInstanceConfig',
+  full_name='org.lfedge.eve.config.NetworkInstanceConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuidandversion', full_name='NetworkInstanceConfig.uuidandversion', index=0,
+      name='uuidandversion', full_name='org.lfedge.eve.config.NetworkInstanceConfig.uuidandversion', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayname', full_name='NetworkInstanceConfig.displayname', index=1,
+      name='displayname', full_name='org.lfedge.eve.config.NetworkInstanceConfig.displayname', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instType', full_name='NetworkInstanceConfig.instType', index=2,
+      name='instType', full_name='org.lfedge.eve.config.NetworkInstanceConfig.instType', index=2,
       number=4, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activate', full_name='NetworkInstanceConfig.activate', index=3,
+      name='activate', full_name='org.lfedge.eve.config.NetworkInstanceConfig.activate', index=3,
       number=5, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='port', full_name='NetworkInstanceConfig.port', index=4,
+      name='port', full_name='org.lfedge.eve.config.NetworkInstanceConfig.port', index=4,
       number=20, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cfg', full_name='NetworkInstanceConfig.cfg', index=5,
+      name='cfg', full_name='org.lfedge.eve.config.NetworkInstanceConfig.cfg', index=5,
       number=30, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipType', full_name='NetworkInstanceConfig.ipType', index=6,
+      name='ipType', full_name='org.lfedge.eve.config.NetworkInstanceConfig.ipType', index=6,
       number=39, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ip', full_name='NetworkInstanceConfig.ip', index=7,
+      name='ip', full_name='org.lfedge.eve.config.NetworkInstanceConfig.ip', index=7,
       number=40, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='NetworkInstanceConfig.dns', index=8,
+      name='dns', full_name='org.lfedge.eve.config.NetworkInstanceConfig.dns', index=8,
       number=41, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -429,8 +429,8 @@ _NETWORKINSTANCECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=502,
-  serialized_end=794,
+  serialized_start=613,
+  serialized_end=1059,
 )
 
 _NETWORKINSTANCEOPAQUECONFIG.fields_by_name['lispConfig'].message_type = _NETWORKINSTANCELISPCONFIG
@@ -457,28 +457,28 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 NetworkInstanceOpaqueConfig = _reflection.GeneratedProtocolMessageType('NetworkInstanceOpaqueConfig', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKINSTANCEOPAQUECONFIG,
   __module__ = 'config.netinst_pb2'
-  # @@protoc_insertion_point(class_scope:NetworkInstanceOpaqueConfig)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.NetworkInstanceOpaqueConfig)
   ))
 _sym_db.RegisterMessage(NetworkInstanceOpaqueConfig)
 
 ZcServicePoint = _reflection.GeneratedProtocolMessageType('ZcServicePoint', (_message.Message,), dict(
   DESCRIPTOR = _ZCSERVICEPOINT,
   __module__ = 'config.netinst_pb2'
-  # @@protoc_insertion_point(class_scope:ZcServicePoint)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ZcServicePoint)
   ))
 _sym_db.RegisterMessage(ZcServicePoint)
 
 NetworkInstanceLispConfig = _reflection.GeneratedProtocolMessageType('NetworkInstanceLispConfig', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKINSTANCELISPCONFIG,
   __module__ = 'config.netinst_pb2'
-  # @@protoc_insertion_point(class_scope:NetworkInstanceLispConfig)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.NetworkInstanceLispConfig)
   ))
 _sym_db.RegisterMessage(NetworkInstanceLispConfig)
 
 NetworkInstanceConfig = _reflection.GeneratedProtocolMessageType('NetworkInstanceConfig', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKINSTANCECONFIG,
   __module__ = 'config.netinst_pb2'
-  # @@protoc_insertion_point(class_scope:NetworkInstanceConfig)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.NetworkInstanceConfig)
   ))
 _sym_db.RegisterMessage(NetworkInstanceConfig)
 
