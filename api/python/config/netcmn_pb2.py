@@ -17,15 +17,15 @@ _sym_db = _symbol_database.Default()
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/netcmn.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x13\x63onfig/netcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"G\n\x0bProxyServer\x12\x1a\n\x05proto\x18\x01 \x01(\x0e\x32\x0b.proxyProto\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\x9c\x01\n\x0bProxyConfig\x12\x1a\n\x12networkProxyEnable\x18\x01 \x01(\x08\x12\x1d\n\x07proxies\x18\x02 \x03(\x0b\x32\x0c.ProxyServer\x12\x12\n\nexceptions\x18\x03 \x01(\t\x12\x0f\n\x07pacfile\x18\x04 \x01(\t\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x14\n\x0cproxyCertPEM\x18\x06 \x03(\x0c\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"7\n\x12ZnetStaticDNSEntry\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0f\n\x07\x41\x64\x64ress\x18\x02 \x03(\t\"\x89\x01\n\x06ipspec\x12\x17\n\x04\x64hcp\x18\x02 \x01(\x0e\x32\t.DHCPType\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange*_\n\nproxyProto\x12\x0e\n\nPROXY_HTTP\x10\x00\x12\x0f\n\x0bPROXY_HTTPS\x10\x01\x12\x0f\n\x0bPROXY_SOCKS\x10\x02\x12\r\n\tPROXY_FTP\x10\x03\x12\x10\n\x0bPROXY_OTHER\x10\xff\x01*>\n\x08\x44HCPType\x12\x0c\n\x08\x44HCPNoop\x10\x00\x12\n\n\x06Static\x10\x01\x12\x0c\n\x08\x44HCPNone\x10\x02\x12\n\n\x06\x43lient\x10\x04*]\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\x0c\n\x08\x43ryptoV4\x10\x18\x12\x0c\n\x08\x43ryptoV6\x10\x1a\x12\r\n\tCryptoEID\x10\x0e*4\n\x0cWirelessType\x12\x0c\n\x08TypeNOOP\x10\x00\x12\x08\n\x04WiFi\x10\x01\x12\x0c\n\x08\x43\x65llular\x10\x02*7\n\rWiFiKeyScheme\x12\x0e\n\nSchemeNOOP\x10\x00\x12\n\n\x06WPAPSK\x10\x01\x12\n\n\x06WPAEAP\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x13\x63onfig/netcmn.proto\x12\x15org.lfedge.eve.config\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"]\n\x0bProxyServer\x12\x30\n\x05proto\x18\x01 \x01(\x0e\x32!.org.lfedge.eve.config.proxyProto\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xb2\x01\n\x0bProxyConfig\x12\x1a\n\x12networkProxyEnable\x18\x01 \x01(\x08\x12\x33\n\x07proxies\x18\x02 \x03(\x0b\x32\".org.lfedge.eve.config.ProxyServer\x12\x12\n\nexceptions\x18\x03 \x01(\t\x12\x0f\n\x07pacfile\x18\x04 \x01(\t\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x14\n\x0cproxyCertPEM\x18\x06 \x03(\x0c\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"7\n\x12ZnetStaticDNSEntry\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0f\n\x07\x41\x64\x64ress\x18\x02 \x03(\t\"\xb5\x01\n\x06ipspec\x12-\n\x04\x64hcp\x18\x02 \x01(\x0e\x32\x1f.org.lfedge.eve.config.DHCPType\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x31\n\tdhcpRange\x18\t \x01(\x0b\x32\x1e.org.lfedge.eve.config.ipRange*_\n\nproxyProto\x12\x0e\n\nPROXY_HTTP\x10\x00\x12\x0f\n\x0bPROXY_HTTPS\x10\x01\x12\x0f\n\x0bPROXY_SOCKS\x10\x02\x12\r\n\tPROXY_FTP\x10\x03\x12\x10\n\x0bPROXY_OTHER\x10\xff\x01*>\n\x08\x44HCPType\x12\x0c\n\x08\x44HCPNoop\x10\x00\x12\n\n\x06Static\x10\x01\x12\x0c\n\x08\x44HCPNone\x10\x02\x12\n\n\x06\x43lient\x10\x04*]\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\x0c\n\x08\x43ryptoV4\x10\x18\x12\x0c\n\x08\x43ryptoV6\x10\x1a\x12\r\n\tCryptoEID\x10\x0e*4\n\x0cWirelessType\x12\x0c\n\x08TypeNOOP\x10\x00\x12\x08\n\x04WiFi\x10\x01\x12\x0c\n\x08\x43\x65llular\x10\x02*7\n\rWiFiKeyScheme\x12\x0e\n\nSchemeNOOP\x10\x00\x12\n\n\x06WPAPSK\x10\x01\x12\n\n\x06WPAEAP\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _PROXYPROTO = _descriptor.EnumDescriptor(
   name='proxyProto',
-  full_name='proxyProto',
+  full_name='org.lfedge.eve.config.proxyProto',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -52,15 +52,15 @@ _PROXYPROTO = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=535,
-  serialized_end=630,
+  serialized_start=646,
+  serialized_end=741,
 )
 _sym_db.RegisterEnumDescriptor(_PROXYPROTO)
 
 proxyProto = enum_type_wrapper.EnumTypeWrapper(_PROXYPROTO)
 _DHCPTYPE = _descriptor.EnumDescriptor(
   name='DHCPType',
-  full_name='DHCPType',
+  full_name='org.lfedge.eve.config.DHCPType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -83,15 +83,15 @@ _DHCPTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=632,
-  serialized_end=694,
+  serialized_start=743,
+  serialized_end=805,
 )
 _sym_db.RegisterEnumDescriptor(_DHCPTYPE)
 
 DHCPType = enum_type_wrapper.EnumTypeWrapper(_DHCPTYPE)
 _NETWORKTYPE = _descriptor.EnumDescriptor(
   name='NetworkType',
-  full_name='NetworkType',
+  full_name='org.lfedge.eve.config.NetworkType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -122,15 +122,15 @@ _NETWORKTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=696,
-  serialized_end=789,
+  serialized_start=807,
+  serialized_end=900,
 )
 _sym_db.RegisterEnumDescriptor(_NETWORKTYPE)
 
 NetworkType = enum_type_wrapper.EnumTypeWrapper(_NETWORKTYPE)
 _WIRELESSTYPE = _descriptor.EnumDescriptor(
   name='WirelessType',
-  full_name='WirelessType',
+  full_name='org.lfedge.eve.config.WirelessType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -149,15 +149,15 @@ _WIRELESSTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=791,
-  serialized_end=843,
+  serialized_start=902,
+  serialized_end=954,
 )
 _sym_db.RegisterEnumDescriptor(_WIRELESSTYPE)
 
 WirelessType = enum_type_wrapper.EnumTypeWrapper(_WIRELESSTYPE)
 _WIFIKEYSCHEME = _descriptor.EnumDescriptor(
   name='WiFiKeyScheme',
-  full_name='WiFiKeyScheme',
+  full_name='org.lfedge.eve.config.WiFiKeyScheme',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -176,8 +176,8 @@ _WIFIKEYSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=845,
-  serialized_end=900,
+  serialized_start=956,
+  serialized_end=1011,
 )
 _sym_db.RegisterEnumDescriptor(_WIFIKEYSCHEME)
 
@@ -208,20 +208,20 @@ WPAEAP = 2
 
 _IPRANGE = _descriptor.Descriptor(
   name='ipRange',
-  full_name='ipRange',
+  full_name='org.lfedge.eve.config.ipRange',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='start', full_name='ipRange.start', index=0,
+      name='start', full_name='org.lfedge.eve.config.ipRange.start', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='end', full_name='ipRange.end', index=1,
+      name='end', full_name='org.lfedge.eve.config.ipRange.end', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -239,34 +239,34 @@ _IPRANGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=23,
-  serialized_end=60,
+  serialized_start=46,
+  serialized_end=83,
 )
 
 
 _PROXYSERVER = _descriptor.Descriptor(
   name='ProxyServer',
-  full_name='ProxyServer',
+  full_name='org.lfedge.eve.config.ProxyServer',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='proto', full_name='ProxyServer.proto', index=0,
+      name='proto', full_name='org.lfedge.eve.config.ProxyServer.proto', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='server', full_name='ProxyServer.server', index=1,
+      name='server', full_name='org.lfedge.eve.config.ProxyServer.server', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='port', full_name='ProxyServer.port', index=2,
+      name='port', full_name='org.lfedge.eve.config.ProxyServer.port', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -284,55 +284,55 @@ _PROXYSERVER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=62,
-  serialized_end=133,
+  serialized_start=85,
+  serialized_end=178,
 )
 
 
 _PROXYCONFIG = _descriptor.Descriptor(
   name='ProxyConfig',
-  full_name='ProxyConfig',
+  full_name='org.lfedge.eve.config.ProxyConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='networkProxyEnable', full_name='ProxyConfig.networkProxyEnable', index=0,
+      name='networkProxyEnable', full_name='org.lfedge.eve.config.ProxyConfig.networkProxyEnable', index=0,
       number=1, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='proxies', full_name='ProxyConfig.proxies', index=1,
+      name='proxies', full_name='org.lfedge.eve.config.ProxyConfig.proxies', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='exceptions', full_name='ProxyConfig.exceptions', index=2,
+      name='exceptions', full_name='org.lfedge.eve.config.ProxyConfig.exceptions', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='pacfile', full_name='ProxyConfig.pacfile', index=3,
+      name='pacfile', full_name='org.lfedge.eve.config.ProxyConfig.pacfile', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkProxyURL', full_name='ProxyConfig.networkProxyURL', index=4,
+      name='networkProxyURL', full_name='org.lfedge.eve.config.ProxyConfig.networkProxyURL', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='proxyCertPEM', full_name='ProxyConfig.proxyCertPEM', index=5,
+      name='proxyCertPEM', full_name='org.lfedge.eve.config.ProxyConfig.proxyCertPEM', index=5,
       number=6, type=12, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -350,27 +350,27 @@ _PROXYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=136,
-  serialized_end=292,
+  serialized_start=181,
+  serialized_end=359,
 )
 
 
 _ZEDSERVER = _descriptor.Descriptor(
   name='ZedServer',
-  full_name='ZedServer',
+  full_name='org.lfedge.eve.config.ZedServer',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='HostName', full_name='ZedServer.HostName', index=0,
+      name='HostName', full_name='org.lfedge.eve.config.ZedServer.HostName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='EID', full_name='ZedServer.EID', index=1,
+      name='EID', full_name='org.lfedge.eve.config.ZedServer.EID', index=1,
       number=2, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -388,27 +388,27 @@ _ZEDSERVER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=294,
-  serialized_end=336,
+  serialized_start=361,
+  serialized_end=403,
 )
 
 
 _ZNETSTATICDNSENTRY = _descriptor.Descriptor(
   name='ZnetStaticDNSEntry',
-  full_name='ZnetStaticDNSEntry',
+  full_name='org.lfedge.eve.config.ZnetStaticDNSEntry',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='HostName', full_name='ZnetStaticDNSEntry.HostName', index=0,
+      name='HostName', full_name='org.lfedge.eve.config.ZnetStaticDNSEntry.HostName', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Address', full_name='ZnetStaticDNSEntry.Address', index=1,
+      name='Address', full_name='org.lfedge.eve.config.ZnetStaticDNSEntry.Address', index=1,
       number=2, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -426,62 +426,62 @@ _ZNETSTATICDNSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=338,
-  serialized_end=393,
+  serialized_start=405,
+  serialized_end=460,
 )
 
 
 _IPSPEC = _descriptor.Descriptor(
   name='ipspec',
-  full_name='ipspec',
+  full_name='org.lfedge.eve.config.ipspec',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='dhcp', full_name='ipspec.dhcp', index=0,
+      name='dhcp', full_name='org.lfedge.eve.config.ipspec.dhcp', index=0,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='subnet', full_name='ipspec.subnet', index=1,
+      name='subnet', full_name='org.lfedge.eve.config.ipspec.subnet', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='gateway', full_name='ipspec.gateway', index=2,
+      name='gateway', full_name='org.lfedge.eve.config.ipspec.gateway', index=2,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='domain', full_name='ipspec.domain', index=3,
+      name='domain', full_name='org.lfedge.eve.config.ipspec.domain', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ntp', full_name='ipspec.ntp', index=4,
+      name='ntp', full_name='org.lfedge.eve.config.ipspec.ntp', index=4,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='ipspec.dns', index=5,
+      name='dns', full_name='org.lfedge.eve.config.ipspec.dns', index=5,
       number=8, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dhcpRange', full_name='ipspec.dhcpRange', index=6,
+      name='dhcpRange', full_name='org.lfedge.eve.config.ipspec.dhcpRange', index=6,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -499,8 +499,8 @@ _IPSPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=396,
-  serialized_end=533,
+  serialized_start=463,
+  serialized_end=644,
 )
 
 _PROXYSERVER.fields_by_name['proto'].enum_type = _PROXYPROTO
@@ -523,42 +523,42 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 ipRange = _reflection.GeneratedProtocolMessageType('ipRange', (_message.Message,), dict(
   DESCRIPTOR = _IPRANGE,
   __module__ = 'config.netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:ipRange)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ipRange)
   ))
 _sym_db.RegisterMessage(ipRange)
 
 ProxyServer = _reflection.GeneratedProtocolMessageType('ProxyServer', (_message.Message,), dict(
   DESCRIPTOR = _PROXYSERVER,
   __module__ = 'config.netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:ProxyServer)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ProxyServer)
   ))
 _sym_db.RegisterMessage(ProxyServer)
 
 ProxyConfig = _reflection.GeneratedProtocolMessageType('ProxyConfig', (_message.Message,), dict(
   DESCRIPTOR = _PROXYCONFIG,
   __module__ = 'config.netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:ProxyConfig)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ProxyConfig)
   ))
 _sym_db.RegisterMessage(ProxyConfig)
 
 ZedServer = _reflection.GeneratedProtocolMessageType('ZedServer', (_message.Message,), dict(
   DESCRIPTOR = _ZEDSERVER,
   __module__ = 'config.netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:ZedServer)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ZedServer)
   ))
 _sym_db.RegisterMessage(ZedServer)
 
 ZnetStaticDNSEntry = _reflection.GeneratedProtocolMessageType('ZnetStaticDNSEntry', (_message.Message,), dict(
   DESCRIPTOR = _ZNETSTATICDNSENTRY,
   __module__ = 'config.netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:ZnetStaticDNSEntry)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ZnetStaticDNSEntry)
   ))
 _sym_db.RegisterMessage(ZnetStaticDNSEntry)
 
 ipspec = _reflection.GeneratedProtocolMessageType('ipspec', (_message.Message,), dict(
   DESCRIPTOR = _IPSPEC,
   __module__ = 'config.netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:ipspec)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ipspec)
   ))
 _sym_db.RegisterMessage(ipspec)
 

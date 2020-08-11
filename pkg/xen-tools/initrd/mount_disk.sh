@@ -1,7 +1,7 @@
 #!/bin/sh
 
 mountPointLineNo=1
-ls /sys/block/ | grep xvd | while read -r disk ; do
+ls /sys/block/ | grep vd | while read -r disk ; do
   echo "Processing $disk"
   targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
   if [ -z "$targetDir" ]

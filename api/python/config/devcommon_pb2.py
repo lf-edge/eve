@@ -17,10 +17,10 @@ from evecommon import devmodelcommon_pb2 as evecommon_dot_devmodelcommon__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/devcommon.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x16\x63onfig/devcommon.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"(\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"G\n\x07\x41\x64\x61pter\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x16\x63onfig/devcommon.proto\x12\x15org.lfedge.eve.config\x1a\x1e\x65vecommon/devmodelcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"(\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"G\n\x07\x41\x64\x61pter\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
@@ -29,20 +29,20 @@ DESCRIPTOR = _descriptor.FileDescriptor(
 
 _UUIDANDVERSION = _descriptor.Descriptor(
   name='UUIDandVersion',
-  full_name='UUIDandVersion',
+  full_name='org.lfedge.eve.config.UUIDandVersion',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='UUIDandVersion.uuid', index=0,
+      name='uuid', full_name='org.lfedge.eve.config.UUIDandVersion.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='version', full_name='UUIDandVersion.version', index=1,
+      name='version', full_name='org.lfedge.eve.config.UUIDandVersion.version', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -60,34 +60,34 @@ _UUIDANDVERSION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=58,
-  serialized_end=105,
+  serialized_start=81,
+  serialized_end=128,
 )
 
 
 _DEVICEOPSCMD = _descriptor.Descriptor(
   name='DeviceOpsCmd',
-  full_name='DeviceOpsCmd',
+  full_name='org.lfedge.eve.config.DeviceOpsCmd',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='counter', full_name='DeviceOpsCmd.counter', index=0,
+      name='counter', full_name='org.lfedge.eve.config.DeviceOpsCmd.counter', index=0,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='desiredState', full_name='DeviceOpsCmd.desiredState', index=1,
+      name='desiredState', full_name='org.lfedge.eve.config.DeviceOpsCmd.desiredState', index=1,
       number=3, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='opsTime', full_name='DeviceOpsCmd.opsTime', index=2,
+      name='opsTime', full_name='org.lfedge.eve.config.DeviceOpsCmd.opsTime', index=2,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -105,27 +105,27 @@ _DEVICEOPSCMD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=107,
-  serialized_end=177,
+  serialized_start=130,
+  serialized_end=200,
 )
 
 
 _CONFIGITEM = _descriptor.Descriptor(
   name='ConfigItem',
-  full_name='ConfigItem',
+  full_name='org.lfedge.eve.config.ConfigItem',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='key', full_name='ConfigItem.key', index=0,
+      name='key', full_name='org.lfedge.eve.config.ConfigItem.key', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='value', full_name='ConfigItem.value', index=1,
+      name='value', full_name='org.lfedge.eve.config.ConfigItem.value', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -143,27 +143,27 @@ _CONFIGITEM = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=179,
-  serialized_end=219,
+  serialized_start=202,
+  serialized_end=242,
 )
 
 
 _ADAPTER = _descriptor.Descriptor(
   name='Adapter',
-  full_name='Adapter',
+  full_name='org.lfedge.eve.config.Adapter',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='type', full_name='Adapter.type', index=0,
+      name='type', full_name='org.lfedge.eve.config.Adapter.type', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='Adapter.name', index=1,
+      name='name', full_name='org.lfedge.eve.config.Adapter.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -181,8 +181,8 @@ _ADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=221,
-  serialized_end=292,
+  serialized_start=244,
+  serialized_end=315,
 )
 
 _ADAPTER.fields_by_name['type'].enum_type = evecommon_dot_devmodelcommon__pb2._PHYIOTYPE
@@ -195,28 +195,28 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 UUIDandVersion = _reflection.GeneratedProtocolMessageType('UUIDandVersion', (_message.Message,), dict(
   DESCRIPTOR = _UUIDANDVERSION,
   __module__ = 'config.devcommon_pb2'
-  # @@protoc_insertion_point(class_scope:UUIDandVersion)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.UUIDandVersion)
   ))
 _sym_db.RegisterMessage(UUIDandVersion)
 
 DeviceOpsCmd = _reflection.GeneratedProtocolMessageType('DeviceOpsCmd', (_message.Message,), dict(
   DESCRIPTOR = _DEVICEOPSCMD,
   __module__ = 'config.devcommon_pb2'
-  # @@protoc_insertion_point(class_scope:DeviceOpsCmd)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.DeviceOpsCmd)
   ))
 _sym_db.RegisterMessage(DeviceOpsCmd)
 
 ConfigItem = _reflection.GeneratedProtocolMessageType('ConfigItem', (_message.Message,), dict(
   DESCRIPTOR = _CONFIGITEM,
   __module__ = 'config.devcommon_pb2'
-  # @@protoc_insertion_point(class_scope:ConfigItem)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ConfigItem)
   ))
 _sym_db.RegisterMessage(ConfigItem)
 
 Adapter = _reflection.GeneratedProtocolMessageType('Adapter', (_message.Message,), dict(
   DESCRIPTOR = _ADAPTER,
   __module__ = 'config.devcommon_pb2'
-  # @@protoc_insertion_point(class_scope:Adapter)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.Adapter)
   ))
 _sym_db.RegisterMessage(Adapter)
 

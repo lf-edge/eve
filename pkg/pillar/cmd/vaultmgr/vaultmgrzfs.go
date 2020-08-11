@@ -5,14 +5,16 @@ package vaultmgr
 
 import (
 	log "github.com/sirupsen/logrus"
+	"regexp"
 )
 
 const (
-	zfsPath              = "/usr/sbin/chroot"
-	defaultZpool         = "persist"
-	defaultSecretDataset = defaultZpool + "/vault"
-	zfsKeyFile           = zfsKeyDir + "/protector.key"
-	zfsKeyDir            = "/run/TmpVaultDir2"
+	zfsPath                 = "/usr/sbin/chroot"
+	defaultZpool            = "persist"
+	defaultSecretDataset    = defaultZpool + "/vault"
+	defaultCfgSecretDataset = defaultZpool + "/config"
+	zfsKeyFile              = zfsKeyDir + "/protector.key"
+	zfsKeyDir               = "/run/TmpVaultDir2"
 )
 
 func getCreateParams(vaultPath string) []string {
@@ -32,6 +34,11 @@ func getMountParams(vaultPath string) []string {
 
 func getKeyStatusParams(vaultPath string) []string {
 	args := []string{"/hostfs", "zfs", "get", "keystatus", vaultPath}
+	return args
+}
+
+func getOperStatusParams(vaultPath string) []string {
+	args := []string{"/hostfs", "zfs", "get", "mounted,encryption,keystatus", vaultPath}
 	return args
 }
 
@@ -86,6 +93,37 @@ func checkKeyStatus(vaultPath string) error {
 		return err
 	}
 	return nil
+}
+
+func checkOperStatus(vaultPath string) (string, error) {
+	args := getOperStatusParams(vaultPath)
+	if stdOut, stdErr, err := execCmd(zfsPath, args...); err != nil {
+		log.Errorf("oper status query for %s results in error=%v, %s, %s",
+			vaultPath, err, stdOut, stdErr)
+		return stdErr, err
+	} else {
+		return stdOut, nil
+	}
+}
+
+func processOperStatus(status string) string {
+	//Expect mounted:yes keystatus:available encryption:aes-256-gcm
+	matchConditions := []struct {
+		regexStr string //match this
+		errStr   string //if no match, this is the error to show
+	}{
+		{"keystatus\\s+available\\s", "Key is not loaded"},
+		{"mounted\\s+yes\\s", "Dataset is not mounted"},
+		{"encryption\\s+aes-256-gcm\\s", "Encryption is not enabled"},
+	}
+
+	for _, match := range matchConditions {
+		pattern := regexp.MustCompile(match.regexStr)
+		if !pattern.MatchString(status) {
+			return match.errStr
+		}
+	}
+	return ""
 }
 
 func setupZfsVault(vaultPath string) error {

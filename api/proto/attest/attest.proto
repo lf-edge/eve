@@ -5,6 +5,7 @@ syntax = "proto3";
 
 import "certs/certs.proto";
 
+package org.lfedge.eve.attest;
 option go_package  = "github.com/lf-edge/eve/api/go/attest";
 option java_package = "org.lfedge.eve.attest";
 
@@ -13,7 +14,7 @@ option java_package = "org.lfedge.eve.attest";
 message ZAttestReq {
   ZAttestReqType reqType = 1;  //type of the request
   ZAttestQuote quote = 2;      //attestation quote msg
-  repeated ZCert certs = 3;    //X509 certs in .PEM format, signed by device certificate
+  repeated org.lfedge.eve.certs.ZCert certs = 3;    //X509 certs in .PEM format, signed by device certificate
   AttestStorageKeys storage_keys = 4;    //secrets to be ESCROW'ed with Controller, like keys for the volume storage vaults
 }
 

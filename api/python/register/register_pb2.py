@@ -17,15 +17,15 @@ _sym_db = _symbol_database.Default()
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='register/register.proto',
-  package='',
+  package='org.lfedge.eve.register',
   syntax='proto3',
   serialized_options=_b('\n\027org.lfedge.eve.registerZ&github.com/lf-edge/eve/api/go/register'),
-  serialized_pb=_b('\n\x17register/register.proto\"W\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x12\n\nsoftSerial\x18\x04 \x01(\t\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42\x41\n\x17org.lfedge.eve.registerZ&github.com/lf-edge/eve/api/go/registerb\x06proto3')
+  serialized_pb=_b('\n\x17register/register.proto\x12\x17org.lfedge.eve.register\"W\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x12\n\nsoftSerial\x18\x04 \x01(\t\"I\n\rZRegisterResp\x12\x38\n\x06result\x18\x02 \x01(\x0e\x32(.org.lfedge.eve.register.ZRegisterResult*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42\x41\n\x17org.lfedge.eve.registerZ&github.com/lf-edge/eve/api/go/registerb\x06proto3')
 )
 
 _ZREGISTERRESULT = _descriptor.EnumDescriptor(
   name='ZRegisterResult',
-  full_name='ZRegisterResult',
+  full_name='org.lfedge.eve.register.ZRegisterResult',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -56,8 +56,8 @@ _ZREGISTERRESULT = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=167,
-  serialized_end=289,
+  serialized_start=216,
+  serialized_end=338,
 )
 _sym_db.RegisterEnumDescriptor(_ZREGISTERRESULT)
 
@@ -73,34 +73,34 @@ ZRegFailed = 5
 
 _ZREGISTERMSG = _descriptor.Descriptor(
   name='ZRegisterMsg',
-  full_name='ZRegisterMsg',
+  full_name='org.lfedge.eve.register.ZRegisterMsg',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='onBoardKey', full_name='ZRegisterMsg.onBoardKey', index=0,
+      name='onBoardKey', full_name='org.lfedge.eve.register.ZRegisterMsg.onBoardKey', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='pemCert', full_name='ZRegisterMsg.pemCert', index=1,
+      name='pemCert', full_name='org.lfedge.eve.register.ZRegisterMsg.pemCert', index=1,
       number=2, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='serial', full_name='ZRegisterMsg.serial', index=2,
+      name='serial', full_name='org.lfedge.eve.register.ZRegisterMsg.serial', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='softSerial', full_name='ZRegisterMsg.softSerial', index=3,
+      name='softSerial', full_name='org.lfedge.eve.register.ZRegisterMsg.softSerial', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -118,20 +118,20 @@ _ZREGISTERMSG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=27,
-  serialized_end=114,
+  serialized_start=52,
+  serialized_end=139,
 )
 
 
 _ZREGISTERRESP = _descriptor.Descriptor(
   name='ZRegisterResp',
-  full_name='ZRegisterResp',
+  full_name='org.lfedge.eve.register.ZRegisterResp',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='result', full_name='ZRegisterResp.result', index=0,
+      name='result', full_name='org.lfedge.eve.register.ZRegisterResp.result', index=0,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -149,8 +149,8 @@ _ZREGISTERRESP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=116,
-  serialized_end=165,
+  serialized_start=141,
+  serialized_end=214,
 )
 
 _ZREGISTERRESP.fields_by_name['result'].enum_type = _ZREGISTERRESULT
@@ -162,14 +162,14 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 ZRegisterMsg = _reflection.GeneratedProtocolMessageType('ZRegisterMsg', (_message.Message,), dict(
   DESCRIPTOR = _ZREGISTERMSG,
   __module__ = 'register.register_pb2'
-  # @@protoc_insertion_point(class_scope:ZRegisterMsg)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.register.ZRegisterMsg)
   ))
 _sym_db.RegisterMessage(ZRegisterMsg)
 
 ZRegisterResp = _reflection.GeneratedProtocolMessageType('ZRegisterResp', (_message.Message,), dict(
   DESCRIPTOR = _ZREGISTERRESP,
   __module__ = 'register.register_pb2'
-  # @@protoc_insertion_point(class_scope:ZRegisterResp)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.register.ZRegisterResp)
   ))
 _sym_db.RegisterMessage(ZRegisterResp)
 

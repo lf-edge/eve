@@ -17,15 +17,15 @@ _sym_db = _symbol_database.Default()
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='config/vm.proto',
-  package='',
+  package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x0f\x63onfig/vm.proto\"\xd0\x02\n\x08VmConfig\x12\x0e\n\x06kernel\x18\x01 \x01(\t\x12\x0f\n\x07ramdisk\x18\x02 \x01(\t\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0e\n\x06maxmem\x18\x04 \x01(\r\x12\r\n\x05vcpus\x18\x05 \x01(\r\x12\x0f\n\x07maxcpus\x18\x06 \x01(\r\x12\x0f\n\x07rootdev\x18\x07 \x01(\t\x12\x11\n\textraargs\x18\x08 \x01(\t\x12\x12\n\nbootloader\x18\t \x01(\t\x12\x0c\n\x04\x63pus\x18\n \x01(\t\x12\x12\n\ndevicetree\x18\x0b \x01(\t\x12\r\n\x05\x64tdev\x18\x0c \x03(\t\x12\x0c\n\x04irqs\x18\r \x03(\r\x12\r\n\x05iomem\x18\x0e \x03(\t\x12#\n\x12virtualizationMode\x18\x0f \x01(\x0e\x32\x07.VmMode\x12\x11\n\tenableVnc\x18\x10 \x01(\x08\x12\x12\n\nvncDisplay\x18\x11 \x01(\r\x12\x11\n\tvncPasswd\x18\x12 \x01(\t*;\n\x06VmMode\x12\x06\n\x02PV\x10\x00\x12\x07\n\x03HVM\x10\x01\x12\n\n\x06\x46iller\x10\x02\x12\x07\n\x03\x46ML\x10\x03\x12\x0b\n\x07NOHYPER\x10\x04\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x0f\x63onfig/vm.proto\x12\x15org.lfedge.eve.config\"\xe6\x02\n\x08VmConfig\x12\x0e\n\x06kernel\x18\x01 \x01(\t\x12\x0f\n\x07ramdisk\x18\x02 \x01(\t\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0e\n\x06maxmem\x18\x04 \x01(\r\x12\r\n\x05vcpus\x18\x05 \x01(\r\x12\x0f\n\x07maxcpus\x18\x06 \x01(\r\x12\x0f\n\x07rootdev\x18\x07 \x01(\t\x12\x11\n\textraargs\x18\x08 \x01(\t\x12\x12\n\nbootloader\x18\t \x01(\t\x12\x0c\n\x04\x63pus\x18\n \x01(\t\x12\x12\n\ndevicetree\x18\x0b \x01(\t\x12\r\n\x05\x64tdev\x18\x0c \x03(\t\x12\x0c\n\x04irqs\x18\r \x03(\r\x12\r\n\x05iomem\x18\x0e \x03(\t\x12\x39\n\x12virtualizationMode\x18\x0f \x01(\x0e\x32\x1d.org.lfedge.eve.config.VmMode\x12\x11\n\tenableVnc\x18\x10 \x01(\x08\x12\x12\n\nvncDisplay\x18\x11 \x01(\r\x12\x11\n\tvncPasswd\x18\x12 \x01(\t*;\n\x06VmMode\x12\x06\n\x02PV\x10\x00\x12\x07\n\x03HVM\x10\x01\x12\n\n\x06\x46iller\x10\x02\x12\x07\n\x03\x46ML\x10\x03\x12\x0b\n\x07NOHYPER\x10\x04\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _VMMODE = _descriptor.EnumDescriptor(
   name='VmMode',
-  full_name='VmMode',
+  full_name='org.lfedge.eve.config.VmMode',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -52,8 +52,8 @@ _VMMODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=358,
-  serialized_end=417,
+  serialized_start=403,
+  serialized_end=462,
 )
 _sym_db.RegisterEnumDescriptor(_VMMODE)
 
@@ -68,132 +68,132 @@ NOHYPER = 4
 
 _VMCONFIG = _descriptor.Descriptor(
   name='VmConfig',
-  full_name='VmConfig',
+  full_name='org.lfedge.eve.config.VmConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='kernel', full_name='VmConfig.kernel', index=0,
+      name='kernel', full_name='org.lfedge.eve.config.VmConfig.kernel', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ramdisk', full_name='VmConfig.ramdisk', index=1,
+      name='ramdisk', full_name='org.lfedge.eve.config.VmConfig.ramdisk', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='memory', full_name='VmConfig.memory', index=2,
+      name='memory', full_name='org.lfedge.eve.config.VmConfig.memory', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='maxmem', full_name='VmConfig.maxmem', index=3,
+      name='maxmem', full_name='org.lfedge.eve.config.VmConfig.maxmem', index=3,
       number=4, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vcpus', full_name='VmConfig.vcpus', index=4,
+      name='vcpus', full_name='org.lfedge.eve.config.VmConfig.vcpus', index=4,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='maxcpus', full_name='VmConfig.maxcpus', index=5,
+      name='maxcpus', full_name='org.lfedge.eve.config.VmConfig.maxcpus', index=5,
       number=6, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rootdev', full_name='VmConfig.rootdev', index=6,
+      name='rootdev', full_name='org.lfedge.eve.config.VmConfig.rootdev', index=6,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='extraargs', full_name='VmConfig.extraargs', index=7,
+      name='extraargs', full_name='org.lfedge.eve.config.VmConfig.extraargs', index=7,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bootloader', full_name='VmConfig.bootloader', index=8,
+      name='bootloader', full_name='org.lfedge.eve.config.VmConfig.bootloader', index=8,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cpus', full_name='VmConfig.cpus', index=9,
+      name='cpus', full_name='org.lfedge.eve.config.VmConfig.cpus', index=9,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='devicetree', full_name='VmConfig.devicetree', index=10,
+      name='devicetree', full_name='org.lfedge.eve.config.VmConfig.devicetree', index=10,
       number=11, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dtdev', full_name='VmConfig.dtdev', index=11,
+      name='dtdev', full_name='org.lfedge.eve.config.VmConfig.dtdev', index=11,
       number=12, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='irqs', full_name='VmConfig.irqs', index=12,
+      name='irqs', full_name='org.lfedge.eve.config.VmConfig.irqs', index=12,
       number=13, type=13, cpp_type=3, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='iomem', full_name='VmConfig.iomem', index=13,
+      name='iomem', full_name='org.lfedge.eve.config.VmConfig.iomem', index=13,
       number=14, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='virtualizationMode', full_name='VmConfig.virtualizationMode', index=14,
+      name='virtualizationMode', full_name='org.lfedge.eve.config.VmConfig.virtualizationMode', index=14,
       number=15, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='enableVnc', full_name='VmConfig.enableVnc', index=15,
+      name='enableVnc', full_name='org.lfedge.eve.config.VmConfig.enableVnc', index=15,
       number=16, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vncDisplay', full_name='VmConfig.vncDisplay', index=16,
+      name='vncDisplay', full_name='org.lfedge.eve.config.VmConfig.vncDisplay', index=16,
       number=17, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vncPasswd', full_name='VmConfig.vncPasswd', index=17,
+      name='vncPasswd', full_name='org.lfedge.eve.config.VmConfig.vncPasswd', index=17,
       number=18, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -211,8 +211,8 @@ _VMCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=20,
-  serialized_end=356,
+  serialized_start=43,
+  serialized_end=401,
 )
 
 _VMCONFIG.fields_by_name['virtualizationMode'].enum_type = _VMMODE
@@ -223,7 +223,7 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 VmConfig = _reflection.GeneratedProtocolMessageType('VmConfig', (_message.Message,), dict(
   DESCRIPTOR = _VMCONFIG,
   __module__ = 'config.vm_pb2'
-  # @@protoc_insertion_point(class_scope:VmConfig)
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.VmConfig)
   ))
 _sym_db.RegisterMessage(VmConfig)
 

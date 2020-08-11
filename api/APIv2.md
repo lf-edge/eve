@@ -56,6 +56,7 @@ In general, there is one directory for each API endpoint:
 * `logs`: The LogBundle message sent from Device to Controller containing internal device logs.
 * `apps/instanceid/{app-instance-uuid}/logs`: The LogBundle message sent from Device to Controller containing application console device logs.
 * `certs`: The ZControllerCert message is sent from Controller to Device, and contains the list of certificates used by Controller. Each ZControllerCert message replaces the current list on the device with the new list of certificates. Therefore, if an empty list is sent, it resets the list on the receiving side.
+* `uuid`: This API is used by the device to fetch its unique idenitifier allocated by the Controller. Along with the uuid, the reply for this request will also contain manufacturer and product model of the device.
 * `attest`: This API anchors all trust and attestation operations from the device. At the top level, the device does a POST of `ZAttestReq` and gets `ZAttestResp` as the response from Controller.
 
 `ZAttestReq` supports 4 types of requests:
@@ -189,7 +190,6 @@ The response MUST NOT contain any body content.
 
 Retrieve configuration for a specific Device.
 
-   POST /api/v2/edgeDevice/config (if the uuid is not yet known)
    POST /api/v2/edgeDevice/id/{uuid}/config
 
 Return codes:
@@ -471,6 +471,30 @@ The response MUST contain no body content.
 Edge Devices are expected to have intermittent connectivity, with limited bandwidth, memory and storage. It is likely that, at some point, a Device will run out of local memory or storage to cache information, logs or metrics messages that need to be sent to a Controller.
 
 The choice of which messages to keep, how long to keep them, which to discard, and how to handle these overflows are implementation-dependent and are NOT specified in this document.
+
+### UUID
+
+Retrieve uuid for a specific Device.
+
+   POST /api/v2/edgeDevice/uuid
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `200`
+* Unknown Device: `400`
+* Controller is unavailable e.g., being upgraded: `503`
+
+Request:
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST have the body of a single protobuf message of type AuthContainer where the AuthBody is a protobuf message of type [uuid.UuidRequest](./proto/uuid/uuid.proto). The message should include device certificate of the edge device.
+
+Response:
+
+The response mime type MUST be "application/x-proto-binary".
+The response MUST contain a single protobuf message of type AuthContainer where the AuthBody is a protobuf message of type [uuid.UuidResponse](./proto/uuid/uuid.proto). It must include UUID of the device, along with other fields such as device's registered name, Manufacturer, Model, Enterprise.
 
 ## HTTP MetaData
 
