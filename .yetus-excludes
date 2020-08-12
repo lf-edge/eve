@@ -7,6 +7,7 @@
 ^pkg/pillar/zedpac/
 ^api/python/
 ^api/go/
+^api/images/
 ^.+\.patch
 ^.+\.diff
 ^.+build.yml
