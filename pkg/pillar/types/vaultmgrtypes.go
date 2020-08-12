@@ -19,3 +19,27 @@ type VaultStatus struct {
 func (status VaultStatus) Key() string {
 	return status.Name
 }
+
+//EncryptedVaultKeyFromDevice is published by vaultmgr towards Controller (through zedagent)
+type EncryptedVaultKeyFromDevice struct {
+	Name              string
+	EncryptedVaultKey []byte
+}
+
+//Key returns name of the vault corresponding to this object
+//for now it is only the default vault i.e. "Application Volume Store"
+func (key EncryptedVaultKeyFromDevice) Key() string {
+	return key.Name
+}
+
+//EncryptedVaultKeyFromController is published from Controller to vaultmgr (through zedagent)
+type EncryptedVaultKeyFromController struct {
+	Name              string
+	EncryptedVaultKey []byte
+}
+
+//Key returns name of the vault corresponding to this object
+//for now it is only the default vault i.e. "Application Volume Store"
+func (key EncryptedVaultKeyFromController) Key() string {
+	return key.Name
+}
