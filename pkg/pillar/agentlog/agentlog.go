@@ -12,6 +12,7 @@ import (
 	dbg "runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,6 +29,21 @@ const (
 )
 
 var savedRebootReason = "unknown"
+
+var onceLock = &sync.Mutex{}
+var onceVal bool
+
+// once returns true the first time and then false
+func once() bool {
+	onceLock.Lock()
+	defer onceLock.Unlock()
+	if onceVal {
+		return false
+	} else {
+		onceVal = true
+		return true
+	}
+}
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
 type FatalHook struct {
@@ -449,30 +465,32 @@ func spoofStdFDs(agentName string) *os.File {
 
 func Init(agentName string) {
 	agentPid := os.Getpid()
-	log.SetOutput(os.Stdout)
-	originalStdout := spoofStdFDs(agentName)
-	log.SetOutput(originalStdout)
-	hook := new(FatalHook)
-	hook.agentName = agentName
-	hook.agentPid = agentPid
-	log.AddHook(hook)
-	hook2 := new(SourceHook)
-	hook2.agentName = agentName
-	hook2.agentPid = agentPid
-	log.AddHook(hook2)
-	// Report nano timestamps
-	formatter := log.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
+	if once() {
+		log.SetOutput(os.Stdout)
+		originalStdout := spoofStdFDs(agentName)
+		log.SetOutput(originalStdout)
+		hook := new(FatalHook)
+		hook.agentName = agentName
+		hook.agentPid = agentPid
+		log.AddHook(hook)
+		hook2 := new(SourceHook)
+		hook2.agentName = agentName
+		hook2.agentPid = agentPid
+		log.AddHook(hook2)
+		// Report nano timestamps
+		formatter := log.JSONFormatter{
+			TimestampFormat: time.RFC3339Nano,
+		}
+		log.SetFormatter(&formatter)
+		log.SetReportCaller(true)
+
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGUSR1)
+		signal.Notify(sigs, syscall.SIGUSR2)
+		go handleSignals(agentName, agentPid, sigs)
 	}
-	log.SetFormatter(&formatter)
-	log.SetReportCaller(true)
 	eh := func() { printStack(agentName, agentPid) }
 	log.RegisterExitHandler(eh)
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
-	signal.Notify(sigs, syscall.SIGUSR2)
-	go handleSignals(agentName, agentPid, sigs)
 }
 
 var otherIMGdir = ""
