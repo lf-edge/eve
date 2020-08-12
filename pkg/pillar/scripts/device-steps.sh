@@ -19,6 +19,7 @@ AGENTS0="logmanager ledmanager nim nodeagent domainmgr"
 AGENTS1="zedmanager zedrouter downloader verifier zedagent baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
+SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
@@ -68,6 +69,10 @@ export TMPDIR
 
 if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
+fi
+
+if ! mount -t securityfs securityfs "$SECURITYFSPATH"; then
+    echo "$(date -Ins -u) mounting securityfs failed"
 fi
 
 DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
