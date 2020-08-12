@@ -203,7 +203,7 @@ func createDnsmasqConfiglet(
 		}
 	} else if netconf.Subnet.IP != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
-			ipv4Netmask))
+			"255.255.255.255"))
 	}
 	if advertizeRouter {
 		// IPv6 XXX needs to be handled in radvd

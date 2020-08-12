@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -139,6 +140,17 @@ func checkPortAvailable(
 	return nil
 }
 
+func disableIcmpRedirects(bridgeName string) {
+	sysctlSetting := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", bridgeName)
+	args := []string{"-w", sysctlSetting}
+	out, err := wrap.Command("sysctl", args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
+			args, err, out)
+		log.Errorln(errStr)
+	}
+}
+
 // doCreateBridge
 //		returns (error, bridgeMac-string)
 func doCreateBridge(bridgeName string, bridgeNum int,
@@ -177,6 +189,7 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 			bridgeName, err)
 		return errors.New(errStr), ""
 	}
+	disableIcmpRedirects(bridgeName)
 
 	// For the case of Lisp/Vpn networks, we route all traffic coming from
 	// the bridge to a dummy interface with MTU 1280. This is done to
