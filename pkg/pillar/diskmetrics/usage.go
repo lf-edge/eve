@@ -9,10 +9,11 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus" // XXX add log argument
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-func SizeFromDir(dirname string) uint64 {
+// SizeFromDir performs a du -s
+func SizeFromDir(log *base.LogObject, dirname string) uint64 {
 	var totalUsed uint64
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
@@ -23,7 +24,7 @@ func SizeFromDir(dirname string) uint64 {
 		filename := dirname + "/" + location.Name()
 		log.Debugf("Looking in %s\n", filename)
 		if location.IsDir() {
-			size := SizeFromDir(filename)
+			size := SizeFromDir(log, filename)
 			log.Debugf("Dir %s size %d\n", filename, size)
 			totalUsed += size
 		} else {
@@ -36,7 +37,7 @@ func SizeFromDir(dirname string) uint64 {
 
 // PartitionSize - Given "sdb1" return the size of the partition; "sdb"
 // to size of disk. Returns size and a bool to indicate that it is a partition.
-func PartitionSize(part string) (uint64, bool) {
+func PartitionSize(log *base.LogObject, part string) (uint64, bool) {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
 		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
@@ -48,12 +49,12 @@ func PartitionSize(part string) (uint64, bool) {
 		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
 		return 0, false
 	}
-	isPart := strings.EqualFold(diskType(part), "part")
+	isPart := strings.EqualFold(diskType(log, part), "part")
 	return val, isPart
 }
 
 // diskType returns a string like "disk", "part", "loop"
-func diskType(part string) string {
+func diskType(log *base.LogObject, part string) string {
 	out, err := exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
 	if err != nil {
 		log.Errorf("lsblk -nbdo TYPE %s failed %s\n", "/dev/"+part, err)
@@ -64,7 +65,7 @@ func diskType(part string) string {
 
 // FindDisksPartitions returns the names of all disks and all partitions
 // Return an array of names like "sda", "sdb1"
-func FindDisksPartitions() []string {
+func FindDisksPartitions(log *base.LogObject) []string {
 	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
 	if err != nil {
 		log.Errorf("lsblk -nlo NAME failed %s", err)
@@ -79,16 +80,16 @@ func FindDisksPartitions() []string {
 // FindLargestDisk determines the name of the largest disk
 // The assumption is that this is not a removalable disk like a USB disk
 // with the installer image
-func FindLargestDisk() string {
+func FindLargestDisk(log *base.LogObject) string {
 
 	var maxsize uint64
 	var maxdisk string
-	disksAndPartitions := FindDisksPartitions()
+	disksAndPartitions := FindDisksPartitions(log)
 	for _, part := range disksAndPartitions {
-		if !strings.EqualFold(diskType(part), "disk") {
+		if !strings.EqualFold(diskType(log, part), "disk") {
 			continue
 		}
-		size, _ := PartitionSize(part)
+		size, _ := PartitionSize(log, part)
 		if size > maxsize {
 			maxsize = size
 			maxdisk = part

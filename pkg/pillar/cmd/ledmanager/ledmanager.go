@@ -413,7 +413,7 @@ func InitDellCmd(ledName string) {
 // InitDDCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
 func InitDDCmd(ledName string) {
-	disk := diskmetrics.FindLargestDisk()
+	disk := diskmetrics.FindLargestDisk(log)
 	if disk == "" {
 		return
 	}
