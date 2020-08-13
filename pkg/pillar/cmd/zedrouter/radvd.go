@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
 )
@@ -70,6 +71,7 @@ func startRadvd(cfgPathname string, olIfname string) {
 		"-p",
 		pidPathname,
 	}
+	log.Infof("Creating %s at %s", "nohup radvd", agentlog.GetMyStack())
 	go wrap.Command(cmd, args...).Output()
 }
 

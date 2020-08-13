@@ -9,6 +9,7 @@ package worker
 import (
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -58,6 +59,7 @@ func NewWorker(fn WorkFunction, ctx interface{}, length int) *Worker {
 	w := new(Worker)
 	requestChan := make(chan Work, length)
 	resultChan := make(chan privateResult, length)
+	log.Infof("Creating %s at %s", "w.processWork", agentlog.GetMyStack())
 	go w.processWork(ctx, fn, requestChan, resultChan)
 	w.requestChan = requestChan
 	w.resultChan = resultChan

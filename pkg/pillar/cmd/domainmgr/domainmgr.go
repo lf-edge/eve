@@ -416,6 +416,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed onboarded")
 
+	log.Infof("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&domainCtx, hyper)
 
 	// Wait for DeviceNetworkStatus to be init so we know the management
@@ -640,6 +641,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	h1 := make(chan Notify, 1)
 	handlerMap[config.Key()] = h1
+	log.Infof("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, h1)
 	h = h1
 	select {

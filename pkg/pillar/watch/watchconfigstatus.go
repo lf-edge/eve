@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	log "github.com/sirupsen/logrus"
 )
@@ -47,6 +48,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	defer w.Close()
 
 	done := make(chan bool)
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		for {
 			select {
@@ -200,6 +202,7 @@ func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 	defer w.Close()
 
 	done := make(chan bool)
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		for {
 			select {
