@@ -15,7 +15,7 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -175,7 +175,7 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 			return []byte{}, errors.New("Invalid Initial value")
 		}
 		clearData := make([]byte, len(cipherBlock.CipherData))
-		err = tpmmgr.DecryptSecretWithEcdhKey(cert.X, cert.Y,
+		err = etpm.DecryptSecretWithEcdhKey(cert.X, cert.Y,
 			edgeNodeCert, cipherBlock.InitialValue, cipherBlock.CipherData, clearData)
 		if err != nil {
 			errStr := fmt.Sprintf("Decryption failed with error %v\n", err)
