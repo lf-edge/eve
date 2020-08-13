@@ -7,14 +7,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedpac"
-	log "github.com/sirupsen/logrus"
 	"net/url"
 	"strings"
 )
 
-func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
+func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname string,
 	rawUrl string) (*url.URL, error) {
 
 	for _, port := range status.Ports {
@@ -123,7 +123,7 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 }
 
 // IntfLookupProxyCfg - check if the intf has proxy configured
-func IntfLookupProxyCfg(status *types.DeviceNetworkStatus, ifname, downloadURL string) string {
+func IntfLookupProxyCfg(log *base.LogObject, status *types.DeviceNetworkStatus, ifname, downloadURL string) string {
 	// if proxy is not on the intf, then don't change anything
 	// if download URL has "http://" or "https://" then no change here regardless of proxy
 	// if there is proxy on this intf, treat empty url scheme as for https or http but prefer https,
@@ -140,12 +140,12 @@ func IntfLookupProxyCfg(status *types.DeviceNetworkStatus, ifname, downloadURL s
 
 	tmpURL := passURL
 	tmpURL.Scheme = "https://"
-	proxyURL, err := LookupProxy(status, ifname, tmpURL.String())
+	proxyURL, err := LookupProxy(log, status, ifname, tmpURL.String())
 	if err == nil && proxyURL != nil {
 		return tmpURL.String()
 	}
 	tmpURL.Scheme = "http://"
-	proxyURL, err = LookupProxy(status, ifname, tmpURL.String())
+	proxyURL, err = LookupProxy(log, status, ifname, tmpURL.String())
 	if err == nil && proxyURL != nil {
 		return tmpURL.String()
 	}

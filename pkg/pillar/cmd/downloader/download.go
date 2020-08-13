@@ -38,8 +38,8 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return err
 	}
 	// check for proxies on the selected management port interface
-	proxyLookupURL := zedcloud.IntfLookupProxyCfg(&ctx.deviceNetworkStatus, ifname, downloadURL)
-	proxyURL, err := zedcloud.LookupProxy(&ctx.deviceNetworkStatus, ifname, proxyLookupURL)
+	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
+	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
 		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
 		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
@@ -121,9 +121,9 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return sha256, err
 	}
 	// check for proxies on the selected management port interface
-	proxyLookupURL := zedcloud.IntfLookupProxyCfg(&ctx.deviceNetworkStatus, ifname, downloadURL)
+	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
 
-	proxyURL, err := zedcloud.LookupProxy(&ctx.deviceNetworkStatus, ifname, proxyLookupURL)
+	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
 		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
 		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)

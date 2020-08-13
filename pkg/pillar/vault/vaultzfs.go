@@ -4,7 +4,7 @@
 package vault
 
 import (
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log arg
 )
 
 func getOperStatusParams(vaultPath string) []string {
