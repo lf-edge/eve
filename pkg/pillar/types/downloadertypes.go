@@ -123,18 +123,6 @@ func (status DownloaderStatus) Key() string {
 	return status.ImageSha256
 }
 
-func (status DownloaderStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status DownloaderStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status DownloaderStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }

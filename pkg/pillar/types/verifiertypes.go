@@ -179,18 +179,6 @@ func (status VerifyImageStatus) LogKey() string {
 	return string(base.VerifyImageStatusLogType) + "-" + status.Key()
 }
 
-func (status VerifyImageStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status VerifyImageStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status VerifyImageStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status VerifyImageStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }

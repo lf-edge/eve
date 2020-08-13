@@ -108,18 +108,6 @@ func (status BaseOsStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
-func (status BaseOsStatus) CheckPendingAdd() bool {
-	return false
-}
-
-func (status BaseOsStatus) CheckPendingModify() bool {
-	return false
-}
-
-func (status BaseOsStatus) CheckPendingDelete() bool {
-	return false
-}
-
 // LogCreate :
 func (status BaseOsStatus) LogCreate() {
 	logObject := base.NewLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
@@ -200,18 +188,6 @@ type CertObjStatus struct {
 
 func (status CertObjStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status CertObjStatus) CheckPendingAdd() bool {
-	return false
-}
-
-func (status CertObjStatus) CheckPendingModify() bool {
-	return false
-}
-
-func (status CertObjStatus) CheckPendingDelete() bool {
-	return false
 }
 
 // getCertObjStatus finds a certificate, and returns the status

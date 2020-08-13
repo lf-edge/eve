@@ -246,18 +246,6 @@ func (status AppInstanceStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
-func (status AppInstanceStatus) CheckPendingAdd() bool {
-	return false
-}
-
-func (status AppInstanceStatus) CheckPendingModify() bool {
-	return false
-}
-
-func (status AppInstanceStatus) CheckPendingDelete() bool {
-	return false
-}
-
 // GetAppInterfaceList is a helper function to get all the vifnames
 func (status AppInstanceStatus) GetAppInterfaceList() []string {
 
