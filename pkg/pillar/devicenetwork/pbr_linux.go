@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
 )
 
 // CopyRoutesTable adds routes from one table to another.

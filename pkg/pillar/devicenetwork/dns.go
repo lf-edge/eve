@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus" // XXX FIXME
 	"net"
 	"os"
 	"os/exec"

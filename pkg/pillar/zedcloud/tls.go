@@ -12,10 +12,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"os"
@@ -66,6 +66,7 @@ func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert
 // GetTlsConfig creates and returns a TlsConfig based on current root CA certificates
 // If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
+// XXX why would ctx be nil??
 func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert *tls.Certificate, ctx *ZedCloudContext) (*tls.Config, error) {
 	if serverName == "" {
 		// get the server name
@@ -99,6 +100,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 	caCertPool := x509.NewCertPool()
 
 	if ctx != nil && ctx.V2API {
+		log := ctx.log
 		// Load the well-known CAs
 		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
 		if err != nil {
@@ -138,7 +140,9 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 	if !caCertPool.AppendCertsFromPEM(caCert1) {
 		errStr := fmt.Sprintf("Failed to append certs from %s",
 			types.RootCertFileName)
-		log.Errorf(errStr)
+		if ctx != nil {
+			ctx.log.Errorf(errStr)
+		}
 		return nil, errors.New(errStr)
 	}
 
@@ -209,6 +213,7 @@ func checkProxyCertsChanged(ctx *ZedCloudContext, dns *types.DeviceNetworkStatus
 
 // UpdateTLSProxyCerts - Update when DeviceNetworkStatus changes
 func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
+	log := ctx.log
 	tlsCfg := ctx.TlsConfig
 	devNS := ctx.DeviceNetworkStatus
 	if tlsCfg == nil || devNS == nil {
@@ -271,7 +276,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 	return true
 }
 
-func stapledCheck(connState *tls.ConnectionState) bool {
+func stapledCheck(log *base.LogObject, connState *tls.ConnectionState) bool {
 	if connState.VerifiedChains == nil {
 		log.Errorln("stapledCheck: No VerifiedChains")
 		return false
@@ -306,6 +311,7 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 }
 
 func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkStatus) {
+	log := ctx.log
 	// Only zedagent is to update the host ca-certificates
 	if !ctx.V2API || ctx.AgentName != "zedagent" {
 		log.Infof("updateEtcSSLforProxyCerts: skip agent %s", ctx.AgentName)

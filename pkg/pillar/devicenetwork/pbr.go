@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
 )
 
 const baseTableIndex = 500

@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX remove - need context
 	"time"
 )
 
@@ -40,6 +40,7 @@ const longTime1 = time.Hour * 24
 const longTime2 = time.Hour * 48
 
 // Some day we might return this; right now only for the defaultCtx
+// XXX please make part of ZedCloudContext
 type DeferredContext struct {
 	deferredItems map[string]deferredItemList
 	ticker        flextimer.FlexTickerHandle

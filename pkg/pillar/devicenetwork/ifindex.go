@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"strings"
 )

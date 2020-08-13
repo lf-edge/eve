@@ -839,7 +839,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	// Start with a different port to cycle through them all over time
 	ctx.Iteration++
 	rtf, intfStatusMap, err := devicenetwork.VerifyDeviceNetworkStatus(
-		*ctx.DeviceNetworkStatus, successCount, ctx.Iteration,
+		log, *ctx.DeviceNetworkStatus, successCount, ctx.Iteration,
 		ctx.TestSendTimeout)
 	ctx.DevicePortConfig.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	// Use TestResults to update the DevicePortConfigList and publish

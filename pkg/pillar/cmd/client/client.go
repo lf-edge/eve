@@ -200,7 +200,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
-	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
 		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
@@ -738,7 +738,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.zedcloudCtx.DeviceNetworkStatus = &status
 	// if there is proxy certs change, needs to update both
 	// onboard and device tlsconfig
-	cloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	cloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.zedcloudCtx.DeviceNetworkStatus,
 		TLSConfig:        devtlsConfig,
 		AgentName:        agentName,

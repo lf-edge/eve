@@ -9,7 +9,7 @@ package zedcloud
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus" // OK for log.Fatal
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 	"sync"
 	"time"
 )
@@ -19,7 +19,7 @@ var mutex = &sync.Mutex{}
 
 func maybeInit(ifname string) {
 	if metrics == nil {
-		log.Fatal("no zedcloudmetric map\n")
+		logrus.Fatal("no zedcloudmetric map\n")
 	}
 	if _, ok := metrics[ifname]; !ok {
 		metrics[ifname] = types.ZedcloudMetric{

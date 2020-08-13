@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -31,6 +30,8 @@ const (
 	runwlanDir  = "/run/wlan"
 	wpaTempname = "wpa_supplicant.temp"
 )
+
+var log *base.LogObject
 
 func LastResortDevicePortConfig(ctx *DeviceNetworkContext, ports []string) types.DevicePortConfig {
 
@@ -88,10 +89,10 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //    For each interface verified
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
-// XXX Need NewContext function; pass log, agentName, etc
-func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
+func VerifyDeviceNetworkStatus(logArg *base.LogObject, status types.DeviceNetworkStatus,
 	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
+	log = logArg
 	log.Debugf("VerifyDeviceNetworkStatus() successCount %d, iteration %d",
 		successCount, iteration)
 
@@ -105,9 +106,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
-	// XXX temporary hack
-	log := base.NewSourceLogObject("devicenetwork-xyzzy", 0)
-	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: &status,
 		Timeout:          timeout,
 		Serial:           hardware.GetProductSerial(log),

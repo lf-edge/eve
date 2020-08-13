@@ -12,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
 )
 
 func getDefaultRouteTable() int {

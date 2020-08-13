@@ -341,7 +341,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 				ifname)
 			continue
 		}
-		wstunnelclient := zedcloud.InitializeTunnelClient(ctx.serverNameAndPort, "localhost:4822")
+		wstunnelclient := zedcloud.InitializeTunnelClient(log, ctx.serverNameAndPort, "localhost:4822")
 		destURL := wstunnelclient.Tunnel
 
 		addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus, ifname)
@@ -364,7 +364,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 				continue
 			}
 
-			proxyURL, _ := zedcloud.LookupProxy(deviceNetworkStatus,
+			proxyURL, _ := zedcloud.LookupProxy(log, deviceNetworkStatus,
 				ifname, destURL)
 			if err := wstunnelclient.TestConnection(deviceNetworkStatus, proxyURL, localAddr, ctx.devUUID); err != nil {
 				log.Info(err)

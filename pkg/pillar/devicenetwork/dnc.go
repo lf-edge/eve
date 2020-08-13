@@ -14,7 +14,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -254,7 +253,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	// Hard-coded at 1 for now; at least one interface needs to work
 	const successCount uint = 1
 	ctx.Iteration++
-	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(pending.PendDNS,
+	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(log, pending.PendDNS,
 		successCount, ctx.Iteration, timeout)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp

@@ -9,7 +9,7 @@ package worker
 import (
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log arg
 )
 
 // Worker captures the worker channels

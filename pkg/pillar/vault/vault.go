@@ -13,7 +13,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log arg
 )
 
 const (

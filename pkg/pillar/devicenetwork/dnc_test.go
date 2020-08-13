@@ -13,8 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type compressDPCLTestEntry struct {
@@ -377,7 +378,8 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 func TestCompressDPCL(t *testing.T) {
 
-	log.SetLevel(log.DebugLevel)
+	log = base.NewSourceLogObject("test", 1234)
+	logrus.SetLevel(logrus.DebugLevel)
 
 	for testname, test := range testMatrix {
 		t.Logf("TESTCASE: %s - Running", testname)

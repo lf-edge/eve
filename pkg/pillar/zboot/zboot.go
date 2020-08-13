@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log arg
 )
 
 // MountFlags used in zbootMount calls

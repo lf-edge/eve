@@ -351,7 +351,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-deferredChan:
 			iteration++
-			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(log, *deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
 			if err != nil {
 				log.Errorf("logmanager(Run): log message processing still in "+
 					"deferred state. err: %s", err)
@@ -540,7 +540,7 @@ func processEvents(image string, logChan <-chan logEntry,
 				continue
 			}
 			iteration++
-			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(log, *deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
 			if err != nil {
 				log.Warnf("processEvents:(%s) log message processing still"+
 					" in deferred state", image)
@@ -982,7 +982,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx = zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,

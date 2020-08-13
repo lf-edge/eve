@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 	"mime"
 	"strings"
 )
@@ -90,7 +89,8 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
-var ctx = zedcloud.NewContext(zedcloud.ContextOptions{
+// XXX log from where? Clone existing context?
+var ctx = zedcloud.NewContext(log, zedcloud.ContextOptions{
 	Timeout:       15,
 	NeedStatsFunc: true,
 	AgentName:     "wpad",
