@@ -100,7 +100,7 @@ type nodeagentContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
-func newNodeagentContext() nodeagentContext {
+func newNodeagentContext(ps *pubsub.PubSub) nodeagentContext {
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.minRebootDelay = minRebootDelay
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
@@ -117,6 +117,7 @@ func newNodeagentContext() nodeagentContext {
 	nodeagentCtx.tickerTimer = time.NewTicker(duration)
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
+	nodeagentCtx.agentBaseContext.PubSub = ps
 	nodeagentCtx.agentBaseContext.ErrorTime = errorTime
 	nodeagentCtx.agentBaseContext.AgentName = agentName
 	nodeagentCtx.agentBaseContext.WarningTime = warningTime
@@ -141,7 +142,7 @@ func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
 
 // Run : nodeagent run entry function
 func Run(ps *pubsub.PubSub) {
-	nodeagentCtx := newNodeagentContext()
+	nodeagentCtx := newNodeagentContext(ps)
 
 	log = agentbase.Run(&nodeagentCtx)
 
@@ -246,7 +247,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -278,7 +279,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Device is onboarded")
 	// Start waiting for controller connectivity
@@ -339,7 +340,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

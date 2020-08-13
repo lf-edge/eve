@@ -586,7 +586,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
 		ctx := vaultMgrContext{}
@@ -617,7 +617,7 @@ func Run(ps *pubsub.PubSub) {
 				subGlobalConfig.ProcessChange(change)
 			case <-stillRunning.C:
 			}
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		log.Infof("processed GlobalConfig")
 
@@ -636,7 +636,7 @@ func Run(ps *pubsub.PubSub) {
 		for {
 			select {
 			case <-stillRunning.C:
-				agentlog.StillRunning(agentName, warningTime, errorTime)
+				ps.StillRunning(agentName, warningTime, errorTime)
 			}
 		}
 	default:

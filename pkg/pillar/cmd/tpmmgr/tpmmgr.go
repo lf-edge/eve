@@ -1139,7 +1139,7 @@ func Run(ps *pubsub.PubSub) {
 
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
 		ctx := tpmMgrContext{}
@@ -1232,7 +1232,7 @@ func Run(ps *pubsub.PubSub) {
 				ctx.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 			}
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		log.Infof("processed GlobalConfig")
 
@@ -1252,7 +1252,7 @@ func Run(ps *pubsub.PubSub) {
 			case change := <-ctx.subAttestNonce.MsgChan():
 				ctx.subAttestNonce.ProcessChange(change)
 			case <-stillRunning.C:
-				agentlog.StillRunning(agentName, warningTime, errorTime)
+				ps.StillRunning(agentName, warningTime, errorTime)
 			}
 		}
 	case "printCapability":

@@ -5,6 +5,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -26,6 +27,7 @@ type CliParams struct {
 
 // Context - a struct that represents a general agent context
 type Context struct {
+	PubSub       *pubsub.PubSub
 	CLIParams    CliParams
 	ErrorTime    time.Duration
 	WarningTime  time.Duration
@@ -59,7 +61,7 @@ func Run(agentSpecificContext AgentBase) *base.LogObject {
 	}
 	log.Infof("Starting %s\n", ctx.AgentName)
 	if ctx.NeedWatchdog {
-		agentlog.StillRunning(ctx.AgentName, ctx.WarningTime, ctx.ErrorTime)
+		ctx.PubSub.StillRunning(ctx.AgentName, ctx.WarningTime, ctx.ErrorTime)
 	}
 	return log
 }

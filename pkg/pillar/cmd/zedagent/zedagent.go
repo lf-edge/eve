@@ -79,6 +79,7 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
+	ps                        *pubsub.PubSub
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
 	attestCtx                 *attestContext    // Cross link
@@ -188,7 +189,10 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("Starting %s", agentName)
 
 	triggerDeviceInfo := make(chan struct{}, 1)
-	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
+	zedagentCtx := zedagentContext{
+		ps:                ps,
+		TriggerDeviceInfo: triggerDeviceInfo,
+	}
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
 	zedagentCtx.globalStatus.ConfigItems = make(
@@ -216,12 +220,12 @@ func Run(ps *pubsub.PubSub) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
-	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName+"config", warningTime, errorTime)
+	ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+	ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
+	ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -798,14 +802,14 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+		ps.StillRunning(agentName+"config", warningTime, errorTime)
+		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ps.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses")
@@ -838,7 +842,7 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-deferredChan:
 			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -850,14 +854,14 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ps.StillRunning(agentName+"config", warningTime, errorTime)
+		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ps.StillRunning(agentName+"attest", warningTime, errorTime)
+		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -1044,7 +1048,7 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-deferredChan:
 			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
 		case change := <-subCipherMetricsDL.MsgChan():
@@ -1114,7 +1118,7 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }
@@ -1146,11 +1150,11 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 			PublishDeviceInfoToZedCloud(ctxPtr)
 			ctxPtr.iteration++
 			log.Info("deviceInfoTask done with message")
-			pubsub.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
+			ctxPtr.ps.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
 				warningTime, errorTime)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ctxPtr.ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 }
 

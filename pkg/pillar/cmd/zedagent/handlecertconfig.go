@@ -18,7 +18,6 @@ import (
 	zcert "github.com/lf-edge/eve/api/go/certs"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/evecommon"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -167,19 +166,19 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 
 	for {
 		select {
 		case <-triggerCerts:
 			start := time.Now()
 			getCertsFromController(ctx)
-			pubsub.CheckMaxTimeTopic(agentName+"ccerts", "publishCerts", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"ccerts", "publishCerts", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 }
 
@@ -253,20 +252,20 @@ func edgeNodeCertsTask(ctx *zedagentContext, triggerEdgeNodeCerts chan struct{})
 	publishEdgeNodeCertsToController(ctx)
 
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	for {
 		select {
 		case <-triggerEdgeNodeCerts:
 			start := time.Now()
 			publishEdgeNodeCertsToController(ctx)
-			pubsub.CheckMaxTimeTopic(agentName+"attest",
+			ctx.ps.CheckMaxTimeTopic(agentName+"attest",
 				"publishEdgeNodeCertsToController", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 }
 

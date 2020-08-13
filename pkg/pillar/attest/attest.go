@@ -8,6 +8,9 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus" // XXX add log argument
 	"time"
+
+	// XXX use "github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
 //Event represents an event in the attest state machine
@@ -140,6 +143,7 @@ func RegisterExternalIntf(t TpmAgent, v Verifier, w Watchdog) {
 
 //Context has all the runtime context required to run this state machine
 type Context struct {
+	PubSub                *pubsub.PubSub
 	event                 Event
 	state                 State
 	restartTimer          *time.Timer
@@ -158,8 +162,9 @@ type Transition struct {
 }
 
 //New returns a new instance of the state machine
-func New(retryTime, watchdogTickerTime time.Duration, opaque interface{}) (*Context, error) {
+func New(ps *pubsub.PubSub, retryTime, watchdogTickerTime time.Duration, opaque interface{}) (*Context, error) {
 	return &Context{
+		PubSub:             ps,
 		event:              EventInitialize,
 		state:              StateNone,
 		eventTrigger:       make(chan Event),
