@@ -6,10 +6,9 @@ package attest
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus" // XXX add log argument
 	"time"
 
-	// XXX use "github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
@@ -144,6 +143,7 @@ func RegisterExternalIntf(t TpmAgent, v Verifier, w Watchdog) {
 //Context has all the runtime context required to run this state machine
 type Context struct {
 	PubSub                *pubsub.PubSub
+	log                   *base.LogObject
 	event                 Event
 	state                 State
 	restartTimer          *time.Timer
@@ -162,9 +162,10 @@ type Transition struct {
 }
 
 //New returns a new instance of the state machine
-func New(ps *pubsub.PubSub, retryTime, watchdogTickerTime time.Duration, opaque interface{}) (*Context, error) {
+func New(ps *pubsub.PubSub, log *base.LogObject, retryTime, watchdogTickerTime time.Duration, opaque interface{}) (*Context, error) {
 	return &Context{
 		PubSub:             ps,
+		log:                log,
 		event:              EventInitialize,
 		state:              StateNone,
 		eventTrigger:       make(chan Event),
@@ -228,7 +229,7 @@ func startNewRetryTimer(ctx *Context) error {
 	if ctx.restartTimer != nil {
 		ctx.restartTimer.Stop()
 	}
-	log.Debugf("Starting retry timer at %v\n", time.Now())
+	ctx.log.Debugf("Starting retry timer at %v\n", time.Now())
 	if ctx.retryTime == 0 {
 		return fmt.Errorf("retryTime not initialized")
 	}
@@ -238,14 +239,14 @@ func startNewRetryTimer(ctx *Context) error {
 
 //The event handlers
 func handleInitializeAtNone(ctx *Context) error {
-	log.Debug("handleInitializeAtNone")
+	ctx.log.Debug("handleInitializeAtNone")
 	ctx.state = StateNonceWait
 	err := verifier.SendNonceRequest(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventNonceRecvd)
 		return nil
 	}
-	log.Errorf("Error %v while sending nonce request\n", err)
+	ctx.log.Errorf("Error %v while sending nonce request\n", err)
 	switch err {
 	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
@@ -255,13 +256,13 @@ func handleInitializeAtNone(ctx *Context) error {
 }
 
 func handleNonceRecvdAtNonceWait(ctx *Context) error {
-	log.Debug("handleNonceRecvdAtNonceWait")
+	ctx.log.Debug("handleNonceRecvdAtNonceWait")
 	ctx.state = StateInternalQuoteWait
 	err := tpmAgent.SendInternalQuoteRequest(ctx)
 	if err == nil {
 		return nil
 	}
-	log.Errorf("Error %v while sending internal quote request\n", err)
+	ctx.log.Errorf("Error %v while sending internal quote request\n", err)
 	switch err {
 	case ErrTpmAgentUnavailable:
 		return startNewRetryTimer(ctx)
@@ -271,14 +272,14 @@ func handleNonceRecvdAtNonceWait(ctx *Context) error {
 }
 
 func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
-	log.Debug("handleInternalQuoteRecvdAtInternalQuoteWait")
+	ctx.log.Debug("handleInternalQuoteRecvdAtInternalQuoteWait")
 	ctx.state = StateAttestWait
 	err := verifier.SendAttestQuote(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventAttestSuccessful)
 		return nil
 	}
-	log.Errorf("Error %v while sending quote\n", err)
+	ctx.log.Errorf("Error %v while sending quote\n", err)
 	switch err {
 	case ErrNonceMismatch:
 		return triggerSelfEvent(ctx, EventNonceMismatch)
@@ -294,14 +295,14 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 }
 
 func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
-	log.Debug("handleAttestSuccessfulAtAttestWait")
+	ctx.log.Debug("handleAttestSuccessfulAtAttestWait")
 	ctx.state = StateAttestEscrowWait
 	err := verifier.SendAttestEscrow(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventAttestEscrowRecorded)
 		return nil
 	}
-	log.Errorf("Error %v while sending attest escrow keys\n", err)
+	ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
 	switch err {
 	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
@@ -316,7 +317,7 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 }
 
 func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
-	log.Debug("handleAttestEscrowRecordedAtAttestEscrowWait")
+	ctx.log.Debug("handleAttestEscrowRecordedAtAttestEscrowWait")
 	ctx.state = StateComplete
 	if ctx.restartRequestPending {
 		ctx.state = StateRestartWait
@@ -326,65 +327,65 @@ func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
 }
 
 func handleRestartAtStateComplete(ctx *Context) error {
-	log.Debug("handleRestartAtStateComplete")
+	ctx.log.Debug("handleRestartAtStateComplete")
 	ctx.state = StateRestartWait
 	return startNewRetryTimer(ctx)
 }
 
 func handleRestart(ctx *Context) error {
-	log.Debug("handleRestart")
+	ctx.log.Debug("handleRestart")
 	ctx.restartRequestPending = true
 	return nil
 }
 
 func handleNonceMismatchAtAttestWait(ctx *Context) error {
-	log.Debug("handleNonceMismatchAtAttestWait")
+	ctx.log.Debug("handleNonceMismatchAtAttestWait")
 	ctx.state = StateRestartWait
 	return startNewRetryTimer(ctx)
 }
 
 func handleQuoteMismatchAtAttestWait(ctx *Context) error {
-	log.Debug("handleQuoteMismatchAtAttestWait")
+	ctx.log.Debug("handleQuoteMismatchAtAttestWait")
 	return handleNonceMismatchAtAttestWait(ctx)
 }
 
 func handleNoQuoteCertRcvdAtAttestWait(ctx *Context) error {
-	log.Debug("handleNoQuoteCertRcvdAtAttestWait")
+	ctx.log.Debug("handleNoQuoteCertRcvdAtAttestWait")
 	return handleNonceMismatchAtAttestWait(ctx)
 }
 
 func handleAttestEscrowFailedAtAttestEscrowWait(ctx *Context) error {
-	log.Debug("handleAttestEscrowFailedAtAttestEscrowWait")
+	ctx.log.Debug("handleAttestEscrowFailedAtAttestEscrowWait")
 	ctx.state = StateRestartWait
 	return startNewRetryTimer(ctx)
 }
 
 func handleRetryTimerExpiryAtRestartWait(ctx *Context) error {
-	log.Debug("handleRetryTimerExpiryAtRestartWait")
+	ctx.log.Debug("handleRetryTimerExpiryAtRestartWait")
 	ctx.state = StateNone
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 
 func handleRetryTimerExpiryAtNonceWait(ctx *Context) error {
-	log.Debug("handleRetryTimerExpiryAtNonceWait")
+	ctx.log.Debug("handleRetryTimerExpiryAtNonceWait")
 	ctx.state = StateNone
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 
 func handleRetryTimerExpiryAtAttestWait(ctx *Context) error {
 	//try re-sending quote
-	log.Debug("handleRetryTimerExpiryAtAttestWait")
+	ctx.log.Debug("handleRetryTimerExpiryAtAttestWait")
 	return handleInternalQuoteRecvdAtInternalQuoteWait(ctx)
 }
 
 func handleRetryTimerExpiryWhileAttestEscrowWait(ctx *Context) error {
 	//try re-sending escrow info
-	log.Debug("handleRetryTimerExpiryWhileAttestEscrowWait")
+	ctx.log.Debug("handleRetryTimerExpiryWhileAttestEscrowWait")
 	return handleAttestSuccessfulAtAttestWait(ctx)
 }
 
 func handleRetryTimerExpiryAtInternalQuoteWait(ctx *Context) error {
-	log.Debug("handleRetryTimerExpiryAtInternalQuoteWait")
+	ctx.log.Debug("handleRetryTimerExpiryAtInternalQuoteWait")
 	return handleNonceRecvdAtNonceWait(ctx)
 }
 
@@ -393,7 +394,7 @@ func despatchEvent(event Event, state State, ctx *Context) error {
 	if ok {
 		return elem(ctx)
 	} else {
-		log.Fatalf("Unexpected Event %s in State %s\n",
+		ctx.log.Fatalf("Unexpected Event %s in State %s\n",
 			event.String(), state.String())
 		//just to keep compiler happy
 		return fmt.Errorf("Unexpected Event %s in State %s\n",
@@ -420,15 +421,15 @@ func (ctx *Context) EnterEventLoop() {
 	for {
 		select {
 		case trigger := <-ctx.eventTrigger:
-			log.Debug("[ATTEST] despatching event")
+			ctx.log.Debug("[ATTEST] despatching event")
 			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
-				log.Errorf("%v", err)
+				ctx.log.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			log.Debug("[ATTEST] EventRetryTimerExpiry event")
+			ctx.log.Debug("[ATTEST] EventRetryTimerExpiry event")
 			triggerSelfEvent(ctx, EventRetryTimerExpiry)
 		case <-stillRunning.C:
-			log.Debug("[ATTEST] stillRunning event")
+			ctx.log.Debug("[ATTEST] stillRunning event")
 			punchWatchdog(ctx)
 		}
 	}
