@@ -381,9 +381,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			&metric)
 	}
 
-	disks := diskmetrics.FindDisksPartitions()
+	disks := diskmetrics.FindDisksPartitions(log)
 	for _, d := range disks {
-		size, _ := diskmetrics.PartitionSize(d)
+		size, _ := diskmetrics.PartitionSize(log, d)
 		log.Debugf("Disk/partition %s size %d", d, size)
 		size = utils.RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
@@ -423,7 +423,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	log.Debugf("persistUsage %d, elapse sec %v", persistUsage, time.Since(startPubTime).Seconds())
 
 	for _, path := range reportDirPaths {
-		usage := diskmetrics.SizeFromDir(path)
+		usage := diskmetrics.SizeFromDir(log, path)
 		log.Debugf("Path %s usage %d", path, usage)
 		metric := metrics.DiskMetric{MountPath: path,
 			Used: utils.RoundToMbytes(usage),
@@ -436,7 +436,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	// for the benefits of applications
 	var persistAppUsage uint64
 	for _, path := range appPersistPaths {
-		persistAppUsage += diskmetrics.SizeFromDir(path)
+		persistAppUsage += diskmetrics.SizeFromDir(log, path)
 	}
 	log.Debugf("persistAppUsage %d, elapse sec %v", persistAppUsage, time.Since(startPubTime).Seconds())
 
@@ -820,10 +820,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
 	// Find all disks and partitions
-	disks := diskmetrics.FindDisksPartitions()
+	disks := diskmetrics.FindDisksPartitions(log)
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
-		size, _ := diskmetrics.PartitionSize(disk)
+		size, _ := diskmetrics.PartitionSize(log, disk)
 		log.Debugf("Disk/partition %s size %d", disk, size)
 		size = utils.RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
