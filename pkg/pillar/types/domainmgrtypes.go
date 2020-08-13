@@ -42,16 +42,6 @@ func (config DomainConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config DomainConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // VirtualizationModeOrDefault sets the default to PV
 func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	switch config.VirtualizationMode {
@@ -191,16 +181,6 @@ type DomainStatus struct {
 
 func (status DomainStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status DomainStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 func (status DomainStatus) CheckPendingAdd() bool {
