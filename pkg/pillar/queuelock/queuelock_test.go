@@ -14,6 +14,8 @@ package queuelock
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // enum values for work
@@ -35,8 +37,10 @@ func assertPanic(t *testing.T, f func()) {
 	f()
 }
 
+var log = base.NewSourceLogObject("test", 1234)
+
 func TestExtraExit(t *testing.T) {
-	h := NewQueueLock()
+	h := NewQueueLock(log)
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
@@ -46,7 +50,7 @@ func TestExtraExit(t *testing.T) {
 }
 
 func TestBadExit(t *testing.T) {
-	h := NewQueueLock()
+	h := NewQueueLock(log)
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
@@ -62,7 +66,7 @@ func TestBadExit(t *testing.T) {
 }
 
 func TestOne(t *testing.T) {
-	h := NewQueueLock()
+	h := NewQueueLock(log)
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
@@ -89,7 +93,7 @@ func tryChannel(h *Handle) (uint, bool) {
 }
 
 func TestTwo(t *testing.T) {
-	h := NewQueueLock()
+	h := NewQueueLock(log)
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
@@ -121,7 +125,7 @@ func TestTwo(t *testing.T) {
 }
 
 func TestThree(t *testing.T) {
-	h := NewQueueLock()
+	h := NewQueueLock(log)
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
@@ -174,7 +178,7 @@ func TestThree(t *testing.T) {
 }
 
 func TestThreeDuplicate(t *testing.T) {
-	h := NewQueueLock()
+	h := NewQueueLock(log)
 	assert.NotNil(t, h)
 	assert.Equal(t, 0, h.NumWaiters())
 	assert.False(t, h.IsBusy())
