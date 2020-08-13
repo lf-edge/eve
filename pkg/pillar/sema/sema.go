@@ -15,6 +15,7 @@ type Semaphore struct {
 	log *base.LogObject
 }
 
+// New returns a Semaphore object
 func New(log *base.LogObject, n int) *Semaphore {
 	log.Infof("sema.New()")
 	return &Semaphore{
