@@ -7,7 +7,7 @@ package cipher
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus" // OK for log.Fatal
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 	"sync"
 	"time"
 )
@@ -41,7 +41,7 @@ func RecordFailure(agentName string, errcode types.CipherError) {
 
 func maybeInit(agentName string) {
 	if metrics == nil {
-		log.Fatal("no cipher map")
+		logrus.Fatal("no cipher map")
 	}
 	if _, ok := metrics[agentName]; !ok {
 		metrics[agentName] = types.CipherMetrics{
