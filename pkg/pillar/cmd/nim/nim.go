@@ -940,7 +940,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		}
 		if gcpSSHAuthorizedKeys != ctx.sshAuthorizedKeys || first {
 			ctx.sshAuthorizedKeys = gcpSSHAuthorizedKeys
-			ssh.UpdateSshAuthorizedKeys(ctx.sshAuthorizedKeys)
+			ssh.UpdateSshAuthorizedKeys(log, ctx.sshAuthorizedKeys)
 		}
 		if gcpAllowAppVnc != ctx.allowAppVnc {
 			ctx.allowAppVnc = gcpAllowAppVnc
