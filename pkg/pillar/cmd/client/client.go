@@ -215,7 +215,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait for a usable IP address.
 	// After 5 seconds we check; if we already have a UUID we proceed.
@@ -363,7 +363,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Post loop code

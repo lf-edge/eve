@@ -7,21 +7,61 @@
 package pubsub
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-// CheckMaxTimeTopic verifies if the time for a call has exeeded a reasonable
-// number.
-// XXX move to legacy? Change all callers to use member function?
-func CheckMaxTimeTopic(agentName string, topic string, start time.Time,
-	warnTime time.Duration, errTime time.Duration) {
-	pid := os.Getpid()
-	log := base.NewSourceLogObject(agentName, pid)
-	ps := New(&EmptyDriver{}, log)
-	ps.CheckMaxTimeTopic(agentName, topic, start, warnTime, errTime)
+// Debug info to tell how often/late we call stillRunning; keyed by agentName
+var lockedLastStillMap = base.NewLockedStringMap()
+
+// StillRunning touches a file per agentName to signal the event loop is still running
+// Those files are observed by the watchdog
+func (p *PubSub) StillRunning(agentName string, warnTime time.Duration, errTime time.Duration) {
+	log := p.log
+	log.Debugf("StillRunning(%s)\n", agentName)
+
+	if lsValue, found := lockedLastStillMap.Load(agentName); !found {
+		lockedLastStillMap.Store(agentName, time.Now())
+	} else {
+		ls, ok := lsValue.(time.Time)
+		if !ok {
+			log.Fatalf("Unexpected type from lockedLastStillMap: wanted time.Time, got %T", lsValue)
+		}
+		elapsed := time.Since(ls)
+		if elapsed > errTime {
+			log.Errorf("StillRunning(%s) XXX took a long time: %d",
+				agentName, elapsed/time.Second)
+		} else if elapsed > warnTime {
+			log.Warnf("StillRunning(%s) took a long time: %d",
+				agentName, elapsed/time.Second)
+		}
+		lockedLastStillMap.Store(agentName, time.Now())
+	}
+
+	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
+	_, err := os.Stat(filename)
+	if err != nil {
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Infof("StillRunning: %s\n", err)
+			return
+		}
+		file.Close()
+	}
+	_, err = os.Stat(filename)
+	if err != nil {
+		log.Errorf("StilRunning: %s\n", err)
+		return
+	}
+	now := time.Now()
+	err = os.Chtimes(filename, now, now)
+	if err != nil {
+		log.Errorf("StillRunning: %s\n", err)
+		return
+	}
 }
 
 // CheckMaxTimeTopic verifies if the time for a call has exeeded a reasonable

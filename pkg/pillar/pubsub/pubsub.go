@@ -110,6 +110,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 		MaxProcessTimeError: options.ErrorTime,
 		Persistent:          options.Persistent,
 		log:                 p.log,
+		ps:                  p,
 	}
 	name := sub.nameString()
 	global := options.AgentName == ""

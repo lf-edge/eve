@@ -23,14 +23,12 @@ import (
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
@@ -125,7 +123,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 
 	for {
 		select {
@@ -133,12 +131,12 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 			start := time.Now()
 			iteration += 1
 			publishMetrics(ctx, iteration)
-			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}
 }
 

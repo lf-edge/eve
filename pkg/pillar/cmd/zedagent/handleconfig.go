@@ -15,7 +15,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -120,6 +119,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 
+	ctx := getconfigCtx.zedagentCtx
 	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
@@ -137,7 +137,7 @@ func configTimerTask(handleChannel chan interface{},
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
 
 	for {
 		select {
@@ -146,7 +146,7 @@ func configTimerTask(handleChannel chan interface{},
 			iteration += 1
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
-			pubsub.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
 
@@ -155,7 +155,7 @@ func configTimerTask(handleChannel chan interface{},
 				log.Infof("reboot flag set")
 			}
 		}
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
 	}
 }
 

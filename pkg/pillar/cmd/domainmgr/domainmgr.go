@@ -68,6 +68,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
+	ps *pubsub.PubSub
 	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
 	decryptCipherContext   cipher.DecryptCipherContext
@@ -145,7 +146,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Publish metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -186,6 +187,7 @@ func Run(ps *pubsub.PubSub) {
 	// hence will be overridden in handleGlobalConfig below.
 	// This helps onboarding new hardware by making keyboard etc available
 	domainCtx := domainContext{
+		ps:                  ps,
 		usbAccess:           true,
 		domainBootRetryTime: 600,
 	}
@@ -379,7 +381,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GCComplete")
 
@@ -403,7 +405,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -417,7 +419,7 @@ func Run(ps *pubsub.PubSub) {
 		case <-stillRunning.C:
 
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed onboarded")
 
@@ -437,7 +439,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
@@ -476,7 +478,7 @@ func Run(ps *pubsub.PubSub) {
 		// PhysicalIO which depends on cloud connectivity
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
@@ -529,12 +531,12 @@ func Run(ps *pubsub.PubSub) {
 			if err != nil {
 				log.Errorln(err)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

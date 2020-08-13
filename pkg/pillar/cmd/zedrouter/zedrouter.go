@@ -118,7 +118,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Infof("Create %s\n", runDirname)
@@ -292,7 +292,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -319,7 +319,7 @@ func Run(ps *pubsub.PubSub) {
 		// Former depends on cloud connectivity.
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
@@ -437,7 +437,7 @@ func Run(ps *pubsub.PubSub) {
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
-			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
+			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
 	}
@@ -480,7 +480,7 @@ func Run(ps *pubsub.PubSub) {
 				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "addrChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
@@ -501,7 +501,7 @@ func Run(ps *pubsub.PubSub) {
 				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-routeChanges:
@@ -513,7 +513,7 @@ func Run(ps *pubsub.PubSub) {
 			}
 			PbrRouteChange(&zedrouterCtx,
 				zedrouterCtx.deviceNetworkStatus, change)
-			pubsub.CheckMaxTimeTopic(agentName, "routeChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "routeChanges", start,
 				warningTime, errorTime)
 
 		case <-publishTimer.C:
@@ -525,7 +525,7 @@ func Run(ps *pubsub.PubSub) {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
+			ps.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
 				warningTime, errorTime)
 
 			start = time.Now()
@@ -533,7 +533,7 @@ func Run(ps *pubsub.PubSub) {
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
+			ps.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
 				warningTime, errorTime)
 
 		case <-flowStatTimer.C:
@@ -541,7 +541,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Debugf("FlowStatTimer at %v", time.Now())
 			// XXX why start a new go routine for each change?
 			go FlowStatsCollect(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
+			ps.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.hostProbeTimer.C:
@@ -549,21 +549,21 @@ func Run(ps *pubsub.PubSub) {
 			log.Debugf("HostProbeTimer at %v", time.Now())
 			// launch the go function gateway/remote hosts probing check
 			go launchHostProbe(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
+			ps.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.appNetCreateTimer.C:
 			start := time.Now()
 			log.Debugf("appNetCreateTimer: at %v", time.Now())
 			scanAppNetworkStatusInErrorAndUpdate(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
+			ps.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.checkNIUplinks:
 			start := time.Now()
 			log.Infof("checkNIUplinks channel signal\n")
 			checkAndReprogramNetworkInstances(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
+			ps.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
 				warningTime, errorTime)
 
 		case change := <-subNetworkInstanceConfig.MsgChan():
@@ -572,7 +572,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 		// Are we likely to have seen all of the initial config?
 		if zedrouterCtx.triggerNumGC &&
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
@@ -580,7 +580,7 @@ func Run(ps *pubsub.PubSub) {
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
-			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
+			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
 	}

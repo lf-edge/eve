@@ -110,7 +110,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Publish metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -436,7 +436,7 @@ func Run(ps *pubsub.PubSub) {
 		case <-stillRunning.C:
 			// Need StillRunning when ports yet Ethernets
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	devicenetwork.RestartVerify(dnc, "Initial config")
@@ -480,7 +480,7 @@ func Run(ps *pubsub.PubSub) {
 						"AddrChange", true)
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "addrChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
@@ -497,7 +497,7 @@ func Run(ps *pubsub.PubSub) {
 						"LinkChange", true)
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-routeChanges:
@@ -512,7 +512,7 @@ func Run(ps *pubsub.PubSub) {
 						"RouteChange", false)
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
 				warningTime, errorTime)
 
 		case <-geoTimer.C:
@@ -523,7 +523,7 @@ func Run(ps *pubsub.PubSub) {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "geoTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "geoTimer", start,
 				warningTime, errorTime)
 
 		case _, ok := <-dnc.Pending.PendTimer.C:
@@ -534,7 +534,7 @@ func Run(ps *pubsub.PubSub) {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "PendTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "PendTimer", start,
 				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestTimer.C:
@@ -561,7 +561,7 @@ func Run(ps *pubsub.PubSub) {
 						time.Since(start))
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "TestTimer", start,
 				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestBetterTimer.C:
@@ -578,12 +578,12 @@ func Run(ps *pubsub.PubSub) {
 				log.Infof("Network testBetterTimer done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "TestTimer", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("AA initialized")
 
@@ -630,7 +630,7 @@ func Run(ps *pubsub.PubSub) {
 						"AddrChange", true)
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "addrChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
@@ -647,7 +647,7 @@ func Run(ps *pubsub.PubSub) {
 						"LinkChange", true)
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-routeChanges:
@@ -662,7 +662,7 @@ func Run(ps *pubsub.PubSub) {
 						"RouteChange", false)
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "routeChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "routeChanges", start,
 				warningTime, errorTime)
 
 		case <-geoTimer.C:
@@ -673,7 +673,7 @@ func Run(ps *pubsub.PubSub) {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "geoTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "geoTimer", start,
 				warningTime, errorTime)
 
 		case _, ok := <-dnc.Pending.PendTimer.C:
@@ -684,7 +684,7 @@ func Run(ps *pubsub.PubSub) {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "PendTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "PendTimer", start,
 				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestTimer.C:
@@ -702,7 +702,7 @@ func Run(ps *pubsub.PubSub) {
 						time.Since(start))
 				}
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "TestTimer", start,
 				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestBetterTimer.C:
@@ -719,7 +719,7 @@ func Run(ps *pubsub.PubSub) {
 				log.Infof("Network testBetterTimer done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "TestBetterTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "TestBetterTimer", start,
 				warningTime, errorTime)
 
 		case <-publishTimer.C:
@@ -728,12 +728,12 @@ func Run(ps *pubsub.PubSub) {
 			if err != nil {
 				log.Errorln(err)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

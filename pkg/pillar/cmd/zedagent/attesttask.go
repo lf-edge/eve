@@ -12,7 +12,6 @@ import (
 	eventlog "github.com/cshari-zededa/eve-tpm2-tools/eventlog"
 	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/api/go/attest"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -269,7 +268,7 @@ func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error 
 //PunchWatchdog implements PunchWatchdog method of zattest.Watchdog
 func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
 	log.Debug("[ATTEST] Punching watchdog")
-	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+	ctx.PubSub.StillRunning(agentName+"attest", warningTime, errorTime)
 	return nil
 }
 
@@ -315,7 +314,7 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		ctx.attestCtx = &attestContext{}
 	}
 
-	c, err := zattest.New(retryTimeInterval, watchdogInterval, ctx.attestCtx)
+	c, err := zattest.New(ctx.ps, retryTimeInterval, watchdogInterval, ctx.attestCtx)
 	if err != nil {
 		log.Errorf("[ATTEST] Error %v while initializing attestation FSM", err)
 		return err
