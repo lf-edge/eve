@@ -201,7 +201,7 @@ func Run(ps *pubsub.PubSub) {
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	model := hardware.GetHardwareModel()
+	model := hardware.GetHardwareModel(log)
 	log.Infof("Got HardwareModel %s", model)
 
 	var blinkFunc Blink200msFunc

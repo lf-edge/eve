@@ -160,7 +160,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		}
 	}
 	// Check if we have a /config/hardwaremodel file
-	oldHardwaremodel := hardware.GetHardwareModelOverride()
+	oldHardwaremodel := hardware.GetHardwareModelOverride(log)
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -204,8 +204,8 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
 		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
 
@@ -532,9 +532,9 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, deviceCertPem []byte, retryCount int) bool {
 	// XXX add option to get this from a file in /config + override
 	// logic
-	productSerial := hardware.GetProductSerial()
+	productSerial := hardware.GetProductSerial(log)
 	productSerial = strings.TrimSpace(productSerial)
-	softSerial := hardware.GetSoftSerial()
+	softSerial := hardware.GetSoftSerial(log)
 	softSerial = strings.TrimSpace(softSerial)
 	log.Infof("ProductSerial %s, SoftwareSerial %s", productSerial, softSerial)
 
