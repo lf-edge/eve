@@ -31,16 +31,6 @@ func (config AppNetworkConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 func (config *AppNetworkConfig) getUnderlayConfig(
 	network uuid.UUID) *UnderlayNetworkConfig {
 	for i := range config.UnderlayNetworkList {
@@ -97,17 +87,6 @@ type AppNetworkStatus struct {
 
 func (status AppNetworkStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-
 }
 
 // AppContainerMetrics - App Container Metrics

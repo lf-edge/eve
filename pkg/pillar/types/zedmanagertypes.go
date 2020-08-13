@@ -136,16 +136,6 @@ func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
 	UUIDandVersion      UUIDandVersion
@@ -254,16 +244,6 @@ const (
 
 func (status AppInstanceStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 func (status AppInstanceStatus) CheckPendingAdd() bool {

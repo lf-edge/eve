@@ -38,16 +38,6 @@ func (config BaseOsConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config BaseOsConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (config BaseOsConfig) LogCreate() {
 	logObject := base.NewLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
@@ -116,16 +106,6 @@ type BaseOsStatus struct {
 
 func (status BaseOsStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status BaseOsStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 func (status BaseOsStatus) CheckPendingAdd() bool {
@@ -206,16 +186,6 @@ func (config CertObjConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config CertObjConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // Indexed by UUIDandVersion as above
 // XXX shouldn't it be keyed by safename
 type CertObjStatus struct {
@@ -230,16 +200,6 @@ type CertObjStatus struct {
 
 func (status CertObjStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status CertObjStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 func (status CertObjStatus) CheckPendingAdd() bool {

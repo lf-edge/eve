@@ -8,7 +8,6 @@ package types
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 )
@@ -46,16 +45,6 @@ func (config EIDConfig) Key() string {
 		config.UUIDandVersion.UUID.String(), config.IID)
 }
 
-func (config EIDConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // Indexed by UUID plus IID. Version is not part of the index.
 type EIDStatus struct {
 	UUIDandVersion UUIDandVersion
@@ -84,16 +73,6 @@ func EidKey(uuidAndVers UUIDandVersion, iid uint32) string {
 func (status EIDStatus) Key() string {
 	return fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)
-}
-
-func (status EIDStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 func (status EIDStatus) CheckPendingAdd() bool {

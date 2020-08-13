@@ -28,16 +28,6 @@ func (config DownloaderConfig) Key() string {
 	return config.ImageSha256
 }
 
-func (config DownloaderConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (config DownloaderConfig) LogCreate() {
 	logObject := base.NewLogObject(base.DownloaderConfigLogType, config.Name,
@@ -131,16 +121,6 @@ type DownloaderStatus struct {
 
 func (status DownloaderStatus) Key() string {
 	return status.ImageSha256
-}
-
-func (status DownloaderStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 func (status DownloaderStatus) CheckPendingAdd() bool {

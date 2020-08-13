@@ -28,17 +28,6 @@ func (config ResolveConfig) Key() string {
 	return fmt.Sprintf("%s+%s+%v", config.DatastoreID.String(), config.Name, config.Counter)
 }
 
-// VerifyFilename will verify the key name
-func (config ResolveConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (config ResolveConfig) LogCreate() {
 	logObject := base.NewLogObject(base.ResolveConfigLogType, config.Name,
@@ -89,17 +78,6 @@ type ResolveStatus struct {
 // to differentiate different config
 func (status ResolveStatus) Key() string {
 	return fmt.Sprintf("%s+%s+%v", status.DatastoreID.String(), status.Name, status.Counter)
-}
-
-// VerifyFilename will verify the key name
-func (status ResolveStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 // LogCreate :
