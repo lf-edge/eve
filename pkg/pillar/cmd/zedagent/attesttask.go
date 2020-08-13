@@ -314,7 +314,7 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		ctx.attestCtx = &attestContext{}
 	}
 
-	c, err := zattest.New(ctx.ps, retryTimeInterval, watchdogInterval, ctx.attestCtx)
+	c, err := zattest.New(ctx.ps, log, retryTimeInterval, watchdogInterval, ctx.attestCtx)
 	if err != nil {
 		log.Errorf("[ATTEST] Error %v while initializing attestation FSM", err)
 		return err
