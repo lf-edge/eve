@@ -202,6 +202,8 @@ func createDnsmasqConfiglet(
 				broadcast))
 		}
 	} else if netconf.Subnet.IP != nil {
+		// Network prefix "255.255.255.255" will force packets to go through
+		// dom0 virtual router that makes the packets pass through ACLs and flow log.
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 			"255.255.255.255"))
 	}
