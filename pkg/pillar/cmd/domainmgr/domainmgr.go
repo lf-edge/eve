@@ -87,7 +87,7 @@ type domainContext struct {
 	pubHostMemory          pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
 	usbAccess              bool
-	createSema             sema.Semaphore
+	createSema             *sema.Semaphore
 	onboarded              bool
 	GCComplete             bool
 	setInitialUsbAccess    bool
@@ -195,7 +195,7 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.assignableAdapters = &aa
 
 	// Allow only one concurrent domain create
-	domainCtx.createSema = sema.Create(1)
+	domainCtx.createSema = sema.New(log, 1)
 	domainCtx.createSema.P(1)
 
 	pubDomainStatus, err := ps.NewPublication(
