@@ -183,18 +183,6 @@ func (status DomainStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
-func (status DomainStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status DomainStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status DomainStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status DomainStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }

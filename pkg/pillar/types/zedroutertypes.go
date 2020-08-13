@@ -51,18 +51,6 @@ func (config *AppNetworkConfig) IsNetworkUsed(network uuid.UUID) bool {
 	return false
 }
 
-func (status AppNetworkStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status AppNetworkStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status AppNetworkStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status AppNetworkStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }

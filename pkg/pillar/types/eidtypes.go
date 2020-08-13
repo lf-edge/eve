@@ -75,18 +75,6 @@ func (status EIDStatus) Key() string {
 		status.UUIDandVersion.UUID.String(), status.IID)
 }
 
-func (status EIDStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status EIDStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status EIDStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status EIDStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
