@@ -15,15 +15,16 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 // DecryptCipherContext has subscriptions to controller certs
 // and cipher contexts for doing decryption
 type DecryptCipherContext struct {
+	Log               *base.LogObject
 	SubControllerCert pubsub.Subscription
 	SubCipherContext  pubsub.Subscription
 	SubEdgeNodeCert   pubsub.Subscription
@@ -31,55 +32,55 @@ type DecryptCipherContext struct {
 
 // look up controller cert
 func lookupControllerCert(ctx *DecryptCipherContext, key string) *types.ControllerCert {
-	log.Infof("lookupControllerCert(%s)\n", key)
+	ctx.Log.Infof("lookupControllerCert(%s)\n", key)
 	sub := ctx.SubControllerCert
 	item, err := sub.Get(key)
 	if err != nil {
-		log.Errorf("lookupControllerCert(%s) not found\n", key)
+		ctx.Log.Errorf("lookupControllerCert(%s) not found\n", key)
 		return nil
 	}
 	status := item.(types.ControllerCert)
-	log.Infof("lookupControllerCert(%s) Done\n", key)
+	ctx.Log.Infof("lookupControllerCert(%s) Done\n", key)
 	return &status
 }
 
 // look up cipher context
 func lookupCipherContext(ctx *DecryptCipherContext, key string) *types.CipherContext {
-	log.Infof("lookupCipherContext(%s)\n", key)
+	ctx.Log.Infof("lookupCipherContext(%s)\n", key)
 	sub := ctx.SubCipherContext
 	item, err := sub.Get(key)
 	if err != nil {
-		log.Errorf("lookupCipherContext(%s) not found\n", key)
+		ctx.Log.Errorf("lookupCipherContext(%s) not found\n", key)
 		return nil
 	}
 	status := item.(types.CipherContext)
-	log.Infof("lookupCipherContext(%s) done\n", key)
+	ctx.Log.Infof("lookupCipherContext(%s) done\n", key)
 	return &status
 }
 
 // look up edge node cert
 func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCert {
-	log.Infof("lookupEdgeNodeCert(%s)\n", key)
+	ctx.Log.Infof("lookupEdgeNodeCert(%s)\n", key)
 	sub := ctx.SubEdgeNodeCert
 	item, err := sub.Get(key)
 	if err != nil {
-		log.Errorf("lookupEdgeNodeCert(%s) not found\n", key)
+		ctx.Log.Errorf("lookupEdgeNodeCert(%s) not found\n", key)
 		return nil
 	}
 	status := item.(types.EdgeNodeCert)
-	log.Infof("lookupEdgeNodeCert(%s) Done\n", key)
+	ctx.Log.Infof("lookupEdgeNodeCert(%s) Done\n", key)
 	return &status
 }
 
 func getDeviceCert(ctx *DecryptCipherContext,
 	cipherBlock types.CipherBlockStatus) ([]byte, error) {
 
-	log.Infof("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
+	ctx.Log.Infof("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
 	cipherContext := lookupCipherContext(ctx, cipherBlock.CipherContextID)
 	if cipherContext == nil {
 		errStr := fmt.Sprintf("cipher context %s not found\n",
 			cipherBlock.CipherContextID)
-		log.Error(errStr)
+		ctx.Log.Error(errStr)
 		return []byte{}, errors.New(errStr)
 	}
 	// TBD:XXX as of now, only one
@@ -87,17 +88,17 @@ func getDeviceCert(ctx *DecryptCipherContext,
 	if err != nil {
 		errStr := fmt.Sprintf("getDeviceCert failed while reading device certificate: %v",
 			err)
-		log.Error(errStr)
+		ctx.Log.Error(errStr)
 		return []byte{}, errors.New(errStr)
 	}
 	if computeAndMatchHash(certBytes, cipherContext.DeviceCertHash,
 		cipherContext.HashScheme) {
-		log.Infof("getDeviceCert for %s Done\n", cipherBlock.CipherBlockID)
+		ctx.Log.Infof("getDeviceCert for %s Done\n", cipherBlock.CipherBlockID)
 		return certBytes, nil
 	}
 	errStr := fmt.Sprintf("getDeviceCert for %s not found\n",
 		cipherBlock.CipherBlockID)
-	log.Error(errStr)
+	ctx.Log.Error(errStr)
 	return []byte{}, errors.New(errStr)
 }
 
@@ -134,7 +135,7 @@ func DecryptCipherBlock(ctx *DecryptCipherContext,
 	if cipherContext == nil {
 		errStr := fmt.Sprintf("cipher context %s not found\n",
 			cipherBlock.CipherContextID)
-		log.Error(errStr)
+		ctx.Log.Error(errStr)
 		return []byte{}, errors.New(errStr)
 	}
 	switch cipherContext.KeyExchangeScheme {
@@ -158,12 +159,12 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 	cipherContext *types.CipherContext, cipherBlock types.CipherBlockStatus) ([]byte, error) {
 	cert, err := getControllerCertEcdhKey(ctx, cipherContext.ControllerCertKey())
 	if err != nil {
-		log.Errorf("ECDH Certificate Key Information get fail")
+		ctx.Log.Errorf("ECDH Certificate Key Information get fail")
 		return []byte{}, err
 	}
 	edgeNodeCert := lookupEdgeNodeCert(ctx, cipherContext.EdgeNodeCertKey())
 	if edgeNodeCert == nil {
-		log.Errorf("Edge Node Certificate get fail")
+		ctx.Log.Errorf("Edge Node Certificate get fail")
 		return []byte{}, err
 	}
 	switch cipherContext.EncryptionScheme {
@@ -179,7 +180,7 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 			edgeNodeCert, cipherBlock.InitialValue, cipherBlock.CipherData, clearData)
 		if err != nil {
 			errStr := fmt.Sprintf("Decryption failed with error %v\n", err)
-			log.Error(errStr)
+			ctx.Log.Error(errStr)
 			return []byte{}, errors.New(errStr)
 		}
 		return clearData, nil
@@ -191,7 +192,7 @@ func getControllerCertEcdhKey(ctx *DecryptCipherContext, key string) (*ecdsa.Pub
 	config := lookupControllerCert(ctx, key)
 	if config == nil {
 		errStr := fmt.Sprintf("Controller Certificate get fail")
-		log.Error(errStr)
+		ctx.Log.Error(errStr)
 		return nil, errors.New(errStr)
 	}
 	certBlock := config.Cert

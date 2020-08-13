@@ -272,6 +272,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	domainCtx.decryptCipherContext.Log = log
 	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 

@@ -195,6 +195,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	nimCtx.deviceNetworkContext.DecryptCipherContext.Log = log
 	nimCtx.deviceNetworkContext.DecryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
