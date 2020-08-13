@@ -22,15 +22,15 @@ import (
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
@@ -1057,15 +1057,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.RebootConfigCounter = ctx.rebootConfigCounter
 
 	//Operational information about TPM presence/absence/usage.
-	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
-	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
+	ReportDeviceInfo.HSMStatus = etpm.FetchTpmSwStatus()
+	ReportDeviceInfo.HSMInfo, _ = etpm.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
 	ReportDataSecAtRestInfo := getDataSecAtRestInfo(ctx)
 
 	//This will be removed after new fields propagate to Controller.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
-		vaultmgr.GetOperInfo()
+		vault.GetOperInfo()
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
