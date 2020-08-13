@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"runtime"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
@@ -36,9 +38,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -106,6 +107,7 @@ func (ctx *domainContext) publishAssignableAdapters() {
 var debug = false
 var debugOverride bool          // From command line arg
 var hyper hypervisor.Hypervisor // Current hypervisor
+var log *base.LogObject
 
 func Run(ps *pubsub.PubSub) {
 	var err error
@@ -118,22 +120,25 @@ func Run(ps *pubsub.PubSub) {
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
+
+	log = agentlog.Init(agentName)
 
 	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s with %s hypervisor backend", agentName, hyper.Name())
@@ -1872,7 +1877,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
@@ -1906,7 +1911,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
@@ -2072,7 +2077,8 @@ func mkisofs(output string, dir string) error {
 		"-rock",
 		dir,
 	}
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("mkisofs failed: %s",
 			string(stdoutStderr))
@@ -2573,7 +2579,8 @@ func doModprobe(driver string, add bool) error {
 		args = append(args, "-r")
 	}
 	args = append(args, driver)
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Error(err)
 		log.Errorf("modprobe output: %s", stdoutStderr)

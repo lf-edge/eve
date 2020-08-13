@@ -178,8 +178,8 @@ func (config DevicePortConfigList) PubKey() string {
 }
 
 // LogCreate :
-func (config DevicePortConfigList) LogCreate() {
-	logObject := base.NewLogObject(base.DevicePortConfigListLogType, "",
+func (config DevicePortConfigList) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -191,7 +191,7 @@ func (config DevicePortConfigList) LogCreate() {
 
 // LogModify :
 func (config DevicePortConfigList) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DevicePortConfigList)
@@ -213,7 +213,7 @@ func (config DevicePortConfigList) LogModify(old interface{}) {
 
 // LogDelete :
 func (config DevicePortConfigList) LogDelete() {
-	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
 		AddField("num-portconfig-int64", len(config.PortConfigList)).
@@ -287,8 +287,8 @@ func (config DevicePortConfig) PubKey() string {
 }
 
 // LogCreate :
-func (config DevicePortConfig) LogCreate() {
-	logObject := base.NewLogObject(base.DevicePortConfigLogType, "",
+func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -311,7 +311,7 @@ func (config DevicePortConfig) LogCreate() {
 
 // LogModify :
 func (config DevicePortConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DevicePortConfig)
@@ -361,7 +361,7 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config DevicePortConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 		AddField("last-failed", config.LastFailed).
@@ -784,8 +784,8 @@ func (status DeviceNetworkStatus) Key() string {
 }
 
 // LogCreate :
-func (status DeviceNetworkStatus) LogCreate() {
-	logObject := base.NewLogObject(base.DeviceNetworkStatusLogType, "",
+func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -806,7 +806,7 @@ func (status DeviceNetworkStatus) LogCreate() {
 
 // LogModify :
 func (status DeviceNetworkStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(DeviceNetworkStatus)
@@ -850,7 +850,7 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status DeviceNetworkStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).

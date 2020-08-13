@@ -3,10 +3,6 @@
 
 package downloader
 
-import (
-	log "github.com/sirupsen/logrus"
-)
-
 type resolveHandler struct {
 	// We have one goroutine per provisioned domU object.
 	// Channel is used to send notifications about config (add and updates)

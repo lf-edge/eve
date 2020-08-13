@@ -26,11 +26,11 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -55,6 +55,7 @@ const (
 
 // Version : module version
 var Version = "No version specified"
+var log *base.LogObject
 
 type nodeagentContext struct {
 	agentBaseContext            agentbase.Context
@@ -142,7 +143,7 @@ func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
 func Run(ps *pubsub.PubSub) {
 	nodeagentCtx := newNodeagentContext()
 
-	agentbase.Run(&nodeagentCtx)
+	log = agentbase.Run(&nodeagentCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
@@ -362,7 +363,7 @@ func handleGlobalConfigModify(ctxArg interface{},
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctxPtr.GCInitialized {
 		ctxPtr.globalConfig = gcp
@@ -380,7 +381,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
 	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)
@@ -441,15 +442,15 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// until after truncation.
 	var rebootStack = ""
 	ctx.rebootReason, ctx.rebootTime, rebootStack =
-		agentlog.GetCommonRebootReason()
+		agentlog.GetCommonRebootReason(log)
 	if ctx.rebootReason != "" {
 		log.Warnf("Current partition RebootReason: %s",
 			ctx.rebootReason)
-		agentlog.DiscardCommonRebootReason()
+		agentlog.DiscardCommonRebootReason(log)
 	}
 	// XXX We'll retain this block of code for some time to support having older
 	// versions of code in the other partition.
-	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
+	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason(log)
 	if otherRebootReason != "" {
 		log.Warnf("Other partition RebootReason: %s",
 			otherRebootReason)
@@ -457,7 +458,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		// do not erase the reboot reason, going to
 		// be used for baseos error status, across reboot
 		if !zboot.IsOtherPartitionStateInProgress() {
-			agentlog.DiscardOtherRebootReason()
+			agentlog.DiscardOtherRebootReason(log)
 		}
 	}
 	// first, pick up from other partition
@@ -498,10 +499,10 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
 	}
 	ctx.rebootStack = rebootStack
-	rebootImage := agentlog.GetRebootImage()
+	rebootImage := agentlog.GetRebootImage(log)
 	if rebootImage != "" {
 		ctx.rebootImage = rebootImage
-		agentlog.DiscardRebootImage()
+		agentlog.DiscardRebootImage(log)
 	}
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()

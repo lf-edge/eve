@@ -8,7 +8,6 @@ package zedrouter
 import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
 	"syscall"

@@ -8,11 +8,11 @@ import (
 	"reflect"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // deepCopy returns the same type as what is passed as input
-func deepCopy(in interface{}) interface{} {
+func deepCopy(log *base.LogObject, in interface{}) interface{} {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal("json Marshal in deepCopy", err)
@@ -31,7 +31,7 @@ func deepCopy(in interface{}) interface{} {
 }
 
 // template is a struct; returns a value of the same struct type
-func parseTemplate(sb []byte, targetType reflect.Type) (interface{}, error) {
+func parseTemplate(log *base.LogObject, sb []byte, targetType reflect.Type) (interface{}, error) {
 	p := reflect.New(targetType)
 	output := p.Interface()
 	if err := json.Unmarshal(sb, output); err != nil {

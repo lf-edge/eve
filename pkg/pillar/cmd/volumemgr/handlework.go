@@ -10,7 +10,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
-	log "github.com/sirupsen/logrus"
 )
 
 // InitHandleWork returns an object with a MsgChan to be used in the main select loop

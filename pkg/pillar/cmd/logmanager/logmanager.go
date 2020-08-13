@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -31,7 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/mcuadros/go-syslog.v2"
 )
 
@@ -66,6 +67,7 @@ var (
 	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
+	log     *base.LogObject
 )
 
 // global stuff
@@ -157,18 +159,21 @@ func Run(ps *pubsub.PubSub) {
 	fatalFlag := *fatalPtr
 	hangFlag := *hangPtr
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 
@@ -1032,7 +1037,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s", key)
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
+	debug, gcp = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig,
 		agentName, debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
@@ -1066,7 +1071,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
@@ -1076,11 +1081,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 // Cache of loglevels per agent. Protected by mutex since accessed by
 // multiple goroutines
 var remoteMapLock sync.Mutex
-var remoteMap map[string]log.Level = make(map[string]log.Level)
+var remoteMap map[string]logrus.Level = make(map[string]logrus.Level)
 
 func addRemoteMap(agentName string, logLevel string) {
 	log.Infof("addRemoteMap(%s, %s)", agentName, logLevel)
-	level, err := log.ParseLevel(logLevel)
+	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		log.Errorf("addRemoteMap: ParseLevel failed: %s", err)
 		return
@@ -1116,12 +1121,12 @@ func delRemoteMapAll() {
 	log.Infof("delRemoteMapAll()")
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
-	remoteMap = make(map[string]log.Level)
+	remoteMap = make(map[string]logrus.Level)
 }
 
 // If source exists in GlobalConfig and has a remoteLogLevel, then
 // we compare. If not we accept all
-func dropEvent(source string, level log.Level) bool {
+func dropEvent(source string, level logrus.Level) bool {
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	if l, ok := remoteMap[source]; ok {
@@ -1134,20 +1139,20 @@ func dropEvent(source string, level log.Level) bool {
 	return false
 }
 
-func parseLogLevel(logLevel string) log.Level {
-	level, err := log.ParseLevel(logLevel)
+func parseLogLevel(logLevel string) logrus.Level {
+	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		// XXX Some of the log sources send logs with
 		// severity set to err, emerg & notice.
 		// Logrus log level parse does not recognize the above severities.
 		// Map err, emerg to error and notice to info.
 		if logLevel == "err" || logLevel == "emerg" {
-			level = log.ErrorLevel
+			level = logrus.ErrorLevel
 		} else if logLevel == "notice" {
-			level = log.InfoLevel
+			level = logrus.InfoLevel
 		} else {
 			log.Errorf("ParseLevel failed: %s, defaulting log level to Info", err)
-			level = log.InfoLevel
+			level = logrus.InfoLevel
 		}
 	}
 	return level

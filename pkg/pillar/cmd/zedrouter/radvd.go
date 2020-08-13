@@ -8,9 +8,7 @@ package zedrouter
 import (
 	"fmt"
 	"os"
-
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
+	"os/exec"
 )
 
 // Need to fill in the overlay inteface name
@@ -70,7 +68,8 @@ func startRadvd(cfgPathname string, olIfname string) {
 		"-p",
 		pidPathname,
 	}
-	go wrap.Command(cmd, args...).Output()
+	log.Infof("Calling command %s %v\n", cmd, args)
+	go exec.Command(cmd, args...).Output()
 }
 
 func getBridgeRadvdCfgFileName(bridgeName string) (string, string) {

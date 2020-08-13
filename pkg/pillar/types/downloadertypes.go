@@ -29,8 +29,8 @@ func (config DownloaderConfig) Key() string {
 }
 
 // LogCreate :
-func (config DownloaderConfig) LogCreate() {
-	logObject := base.NewLogObject(base.DownloaderConfigLogType, config.Name,
+func (config DownloaderConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -44,7 +44,7 @@ func (config DownloaderConfig) LogCreate() {
 
 // LogModify :
 func (config DownloaderConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DownloaderConfigLogType, config.Name,
+	logObject := base.EnsureLogObject(nil, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DownloaderConfig)
@@ -70,7 +70,7 @@ func (config DownloaderConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config DownloaderConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.DownloaderConfigLogType, config.Name,
+	logObject := base.EnsureLogObject(nil, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("target", config.Target).
 		AddField("datastore-id", config.DatastoreID).
@@ -144,8 +144,8 @@ func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
 }
 
 // LogCreate :
-func (status DownloaderStatus) LogCreate() {
-	logObject := base.NewLogObject(base.DownloaderStatusLogType, status.Name,
+func (status DownloaderStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DownloaderStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -158,7 +158,7 @@ func (status DownloaderStatus) LogCreate() {
 
 // LogModify :
 func (status DownloaderStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DownloaderStatusLogType, status.Name,
+	logObject := base.EnsureLogObject(nil, base.DownloaderStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(DownloaderStatus)
@@ -189,7 +189,7 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status DownloaderStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.DownloaderStatusLogType, status.Name,
+	logObject := base.EnsureLogObject(nil, base.DownloaderStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).

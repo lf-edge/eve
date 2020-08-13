@@ -5,8 +5,6 @@ package verifier
 
 import (
 	"os"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func initializeDirs() {

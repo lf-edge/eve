@@ -9,7 +9,7 @@ package zedcloud
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // OK for log.Fatal
 	"sync"
 	"time"
 )
@@ -22,7 +22,6 @@ func maybeInit(ifname string) {
 		log.Fatal("no zedcloudmetric map\n")
 	}
 	if _, ok := metrics[ifname]; !ok {
-		log.Debugf("create zedcloudmetric for %s\n", ifname)
 		metrics[ifname] = types.ZedcloudMetric{
 			URLCounters: make(map[string]types.UrlcloudMetrics),
 		}

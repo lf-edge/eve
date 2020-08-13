@@ -35,7 +35,7 @@ import (
 	v1stat "github.com/containerd/cgroups/stats/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 const (

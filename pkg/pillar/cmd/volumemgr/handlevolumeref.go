@@ -5,7 +5,6 @@ package volumemgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 func handleVolumeRefCreate(ctxArg interface{}, key string,

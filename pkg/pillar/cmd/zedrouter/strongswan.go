@@ -12,7 +12,7 @@ import (
 	"net"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -237,7 +237,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnConfig, error) {
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	if log.GetLevel() == log.DebugLevel {
+	if logrus.GetLevel() == logrus.DebugLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
 			log.Debugf("strongSwanConfigParse(): %s\n",
 				string(bytes))
@@ -806,7 +806,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 			}
 		}
 	}
-	if log.GetLevel() == log.DebugLevel {
+	if logrus.GetLevel() == logrus.DebugLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
 			log.Debugf("strongSwanVpnConfigGet(): %s\n",
 				string(bytes))

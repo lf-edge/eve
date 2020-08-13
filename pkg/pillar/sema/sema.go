@@ -4,7 +4,7 @@
 package sema
 
 import (
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 type empty interface{}

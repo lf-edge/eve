@@ -83,8 +83,8 @@ type IoAdapter struct {
 }
 
 // LogCreate :
-func (config AppInstanceConfig) LogCreate() {
-	logObject := base.NewLogObject(base.AppInstanceConfigLogType, config.DisplayName,
+func (config AppInstanceConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppInstanceConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -96,7 +96,7 @@ func (config AppInstanceConfig) LogCreate() {
 
 // LogModify :
 func (config AppInstanceConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.AppInstanceConfigLogType, config.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.AppInstanceConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(AppInstanceConfig)
@@ -117,7 +117,7 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config AppInstanceConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.AppInstanceConfigLogType, config.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.AppInstanceConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("remote-console", config.RemoteConsole).
@@ -168,8 +168,8 @@ type AppInstanceStatus struct {
 }
 
 // LogCreate :
-func (status AppInstanceStatus) LogCreate() {
-	logObject := base.NewLogObject(base.AppInstanceStatusLogType, status.DisplayName,
+func (status AppInstanceStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppInstanceStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -182,7 +182,7 @@ func (status AppInstanceStatus) LogCreate() {
 
 // LogModify :
 func (status AppInstanceStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.AppInstanceStatusLogType, status.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.AppInstanceStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(AppInstanceStatus)
@@ -215,7 +215,7 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status AppInstanceStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.AppInstanceStatusLogType, status.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.AppInstanceStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).

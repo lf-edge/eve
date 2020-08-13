@@ -8,11 +8,12 @@ package pidfile
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"syscall"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 const (
@@ -26,7 +27,7 @@ func writeMyPid(filename string) error {
 	return ioutil.WriteFile(filename, b, 0644)
 }
 
-func CheckAndCreatePidfile(agentName string) error {
+func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
 	filename := fmt.Sprintf("%s/%s.pid", rundir, agentName)
 	if _, err := os.Stat(filename); err != nil {
 		// Assume file does not exist; Create file

@@ -10,11 +10,12 @@ package iptables
 import (
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // ControlProtocolMarkingIDMap : Map describing the control flow
 // marking values that we intend to use.
+// XXX only used by nim hence no concurrency. But LockedStringMap would be better
 var ControlProtocolMarkingIDMap = map[string]string{
 	// INPUT flows for HTTP, SSH & GUACAMOLE
 	"in_http_ssh_guacamole": "1",
@@ -34,37 +35,37 @@ var ControlProtocolMarkingIDMap = map[string]string{
 	"in_vpn_control": "8",
 }
 
-func UpdateSshAccess(enable bool, first bool) {
+func UpdateSshAccess(log *base.LogObject, enable bool, first bool) {
 
 	log.Infof("updateSshAccess(enable %v first %v)\n",
 		enable, first)
 
 	if first {
 		// Always blocked
-		dropPortRange(8080, 8080)
-		allowLocalPortRange(4822, 4822)
-		allowLocalPortRange(5900, 5999)
-		markControlFlows()
+		dropPortRange(log, 8080, 8080)
+		allowLocalPortRange(log, 4822, 4822)
+		allowLocalPortRange(log, 5900, 5999)
+		markControlFlows(log)
 	}
 	if enable {
-		allowPortRange(22, 22)
+		allowPortRange(log, 22, 22)
 	} else {
-		dropPortRange(22, 22)
+		dropPortRange(log, 22, 22)
 	}
 }
 
-func UpdateVncAccess(enable bool) {
+func UpdateVncAccess(log *base.LogObject, enable bool) {
 
 	log.Infof("updateVncAccess(enable %v\n", enable)
 
 	if enable {
-		allowPortRange(5900, 5999)
+		allowPortRange(log, 5900, 5999)
 	} else {
-		dropPortRange(5900, 5999)
+		dropPortRange(log, 5900, 5999)
 	}
 }
 
-func allowPortRange(startPort int, endPort int) {
+func allowPortRange(log *base.LogObject, startPort int, endPort int) {
 	log.Infof("allowPortRange(%d, %d)\n", startPort, endPort)
 	// Delete these rules
 	// iptables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -75,12 +76,12 @@ func allowPortRange(startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmd("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmd("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	IptableCmd(log, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmd(log, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
 // Like above but allow for 127.0.0.1 to 127.0.0.1 and block for other IPs
-func allowLocalPortRange(startPort int, endPort int) {
+func allowLocalPortRange(log *base.LogObject, startPort int, endPort int) {
 	log.Infof("allowLocalPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
 	// iptables -A INPUT -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 22 -j ACCEPT
@@ -93,17 +94,17 @@ func allowLocalPortRange(startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+	IptableCmd(log, "-A", "INPUT", "-p", "tcp", "--dport", portStr,
 		"-s", "127.0.0.1", "-d", "127.0.0.1", "-j", "ACCEPT")
-	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+	IptableCmd(log, "-A", "INPUT", "-p", "tcp", "--dport", portStr,
 		"-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+	Ip6tableCmd(log, "-A", "INPUT", "-p", "tcp", "--dport", portStr,
 		"-s", "::1", "-d", "::1", "-j", "ACCEPT")
-	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+	Ip6tableCmd(log, "-A", "INPUT", "-p", "tcp", "--dport", portStr,
 		"-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
-func dropPortRange(startPort int, endPort int) {
+func dropPortRange(log *base.LogObject, startPort int, endPort int) {
 	log.Infof("dropPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -114,8 +115,8 @@ func dropPortRange(startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	IptableCmd(log, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmd(log, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
 // With flow monitoring happening, any unmarked connections:
@@ -125,69 +126,69 @@ func dropPortRange(startPort int, endPort int) {
 // want some control protocols running on dom0 to run. We mark such
 // connections with markings from reserved space and let the ACLs
 // in INPUT chain make the ACCEPT/DROP/REJECT decisions.
-func markControlFlows() {
+func markControlFlows(log *base.LogObject) {
 	// Mark HTTP, ssh and guacamole packets
 	// Pick flow marking values 1, 2, 3 from the reserved space.
 	portStr := "22,4822"
-	IptableCmd("-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
+	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_http_ssh_guacamole"])
 
-	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
+	Ip6tableCmd(log, "-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_http_ssh_guacamole"])
 
 	// Mark VNC packets
 	portStr = "5900:5999"
-	IptableCmd("-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
+	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_vnc"])
 
-	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
+	Ip6tableCmd(log, "-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_vnc"])
 
 	// Mark Lisp control/data packets
 	portStr = "4341,4342"
-	IptableCmd("-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
+	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_dports"])
 
-	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
+	Ip6tableCmd(log, "-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_dports"])
 
-	IptableCmd("-t", "mangle", "-I", "PREROUTING", "4", "-p", "udp",
+	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "4", "-p", "udp",
 		"--match", "multiport", "--sports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_sports"])
 
-	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "4", "-p", "udp",
+	Ip6tableCmd(log, "-t", "mangle", "-I", "PREROUTING", "4", "-p", "udp",
 		"--match", "multiport", "--sports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_sports"])
 	// Mark strongswan VPN control packets
 	portStr = "4500,500"
-	IptableCmd("-t", "mangle", "-I", "PREROUTING", "5", "-p", "udp",
+	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "5", "-p", "udp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_vpn_control"])
 	// Allow esp protocol packets
-	IptableCmd("-t", "mangle", "-I", "PREROUTING", "6", "-p", "esp",
+	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "6", "-p", "esp",
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_vpn_control"])
 
 	// Mark all un-marked local traffic generated by local services.
-	IptableCmd("-t", "mangle", "-I", "OUTPUT",
+	IptableCmd(log, "-t", "mangle", "-I", "OUTPUT",
 		"-j", "CONNMARK", "--restore-mark")
-	IptableCmd("-t", "mangle", "-A", "OUTPUT", "-m", "mark", "!", "--mark", "0",
+	IptableCmd(log, "-t", "mangle", "-A", "OUTPUT", "-m", "mark", "!", "--mark", "0",
 		"-j", "ACCEPT")
-	IptableCmd("-t", "mangle", "-A", "OUTPUT",
+	IptableCmd(log, "-t", "mangle", "-A", "OUTPUT",
 		"-j", "MARK", "--set-mark", ControlProtocolMarkingIDMap["out_all"])
-	IptableCmd("-t", "mangle", "-A", "OUTPUT",
+	IptableCmd(log, "-t", "mangle", "-A", "OUTPUT",
 		"-j", "CONNMARK", "--save-mark")
-	//IptableCmd("-t", "mangle", "-A", "OUTPUT",
+	//IptableCmd(log, "-t", "mangle", "-A", "OUTPUT",
 	//	"-j", "CONNMARK", "--set-mark", "5")
 
 	// XXX Later when we support Lisp we should have the above marking
 	// checks for IPv6 also.
-	Ip6tableCmd("-t", "mangle", "-I", "OUTPUT", "1",
+	Ip6tableCmd(log, "-t", "mangle", "-I", "OUTPUT", "1",
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["out_all"])
 
 }

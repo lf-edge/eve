@@ -9,7 +9,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // Returns a list of all matching cert objects

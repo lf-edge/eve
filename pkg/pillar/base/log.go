@@ -52,6 +52,15 @@ func (object *LogObject) Warning(args ...interface{}) {
 	log.WithFields(object.Fields).Warning(args...)
 }
 
+// Error :
+func (object *LogObject) Error(args ...interface{}) {
+	if !object.Initialized {
+		log.Fatal("LogObject used without initialization")
+		return
+	}
+	log.WithFields(object.Fields).Error(args...)
+}
+
 // Panic :
 func (object *LogObject) Panic(args ...interface{}) {
 	if !object.Initialized {

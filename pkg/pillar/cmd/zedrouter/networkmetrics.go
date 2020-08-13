@@ -11,7 +11,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	psutilnet "github.com/shirou/gopsutil/net"
-	log "github.com/sirupsen/logrus"
 	"strings"
 )
 
@@ -23,7 +22,7 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		return types.NetworkMetrics{}
 	}
 	// Call iptables once to get counters
-	ac := iptables.FetchIprulesCounters()
+	ac := iptables.FetchIprulesCounters(log)
 
 	for _, ni := range network {
 		metric := types.NetworkMetric{
@@ -77,17 +76,17 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		// Packets matching the default DROP rule also match the default LOG rule.
 		// Since we will not have the default DROP rule, we can copy statistics
 		// from default LOG rule as DROP statistics.
-		metric.TxAclDrops = iptables.GetIPRuleACLDrop(ac, bridgeName, vifName,
+		metric.TxAclDrops = iptables.GetIPRuleACLDrop(log, ac, bridgeName, vifName,
 			ipVer, inout)
-		metric.TxAclDrops += iptables.GetIPRuleACLLog(ac, bridgeName, vifName,
+		metric.TxAclDrops += iptables.GetIPRuleACLLog(log, ac, bridgeName, vifName,
 			ipVer, inout)
-		metric.RxAclDrops = iptables.GetIPRuleACLDrop(ac, bridgeName, vifName,
+		metric.RxAclDrops = iptables.GetIPRuleACLDrop(log, ac, bridgeName, vifName,
 			ipVer, !inout)
-		metric.RxAclDrops += iptables.GetIPRuleACLLog(ac, bridgeName, vifName,
+		metric.RxAclDrops += iptables.GetIPRuleACLLog(log, ac, bridgeName, vifName,
 			ipVer, !inout)
-		metric.TxAclRateLimitDrops = iptables.GetIPRuleACLRateLimitDrop(ac,
+		metric.TxAclRateLimitDrops = iptables.GetIPRuleACLRateLimitDrop(log, ac,
 			bridgeName, vifName, ipVer, inout)
-		metric.RxAclRateLimitDrops = iptables.GetIPRuleACLRateLimitDrop(ac,
+		metric.RxAclRateLimitDrops = iptables.GetIPRuleACLRateLimitDrop(log, ac,
 			bridgeName, vifName, ipVer, !inout)
 		metrics = append(metrics, metric)
 	}

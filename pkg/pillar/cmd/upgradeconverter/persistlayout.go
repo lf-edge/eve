@@ -16,7 +16,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 func convertPersistVolumes(ctxPtr *ucContext) error {

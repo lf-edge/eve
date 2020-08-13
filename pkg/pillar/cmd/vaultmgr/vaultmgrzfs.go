@@ -5,7 +5,6 @@ package vaultmgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	log "github.com/sirupsen/logrus"
 	"regexp"
 )
 

@@ -33,8 +33,8 @@ func (config ContentTreeConfig) Key() string {
 }
 
 // LogCreate :
-func (config ContentTreeConfig) LogCreate() {
-	logObject := base.NewLogObject(base.ContentTreeConfigLogType, config.DisplayName,
+func (config ContentTreeConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ContentTreeConfigLogType, config.DisplayName,
 		config.ContentID, config.LogKey())
 	if logObject == nil {
 		return
@@ -49,7 +49,7 @@ func (config ContentTreeConfig) LogCreate() {
 
 // LogModify :
 func (config ContentTreeConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ContentTreeConfigLogType, config.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.ContentTreeConfigLogType, config.DisplayName,
 		config.ContentID, config.LogKey())
 
 	oldConfig, ok := old.(ContentTreeConfig)
@@ -78,7 +78,7 @@ func (config ContentTreeConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config ContentTreeConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.ContentTreeConfigLogType, config.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.ContentTreeConfigLogType, config.DisplayName,
 		config.ContentID, config.LogKey())
 	logObject.CloneAndAddField("datastore-id", config.DatastoreID).
 		AddField("relative-URL", config.RelativeURL).
@@ -158,8 +158,8 @@ func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeC
 }
 
 // LogCreate :
-func (status ContentTreeStatus) LogCreate() {
-	logObject := base.NewLogObject(base.ContentTreeStatusLogType, status.DisplayName,
+func (status ContentTreeStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ContentTreeStatusLogType, status.DisplayName,
 		status.ContentID, status.LogKey())
 	if logObject == nil {
 		return
@@ -175,7 +175,7 @@ func (status ContentTreeStatus) LogCreate() {
 
 // LogModify :
 func (status ContentTreeStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ContentTreeStatusLogType, status.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.ContentTreeStatusLogType, status.DisplayName,
 		status.ContentID, status.LogKey())
 
 	oldStatus, ok := old.(ContentTreeStatus)
@@ -205,7 +205,7 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status ContentTreeStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.ContentTreeStatusLogType, status.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.ContentTreeStatusLogType, status.DisplayName,
 		status.ContentID, status.LogKey())
 	logObject.CloneAndAddField("content-sha256", status.ContentSha256).
 		AddField("max-download-size-int64", status.MaxDownloadSize).

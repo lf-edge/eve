@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 func initializeDirs() {

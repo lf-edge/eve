@@ -23,7 +23,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	pcap "github.com/packetcap/go-pcap"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type flowStats struct {

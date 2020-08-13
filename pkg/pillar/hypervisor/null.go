@@ -19,6 +19,7 @@ type domState struct {
 }
 
 type nullContext struct {
+	// XXX add log?
 	tempDir    string
 	doms       map[string]*domState
 	domCounter int

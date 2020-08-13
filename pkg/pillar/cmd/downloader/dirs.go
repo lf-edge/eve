@@ -6,8 +6,6 @@ package downloader
 import (
 	"os"
 	"path"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // Create the object download directories we own

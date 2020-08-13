@@ -15,7 +15,6 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 var baseTableIndex = 500 // Number tables from here + ifindex

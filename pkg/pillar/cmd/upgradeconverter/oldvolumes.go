@@ -11,7 +11,6 @@ import (
 	"time"
 
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // We fill in this based on the files/dirs we find on disk

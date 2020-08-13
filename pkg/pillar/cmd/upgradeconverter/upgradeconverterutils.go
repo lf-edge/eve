@@ -6,8 +6,6 @@ package upgradeconverter
 import (
 	"os"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func fileExists(filename string) bool {

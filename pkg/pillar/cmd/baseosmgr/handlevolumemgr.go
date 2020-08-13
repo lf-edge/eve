@@ -7,7 +7,6 @@ package baseosmgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // MaybeAddContentTreeConfig makes sure we have a ContentTreeConfig
