@@ -18,13 +18,13 @@ package hardware
 
 import (
 	"bytes"
-	log "github.com/sirupsen/logrus" // XXX add log argument
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -37,19 +37,19 @@ const (
 
 // XXX Note that this function (and the ones below) log if there is an
 // error. That's impolite for a library to do.
-func GetHardwareModel() string {
-	model := getOverride(overrideFile)
+func GetHardwareModel(log *base.LogObject) string {
+	model := getOverride(log, overrideFile)
 	if model != "" {
 		return model
 	}
-	return GetHardwareModelNoOverride()
+	return GetHardwareModelNoOverride(log)
 }
 
-func GetHardwareModelOverride() string {
-	return getOverride(overrideFile)
+func GetHardwareModelOverride(log *base.LogObject) string {
+	return getOverride(log, overrideFile)
 }
 
-func GetHardwareModelNoOverride() string {
+func GetHardwareModelNoOverride(log *base.LogObject) string {
 	product := ""
 	manufacturer := ""
 
@@ -67,7 +67,7 @@ func GetHardwareModelNoOverride() string {
 	} else {
 		manufacturer = string(manu)
 	}
-	compatible := GetCompatible()
+	compatible := GetCompatible(log)
 	return FormatModel(manufacturer, product, compatible)
 }
 
@@ -97,7 +97,7 @@ func FormatModel(manufacturer, product, compatible string) string {
 }
 
 // If the file exists return its content
-func getOverride(filename string) string {
+func getOverride(log *base.LogObject, filename string) string {
 	if _, err := os.Stat(filename); err != nil {
 		return ""
 	}
@@ -111,7 +111,7 @@ func getOverride(filename string) string {
 
 const controlChars = "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
 
-func GetCompatible() string {
+func GetCompatible(log *base.LogObject) string {
 	compatible := ""
 	if _, err := os.Stat(compatibleFile); err == nil {
 		contents, err := ioutil.ReadFile(compatibleFile)
@@ -125,7 +125,7 @@ func GetCompatible() string {
 	return compatible
 }
 
-func getCPUSerial() string {
+func getCPUSerial(log *base.LogObject) string {
 	serial := ""
 	if _, err := os.Stat(cpuInfoFile); err == nil {
 		contents, err := ioutil.ReadFile(cpuInfoFile)
@@ -160,11 +160,11 @@ func massageCompatible(contents []byte) []byte {
 }
 
 // GetSoftSerial returns software defined product serial number
-func GetSoftSerial() string {
-	return strings.TrimSuffix(getOverride(softSerialFile), "\n")
+func GetSoftSerial(log *base.LogObject) string {
+	return strings.TrimSuffix(getOverride(log, softSerialFile), "\n")
 }
 
-func GetProductSerial() string {
+func GetProductSerial(log *base.LogObject) string {
 	cmd := exec.Command("dmidecode", "-s", "system-serial-number")
 	serial, err := cmd.Output()
 	if err != nil {
@@ -175,12 +175,12 @@ func GetProductSerial() string {
 	if string(serial) != "" {
 		return strings.TrimSuffix(string(serial), "\n")
 	} else {
-		return getCPUSerial()
+		return getCPUSerial(log)
 	}
 }
 
 // Returns productManufacturer, productName, productVersion, productSerial, productUuid
-func GetDeviceManufacturerInfo() (string, string, string, string, string) {
+func GetDeviceManufacturerInfo(log *base.LogObject) (string, string, string, string, string) {
 	cmd := exec.Command("dmidecode", "-s", "system-product-name")
 	pname, err := cmd.Output()
 	if err != nil {
@@ -209,7 +209,7 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 			err)
 		uuid = []byte{}
 	}
-	productSerial := GetProductSerial()
+	productSerial := GetProductSerial(log)
 	productManufacturer := string(manufacturer)
 	productName := string(pname)
 	productVersion := string(version)
@@ -218,7 +218,7 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 }
 
 // Returns BIOS vendor, version, release-date
-func GetDeviceBios() (string, string, string) {
+func GetDeviceBios(log *base.LogObject) (string, string, string) {
 	cmd := exec.Command("dmidecode", "-s", "bios-vendor")
 	vendor, err := cmd.Output()
 	if err != nil {

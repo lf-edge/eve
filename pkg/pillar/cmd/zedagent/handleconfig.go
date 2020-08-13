@@ -86,8 +86,8 @@ func handleConfigInit(networkSendTimeout uint32) {
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          networkSendTimeout,
 		NeedStatsFunc:    true,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
 

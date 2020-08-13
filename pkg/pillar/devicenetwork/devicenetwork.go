@@ -17,6 +17,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -87,6 +88,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //    For each interface verified
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
+// XXX Need NewContext function; pass log, agentName, etc
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
@@ -103,11 +105,13 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
+	// XXX temporary hack
+	log := base.NewSourceLogObject("devicenetwork-xyzzy", 0)
 	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
 		DevNetworkStatus: &status,
 		Timeout:          timeout,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        "devicenetwork",
 	})
 	log.Infof("VerifyDeviceNetworkStatus: Use V2 API %v\n", zedcloud.UseV2API())

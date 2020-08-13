@@ -854,19 +854,19 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceManufacturerInfo := new(info.ZInfoManufacturer)
 	if strings.Contains(machineArch, "x86") {
-		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo()
+		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo(log)
 		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productManufacturer))
 		ReportDeviceManufacturerInfo.ProductName = *proto.String(strings.TrimSpace(productName))
 		ReportDeviceManufacturerInfo.Version = *proto.String(strings.TrimSpace(productVersion))
 		ReportDeviceManufacturerInfo.SerialNumber = *proto.String(strings.TrimSpace(productSerial))
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 
-		biosVendor, biosVersion, biosReleaseDate := hardware.GetDeviceBios()
+		biosVendor, biosVersion, biosReleaseDate := hardware.GetDeviceBios(log)
 		ReportDeviceManufacturerInfo.BiosVendor = *proto.String(strings.TrimSpace(biosVendor))
 		ReportDeviceManufacturerInfo.BiosVersion = *proto.String(strings.TrimSpace(biosVersion))
 		ReportDeviceManufacturerInfo.BiosReleaseDate = *proto.String(strings.TrimSpace(biosReleaseDate))
 	}
-	compatible := hardware.GetCompatible()
+	compatible := hardware.GetCompatible(log)
 	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 
