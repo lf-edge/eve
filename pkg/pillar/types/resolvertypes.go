@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // ResolveConfig key/index to this is the combination of
@@ -99,7 +98,7 @@ func (status ResolveStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(ResolveStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ResolveStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ResolveStatus type")
 	}
 	if oldStatus.ImageSha256 != status.ImageSha256 ||
 		oldStatus.RetryCount != status.RetryCount {

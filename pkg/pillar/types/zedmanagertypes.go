@@ -10,7 +10,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type UrlCloudCfg struct {
@@ -102,7 +101,7 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(AppInstanceConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of AppInstanceConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppInstanceConfig type")
 	}
 	if oldConfig.Activate != config.Activate ||
 		oldConfig.RemoteConsole != config.RemoteConsole {
@@ -188,7 +187,7 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(AppInstanceStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of AppInstanceStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppInstanceStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RestartInprogress != status.RestartInprogress ||

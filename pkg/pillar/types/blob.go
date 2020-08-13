@@ -6,7 +6,6 @@ package types
 import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // BlobStatus status of a downloaded blob
@@ -84,7 +83,7 @@ func (status BlobStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(BlobStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of BlobStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of BlobStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RefCount != status.RefCount ||
