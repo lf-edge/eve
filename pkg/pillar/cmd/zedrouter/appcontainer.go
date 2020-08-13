@@ -22,6 +22,7 @@ import (
 	apitypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	log "github.com/sirupsen/logrus"
@@ -110,6 +111,8 @@ func ensureStatsCollectRunning(ctx *zedrouterContext) {
 	if !ctx.appCollectStatsRunning {
 		ctx.appCollectStatsRunning = true
 		ctx.appStatsMutex.Unlock()
+		log.Infof("Creating %s at %s", "appStatusAndLogCollect",
+			agentlog.GetMyStack())
 		go appStatsAndLogCollect(ctx)
 	} else {
 		ctx.appStatsMutex.Unlock()

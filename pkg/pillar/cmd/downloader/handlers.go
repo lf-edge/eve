@@ -4,6 +4,7 @@
 package downloader
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -60,6 +61,7 @@ func (d *downloadHandler) create(ctxArg interface{},
 	}
 	h1 := make(chan Notify, 1)
 	d.handlers[config.Key()] = h1
+	log.Infof("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, h1)
 	h = h1
 	select {

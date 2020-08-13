@@ -8,6 +8,7 @@ package watch
 import (
 	"fmt"
 	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ func WaitForFile(filename string) {
 
 	done := make(chan bool)
 	stop := make(chan bool)
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		for {
 			select {

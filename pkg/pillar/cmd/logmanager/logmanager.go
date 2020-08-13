@@ -319,8 +319,11 @@ func Run(ps *pubsub.PubSub) {
 		inputMetrics: &inputMetrics}
 
 	// Start sender of log events
+	log.Infof("Creating %s at %s", "processEvents", agentlog.GetMyStack())
 	go processEvents(currentPartition, loggerChan, eveVersion, &logmanagerCtx)
 
+	log.Infof("Creating %s at %s", "parseAndSendSyslogEntries",
+		agentlog.GetMyStack())
 	go parseAndSendSyslogEntries(&ctx)
 
 	for {
