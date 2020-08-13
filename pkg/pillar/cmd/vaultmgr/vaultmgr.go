@@ -13,16 +13,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -34,10 +33,7 @@ type vaultMgrContext struct {
 
 const (
 	agentName           = "vaultmgr"
-	fscryptPath         = "/opt/zededa/bin/fscrypt"
-	fscryptConfFile     = "/etc/fscrypt.conf"
 	keyctlPath          = "/bin/keyctl"
-	mountPoint          = types.PersistDir
 	deprecatedImgVault  = types.PersistDir + "/img"
 	defaultCfgVault     = types.PersistDir + "/config"
 	defaultVault        = types.PersistDir + "/vault"
@@ -50,7 +46,6 @@ const (
 	vaultHalfKeyLen     = 16 //bytes
 	defaultVaultName    = "Application Data Store"
 	defaultCfgVaultName = "Configuration Data Store"
-	evePersistTypeFile  = "/run/eve.persist_type"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -58,8 +53,7 @@ const (
 
 var (
 	keyctlParams      = []string{"link", "@u", "@s"}
-	mntPointParams    = []string{"setup", mountPoint, "--quiet"}
-	statusParams      = []string{"status", mountPoint}
+	mntPointParams    = []string{"setup", vault.MountPoint, "--quiet"}
 	vaultStatusParams = []string{"status"}
 	setupParams       = []string{"setup", "--quiet"}
 	debug             = false
@@ -87,22 +81,22 @@ func getStatusParams(vaultPath string) []string {
 func getChangeProtectorParams(protectorID string) []string {
 	args := []string{"metadata", "change-passphrase", "--key=" + keyFile,
 		"--old-key=" + oldKeyFile, "--source=raw_key",
-		"--protector=" + mountPoint + ":" + protectorID}
+		"--protector=" + vault.MountPoint + ":" + protectorID}
 	return args
 }
 
 func getRemoveProtectorParams(protectorID string) []string {
-	args := []string{"metadata", "destroy", "--protector=" + mountPoint + ":" + protectorID, "--quiet", "--force"}
+	args := []string{"metadata", "destroy", "--protector=" + vault.MountPoint + ":" + protectorID, "--quiet", "--force"}
 	return args
 }
 
 func getRemovePolicyParams(policyID string) []string {
-	args := []string{"metadata", "destroy", "--policy=" + mountPoint + ":" + policyID, "--quiet", "--force"}
+	args := []string{"metadata", "destroy", "--policy=" + vault.MountPoint + ":" + policyID, "--quiet", "--force"}
 	return args
 }
 
 func getProtectorIDByName(vaultPath string) ([][]string, error) {
-	stdOut, _, err := execCmd(fscryptPath, statusParams...)
+	stdOut, _, err := execCmd(vault.FscryptPath, vault.StatusParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +107,7 @@ func getProtectorIDByName(vaultPath string) ([][]string, error) {
 }
 
 func getPolicyIDByProtectorID(protectID string) ([][]string, error) {
-	stdOut, _, err := execCmd(fscryptPath, statusParams...)
+	stdOut, _, err := execCmd(vault.FscryptPath, vault.StatusParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +125,7 @@ func removeProtectorIfAny(vaultPath string) error {
 	if err == nil {
 		log.Infof("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
 		args := getRemoveProtectorParams(protectorID[0][1])
-		if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+		if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
 			log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
 			return err
 		}
@@ -139,7 +133,7 @@ func removeProtectorIfAny(vaultPath string) error {
 		if err == nil {
 			log.Infof("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
 			args := getRemovePolicyParams(policyID[0][1])
-			if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+			if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
 				log.Errorf("Error changing policy key: %v, %v, %v", err, stdOut, stdErr)
 				return err
 			}
@@ -150,7 +144,7 @@ func removeProtectorIfAny(vaultPath string) error {
 
 func getProtectorID(vaultPath string) ([][]string, error) {
 	args := getStatusParams(vaultPath)
-	stdOut, _, err := execCmd(fscryptPath, args...)
+	stdOut, _, err := execCmd(vault.FscryptPath, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +163,7 @@ func changeProtector(vaultPath string) error {
 			return err
 		}
 		defer unstageKey(keyDir, keyFile)
-		if stdOut, stdErr, err := execCmd(fscryptPath,
+		if stdOut, stdErr, err := execCmd(vault.FscryptPath,
 			getChangeProtectorParams(protectorID[0][1])...); err != nil {
 			log.Errorf("Error changing protector key: %v", err)
 			log.Debug(stdOut)
@@ -209,7 +203,7 @@ func linkKeyrings() error {
 func retrieveTpmKey() ([]byte, error) {
 	var tpmKey []byte
 	var err error
-	tpmKey, err = tpmmgr.FetchVaultKey()
+	tpmKey, err = etpm.FetchVaultKey()
 	if err != nil {
 		log.Errorf("Error fetching TPM key: %v", err)
 		return nil, err
@@ -321,7 +315,7 @@ func isDirEmpty(path string) bool {
 //handleFirstUse sets up mountpoint for the first time use
 func handleFirstUse() error {
 	//setup mountPoint for encryption
-	if _, _, err := execCmd(fscryptPath, mntPointParams...); err != nil {
+	if _, _, err := execCmd(vault.FscryptPath, mntPointParams...); err != nil {
 		log.Fatalf("Error setting up mountpoint for encrption: %v", err)
 		return err
 	}
@@ -335,7 +329,7 @@ func unlockVault(vaultPath string, cloudKeyOnlyMode bool) error {
 	defer unstageKey(keyDir, keyFile)
 
 	//Unlock vault for access
-	if _, _, err := execCmd(fscryptPath, getUnlockParams(vaultPath)...); err != nil {
+	if _, _, err := execCmd(vault.FscryptPath, getUnlockParams(vaultPath)...); err != nil {
 		log.Errorf("Error unlocking vault: %v", err)
 		return err
 	}
@@ -353,7 +347,7 @@ func createVault(vaultPath string) error {
 	defer unstageKey(keyDir, keyFile)
 
 	//Encrypt vault, and unlock it for accessing
-	if stdout, stderr, err := execCmd(fscryptPath, getEncryptParams(vaultPath)...); err != nil {
+	if stdout, stderr, err := execCmd(vault.FscryptPath, getEncryptParams(vaultPath)...); err != nil {
 		log.Errorf("Encryption failed: %v, %s, %s", err, stdout, stderr)
 		return err
 	}
@@ -374,7 +368,7 @@ func setupVault(vaultPath string, deprecated bool) error {
 		}
 	}
 	args := getStatusParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
 		log.Infof("%v, %v, %v", stdOut, stdErr, err)
 		if !isDirEmpty(vaultPath) || deprecated {
 			//Don't disturb existing installations
@@ -400,12 +394,12 @@ func setupVault(vaultPath string, deprecated bool) error {
 
 func setupFscryptEnv() error {
 	//setup fscrypt.conf, if not done already
-	if _, _, err := execCmd(fscryptPath, setupParams...); err != nil {
+	if _, _, err := execCmd(vault.FscryptPath, setupParams...); err != nil {
 		log.Fatalf("Error setting up fscrypt.conf: %v", err)
 		return err
 	}
 	//Check if /persist is already setup for encryption
-	if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+	if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
 		//Not yet setup, set it up for the first use
 		return handleFirstUse()
 	}
@@ -423,7 +417,7 @@ func publishVaultStatus(ctx *vaultMgrContext,
 		status.SetErrorNow(fscryptError)
 	} else {
 		args := getStatusParams(vaultPath)
-		if stdOut, stdErr, err := execCmd(fscryptPath, args...); err != nil {
+		if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
 			log.Errorf("Status failed, %v, %v, %v", err, stdOut, stdErr)
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
 			status.SetErrorNow(stdOut + stdErr)
@@ -438,9 +432,9 @@ func publishVaultStatus(ctx *vaultMgrContext,
 }
 
 func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
-	_, err := os.Stat(fscryptConfFile)
+	_, err := os.Stat(vault.FscryptConfFile)
 	if err == nil {
-		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+		if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
 			//fscrypt is setup, but not being used
 			log.Debug("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
@@ -477,64 +471,6 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	}
 	pubVaultStatus.ClearRestarted()
 	ctx.pubVaultStatus = pubVaultStatus
-}
-
-//getFscryptOperInfo returns operational status of fscrypt encryption
-func getFscryptOperInfo() (info.DataSecAtRestStatus, string) {
-	_, err := os.Stat(fscryptConfFile)
-	if err == nil {
-		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
-			//fscrypt is setup, but not being used
-			log.Debug("Setting status to Error")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Fscrypt Encryption is not setup"
-		} else {
-			//fscrypt is setup, and being used on /persist
-			log.Debug("Setting status to Enabled")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-				"Fscrypt is enabled and active"
-		}
-	} else {
-		return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-			"Fscrypt is not enabled"
-
-	}
-}
-
-//getZfsOperInfo returns operational status of ZFS encryption
-func getZfsOperInfo() (info.DataSecAtRestStatus, string) {
-	//Check if default zpool (i.e. "persist" dataset) is setup
-	_, err := checkOperStatus(defaultZpool)
-	if err != nil {
-		log.Errorf("default zpool status returns error %v", err)
-		return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-			"Default ZFS zpool is not setup"
-	}
-	return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-		"ZFS Encryption is enabled for vaults"
-
-}
-
-//GetOperInfo gets the current operational state of encryption tool
-func GetOperInfo() (info.DataSecAtRestStatus, string) {
-	if !etpm.IsTpmEnabled() {
-		//No encryption on plaforms without a (working) TPM
-		log.Debug("Setting status to disabled, TPM is not in use")
-		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-			"TPM is either absent or not in use"
-	}
-	persistFsType := readPersistType()
-	switch persistFsType {
-	case "ext4":
-		return getFscryptOperInfo()
-	case "zfs":
-		return getZfsOperInfo()
-	default:
-		log.Debugf("Unsupported filesystem (%s), setting status to disabled",
-			persistFsType)
-		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-			"Current filesystem does not support encryption"
-	}
 }
 
 //setup vaults on ext4, using fscrypt
@@ -581,12 +517,12 @@ func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
 func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 	status := types.VaultStatus{}
 	status.Name = vaultName
-	zfsEncryptStatus, zfsEncryptError := GetOperInfo()
+	zfsEncryptStatus, zfsEncryptError := vault.GetOperInfo()
 	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = zfsEncryptStatus
 		status.SetErrorNow(zfsEncryptError)
 	} else {
-		datasetStatus, err := checkOperStatus(vaultPath)
+		datasetStatus, err := vault.CheckOperStatus(vaultPath)
 		if err == nil {
 			log.Infof("checkOperStatus returns %s for %s", datasetStatus, vaultPath)
 			datasetStatus = processOperStatus(datasetStatus)
@@ -628,7 +564,7 @@ func Run(ps *pubsub.PubSub) {
 	switch flag.Args()[0] {
 	case "setupVaults":
 		//start with an assumption that nothing needs to be done
-		persistFsType := readPersistType()
+		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
 		case "ext4":
 			setupVaultsOnExt4()
@@ -683,7 +619,7 @@ func Run(ps *pubsub.PubSub) {
 		// initialize publishing handles
 		initializeSelfPublishHandles(ps, &ctx)
 
-		persistFsType := readPersistType()
+		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
 		case "ext4":
 			publishAllFscryptVaultStatus(&ctx)
@@ -734,16 +670,4 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
-}
-
-//readPersistType returns the persist filesystem type
-//e.g ext4, zfs, ext3 etc.
-//returns "" in case of read error
-func readPersistType() string {
-	persistFsType := ""
-	pBytes, err := ioutil.ReadFile(evePersistTypeFile)
-	if err == nil {
-		persistFsType = strings.TrimSpace(string(pBytes))
-	}
-	return persistFsType
 }
