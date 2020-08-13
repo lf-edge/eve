@@ -11,7 +11,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // VolumeConfig specifies the needed information for volumes
@@ -53,7 +52,7 @@ func (config VolumeConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(VolumeConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VolumeConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeConfig type")
 	}
 	if oldConfig.ContentID != config.ContentID ||
 		oldConfig.MaxVolSize != config.MaxVolSize ||
@@ -158,7 +157,7 @@ func (status VolumeStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(VolumeStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VolumeStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeStatus type")
 	}
 	if oldStatus.ContentID != status.ContentID ||
 		oldStatus.MaxVolSize != status.MaxVolSize ||
@@ -242,7 +241,7 @@ func (config VolumeRefConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(VolumeRefConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VolumeRefConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeRefConfig type")
 	}
 	if oldConfig.RefCount != config.RefCount {
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
@@ -330,7 +329,7 @@ func (status VolumeRefStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(VolumeRefStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VolumeRefStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeRefStatus type")
 	}
 	if oldStatus.RefCount != status.RefCount ||
 		oldStatus.State != status.State ||

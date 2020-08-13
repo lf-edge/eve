@@ -196,7 +196,8 @@ func (config DevicePortConfigList) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DevicePortConfigList)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+		logObject.Clone().Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+		return
 	}
 	if oldConfig.CurrentIndex != config.CurrentIndex ||
 		len(oldConfig.PortConfigList) != len(config.PortConfigList) {
@@ -315,7 +316,7 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DevicePortConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DevicePortConfig type")
 	}
 	if len(oldConfig.Ports) != len(config.Ports) ||
 		oldConfig.LastFailed != config.LastFailed ||
@@ -810,7 +811,7 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(DeviceNetworkStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
 	}
 	if oldStatus.Testing != status.Testing ||
 		oldStatus.State != status.State ||

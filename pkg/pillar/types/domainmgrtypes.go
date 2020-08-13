@@ -9,7 +9,6 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	log "github.com/sirupsen/logrus"
 )
 
 // The information DomainManager needs to boot and halt domains
@@ -71,7 +70,7 @@ func (config DomainConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DomainConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DomainConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DomainConfig type")
 	}
 	if oldConfig.Activate != config.Activate ||
 		oldConfig.EnableVnc != config.EnableVnc {
@@ -217,7 +216,7 @@ func (status DomainStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(DomainStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DomainStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DomainStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.Activated != status.Activated {

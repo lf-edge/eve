@@ -9,7 +9,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type OsVerParams struct {
@@ -56,7 +55,7 @@ func (config BaseOsConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(BaseOsConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of BaseOsConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of BaseOsConfig type")
 	}
 	if oldConfig.Activate != config.Activate {
 
@@ -126,7 +125,7 @@ func (status BaseOsStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(BaseOsStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of BaseOsStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of BaseOsStatus type")
 	}
 	if oldStatus.State != status.State {
 

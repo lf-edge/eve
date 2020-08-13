@@ -49,7 +49,7 @@ func (config DownloaderConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DownloaderConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DownloaderConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DownloaderConfig type")
 	}
 	if oldConfig.Target != config.Target ||
 		oldConfig.DatastoreID != config.DatastoreID ||
@@ -163,7 +163,7 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(DownloaderStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DownloaderStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DownloaderStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RefCount != status.RefCount ||
