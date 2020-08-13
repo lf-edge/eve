@@ -20,8 +20,8 @@ func (config ZbootConfig) Key() string {
 }
 
 // LogCreate :
-func (config ZbootConfig) LogCreate() {
-	logObject := base.NewLogObject(base.ZbootConfigLogType, "",
+func (config ZbootConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ZbootConfigLogType, "",
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -32,7 +32,7 @@ func (config ZbootConfig) LogCreate() {
 
 // LogModify :
 func (config ZbootConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ZbootConfigLogType, "",
+	logObject := base.EnsureLogObject(nil, base.ZbootConfigLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(ZbootConfig)
@@ -50,7 +50,7 @@ func (config ZbootConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config ZbootConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.ZbootConfigLogType, "",
+	logObject := base.EnsureLogObject(nil, base.ZbootConfigLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("test-complete-bool", config.TestComplete).
 		Infof("Zboot config delete")
@@ -78,8 +78,8 @@ func (status ZbootStatus) Key() string {
 }
 
 // LogCreate :
-func (status ZbootStatus) LogCreate() {
-	logObject := base.NewLogObject(base.ZbootStatusLogType, "",
+func (status ZbootStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ZbootStatusLogType, "",
 		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -92,7 +92,7 @@ func (status ZbootStatus) LogCreate() {
 
 // LogModify :
 func (status ZbootStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ZbootStatusLogType, "",
+	logObject := base.EnsureLogObject(nil, base.ZbootStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(ZbootStatus)
@@ -115,7 +115,7 @@ func (status ZbootStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status ZbootStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.ZbootStatusLogType, "",
+	logObject := base.EnsureLogObject(nil, base.ZbootStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("partition-state", status.PartitionState).
 		AddField("current-partition-bool", status.CurrentPartition).

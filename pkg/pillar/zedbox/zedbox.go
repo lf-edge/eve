@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/baseosmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/client"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/command"
@@ -64,9 +65,10 @@ var entrypoints = map[string]func(*pubsub.PubSub){
 }
 
 func main() {
-	ps := pubsub.New(&socketdriver.SocketDriver{})
-
+	pid := os.Getpid()
 	basename := filepath.Base(os.Args[0])
+	log := base.NewSourceLogObject(basename, pid)
+	ps := pubsub.New(&socketdriver.SocketDriver{Log: log}, log)
 	if entrypoint, ok := entrypoints[basename]; ok {
 		entrypoint(ps)
 	} else {

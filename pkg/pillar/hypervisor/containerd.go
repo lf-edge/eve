@@ -15,6 +15,7 @@ import (
 )
 
 type ctrdContext struct {
+	// XXX add log?
 	domCounter int
 	PCI        map[string]bool
 }

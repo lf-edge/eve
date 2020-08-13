@@ -18,7 +18,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -250,7 +249,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("Installing %s over unused",
 			config.BaseOsVersion)
 	case "inprogress":
-		agentlog.DiscardOtherRebootReason()
+		agentlog.DiscardOtherRebootReason(log)
 		log.Infof("Installing %s over inprogress",
 			config.BaseOsVersion)
 	case "updating":
@@ -584,7 +583,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				log.Infof("Mark other partition %s, unused", partName)
 				// we will erase the older reboot reason
 				if zboot.IsOtherPartitionStateInProgress() {
-					agentlog.DiscardOtherRebootReason()
+					agentlog.DiscardOtherRebootReason(log)
 				}
 				zboot.SetOtherPartitionStateUnused()
 				publishZbootPartitionStatus(ctx, partName)

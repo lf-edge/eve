@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,7 +27,8 @@ var (
 )
 
 func TestHandleModify(t *testing.T) {
-	ps := New(&EmptyDriver{})
+	log := base.NewSourceLogObject("test", 1234)
+	ps := New(&EmptyDriver{}, log)
 	sub, err := ps.NewSubscription(SubscriptionOptions{
 		AgentName:  agentName,
 		AgentScope: agentScope,

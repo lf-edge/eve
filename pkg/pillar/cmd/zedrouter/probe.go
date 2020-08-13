@@ -16,7 +16,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 	fastping "github.com/tatsushid/go-fastping"
 )
 

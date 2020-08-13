@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	log "github.com/sirupsen/logrus"
 )
 
 // populateExistingVolumesFormat iterates over the directory and takes format

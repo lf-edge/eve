@@ -38,8 +38,8 @@ func (config VerifyImageConfig) Key() string {
 }
 
 // LogCreate :
-func (config VerifyImageConfig) LogCreate() {
-	logObject := base.NewLogObject(base.VerifyImageConfigLogType, config.Name,
+func (config VerifyImageConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VerifyImageConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -51,7 +51,7 @@ func (config VerifyImageConfig) LogCreate() {
 
 // LogModify :
 func (config VerifyImageConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
+	logObject := base.EnsureLogObject(nil, base.VerifyImageConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(VerifyImageConfig)
@@ -71,7 +71,7 @@ func (config VerifyImageConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config VerifyImageConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.VerifyImageConfigLogType, config.Name,
+	logObject := base.EnsureLogObject(nil, base.VerifyImageConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		AddField("expired-bool", config.Expired).
@@ -108,8 +108,8 @@ func (status VerifyImageStatus) Key() string {
 }
 
 // LogCreate :
-func (status VerifyImageStatus) LogCreate() {
-	logObject := base.NewLogObject(base.VerifyImageStatusLogType, status.Name,
+func (status VerifyImageStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VerifyImageStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -124,7 +124,7 @@ func (status VerifyImageStatus) LogCreate() {
 
 // LogModify :
 func (status VerifyImageStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.VerifyImageStatusLogType, status.Name,
+	logObject := base.EnsureLogObject(nil, base.VerifyImageStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(VerifyImageStatus)
@@ -161,7 +161,7 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status VerifyImageStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.VerifyImageStatusLogType, status.Name,
+	logObject := base.EnsureLogObject(nil, base.VerifyImageStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).

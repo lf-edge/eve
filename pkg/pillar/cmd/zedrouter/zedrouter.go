@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"time"
@@ -22,15 +23,15 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -88,6 +89,7 @@ type zedrouterContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var log *base.LogObject
 
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -96,17 +98,20 @@ func Run(ps *pubsub.PubSub) {
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
@@ -622,7 +627,7 @@ func handleInit(runDirname string) {
 	}
 
 	// Setup initial iptables rules
-	iptables.IptablesInit()
+	iptables.IptablesInit(log)
 
 	// ipsets which are independent of config
 	createDefaultIpset()
@@ -1534,7 +1539,8 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	var err error
 	var out []byte
 	for i := 0; i < 3; i++ {
-		out, err = wrap.Command(cmd, args...).CombinedOutput()
+		log.Infof("Calling command %s %v\n", cmd, args)
+		out, err = exec.Command(cmd, args...).CombinedOutput()
 		if err == nil {
 			break
 		}
@@ -1560,7 +1566,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
@@ -1578,7 +1584,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	gcp := *types.DefaultConfigItemValueMap()
 	ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)

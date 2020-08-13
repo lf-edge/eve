@@ -9,9 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
 	"net"
+	"os/exec"
 )
 
 // Create a pair of local ipsets called "ipv6.local" and "ipv4.local"
@@ -200,7 +199,8 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 		family = "inet6"
 	}
 	args := []string{"create", ipsetName, setType, "family", family}
-	if _, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+	log.Infof("Calling command %s %v\n", cmd, args)
+	if _, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 		return err
 	}
 	return nil
@@ -209,7 +209,8 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 func ipsetDestroy(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"destroy", ipsetName}
-	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+	log.Infof("Calling command %s %v\n", cmd, args)
+	if res, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset destroy %s failed %s: %s",
 			ipsetName, res, err)
 		return errors.New(errStr)
@@ -220,7 +221,8 @@ func ipsetDestroy(ipsetName string) error {
 func ipsetFlush(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"flush", ipsetName}
-	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+	log.Infof("Calling command %s %v\n", cmd, args)
+	if res, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset flush %s failed %s: %s",
 			ipsetName, res, err)
 		return errors.New(errStr)
@@ -231,7 +233,8 @@ func ipsetFlush(ipsetName string) error {
 func ipsetAdd(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"add", ipsetName, member}
-	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+	log.Infof("Calling command %s %v\n", cmd, args)
+	if res, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset add %s failed %s: %s",
 			ipsetName, res, err)
 		return errors.New(errStr)
@@ -242,7 +245,8 @@ func ipsetAdd(ipsetName string, member string) error {
 func ipsetDel(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"del", ipsetName, member}
-	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+	log.Infof("Calling command %s %v\n", cmd, args)
+	if res, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset del %s failed %s: %s",
 			ipsetName, res, err)
 		return errors.New(errStr)
@@ -253,7 +257,8 @@ func ipsetDel(ipsetName string, member string) error {
 func ipsetExists(ipsetName string) bool {
 	cmd := "ipset"
 	args := []string{"list", ipsetName}
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
+	log.Infof("Calling command %s %v\n", cmd, args)
+	if _, err := exec.Command(cmd, args...).Output(); err != nil {
 		return false
 	}
 	return true

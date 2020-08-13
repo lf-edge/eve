@@ -14,7 +14,7 @@ package queuelock
 import (
 	"sync"
 
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 // Handle is the handle used by the caller

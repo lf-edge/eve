@@ -12,6 +12,7 @@ import (
 	"fmt"
 	uuid "github.com/satori/go.uuid"
 	"net"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -19,8 +20,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
 )
 
 func allowSharedPort(status *types.NetworkInstanceStatus) bool {
@@ -143,7 +142,8 @@ func checkPortAvailable(
 func disableIcmpRedirects(bridgeName string) {
 	sysctlSetting := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", bridgeName)
 	args := []string{"-w", sysctlSetting}
-	out, err := wrap.Command("sysctl", args...).CombinedOutput()
+	log.Infof("Calling command %s %v\n", "sysctl", args)
+	out, err := exec.Command("sysctl", args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
 			args, err, out)
@@ -1463,7 +1463,7 @@ func natActivate(ctx *zedrouterContext,
 	}
 	for _, a := range status.IfNameList {
 		log.Infof("Adding iptables rules for %s \n", a)
-		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
+		err := iptables.IptableCmd(log, "-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("IptableCmd failed: %s", err)
@@ -1491,7 +1491,7 @@ func natInactivate(ctx *zedrouterContext,
 	} else {
 		oldUplinkIntf = status.CurrentUplinkIntf
 	}
-	err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
+	err := iptables.IptableCmd(log, "-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
 		"-s", subnetStr, "-j", "MASQUERADE")
 	if err != nil {
 		log.Errorf("natInactivate: iptableCmd failed %s\n", err)

@@ -21,7 +21,6 @@ import (
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 )
 
 var flowIteration int

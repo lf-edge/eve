@@ -38,7 +38,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
-	log "github.com/sirupsen/logrus"
 )
 
 // Report disk usage for these paths

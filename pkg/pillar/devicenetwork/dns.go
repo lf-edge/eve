@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX FIXME
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -30,7 +30,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) {
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
-	cmd := wrap.Command("dhcpcd", "-U", "-4", us.IfName)
+	cmd := exec.Command("dhcpcd", "-U", "-4", us.IfName)
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",

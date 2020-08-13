@@ -26,12 +26,13 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX See below
 )
 
 // XXX should we add some Init() function to create this?
 // Currently caller fills it in.
 type ZedCloudContext struct {
+	// XXX add log
 	DeviceNetworkStatus *types.DeviceNetworkStatus
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64, authFail bool)
@@ -65,7 +66,6 @@ type ContextOptions struct {
 	AgentName        string
 }
 
-var sendCounter uint32
 var nilUUID = uuid.UUID{}
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -407,9 +407,8 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			if devSoftSerial != "" {
 				req.Header.Add("X-Soft-Serial", devSoftSerial)
 			}
-			log.Debugf("Serial-Numbers, count (%d), serial: %s, soft-serial %s",
-				sendCounter, devSerialNum, devSoftSerial)
-			sendCounter++
+			log.Debugf("Serial-Numbers, serial: %s, soft-serial %s",
+				devSerialNum, devSoftSerial)
 		}
 
 		trace := &httptrace.ClientTrace{

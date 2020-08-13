@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )

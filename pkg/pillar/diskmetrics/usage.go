@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 func SizeFromDir(dirname string) uint64 {

@@ -5,7 +5,6 @@ package downloader
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // Notify simple struct to pass notification messages

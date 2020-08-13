@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -28,7 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -62,6 +63,7 @@ type nimContext struct {
 
 // Set from Makefile
 var Version = "No version specified"
+var log *base.LogObject
 
 func (ctx *nimContext) processArgs() {
 	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
@@ -73,9 +75,9 @@ func (ctx *nimContext) processArgs() {
 	ctx.debugOverride = ctx.debug
 	ctx.useStdout = *stdoutPtr
 	if ctx.debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	ctx.version = *versionPtr
 }
@@ -96,10 +98,12 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	agentlog.Init(agentName)
+	log = agentlog.Init(agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
@@ -921,7 +925,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	ctx.debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
 	first := !ctx.GCInitialized
 	if gcp != nil {
@@ -931,7 +935,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		gcpNetworkFallbackAnyEth := gcp.GlobalValueTriState(types.NetworkFallbackAnyEth)
 		if gcpSSHAccess != ctx.sshAccess || first {
 			ctx.sshAccess = gcpSSHAccess
-			iptables.UpdateSshAccess(ctx.sshAccess, first)
+			iptables.UpdateSshAccess(log, ctx.sshAccess, first)
 		}
 		if gcpSSHAuthorizedKeys != ctx.sshAuthorizedKeys || first {
 			ctx.sshAuthorizedKeys = gcpSSHAuthorizedKeys
@@ -939,7 +943,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		}
 		if gcpAllowAppVnc != ctx.allowAppVnc {
 			ctx.allowAppVnc = gcpAllowAppVnc
-			iptables.UpdateVncAccess(ctx.allowAppVnc)
+			iptables.UpdateVncAccess(log, ctx.allowAppVnc)
 		}
 		if gcpNetworkFallbackAnyEth != ctx.networkFallbackAnyEth || first {
 			ctx.networkFallbackAnyEth = gcpNetworkFallbackAnyEth
@@ -981,7 +985,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	ctx.debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)
@@ -995,7 +999,7 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	if done {
 		first := !ctx.GCInitialized
 		if first {
-			iptables.UpdateSshAccess(ctx.sshAccess, first)
+			iptables.UpdateSshAccess(log, ctx.sshAccess, first)
 		}
 		ctx.GCInitialized = true
 	}

@@ -18,7 +18,7 @@ package hardware
 
 import (
 	"bytes"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 	"io/ioutil"
 	"os"
 	"os/exec"

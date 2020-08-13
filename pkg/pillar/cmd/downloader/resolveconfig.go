@@ -14,7 +14,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
-	log "github.com/sirupsen/logrus"
 )
 
 func runResolveHandler(ctx *downloaderContext, key string, c <-chan Notify) {

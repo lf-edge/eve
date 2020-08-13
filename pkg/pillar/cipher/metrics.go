@@ -7,7 +7,7 @@ package cipher
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // OK for log.Fatal
 	"sync"
 	"time"
 )
@@ -44,7 +44,6 @@ func maybeInit(agentName string) {
 		log.Fatal("no cipher map")
 	}
 	if _, ok := metrics[agentName]; !ok {
-		log.Debugf("create zedcloudmetric for %s\n", agentName)
 		metrics[agentName] = types.CipherMetrics{
 			TypeCounters: make([]uint64, types.MaxCipherError),
 		}

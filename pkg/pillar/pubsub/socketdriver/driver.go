@@ -11,8 +11,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	log "github.com/sirupsen/logrus"
 )
 
 // Protocol over AF_UNIX or other IPC mechanism
@@ -55,6 +55,7 @@ const (
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
 type SocketDriver struct {
+	Log *base.LogObject
 }
 
 // Publisher return an implementation of `pubsub.DriverPublisher` for
@@ -93,7 +94,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	}
 
 	if _, err := os.Stat(dirName); err != nil {
-		log.Infof("Publish Create %s\n", dirName)
+		s.Log.Infof("Publish Create %s\n", dirName)
 		if err := os.MkdirAll(dirName, 0700); err != nil {
 			errStr := fmt.Sprintf("Publish(%s): %s",
 				name, err)
@@ -108,7 +109,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		sockName = s.sockName(name)
 		dir := path.Dir(sockName)
 		if _, err := os.Stat(dir); err != nil {
-			log.Infof("Publish Create %s\n", dir)
+			s.Log.Infof("Publish Create %s\n", dir)
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)
@@ -122,7 +123,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			sock, err := net.Dial("unixpacket", sockName)
 			if err == nil {
 				sock.Close()
-				log.Fatalf("Can not publish %s since it it already used",
+				s.Log.Fatalf("Can not publish %s since it it already used",
 					sockName)
 			}
 			if err := os.Remove(sockName); err != nil {
@@ -148,6 +149,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		updaters:       updaterList,
 		differ:         differ,
 		restarted:      restarted,
+		log:            s.Log,
 	}, nil
 }
 
@@ -195,6 +197,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		topic:            topic,
 		sockName:         sockName,
 		C:                C,
+		log:              s.Log,
 	}, nil
 }
 

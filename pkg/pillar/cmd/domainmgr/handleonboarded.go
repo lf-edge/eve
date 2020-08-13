@@ -5,7 +5,6 @@ package domainmgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // Set onboarded if the UUID is not nil

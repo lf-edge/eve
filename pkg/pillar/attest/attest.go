@@ -6,7 +6,7 @@ package attest
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 	"time"
 )
 
