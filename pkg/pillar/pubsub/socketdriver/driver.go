@@ -239,22 +239,6 @@ func getBuffer() (*[]byte, func()) {
 
 // check and waits till conn's fd is readable
 func connReadCheck(conn net.Conn) error {
-
-	unixConn, ok := conn.(*net.UnixConn)
-	if !ok {
-		log.Error("connReadCheck: Not UnixConn")
-		return nil
-	}
-	_, _, err := unixConn.ReadFromUnix([]byte{})
-	if err != nil && !strings.HasSuffix(err.Error(), "EOF") {
-		log.Errorf("connReadCheck: %s", err.Error())
-		return err
-	}
-	return nil
-}
-
-// check and waits till conn's fd is readable
-func connReadCheck2(conn net.Conn) error {
 	var sysErr error
 
 	sysConn, ok := conn.(syscall.Conn)

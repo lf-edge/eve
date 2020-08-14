@@ -166,7 +166,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 		}
 
 		// wait for readable conn
-		if err := connReadCheck2(s.sock); err != nil {
+		if err := connReadCheck(s.sock); err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s): exception  while connReadCheck%s",
 				s.name, err)
 			log.Errorln(errStr)

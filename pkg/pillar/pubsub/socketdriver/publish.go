@@ -150,7 +150,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	sentRestarted := false
 
 	// wait for readable conn
-	if err := connReadCheck2(conn); err != nil {
+	if err := connReadCheck(conn); err != nil {
 		log.Errorf("serveConnection(%s/%d) exception  while connReadCheck : %v", s.name, instance, err)
 		return
 	}
