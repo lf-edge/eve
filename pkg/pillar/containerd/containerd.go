@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -16,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/api/services/tasks/v1"
@@ -28,6 +29,7 @@ import (
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
@@ -617,6 +619,12 @@ func CtrDeleteContainer(containerID string) error {
 	_ = CtrStopContainer(containerID, true)
 
 	return ctr.Delete(ctrdCtx)
+}
+
+// Resolver return a resolver.ResolverCloser that can read from containerd
+func Resolver() (resolver.ResolverCloser, error) {
+	_, res, err := resolver.NewContainerdWithClient(ctrdCtx, CtrdClient)
+	return res, err
 }
 
 // LKTaskPrepare creates a new containter based on linuxkit /container/services runtime

@@ -26,8 +26,12 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	addedBlobs := []string{}
 
 	if status.State < types.VERIFIED {
+		if status.DatastoreType == "" {
+			log.Infof("contentTreeStatus(%s) does not have a datastore type yet, deferring", status.ContentID)
+			return false, false
+		}
 
-		if status.IsContainer() {
+		if status.IsOCIRegistry() {
 			maybeLatchContentTreeHash(ctx, status)
 			if status.ContentSha256 == "" {
 				rs := lookupResolveStatus(ctx, status.ResolveKey())
@@ -250,31 +254,44 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// if we made it this far, the entire tree has been verified
 		// before we mark it as verified, load it into the CAS store
-		// for now, we only load containers into containerd
-		// TODO: next stage, load disk images as well
-		if status.Format == zconfig.Format_CONTAINER {
-			loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(
-				getReferenceID(status.ContentID.String(), status.RelativeURL),
-				lookupBlobStatuses(ctx, status.Blobs...)...)
+
+		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
+		refID := getReferenceID(status.ContentID.String(), status.RelativeURL)
+
+		// if we just had an image pointing to a single blob that is not index or manifest, we need
+		// to add a manifest to it.
+		if len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex() {
+			blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
 			if err != nil {
-				err = fmt.Errorf("doUpdateContentTree(%s): Exception while loading blobs into CAS: %s",
+				err = fmt.Errorf("doUpdateContentTree(%s): Exception while getting manifest and config for bare blob: %s",
 					status.ContentID, err.Error())
 				log.Errorf(err.Error())
 				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
 				return changed, false
 			}
-			for _, loadedBlob := range loadedBlobs {
-				log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
-				if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
-					log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
-						status.Key(), loadedBlob.Sha256)
-					MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
-					loadedBlob.HasVerifierRef = false
-				}
-				publishBlobStatus(ctx, loadedBlob)
-			}
-			log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
+			// order is important
+			blobStatuses = append(blobs, blobStatuses...)
 		}
+
+		loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(refID, blobStatuses...)
+		if err != nil {
+			err = fmt.Errorf("doUpdateContentTree(%s): Exception while loading blobs into CAS: %s",
+				status.ContentID, err.Error())
+			log.Errorf(err.Error())
+			status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
+			return changed, false
+		}
+		for _, loadedBlob := range loadedBlobs {
+			log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
+			if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
+				log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
+					status.Key(), loadedBlob.Sha256)
+				MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
+				loadedBlob.HasVerifierRef = false
+			}
+			publishBlobStatus(ctx, loadedBlob)
+		}
+		log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
 		status.State = types.VERIFIED
 		changed = true
 	}
@@ -359,7 +376,6 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName)
 				return changed, false
 			}
-			status.FileLocation = ctStatus.FileLocation
 			status.ReferenceName = getReferenceID(ctStatus.ContentID.String(), ctStatus.RelativeURL)
 			status.ContentFormat = ctStatus.Format
 			changed = true
@@ -383,7 +399,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.VolumeCreated = vr.VolumeCreated
 					changed = true
 				}
-				if status.FileLocation != vr.FileLocation {
+				if status.FileLocation != vr.FileLocation && vr.Error == nil {
 					log.Infof("doUpdateContentTree: From vr set FileLocation to %s for %s",
 						vr.FileLocation, status.VolumeID)
 					status.FileLocation = vr.FileLocation
@@ -440,9 +456,9 @@ var ctObjTypes = []string{types.AppImgObj, types.BaseOsObj}
 
 // updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
 // that has this Sha256
-func updateStatus(ctx *volumemgrContext, sha string) {
+func updateStatusByBlob(ctx *volumemgrContext, sha string) {
 
-	log.Infof("updateStatus(%s)", sha)
+	log.Infof("updateStatusByBlob(%s)", sha)
 	found := false
 	for _, objType := range ctObjTypes {
 		pub := ctx.publication(types.ContentTreeStatus{}, objType)
@@ -460,12 +476,12 @@ func updateStatus(ctx *volumemgrContext, sha string) {
 			if hasSha {
 				found = true
 				if changed, _ := doUpdateContentTree(ctx, &status); changed {
-					log.Infof("updateStatus(%s) publishing ContentTreeStatus",
+					log.Infof("updateStatusByBlob(%s) publishing ContentTreeStatus",
 						status.Key())
 					publishContentTreeStatus(ctx, &status)
 				}
 				// Volume status referring to this content UUID needs to get updated
-				log.Debugf("updateStatus(%s) updating volume status from content ID %v",
+				log.Infof("updateStatusByBlob(%s) updating volume status from content ID %v",
 					status.Key(), status.ContentID)
 				updateVolumeStatusFromContentID(ctx,
 					status.ContentID)
@@ -473,7 +489,38 @@ func updateStatus(ctx *volumemgrContext, sha string) {
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateStatus(%s) NOT FOUND", sha)
+		log.Warnf("XXX updateStatusByBlob(%s) NOT FOUND", sha)
+	}
+}
+
+// updateStatusByDatastore update any datastore missing status
+func updateStatusByDatastore(ctx *volumemgrContext, datastore types.DatastoreConfig) {
+	log.Infof("updateStatusByDatastore(%s)", datastore.UUID)
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.ContentTreeStatus)
+
+			// if it does not match the UUID, or it already has the type, ignore it
+			if status.DatastoreID != datastore.UUID || status.DatastoreType != "" {
+				continue
+			}
+			// set the type
+			log.Infof("Setting datastore type %s for datastore %s on ContentTreeStatus %s",
+				datastore.DsType, datastore.UUID, status.Key())
+			status.DatastoreType = datastore.DsType
+			if changed, _ := doUpdateContentTree(ctx, &status); changed {
+				log.Infof("updateStatusByDatastore(%s) publishing ContentTreeStatus",
+					status.Key())
+				publishContentTreeStatus(ctx, &status)
+			}
+			// Volume status referring to this content UUID needs to get updated
+			log.Infof("updateStatusByDatastore(%s) updating volume status from content ID %v",
+				status.Key(), status.ContentID)
+			updateVolumeStatusFromContentID(ctx,
+				status.ContentID)
+		}
 	}
 }
 
