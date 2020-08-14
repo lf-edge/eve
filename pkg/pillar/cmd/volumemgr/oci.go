@@ -135,7 +135,7 @@ func replaceSha(ref string, digest v1.Hash) string {
 }
 
 // errorCatcherReader io.Reader implementation that wraps a normal io.Reader,
-// while reyurning all errors except for io.EOF, which is treated as no error.
+// while returning all errors except for io.EOF, which is treated as no error.
 // Useful for things that expect an io.Reader but cannot handle an io.EOF normally.
 type errorCatcherReader struct {
 	r       io.Reader

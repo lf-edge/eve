@@ -13,6 +13,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 )
 
@@ -156,12 +157,14 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		return
 	}
 
-	dst, errStr := lookupDatastoreConfig(ctx, rc.DatastoreID, rc.Name)
-	if errStr != "" {
-		rs.SetErrorNow(errStr)
+	dst, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, rc.DatastoreID)
+	if err != nil {
+		rs.SetErrorNow(err.Error())
 		publishResolveStatus(ctx, rs)
 		return
 	}
+	log.Debugf("Found datastore(%s) for %s", rc.DatastoreID.String(), rc.Name)
+
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, rc.Name, false, *dst)
 	if err != nil {
