@@ -9,6 +9,7 @@
 1. [Runtime Lifecycle](#runtime-lifecycle)
 1. [Building EVE](#building-eve)
 1. [EVE Internals](#eve-internals)
+1. [EVE CGroups](#eve-cgroups)
 
 ## Introduction
 
@@ -337,3 +338,45 @@ For some of the details on EVE internals you may want to check out:
 
 * [Domain Manager](../pkg/pillar/docs/domainmgr.md)
 * [TPM Manager](../pkg/pillar/docs/tpmmgr.md)
+
+## EVE CGroups
+
+Resources like memory and CPU used by EVE services, containerd, memlogd and edge applications are controlled by their respective [CGroups](https://www.kernel.org/doc/Documentation/cgroup-v2.txt).
+CGroups in EVE follows the below hierarchy:
+
+```text
+Parent cgroup (/sys/fs/cgroup/<subsystems>/)
+├── eve
+│   └── services
+│   │   └── rsyslogd
+│   │   └── ntpd
+│   │   └── sshd
+│   │   └── wwan
+│   │   └── wlan
+│   │   └── lisp
+│   │   └── guacd
+│   │   └── pillar
+│   │   └── vtpm
+│   │   └── watchdog
+│   │   └── xen-tools
+│   │
+│   └── containerd
+│   └── memlogd
+│
+└── eve-user-apps
+    └── (edge applications)
+```
+
+Memory and CPU limits of `eve`, `eve/services` and `eve/containerd` cgroups can be changed via
+`hv_dom0_*`, `hv_eve_*` and `hv_ctrd_*` respectively in `/config/grup.cfg`.
+
+Example:
+
+```text
+set_global hv_dom0_mem_settings "dom0_mem=800M,max:800M"
+set_global hv_dom0_cpu_settings "dom0_max_vcpus=1 dom0_vcpus_pin"
+set_global hv_eve_mem_settings "eve_mem=500M,max:500M"
+set_global hv_eve_cpu_settings "eve_max_vcpus=1"
+set_global hv_ctrd_mem_settings "ctrd_mem=250M,max:250M"
+set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"
+```
