@@ -9,7 +9,10 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
@@ -52,6 +55,13 @@ const (
 	// persistConfigDir is where we keep some configuration across reboots
 	persistConfigDir = persistDir + "/config"
 )
+
+var bufPool = &sync.Pool{
+	New: func() interface{} {
+		buffer := make([]byte, maxsize+1)
+		return &buffer
+	},
+}
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
 type SocketDriver struct {
@@ -217,4 +227,71 @@ func (s *SocketDriver) fixedDirName(name string) string {
 
 func (s *SocketDriver) persistentDirName(name string) string {
 	return fmt.Sprintf("%s/status/%s", "/persist", name)
+}
+
+//getBuffer returns a buffer and a done func to call at defer.
+func getBuffer() (*[]byte, func()) {
+	buf := bufPool.Get().(*[]byte)
+	return buf, func() {
+		bufPool.Put(buf)
+	}
+}
+
+// check and waits till conn's fd is readable
+func connReadCheck(conn net.Conn) error {
+
+	unixConn, ok := conn.(*net.UnixConn)
+	if !ok {
+		log.Error("connReadCheck: Not UnixConn")
+		return nil
+	}
+	_, _, err := unixConn.ReadFromUnix([]byte{})
+	if err != nil && !strings.HasSuffix(err.Error(), "EOF") {
+		log.Errorf("connReadCheck: %s", err.Error())
+		return err
+	}
+	return nil
+}
+
+// check and waits till conn's fd is readable
+func connReadCheck2(conn net.Conn) error {
+	var sysErr error
+
+	sysConn, ok := conn.(syscall.Conn)
+	if !ok {
+		log.Error("connReadCheck: Not syscall.Conn")
+		return nil
+	}
+	rawConn, err := sysConn.SyscallConn()
+	if err != nil {
+		err := fmt.Errorf("connReadCheck: Exception while getting rawConn: %s", err.Error())
+		log.Error(err)
+		return err
+	}
+
+	err = rawConn.Read(func(fd uintptr) bool {
+		_, err := syscall.Read(int(fd), []byte{})
+		if err != nil {
+			if err == syscall.EAGAIN {
+				return false
+			}
+
+			// On MacOS we can see EINTR here if the user
+			// pressed ^Z.  See issue #22838.
+			if runtime.GOOS == "darwin" && err == syscall.EINTR {
+				return false
+			}
+			err := fmt.Errorf("connReadCheck: Unknown error from syscall.Recvfrom: %s", err.Error())
+			log.Error(err)
+			sysErr = err //assign unknown error to syserr which will be handled later.
+		}
+		return true
+	})
+	if err != nil {
+		err := fmt.Errorf("connReadCheck: Exception from rawConn.Read: %s", err.Error())
+		log.Error(err)
+		return err
+	}
+
+	return sysErr
 }

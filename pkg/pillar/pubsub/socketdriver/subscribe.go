@@ -135,7 +135,8 @@ func (s *Subscriber) watchSock() {
 // Returns msg, key, val
 // key and val are base64-encoded
 func (s *Subscriber) connectAndRead() (string, string, []byte) {
-	buf := make([]byte, maxsize+1)
+	buf, done := getBuffer()
+	defer done()
 
 	// Waiting for publisher to appear; retry on error
 	for {
@@ -164,7 +165,17 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 		}
 
-		res, err := s.sock.Read(buf)
+		// wait for readable conn
+		if err := connReadCheck2(s.sock); err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s): exception  while connReadCheck%s",
+				s.name, err)
+			log.Errorln(errStr)
+			s.sock.Close()
+			s.sock = nil
+			continue
+		}
+
+		res, err := s.sock.Read(*buf)
 		if err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
 				s.name, err)
@@ -174,13 +185,13 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			continue
 		}
 
-		if res == len(buf) {
+		if res == len(*buf) {
 			// Likely truncated
 			// Peer process could have died
 			log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
 			continue
 		}
-		reply := strings.Split(string(buf[0:res]), " ")
+		reply := strings.Split(string((*buf)[0:res]), " ")
 		count := len(reply)
 		if count < 2 {
 			errStr := fmt.Sprintf("connectAndRead(%s): too short read", s.name)

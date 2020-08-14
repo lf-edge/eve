@@ -148,22 +148,30 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	// Track the set of keys/values we are sending to the peer
 	sendToPeer := make(pubsub.LocalCollection)
 	sentRestarted := false
+
+	// wait for readable conn
+	if err := connReadCheck2(conn); err != nil {
+		log.Errorf("serveConnection(%s/%d) exception  while connReadCheck : %v", s.name, instance, err)
+		return
+	}
 	// Read request
-	buf := make([]byte, 65536)
-	res, err := conn.Read(buf)
+	buf, done := getBuffer()
+	defer done()
+
+	res, err := conn.Read(*buf)
 	if err != nil {
 		// Peer process could have died
 		log.Errorf("serveConnection(%s/%d) error: %v", s.name, instance, err)
 		return
 	}
-	if res == len(buf) {
+	if res == len(*buf) {
 		// Likely truncated
 		// Peer process could have died
 		log.Errorf("serveConnection(%s/%d) request likely truncated\n", s.name, instance)
 		return
 	}
 
-	request := strings.Split(string(buf[0:res]), " ")
+	request := strings.Split(string((*buf)[0:res]), " ")
 	log.Infof("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != s.topic {
 		log.Errorf("Invalid request message: %v\n", request)
