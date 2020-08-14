@@ -1,7 +1,62 @@
 # hadolint ignore=DL3006
 FROM UEFI_TAG as uefi-build
 
+FROM alpine:3.8 as initrd-tools-build
+
+ENV STRACE_VERSION=5.8
+ENV STRACE_URL=https://github.com/strace/strace/releases/download/v${STRACE_VERSION}/strace-${STRACE_VERSION}.tar.xz
+ENV BUSYBOX_VERSION=1.32.0
+ENV BUSYBOX_URL=https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2
+
+RUN apk add --no-cache musl-dev make git gcc gawk autoconf automake tar xz linux-headers bzip2 coreutils gnupg tzdata curl
+
+RUN curl -fsSLO ${STRACE_URL} && tar -xvf strace-${STRACE_VERSION}.tar.xz && \
+    cd strace-${STRACE_VERSION} &&export LDFLAGS='-static -pthread'&&./configure --enable-mpers=no&&\
+    make -j "$(getconf _NPROCESSORS_ONLN)" && cp strace /strace && cd /
+
+# from https://github.com/docker-library/busybox/blob/master/musl/Dockerfile.builder
+RUN curl -fsSLO ${BUSYBOX_URL} && tar -xvf busybox-${BUSYBOX_VERSION}.tar.bz2
+WORKDIR /busybox-${BUSYBOX_VERSION}
+RUN sed -i 's/^struct kconf_id \*$/static &/g' scripts/kconfig/zconf.hash.c_shipped
+RUN setConfs=' \
+    CONFIG_AR=y \
+    CONFIG_FEATURE_AR_CREATE=y \
+    CONFIG_FEATURE_AR_LONG_FILENAMES=y \
+    CONFIG_LAST_SUPPORTED_WCHAR=0 \
+    CONFIG_STATIC=y \
+    '; \
+    unsetConfs=' \
+    CONFIG_FEATURE_SYNC_FANCY \
+    CONFIG_FEATURE_HAVE_RPC \
+    CONFIG_FEATURE_INETD_RPC \
+    CONFIG_FEATURE_UTMP \
+    CONFIG_FEATURE_WTMP \
+    '; \
+    make defconfig; \
+    for conf in $unsetConfs; do \
+      sed -i \
+        -e "s!^$conf=.*\$!# $conf is not set!" \
+        .config; \
+    done; \
+    for confV in $setConfs; do \
+      conf="${confV%=*}"; \
+      sed -i \
+      -e "s!^$conf=.*\$!$confV!" \
+      -e "s!^# $conf is not set\$!$confV!" \
+      .config; \
+      if ! grep -q "^$confV\$" .config; then \
+        echo "$confV" >> .config; \
+      fi; \
+    done; \
+    make oldconfig;
+
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" busybox && cp busybox /busybox
+
 FROM lfedge/eve-alpine:3e3111a703366e9ac607d9c33d5fded006fa1df3 as runx-build
+
+# set to y to add strace into initrd
+ENV STRACE=n
+
 RUN apk add --no-cache mkinitfs=3.4.1-r1 gcc=8.3.0-r0 musl-dev=1.1.20-r5
 
 RUN rm -f /sbin/poweroff /etc/mkinitfs/features.d/base.files
@@ -10,7 +65,15 @@ COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
 COPY initrd/poweroff /sbin/poweroff
 COPY initrd/chroot2.c /tmp/
 COPY initrd/00000080 /etc/acpi/PWRF/
+COPY --from=initrd-tools-build /strace /bin/strace
+RUN if [ "${STRACE}" == "y" ]; then \
+      echo "/bin/strace" >> /etc/mkinitfs/features.d/base.files && \
+      sed -i '/eval \/chroot2 \/mnt\/rootfs.*/d' /init-initrd && \
+      echo 'strace -yf /bin/sh -c "eval /chroot2 /mnt/rootfs ${WORKDIR:-/} $cmd <> /dev/console 2>&1"' >> /init-initrd;\
+    fi
 RUN gcc -s -o /chroot2 /tmp/chroot2.c
+COPY --from=initrd-tools-build /busybox /bin/busybox
+
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
 FROM alpine:3.8 as kernel-build

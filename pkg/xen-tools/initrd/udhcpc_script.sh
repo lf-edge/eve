@@ -35,7 +35,7 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add ${ip}/${mask} dev $interface
-    [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
+    [ -n "$router" ] && ip route add ${router%% *} dev $interface && ip route add default via ${router%% *} dev $interface
     # setup dns
     if [ "$interface" == "$PEERDNS_IF" ] ; then
       [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
@@ -43,6 +43,14 @@ case "$1" in
         echo nameserver $i >> $RESOLV_CONF
       done
     fi
+    if [ -n "${hostname}" ] && [ "${hostname}" != "(none)" ]; then
+      echo "${hostname}" > /mnt/rootfs/etc/hostname
+      hostname -F /mnt/rootfs/etc/hostname
+      echo "127.0.0.1 localhost" > /mnt/rootfs/etc/hosts
+      echo "::1 localhost" >> /mnt/rootfs/etc/hosts
+      echo "${ip} ${hostname}" >> /mnt/rootfs/etc/hosts
+    fi
+
     ;;
   renew)
     echo "udhcpc op renew interface ${interface}"
@@ -66,7 +74,12 @@ case "$1" in
     if [ -n "$REDO_NET" ] ; then
       ip addr flush dev $interface
       ip addr add ${ip}/${mask} dev $interface
-      [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
+      [ -n "$router" ] && ip route add ${router%% *} dev $interface && ip route add default via ${router%% *} dev $interface
+      if [ -n "${hostname}" ] && [ "${hostname}" != "(none)" ]; then
+        echo "127.0.0.1 localhost" > /mnt/rootfs/etc/hosts
+        echo "::1 localhost" >> /mnt/rootfs/etc/hosts
+        echo "${ip} ${hostname}" >> /mnt/rootfs/etc/hosts
+      fi
     fi
     if [ -n "$REDO_DNS" -a "$interface" == "$PEERDNS_IF" ] ; then
       # remove previous dns
@@ -75,6 +88,13 @@ case "$1" in
       for i in $dns ; do
         echo nameserver $i >> $RESOLV_CONF
       done
+      if [ -n "${hostname}" ] && [ "${hostname}" != "(none)" ]; then
+        echo "${hostname}" > /mnt/rootfs/etc/hostname
+        hostname -F /mnt/rootfs/etc/hostname
+        echo "127.0.0.1 localhost" > /mnt/rootfs/etc/hosts
+        echo "::1 localhost" >> /mnt/rootfs/etc/hosts
+        echo "${ip} ${hostname}" >> /mnt/rootfs/etc/hosts
+      fi
     fi
     ;;
 esac

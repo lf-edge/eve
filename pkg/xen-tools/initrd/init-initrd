@@ -31,7 +31,8 @@ mount -o bind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
 mount -o bind /proc /mnt/rootfs/proc
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
-mount -t tmpfs -o nodev,nosuid,noexec shm /mnt/rootfs/dev/shm
+mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
+mount -t tmpfs -o nodev,nosuid,noexec,size=20% tmp /mnt/rootfs/tmp
 
 ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
 gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`

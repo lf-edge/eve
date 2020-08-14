@@ -11,7 +11,7 @@ ls /sys/block/ | grep vd | while read -r disk ; do
   fi
 
   #Checking and creating a file system inside the partition
-  fileSystem="vfat"
+  fileSystem="ext2"
   existingFileSystem="$(eval $(blkid /dev/$disk | awk ' { print $3 } '); echo $TYPE)"
   if [ "$existingFileSystem" == "" ]; then
     echo "Creating $fileSystem file system on /dev/$disk"
