@@ -2790,6 +2790,7 @@ CONFIG_I2C_MUX=y
 # end of Multiplexer I2C Chip support
 
 CONFIG_I2C_HELPER_AUTO=y
+CONFIG_I2C_SMBUS=m
 CONFIG_I2C_ALGOBIT=m
 
 #
@@ -2805,7 +2806,7 @@ CONFIG_I2C_ALGOBIT=m
 # CONFIG_I2C_AMD756 is not set
 # CONFIG_I2C_AMD8111 is not set
 # CONFIG_I2C_AMD_MP2 is not set
-# CONFIG_I2C_I801 is not set
+CONFIG_I2C_I801=m
 # CONFIG_I2C_ISCH is not set
 # CONFIG_I2C_ISMT is not set
 # CONFIG_I2C_PIIX4 is not set
