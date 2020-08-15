@@ -61,6 +61,7 @@
 #include <asm/atomic.h>          /* atomic operations */
 #include <asm/io.h>              /* outb, inb, etc. */
 #include <asm/uaccess.h>         /* user access functions (copy_*_user) */
+#include <linux/uaccess.h>
 #include <linux/fs.h>            /* character driver registration and file operations */
 #include <linux/cdev.h>          /* character device */
 #include <linux/errno.h>         /* error codes */

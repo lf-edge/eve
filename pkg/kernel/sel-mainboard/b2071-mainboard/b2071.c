@@ -52,8 +52,11 @@
 
 #include <linux/kernel.h>  /* printk, pr...etc */
 #include <linux/module.h>  /* required */
+#include <linux/sched.h>
+#include <linux/fs_struct.h>
 
 #include <asm/uaccess.h>   /* user access functions (copy_*_user) */
+#include <linux/uaccess.h>
 #include <linux/device.h>  /* dev_err */
 #include <linux/fs.h>      /* character driver registration and file operations */
 #include <linux/cdev.h>    /* character device */
