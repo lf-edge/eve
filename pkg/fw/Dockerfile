@@ -19,6 +19,8 @@ COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
 # Dell Edge Gateway 300x firmware
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
+# Schweitzer Engineering Laboratories sel3390e4 network adapter
+COPY sel3390e4 /lib/firmware/
 # FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
 COPY rpi /lib/firmware/
 # FIXME: we're currently using ath10k firmware supplied
