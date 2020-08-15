@@ -142,6 +142,10 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
 RUN git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU && (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c)
 RUN make -C /tmp/rtl8821CU KSRC=/linux modules
 RUN install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
+#  * Out-of-tree Intel's igb drivers (used for features not available upstream yet)
+RUN mv /tmp/kernel-modules/lib/modules/4.19.5-linuxkit/kernel/drivers/net/ethernet/intel/igb/igb.ko /tmp/kernel-modules/lib/modules || :
+RUN make -C /linux  INSTALL_MOD_PATH=/tmp/kernel-modules M=/igb-5.3.5.42/ modules modules_install
+RUN cp /tmp/kernel-modules/lib/modules/4.19.5-linuxkit/extra/igb.ko /tmp/kernel-modules/lib/modules/4.19.5-linuxkit/kernel/drivers/net/ethernet/intel/igb/igb.ko
 
 # Device Tree Blobs
 # FIXME: we will switch to a native make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install at some point
