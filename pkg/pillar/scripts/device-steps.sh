@@ -248,8 +248,8 @@ access_usb() {
             [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
-            /opt/zededa/bin/hardwaremodel -c >"$IDENTITYDIR/hardwaremodel.dmi"
-            /opt/zededa/bin/hardwaremodel -f >"$IDENTITYDIR/hardwaremodel.txt"
+            /opt/zededa/bin/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
+            /opt/zededa/bin/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
             sync
         fi
         if [ -d /mnt/dump ]; then
@@ -404,8 +404,8 @@ if [ $SELF_REGISTER = 1 ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-        /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-        echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
+        /opt/zededa/bin/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
+        echo "$(date -Ins -u) Created default hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
@@ -425,8 +425,8 @@ else
     $BINDIR/client getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
-        /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-        echo "$(date -Ins -u) Created hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
+        /opt/zededa/bin/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
+        echo "$(date -Ins -u) Created hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
 
     uuid=$(cat $CONFIGDIR/uuid)
