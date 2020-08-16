@@ -7,6 +7,7 @@ package zedcloud
 
 import (
 	"bytes"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	log "github.com/sirupsen/logrus"
 	"time"
@@ -44,14 +45,19 @@ type DeferredContext struct {
 	ticker        flextimer.FlexTickerHandle
 }
 
+//To keep track of what all agents called InitDeferred()
+var initDeferredAccessed = base.NewLockedStringMap()
+
 // From first InitDeferred
 var defaultCtx *DeferredContext
 
 // Create and return a channel to the caller
-func InitDeferred() <-chan time.Time {
-	if defaultCtx != nil {
-		log.Fatal("InitDeferred called twice")
+func InitDeferred(agentName string) <-chan time.Time {
+	if _, found := initDeferredAccessed.Load(agentName); found {
+		log.Fatalf("InitDeferred called twice by %s", agentName)
+
 	}
+	initDeferredAccessed.Store(agentName, nil)
 	defaultCtx = initImpl()
 	return defaultCtx.ticker.C
 }
