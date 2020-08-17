@@ -13,6 +13,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 )
 
 const ecdhCertPem = `
@@ -95,7 +97,8 @@ const (
 func TestSoftEcdh(t *testing.T) {
 	//Redirect ECDH cert/key files to test files
 	ecdhCertFile = testEcdhCertFile
-	ecdhKeyFile = testEcdhKeyFile
+	ecdhKeyFile := testEcdhKeyFile
+	etpm.SetECDHPrivateKeyFile(ecdhKeyFile)
 
 	err := ioutil.WriteFile(ecdhCertFile, []byte(ecdhCertPem), 0644)
 	if err != nil {
@@ -120,7 +123,7 @@ func TestGetPrivateKeyFromFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create test ecdh key file: %v", err)
 	}
-	defer os.Remove(ecdhKeyFile)
+	defer os.Remove(testEcdhKeyFile)
 
 	err = ioutil.WriteFile(testDeviceKeyFile, []byte(deviceKeyPem), 0644)
 	if err != nil {
@@ -128,11 +131,11 @@ func TestGetPrivateKeyFromFile(t *testing.T) {
 	}
 	defer os.Remove(testDeviceKeyFile)
 
-	if _, err = getPrivateKeyFromFile(testEcdhKeyFile); err != nil {
+	if _, err = etpm.GetPrivateKeyFromFile(testEcdhKeyFile); err != nil {
 		t.Errorf("%v", err)
 	}
 
-	if _, err = getPrivateKeyFromFile(testDeviceKeyFile); err != nil {
+	if _, err = etpm.GetPrivateKeyFromFile(testDeviceKeyFile); err != nil {
 		t.Errorf("%v", err)
 	}
 }

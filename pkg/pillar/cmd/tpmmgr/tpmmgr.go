@@ -14,7 +14,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -66,9 +65,6 @@ const (
 	//TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
 	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004
 
-	//TpmEcdhKeyHdl is the well known TPM permanent handle for ECDH key
-	TpmEcdhKeyHdl tpmutil.Handle = 0x81000005
-
 	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
 	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
 
@@ -87,10 +83,6 @@ var (
 
 	//location of the attestation quote certificate
 	quoteCertFile = types.PersistConfigDir + "/attest.cert.pem"
-
-	//location of the ecdh private key
-	//on devices without a TPM
-	ecdhKeyFile = types.PersistConfigDir + "/ecdh.key.pem"
 
 	//location of private key for the quote certificate
 	//on devices without a TPM
@@ -562,76 +554,6 @@ func aesEncrypt(ciphertext, plaintext, key, iv []byte) error {
 	return nil
 }
 
-func aesDecrypt(plaintext, ciphertext, key, iv []byte) error {
-	aesBlockDecrypter, err := aes.NewCipher([]byte(key))
-	if err != nil {
-		log.Errorf("creating aes new cipher failed: %v", err)
-		return err
-	}
-	aesDecrypter := cipher.NewCFBDecrypter(aesBlockDecrypter, iv)
-	aesDecrypter.XORKeyStream(plaintext, ciphertext)
-	return nil
-}
-
-func sha256FromECPoint(X, Y *big.Int) [32]byte {
-	var bytes = make([]byte, 0)
-	bytes = append(bytes, X.Bytes()...)
-	bytes = append(bytes, Y.Bytes()...)
-	return sha256.Sum256(bytes)
-}
-
-//DecryptSecretWithEcdhKey recovers plaintext from the given ciphertext
-//X, Y are the Z point co-ordinates in Ellyptic Curve Diffie Hellman(ECDH) Exchange
-//edgeNodeCert points to the certificate that Controller used to calculate the shared secret
-//iv is the Initial Value used in the ECDH exchange.
-//sha256FromECPoint() is used as KDF on the shared secret, and the derived key is used
-//in aesDecrypt(), to apply the cipher on ciphertext, and recover plaintext
-func DecryptSecretWithEcdhKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
-	iv, ciphertext, plaintext []byte) error {
-	if (X == nil) || (Y == nil) || (edgeNodeCert == nil) {
-		return errors.New("DecryptSecretWithEcdhKey needs non-empty X, Y and edgeNodeCert")
-	}
-	decryptKey, err := getDecryptKey(X, Y, edgeNodeCert)
-	if err != nil {
-		log.Errorf("getDecryptKey failed: %v", err)
-		return err
-	}
-	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
-}
-
-//getDecryptKey : uses the given params to construct the AES decryption Key
-func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
-	if !etpm.IsTpmEnabled() || !edgeNodeCert.IsTpm {
-		//Either TPM is not enabled, or for some reason we are not using TPM for ECDH
-		//Look for soft cert/key
-		privateKey, err := getECDHPrivateKey()
-		if err != nil {
-			log.Errorf("getECDHPrivateKey failed: %v", err)
-			return [32]byte{}, err
-		}
-		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
-		decryptKey := sha256FromECPoint(X, Y)
-		return decryptKey, nil
-	}
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
-	if err != nil {
-		log.Errorf("TPM open failed: %v", err)
-		return [32]byte{}, err
-	}
-	defer rw.Close()
-
-	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
-
-	//Recover the key, and decrypt the message
-	z, err := tpm2.RecoverSharedECCSecret(rw, TpmEcdhKeyHdl, "", p)
-	if err != nil {
-		log.Errorf("recovering Shared Secret failed: %v", err)
-		return [32]byte{}, err
-	}
-	decryptKey := sha256FromECPoint(z.X(), z.Y())
-	return decryptKey, nil
-}
-
 //Test ECDH key exchange and a symmetric cipher based on ECDH
 func testEcdhAES() error {
 	//Simulate Controller generating an ephemeral key
@@ -658,7 +580,7 @@ func testEcdhAES() error {
 	X, Y := elliptic.P256().Params().ScalarMult(publicB.X, publicB.Y, privateA)
 
 	fmt.Printf("publicAX, publicAY, X/Y = %v, %v, %v, %v\n", publicAX, publicAY, X, Y)
-	encryptKey := sha256FromECPoint(X, Y)
+	encryptKey := etpm.Sha256FromECPoint(X, Y)
 	iv := make([]byte, aes.BlockSize)
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
 		fmt.Printf("Unable to generate Initial Value %v\n", err)
@@ -676,7 +598,7 @@ func testEcdhAES() error {
 	}
 
 	isTpm := true
-	if !etpm.IsTpmEnabled() || etpm.FileExists(ecdhKeyFile) {
+	if !etpm.IsTpmEnabled() || etpm.FileExists(etpm.EcdhKeyFile) {
 		isTpm = false
 	}
 
@@ -687,7 +609,7 @@ func testEcdhAES() error {
 		Cert:     certBytes,
 		IsTpm:    isTpm,
 	}
-	err = DecryptSecretWithEcdhKey(publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
+	err = etpm.DecryptSecretWithEcdhKey(publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
 	if err != nil {
 		fmt.Printf("Decryption failed with error %v\n", err)
 		return err
@@ -697,44 +619,6 @@ func testEcdhAES() error {
 	} else {
 		return fmt.Errorf("want %v, but got %v", msg, recoveredMsg)
 	}
-}
-
-// device with no TPM, get the file based device key
-func getDevicePrivateKey() (*ecdsa.PrivateKey, error) {
-	return getPrivateKeyFromFile(types.DeviceKeyName)
-}
-
-// device with no TPM, get the file based ECDH key
-func getECDHPrivateKey() (*ecdsa.PrivateKey, error) {
-	return getPrivateKeyFromFile(ecdhKeyFile)
-}
-
-func getPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
-	keyPEMBlock, err := ioutil.ReadFile(keyFile)
-	if err != nil {
-		return nil, err
-	}
-	var keyDERBlock *pem.Block
-	keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
-	if keyDERBlock == nil {
-		return nil, errors.New("No valid private key found")
-	}
-	//Expect it to be "EC PRIVATE KEY" format
-	privateKey, err := x509.ParseECPrivateKey(keyDERBlock.Bytes)
-	if err == nil {
-		return privateKey, nil
-	}
-	//Try "PRIVATE KEY" format, as a fallback
-	parsedKey, err := x509.ParsePKCS8PrivateKey(keyDERBlock.Bytes)
-	if err == nil {
-		var pkey *ecdsa.PrivateKey
-		var ok bool
-		if pkey, ok = parsedKey.(*ecdsa.PrivateKey); !ok {
-			return nil, errors.New("Private key is not ecdsa type")
-		}
-		return pkey, nil
-	}
-	return nil, err
 }
 
 func createQuoteCert() error {
@@ -849,7 +733,7 @@ func createQuoteTemplate(deviceCert x509.Certificate) x509.Certificate {
 // Assumes no TPM hence device private key is in a file
 func createQuoteCertSoft() error {
 	// get the device software private key
-	devicePrivKey, err := getDevicePrivateKey()
+	devicePrivKey, err := etpm.GetDevicePrivateKey()
 	if err != nil {
 		return fmt.Errorf("Failed reading device key with error: %v", err)
 	}
@@ -974,7 +858,7 @@ func createEcdhCertOnTpm() error {
 			return err
 		}
 
-		ecdhKey, _, _, err := tpm2.ReadPublic(rw, TpmEcdhKeyHdl)
+		ecdhKey, _, _, err := tpm2.ReadPublic(rw, etpm.TpmEcdhKeyHdl)
 		if err != nil {
 			return err
 		}
@@ -1043,7 +927,7 @@ func createEcdhTemplate(deviceCert x509.Certificate) x509.Certificate {
 // Assumes no TPM hence device private key is in a file
 func createEcdhCertSoft() error {
 	// get the device software private key
-	devicePrivKey, err := getDevicePrivateKey()
+	devicePrivKey, err := etpm.GetDevicePrivateKey()
 	if err != nil {
 		return fmt.Errorf("Failed reading device key with error: %v", err)
 	}
@@ -1108,7 +992,7 @@ func createEcdhCertSoft() error {
 }
 
 func writeEcdhCertToFile(certBytes, keyBytes []byte) error {
-	if err := ioutil.WriteFile(ecdhKeyFile, keyBytes, 0644); err != nil {
+	if err := ioutil.WriteFile(etpm.EcdhKeyFile, keyBytes, 0644); err != nil {
 		return err
 	}
 	return ioutil.WriteFile(ecdhCertFile, certBytes, 0644)
@@ -1213,7 +1097,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Errorf("Error in creating Quote key: %v ", err)
 			os.Exit(1)
 		}
-		if err = createKey(TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, true); err != nil {
+		if err = createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, true); err != nil {
 			log.Errorf("Error in creating ECDH key: %v ", err)
 			os.Exit(1)
 		}
@@ -1327,7 +1211,7 @@ func Run(ps *pubsub.PubSub) {
 
 		//publish ECDH cert
 		publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
-			etpm.IsTpmEnabled() && !etpm.FileExists(ecdhKeyFile))
+			etpm.IsTpmEnabled() && !etpm.FileExists(etpm.EcdhKeyFile))
 
 		//publish attestation quote cert
 		publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
@@ -1396,7 +1280,7 @@ func Run(ps *pubsub.PubSub) {
 			log.Errorf("Error in creating PCR Quote key: %v ", err)
 			os.Exit(1)
 		}
-		if err = createKey(TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, false); err != nil {
+		if err = createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, false); err != nil {
 			log.Errorf("Error in creating Ecdh key: %v ", err)
 			os.Exit(1)
 		}

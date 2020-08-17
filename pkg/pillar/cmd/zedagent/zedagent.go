@@ -243,7 +243,7 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.attestCtx = &attestCtx
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred()
+	deferredChan := zedcloud.InitDeferred(agentName)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.ReadAndUpdateGCFile(zedagentCtx.pubGlobalConfig)

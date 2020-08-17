@@ -33,6 +33,9 @@ const (
 	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
 	TpmPasswdHdl tpmutil.Handle = 0x1600000
 
+	//TpmEcdhKeyHdl is the well known TPM permanent handle for ECDH key
+	TpmEcdhKeyHdl tpmutil.Handle = 0x81000005
+
 	//TpmCredentialsFileName is the file that holds the dynamically created TPM credentials
 	TpmCredentialsFileName = types.IdentityDirname + "/tpm_credential"
 
@@ -47,6 +50,10 @@ const (
 )
 
 var (
+	//EcdhKeyFile is the location of the ecdh private key
+	//on devices without a TPM. It is not a constant due to test usage
+	EcdhKeyFile = types.PersistConfigDir + "/ecdh.key.pem"
+
 	tpmHwInfo = ""
 )
 
