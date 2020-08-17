@@ -132,6 +132,7 @@ var debug = false
 var debugOverride bool // From command line arg
 var flowQ *list.List
 var log *base.LogObject
+var zedcloudCtx *zedcloud.ZedCloudContext
 
 func Run(ps *pubsub.PubSub) {
 	var err error
@@ -229,7 +230,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
-	handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+	zedcloudCtx = handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
@@ -252,7 +253,7 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.attestCtx = &attestCtx
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred(agentName)
+	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
@@ -841,7 +842,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-deferredChan:
 			start := time.Now()
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond)
 			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
@@ -1047,7 +1048,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-deferredChan:
 			start := time.Now()
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond)
 			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
@@ -1166,9 +1167,9 @@ func handleZbootRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-func handleInit(networkSendTimeout uint32) {
+func handleInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 	initializeDirs()
-	handleConfigInit(networkSendTimeout)
+	return handleConfigInit(networkSendTimeout)
 }
 
 func initializeDirs() {
@@ -1271,7 +1272,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.triggerDeviceInfo = true
 
 	if zedcloudCtx.V2API {
-		zedcloud.UpdateTLSProxyCerts(&zedcloudCtx)
+		zedcloud.UpdateTLSProxyCerts(zedcloudCtx)
 	}
 	log.Infof("handleDNSModify done for %s", key)
 }
