@@ -124,7 +124,7 @@ func Run(ps *pubsub.PubSub) {
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile()
+	utils.EnsureGCFile(log)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(

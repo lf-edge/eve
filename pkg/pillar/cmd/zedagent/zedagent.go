@@ -255,7 +255,7 @@ func Run(ps *pubsub.PubSub) {
 	deferredChan := zedcloud.InitDeferred(agentName)
 
 	// Make sure we have a GlobalConfig file with defaults
-	utils.ReadAndUpdateGCFile(zedagentCtx.pubGlobalConfig)
+	utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",

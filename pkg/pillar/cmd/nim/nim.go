@@ -121,7 +121,7 @@ func Run(ps *pubsub.PubSub) {
 		time.Duration(max))
 
 	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile()
+	utils.EnsureGCFile(log)
 
 	pubDeviceNetworkStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{

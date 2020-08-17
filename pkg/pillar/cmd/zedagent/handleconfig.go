@@ -230,7 +230,7 @@ func getLatestConfig(url string, iteration int,
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
-			utils.UpdateLedManagerConfig(newCount)
+			utils.UpdateLedManagerConfig(log, newCount)
 			getconfigCtx.ledManagerCount = newCount
 		}
 		// If we didn't yet get a config, then look for a file
@@ -261,7 +261,7 @@ func getLatestConfig(url string, iteration int,
 	if resp.StatusCode == http.StatusNotModified {
 		log.Debugf("StatusNotModified len %d", len(contents))
 		// Inform ledmanager about config received from cloud
-		utils.UpdateLedManagerConfig(4)
+		utils.UpdateLedManagerConfig(log, 4)
 		getconfigCtx.ledManagerCount = 4
 
 		if !getconfigCtx.configReceived {
@@ -279,7 +279,7 @@ func getLatestConfig(url string, iteration int,
 	if err := validateProtoMessage(url, resp); err != nil {
 		log.Errorln("validateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(log, 3)
 		getconfigCtx.ledManagerCount = 3
 		publishZedAgentStatus(getconfigCtx)
 		return false
@@ -289,14 +289,14 @@ func getLatestConfig(url string, iteration int,
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(log, 3)
 		getconfigCtx.ledManagerCount = 3
 		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
 	// Inform ledmanager about config received from cloud
-	utils.UpdateLedManagerConfig(4)
+	utils.UpdateLedManagerConfig(log, 4)
 	getconfigCtx.ledManagerCount = 4
 
 	if !getconfigCtx.configReceived {

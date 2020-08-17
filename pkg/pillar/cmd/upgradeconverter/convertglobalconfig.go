@@ -110,7 +110,7 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 
 	// Create a symlink of one doesn't currently exist
 	symLinkPath := ctxPtr.varTmpDir + "/ConfigItemValueMap"
-	utils.CreateSymlink(symLinkPath, ctxPtr.configItemValueMapDir())
+	utils.CreateSymlink(log, symLinkPath, ctxPtr.configItemValueMapDir())
 	log.Debugf("Created symlink %s -> %s",
 		symLinkPath, ctxPtr.configItemValueMapDir())
 
