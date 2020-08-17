@@ -8,7 +8,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
@@ -238,7 +238,7 @@ func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 		return (gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED) ||
 			(gc.GlobalValueTriState(AllowNonFreeAppImages) == TS_ENABLED)
 	default:
-		log.Fatalf("AllowNonFreePort: Unknown ObjType %s\n",
+		logrus.Fatalf("AllowNonFreePort: Unknown ObjType %s\n",
 			objType)
 		return false
 	}

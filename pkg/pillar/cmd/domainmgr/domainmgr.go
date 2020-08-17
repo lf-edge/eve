@@ -2104,10 +2104,10 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	if !aa.Initialized {
 		// Setup list first because functions lookup in IoBundleList
 		for _, phyAdapter := range phyIOAdapterList.AdapterList {
-			ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+			ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
-			aa.AddOrUpdateIoBundle(ib)
+			aa.AddOrUpdateIoBundle(log, ib)
 		}
 		// Now initialize each entry
 		for _, ib := range aa.IoBundleList {
@@ -2140,13 +2140,13 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 
 	// Any add or modify?
 	for _, phyAdapter := range phyIOAdapterList.AdapterList {
-		ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+		ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
 		if currentIbPtr == nil {
 			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
 				"added. %+v", phyAdapter.Phylabel, ib)
 			handleIBCreate(ctx, ib)
-		} else if currentIbPtr.HasAdapterChanged(phyAdapter) {
+		} else if currentIbPtr.HasAdapterChanged(log, phyAdapter) {
 			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
 				"changed. Current: %+v, New: %+v", phyAdapter.Phylabel,
 				*currentIbPtr, ib)
@@ -2192,7 +2192,7 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
 		return
 	}
 	// We assume AddOrUpdateIoBundle will preserve any existing Unique/MacAddr
-	aa.AddOrUpdateIoBundle(ib)
+	aa.AddOrUpdateIoBundle(log, ib)
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
@@ -2270,7 +2270,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 				// Seems like like no risk for race; when we return
 				// from above the driver has been attached and
 				// any ifname has been registered.
-				found, ifname := types.PciLongToIfname(ib.PciLong)
+				found, ifname := types.PciLongToIfname(log, ib.PciLong)
 				if !found {
 					log.Errorf("Not found: %d %s %s",
 						ib.Type, ib.Phylabel, ib.Ifname)
@@ -2278,13 +2278,13 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 					log.Warnf("Found: %d %s %s at %s",
 						ib.Type, ib.Phylabel, ib.Ifname,
 						ifname)
-					types.IfRename(ifname, ib.Ifname)
+					types.IfRename(log, ifname, ib.Ifname)
 				}
 			}
 			ib.IsPCIBack = false
 			changed = true
 			// Verify that it has been returned from pciback
-			_, err := types.IoBundleToPci(ib)
+			_, err := types.IoBundleToPci(log, ib)
 			if err != nil {
 				log.Warnf("checkAndSetIoMember(%d %s %s) gone?: %s",
 					ib.Type, ib.Phylabel, ib.AssignmentGroup, err)
@@ -2304,7 +2304,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 	}
 
 	// For a new PCI device we check if it exists in hardware/kernel
-	long, err := types.IoBundleToPci(ib)
+	long, err := types.IoBundleToPci(log, ib)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -2316,7 +2316,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
 
 		// Save somewhat Unique string for debug
-		found, unique := types.PciLongToUnique(long)
+		found, unique := types.PciLongToUnique(log, long)
 		if !found {
 			errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique not found",
 				ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
@@ -2386,7 +2386,7 @@ func checkIoBundleAll(ctx *domainContext) {
 // changed in addition to the name to pci-id lookup.
 func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	long, err := types.IoBundleToPci(ib)
+	long, err := types.IoBundleToPci(log, ib)
 	if err != nil {
 		return err
 	}
@@ -2394,7 +2394,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		// Doesn't exist
 		return nil
 	}
-	found, unique := types.PciLongToUnique(long)
+	found, unique := types.PciLongToUnique(log, long)
 	if !found {
 		errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique %s not foun",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup,

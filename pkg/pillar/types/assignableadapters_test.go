@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -157,7 +158,8 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 			FreeUplink: true,
 		},
 	}
-	ibPtr := IoBundleFromPhyAdapter(phyAdapter)
+	log := base.NewSourceLogObject("test", 1234)
+	ibPtr := IoBundleFromPhyAdapter(log, phyAdapter)
 	assert.NotEqual(t, ibPtr, nil)
 	assert.Equal(t, IoType(phyAdapter.Ptype), ibPtr.Type)
 	assert.Equal(t, phyAdapter.Phylabel, ibPtr.Phylabel)

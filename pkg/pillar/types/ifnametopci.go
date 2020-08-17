@@ -9,7 +9,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"path"
@@ -17,13 +16,14 @@ import (
 	"strings"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 const basePath = "/sys/class/net"
 const pciPath = "/sys/bus/pci/devices"
 
 // Returns the long PCI IDs
-func ifNameToPci(ifName string) (string, error) {
+func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 	// Match for PCI IDs
 	re := regexp.MustCompile("([0-9a-f]){4}:([0-9a-f]){2}:([0-9a-f]){2}.[ls0-9a-f]")
 	devPath := basePath + "/" + ifName + "/device"
@@ -66,7 +66,7 @@ func pciLongExists(long string) bool {
 // Return a string likely to be unique for the device.
 // Used to make sure devices don't move around
 // Returns exist bool, string
-func PciLongToUnique(long string) (bool, string) {
+func PciLongToUnique(log *base.LogObject, long string) (bool, string) {
 
 	if !pciLongExists(long) {
 		return false, ""
@@ -92,7 +92,7 @@ func PciLongToUnique(long string) (bool, string) {
 // PciLongToIfname return the interface name for a network PCI device.
 // This is used to make sure devices don't move around
 // Returns exist bool, string
-func PciLongToIfname(long string) (bool, string) {
+func PciLongToIfname(log *base.LogObject, long string) (bool, string) {
 
 	if !pciLongExists(long) {
 		return false, ""
@@ -123,14 +123,14 @@ func PciLongToIfname(long string) (bool, string) {
 // Checks if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
 // This can handle aliases like Ifname.
-func IoBundleToPci(ib *IoBundle) (string, error) {
+func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) {
 
 	var long string
 	if ib.PciLong != "" {
 		long = ib.PciLong
 		// Check if model matches
 		if ib.Ifname != "" {
-			l, err := ifNameToPci(ib.Ifname)
+			l, err := ifNameToPci(log, ib.Ifname)
 			rename := false
 			if err == nil {
 				if long != l {
@@ -142,17 +142,17 @@ func IoBundleToPci(ib *IoBundle) (string, error) {
 				rename = true
 			}
 			if rename {
-				found, ifname := PciLongToIfname(long)
+				found, ifname := PciLongToIfname(log, long)
 				if found && ib.Ifname != ifname {
 					log.Warnf("%s/%s moved to %s",
 						ib.Ifname, long, ifname)
-					IfRename(ifname, ib.Ifname)
+					IfRename(log, ifname, ib.Ifname)
 				}
 			}
 		}
 	} else if ib.Ifname != "" {
 		var err error
-		long, err = ifNameToPci(ib.Ifname)
+		long, err = ifNameToPci(log, ib.Ifname)
 		if err != nil {
 			return long, err
 		}
@@ -168,7 +168,7 @@ func IoBundleToPci(ib *IoBundle) (string, error) {
 }
 
 // IfRename brings down the interface, renames it, and brings it back up
-func IfRename(ifname string, newIfname string) error {
+func IfRename(log *base.LogObject, ifname string, newIfname string) error {
 
 	log.Infof("IfRename %s to %s", ifname, newIfname)
 	link, err := netlink.LinkByName(ifname)
