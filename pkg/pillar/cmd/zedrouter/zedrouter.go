@@ -379,9 +379,9 @@ func Run(ps *pubsub.PubSub) {
 	subAppNetworkConfigAg.Activate()
 
 	PbrInit(&zedrouterCtx)
-	routeChanges := devicenetwork.RouteChangeInit()
-	addrChanges := devicenetwork.AddrChangeInit()
-	linkChanges := devicenetwork.LinkChangeInit()
+	routeChanges := devicenetwork.RouteChangeInit(log)
+	addrChanges := devicenetwork.AddrChangeInit(log)
+	linkChanges := devicenetwork.LinkChangeInit(log)
 
 	// Publish network metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -466,7 +466,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
-				addrChanges = devicenetwork.AddrChangeInit()
+				addrChanges = devicenetwork.AddrChangeInit(log)
 				break
 			}
 			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
@@ -487,7 +487,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
-				linkChanges = devicenetwork.LinkChangeInit()
+				linkChanges = devicenetwork.LinkChangeInit(log)
 				break
 			}
 			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
@@ -508,7 +508,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("routeChanges closed\n")
-				routeChanges = devicenetwork.RouteChangeInit()
+				routeChanges = devicenetwork.RouteChangeInit(log)
 				break
 			}
 			PbrRouteChange(&zedrouterCtx,
@@ -824,13 +824,13 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 	}
 
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
-	ifindex, err := devicenetwork.IfnameToIndex(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(log, ifname)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
 			status.DisplayName, ifname, err)
 		return "", errors.New(errStr)
 	}
-	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
+	addrs, err := devicenetwork.IfindexToAddrs(log, ifindex)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfindexToAddrs(%s, index %d) failed %s",
 			status.DisplayName, ifname, ifindex, err)

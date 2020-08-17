@@ -102,6 +102,7 @@ func Run(ps *pubsub.PubSub) {
 	agentlog.Init("xyzzy-" + agentName)
 
 	log = agentlog.Init(agentName)
+	nimCtx.deviceNetworkContext.Log = log
 
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
@@ -407,14 +408,14 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// Look for address and link changes
-	routeChanges := devicenetwork.RouteChangeInit()
-	addrChanges := devicenetwork.AddrChangeInit()
-	linkChanges := devicenetwork.LinkChangeInit()
+	routeChanges := devicenetwork.RouteChangeInit(log)
+	addrChanges := devicenetwork.AddrChangeInit(log)
+	linkChanges := devicenetwork.LinkChangeInit(log)
 
 	// Build an initial lastresort by picking up initial links
 	// XXX hack to pre-populate
 	for idx := 0; idx < 16; idx++ {
-		devicenetwork.IfindexToName(idx)
+		devicenetwork.IfindexToName(log, idx)
 	}
 	handleLinkChange(&nimCtx)
 	updateFilteredFallback(&nimCtx)
@@ -473,7 +474,7 @@ func Run(ps *pubsub.PubSub) {
 			if !ok {
 				log.Errorf("addrChanges closed")
 				// XXX Need to discard all cached information?
-				addrChanges = devicenetwork.AddrChangeInit()
+				addrChanges = devicenetwork.AddrChangeInit(log)
 			} else {
 				ch, ifindex := devicenetwork.AddrChange(nimCtx.deviceNetworkContext, change)
 				if ch {
@@ -488,10 +489,10 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed")
-				linkChanges = devicenetwork.LinkChangeInit()
+				linkChanges = devicenetwork.LinkChangeInit(log)
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.LinkChange(change)
+				ch, ifindex := devicenetwork.LinkChange(log, change)
 				if ch {
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
@@ -505,7 +506,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("routeChanges closed")
-				routeChanges = devicenetwork.RouteChangeInit()
+				routeChanges = devicenetwork.RouteChangeInit(log)
 			} else {
 				ch, ifindex := devicenetwork.RouteChange(nimCtx.deviceNetworkContext, change)
 				if ch {
@@ -519,7 +520,7 @@ func Run(ps *pubsub.PubSub) {
 		case <-geoTimer.C:
 			start := time.Now()
 			log.Debugln("geoTimer at", time.Now())
-			change := devicenetwork.UpdateDeviceNetworkGeo(
+			change := devicenetwork.UpdateDeviceNetworkGeo(log,
 				geoRedoTime, nimCtx.deviceNetworkContext.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
@@ -622,7 +623,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("addrChanges closed")
-				addrChanges = devicenetwork.AddrChangeInit()
+				addrChanges = devicenetwork.AddrChangeInit(log)
 				// XXX Need to discard all cached information?
 			} else {
 				ch, ifindex := devicenetwork.AddrChange(nimCtx.deviceNetworkContext, change)
@@ -638,10 +639,10 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed")
-				linkChanges = devicenetwork.LinkChangeInit()
+				linkChanges = devicenetwork.LinkChangeInit(log)
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.LinkChange(change)
+				ch, ifindex := devicenetwork.LinkChange(log, change)
 				if ch {
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
@@ -655,7 +656,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("routeChanges closed")
-				routeChanges = devicenetwork.RouteChangeInit()
+				routeChanges = devicenetwork.RouteChangeInit(log)
 			} else {
 				ch, ifindex := devicenetwork.RouteChange(nimCtx.deviceNetworkContext, change)
 				if ch {
@@ -669,7 +670,7 @@ func Run(ps *pubsub.PubSub) {
 		case <-geoTimer.C:
 			start := time.Now()
 			log.Debugln("geoTimer at", time.Now())
-			change := devicenetwork.UpdateDeviceNetworkGeo(
+			change := devicenetwork.UpdateDeviceNetworkGeo(log,
 				geoRedoTime, nimCtx.deviceNetworkContext.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
@@ -770,7 +771,7 @@ func handleLinkChange(ctx *nimContext) {
 func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bool) {
 	// We do not see address change notifications when
 	// link drops so call directly
-	ifname, _, _ := devicenetwork.IfindexToName(ifindex)
+	ifname, _, _ := devicenetwork.IfindexToName(log, ifindex)
 	log.Infof("%s(%s) ifindex %d force %t", logstr, ifname, ifindex, force)
 	if ifname != "" && !types.IsPort(*ctx.deviceNetworkContext.DeviceNetworkStatus, ifname) {
 		log.Debugf("%s(%s): not port", logstr, ifname)
@@ -778,16 +779,16 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 	}
 	if force {
 		// The caller has already purged addresses from IfindexToAddrs
-		addrs, _, _, err := devicenetwork.GetIPAddrs(ifindex)
+		addrs, _, _, err := devicenetwork.GetIPAddrs(log, ifindex)
 		if err != nil {
 			addrs = nil
 		}
 		log.Infof("%s(%s) force changed to %v",
 			logstr, ifname, addrs)
 		// Do not have a baseline to delete from
-		devicenetwork.FlushRules(ifindex)
+		devicenetwork.FlushRules(log, ifindex)
 		for _, a := range addrs {
-			devicenetwork.AddSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
+			devicenetwork.AddSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false)
 		}
 		devicenetwork.HandleAddressChange(&ctx.deviceNetworkContext)
 		// XXX should we trigger restarting testing?
@@ -795,8 +796,8 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 	}
 
 	// Compare old vs. current
-	oldAddrs, _ := devicenetwork.IfindexToAddrs(ifindex)
-	addrs, _, _, err := devicenetwork.GetIPAddrs(ifindex)
+	oldAddrs, _ := devicenetwork.IfindexToAddrs(log, ifindex)
+	addrs, _, _, err := devicenetwork.GetIPAddrs(log, ifindex)
 	if err != nil {
 		log.Warnf("%s(%s %d) no addrs: %s",
 			logstr, ifname, ifindex, err)
@@ -810,10 +811,10 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 		log.Infof("%s(%s) changed from %v to %v",
 			logstr, ifname, oldAddrs, addrs)
 		for _, a := range oldAddrs {
-			devicenetwork.DelSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
+			devicenetwork.DelSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false)
 		}
 		for _, a := range addrs {
-			devicenetwork.AddSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
+			devicenetwork.AddSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false)
 		}
 
 		devicenetwork.HandleAddressChange(&ctx.deviceNetworkContext)
@@ -909,8 +910,10 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 func publishDeviceNetworkStatus(ctx *nimContext) {
 	log.Infof("PublishDeviceNetworkStatus: %+v",
 		ctx.deviceNetworkContext.DeviceNetworkStatus)
-	devicenetwork.UpdateResolvConf(*ctx.deviceNetworkContext.DeviceNetworkStatus)
-	devicenetwork.UpdatePBR(*ctx.deviceNetworkContext.DeviceNetworkStatus)
+	devicenetwork.UpdateResolvConf(log,
+		*ctx.deviceNetworkContext.DeviceNetworkStatus)
+	devicenetwork.UpdatePBR(log,
+		*ctx.deviceNetworkContext.DeviceNetworkStatus)
 	ctx.deviceNetworkContext.DeviceNetworkStatus.Testing = false
 	ctx.deviceNetworkContext.PubDeviceNetworkStatus.Publish("global", *ctx.deviceNetworkContext.DeviceNetworkStatus)
 }
