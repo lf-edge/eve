@@ -205,7 +205,7 @@ func linkKeyrings() error {
 func retrieveTpmKey() ([]byte, error) {
 	var tpmKey []byte
 	var err error
-	tpmKey, err = etpm.FetchVaultKey()
+	tpmKey, err = etpm.FetchVaultKey(log)
 	if err != nil {
 		log.Errorf("Error fetching TPM key: %v", err)
 		return nil, err

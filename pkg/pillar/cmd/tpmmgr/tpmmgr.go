@@ -611,7 +611,7 @@ func testEcdhAES() error {
 		Cert:     certBytes,
 		IsTpm:    isTpm,
 	}
-	err = etpm.DecryptSecretWithEcdhKey(publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
+	err = etpm.DecryptSecretWithEcdhKey(log, publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
 	if err != nil {
 		fmt.Printf("Decryption failed with error %v\n", err)
 		return err
