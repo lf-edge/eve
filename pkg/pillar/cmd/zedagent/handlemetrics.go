@@ -7,7 +7,10 @@ package zedagent
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -689,6 +692,38 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	return ReportDataSecAtRestInfo
 }
 
+func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
+
+	si := new(info.SecurityInfo)
+	// Deterime sha of the root CA cert used for object signing and
+	// encryption
+	caCert1, err := ioutil.ReadFile(types.RootCertFileName)
+	if err != nil {
+		log.Error(err)
+	} else {
+		hasher := sha256.New()
+		hasher.Write(caCert1)
+		si.ShaRootCa = hasher.Sum(nil)
+	}
+	// Add the sha of the root CAs used for TLS
+	// Note that we have the sha in a logical symlink so we
+	// just read that file.
+	line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+	if err != nil {
+		log.Error(err)
+	} else {
+		shaStr := strings.TrimSpace(string(line))
+		sha, err := hex.DecodeString(shaStr)
+		if err != nil {
+			log.Errorf("DecodeString %s failed: %s", shaStr, err)
+		} else {
+			si.ShaTlsRootCa = sha
+		}
+	}
+	log.Debugf("getSecurityInfo returns %+v", si)
+	return si
+}
+
 func createConfigItemStatus(
 	status types.GlobalStatus) *info.ZInfoConfigItemStatus {
 
@@ -1067,6 +1102,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
 		vault.GetOperInfo()
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
+
+	// Add SecurityInfo
+	ReportDeviceInfo.SecInfo = getSecurityInfo(ctx)
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
