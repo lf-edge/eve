@@ -8,8 +8,6 @@ package worker
 
 import (
 	"time"
-
-	log "github.com/sirupsen/logrus" // XXX add log arg
 )
 
 // Worker captures the worker channels
@@ -74,7 +72,6 @@ func (workerPtr Worker) NumPending() int {
 // processWork calls the fn for each work until the requestChan is closed
 func (workerPtr *Worker) processWork(ctx interface{}, fn WorkFunction, requestChan <-chan Work, resultChan chan<- privateResult) {
 
-	log.Infof("processWork starting for context %T", ctx)
 	for w := range requestChan {
 		result := fn(ctx, w)
 		priv := privateResult{
@@ -89,7 +86,6 @@ func (workerPtr *Worker) processWork(ctx interface{}, fn WorkFunction, requestCh
 	// XXX if we ever want multiple goroutines for one Worker we
 	// can't close here; would need some wait for all to finish
 	close(resultChan)
-	log.Infof("processWork done for context %T", ctx)
 }
 
 // MsgChan returns a channel to be used in a select loop
