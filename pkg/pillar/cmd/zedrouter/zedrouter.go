@@ -981,7 +981,7 @@ func appNetworkDoActivateUnderlayNetwork(
 			dnsServers)
 		startDnsmasq(bridgeName)
 	}
-	networkInstanceInfo.AddVif(vifName, appMac,
+	networkInstanceInfo.AddVif(log, vifName, appMac,
 		config.UUIDandVersion.UUID)
 	networkInstanceInfo.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
@@ -1518,7 +1518,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
 		startDnsmasq(bridgeName)
 	}
-	netstatus.RemoveVif(ulStatus.Vif)
+	netstatus.RemoveVif(log, ulStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)

@@ -1324,8 +1324,8 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 		Type:           status.Type,
 	}
 	netMetrics := types.NetworkMetrics{}
-	netMetric := status.UpdateNetworkMetrics(nms)
-	status.UpdateBridgeMetrics(nms, netMetric)
+	netMetric := status.UpdateNetworkMetrics(log, nms)
+	status.UpdateBridgeMetrics(log, nms, netMetric)
 
 	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
 	niMetrics.NetworkMetrics = netMetrics

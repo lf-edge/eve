@@ -210,7 +210,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	// Check if all the ports in the config are out of pciBack.
 	// If yes, apply config.
 	// If not, wait for all the ports to come out of PCIBack.
-	portInPciBack, ifName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(aa)
+	portInPciBack, ifName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(log, aa)
 	if portInPciBack {
 		if usedByUUID != nilUUID {
 			errStr := fmt.Sprintf("port %s in PCIBack "+
@@ -534,7 +534,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCModify: key: %s, Current Config: %+v, portConfig: %+v\n",
 		key, ctx.DevicePortConfig, portConfig)
 
-	portConfig.DoSanitize(true, true, key, true)
+	portConfig.DoSanitize(log, true, true, key, true)
 	mgmtCount := portConfig.CountMgmtPorts()
 	if mgmtCount == 0 {
 		// This DPC will be ignored when we check IsDPCUsable which
@@ -577,7 +577,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCDelete for %s current time %v deleted time %v\n",
 		key, ctx.DevicePortConfig.TimePriority, portConfig.TimePriority)
 
-	portConfig.DoSanitize(false, true, key, true)
+	portConfig.DoSanitize(log, false, true, key, true)
 
 	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, true)
 	if !configChanged {

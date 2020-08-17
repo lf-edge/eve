@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
 // SenderResult - Enum name for return extra sender results from SendOnAllIntf
@@ -255,7 +255,7 @@ type ConfigItemSpecMap struct {
 func (specMap *ConfigItemSpecMap) AddIntItem(key GlobalSettingKey,
 	defaultInt uint32, min uint32, max uint32) {
 	if defaultInt < min || defaultInt > max {
-		log.Fatalf("Adding int item %s failed. Value does not meet given min/max criteria", key)
+		logrus.Fatalf("Adding int item %s failed. Value does not meet given min/max criteria", key)
 	}
 	configItem := ConfigItemSpec{
 		ItemType:   ConfigItemTypeInt,
@@ -265,7 +265,6 @@ func (specMap *ConfigItemSpecMap) AddIntItem(key GlobalSettingKey,
 		IntMax:     max,
 	}
 	specMap.GlobalSettings[key] = configItem
-	log.Debugf("Added int item. Key: %s, Val: %+v", key, configItem)
 }
 
 // AddBoolItem - Adds boolean item to specMap
@@ -276,7 +275,6 @@ func (specMap *ConfigItemSpecMap) AddBoolItem(key GlobalSettingKey, defaultBool 
 		BoolDefault: defaultBool,
 	}
 	specMap.GlobalSettings[key] = configItem
-	log.Debugf("Added bool item %s", key)
 }
 
 // AddStringItem - Adds string item to specMap
@@ -284,7 +282,7 @@ func (specMap *ConfigItemSpecMap) AddStringItem(key GlobalSettingKey, defaultStr
 	err := validator(defaultString)
 	if err != nil {
 		defaultString = "failed validation"
-		log.Fatalf("AddStringItem: key %s, default (%s) Failed "+
+		logrus.Fatalf("AddStringItem: key %s, default (%s) Failed "+
 			"validator. err: %s", key, defaultString, err)
 	}
 	configItem := ConfigItemSpec{
@@ -294,7 +292,6 @@ func (specMap *ConfigItemSpecMap) AddStringItem(key GlobalSettingKey, defaultStr
 		StringValidator: validator,
 	}
 	specMap.GlobalSettings[key] = configItem
-	log.Debugf("Added string item %s", key)
 }
 
 // AddTriStateItem - Adds tristate item to specMap
@@ -305,7 +302,6 @@ func (specMap *ConfigItemSpecMap) AddTriStateItem(key GlobalSettingKey, defaultT
 		TriStateDefault: defaultTriState,
 	}
 	specMap.GlobalSettings[key] = configItem
-	log.Debugf("Added tristate item %s", key)
 }
 
 // AddAgentSettingStringItem - Adds string item for a per-agent setting
@@ -314,7 +310,7 @@ func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey,
 	err := validator(defaultString)
 	if err != nil {
 		defaultString = "failed validation"
-		log.Fatalf("AddAgentSettingStringItem: key %s, default (%s) Failed "+
+		logrus.Fatalf("AddAgentSettingStringItem: key %s, default (%s) Failed "+
 			"validator. err: %s", key, defaultString, err)
 	}
 	configItem := ConfigItemSpec{
@@ -324,7 +320,6 @@ func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey,
 		StringValidator: validator,
 	}
 	specMap.AgentSettings[key] = configItem
-	log.Debugf("Added string item %s", key)
 }
 
 // parseAgentSettingKey
@@ -345,15 +340,12 @@ func parseAgentSettingKey(key string) (string, AgentSettingKey, error) {
 	// Neither New or Legacy.. Return Error
 	err := fmt.Errorf("parseAgentSettingKey: Key %s Doesn't match agent "+
 		"Setting Key Pattern", key)
-	log.Errorf("Err: %s", err)
 	return "", "", err
 }
 
 func (specMap *ConfigItemSpecMap) parseAgentItem(
 	newConfigMap *ConfigItemValueMap, oldConfigMap *ConfigItemValueMap,
 	key string, value string) (ConfigItemValue, error) {
-	log.Debugf("ParseItem: Agent or Lagecy Agent Item. key: %s, Value: %s",
-		key, value)
 	agentName, asKey, err := parseAgentSettingKey(key)
 	if err != nil {
 		return ConfigItemValue{}, err
@@ -362,19 +354,13 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 	if !ok {
 		err := fmt.Errorf("Cannot find key (%s) in AgentSettings. asKey: %s",
 			key, asKey)
-		log.Errorf("***parseAgentItem: ERROR: %s", err)
 		return ConfigItemValue{}, err
 	}
 	val, err := itemSpec.parseValue(value)
 	if err == nil {
 		newConfigMap.setAgentSettingValue(agentName, asKey, val)
-		log.Debugf("parseAgentItem: Successfully parsed Agent Setting. "+
-			"Agent: %s, key: %s, Value: %+v", agentName, key, value)
 		return val, nil
 	}
-	log.Errorf("***ParseItem: Invalid Value for agent Setting - "+
-		"agentName: %s, Key: %s. Err: %s.", agentName, key, err)
-
 	// Parse Error. Get the Value from old config
 	val, asErr := oldConfigMap.agentConfigItemValue(agentName, asKey)
 	if asErr == nil {
@@ -386,9 +372,6 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 	}
 	// No Existing Value for Agent. It will use the default value.
 	val = itemSpec.DefaultValue()
-	log.Infof("ParseItem: Invalid Value for agent Setting - "+
-		"agentName: %s, Key: %s, err: %s. No Existing Value Either. "+
-		"Using Default Value: %+v", agentName, key, err, val)
 	return val, err
 }
 
@@ -407,12 +390,9 @@ func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 		return specMap.parseAgentItem(newConfigMap, oldConfigMap, key, value)
 	}
 	// Global Setting
-	log.Debugf("ParseItem: Global Setting. key: %s, Value: %s", key, value)
 	val, err := itemSpec.parseValue(value)
 	if err == nil {
 		newConfigMap.GlobalSettings[gsKey] = val
-		log.Debugf("ParseItem: Successfully parsed Global Setting. "+
-			"key: %s, Value: %s", key, value)
 		return val, nil
 	}
 	// Parse Error. Get the Value from old config
@@ -428,7 +408,6 @@ func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 			"Default Value: %+v. Err: %s", key, value, val, err)
 	}
 	newConfigMap.GlobalSettings[gsKey] = val
-	log.Errorf(err.Error())
 	return val, err
 }
 
@@ -479,7 +458,7 @@ func (configPtr *ConfigItemValueMap) globalConfigItemValue(
 	if ok {
 		return spec.DefaultValue()
 	}
-	log.Fatalf("globalConfigItemValue - Invalid key: %s", key)
+	logrus.Fatalf("globalConfigItemValue - Invalid key: %s", key)
 	return spec.DefaultValue()
 }
 
@@ -504,7 +483,7 @@ func (configPtr *ConfigItemValueMap) AgentSettingStringValue(agentName string, a
 		return ""
 	}
 	if val.ItemType != ConfigItemTypeString {
-		log.Fatalf("Agent setting is not of type string. agent-name %s, agentSettingKey %s",
+		logrus.Fatalf("Agent setting is not of type string. agent-name %s, agentSettingKey %s",
 			agentName, string(agentSettingKey))
 	}
 	return val.StrValue
@@ -516,7 +495,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueInt(key GlobalSettingKey) uint32
 	if val.ItemType == ConfigItemTypeInt {
 		return val.IntValue
 	} else {
-		log.Fatalf("***Key(%s) is of Type(%d) NOT Int", key, val.ItemType)
+		logrus.Fatalf("***Key(%s) is of Type(%d) NOT Int", key, val.ItemType)
 		return 0
 	}
 }
@@ -527,7 +506,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueString(key GlobalSettingKey) str
 	if val.ItemType == ConfigItemTypeString {
 		return val.StrValue
 	} else {
-		log.Fatalf("***Key(%s) is of Type(%d) NOT String", key, val.ItemType)
+		logrus.Fatalf("***Key(%s) is of Type(%d) NOT String", key, val.ItemType)
 		return ""
 	}
 }
@@ -538,7 +517,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueTriState(key GlobalSettingKey) T
 	if val.ItemType == ConfigItemTypeTriState {
 		return val.TriStateValue
 	} else {
-		log.Fatalf("***Key(%s) is of Type(%d) NOT TriState", key, val.ItemType)
+		logrus.Fatalf("***Key(%s) is of Type(%d) NOT TriState", key, val.ItemType)
 		return TS_NONE
 	}
 }
@@ -549,7 +528,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueBool(key GlobalSettingKey) bool 
 	if val.ItemType == ConfigItemTypeBool {
 		return val.BoolValue
 	} else {
-		log.Fatalf("***Key(%s) is of Type(%d) NOT Bool", key, val.ItemType)
+		logrus.Fatalf("***Key(%s) is of Type(%d) NOT Bool", key, val.ItemType)
 		return false
 	}
 }
@@ -750,9 +729,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	return configItemSpecMap
 }
 
-// parseLevel - Wrapper that ignores the 'Level' output of the log.ParseLevel function
+// parseLevel - Wrapper that ignores the 'Level' output of the logrus.ParseLevel function
 func parseLevel(level string) error {
-	_, err := log.ParseLevel(level)
+	_, err := logrus.ParseLevel(level)
 	return err
 }
 
