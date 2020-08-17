@@ -604,7 +604,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		config.Key(), len(status.VolumeRefStatusList), len(newVrs))
 	status.VolumeRefStatusList = newVrs
 	// Update persistent counter
-	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
 		status.UUIDandVersion.UUID,
 		int(status.PurgeCmd.Counter),
 		false, "purgeCmdCounter")

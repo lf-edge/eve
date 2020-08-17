@@ -381,7 +381,7 @@ func handleCreate(ctxArg interface{}, key string,
 	}
 
 	// Do we have a PurgeCmd counter from before the reboot?
-	c, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum,
+	c, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
 		config.UUIDandVersion.UUID, "purgeCmdCounter")
 	if err == nil {
 		if uint32(c) == status.PurgeCmd.Counter {
@@ -402,7 +402,7 @@ func handleCreate(ctxArg interface{}, key string,
 		log.Infof("handleCreate(%v) for %s saving purge counter %d",
 			config.UUIDandVersion, config.DisplayName,
 			config.PurgeCmd.Counter)
-		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
 			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
 			true, "purgeCmdCounter")
 	}
@@ -556,7 +556,7 @@ func handleDelete(ctx *zedmanagerContext, key string,
 
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
-	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
+	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s", status.DisplayName)
 }
 
