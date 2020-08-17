@@ -519,12 +519,12 @@ func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
 func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 	status := types.VaultStatus{}
 	status.Name = vaultName
-	zfsEncryptStatus, zfsEncryptError := vault.GetOperInfo()
+	zfsEncryptStatus, zfsEncryptError := vault.GetOperInfo(log)
 	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = zfsEncryptStatus
 		status.SetErrorNow(zfsEncryptError)
 	} else {
-		datasetStatus, err := vault.CheckOperStatus(vaultPath)
+		datasetStatus, err := vault.CheckOperStatus(log, vaultPath)
 		if err == nil {
 			log.Infof("checkOperStatus returns %s for %s", datasetStatus, vaultPath)
 			datasetStatus = processOperStatus(datasetStatus)

@@ -1097,7 +1097,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	//This will be removed after new fields propagate to Controller.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
-		vault.GetOperInfo()
+		vault.GetOperInfo(log)
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	// Add SecurityInfo
