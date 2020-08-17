@@ -211,6 +211,11 @@ message DataSecAtRest {
   repeated VaultInfo vaultList = 3; // per-Vault Info
 }
 
+message SecurityInfo {
+  bytes sha_root_ca = 1;    // sha256 of /config/root-certificate.pem
+  bytes sha_tls_root_ca = 2; // sha256 of /config/v2tlsbaseroot-certificates.pem
+}
+
 message ZInfoConfigItem {
   string value = 1;
   string error = 2;
@@ -262,10 +267,12 @@ message ZInfoDevice {
 
   SystemAdapterInfo systemAdapter = 24;
   uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
+
   HwSecurityModuleStatus HSMStatus = 26; //State of hardware security modules, like TPM
   string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
   string lastRebootStack = 28;
   DataSecAtRest dataSecAtRestInfo = 29; //Info about Data At Rest Security
+  SecurityInfo sec_info = 30;
 
   ZInfoConfigItemStatus configItemStatus = 31;
   repeated ZInfoAppInstance appInstances = 32;
