@@ -144,7 +144,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// Note that we don't return errors if someone tries to deactivate
 	// the running version, but we don't act on it either.
 	curPartName := zboot.GetCurrentPartition()
-	if status.BaseOsVersion == zboot.GetShortVersion(curPartName) {
+	if status.BaseOsVersion == zboot.GetShortVersion(log, curPartName) {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in current %s",
 			config.BaseOsVersion, uuidStr, curPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, curPartName)
@@ -160,7 +160,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// re-download and overwrite.
 	otherPartName := zboot.GetOtherPartition()
 	if (status.PartitionLabel == "" || status.PartitionLabel == otherPartName) &&
-		status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
+		status.BaseOsVersion == zboot.GetShortVersion(log, otherPartName) {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in other %s",
 			config.BaseOsVersion, uuidStr, otherPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, otherPartName)
@@ -265,7 +265,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	log.Infof("doBaseOsActivate: %s activating", uuidStr)
-	zboot.SetOtherPartitionStateUpdating()
+	zboot.SetOtherPartitionStateUpdating(log)
 	publishZbootPartitionStatus(ctx, status.PartitionLabel)
 	baseOsSetPartitionInfoInStatus(ctx, status, status.PartitionLabel)
 	publishBaseOsStatus(ctx, status)
@@ -279,7 +279,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		if errString := checkInstalledVersion(ctx, *status); errString != "" {
 			log.Error(errString)
 			status.SetErrorNow(errString)
-			zboot.SetOtherPartitionStateUnused()
+			zboot.SetOtherPartitionStateUnused(log)
 			publishZbootPartitionStatus(ctx,
 				status.PartitionLabel)
 			baseOsSetPartitionInfoInStatus(ctx, status,
@@ -585,7 +585,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				if zboot.IsOtherPartitionStateInProgress() {
 					agentlog.DiscardOtherRebootReason(log)
 				}
-				zboot.SetOtherPartitionStateUnused()
+				zboot.SetOtherPartitionStateUnused(log)
 				publishZbootPartitionStatus(ctx, partName)
 				baseOsSetPartitionInfoInStatus(ctx, status,
 					status.PartitionLabel)
@@ -638,7 +638,7 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		return errors.New(errStr)
 	}
 
-	err := zboot.WriteToPartition(srcFilename, dstFilename)
+	err := zboot.WriteToPartition(log, srcFilename, dstFilename)
 	if err != nil {
 		errStr := fmt.Sprintf("installBaseOsObject: WriteToPartition failed %s: %s",
 			dstFilename, err)
@@ -663,7 +663,7 @@ func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) str
 	}
 
 	// Check the configured Image name is the same as the one just installed image
-	shortVer := zboot.GetShortVersion(status.PartitionLabel)
+	shortVer := zboot.GetShortVersion(log, status.PartitionLabel)
 	log.Infof("checkInstalledVersion: Cfg baseVer %s, Image shortVer %s",
 		status.BaseOsVersion, shortVer)
 	if status.BaseOsVersion != shortVer {
@@ -769,7 +769,7 @@ func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig,
 				config.Key())
 			return
 		}
-		if err := zboot.MarkCurrentPartitionStateActive(); err != nil {
+		if err := zboot.MarkCurrentPartitionStateActive(log); err != nil {
 			bs := lookupBaseOsStatusByPartLabel(ctx, config.Key())
 			if bs == nil {
 				log.Errorf("handleZbootTestComplete(%s) error by not BaseOsStatus in which to report it: %s",
@@ -880,7 +880,7 @@ func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
 	status.PartitionLabel = partName
 	status.PartitionDevname = zboot.GetPartitionDevname(partName)
 	status.PartitionState = zboot.GetPartitionState(partName)
-	status.ShortVersion = zboot.GetShortVersion(partName)
+	status.ShortVersion = zboot.GetShortVersion(log, partName)
 	status.LongVersion = zboot.GetLongVersion(partName)
 	status.CurrentPartition = zboot.IsCurrentPartition(partName)
 	status.TestComplete = testComplete

@@ -281,5 +281,5 @@ func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	log.Infof("Timer Expired.. Zboot.Reset()")
 	syscall.Sync()
 	<-rebootTimer.C
-	zboot.Reset()
+	zboot.Reset(log)
 }
