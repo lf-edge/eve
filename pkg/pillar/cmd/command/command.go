@@ -44,9 +44,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/execlib"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const agentName = "command"
@@ -61,10 +62,10 @@ var (
 // Run is the main aka only entrypoint
 func Run(ps *pubsub.PubSub) {
 	// Report nano timestamps
-	formatter := log.JSONFormatter{
+	formatter := logrus.JSONFormatter{
 		TimestampFormat: time.RFC3339Nano,
 	}
-	log.SetFormatter(&formatter)
+	logrus.SetFormatter(&formatter)
 
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	quietPtr := flag.Bool("q", false, "Quiet flag")
@@ -81,14 +82,15 @@ func Run(ps *pubsub.PubSub) {
 		environ = append(environ, *environPtr)
 	}
 	if *quietPtr {
-		log.SetLevel(log.WarnLevel)
+		logrus.SetLevel(logrus.WarnLevel)
 	} else if *debugPtr {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 
-	hdl, err := execlib.New(ps, agentName, "executor")
+	log := base.NewSourceLogObject(agentName, os.Getpid())
+	hdl, err := execlib.New(ps, log, agentName, "executor")
 	if err != nil {
 		log.Fatal(err)
 	}
