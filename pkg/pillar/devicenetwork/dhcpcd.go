@@ -8,6 +8,7 @@ package devicenetwork
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"net"
@@ -23,7 +24,7 @@ import (
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
 // Assumes that the caller has checked that the interfaces exist
 // We therefor skip any interfaces which do not exist
-func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
+func UpdateDhcpClient(log *base.LogObject, newConfig, oldConfig types.DevicePortConfig) {
 
 	// Look for adds or changes
 	log.Infof("updateDhcpClient: new %v old %v\n",
@@ -33,15 +34,15 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 		if oldU == nil || oldU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
-			doDhcpClientActivate(newU)
+			doDhcpClientActivate(log, newU)
 		} else {
 			log.Infof("updateDhcpClient: found old %v\n",
 				oldU)
 			if !reflect.DeepEqual(newU.DhcpConfig, oldU.DhcpConfig) {
 				log.Infof("updateDhcpClient: changed %s\n",
 					newU.IfName)
-				doDhcpClientInactivate(*oldU)
-				doDhcpClientActivate(newU)
+				doDhcpClientInactivate(log, *oldU)
+				doDhcpClientActivate(log, newU)
 			}
 		}
 	}
@@ -51,7 +52,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 		if newU == nil || newU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: deleted %s\n",
 				oldU.IfName)
-			doDhcpClientInactivate(oldU)
+			doDhcpClientInactivate(log, oldU)
 		} else {
 			log.Infof("updateDhcpClient: found new %v\n",
 				newU)
@@ -59,7 +60,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 	}
 }
 
-func doDhcpClientActivate(nuc types.NetworkPortConfig) {
+func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 
 	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
@@ -71,7 +72,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 	}
 
 	// Check the ifname exists to avoid waiting for a dhcpcd below
-	_, err := IfnameToIndex(nuc.IfName)
+	_, err := IfnameToIndex(log, nuc.IfName)
 	if err != nil {
 		// Caller intends us to proceed without this interface
 		log.Warnf("doDhcpClientActivate(%s) failed %s", nuc.IfName, err)
@@ -83,7 +84,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			nuc.IfName)
 		return
 	case types.DT_CLIENT:
-		for dhcpcdExists(nuc.IfName) {
+		for dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
 			time.Sleep(10 * time.Second)
 		}
@@ -92,14 +93,14 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
-		if !dhcpcdCmd("--request", extras, nuc.IfName, true) {
+		if !dhcpcdCmd(log, "--request", extras, nuc.IfName, true) {
 			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
 		// Wait for a bit then give up
 		waitCount := 0
 		failed := false
-		for !dhcpcdExists(nuc.IfName) {
+		for !dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s not yet running", nuc.IfName)
 			waitCount++
 			if waitCount >= 3 {
@@ -126,7 +127,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 				nuc.AddrSubnet, nuc.IfName, err)
 			return
 		}
-		for dhcpcdExists(nuc.IfName) {
+		for dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
 			time.Sleep(10 * time.Second)
 		}
@@ -156,14 +157,14 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		}
 
 		args = append(args, extras...)
-		if !dhcpcdCmd("--static", args, nuc.IfName, true) {
+		if !dhcpcdCmd(log, "--static", args, nuc.IfName, true) {
 			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
 		// Wait for a bit then give up
 		waitCount := 0
 		failed := false
-		for !dhcpcdExists(nuc.IfName) {
+		for !dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s not yet running", nuc.IfName)
 			waitCount++
 			if waitCount >= 3 {
@@ -182,7 +183,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 	}
 }
 
-func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
+func doDhcpClientInactivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 
 	log.Infof("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
@@ -198,11 +199,11 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 			nuc.IfName)
 	case types.DT_STATIC, types.DT_CLIENT:
 		extras := []string{}
-		if !dhcpcdCmd("--release", extras, nuc.IfName, false) {
+		if !dhcpcdCmd(log, "--release", extras, nuc.IfName, false) {
 			log.Errorf("doDhcpClientInactivate: release failed for %s\n",
 				nuc.IfName)
 		}
-		for dhcpcdExists(nuc.IfName) {
+		for dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s still running", nuc.IfName)
 			time.Sleep(10 * time.Second)
 		}
@@ -213,7 +214,7 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 	}
 }
 
-func dhcpcdCmd(op string, extras []string, ifname string, background bool) bool {
+func dhcpcdCmd(log *base.LogObject, op string, extras []string, ifname string, background bool) bool {
 	name := "/sbin/dhcpcd"
 	args := append([]string{op}, extras...)
 	args = append(args, ifname)
@@ -242,7 +243,7 @@ func dhcpcdCmd(op string, extras []string, ifname string, background bool) bool 
 	return true
 }
 
-func dhcpcdExists(ifname string) bool {
+func dhcpcdExists(log *base.LogObject, ifname string) bool {
 
 	log.Infof("dhcpcdExists(%s)", ifname)
 	// XXX should we use dhcpcd -P <ifname> to get name of pidfile? Hardcoded path here
@@ -284,7 +285,6 @@ func statAndRead(filename string) (string, time.Time) {
 	}
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Errorf("statAndRead failed %s", err)
 		return "", fi.ModTime()
 	}
 	return string(content), fi.ModTime()

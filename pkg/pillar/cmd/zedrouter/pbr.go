@@ -37,7 +37,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		return nil
 	}
 
-	ifindex, err := devicenetwork.IfnameToIndex(port)
+	ifindex, err := devicenetwork.IfnameToIndex(log, port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			port, err)
@@ -51,7 +51,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		return nil
 	}
 	// Add to ifindex specific table
-	ifindex, err = devicenetwork.IfnameToIndex(bridgeName)
+	ifindex, err = devicenetwork.IfnameToIndex(log, bridgeName)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			bridgeName, err)
@@ -105,7 +105,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		return nil
 	}
 
-	ifindex, err := devicenetwork.IfnameToIndex(port)
+	ifindex, err := devicenetwork.IfnameToIndex(log, port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			port, err)
@@ -119,7 +119,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		return nil
 	}
 	// Remove from ifindex specific table
-	ifindex, err = devicenetwork.IfnameToIndex(bridgeName)
+	ifindex, err = devicenetwork.IfnameToIndex(log, bridgeName)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			bridgeName, err)
@@ -162,7 +162,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
 		op = "NEWROUTE"
 	}
-	ifname, linkType, err := devicenetwork.IfindexToName(rt.LinkIndex)
+	ifname, linkType, err := devicenetwork.IfindexToName(log, rt.LinkIndex)
 	if err != nil {
 		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s: route %v\n",
 			rt.LinkIndex, err, rt)
@@ -250,36 +250,36 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 
 	changed := false
 	if change.NewAddr {
-		changed = devicenetwork.IfindexToAddrsAdd(change.LinkIndex,
+		changed = devicenetwork.IfindexToAddrsAdd(log, change.LinkIndex,
 			change.LinkAddress.IP)
 		if changed {
-			_, linkType, err := devicenetwork.IfindexToName(change.LinkIndex)
+			_, linkType, err := devicenetwork.IfindexToName(log, change.LinkIndex)
 			if err != nil {
 				log.Errorf("XXX NewAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
 			if linkType == "bridge" {
-				devicenetwork.AddSourceRule(change.LinkIndex, change.LinkAddress,
+				devicenetwork.AddSourceRule(log, change.LinkIndex, change.LinkAddress,
 					linkType == "bridge")
 			}
 		}
 	} else {
-		changed = devicenetwork.IfindexToAddrsDel(change.LinkIndex,
+		changed = devicenetwork.IfindexToAddrsDel(log, change.LinkIndex,
 			change.LinkAddress.IP)
 		if changed {
-			_, linkType, err := devicenetwork.IfindexToName(change.LinkIndex)
+			_, linkType, err := devicenetwork.IfindexToName(log, change.LinkIndex)
 			if err != nil {
 				log.Errorf("XXX DelAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
 			if linkType == "bridge" {
-				devicenetwork.DelSourceRule(change.LinkIndex, change.LinkAddress,
+				devicenetwork.DelSourceRule(log, change.LinkIndex, change.LinkAddress,
 					linkType == "bridge")
 			}
 		}
 	}
 	if changed {
-		ifname, _, err := devicenetwork.IfindexToName(change.LinkIndex)
+		ifname, _, err := devicenetwork.IfindexToName(log, change.LinkIndex)
 		if err != nil {
 			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)

@@ -1,4 +1,4 @@
-// Copyright (c) 2017,2018 Zededa, Inc.
+// Copyright (c) 2017-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Look for address changes
@@ -7,6 +7,7 @@ package devicenetwork
 
 import (
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"net"
 	"reflect"
@@ -17,7 +18,7 @@ import (
 //	case change := <-addrChanges:
 //		changed := devicenetwork.AddrChange(&clientCtx, change)
 //
-func AddrChangeInit() chan netlink.AddrUpdate {
+func AddrChangeInit(log *base.LogObject) chan netlink.AddrUpdate {
 
 	log.Infof("AddrChangeInit()\n")
 
@@ -42,16 +43,17 @@ func AddrChangeInit() chan netlink.AddrUpdate {
 // AddrChange handles an IP address change. Returns ifindex for changed interface
 func AddrChange(ctx DeviceNetworkContext, change netlink.AddrUpdate) (bool, int) {
 
+	log := ctx.Log
 	changed := false
 	if change.NewAddr {
-		changed = IfindexToAddrsAdd(change.LinkIndex,
+		changed = IfindexToAddrsAdd(log, change.LinkIndex,
 			change.LinkAddress.IP)
 	} else {
-		changed = IfindexToAddrsDel(change.LinkIndex,
+		changed = IfindexToAddrsDel(log, change.LinkIndex,
 			change.LinkAddress.IP)
 	}
 	if changed {
-		ifname, _, err := IfindexToName(change.LinkIndex)
+		ifname, _, err := IfindexToName(log, change.LinkIndex)
 		if err != nil {
 			log.Errorf("AddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
@@ -60,9 +62,9 @@ func AddrChange(ctx DeviceNetworkContext, change netlink.AddrUpdate) (bool, int)
 		isPort := types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname)
 		if isPort {
 			if change.NewAddr {
-				AddSourceRule(change.LinkIndex, change.LinkAddress, false)
+				AddSourceRule(log, change.LinkIndex, change.LinkAddress, false)
 			} else {
-				DelSourceRule(change.LinkIndex, change.LinkAddress, false)
+				DelSourceRule(log, change.LinkIndex, change.LinkAddress, false)
 			}
 		}
 		log.Infof("AddrChange: changed, %d %s", change.LinkIndex, change.LinkAddress.String())
@@ -77,7 +79,7 @@ func AddrChange(ctx DeviceNetworkContext, change netlink.AddrUpdate) (bool, int)
 //	case change := <-linkChanges:
 //		changed := devicenetwork.LinkChange(change)
 //
-func LinkChangeInit() chan netlink.LinkUpdate {
+func LinkChangeInit(log *base.LogObject) chan netlink.LinkUpdate {
 
 	log.Infof("LinkChangeInit()\n")
 
@@ -104,7 +106,7 @@ func LinkChangeInit() chan netlink.LinkUpdate {
 //	case change := <-routeChanges:
 //		PbrHandleRouteChange(..., change)
 //
-func RouteChangeInit() chan netlink.RouteUpdate {
+func RouteChangeInit(log *base.LogObject) chan netlink.RouteUpdate {
 
 	log.Infof("RouteChangeInit()\n")
 
@@ -127,7 +129,7 @@ func RouteChangeInit() chan netlink.RouteUpdate {
 
 // Check if at least one management port in the given DeviceNetworkStatus
 // have atleast one IP address each and at least one DNS server.
-func checkIfMgmtPortsHaveIPandDNS(status types.DeviceNetworkStatus) bool {
+func checkIfMgmtPortsHaveIPandDNS(log *base.LogObject, status types.DeviceNetworkStatus) bool {
 
 	mgmtPorts := types.GetMgmtPortsAny(status, 0)
 	if len(mgmtPorts) == 0 {
@@ -153,6 +155,7 @@ func checkIfMgmtPortsHaveIPandDNS(status types.DeviceNetworkStatus) bool {
 
 func HandleAddressChange(ctx *DeviceNetworkContext) {
 
+	log := ctx.Log
 	// Check if we have more or less addresses
 	var dnStatus types.DeviceNetworkStatus
 
@@ -160,7 +163,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 		ctx.Pending.Inprogress)
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
-		status := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+		status := MakeDeviceNetworkStatus(log, *ctx.DevicePortConfig,
 			dnStatus)
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
@@ -172,13 +175,13 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 			log.Infof("HandleAddressChange: No change\n")
 		}
 	} else {
-		dnStatus = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+		dnStatus = MakeDeviceNetworkStatus(log, *ctx.DevicePortConfig,
 			ctx.Pending.PendDNS)
 
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
 			log.Infof("HandleAddressChange pending: change from %v to %v\n",
 				ctx.Pending.PendDNS, dnStatus)
-			pingTestDNS := checkIfMgmtPortsHaveIPandDNS(dnStatus)
+			pingTestDNS := checkIfMgmtPortsHaveIPandDNS(log, dnStatus)
 			if pingTestDNS {
 				// We have a suitable candiate for running our cloud ping test.
 				log.Infof("HandleAddressChange: Running cloud ping test now, " +
@@ -195,6 +198,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 // Returns ifindex for potentially changed interface
 func RouteChange(ctx DeviceNetworkContext, change netlink.RouteUpdate) (bool, int) {
 
+	log := ctx.Log
 	rt := change.Route
 	if rt.Table != getDefaultRouteTable() {
 		// Ignore
@@ -206,7 +210,7 @@ func RouteChange(ctx DeviceNetworkContext, change netlink.RouteUpdate) (bool, in
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
 		op = "NEWROUTE"
 	}
-	ifname, _, err := IfindexToName(rt.LinkIndex)
+	ifname, _, err := IfindexToName(log, rt.LinkIndex)
 	if err != nil {
 		log.Errorf("RouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
@@ -249,7 +253,7 @@ var ifnameHasPBR = make(map[string][]net.IP)
 // UpdatePBR makes sure we have PBR rules and routing tables for all the ports
 // Track the list of old port addresses to detect if a port is added or deleted,
 // or if the set of IP addresses change
-func UpdatePBR(status types.DeviceNetworkStatus) {
+func UpdatePBR(log *base.LogObject, status types.DeviceNetworkStatus) {
 
 	log.Infof("UpdatePBR: %d ports", len(status.Ports))
 	// Track any ifnames which need to have PBR deleted
@@ -270,49 +274,49 @@ func UpdatePBR(status types.DeviceNetworkStatus) {
 			}
 			log.Infof("Ifname %s PBR changed from %v to %v",
 				u.IfName, oldAddrs, addrs)
-			delPBR(status, u.IfName)
-			addPBR(status, u.IfName, addrs)
+			delPBR(log, status, u.IfName)
+			addPBR(log, status, u.IfName, addrs)
 			ifnameHasPBR[u.IfName] = addrs
 			continue
 		}
-		addPBR(status, u.IfName, addrs)
+		addPBR(log, status, u.IfName, addrs)
 		ifnameHasPBR[u.IfName] = addrs
 	}
 	for old := range ifnameHasPBR {
 		if _, ok := ifnameFound[old]; ok {
 			continue
 		}
-		delPBR(status, old)
+		delPBR(log, status, old)
 		delete(ifnameHasPBR, old)
 	}
 }
 
-func addPBR(status types.DeviceNetworkStatus, ifname string, addrs []net.IP) {
+func addPBR(log *base.LogObject, status types.DeviceNetworkStatus, ifname string, addrs []net.IP) {
 	log.Infof("addPBR(%s) addrs %v", ifname, addrs)
-	ifindex, err := IfnameToIndex(ifname)
+	ifindex, err := IfnameToIndex(log, ifname)
 	if err != nil {
 		log.Errorf("addPBR can't find ifindex for %s", ifname)
 		return
 	}
-	FlushRules(ifindex)
+	FlushRules(log, ifindex)
 	for _, a := range addrs {
-		AddSourceRule(ifindex, HostSubnet(a), false)
+		AddSourceRule(log, ifindex, HostSubnet(a), false)
 	}
 	// Flush then copy all routes for this interface to the table
 	// for this ifindex
 	table := baseTableIndex + ifindex
-	FlushRoutesTable(table, 0)
-	CopyRoutesTable(0, ifindex, table)
+	FlushRoutesTable(log, table, 0)
+	CopyRoutesTable(log, 0, ifindex, table)
 }
 
-func delPBR(status types.DeviceNetworkStatus, ifname string) {
+func delPBR(log *base.LogObject, status types.DeviceNetworkStatus, ifname string) {
 	log.Infof("delPBR(%s)", ifname)
-	ifindex, err := IfnameToIndex(ifname)
+	ifindex, err := IfnameToIndex(log, ifname)
 	if err != nil {
 		log.Errorf("delPBR can't find ifindex for %s", ifname)
 		return
 	}
-	FlushRules(ifindex)
+	FlushRules(log, ifindex)
 	table := baseTableIndex + ifindex
-	FlushRoutesTable(table, 0)
+	FlushRoutesTable(log, table, 0)
 }
