@@ -147,7 +147,7 @@ func Run(ps *pubsub.PubSub) {
 	log = agentbase.Run(&nodeagentCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile()
+	utils.EnsureGCFile(log)
 
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)

@@ -473,25 +473,25 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 
 	if !zedcloudCtx.NoLedManager {
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(log, 3)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(4)
+			utils.UpdateLedManagerConfig(log, 4)
 		}
 		log.Infof("%s StatusOK", requrl)
 	case http.StatusCreated:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(4)
+			utils.UpdateLedManagerConfig(log, 4)
 		}
 		log.Infof("%s StatusCreated", requrl)
 	case http.StatusConflict:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(10)
+			utils.UpdateLedManagerConfig(log, 10)
 		}
 		log.Errorf("%s StatusConflict", requrl)
 		// Retry until fixed
@@ -556,7 +556,7 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 	if resp != nil && resp.StatusCode == http.StatusNotModified {
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(10)
+			utils.UpdateLedManagerConfig(log, 10)
 		}
 		log.Errorf("%s StatusNotModified", requrl)
 		// Retry until fixed
@@ -659,7 +659,7 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
-			utils.UpdateLedManagerConfig(4)
+			utils.UpdateLedManagerConfig(log, 4)
 		}
 		return true, devUUID, hardwaremodel, enterprise, name
 	}
