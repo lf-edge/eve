@@ -1912,3 +1912,45 @@ func deleteAppInstaneOverlayRoute(
 			status.DisplayName)
 	}
 }
+
+// XXX: Deac code. May be useful when we do wireguard/tailscale
+func addAppInstanceOverlayRoute(
+	ctx *zedrouterContext,
+	status *types.AppNetworkStatus) {
+	bridgeName := "" // XXX Fill bridge name
+	oLink, err := findBridge(bridgeName)
+	if err != nil {
+		addError(ctx, status, "findBridge", err)
+		log.Infof("addAppInstaneOverlayRoute done for %s\n",
+			status.DisplayName)
+		return
+	}
+	var subnetSuffix string
+
+	EID := net.IP{} // XXX Fill with valid ip address
+	isIPv6 := (EID.To4() == nil)
+	if isIPv6 {
+		subnetSuffix = "/128"
+	} else {
+		subnetSuffix = "/32"
+	}
+	_, ipnet, err := net.ParseCIDR(EID.String() + subnetSuffix)
+	if err != nil {
+		errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
+			EID.String()+subnetSuffix, err)
+		addError(ctx, status, "addAppInstaneOverlayRoute",
+			errors.New(errStr))
+		log.Infof("addAppInstaneOverlayRoute done for %s\n",
+			status.DisplayName)
+		return
+	}
+	rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
+	if err := netlink.RouteAdd(&rt); err != nil {
+		errStr := fmt.Sprintf("RouteAdd %s failed: %s",
+			EID, err)
+		addError(ctx, status, "addAppInstaneOverlayRoute",
+			errors.New(errStr))
+		log.Infof("addAppInstaneOverlayRoute done for %s\n",
+			status.DisplayName)
+	}
+}
