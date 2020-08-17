@@ -13,9 +13,9 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 // ExecuteHandle is returned by New and passed to the Execute function
@@ -27,6 +27,7 @@ type ExecuteHandle struct {
 	subExecStatus pubsub.Subscription
 	sequence      int
 	matchedStatus types.ExecStatus
+	log           *base.LogObject
 }
 
 // ExecuteArgs is passed for each command
@@ -40,7 +41,7 @@ type ExecuteArgs struct {
 }
 
 // New returns the handle to use with Execute
-func New(ps *pubsub.PubSub, agentName string, executor string) (*ExecuteHandle, error) {
+func New(ps *pubsub.PubSub, log *base.LogObject, agentName string, executor string) (*ExecuteHandle, error) {
 
 	pubExecConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -91,7 +92,7 @@ func (hdl *ExecuteHandle) Execute(args ExecuteArgs) (string, error) {
 		Combined:  args.CombinedOutput,
 		DontWait:  args.DontWait,
 	}
-	log.Infof("publish %+v", config)
+	hdl.log.Infof("publish %+v", config)
 	hdl.pubExecConfig.Publish(config.Key(), config)
 	if args.DontWait {
 		return "", nil
@@ -126,14 +127,14 @@ func handleStatus(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	hdl := ctxArg.(*ExecuteHandle)
-	log.Infof("handleStatus %s", key)
+	hdl.log.Infof("handleStatus %s", key)
 	if key != hdl.caller {
-		log.Infof("Mismatched key %s vs %s\n", key, hdl.caller)
+		hdl.log.Infof("Mismatched key %s vs %s\n", key, hdl.caller)
 		return
 	}
 	status := statusArg.(types.ExecStatus)
 	if status.Sequence != hdl.sequence {
-		log.Infof("Mismatched sequence %d vs %d\n",
+		hdl.log.Infof("Mismatched sequence %d vs %d\n",
 			status.Sequence, hdl.sequence)
 		return
 	}
