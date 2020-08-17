@@ -17,7 +17,8 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/sirupsen/logrus" // XXX add log arg
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
 
 // MountFlags used in zbootMount calls
@@ -35,33 +36,36 @@ var zbootMutex *sync.Mutex
 func init() {
 	zbootMutex = new(sync.Mutex)
 	if zbootMutex == nil {
-		log.Fatal("Mutex Init")
+		logrus.Fatal("Mutex Init")
 	}
 }
 
 // reset routine
-func Reset() {
-	log.Infof("Reset..\n")
-	_, err := execWithRetry(true, "zboot", "reset")
+func Reset(log *base.LogObject) {
+	_, err := execWithRetry(log, "zboot", "reset")
 	if err != nil {
-		log.Fatalf("zboot reset: err %v\n", err)
+		logrus.Fatalf("zboot reset: err %v\n", err)
 	}
 }
 
-func execWithRetry(dolog bool, command string, args ...string) ([]byte, error) {
+// If log is nil there is no logging
+func execWithRetry(log *base.LogObject, command string, args ...string) ([]byte, error) {
 	for {
-		out, done, err := execWithTimeout(dolog, command, args...)
+		out, done, err := execWithTimeout(log, command, args...)
 		if err != nil {
 			return out, err
 		}
 		if done {
 			return out, nil
 		}
-		log.Errorf("Retrying %s %v", command, args)
+		if log != nil {
+			log.Errorf("Retrying %s %v", command, args)
+		}
 	}
 }
 
-func execWithTimeout(dolog bool, command string, args ...string) ([]byte, bool, error) {
+// If log is nil there is no logging
+func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byte, bool, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(),
 		10*time.Second)
@@ -69,12 +73,12 @@ func execWithTimeout(dolog bool, command string, args ...string) ([]byte, bool, 
 
 	cmd := exec.CommandContext(ctx, command, args...)
 
-	if dolog {
+	if log != nil {
 		log.Infof("Waiting for zbootMutex.lock for %s %+v\n",
 			command, args)
 	}
 	zbootMutex.Lock()
-	if dolog {
+	if log != nil {
 		log.Infof("Got zbootMutex.lock. Executing %s %+v\n",
 			command, args)
 	}
@@ -82,7 +86,7 @@ func execWithTimeout(dolog bool, command string, args ...string) ([]byte, bool, 
 	out, err := cmd.Output()
 
 	zbootMutex.Unlock()
-	if dolog {
+	if log != nil {
 		log.Infof("Released zbootMutex.lock for %s %+v\n",
 			command, args)
 	}
@@ -107,10 +111,9 @@ func GetCurrentPartition() string {
 	if currentPartition != "" {
 		return currentPartition
 	}
-	log.Debugf("calling zboot curpart - not in cache\n")
-	ret, err := execWithRetry(false, "zboot", "curpart")
+	ret, err := execWithRetry(nil, "zboot", "curpart")
 	if err != nil {
-		log.Fatalf("zboot curpart: err %v\n", err)
+		logrus.Fatalf("zboot curpart: err %v\n", err)
 	}
 
 	partName := string(ret)
@@ -130,7 +133,7 @@ func GetOtherPartition() string {
 	case "IMGB":
 		partName = "IMGA"
 	default:
-		log.Fatalf("GetOtherPartition unknown partName %s\n", partName)
+		logrus.Fatalf("GetOtherPartition unknown partName %s\n", partName)
 	}
 	return partName
 }
@@ -141,7 +144,7 @@ func validatePartitionName(partName string) {
 		return
 	}
 	errStr := fmt.Sprintf("invalid partition %s", partName)
-	log.Fatal(errStr)
+	logrus.Fatal(errStr)
 }
 
 func validatePartitionState(partState string) {
@@ -150,7 +153,7 @@ func validatePartitionState(partState string) {
 		return
 	}
 	errStr := fmt.Sprintf("invalid partition state %s", partState)
-	log.Fatal(errStr)
+	logrus.Fatal(errStr)
 }
 
 func IsCurrentPartition(partName string) bool {
@@ -169,9 +172,9 @@ func IsOtherPartition(partName string) bool {
 func GetPartitionState(partName string) string {
 
 	validatePartitionName(partName)
-	ret, err := execWithRetry(false, "zboot", "partstate", partName)
+	ret, err := execWithRetry(nil, "zboot", "partstate", partName)
 	if err != nil {
-		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
+		logrus.Fatalf("zboot partstate %s: err %v\n", partName, err)
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
@@ -188,16 +191,16 @@ func IsPartitionState(partName string, partState string) bool {
 	return res
 }
 
-func setPartitionState(partName string, partState string) {
+func setPartitionState(log *base.LogObject, partName string, partState string) {
 
 	log.Infof("setPartitionState(%s, %s)\n", partName, partState)
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
-	_, err := execWithRetry(true, "zboot", "set_partstate",
+	_, err := execWithRetry(log, "zboot", "set_partstate",
 		partName, partState)
 	if err != nil {
-		log.Fatalf("zboot set_partstate %s %s: err %v\n",
+		logrus.Fatalf("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
 	}
 }
@@ -211,11 +214,9 @@ func GetPartitionDevname(partName string) string {
 	if ok {
 		return dev
 	}
-	log.Debugf("calling zboot partdev %s - not in cache\n", partName)
-
-	ret, err := execWithRetry(false, "zboot", "partdev", partName)
+	ret, err := execWithRetry(nil, "zboot", "partdev", partName)
 	if err != nil {
-		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
+		logrus.Fatalf("zboot partdev %s: err %v\n", partName, err)
 	}
 
 	devName := string(ret)
@@ -225,16 +226,16 @@ func GetPartitionDevname(partName string) string {
 }
 
 // set routines
-func setPartitionStateActive(partName string) {
-	setPartitionState(partName, "active")
+func setPartitionStateActive(log *base.LogObject, partName string) {
+	setPartitionState(log, partName, "active")
 }
 
-func setPartitionStateUnused(partName string) {
-	setPartitionState(partName, "unused")
+func setPartitionStateUnused(log *base.LogObject, partName string) {
+	setPartitionState(log, partName, "unused")
 }
 
-func setPartitionStateUpdating(partName string) {
-	setPartitionState(partName, "updating")
+func setPartitionStateUpdating(log *base.LogObject, partName string) {
+	setPartitionState(log, partName, "updating")
 }
 
 // check routines, for current partition
@@ -274,35 +275,35 @@ func IsOtherPartitionStateUpdating() bool {
 	return IsPartitionState(partName, "updating")
 }
 
-func setCurrentPartitionStateActive() {
+func setCurrentPartitionStateActive(log *base.LogObject) {
 	partName := GetCurrentPartition()
-	setPartitionState(partName, "active")
+	setPartitionState(log, partName, "active")
 }
 
-func setCurrentPartitionStateUpdating() {
+func setCurrentPartitionStateUpdating(log *base.LogObject) {
 	partName := GetCurrentPartition()
-	setPartitionState(partName, "updating")
+	setPartitionState(log, partName, "updating")
 }
 
-func setCurrentPartitionStateUnused() {
+func setCurrentPartitionStateUnused(log *base.LogObject) {
 	partName := GetCurrentPartition()
-	setPartitionState(partName, "unused")
+	setPartitionState(log, partName, "unused")
 }
 
 // set routines, for other partition
-func setOtherPartitionStateActive() {
+func setOtherPartitionStateActive(log *base.LogObject) {
 	partName := GetOtherPartition()
-	setPartitionState(partName, "active")
+	setPartitionState(log, partName, "active")
 }
 
-func SetOtherPartitionStateUpdating() {
+func SetOtherPartitionStateUpdating(log *base.LogObject) {
 	partName := GetOtherPartition()
-	setPartitionState(partName, "updating")
+	setPartitionState(log, partName, "updating")
 }
 
-func SetOtherPartitionStateUnused() {
+func SetOtherPartitionStateUnused(log *base.LogObject) {
 	partName := GetOtherPartition()
-	setPartitionState(partName, "unused")
+	setPartitionState(log, partName, "unused")
 }
 
 func GetCurrentPartitionDevName() string {
@@ -315,7 +316,7 @@ func GetOtherPartitionDevName() string {
 	return GetPartitionDevname(partName)
 }
 
-func WriteToPartition(srcFilename string, partName string) error {
+func WriteToPartition(log *base.LogObject, srcFilename string, partName string) error {
 
 	if !IsOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
@@ -346,7 +347,7 @@ func WriteToPartition(srcFilename string, partName string) error {
 
 // Transition current from inprogress to active, and other from active/inprogress
 // to unused
-func MarkCurrentPartitionStateActive() error {
+func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 
 	curPart := GetCurrentPartition()
 	otherPart := GetOtherPartition()
@@ -359,7 +360,7 @@ func MarkCurrentPartitionStateActive() error {
 	}
 
 	log.Infof("Mark the current partition %s, active\n", curPart)
-	setCurrentPartitionStateActive()
+	setCurrentPartitionStateActive(log)
 
 	log.Infof("Check other partition %s for active state or inprogress\n",
 		otherPart)
@@ -376,7 +377,7 @@ func MarkCurrentPartitionStateActive() error {
 	}
 
 	log.Infof("Mark other partition %s, unused\n", otherPart)
-	SetOtherPartitionStateUnused()
+	SetOtherPartitionStateUnused(log)
 	return nil
 }
 
@@ -389,8 +390,8 @@ const (
 	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
-func GetShortVersion(partName string) string {
-	ver := getVersion(partName, versionFile, false)
+func GetShortVersion(log *base.LogObject, partName string) string {
+	ver := getVersion(log, partName, versionFile, false)
 	return ver
 }
 
@@ -401,7 +402,7 @@ func GetLongVersion(part string) string {
 
 // XXX explore a loopback mount to be able to read version
 // from a downloaded image file
-func getVersion(part string, verFilename string, inContainer bool) string {
+func getVersion(log *base.LogObject, part string, verFilename string, inContainer bool) string {
 	validatePartitionName(part)
 
 	if part == GetCurrentPartition() {
