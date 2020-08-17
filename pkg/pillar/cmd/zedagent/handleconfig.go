@@ -60,9 +60,6 @@ type getconfigContext struct {
 	rebootFlag               bool
 }
 
-// tlsConfig is initialized once i.e. effectively a constant
-var zedcloudCtx zedcloud.ZedCloudContext
-
 // devUUID is set in handleConfigInit and never changed
 var devUUID uuid.UUID
 
@@ -72,7 +69,7 @@ var zcdevUUID uuid.UUID
 // Really a constant
 var nilUUID uuid.UUID
 
-func handleConfigInit(networkSendTimeout uint32) {
+func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -82,7 +79,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
-	zedcloudCtx = zedcloud.NewContext(log, zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          networkSendTimeout,
 		NeedStatsFunc:    true,
@@ -113,6 +110,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 	log.Infof("Read UUID %s", devUUID)
 	zedcloudCtx.DevUUID = devUUID
 	zcdevUUID = devUUID
+	return &zedcloudCtx
 }
 
 // Run a periodic fetch of the config
@@ -201,7 +199,7 @@ func getLatestConfig(url string, iteration int,
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := 2
 		switch rtf {

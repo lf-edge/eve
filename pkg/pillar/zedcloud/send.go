@@ -52,6 +52,7 @@ type ZedCloudContext struct {
 	serverSigningCertHash []byte
 	onBoardCertBytes      []byte
 	log                   *base.LogObject
+	deferredCtx           DeferredContext
 }
 
 // ContextOptions - options to be passed at NewContext

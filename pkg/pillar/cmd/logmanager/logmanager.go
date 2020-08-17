@@ -303,7 +303,7 @@ func Run(ps *pubsub.PubSub) {
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred(agentName)
+	deferredChan := zedcloud.GetDeferredChan(&zedcloudCtx)
 	DNSctx.doDeferred = true
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
@@ -358,7 +358,7 @@ func Run(ps *pubsub.PubSub) {
 				continue
 			}
 			start := time.Now()
-			done := zedcloud.HandleDeferred(change, 1*time.Second)
+			done := zedcloud.HandleDeferred(&zedcloudCtx, change, 1*time.Second)
 			dbg.FreeOSMemory()
 			globalDeferInprogress = !done
 			if globalDeferInprogress {
@@ -469,7 +469,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.usableAddressCount = newAddrCount
 	if cameOnline && ctx.doDeferred {
 		change := time.Now()
-		done := zedcloud.HandleDeferred(change, 1*time.Second)
+		done := zedcloud.HandleDeferred(&zedcloudCtx, change, 1*time.Second)
 		globalDeferInprogress = !done
 		if globalDeferInprogress {
 			log.Warnf("handleDNSModify: globalDeferInprogress")
@@ -831,10 +831,10 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 
 	// For any 4xx and 5xx HTTP error we abandon
 	const bailOnHTTPErr = true
-	if zedcloud.HasDeferred(image) {
+	if zedcloud.HasDeferred(&zedcloudCtx, image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s",
 			image)
-		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
@@ -862,7 +862,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
@@ -916,10 +916,10 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 
 	// For any 4xx and 5xx HTTP error we abandon
 	const bailOnHTTPErr = true
-	if zedcloud.HasDeferred(image) {
+	if zedcloud.HasDeferred(&zedcloudCtx, image) {
 		log.Infof("SendProtoStrForAppLogs queued after existing for %s",
 			image)
-		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
@@ -952,7 +952,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false

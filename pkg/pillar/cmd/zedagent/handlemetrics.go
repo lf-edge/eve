@@ -1123,7 +1123,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-	zedcloud.RemoveDeferred(deviceUUID)
+	zedcloud.RemoveDeferred(zedcloudCtx, deviceUUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1138,8 +1138,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(deviceUUID, buf, size, statusUrl,
-			zedcloudCtx, true)
+		zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
+			statusUrl, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
 	}
@@ -1517,7 +1517,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(uuid)
+	zedcloud.RemoveDeferred(zedcloudCtx, uuid)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1532,7 +1532,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(uuid, buf, size, statusUrl, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusUrl,
 			true)
 	} else {
 		writeSentAppInfoProtoMessage(data)
@@ -1590,7 +1590,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(uuid)
+	zedcloud.RemoveDeferred(zedcloudCtx, uuid)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1605,7 +1605,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
 			true)
 	}
 }
@@ -1669,7 +1669,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(uuid)
+	zedcloud.RemoveDeferred(zedcloudCtx, uuid)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1684,7 +1684,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
 			true)
 	}
 }
@@ -1727,7 +1727,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(blobSha)
+	zedcloud.RemoveDeferred(zedcloudCtx, blobSha)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1742,7 +1742,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(blobSha, buf, size, statusURL, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
 			true)
 	}
 }
@@ -1764,7 +1764,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
-	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
+	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
 		size, buf, iteration, bailOnHTTPErr)
 	if resp != nil {
 		switch resp.StatusCode {
@@ -1799,7 +1799,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "metrics")
 	const bailOnHTTPErr = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, metricsUrl,
+	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful

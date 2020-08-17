@@ -65,7 +65,7 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "attest")
-	return zedcloud.SendOnAllIntf(&zedcloudCtx, attestURL,
+	return zedcloud.SendOnAllIntf(zedcloudCtx, attestURL,
 		size, buf, iteration, true)
 }
 
