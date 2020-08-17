@@ -176,7 +176,7 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 			return []byte{}, errors.New("Invalid Initial value")
 		}
 		clearData := make([]byte, len(cipherBlock.CipherData))
-		err = etpm.DecryptSecretWithEcdhKey(cert.X, cert.Y,
+		err = etpm.DecryptSecretWithEcdhKey(ctx.Log, cert.X, cert.Y,
 			edgeNodeCert, cipherBlock.InitialValue, cipherBlock.CipherData, clearData)
 		if err != nil {
 			errStr := fmt.Sprintf("Decryption failed with error %v\n", err)

@@ -19,8 +19,8 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 const (
@@ -81,8 +81,8 @@ func (s TpmPrivateKey) Public() crypto.PublicKey {
 }
 
 //Sign implements cryto.PrivateKey interface
-func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	R, S, err := TpmSign(digest)
+func (s TpmPrivateKey) Sign(log *base.LogObject, r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	R, S, err := TpmSign(log, digest)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func ReadOwnerCrdl() (string, error) {
 
 //TpmSign is used by external packages to get a digest signed by
 //device key in TPM
-func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
+func TpmSign(log *base.LogObject, digest []byte) (*big.Int, *big.Int, error) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -303,16 +303,16 @@ func FetchTpmHwInfo() (string, error) {
 }
 
 //FetchVaultKey retreives TPM part of the vault key
-func FetchVaultKey() ([]byte, error) {
+func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
-	key, err := readDiskKey()
+	key, err := readDiskKey(log)
 	if err != nil {
 		key, err = GetRandom(vaultKeyLength)
 		if err != nil {
 			log.Errorf("Error in generating random number: %v", err)
 			return nil, err
 		}
-		err = writeDiskKey(key)
+		err = writeDiskKey(log, key)
 		if err != nil {
 			log.Errorf("Writing Disk Key to TPM failed: %v", err)
 			return nil, err
@@ -321,7 +321,7 @@ func FetchVaultKey() ([]byte, error) {
 	return key, nil
 }
 
-func writeDiskKey(key []byte) error {
+func writeDiskKey(log *base.LogObject, key []byte) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -357,7 +357,7 @@ func writeDiskKey(key []byte) error {
 	return nil
 }
 
-func readDiskKey() ([]byte, error) {
+func readDiskKey(log *base.LogObject) ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, err

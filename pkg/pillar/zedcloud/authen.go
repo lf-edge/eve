@@ -284,7 +284,7 @@ func signAuthData(ctx *ZedCloudContext, sigdata []byte, cert tls.Certificate) ([
 		err := fmt.Errorf("signAuthData: privatekey default, type %T", key)
 		return nil, err
 	case etpm.TpmPrivateKey:
-		r, s, err := etpm.TpmSign(hash)
+		r, s, err := etpm.TpmSign(ctx.log, hash)
 		if err != nil {
 			ctx.log.Errorf("signAuthData: tpmSign error %v\n", err)
 			return nil, err

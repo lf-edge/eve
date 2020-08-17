@@ -12,8 +12,8 @@ import (
 	"math/big"
 
 	"github.com/google/go-tpm/tpm2"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 //DecryptSecretWithEcdhKey recovers plaintext from the given ciphertext
@@ -22,21 +22,21 @@ import (
 //iv is the Initial Value used in the ECDH exchange.
 //Sha256FromECPoint() is used as KDF on the shared secret, and the derived key is used
 //in aesDecrypt(), to apply the cipher on ciphertext, and recover plaintext
-func DecryptSecretWithEcdhKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
+func DecryptSecretWithEcdhKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
 	iv, ciphertext, plaintext []byte) error {
 	if (X == nil) || (Y == nil) || (edgeNodeCert == nil) {
 		return errors.New("DecryptSecretWithEcdhKey needs non-empty X, Y and edgeNodeCert")
 	}
-	decryptKey, err := getDecryptKey(X, Y, edgeNodeCert)
+	decryptKey, err := getDecryptKey(log, X, Y, edgeNodeCert)
 	if err != nil {
 		log.Errorf("getDecryptKey failed: %v", err)
 		return err
 	}
-	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
+	return aesDecrypt(log, plaintext, ciphertext, decryptKey[:], iv)
 }
 
 //getDecryptKey : uses the given params to construct the AES decryption Key
-func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
+func getDecryptKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
 	if !IsTpmEnabled() || !edgeNodeCert.IsTpm {
 		//Either TPM is not enabled, or for some reason we are not using TPM for ECDH
 		//Look for soft cert/key
@@ -68,7 +68,7 @@ func getDecryptKey(X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, e
 	return decryptKey, nil
 }
 
-func aesDecrypt(plaintext, ciphertext, key, iv []byte) error {
+func aesDecrypt(log *base.LogObject, plaintext, ciphertext, key, iv []byte) error {
 	aesBlockDecrypter, err := aes.NewCipher([]byte(key))
 	if err != nil {
 		log.Errorf("creating aes new cipher failed: %v", err)
