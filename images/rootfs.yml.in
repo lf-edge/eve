@@ -29,6 +29,9 @@ services:
    - name: rsyslogd
      image: RSYSLOGD_TAG
      cgroupsPath: /eve/services/rsyslogd
+   - name: newlogd
+     image: NEWLOGD_TAG
+     cgroupsPath: /eve/services/eve-newlog
    - name: ntpd
      image: linuxkit/openntpd:v0.5
      cgroupsPath: /eve/services/ntpd

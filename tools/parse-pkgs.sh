@@ -76,6 +76,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#GRUB_TAG#$GRUB_TAG#" \
     -e "s#DTREES_TAG#$DTREES_TAG#" \
     -e "s#GPTTOOLS_TAG#$GPTTOOLS_TAG#" \
+    -e "s#NEWLOGD_TAG#$NEWLOGD_TAG#" \
     -e "s#WATCHDOG_TAG#$WATCHDOG_TAG#" \
     -e "s#MKRAW_TAG#$MKRAW_TAG#" \
     -e "s#MKISO_TAG#$MKISO_TAG#" \
@@ -116,6 +117,7 @@ DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)
 RNGD_TAG=$(linuxkit_tag pkg/rngd)
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)
 RSYSLOGD_TAG=$(linuxkit_tag pkg/rsyslog)
+NEWLOGD_TAG=$(linuxkit_tag pkg/newlog)
 WWAN_TAG=$(linuxkit_tag pkg/wwan)
 WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
