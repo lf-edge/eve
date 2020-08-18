@@ -42,8 +42,6 @@ type zedmanagerContext struct {
 	subAppNetworkStatus  pubsub.Subscription
 	pubDomainConfig      pubsub.Publication
 	subDomainStatus      pubsub.Subscription
-	pubEIDConfig         pubsub.Publication
-	subEIDStatus         pubsub.Subscription
 	subGlobalConfig      pubsub.Subscription
 	globalConfig         *types.ConfigItemValueMap
 	pubUuidToNum         pubsub.Publication
@@ -123,16 +121,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
-
-	pubEIDConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.EIDConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubEIDConfig = pubEIDConfig
-	pubEIDConfig.ClearRestarted()
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -238,25 +226,6 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Get IdentityStatus from identitymgr
-	subEIDStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "identitymgr",
-		TopicImpl:      types.EIDStatus{},
-		Activate:       false,
-		Ctx:            &ctx,
-		CreateHandler:  handleEIDStatusModify,
-		ModifyHandler:  handleEIDStatusModify,
-		DeleteHandler:  handleEIDStatusDelete,
-		RestartHandler: handleIdentitymgrRestarted,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subEIDStatus = subEIDStatus
-	subEIDStatus.Activate()
-
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -275,9 +244,6 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subVolumeRefStatus.MsgChan():
 			subVolumeRefStatus.ProcessChange(change)
-
-		case change := <-subEIDStatus.MsgChan():
-			subEIDStatus.ProcessChange(change)
 
 		case change := <-subAppNetworkStatus.MsgChan():
 			subAppNetworkStatus.ProcessChange(change)
@@ -304,10 +270,9 @@ func Run(ps *pubsub.PubSub) {
 // Need EIDs before zedrouter ...
 func handleConfigRestart(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
-
 	log.Infof("handleConfigRestart(%v)", done)
 	if done {
-		ctx.pubEIDConfig.SignalRestarted()
+		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
 }
 
@@ -403,7 +368,6 @@ func handleCreate(ctxArg interface{}, key string,
 		UUIDandVersion:      config.UUIDandVersion,
 		DisplayName:         config.DisplayName,
 		FixedResources:      config.FixedResources,
-		OverlayNetworkList:  config.OverlayNetworkList,
 		UnderlayNetworkList: config.UnderlayNetworkList,
 		IoAdapterList:       config.IoAdapterList,
 		RestartCmd:          config.RestartCmd,
@@ -447,9 +411,6 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs.RefCount = vrc.RefCount
 		vrs.PendingAdd = true
 	}
-
-	status.EIDList = make([]types.EIDStatusDetails,
-		len(config.OverlayNetworkList))
 
 	allErrors := ""
 	if len(config.Errors) > 0 {
@@ -576,7 +537,6 @@ func handleModify(ctxArg interface{}, key string,
 		publishAppInstanceStatus(ctx, status)
 	}
 	status.FixedResources = config.FixedResources
-	status.OverlayNetworkList = config.OverlayNetworkList
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.IoAdapterList = config.IoAdapterList
 	publishAppInstanceStatus(ctx, status)
@@ -625,51 +585,6 @@ func quantifyChanges(config types.AppInstanceConfig,
 				needPurge = true
 				purgeReason += str + "\n"
 				continue
-			}
-		}
-	}
-	// Compare networks without comparing ACLs
-	if len(status.OverlayNetworkList) != len(config.OverlayNetworkList) {
-		str := fmt.Sprintf("number of overlay interfaces changed from %d to %d",
-			len(status.OverlayNetworkList),
-			len(config.OverlayNetworkList))
-		log.Infof(str)
-		needPurge = true
-		purgeReason += str + "\n"
-	} else {
-		for i, oc := range config.OverlayNetworkList {
-			os := status.OverlayNetworkList[i]
-			if !cmp.Equal(oc.EIDConfigDetails, os.EIDConfigDetails) {
-				str := fmt.Sprintf("EIDConfigDetails changed: %v",
-					cmp.Diff(oc.EIDConfigDetails, os.EIDConfigDetails))
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if os.AppMacAddr.String() != oc.AppMacAddr.String() {
-				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
-					os.AppMacAddr, oc.AppMacAddr)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if !os.AppIPAddr.Equal(oc.AppIPAddr) {
-				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
-					os.AppIPAddr, oc.AppIPAddr)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if os.Network != oc.Network {
-				str := fmt.Sprintf("Network changed from %v to %v",
-					os.Network, oc.Network)
-				log.Infof(str)
-				needPurge = true
-				purgeReason += str + "\n"
-			}
-			if !cmp.Equal(oc.ACLs, os.ACLs) {
-				log.Infof("FYI ACLs changed: %v",
-					cmp.Diff(oc.ACLs, os.ACLs))
 			}
 		}
 	}

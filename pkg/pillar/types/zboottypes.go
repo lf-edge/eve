@@ -5,7 +5,6 @@ package types
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	log "github.com/sirupsen/logrus"
 )
 
 // ZbootConfig contains information fed from zedagent to baseosmgr.
@@ -38,7 +37,7 @@ func (config ZbootConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(ZbootConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ZbootConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ZbootConfig type")
 	}
 	if oldConfig.TestComplete != config.TestComplete {
 
@@ -98,7 +97,7 @@ func (status ZbootStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(ZbootStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ZbootStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ZbootStatus type")
 	}
 	if oldStatus.PartitionState != status.PartitionState ||
 		oldStatus.CurrentPartition != status.CurrentPartition ||

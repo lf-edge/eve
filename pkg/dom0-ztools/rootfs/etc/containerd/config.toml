@@ -14,6 +14,9 @@ disabled_plugins = ["cri", "btrfs", "aufs"]
 [metrics]
   address = ""
 
+[cgroup]
+  path = "/eve/containerd"
+
 # [plugins]
 #  [plugins.content]
 #    root = "/var/persist/vault/content"

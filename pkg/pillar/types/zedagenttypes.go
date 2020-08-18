@@ -9,7 +9,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type OsVerParams struct {
@@ -38,16 +37,6 @@ func (config BaseOsConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config BaseOsConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (config BaseOsConfig) LogCreate() {
 	logObject := base.NewLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
@@ -66,7 +55,7 @@ func (config BaseOsConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(BaseOsConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of BaseOsConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of BaseOsConfig type")
 	}
 	if oldConfig.Activate != config.Activate {
 
@@ -118,28 +107,6 @@ func (status BaseOsStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
-func (status BaseOsStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
-func (status BaseOsStatus) CheckPendingAdd() bool {
-	return false
-}
-
-func (status BaseOsStatus) CheckPendingModify() bool {
-	return false
-}
-
-func (status BaseOsStatus) CheckPendingDelete() bool {
-	return false
-}
-
 // LogCreate :
 func (status BaseOsStatus) LogCreate() {
 	logObject := base.NewLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
@@ -158,7 +125,7 @@ func (status BaseOsStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(BaseOsStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of BaseOsStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of BaseOsStatus type")
 	}
 	if oldStatus.State != status.State {
 
@@ -206,16 +173,6 @@ func (config CertObjConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config CertObjConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // Indexed by UUIDandVersion as above
 // XXX shouldn't it be keyed by safename
 type CertObjStatus struct {
@@ -230,28 +187,6 @@ type CertObjStatus struct {
 
 func (status CertObjStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status CertObjStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
-func (status CertObjStatus) CheckPendingAdd() bool {
-	return false
-}
-
-func (status CertObjStatus) CheckPendingModify() bool {
-	return false
-}
-
-func (status CertObjStatus) CheckPendingDelete() bool {
-	return false
 }
 
 // getCertObjStatus finds a certificate, and returns the status

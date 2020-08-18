@@ -16,9 +16,10 @@ DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
 AGENTS0="logmanager ledmanager nim nodeagent domainmgr"
-AGENTS1="zedmanager zedrouter downloader verifier identitymgr zedagent baseosmgr wstunnelclient volumemgr"
+AGENTS1="zedmanager zedrouter downloader verifier zedagent baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
+SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
@@ -68,6 +69,10 @@ export TMPDIR
 
 if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
+fi
+
+if ! mount -t securityfs securityfs "$SECURITYFSPATH"; then
+    echo "$(date -Ins -u) mounting securityfs failed"
 fi
 
 DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
@@ -243,8 +248,8 @@ access_usb() {
             [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
-            /opt/zededa/bin/hardwaremodel -c >"$IDENTITYDIR/hardwaremodel.dmi"
-            /opt/zededa/bin/hardwaremodel -f >"$IDENTITYDIR/hardwaremodel.txt"
+            /opt/zededa/bin/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
+            /opt/zededa/bin/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
             sync
         fi
         if [ -d /mnt/dump ]; then
@@ -399,8 +404,8 @@ if [ $SELF_REGISTER = 1 ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-        /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-        echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
+        /opt/zededa/bin/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
+        echo "$(date -Ins -u) Created default hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
@@ -420,8 +425,8 @@ else
     $BINDIR/client getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
-        /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-        echo "$(date -Ins -u) Created hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
+        /opt/zededa/bin/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
+        echo "$(date -Ins -u) Created hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
 
     uuid=$(cat $CONFIGDIR/uuid)
@@ -466,13 +471,10 @@ $BINDIR/vaultmgr runAsService &
 wait_for_touch vaultmgr
 touch "$WATCHDOG_PID/vaultmgr.pid" "$WATCHDOG_FILE/vaultmgr.touch"
 
-# Start tpmmgr as a service
-if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] ; then
-    echo "$(date -Ins -u) Starting tpmmgr as a service agent"
-    $BINDIR/tpmmgr runAsService &
-    wait_for_touch tpmmgr
-    touch "$WATCHDOG_PID/tpmmgr.pid" "$WATCHDOG_FILE/tpmmgr.touch"
-fi
+echo "$(date -Ins -u) Starting tpmmgr as a service agent"
+$BINDIR/tpmmgr runAsService &
+wait_for_touch tpmmgr
+touch "$WATCHDOG_PID/tpmmgr.pid" "$WATCHDOG_FILE/tpmmgr.touch"
 
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do

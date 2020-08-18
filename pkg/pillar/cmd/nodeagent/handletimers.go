@@ -5,6 +5,7 @@ package nodeagent
 
 import (
 	"fmt"
+	"os"
 	"syscall"
 	"time"
 
@@ -262,7 +263,8 @@ func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	<-rebootTimer.C
 
 	// set the reboot reason
-	agentlog.RebootReason(ctxPtr.currentRebootReason, true)
+	agentlog.RebootReason(ctxPtr.currentRebootReason, agentName,
+		os.Getpid(), true)
 
 	// Wait for All Domains Halted
 	waitForAllDomainsHalted(ctxPtr)

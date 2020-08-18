@@ -195,7 +195,7 @@ func getLatestConfig(url string, iteration int,
 
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 	getconfigCtx.configGetStatus = types.ConfigGetFail
-	b, cr, err := generateConfigRequest()
+	b, cr, err := generateConfigRequest(getconfigCtx)
 	if err != nil {
 		// XXX	fatal?
 		return false
@@ -429,10 +429,15 @@ func readSavedProtoMessage(staleConfigTime uint32,
 // The most recent config hash we received. Starts empty
 var prevConfigHash string
 
-func generateConfigRequest() ([]byte, *zconfig.ConfigRequest, error) {
+func generateConfigRequest(getconfigCtx *getconfigContext) ([]byte, *zconfig.ConfigRequest, error) {
 	log.Debugf("generateConfigRequest() sending hash %s", prevConfigHash)
 	configRequest := &zconfig.ConfigRequest{
 		ConfigHash: prevConfigHash,
+	}
+	//Populate integrity token if there is one available
+	iToken, err := readIntegrityToken()
+	if err == nil {
+		configRequest.IntegrityToken = iToken
 	}
 	b, err := proto.Marshal(configRequest)
 	if err != nil {
@@ -494,7 +499,6 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 		}
 	}
-	handleLookupParam(getconfigCtx, config)
 
 	// add new BaseOS/App instances; returns rebootFlag
 	return parseConfig(config, getconfigCtx, usingSaved)

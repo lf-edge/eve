@@ -10,7 +10,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type UrlCloudCfg struct {
@@ -58,7 +57,6 @@ type AppInstanceConfig struct {
 	FixedResources      VmConfig // CPU etc
 	VolumeRefConfigList []VolumeRefConfig
 	Activate            bool
-	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
@@ -103,7 +101,7 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(AppInstanceConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of AppInstanceConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppInstanceConfig type")
 	}
 	if oldConfig.Activate != config.Activate ||
 		oldConfig.RemoteConsole != config.RemoteConsole {
@@ -137,16 +135,6 @@ func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
 	UUIDandVersion      UUIDandVersion
@@ -157,10 +145,8 @@ type AppInstanceStatus struct {
 	FixedResources      VmConfig // CPU etc
 	VolumeRefStatusList []VolumeRefStatus
 	EIDList             []EIDStatusDetails
-	OverlayNetworks     []OverlayNetworkStatus
 	UnderlayNetworks    []UnderlayNetworkStatus
 	// Copies of config to determine diffs
-	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 	BootTime            time.Time
 	IoAdapterList       []IoAdapter
@@ -201,7 +187,7 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(AppInstanceStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of AppInstanceStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppInstanceStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RestartInprogress != status.RestartInprogress ||
@@ -259,28 +245,6 @@ func (status AppInstanceStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
-func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
-func (status AppInstanceStatus) CheckPendingAdd() bool {
-	return false
-}
-
-func (status AppInstanceStatus) CheckPendingModify() bool {
-	return false
-}
-
-func (status AppInstanceStatus) CheckPendingDelete() bool {
-	return false
-}
-
 // GetAppInterfaceList is a helper function to get all the vifnames
 func (status AppInstanceStatus) GetAppInterfaceList() []string {
 
@@ -288,11 +252,6 @@ func (status AppInstanceStatus) GetAppInterfaceList() []string {
 	for _, ulStatus := range status.UnderlayNetworks {
 		if ulStatus.VifUsed != "" {
 			viflist = append(viflist, ulStatus.VifUsed)
-		}
-	}
-	for _, olStatus := range status.OverlayNetworks {
-		if olStatus.VifUsed != "" {
-			viflist = append(viflist, olStatus.VifUsed)
 		}
 	}
 	return viflist
@@ -307,25 +266,6 @@ func (status *AppInstanceStatus) MaybeUpdateAppIPAddr(macAddr, ipAddr string) bo
 		}
 	}
 	return false
-}
-
-type EIDOverlayConfig struct {
-	Name string // From proto message
-	EIDConfigDetails
-	ACLs       []ACE
-	AppMacAddr net.HardwareAddr // If set use it for vif
-	AppIPAddr  net.IP           // EIDv4 or EIDv6
-	Network    uuid.UUID
-	IntfOrder  int32 // XXX need to get from API
-
-	// Error
-	//	If there is a parsing error and this uLNetwork config cannot be
-	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
-	//	If this is non-empty ( != ""), the network Config should not be
-	// 	processed further. It Should just	be flagged to be in error state
-	//  back to the cloud.
-	Error string
 }
 
 func RoundupToKB(b uint64) uint64 {

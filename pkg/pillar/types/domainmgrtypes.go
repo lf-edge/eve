@@ -9,7 +9,6 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	log "github.com/sirupsen/logrus"
 )
 
 // The information DomainManager needs to boot and halt domains
@@ -42,16 +41,6 @@ func (config DomainConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config DomainConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // VirtualizationModeOrDefault sets the default to PV
 func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	switch config.VirtualizationMode {
@@ -81,7 +70,7 @@ func (config DomainConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DomainConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DomainConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DomainConfig type")
 	}
 	if oldConfig.Activate != config.Activate ||
 		oldConfig.EnableVnc != config.EnableVnc {
@@ -193,28 +182,6 @@ func (status DomainStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
-func (status DomainStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
-func (status DomainStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status DomainStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status DomainStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status DomainStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
@@ -249,7 +216,7 @@ func (status DomainStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(DomainStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DomainStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DomainStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.Activated != status.Activated {

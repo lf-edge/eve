@@ -4,15 +4,14 @@
 package vaultmgr
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	log "github.com/sirupsen/logrus"
 	"regexp"
 )
 
 const (
-	zfsPath                 = "/usr/sbin/chroot"
-	defaultZpool            = "persist"
-	defaultSecretDataset    = defaultZpool + "/vault"
-	defaultCfgSecretDataset = defaultZpool + "/config"
+	defaultSecretDataset    = vault.DefaultZpool + "/vault"
+	defaultCfgSecretDataset = vault.DefaultZpool + "/config"
 	zfsKeyFile              = zfsKeyDir + "/protector.key"
 	zfsKeyDir               = "/run/TmpVaultDir2"
 )
@@ -37,11 +36,6 @@ func getKeyStatusParams(vaultPath string) []string {
 	return args
 }
 
-func getOperStatusParams(vaultPath string) []string {
-	args := []string{"/hostfs", "zfs", "get", "mounted,encryption,keystatus", vaultPath}
-	return args
-}
-
 //e.g. zfs load-key persist/vault followed by
 //zfs mount persist/vault
 func unlockZfsVault(vaultPath string) error {
@@ -53,14 +47,14 @@ func unlockZfsVault(vaultPath string) error {
 
 	//zfs load-key
 	args := getLoadKeyParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(zfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
 		log.Errorf("Error loading key for vault: %v, %s, %s",
 			err, stdOut, stdErr)
 		return err
 	}
 	//zfs mount
 	args = getMountParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(zfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
 		log.Errorf("Error unlocking vault: %v, %s, %s", err, stdOut, stdErr)
 		return err
 	}
@@ -75,7 +69,7 @@ func createZfsVault(vaultPath string) error {
 	}
 	defer unstageKey(zfsKeyDir, zfsKeyFile)
 	args := getCreateParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(zfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
 		log.Errorf("Error creating zfs vault %s, error=%v, %s, %s",
 			vaultPath, err, stdOut, stdErr)
 		return err
@@ -87,23 +81,12 @@ func createZfsVault(vaultPath string) error {
 //e.g. zfs get keystatus persist/vault
 func checkKeyStatus(vaultPath string) error {
 	args := getKeyStatusParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(zfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
 		log.Debugf("keystatus query for %s results in error=%v, %s, %s",
 			vaultPath, err, stdOut, stdErr)
 		return err
 	}
 	return nil
-}
-
-func checkOperStatus(vaultPath string) (string, error) {
-	args := getOperStatusParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(zfsPath, args...); err != nil {
-		log.Errorf("oper status query for %s results in error=%v, %s, %s",
-			vaultPath, err, stdOut, stdErr)
-		return stdErr, err
-	} else {
-		return stdOut, nil
-	}
 }
 
 func processOperStatus(status string) string {

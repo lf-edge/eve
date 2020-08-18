@@ -7,7 +7,10 @@ package zedagent
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,15 +25,15 @@ import (
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
@@ -689,6 +692,38 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	return ReportDataSecAtRestInfo
 }
 
+func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
+
+	si := new(info.SecurityInfo)
+	// Deterime sha of the root CA cert used for object signing and
+	// encryption
+	caCert1, err := ioutil.ReadFile(types.RootCertFileName)
+	if err != nil {
+		log.Error(err)
+	} else {
+		hasher := sha256.New()
+		hasher.Write(caCert1)
+		si.ShaRootCa = hasher.Sum(nil)
+	}
+	// Add the sha of the root CAs used for TLS
+	// Note that we have the sha in a logical symlink so we
+	// just read that file.
+	line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+	if err != nil {
+		log.Error(err)
+	} else {
+		shaStr := strings.TrimSpace(string(line))
+		sha, err := hex.DecodeString(shaStr)
+		if err != nil {
+			log.Errorf("DecodeString %s failed: %s", shaStr, err)
+		} else {
+			si.ShaTlsRootCa = sha
+		}
+	}
+	log.Debugf("getSecurityInfo returns %+v", si)
+	return si
+}
+
 func createConfigItemStatus(
 	status types.GlobalStatus) *info.ZInfoConfigItemStatus {
 
@@ -1057,16 +1092,19 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.RebootConfigCounter = ctx.rebootConfigCounter
 
 	//Operational information about TPM presence/absence/usage.
-	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
-	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
+	ReportDeviceInfo.HSMStatus = etpm.FetchTpmSwStatus()
+	ReportDeviceInfo.HSMInfo, _ = etpm.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
 	ReportDataSecAtRestInfo := getDataSecAtRestInfo(ctx)
 
 	//This will be removed after new fields propagate to Controller.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
-		vaultmgr.GetOperInfo()
+		vault.GetOperInfo()
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
+
+	// Add SecurityInfo
+	ReportDeviceInfo.SecInfo = getSecurityInfo(ctx)
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
@@ -1718,11 +1756,6 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 			return ulStatus.Name
 		}
 	}
-	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.VifUsed == vifname {
-			return olStatus.Name
-		}
-	}
 	return ""
 }
 
@@ -1780,7 +1813,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	}
 }
 
-// Use the ifname/vifname to find the overlay or underlay status
+// Use the ifname/vifname to find the underlay status
 // and from there the (ip, allocated, mac) addresses for the app
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	vifname string) (string, bool, string) {
@@ -1793,15 +1826,6 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s",
 			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
 		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
-	}
-	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.VifUsed != vifname {
-			continue
-		}
-		log.Debugf("getAppIP(%s, %s) found overlay %s assigned %v mac %s",
-			aiStatus.Key(), vifname,
-			olStatus.EID.String(), olStatus.Assigned, olStatus.Mac)
-		return olStatus.EID.String(), olStatus.Assigned, olStatus.Mac
 	}
 	return "", false, ""
 }

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	eventlog "github.com/cshari-zededa/eve-tpm2-tools/eventlog"
 	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -17,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 )
@@ -41,11 +43,17 @@ type attestContext struct {
 	InternalQuote *types.AttestQuote
 	//Iteration keeps track of retry count
 	Iteration int
+	//EventLogEntries are the TPM EventLog entries
+	EventLogEntries []eventlog.Event
+	//EventLogParseErr stores any error that happened during EventLog parsing
+	EventLogParseErr error
 }
 
 const (
 	watchdogInterval  = 15
 	retryTimeInterval = 15
+	//EventLogPath is the TPM measurement log aka TPM event log
+	EventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements"
 )
 
 //One shot send, if fails, return an error to the state machine to retry later
@@ -172,6 +180,13 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		return zattest.ErrControllerReqFailed
 	}
 
+	if attestCtx.EventLogParseErr == nil {
+		//On some platforms, either the kernel does not export TPM Eventlog
+		//or the TPM does not have SHA256 bank enabled for PCRs. We populate
+		//eventlog if we are able to parse eventlog successfully
+		encodeEventLog(attestCtx, quote)
+	}
+
 	attestReq.Quote = quote
 
 	//Increment Iteration for interface rotation
@@ -209,7 +224,8 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		log.Errorf("[ATTEST] Invalid response code")
 		return zattest.ErrControllerReqFailed
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_SUCCESS:
-		//XXX Retrieve Storage keys, and integrity token
+		//Retrieve integrity token
+		storeIntegrityToken(quoteResp.GetIntegrityToken())
 		log.Infof("[ATTEST] Attestation successful")
 		return nil
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH:
@@ -258,6 +274,40 @@ func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
 	return nil
 }
 
+//parseTpmEventLog parses TPM Event Log and stores it given attestContext
+//any error during parsing is stored in EventLogParseErr
+func parseTpmEventLog(attestCtx *attestContext) {
+	events, err := eventlog.ParseEvents(EventLogPath)
+	attestCtx.EventLogEntries = events
+	attestCtx.EventLogParseErr = err
+	if err != nil {
+		log.Errorf("[ATTEST] Eventlog parsing error %v", err)
+	}
+}
+
+func encodeEventLog(attestCtx *attestContext, quoteMsg *attest.ZAttestQuote) error {
+	quoteMsg.EventLog = make([]*attest.TpmEventLogEntry, 0)
+	for _, event := range attestCtx.EventLogEntries {
+		tpmEventLog := new(attest.TpmEventLogEntry)
+		tpmEventLog.Index = uint32(event.Sequence)
+		tpmEventLog.PcrIndex = uint32(event.Index)
+		tpmEventLog.Digest = new(attest.TpmEventDigest)
+		tpmEventLog.Digest.HashAlgo = attest.TpmHashAlgo_TPM_HASH_ALGO_SHA256
+		tpmEventLog.Digest.Digest = event.Sha256Digest()
+		tpmEventLog.EventDataBinary = event.Data
+
+		//Populate EventDataString for PCRs 8 and 9
+		//they are human readable
+		if event.Index == 8 || event.Index == 9 {
+			tpmEventLog.EventDataString = string(event.Data)
+		} else {
+			tpmEventLog.EventDataString = "Not Applicable"
+		}
+		quoteMsg.EventLog = append(quoteMsg.EventLog, tpmEventLog)
+	}
+	return nil
+}
+
 // initialize attest pubsub trigger handlers and channels
 func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 	zattest.RegisterExternalIntf(&TpmAgentImpl{}, &VerifierImpl{}, &WatchdogImpl{})
@@ -281,6 +331,7 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		log.Fatal(err)
 	}
 	ctx.attestCtx.pubAttestNonce = pubAttestNonce
+	parseTpmEventLog(ctx.attestCtx)
 	return nil
 }
 
@@ -402,4 +453,20 @@ func unpublishAttestNonce(ctx *attestContext) {
 		log.Fatal("[ATTEST] Stale nonce items found after unpublishing")
 	}
 	log.Debugf("[ATTEST] unpublishAttestNonce done for %s", key)
+}
+
+//helper to set IntegrityToken
+func storeIntegrityToken(token []byte) {
+	if len(token) == 0 {
+		log.Warnf("[ATTEST] Received empty integrity token")
+	}
+	err := ioutil.WriteFile(types.ITokenFile, token, 644)
+	if err != nil {
+		log.Fatalf("Failed to store integrity token, err: %v", err)
+	}
+}
+
+//helper to get IntegrityToken
+func readIntegrityToken() ([]byte, error) {
+	return ioutil.ReadFile(types.ITokenFile)
 }

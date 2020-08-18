@@ -9,7 +9,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // ContentTreeConfig specifies the needed information for content tree
@@ -55,7 +54,7 @@ func (config ContentTreeConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(ContentTreeConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ContentTreeConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ContentTreeConfig type")
 	}
 	if oldConfig.DatastoreID != config.DatastoreID ||
 		oldConfig.RelativeURL != config.RelativeURL ||
@@ -181,7 +180,7 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(ContentTreeStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ContentTreeStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ContentTreeStatus type")
 	}
 	if oldStatus.ContentSha256 != status.ContentSha256 ||
 		oldStatus.MaxDownloadSize != status.MaxDownloadSize ||

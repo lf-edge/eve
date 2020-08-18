@@ -7,7 +7,6 @@ package types
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	log "github.com/sirupsen/logrus"
 )
 
 // XXX more than images; rename type and clean up comments
@@ -57,7 +56,7 @@ func (config VerifyImageConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(VerifyImageConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VerifyImageConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VerifyImageConfig type")
 	}
 	if oldConfig.RefCount != config.RefCount ||
 		oldConfig.Expired != config.Expired {
@@ -130,7 +129,7 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(VerifyImageStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of VerifyImageStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VerifyImageStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RefCount != status.RefCount ||
@@ -177,18 +176,6 @@ func (status VerifyImageStatus) LogDelete() {
 // LogKey :
 func (status VerifyImageStatus) LogKey() string {
 	return string(base.VerifyImageStatusLogType) + "-" + status.Key()
-}
-
-func (status VerifyImageStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status VerifyImageStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status VerifyImageStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
 }
 
 func (status VerifyImageStatus) Pending() bool {

@@ -786,7 +786,7 @@ func getContainerConfigs(imageInfo ocispec.Image, userEnvVars map[string]string)
 	unProcessedEnv := imageInfo.Config.Env
 	var env []string
 	for _, e := range unProcessedEnv {
-		keyAndValueSlice := strings.Split(e, "=")
+		keyAndValueSlice := strings.SplitN(e, "=", 2)
 		if len(keyAndValueSlice) == 2 {
 			//handles Key=Value case
 			env = append(env, fmt.Sprintf("%s=\"%s\"", keyAndValueSlice[0], keyAndValueSlice[1]))

@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -99,6 +100,24 @@ var mToF = []modelToFuncs{
 		model:     "Supermicro.SYS-5018D-FN8T",
 		initFunc:  InitDDCmd,
 		blinkFunc: ExecuteDDCmd,
+	},
+	{
+		model:     "Dell Inc..Edge Gateway 3001",
+		initFunc:  InitDellCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "/sys/class/gpio/gpio346/value",
+	},
+	{
+		model:     "Dell Inc..Edge Gateway 3002",
+		initFunc:  InitDellCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "/sys/class/gpio/gpio346/value",
+	},
+	{
+		model:     "Dell Inc..Edge Gateway 3003",
+		initFunc:  InitDellCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "/sys/class/gpio/gpio346/value",
 	},
 	{
 		model:     "hisilicon,hi6220-hikey.hisilicon,hi6220.",
@@ -374,6 +393,18 @@ var printOnce = true
 var diskDevice string // Based on largest disk
 var ddCount int       // Based on time for 200ms
 
+// InitDellCmd prepares "Cloud LED" on Dell IoT gateways by enabling GPIO endpoint
+func InitDellCmd(ledName string) {
+	err := ioutil.WriteFile("/sys/class/gpio/export", []byte("346"), 0644)
+	if err == nil {
+		if err = ioutil.WriteFile("/sys/class/gpio/gpio346/direction", []byte("out"), 0644); err == nil {
+			log.Infof("Enabled Dell Cloud LED")
+			return
+		}
+	}
+	log.Warnf("Failed to enable Dell Cloud LED: %v", err)
+}
+
 // InitDDCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
 func InitDDCmd(ledName string) {
@@ -452,8 +483,13 @@ func InitLedCmd(ledName string) {
 // ExecuteLedCmd can use different LEDs in /sys/class/leds
 // Enable the led for 200ms
 func ExecuteLedCmd(ledName string) {
+	var brightnessFilename string
 	b := []byte("1")
-	brightnessFilename := fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
+	if strings.HasPrefix(ledName, "/") {
+		brightnessFilename = ledName
+	} else {
+		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
+	}
 	err := ioutil.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
 		if printOnce {

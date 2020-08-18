@@ -287,6 +287,11 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 
 	sub := ctx.subEdgeNodeCert
 	items := sub.GetAll()
+	if len(items) == 0 {
+		//Nothing to be sent
+		return
+	}
+
 	for _, item := range items {
 		config := item.(types.EdgeNodeCert)
 		certMsg := zcert.ZCert{

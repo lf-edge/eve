@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // ResolveConfig key/index to this is the combination of
@@ -26,17 +25,6 @@ type ResolveConfig struct {
 // to differentiate different config
 func (config ResolveConfig) Key() string {
 	return fmt.Sprintf("%s+%s+%v", config.DatastoreID.String(), config.Name, config.Counter)
-}
-
-// VerifyFilename will verify the key name
-func (config ResolveConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
 }
 
 // LogCreate :
@@ -91,17 +79,6 @@ func (status ResolveStatus) Key() string {
 	return fmt.Sprintf("%s+%s+%v", status.DatastoreID.String(), status.Name, status.Counter)
 }
 
-// VerifyFilename will verify the key name
-func (status ResolveStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (status ResolveStatus) LogCreate() {
 	logObject := base.NewLogObject(base.ResolveStatusLogType, status.Name,
@@ -121,7 +98,7 @@ func (status ResolveStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(ResolveStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of ResolveStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ResolveStatus type")
 	}
 	if oldStatus.ImageSha256 != status.ImageSha256 ||
 		oldStatus.RetryCount != status.RetryCount {

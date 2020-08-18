@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -32,11 +33,28 @@ const (
 	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
 	TpmPasswdHdl tpmutil.Handle = 0x1600000
 
+	//TpmEcdhKeyHdl is the well known TPM permanent handle for ECDH key
+	TpmEcdhKeyHdl tpmutil.Handle = 0x81000005
+
 	//TpmCredentialsFileName is the file that holds the dynamically created TPM credentials
 	TpmCredentialsFileName = types.IdentityDirname + "/tpm_credential"
 
 	//MaxPasswdLength is the max length allowed for a TPM password
 	MaxPasswdLength = 7 //limit TPM password to this length
+
+	//TpmDiskKeyHdl is the handle for constructing disk encryption key
+	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
+
+	emptyPassword  = ""
+	vaultKeyLength = 32 //Bytes
+)
+
+var (
+	//EcdhKeyFile is the location of the ecdh private key
+	//on devices without a TPM. It is not a constant due to test usage
+	EcdhKeyFile = types.PersistConfigDir + "/ecdh.key.pem"
+
+	tpmHwInfo = ""
 )
 
 //TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
@@ -186,4 +204,172 @@ func GetTpmProperty(propID tpm2.TPMProp) (uint32, error) {
 		return 0, fmt.Errorf("Unable to fetch property %d", propID)
 	}
 	return prop.Value, nil
+}
+
+//FetchTpmSwStatus returns states reflecting SW usage of TPM
+func FetchTpmSwStatus() info.HwSecurityModuleStatus {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		//No TPM found on this system
+		return info.HwSecurityModuleStatus_NOTFOUND
+	}
+	if IsTpmEnabled() {
+		//TPM is found and is used by software
+		return info.HwSecurityModuleStatus_ENABLED
+	}
+
+	//TPM is found but not being used by software
+	return info.HwSecurityModuleStatus_DISABLED
+}
+
+//Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
+//These byte sequences in uint32 format is actually ASCII representation of TPM
+//vendor ID. Since they are abbreviated names, we are having a map here to show
+//a more verbose form of vendor name
+var vendorRegistry = map[uint32]string{
+	0x414D4400: "AMD",
+	0x41544D4C: "Atmel",
+	0x4252434D: "Broadcom",
+	0x48504500: "HPE",
+	0x49424d00: "IBM",
+	0x49465800: "Infineon",
+	0x494E5443: "Intel",
+	0x4C454E00: "Lenovo",
+	0x4D534654: "Microsoft",
+	0x4E534D20: "National SC",
+	0x4E545A00: "Nationz",
+	0x4E544300: "Nuvoton",
+	0x51434F4D: "Qualcomm",
+	0x534D5343: "SMSC",
+	0x53544D20: "ST Microelectronics",
+	0x534D534E: "Samsung",
+	0x534E5300: "Sinosun",
+	0x54584E00: "Texas Instruments",
+	0x57454300: "Winbond",
+	0x524F4343: "Fuzhou Rockchip",
+	0x474F4F47: "Google",
+}
+
+//till we have next version of go-tpm released, use this
+const (
+	tpmPropertyManufacturer tpm2.TPMProp = 0x105
+	tpmPropertyVendorStr1   tpm2.TPMProp = 0x106
+	tpmPropertyVendorStr2   tpm2.TPMProp = 0x107
+	tpmPropertyFirmVer1     tpm2.TPMProp = 0x10b
+	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
+)
+
+//FetchTpmHwInfo returns TPM Hardware properties in a string
+func FetchTpmHwInfo() (string, error) {
+
+	//If we had done this earlier, return the last result
+	if tpmHwInfo != "" {
+		return tpmHwInfo, nil
+	}
+
+	//Take care of non-TPM platforms
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		tpmHwInfo = "Not Available"
+		return tpmHwInfo, nil
+	}
+
+	//First time. Fetch it from TPM and cache it.
+	v1, err := GetTpmProperty(tpmPropertyManufacturer)
+	if err != nil {
+		return "", err
+	}
+	v2, err := GetTpmProperty(tpmPropertyVendorStr1)
+	if err != nil {
+		return "", err
+	}
+	v3, err := GetTpmProperty(tpmPropertyVendorStr2)
+	if err != nil {
+		return "", err
+	}
+	v4, err := GetTpmProperty(tpmPropertyFirmVer1)
+	if err != nil {
+		return "", err
+	}
+	v5, err := GetTpmProperty(tpmPropertyFirmVer2)
+	if err != nil {
+		return "", err
+	}
+	tpmHwInfo = fmt.Sprintf("%s-%s, FW Version %s", vendorRegistry[v1],
+		GetModelName(v2, v3),
+		GetFirmwareVersion(v4, v5))
+
+	return tpmHwInfo, nil
+}
+
+//FetchVaultKey retreives TPM part of the vault key
+func FetchVaultKey() ([]byte, error) {
+	//First try to read from TPM, if it was stored earlier
+	key, err := readDiskKey()
+	if err != nil {
+		key, err = GetRandom(vaultKeyLength)
+		if err != nil {
+			log.Errorf("Error in generating random number: %v", err)
+			return nil, err
+		}
+		err = writeDiskKey(key)
+		if err != nil {
+			log.Errorf("Writing Disk Key to TPM failed: %v", err)
+			return nil, err
+		}
+	}
+	return key, nil
+}
+
+func writeDiskKey(key []byte) error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+
+	if err := tpm2.NVUndefineSpace(rw, emptyPassword,
+		tpm2.HandleOwner, TpmDiskKeyHdl,
+	); err != nil {
+		log.Debugf("NVUndefineSpace failed: %v", err)
+	}
+
+	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
+	if err := tpm2.NVDefineSpace(rw,
+		tpm2.HandleOwner,
+		TpmDiskKeyHdl,
+		emptyPassword,
+		emptyPassword,
+		nil,
+		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
+		uint16(len(key)),
+	); err != nil {
+		log.Errorf("NVDefineSpace failed: %v", err)
+		return err
+	}
+
+	// Write the data
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmDiskKeyHdl,
+		emptyPassword, key, 0); err != nil {
+		log.Errorf("NVWrite failed: %v", err)
+		return err
+	}
+	return nil
+}
+
+func readDiskKey() ([]byte, error) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rw.Close()
+
+	// Read all of the data with NVReadEx
+	keyBytes, err := tpm2.NVReadEx(rw, TpmDiskKeyHdl,
+		tpm2.HandleOwner, emptyPassword, 0)
+	if err != nil {
+		log.Errorf("NVReadEx failed: %v", err)
+		return nil, err
+	}
+	return keyBytes, nil
 }

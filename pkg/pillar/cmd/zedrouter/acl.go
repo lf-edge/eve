@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// ACL configlet for overlay and underlay interface towards domU
+// ACL configlet for underlay interface towards domU
 
 package zedrouter
 
@@ -116,25 +116,6 @@ func compileAceIpsets(ACLs []types.ACE) []string {
 	return ipsets
 }
 
-func compileOverlayIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkConfig) []string {
-
-	ipsets := []string{}
-	for _, olConfig := range ollist {
-		netconfig := lookupNetworkInstanceConfig(ctx,
-			olConfig.Network.String())
-		if netconfig != nil {
-			// All ipsets from everybody on this network
-			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
-				netconfig)...)
-		} else {
-			log.Errorf("No NetworkInstanceConfig for %s",
-				olConfig.Network.String())
-		}
-	}
-	return ipsets
-}
-
 func compileUnderlayIpsets(ctx *zedrouterContext,
 	ullist []types.UnderlayNetworkConfig) []string {
 
@@ -155,11 +136,9 @@ func compileUnderlayIpsets(ctx *zedrouterContext,
 }
 
 func compileAppInstanceIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkConfig,
 	ullist []types.UnderlayNetworkConfig) []string {
 
 	ipsets := []string{}
-	ipsets = append(ipsets, compileOverlayIpsets(ctx, ollist)...)
 	ipsets = append(ipsets, compileUnderlayIpsets(ctx, ullist)...)
 	return ipsets
 }
@@ -183,13 +162,6 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 			continue
 		}
 
-		for _, olStatus := range status.OverlayNetworkList {
-			if olStatus.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(olStatus.ACLs)...)
-		}
 		for _, ulStatus := range status.UnderlayNetworkList {
 			if ulStatus.Network != netconfig.UUID {
 				continue
@@ -213,39 +185,12 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	items := sub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppNetworkConfig)
-		for _, olConfig := range config.OverlayNetworkList {
-			if olConfig.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(olConfig.ACLs)...)
-		}
 		for _, ulConfig := range config.UnderlayNetworkList {
 			if ulConfig.Network != netconfig.UUID {
 				continue
 			}
 			ipsets = append(ipsets,
 				compileAceIpsets(ulConfig.ACLs)...)
-		}
-	}
-	return ipsets
-}
-
-// If skipKey is set ignore any AppNetworkStatus with that key
-func compileOldOverlayIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkStatus, skipKey string) []string {
-
-	ipsets := []string{}
-	for _, olStatus := range ollist {
-		netconfig := lookupNetworkInstanceConfig(ctx,
-			olStatus.Network.String())
-		if netconfig != nil {
-			// All ipsets from everybody on this network
-			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
-				netconfig, skipKey)...)
-		} else {
-			log.Errorf("No NetworkInstanceConfig for %s",
-				olStatus.Network.String())
 		}
 	}
 	return ipsets
@@ -273,11 +218,9 @@ func compileOldUnderlayIpsets(ctx *zedrouterContext,
 
 // If skipKey is set ignore any AppNetworkStatus with that key
 func compileOldAppInstanceIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkStatus,
 	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
 
 	ipsets := []string{}
-	ipsets = append(ipsets, compileOldOverlayIpsets(ctx, ollist, skipKey)...)
 	ipsets = append(ipsets, compileOldUnderlayIpsets(ctx, ullist, skipKey)...)
 	return ipsets
 }

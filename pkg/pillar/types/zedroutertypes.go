@@ -19,43 +19,16 @@ import (
 )
 
 // Indexed by UUID
-// If IsZedmanager is set we do not create boN but instead configure the EID
-// locally. This will go away once ZedManager runs in a domU like any
-// application.
 type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	Activate            bool
-	IsZedmanager        bool
-	LegacyDataPlane     bool
 	GetStatsIPAddr      net.IP
-	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
 func (config AppNetworkConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
-}
-
-func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
-func (config *AppNetworkConfig) getOverlayConfig(
-	network uuid.UUID) *OverlayNetworkConfig {
-	for i := range config.OverlayNetworkList {
-		olConfig := &config.OverlayNetworkList[i]
-		if olConfig.Network == network {
-			return olConfig
-		}
-	}
-	return nil
 }
 
 func (config *AppNetworkConfig) getUnderlayConfig(
@@ -70,28 +43,12 @@ func (config *AppNetworkConfig) getUnderlayConfig(
 }
 
 func (config *AppNetworkConfig) IsNetworkUsed(network uuid.UUID) bool {
-	olConfig := config.getOverlayConfig(network)
-	if olConfig != nil {
-		return true
-	}
 	ulConfig := config.getUnderlayConfig(network)
 	if ulConfig != nil {
 		return true
 	}
 	// Network UUID matching neither UL nor OL network
 	return false
-}
-
-func (status AppNetworkStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status AppNetworkStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status AppNetworkStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
 }
 
 func (status AppNetworkStatus) Pending() bool {
@@ -108,10 +65,7 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
-	IsZedmanager        bool
-	LegacyDataPlane     bool
 	GetStatsIPAddr      net.IP
-	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
@@ -121,17 +75,6 @@ type AppNetworkStatus struct {
 
 func (status AppNetworkStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
-}
-
-func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-
 }
 
 // AppContainerMetrics - App Container Metrics
@@ -253,7 +196,8 @@ func (config DevicePortConfigList) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DevicePortConfigList)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+		logObject.Clone().Errorf("LogModify: Old object interface passed is not of DevicePortConfigList type")
+		return
 	}
 	if oldConfig.CurrentIndex != config.CurrentIndex ||
 		len(oldConfig.PortConfigList) != len(config.PortConfigList) {
@@ -372,7 +316,7 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DevicePortConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DevicePortConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DevicePortConfig type")
 	}
 	if len(oldConfig.Ports) != len(config.Ports) ||
 		oldConfig.LastFailed != config.LastFailed ||
@@ -867,7 +811,7 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(DeviceNetworkStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DeviceNetworkStatus type")
 	}
 	if oldStatus.Testing != status.Testing ||
 		oldStatus.State != status.State ||
@@ -1532,43 +1476,6 @@ type NetworkInstanceLispConfig struct {
 	EidPrefixLen  uint32
 
 	Experimental bool
-}
-
-type OverlayNetworkConfig struct {
-	Name          string // From proto message
-	EID           net.IP // Always EIDv6
-	LispSignature string
-	ACLs          []ACE
-	AppMacAddr    net.HardwareAddr // If set use it for vif
-	AppIPAddr     net.IP           // EIDv4 or EIDv6
-	Network       uuid.UUID        // Points to a NetworkInstance.
-
-	// XXX Shouldn't we use ErrorAndTime here
-	// Error
-	//	If there is a parsing error and this uLNetwork config cannot be
-	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
-	//	If this is non-empty ( != ""), the network Config should not be
-	// 	processed further. It Should just	be flagged to be in error state
-	//  back to the cloud.
-	Error string
-	// Optional additional information
-	AdditionalInfoDevice *AdditionalInfoDevice
-
-	// These field are only for isMgmt. XXX remove when isMgmt is removed
-	MgmtIID             uint32
-	MgmtDnsNameToIPList []DnsNameToIP // Used to populate DNS for the overlay
-	MgmtMapServers      []MapServer
-}
-
-type OverlayNetworkStatus struct {
-	OverlayNetworkConfig
-	VifInfo
-	BridgeMac    net.HardwareAddr
-	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
-	Assigned     bool   // Set to true once DHCP has assigned EID to domU
-	HostName     string
-	ACLRules     IPTablesRuleList
 }
 
 type DhcpType uint8

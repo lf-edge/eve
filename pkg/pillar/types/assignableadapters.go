@@ -87,6 +87,7 @@ var nilUUID = uuid.UUID{}
 // HasAdapterChanged - We store each Physical Adapter using the IoBundle object.
 // Compares IoBundle with Physical adapter and returns if they are the Same
 // or the Physical Adapter has changed.
+// XXX pass log argument
 func (ib IoBundle) HasAdapterChanged(phyAdapter PhysicalIOAdapter) bool {
 	if IoType(phyAdapter.Ptype) != ib.Type {
 		log.Infof("Type changed from %d to %d", ib.Type, phyAdapter.Ptype)

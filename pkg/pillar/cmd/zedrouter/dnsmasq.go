@@ -202,8 +202,10 @@ func createDnsmasqConfiglet(
 				broadcast))
 		}
 	} else if netconf.Subnet.IP != nil {
+		// Network prefix "255.255.255.255" will force packets to go through
+		// dom0 virtual router that makes the packets pass through ACLs and flow log.
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
-			ipv4Netmask))
+			"255.255.255.255"))
 	}
 	if advertizeRouter {
 		// IPv6 XXX needs to be handled in radvd
@@ -446,18 +448,6 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					status.Key(), status.DisplayName,
 					ulStatus.Mac, assigned)
 				ulStatus.Assigned = assigned
-				changed = true
-			}
-		}
-		for i := range status.OverlayNetworkList {
-			olStatus := &status.OverlayNetworkList[i]
-			l := findLease(ctx.dhcpLeases, status.Key(), olStatus.Mac)
-			assigned := (l != nil)
-			if olStatus.Assigned != assigned {
-				log.Infof("Changing(%s) %s mac %s to %t",
-					status.Key(), status.DisplayName,
-					olStatus.Mac, assigned)
-				olStatus.Assigned = assigned
 				changed = true
 			}
 		}

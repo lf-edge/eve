@@ -28,16 +28,6 @@ func (config DownloaderConfig) Key() string {
 	return config.ImageSha256
 }
 
-func (config DownloaderConfig) VerifyFilename(fileName string) bool {
-	expect := config.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
 // LogCreate :
 func (config DownloaderConfig) LogCreate() {
 	logObject := base.NewLogObject(base.DownloaderConfigLogType, config.Name,
@@ -59,7 +49,7 @@ func (config DownloaderConfig) LogModify(old interface{}) {
 
 	oldConfig, ok := old.(DownloaderConfig)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DownloaderConfig type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DownloaderConfig type")
 	}
 	if oldConfig.Target != config.Target ||
 		oldConfig.DatastoreID != config.DatastoreID ||
@@ -133,28 +123,6 @@ func (status DownloaderStatus) Key() string {
 	return status.ImageSha256
 }
 
-func (status DownloaderStatus) VerifyFilename(fileName string) bool {
-	expect := status.Key() + ".json"
-	ret := expect == fileName
-	if !ret {
-		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
-			fileName, expect)
-	}
-	return ret
-}
-
-func (status DownloaderStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
-}
-
-func (status DownloaderStatus) CheckPendingModify() bool {
-	return status.PendingModify
-}
-
-func (status DownloaderStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
-}
-
 func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
@@ -195,7 +163,7 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 
 	oldStatus, ok := old.(DownloaderStatus)
 	if !ok {
-		log.Errorf("LogModify: Old object interface passed is not of DownloaderStatus type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DownloaderStatus type")
 	}
 	if oldStatus.State != status.State ||
 		oldStatus.RefCount != status.RefCount ||

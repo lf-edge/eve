@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018,2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package agentlog
@@ -12,6 +12,7 @@ import (
 	dbg "runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,19 +28,35 @@ const (
 	rebootImage = "reboot-image"
 )
 
-var savedAgentName = "unknown" // Keep for signal and exit handlers
 var savedRebootReason = "unknown"
-var savedPid = 0
+
+var onceLock = &sync.Mutex{}
+var onceVal bool
+
+// once returns true the first time and then false
+func once() bool {
+	onceLock.Lock()
+	defer onceLock.Unlock()
+	if onceVal {
+		return false
+	} else {
+		onceVal = true
+		return true
+	}
+}
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
 type FatalHook struct {
+	agentName string
+	agentPid  int
 }
 
 // Fire saves the reason for the log.Fatal or log.Panic
 func (hook *FatalHook) Fire(entry *log.Entry) error {
-	reason := fmt.Sprintf("fatal: agent %s[%d]: %s", savedAgentName, savedPid, entry.Message)
+	reason := fmt.Sprintf("fatal: agent %s[%d]: %s", hook.agentName,
+		hook.agentPid, entry.Message)
 	savedRebootReason = reason
-	RebootReason(reason, false)
+	RebootReason(reason, hook.agentName, hook.agentPid, false)
 	return nil
 }
 
@@ -51,14 +68,16 @@ func (hook *FatalHook) Levels() []log.Level {
 	}
 }
 
-// SourceHook is used to add source=agentName
+// SourceHook is used to add source and pid
 type SourceHook struct {
+	agentName string
+	agentPid  int
 }
 
-// Fire adds source=agentName
+// Fire adds source and pid
 func (hook *SourceHook) Fire(entry *log.Entry) error {
-	entry.Data["source"] = savedAgentName
-	entry.Data["pid"] = savedPid
+	entry.Data["source"] = hook.agentName
+	entry.Data["pid"] = hook.agentPid
 	return nil
 }
 
@@ -68,8 +87,8 @@ func (hook *SourceHook) Levels() []log.Level {
 }
 
 // Wait on channel then handle the signals
-func handleSignals(sigs chan os.Signal) {
-	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, savedAgentName)
+func handleSignals(agentName string, agentPid int, sigs chan os.Signal) {
+	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
 	sigUsr1FileName := agentDebugDir + "/sigusr1"
 	sigUsr2FileName := agentDebugDir + "/sigusr2"
 
@@ -101,7 +120,7 @@ func handleSignals(sigs chan os.Signal) {
 				log.Warnf("SIGUSR1: end of stacks")
 				// Could result in a watchdog reboot hence
 				// we save it as a reboot-stack
-				RebootStack(stacks)
+				RebootStack(stacks, agentName, agentPid)
 			case syscall.SIGUSR2:
 				log.Warnf("SIGUSR2 triggered memory info:\n")
 				sigUsr2File, err := os.OpenFile(sigUsr2FileName,
@@ -124,7 +143,7 @@ func handleSignals(sigs chan os.Signal) {
 }
 
 // Print out our stack
-func printStack() {
+func printStack(agentName string, agentPid int) {
 	stacks := getStacks(false)
 	stackArray := strings.Split(stacks, "\n\n")
 	log.Errorf("Fatal stack trace due to %s with %d stack traces", savedRebootReason, len(stackArray))
@@ -132,20 +151,20 @@ func printStack() {
 		log.Errorf("%v", stack)
 	}
 	log.Errorf("Fatal: end of stacks")
-	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", savedAgentName, savedPid),
-		false)
-	RebootStack(stacks)
+	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", agentName, agentPid),
+		agentName, agentPid, false)
+	RebootStack(stacks, agentName, agentPid)
 }
 
 // RebootReason writes a reason string in /persist/reboot-reason, including agentName and date
 // It also appends to /persist/log/reboot-reason.log
 // NOTE: can not use log here since we are called from a log hook!
-func RebootReason(reason string, normal bool) {
+func RebootReason(reason string, agentName string, agentPid int, normal bool) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
 		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s EVE version %s at %s: %s\n",
-			savedAgentName, savedPid, EveCurrentPartition(), EveVersion(), dateStr, reason)
+			agentName, agentPid, EveCurrentPartition(), EveVersion(), dateStr, reason)
 	} else {
 		reason = fmt.Sprintf("%s EVE version %s at %s\n",
 			reason, EveVersion(), dateStr)
@@ -163,7 +182,8 @@ func RebootReason(reason string, normal bool) {
 	}
 
 	if !normal {
-		agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, savedAgentName)
+		agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir,
+			agentName)
 
 		agentFatalReasonFilename := agentDebugDir + "/fatal-reason"
 		err = overWriteFile(agentFatalReasonFilename, reason)
@@ -185,7 +205,7 @@ func RebootReason(reason string, normal bool) {
 
 // RebootStack writes stack in /persist/reboot-stack
 // and appends to /persist/log/reboot-stack.log
-func RebootStack(stacks string) {
+func RebootStack(stacks string, agentName string, agentPid int) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	log.Warnf("RebootStack to %s", filename)
 	err := printToFile(filename, fmt.Sprintf("%v\n", stacks))
@@ -197,7 +217,7 @@ func RebootStack(stacks string) {
 	if err != nil {
 		log.Errorf("printToFile failed %s\n", err)
 	}
-	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, savedAgentName)
+	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
 	agentStackTraceFile := agentDebugDir + "/fatal-stack"
 	err = overWriteFile(agentStackTraceFile, fmt.Sprintf("%v\n", stacks))
 	if err != nil {
@@ -444,27 +464,33 @@ func spoofStdFDs(agentName string) *os.File {
 }
 
 func Init(agentName string) {
-	savedAgentName = agentName
-	savedPid = os.Getpid()
-	log.SetOutput(os.Stdout)
-	originalStdout := spoofStdFDs(agentName)
-	log.SetOutput(originalStdout)
-	hook := new(FatalHook)
-	log.AddHook(hook)
-	hook2 := new(SourceHook)
-	log.AddHook(hook2)
-	// Report nano timestamps
-	formatter := log.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
-	}
-	log.SetFormatter(&formatter)
-	log.SetReportCaller(true)
-	log.RegisterExitHandler(printStack)
+	agentPid := os.Getpid()
+	if once() {
+		log.SetOutput(os.Stdout)
+		originalStdout := spoofStdFDs(agentName)
+		log.SetOutput(originalStdout)
+		hook := new(FatalHook)
+		hook.agentName = agentName
+		hook.agentPid = agentPid
+		log.AddHook(hook)
+		hook2 := new(SourceHook)
+		hook2.agentName = agentName
+		hook2.agentPid = agentPid
+		log.AddHook(hook2)
+		// Report nano timestamps
+		formatter := log.JSONFormatter{
+			TimestampFormat: time.RFC3339Nano,
+		}
+		log.SetFormatter(&formatter)
+		log.SetReportCaller(true)
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
-	signal.Notify(sigs, syscall.SIGUSR2)
-	go handleSignals(sigs)
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGUSR1)
+		signal.Notify(sigs, syscall.SIGUSR2)
+		go handleSignals(agentName, agentPid, sigs)
+	}
+	eh := func() { printStack(agentName, agentPid) }
+	log.RegisterExitHandler(eh)
 }
 
 var otherIMGdir = ""

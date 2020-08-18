@@ -90,7 +90,7 @@ The device generates additional key pairs and certificates, since different keys
 
 As a result of on-boarding a device, the controller is told to trust the device with a particular device certificate (and also that it is "owned" by some particular user of the controller).
 
-Separately measured boot with remote attestation will ensure that the device is running the expected versions and hashes of firmware and of the EVE software.
+Separately measured boot with remote attestation will ensure that the device is running the expected versions and hashes of firmware and of the EVE software. On successful attestation, Controller provides a particular one-time token (called integrity-token), which needs to be produced by EVE for a successful configuration request. Controller will reject incoming configuration requests, if the integrity-token does not match the expected value, and will reply with HTTP error code 403, to force EVE to re-attest and generate a new integrity-token. EVE stores this token in memory, and hence is valid only for the current boot session. This ensures that every boot session automatically triggers a fresh attestation cycle, thereby measuring and validating the software components all over again.
 
 #### Initial on-boarding
 
