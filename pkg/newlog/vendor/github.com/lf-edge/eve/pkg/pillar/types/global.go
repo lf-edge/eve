@@ -1,0 +1,791 @@
+// Copyright (c) 2018 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package types
+
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	log "github.com/sirupsen/logrus"
+)
+
+// SenderResult - Enum name for return extra sender results from SendOnAllIntf
+type SenderResult uint8
+
+// Enum of http extra status for 'rtf'
+const (
+	SenderStatusNone                      SenderResult = iota
+	SenderStatusRefused                                // ECNNREFUSED
+	SenderStatusUpgrade                                // 503 indicating controller upgrade in progress
+	SenderStatusCertInvalid                            // Server cert expired or NotBefore; device might have wrong time
+	SenderStatusCertMiss                               // remote signed senderCertHash we don't have
+	SenderStatusSignVerifyFail                         // envelope signature verify failed
+	SenderStatusAlgoFail                               // hash algorithm we don't support
+	SenderStatusHashSizeError                          // senderCertHash length error
+	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
+	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
+)
+
+const (
+	// MinuteInSec is number of seconds in a minute
+	MinuteInSec = 60
+	// HourInSec is number of seconds in a minute
+	HourInSec = 60 * MinuteInSec
+)
+
+// ConfigItemStatus - Status of Config Items
+type ConfigItemStatus struct {
+	// Value - Current value of the item
+	Value string
+	// Err - Error from last config. nil if no error.
+	Err error
+}
+
+// GlobalStatus - Status of Global Config Items.
+type GlobalStatus struct {
+	ConfigItems        map[string]ConfigItemStatus
+	UnknownConfigItems map[string]ConfigItemStatus
+}
+
+// NewGlobalStatus - Creates a new global status
+func NewGlobalStatus() *GlobalStatus {
+	newGlobalStatus := GlobalStatus{}
+	newGlobalStatus.ConfigItems = make(map[string]ConfigItemStatus)
+	newGlobalStatus.UnknownConfigItems = make(map[string]ConfigItemStatus)
+	return &newGlobalStatus
+}
+
+// setItemValue - Sets value for the key. Expects a valid key. asserts if
+//  the key is not found.
+func (gs *GlobalStatus) setItemValue(key, value string) {
+	item := gs.ConfigItems[key]
+	item.Value = value
+	gs.ConfigItems[key] = item
+}
+
+func (gs *GlobalStatus) setItemValueInt(key string, intVal uint32) {
+	value := strconv.FormatUint(uint64(intVal), 10)
+	gs.setItemValue(key, value)
+}
+
+func (gs *GlobalStatus) setItemValueTriState(key string, state TriState) {
+	value := FormatTriState(state)
+	gs.setItemValue(key, value)
+}
+
+func (gs *GlobalStatus) setItemValueBool(key string, boolVal bool) {
+	value := strconv.FormatBool(boolVal)
+	gs.setItemValue(key, value)
+}
+
+// UpdateItemValuesFromGlobalConfig - Update values of ConfigItems from
+// globalConfig
+func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc ConfigItemValueMap) {
+	for key, val := range gc.GlobalSettings {
+		gs.setItemValue(string(key), val.StringValue())
+	}
+
+	for agentName, agentSettingMap := range gc.AgentSettings {
+		for setting, value := range agentSettingMap {
+			key := "agent." + agentName + "." + string(setting)
+			gs.setItemValue(key, value.StringValue())
+		}
+	}
+}
+
+// GlobalConfig is used for log levels and timer values which are preserved
+// across reboots and baseimage-updates.
+
+// Agents subscribe to this info to get at least the log levels
+// A value of zero means we should use the default
+// All times are in seconds.
+
+// GlobalSettingKey - Constants of all global setting keys
+type GlobalSettingKey string
+
+// Try to keep the GlobalSettingKey consts in the same order as in
+// NewConfigItemSpecMap
+const (
+
+	// Int Items
+	// ConfigInterval global setting key
+	ConfigInterval GlobalSettingKey = "timer.config.interval"
+	// MetricInterval global setting key
+	MetricInterval GlobalSettingKey = "timer.metric.interval"
+	// ResetIfCloudGoneTime global setting key
+	ResetIfCloudGoneTime GlobalSettingKey = "timer.reboot.no.network"
+	// FallbackIfCloudGoneTime global setting key
+	FallbackIfCloudGoneTime GlobalSettingKey = "timer.update.fallback.no.network"
+	// MintimeUpdateSuccess global setting key
+	MintimeUpdateSuccess GlobalSettingKey = "timer.test.baseimage.update"
+	// StaleConfigTime global setting key
+	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
+	// VdiskGCTime global setting key
+	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
+	// DownloadRetryTime global setting key
+	DownloadRetryTime GlobalSettingKey = "timer.download.retry"
+	// DomainBootRetryTime global setting key
+	DomainBootRetryTime GlobalSettingKey = "timer.boot.retry"
+	// NetworkGeoRedoTime global setting key
+	NetworkGeoRedoTime GlobalSettingKey = "timer.port.georedo"
+	// NetworkGeoRetryTime global setting key
+	NetworkGeoRetryTime GlobalSettingKey = "timer.port.georetry"
+	// NetworkTestDuration global setting key
+	NetworkTestDuration GlobalSettingKey = "timer.port.testduration"
+	// NetworkTestInterval global setting key
+	NetworkTestInterval GlobalSettingKey = "timer.port.testinterval"
+	// NetworkTestBetterInterval global setting key
+	NetworkTestBetterInterval GlobalSettingKey = "timer.port.testbetterinterval"
+	// NetworkTestTimeout global setting key
+	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
+	// NetworkSendTimeout global setting key
+	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// Dom0MinDiskUsagePercent global setting key
+	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
+	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
+	//  Dom0MinDiskUsagePercent upto a max of  Dom0DiskUsageMaxBytes
+	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
+	// AppContainerStatsInterval - App Container Stats Collection
+	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
+
+	// Bool Items
+	// UsbAccess global setting key
+	UsbAccess GlobalSettingKey = "debug.enable.usb"
+	// AllowAppVnc global setting key
+	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
+	// IgnoreDiskCheckForApps global setting key
+	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
+
+	// TriState Items
+	// NetworkFallbackAnyEth global setting key
+	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
+	// AllowNonFreeAppImages global setting key
+	AllowNonFreeAppImages GlobalSettingKey = "network.allow.wwan.app.download"
+	// AllowNonFreeBaseImages global setting key
+	AllowNonFreeBaseImages GlobalSettingKey = "network.allow.wwan.baseos.download"
+
+	// String Items
+	// SSHAuthorizedKeys global setting key
+	SSHAuthorizedKeys GlobalSettingKey = "debug.enable.ssh"
+	// DefaultLogLevel global setting key
+	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
+	// DefaultRemoteLogLevel global setting key
+	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
+)
+
+// AgentSettingKey - keys for per-agent settings
+type AgentSettingKey string
+
+const (
+	// LogLevel agent setting key
+	LogLevel AgentSettingKey = "debug.loglevel"
+	// RemoteLogLevel agent setting key
+	RemoteLogLevel AgentSettingKey = "debug.remote.loglevel"
+)
+
+const (
+	agentSettingKeyPattern       = `^agent\.([0-9A-Za-z_]+)\.([0-9A-Za-z_.]+)$`
+	legacyAgentSettingKeyPattern = `^debug\.([0-9A-Za-z_]+)\.([0-9A-Za-z_.]+)$`
+)
+
+// ConfigItemType - Defines what type of item we are storing
+type ConfigItemType uint8
+
+const (
+	// ConfigItemTypeInvalid - Invalid type. Never use it for a valid entry
+	ConfigItemTypeInvalid ConfigItemType = iota
+	// ConfigItemTypeInt - for config item's who's value is an integer
+	ConfigItemTypeInt
+	// ConfigItemTypeBool - for config item's who's value is a boolean
+	ConfigItemTypeBool
+	// ConfigItemTypeString - for config item's who's value is a string
+	ConfigItemTypeString
+	// ConfigItemTypeTriState - for config item's who's value is a tristate
+	ConfigItemTypeTriState
+)
+
+// ConfigItemSpec - Defines what a specification for a configuration should be
+type ConfigItemSpec struct {
+	Key      string
+	ItemType ConfigItemType
+
+	IntMin     uint32
+	IntMax     uint32
+	IntDefault uint32
+
+	StringValidator Validator
+	StringDefault   string
+	BoolDefault     bool
+	TriStateDefault TriState
+}
+
+// DefaultValue - Creates default value from a spec
+func (configSpec ConfigItemSpec) DefaultValue() ConfigItemValue {
+	var item ConfigItemValue
+	item.Key = configSpec.Key
+	item.ItemType = configSpec.ItemType
+	switch configSpec.ItemType {
+	case ConfigItemTypeBool:
+		item.BoolValue = configSpec.BoolDefault
+	case ConfigItemTypeInt:
+		item.IntValue = configSpec.IntDefault
+	case ConfigItemTypeString:
+		item.StrValue = configSpec.StringDefault
+	case ConfigItemTypeTriState:
+		item.TriStateValue = configSpec.TriStateDefault
+	}
+	return item
+}
+
+// Validator - pass in function to validate a string
+type Validator func(string) error
+
+// ConfigItemSpecMap - Map of all specifications
+type ConfigItemSpecMap struct {
+	// GlobalSettings - Map Key: GlobalSettingKey, ConfigItemValue.Key: GlobalSettingKey
+	GlobalSettings map[GlobalSettingKey]ConfigItemSpec
+	// AgentSettingKey - Map Key: AgentSettingKey, ConfigItemValue.Key: AgentSettingKey
+	AgentSettings map[AgentSettingKey]ConfigItemSpec
+}
+
+// AddIntItem - Adds integer item to specMap
+func (specMap *ConfigItemSpecMap) AddIntItem(key GlobalSettingKey,
+	defaultInt uint32, min uint32, max uint32) {
+	if defaultInt < min || defaultInt > max {
+		log.Fatalf("Adding int item %s failed. Value does not meet given min/max criteria", key)
+	}
+	configItem := ConfigItemSpec{
+		ItemType:   ConfigItemTypeInt,
+		Key:        string(key),
+		IntDefault: defaultInt,
+		IntMin:     min,
+		IntMax:     max,
+	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added int item. Key: %s, Val: %+v", key, configItem)
+}
+
+// AddBoolItem - Adds boolean item to specMap
+func (specMap *ConfigItemSpecMap) AddBoolItem(key GlobalSettingKey, defaultBool bool) {
+	configItem := ConfigItemSpec{
+		ItemType:    ConfigItemTypeBool,
+		Key:         string(key),
+		BoolDefault: defaultBool,
+	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added bool item %s", key)
+}
+
+// AddStringItem - Adds string item to specMap
+func (specMap *ConfigItemSpecMap) AddStringItem(key GlobalSettingKey, defaultString string, validator Validator) {
+	err := validator(defaultString)
+	if err != nil {
+		defaultString = "failed validation"
+		log.Fatalf("AddStringItem: key %s, default (%s) Failed "+
+			"validator. err: %s", key, defaultString, err)
+	}
+	configItem := ConfigItemSpec{
+		ItemType:        ConfigItemTypeString,
+		Key:             string(key),
+		StringDefault:   defaultString,
+		StringValidator: validator,
+	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added string item %s", key)
+}
+
+// AddTriStateItem - Adds tristate item to specMap
+func (specMap *ConfigItemSpecMap) AddTriStateItem(key GlobalSettingKey, defaultTriState TriState) {
+	configItem := ConfigItemSpec{
+		Key:             string(key),
+		ItemType:        ConfigItemTypeTriState,
+		TriStateDefault: defaultTriState,
+	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added tristate item %s", key)
+}
+
+// AddAgentSettingStringItem - Adds string item for a per-agent setting
+func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey,
+	defaultString string, validator Validator) {
+	err := validator(defaultString)
+	if err != nil {
+		defaultString = "failed validation"
+		log.Fatalf("AddAgentSettingStringItem: key %s, default (%s) Failed "+
+			"validator. err: %s", key, defaultString, err)
+	}
+	configItem := ConfigItemSpec{
+		ItemType:        ConfigItemTypeString,
+		Key:             string(key),
+		StringDefault:   defaultString,
+		StringValidator: validator,
+	}
+	specMap.AgentSettings[key] = configItem
+	log.Debugf("Added string item %s", key)
+}
+
+// parseAgentSettingKey
+//  Returns AgentName, AgentSettingKey, error ( nil if success )
+func parseAgentSettingKey(key string) (string, AgentSettingKey, error) {
+	// Check new Agent Key Setting
+	re := regexp.MustCompile(agentSettingKeyPattern)
+	if re.MatchString(key) {
+		parsedStrings := re.FindStringSubmatch(key)
+		return parsedStrings[1], AgentSettingKey(parsedStrings[2]), nil
+	}
+	// Check if Legacy Agent Setting
+	re = regexp.MustCompile(legacyAgentSettingKeyPattern)
+	if re.MatchString(key) {
+		parsedStrings := re.FindStringSubmatch(key)
+		return parsedStrings[1], AgentSettingKey("debug." + parsedStrings[2]), nil
+	}
+	// Neither New or Legacy.. Return Error
+	err := fmt.Errorf("parseAgentSettingKey: Key %s Doesn't match agent "+
+		"Setting Key Pattern", key)
+	log.Errorf("Err: %s", err)
+	return "", "", err
+}
+
+func (specMap *ConfigItemSpecMap) parseAgentItem(
+	newConfigMap *ConfigItemValueMap, oldConfigMap *ConfigItemValueMap,
+	key string, value string) (ConfigItemValue, error) {
+	log.Debugf("ParseItem: Agent or Lagecy Agent Item. key: %s, Value: %s",
+		key, value)
+	agentName, asKey, err := parseAgentSettingKey(key)
+	if err != nil {
+		return ConfigItemValue{}, err
+	}
+	itemSpec, ok := specMap.AgentSettings[asKey]
+	if !ok {
+		err := fmt.Errorf("Cannot find key (%s) in AgentSettings. asKey: %s",
+			key, asKey)
+		log.Errorf("***parseAgentItem: ERROR: %s", err)
+		return ConfigItemValue{}, err
+	}
+	val, err := itemSpec.parseValue(value)
+	if err == nil {
+		newConfigMap.setAgentSettingValue(agentName, asKey, val)
+		log.Debugf("parseAgentItem: Successfully parsed Agent Setting. "+
+			"Agent: %s, key: %s, Value: %+v", agentName, key, value)
+		return val, nil
+	}
+	log.Errorf("***ParseItem: Invalid Value for agent Setting - "+
+		"agentName: %s, Key: %s. Err: %s.", agentName, key, err)
+
+	// Parse Error. Get the Value from old config
+	val, asErr := oldConfigMap.agentConfigItemValue(agentName, asKey)
+	if asErr == nil {
+		newConfigMap.setAgentSettingValue(agentName, asKey, val)
+		err := fmt.Errorf("ParseItem: Invalid Value for agent Setting - "+
+			"agentName: %s, Key: %s. Err: %s. Using Existing Value: %+v",
+			agentName, key, err, val)
+		return val, err
+	}
+	// No Existing Value for Agent. It will use the default value.
+	val = itemSpec.DefaultValue()
+	log.Infof("ParseItem: Invalid Value for agent Setting - "+
+		"agentName: %s, Key: %s, err: %s. No Existing Value Either. "+
+		"Using Default Value: %+v", agentName, key, err, val)
+	return val, err
+}
+
+// ParseItem - Parses the Key/Value pair into a ConfigItem and updates
+//  newConfigMap. If there is a Parse error, it copies the corresponding value
+//  from oldConfigMap
+func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
+	oldConfigMap *ConfigItemValueMap,
+	key string, value string) (ConfigItemValue, error) {
+
+	// First check if this is a Global Setting
+	gsKey := GlobalSettingKey(key)
+	itemSpec, ok := specMap.GlobalSettings[gsKey]
+	if !ok {
+		// Not a Global Setting. Check if this is a per-agent setting
+		return specMap.parseAgentItem(newConfigMap, oldConfigMap, key, value)
+	}
+	// Global Setting
+	log.Debugf("ParseItem: Global Setting. key: %s, Value: %s", key, value)
+	val, err := itemSpec.parseValue(value)
+	if err == nil {
+		newConfigMap.GlobalSettings[gsKey] = val
+		log.Debugf("ParseItem: Successfully parsed Global Setting. "+
+			"key: %s, Value: %s", key, value)
+		return val, nil
+	}
+	// Parse Error. Get the Value from old config
+	val, ok = oldConfigMap.GlobalSettings[gsKey]
+	if ok {
+		err = fmt.Errorf("***ParseItem: Error in parsing Item. Replacing it "+
+			"with existing Value. key: %s, value: %s, Existing Value: %+v. "+
+			"Err: %s", key, value, val, err)
+	} else {
+		val = itemSpec.DefaultValue()
+		err = fmt.Errorf("***ParseItem: Error in parsing Item. No Existing "+
+			"Value Found. Using Default Value. key: %s, value: %s, "+
+			"Default Value: %+v. Err: %s", key, value, val, err)
+	}
+	newConfigMap.GlobalSettings[gsKey] = val
+	log.Errorf(err.Error())
+	return val, err
+}
+
+// ConfigItemValue - Stores the value of a setting
+type ConfigItemValue struct {
+	Key      string
+	ItemType ConfigItemType
+
+	IntValue      uint32
+	StrValue      string
+	BoolValue     bool
+	TriStateValue TriState
+}
+
+// StringValue - Returns the value in String Format
+func (val ConfigItemValue) StringValue() string {
+	switch val.ItemType {
+	case ConfigItemTypeBool:
+		return fmt.Sprintf("%t", val.BoolValue)
+	case ConfigItemTypeInt:
+		return fmt.Sprintf("%d", val.IntValue)
+	case ConfigItemTypeString:
+		return val.StrValue
+	case ConfigItemTypeTriState:
+		return FormatTriState(val.TriStateValue)
+	default:
+		return fmt.Sprintf("UnknownType(%d)", val.ItemType)
+	}
+}
+
+// ConfigItemValueMap - Maps both agent and global settings
+type ConfigItemValueMap struct {
+	// GlobalSettings - Map Key: GlobalSettingKey, ConfigItemValue.Key: GlobalSettingKey
+	GlobalSettings map[GlobalSettingKey]ConfigItemValue
+	// AgentSettings - Map Outer Key: agentName, Map Inner Key: AgentSettingKey ConfigItemValue.Key: AgentSettingKey
+	AgentSettings map[string]map[AgentSettingKey]ConfigItemValue
+}
+
+func (configPtr *ConfigItemValueMap) globalConfigItemValue(
+	key GlobalSettingKey) ConfigItemValue {
+	val, okVal := configPtr.GlobalSettings[key]
+	if okVal {
+		return val
+	}
+	// Return Default Value
+	specMap := NewConfigItemSpecMap()
+	spec, ok := specMap.GlobalSettings[key]
+	if ok {
+		return spec.DefaultValue()
+	}
+	log.Fatalf("globalConfigItemValue - Invalid key: %s", key)
+	return spec.DefaultValue()
+}
+
+func (configPtr *ConfigItemValueMap) agentConfigItemValue(agentName string,
+	key AgentSettingKey) (ConfigItemValue, error) {
+	agent, ok := configPtr.AgentSettings[agentName]
+	var blankValue = ConfigItemValue{}
+	if ok {
+		val, ok := agent[key]
+		if ok {
+			return val, nil
+		}
+		return blankValue, fmt.Errorf("Failed to find %s settings for %s", string(key), agentName)
+	}
+	return blankValue, fmt.Errorf("Failed to find any per-agent settings for agent %s", agentName)
+}
+
+// AgentSettingStringValue - Gets the value of a per-agent setting for a certain agentname and per-agent key
+func (configPtr *ConfigItemValueMap) AgentSettingStringValue(agentName string, agentSettingKey AgentSettingKey) string {
+	val, err := configPtr.agentConfigItemValue(agentName, agentSettingKey)
+	if err != nil {
+		return ""
+	}
+	if val.ItemType != ConfigItemTypeString {
+		log.Fatalf("Agent setting is not of type string. agent-name %s, agentSettingKey %s",
+			agentName, string(agentSettingKey))
+	}
+	return val.StrValue
+}
+
+// GlobalValueInt - Gets a int global setting value
+func (configPtr *ConfigItemValueMap) GlobalValueInt(key GlobalSettingKey) uint32 {
+	val := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeInt {
+		return val.IntValue
+	} else {
+		log.Fatalf("***Key(%s) is of Type(%d) NOT Int", key, val.ItemType)
+		return 0
+	}
+}
+
+// GlobalValueString - Gets a string global setting value
+func (configPtr *ConfigItemValueMap) GlobalValueString(key GlobalSettingKey) string {
+	val := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeString {
+		return val.StrValue
+	} else {
+		log.Fatalf("***Key(%s) is of Type(%d) NOT String", key, val.ItemType)
+		return ""
+	}
+}
+
+// GlobalValueTriState - Gets a tristate global setting value
+func (configPtr *ConfigItemValueMap) GlobalValueTriState(key GlobalSettingKey) TriState {
+	val := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeTriState {
+		return val.TriStateValue
+	} else {
+		log.Fatalf("***Key(%s) is of Type(%d) NOT TriState", key, val.ItemType)
+		return TS_NONE
+	}
+}
+
+// GlobalValueBool - Gets a boolean global setting value
+func (configPtr *ConfigItemValueMap) GlobalValueBool(key GlobalSettingKey) bool {
+	val := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeBool {
+		return val.BoolValue
+	} else {
+		log.Fatalf("***Key(%s) is of Type(%d) NOT Bool", key, val.ItemType)
+		return false
+	}
+}
+
+// setAgentSettingValue - Sets an agent value for a certain key and agent name
+func (configPtr *ConfigItemValueMap) setAgentSettingValue(
+	agentName string, key AgentSettingKey, value ConfigItemValue) {
+	_, ok := configPtr.AgentSettings[agentName]
+	if !ok {
+		// Agent Map not yet set. Create the map
+		configPtr.AgentSettings[agentName] =
+			make(map[AgentSettingKey]ConfigItemValue)
+	}
+	configPtr.AgentSettings[agentName][key] = value
+}
+
+// SetAgentSettingStringValue - Sets an agent value for a certain key and agent name
+func (configPtr *ConfigItemValueMap) SetAgentSettingStringValue(
+	agentName string, key AgentSettingKey, newValue string) {
+	configItemValue := ConfigItemValue{
+		Key:      string(key),
+		ItemType: ConfigItemTypeString,
+		StrValue: newValue,
+	}
+	configPtr.setAgentSettingValue(agentName, key, configItemValue)
+}
+
+// DelAgentValue - Deletes agent settings for an agent name and agent setting key
+func (configPtr *ConfigItemValueMap) DelAgentValue(key AgentSettingKey, agentName string) {
+	settingMap, ok := configPtr.AgentSettings[agentName]
+	if !ok {
+		return
+	}
+	delete(settingMap, key)
+	if len(settingMap) > 0 {
+		configPtr.AgentSettings[agentName] = settingMap
+	} else {
+		// No more settings for Agent.. So delete it from AgentSettings
+		delete(configPtr.AgentSettings, agentName)
+	}
+}
+
+// SetGlobalValueInt - sets a int value for a key
+func (configPtr *ConfigItemValueMap) SetGlobalValueInt(key GlobalSettingKey, value uint32) {
+	if configPtr.GlobalSettings == nil {
+		configPtr.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
+	}
+	configPtr.GlobalSettings[key] = ConfigItemValue{
+		Key:      string(key),
+		ItemType: ConfigItemTypeInt,
+		IntValue: value,
+	}
+}
+
+// SetGlobalValueBool - sets a bool value for a key
+func (configPtr *ConfigItemValueMap) SetGlobalValueBool(key GlobalSettingKey, value bool) {
+	if configPtr.GlobalSettings == nil {
+		configPtr.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
+	}
+	configPtr.GlobalSettings[key] = ConfigItemValue{
+		Key:       string(key),
+		ItemType:  ConfigItemTypeBool,
+		BoolValue: value,
+	}
+}
+
+// SetGlobalValueTriState - sets a tristate value for a key
+func (configPtr *ConfigItemValueMap) SetGlobalValueTriState(key GlobalSettingKey, value TriState) {
+	if configPtr.GlobalSettings == nil {
+		configPtr.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
+	}
+	configPtr.GlobalSettings[key] = ConfigItemValue{
+		Key:           string(key),
+		ItemType:      ConfigItemTypeTriState,
+		TriStateValue: value,
+	}
+}
+
+// SetGlobalValueString - sets a string value for a key
+func (configPtr *ConfigItemValueMap) SetGlobalValueString(key GlobalSettingKey, value string) {
+	if configPtr.GlobalSettings == nil {
+		configPtr.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
+	}
+	configPtr.GlobalSettings[key] = ConfigItemValue{
+		Key:      string(key),
+		ItemType: ConfigItemTypeString,
+		StrValue: value,
+	}
+}
+
+// ResetGlobalValue - resets global value to default
+func (configPtr *ConfigItemValueMap) ResetGlobalValue(key GlobalSettingKey) {
+	specMap := NewConfigItemSpecMap()
+	configPtr.GlobalSettings[key] = specMap.GlobalSettings[key].DefaultValue()
+}
+
+func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, error) {
+	value := configSpec.DefaultValue()
+	var retErr error
+	if configSpec.ItemType == ConfigItemTypeInt {
+		i64, err := strconv.ParseUint(itemValue, 10, 32)
+		if err == nil {
+			val := uint32(i64)
+			if val > configSpec.IntMax || val < configSpec.IntMin {
+				retErr = fmt.Errorf("value out of bounds. Parsed value: %d, Max: %d, Min: %d",
+					val, configSpec.IntMax, configSpec.IntMin)
+			} else {
+				value.IntValue = val
+			}
+		} else {
+			value.IntValue = configSpec.IntDefault
+			retErr = err
+		}
+	} else if configSpec.ItemType == ConfigItemTypeTriState {
+		newTs, err := ParseTriState(itemValue)
+		if err == nil {
+			value.TriStateValue = newTs
+		} else {
+			value.TriStateValue = configSpec.TriStateDefault
+			retErr = err
+		}
+	} else if configSpec.ItemType == ConfigItemTypeBool {
+		newBool, err := strconv.ParseBool(itemValue)
+		if err == nil {
+			value.BoolValue = newBool
+		} else {
+			value.BoolValue = configSpec.BoolDefault
+			retErr = err
+		}
+	} else if configSpec.ItemType == ConfigItemTypeString {
+		err := configSpec.StringValidator(itemValue)
+		if err == nil {
+			value.StrValue = itemValue
+		} else {
+			return value, err
+		}
+	}
+	return value, retErr
+}
+
+// NewConfigItemSpecMap - Creates a specmap based on default values
+func NewConfigItemSpecMap() ConfigItemSpecMap {
+	var configItemSpecMap ConfigItemSpecMap
+	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
+	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
+
+	// timer.config.interval(seconds)
+	// MaxValue needs to be limited. If configured too high, the device will wait
+	// too long to get next config and is practically unreachable for any config
+	// changes or reboot through cloud.
+	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	// timer.metric.interval (seconds)
+	// Need to be careful about max value. Controller may use metric message to
+	// update status of device (online / suspect etc ).
+	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
+	// Max designed to allow the option of never rebooting even if device
+	//  can't connect to the cloud
+	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
+	configItemSpecMap.AddIntItem(StaleConfigTime, 7*24*3600, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
+	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
+	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
+	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
+		100*1024*1024, 0xFFFFFFFF)
+
+	// Add Bool Items
+	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
+	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
+
+	// Add TriState Items
+	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(AllowNonFreeAppImages, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(AllowNonFreeBaseImages, TS_ENABLED)
+
+	// Add String Items
+	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
+
+	// Add Agent Settings
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
+
+	return configItemSpecMap
+}
+
+// parseLevel - Wrapper that ignores the 'Level' output of the log.ParseLevel function
+func parseLevel(level string) error {
+	_, err := log.ParseLevel(level)
+	return err
+}
+
+// blankValidator - A validator that accepts any string
+func blankValidator(s string) error {
+	return nil
+}
+
+// NewConfigItemValueMap - Create new instance of ConfigItemValueMap
+func NewConfigItemValueMap() *ConfigItemValueMap {
+	var valueMap ConfigItemValueMap
+	valueMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
+	valueMap.AgentSettings = make(map[string]map[AgentSettingKey]ConfigItemValue)
+	return &valueMap
+}
+
+// DefaultConfigItemValueMap - converts default specmap into value map
+func DefaultConfigItemValueMap() *ConfigItemValueMap {
+	configMap := NewConfigItemSpecMap()
+	valueMapPtr := NewConfigItemValueMap()
+
+	for key, configItemSpec := range configMap.GlobalSettings {
+		valueMapPtr.GlobalSettings[key] = configItemSpec.DefaultValue()
+	}
+	// By default there are no per-agent settings.
+	return valueMapPtr
+}
+
+func agentSettingKeyFromLegacyKey(key string) string {
+	components := strings.Split(key, ".")
+	if len(components) < 3 {
+		return ""
+	}
+	agentKey := components[0] + "." + strings.Join(components[2:], ".")
+	return agentKey
+}
