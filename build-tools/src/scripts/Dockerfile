@@ -16,7 +16,8 @@ RUN echo "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER}
 RUN go get github.com/golang/dep/cmd/dep
 RUN go get -u github.com/golang/protobuf/protoc-gen-go
 RUN go get -u gotest.tools/gotestsum
-RUN curl -L -s -o /usr/local/bin/protodot https://github.com/seamia/protodot/raw/master/binaries/protodot-linux-amd64 && chmod +x /usr/local/bin/protodot && protodot -install
+RUN go get -u github.com/seamia/protodot
+RUN mv /go/bin/protodot /usr/local/bin
 RUN mv /go/bin/* /usr/bin
 ENV HOME /home/${USER}
 ENV GOFLAGS=-mod=vendor
