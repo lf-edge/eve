@@ -69,8 +69,10 @@ then
 elif test "$dhcp"
 then
     ip link set dev lo up
-    ip link set dev eth0 up
-    udhcpc --interface=eth0 --script=/udhcpc_script.sh
+    for i in $(cd /sys/class/net && echo eth*); do
+        ip link set dev "$i" up
+        udhcpc --interface="$i" --script=/udhcpc_script.sh
+    done
 fi
 
 # Mounting requested volumes
