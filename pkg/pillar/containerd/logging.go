@@ -16,7 +16,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -96,7 +95,6 @@ func (r *remoteLog) Path(n string) string {
 	if err := syscall.Mkfifo(path, 0600); err != nil {
 		return "/dev/null"
 	}
-	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		// In a goroutine because Open of the FIFO will block until
 		// containerd opens it when the task is started.

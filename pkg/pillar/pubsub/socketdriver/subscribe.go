@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/watch"
 	log "github.com/sirupsen/logrus"
@@ -96,16 +95,10 @@ func (s *Subscriber) Start() error {
 		// format than the standard for pubsub
 		// we pass it through a translator
 		translator := make(chan string)
-		log.Infof("Creating %s at %s", "watch.WatchStatus",
-			agentlog.GetMyStack())
 		go watch.WatchStatus(s.dirName, true, translator)
-		log.Infof("Creating %s at %s", "s.Translate",
-			agentlog.GetMyStack())
 		go s.translate(translator, s.C)
 		return nil
 	} else if subscribeFromSock {
-		log.Infof("Creating %s at %s", "s.watchSock",
-			agentlog.GetMyStack())
 		go s.watchSock()
 		return nil
 	} else {

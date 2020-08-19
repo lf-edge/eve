@@ -6,7 +6,6 @@ package verifier
 import (
 	"fmt"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -68,8 +67,6 @@ func (v *verifyHandler) create(ctxArg interface{},
 	v.handlers[handlerKey] = h1
 	switch typeName {
 	case "VerifyImageConfig":
-		log.Infof("Creating %s at %s", "runHandler",
-			agentlog.GetMyStack())
 		go runHandler(ctx, key, h1)
 	default:
 		log.Fatalf("Unknown type %s", typeName)

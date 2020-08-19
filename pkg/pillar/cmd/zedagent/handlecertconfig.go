@@ -363,11 +363,9 @@ func cipherModuleStart(ctx *zedagentContext) {
 		// we will run the tasks for watchdog
 	}
 	// start the edge node certificate push task
-	log.Infof("Creating %s at %s", "edgeNodeCertsTask", agentlog.GetMyStack())
 	go edgeNodeCertsTask(ctx, ctx.cipherCtx.triggerEdgeNodeCerts)
 
 	// start the controller certificate fetch task
-	log.Infof("Creating %s at %s", "controllerCertsTask", agentlog.GetMyStack())
 	go controllerCertsTask(ctx, ctx.cipherCtx.triggerControllerCerts)
 }
 
