@@ -412,6 +412,31 @@ func getStacks(all bool) string {
 	return string(buf)
 }
 
+// GetMyStack is used to log stack traces at certain call sites
+// Excludes ourselves
+func GetMyStack() string {
+	var output string
+	const maximumCallerDepth = 25
+	pcs := make([]uintptr, maximumCallerDepth)
+	depth := runtime.Callers(0, pcs)
+	frames := runtime.CallersFrames(pcs[:depth])
+
+	output += "goroutine:\n"
+	for f, again := frames.Next(); again; f, again = frames.Next() {
+		// Exclude the top and bottom ones
+		if strings.HasSuffix(f.Function, "runtime.Callers") ||
+			strings.HasSuffix(f.Function, "runtime.main") {
+			continue
+		}
+		// Exclude myself
+		if strings.HasSuffix(f.Function, "agentlog.GetMyStack") {
+			continue
+		}
+		output += fmt.Sprintf("%s()\n\t%s:%d\n", f.Function, f.File, f.Line)
+	}
+	return output
+}
+
 func logGCStats(log *base.LogObject) {
 	var m dbg.GCStats
 
@@ -549,6 +574,7 @@ func Init(agentName string) *base.LogObject {
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)
 		signal.Notify(sigs, syscall.SIGUSR2)
+		log.Infof("Creating %s at %s", "handleSignals", GetMyStack())
 		go handleSignals(log, agentName, agentPid, sigs)
 	}
 	eh := func() { printStack(log, agentName, agentPid) }
