@@ -127,7 +127,7 @@ func TpmSign(log *base.LogObject, digest []byte) (*big.Int, *big.Int, error) {
 		Hash: tpm2.AlgSHA256,
 	}
 	sig, err := tpm2.Sign(rw, TpmDeviceKeyHdl,
-		tpmOwnerPasswd, digest, scheme)
+		tpmOwnerPasswd, digest, nil, scheme)
 	if err != nil {
 		log.Errorln("Sign using TPM failed")
 		return nil, nil, err

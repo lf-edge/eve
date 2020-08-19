@@ -526,7 +526,7 @@ func testTpmEcdhSupport() error {
 	}
 	defer rw.Close()
 
-	z, p, err := tpm2.GenerateSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, emptyPassword)
+	z, p, err := tpm2.ECDHKeyGen(rw, etpm.TpmDeviceKeyHdl)
 	if err != nil {
 		fmt.Printf("generating Shared Secret failed: %s", err)
 		return err
@@ -537,7 +537,7 @@ func testTpmEcdhSupport() error {
 		return err
 	}
 
-	z1, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	z1, err := tpm2.ECDHZGen(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, *p)
 	if err != nil {
 		fmt.Printf("recovering Shared Secret failed: %s", err)
 		return err

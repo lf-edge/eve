@@ -59,7 +59,7 @@ func getDecryptKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeN
 	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
 
 	//Recover the key, and decrypt the message
-	z, err := tpm2.RecoverSharedECCSecret(rw, TpmEcdhKeyHdl, "", p)
+	z, err := tpm2.ECDHZGen(rw, TpmEcdhKeyHdl, "", p)
 	if err != nil {
 		log.Errorf("recovering Shared Secret failed: %v", err)
 		return [32]byte{}, err
