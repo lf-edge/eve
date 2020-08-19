@@ -64,4 +64,6 @@ const (
 	CertObj = "cert.obj"
 	//ITokenFile contains the integrity token sent in attestation response
 	ITokenFile = "/var/run/eve.integrity_token"
+	//EveVersionFile contains the running version of EVE
+	EveVersionFile = "/run/eve-release"
 )

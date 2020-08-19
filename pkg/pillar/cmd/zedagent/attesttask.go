@@ -14,12 +14,14 @@ import (
 	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"io/ioutil"
 	"net/http"
 	"reflect"
+	"strings"
 )
 
 //TpmAgentImpl implements zattest.TpmAgent interface
@@ -128,6 +130,57 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	return nil
 }
 
+func combineBiosFields(biosVendor, biosVersion, biosReleaseDate string) string {
+	biosStr := ""
+	if biosVendor != "" {
+		biosStr = biosVendor
+	}
+	if biosVersion != "" {
+		if biosStr != "" {
+			biosStr = biosStr + "-" + biosVersion
+		} else {
+			biosStr = biosVersion
+		}
+
+	}
+	if biosReleaseDate != "" {
+		if biosStr != "" {
+			biosStr = biosStr + "-" + biosReleaseDate
+		} else {
+			biosStr = biosReleaseDate
+		}
+	}
+	return biosStr
+}
+
+//encodeVersions fetches EVE, UEFI versions
+func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
+	quoteMsg.Versions = make([]*attest.AttestVersionInfo, 0)
+	eveVersion := new(attest.AttestVersionInfo)
+	eveVersion.VersionType = attest.AttestVersionType_ATTEST_VERSION_TYPE_EVE
+	eveRelease, err := ioutil.ReadFile(types.EveVersionFile)
+	if err != nil {
+		return err
+	}
+	eveVersion.Version = strings.TrimSpace(string(eveRelease))
+	quoteMsg.Versions = append(quoteMsg.Versions, eveVersion)
+
+	//GetDeviceBios returns empty values on ARM64, check for them
+	bVendor, bVersion, bReleaseDate := hardware.GetDeviceBios(log)
+	biosVendor := strings.TrimSpace(bVendor)
+	biosVersion := strings.TrimSpace(bVersion)
+	biosReleaseDate := strings.TrimSpace(bReleaseDate)
+	biosStr := combineBiosFields(biosVendor, biosVersion, biosReleaseDate)
+	if biosStr != "" {
+		uefiVersion := new(attest.AttestVersionInfo)
+		uefiVersion.VersionType = attest.AttestVersionType_ATTEST_VERSION_TYPE_FIRMWARE
+		uefiVersion.Version = biosStr
+		quoteMsg.Versions = append(quoteMsg.Versions, uefiVersion)
+		log.Infof("quoteMsg.Versions %s %s", eveVersion.Version, uefiVersion.Version)
+	}
+	return nil
+}
+
 //encodePCRValues encodes PCR values from types.AttestQuote into attest.ZAttestQuote
 func encodePCRValues(internalQuote *types.AttestQuote, quoteMsg *attest.ZAttestQuote) error {
 	quoteMsg.PcrValues = make([]*attest.TpmPCRValue, 0)
@@ -176,6 +229,11 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 
 	if err := encodePCRValues(attestCtx.InternalQuote, quote); err != nil {
 		log.Errorf("[ATTEST] encodePCRValues failed with err %v", err)
+		return zattest.ErrControllerReqFailed
+	}
+
+	if err := encodeVersions(quote); err != nil {
+		log.Errorf("[ATTEST] encodeVersions failed with err %v", err)
 		return zattest.ErrControllerReqFailed
 	}
 
