@@ -206,6 +206,13 @@ func createDnsmasqConfiglet(
 		// dom0 virtual router that makes the packets pass through ACLs and flow log.
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 			"255.255.255.255"))
+		if advertizeRouter {
+			if !isIPv6 {
+				// Set route to our network through router to support multiple networks
+				file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s,%s,%s,%s\n",
+					"0.0.0.0/0", router, netconf.Subnet.String(), router))
+			}
+		}
 	}
 	if advertizeRouter {
 		// IPv6 XXX needs to be handled in radvd
