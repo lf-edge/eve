@@ -8,6 +8,7 @@ package devicenetwork
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
@@ -224,6 +225,7 @@ func dhcpcdCmd(log *base.LogObject, op string, extras []string, ifname string, b
 		cmd.Stderr = nil
 
 		log.Infof("Background command %s %v\n", name, args)
+		log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 		go func() {
 			if err := cmd.Run(); err != nil {
 				log.Errorf("%s %v: failed: %s",
