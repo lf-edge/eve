@@ -3,6 +3,10 @@
 
 package downloader
 
+import (
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+)
+
 type resolveHandler struct {
 	// We have one goroutine per provisioned domU object.
 	// Channel is used to send notifications about config (add and updates)
@@ -30,6 +34,8 @@ func (r *resolveHandler) modify(ctxArg interface{},
 	if !ok {
 		h1 := make(chan Notify, 1)
 		r.handlers[key] = h1
+		log.Infof("Creating %s at %s", "runResolveHandler",
+			agentlog.GetMyStack())
 		go runResolveHandler(ctx, key, h1)
 		h = h1
 	}

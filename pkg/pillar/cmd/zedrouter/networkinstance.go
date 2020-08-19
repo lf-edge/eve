@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -519,6 +520,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 
 	// monitor the DNS and DHCP information
+	log.Infof("Creating %s at %s", "DNSMonitor", agentlog.GetMyStack())
 	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {

@@ -540,6 +540,8 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			log.Debugf("FlowStatTimer at %v", time.Now())
 			// XXX why start a new go routine for each change?
+			log.Infof("Creating %s at %s", "FlowStatsCollect",
+				agentlog.GetMyStack())
 			go FlowStatsCollect(&zedrouterCtx)
 			ps.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
 				warningTime, errorTime)
@@ -548,6 +550,8 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			log.Debugf("HostProbeTimer at %v", time.Now())
 			// launch the go function gateway/remote hosts probing check
+			log.Infof("Creating %s at %s", "launchHostProbe",
+				agentlog.GetMyStack())
 			go launchHostProbe(&zedrouterCtx)
 			ps.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
 				warningTime, errorTime)

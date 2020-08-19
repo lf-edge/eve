@@ -18,6 +18,7 @@ import (
 	zcert "github.com/lf-edge/eve/api/go/certs"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -361,9 +362,11 @@ func cipherModuleStart(ctx *zedagentContext) {
 		// we will run the tasks for watchdog
 	}
 	// start the edge node certificate push task
+	log.Infof("Creating %s at %s", "edgeNodeCertsTask", agentlog.GetMyStack())
 	go edgeNodeCertsTask(ctx, ctx.cipherCtx.triggerEdgeNodeCerts)
 
 	// start the controller certificate fetch task
+	log.Infof("Creating %s at %s", "controllerCertsTask", agentlog.GetMyStack())
 	go controllerCertsTask(ctx, ctx.cipherCtx.triggerControllerCerts)
 }
 

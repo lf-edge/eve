@@ -8,6 +8,9 @@ package worker
 
 import (
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/sirupsen/logrus"
 )
 
 // Worker captures the worker channels
@@ -52,10 +55,12 @@ type WorkFunction func(ctx interface{}, work Work) WorkResult
 
 // NewWorker creates a new function for a specific function and context
 // function takes the context and the channels
+// XXX add log argument
 func NewWorker(fn WorkFunction, ctx interface{}, length int) *Worker {
 	w := new(Worker)
 	requestChan := make(chan Work, length)
 	resultChan := make(chan privateResult, length)
+	logrus.Infof("Creating %s at %s", "w.processWork", agentlog.GetMyStack())
 	go w.processWork(ctx, fn, requestChan, resultChan)
 	w.requestChan = requestChan
 	w.resultChan = resultChan

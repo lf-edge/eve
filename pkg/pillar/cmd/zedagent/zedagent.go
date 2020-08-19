@@ -935,6 +935,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
+	log.Infof("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
 
 	// Publish initial device info.
@@ -942,11 +943,13 @@ func Run(ps *pubsub.PubSub) {
 
 	// start the metrics reporting task
 	handleChannel := make(chan interface{})
+	log.Infof("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	// start the config fetch tasks, when zboot status is ready
+	log.Infof("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
 	go configTimerTask(handleChannel, &getconfigCtx)
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?

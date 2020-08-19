@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 )
@@ -73,6 +74,7 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, fileChang
 	defer w.Close()
 
 	done := make(chan bool)
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		for {
 			select {
