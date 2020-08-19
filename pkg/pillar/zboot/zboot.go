@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
 
@@ -382,7 +383,6 @@ func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (
-	versionFile          = "/run/eve-release"
 	otherPartVersionFile = "/etc/eve-release"
 	otherPrefix          = "/containers/services/pillar/lower"
 	// XXX handle baseimage-update by looking for old names
@@ -390,7 +390,7 @@ const (
 )
 
 func GetShortVersion(log *base.LogObject, partName string) string {
-	ver := getVersion(log, partName, versionFile, false)
+	ver := getVersion(log, partName, types.EveVersionFile, false)
 	return ver
 }
 

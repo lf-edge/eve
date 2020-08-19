@@ -5,12 +5,12 @@ package agentlog
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"strings"
 )
 
 const (
-	versionFile   = "/run/eve-release"
 	partitionFile = "/run/eve.id"
 )
 
@@ -22,7 +22,7 @@ var (
 // EveVersion returns the version of the current image
 func EveVersion() string {
 	if version == "" {
-		version = readEveVersion(versionFile)
+		version = readEveVersion(types.EveVersionFile)
 	}
 	return version
 }
