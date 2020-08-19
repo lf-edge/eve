@@ -18,7 +18,7 @@ func InitHandleWork(ctx *volumemgrContext) *worker.Worker {
 	// A small channel depth; work will be processed as FIFO
 	// XXX a worker pool might make sense to avoid smaller jobs blocked
 	// behind larger jobs
-	worker := worker.NewWorker(volumeWorker, ctx, 5)
+	worker := worker.NewWorker(log, volumeWorker, ctx, 5)
 	return worker
 }
 
