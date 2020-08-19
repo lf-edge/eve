@@ -1,4 +1,8 @@
 /bin/busybox
+/sbin/mke2fs
+/lib/libext2fs.so.2*
+/lib/libcom_err.so.2*
+/lib/libe2p.so.2*
 /lib/mdev
 /etc/modprobe.d/*.conf
 /etc/mdev.conf
