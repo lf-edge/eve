@@ -210,7 +210,6 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
-	log.Infof("Creating %s at %s", "handleNodeReboot", agentlog.GetMyStack())
 	go handleNodeReboot(ctxPtr, reasonStr)
 }
 

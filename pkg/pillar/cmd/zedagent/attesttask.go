@@ -344,8 +344,6 @@ func attestModuleStart(ctx *zedagentContext) error {
 	if ctx.attestCtx.attestFsmCtx == nil {
 		return fmt.Errorf("No state machine context found")
 	}
-	log.Infof("Creating %s at %s", "attestFsmCtx.EnterEventLoop",
-		agentlog.GetMyStack())
 	go ctx.attestCtx.attestFsmCtx.EnterEventLoop()
 	zattest.Kickstart(ctx.attestCtx.attestFsmCtx)
 	return nil

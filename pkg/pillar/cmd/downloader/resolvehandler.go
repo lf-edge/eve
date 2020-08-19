@@ -4,7 +4,6 @@
 package downloader
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -35,8 +34,6 @@ func (r *resolveHandler) modify(ctxArg interface{},
 	if !ok {
 		h1 := make(chan Notify, 1)
 		r.handlers[key] = h1
-		log.Infof("Creating %s at %s", "runResolveHandler",
-			agentlog.GetMyStack())
 		go runResolveHandler(ctx, key, h1)
 		h = h1
 	}

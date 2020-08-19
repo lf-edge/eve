@@ -227,7 +227,6 @@ func Run(ps *pubsub.PubSub) {
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
-	log.Infof("Creating %s at %s", "triggerBinkOnDevice", agentlog.GetMyStack())
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc, ledName)
 
 	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{

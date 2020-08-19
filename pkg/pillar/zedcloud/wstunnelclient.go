@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -70,7 +69,6 @@ func InitializeTunnelClient(serverNameAndPort string, localRelay string) *WSTunn
 // Start triggers workflow to establish the websocket
 // session with remote tunnel server
 func (t *WSTunnelClient) Start() {
-	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		t.startSession()
 		<-make(chan struct{}, 0)
@@ -155,7 +153,6 @@ func (t *WSTunnelClient) startSession() error {
 	t.retryOnFailCount = 0
 
 	// Keep opening websocket connections to tunnel requests
-	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		log.Debug("Looping through websocket connection requests")
 		for {
@@ -217,7 +214,6 @@ func (t *WSTunnelClient) Stop() {
 // a goroutine to relay the request locally and optionally
 // return the result if any.
 func (wsc *WSConnection) handleRequests() {
-	log.Infof("Creating %s at %s", "wsc.pinger", agentlog.GetMyStack())
 	go wsc.pinger()
 	for {
 		wsc.ws.SetReadDeadline(time.Time{}) // separate ping-pong routine does timeout
@@ -261,7 +257,6 @@ func (wsc *WSConnection) handleRequests() {
 
 	}
 	// delay a few seconds to allow for writes to drain and then force-close the socket
-	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		log.Info("Closing websocket connection")
 		time.Sleep(5 * time.Second)
@@ -326,8 +321,6 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 	host := wsc.tun.LocalRelayServer
 	if wsc.localConnection == nil {
 		wsc.dialLocalConnection()
-		log.Infof("Creating %s at %s", "wsc.ProcessResponse",
-			agentlog.GetMyStack())
 		go wsc.processResponses()
 	}
 

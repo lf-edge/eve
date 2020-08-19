@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	log "github.com/sirupsen/logrus"
@@ -108,7 +107,6 @@ func (s *Publisher) Start() error {
 	if s.listener == nil {
 		return nil
 	}
-	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func(s *Publisher) {
 		instance := 0
 		for {
@@ -117,7 +115,6 @@ func (s *Publisher) Start() error {
 				log.Errorf("publisher(%s) failed %s\n", s.name, err)
 				continue
 			}
-			log.Infof("Creating %s at %s", "s.serveConnection", agentlog.GetMyStack())
 			go s.serveConnection(c, instance)
 			instance++
 		}
