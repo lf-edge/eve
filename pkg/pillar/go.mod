@@ -28,7 +28,7 @@ require (
 	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
 	github.com/google/go-cmp v0.4.0
 	github.com/google/go-containerregistry v0.0.0-20200430153450-5cbd060f5c92
-	github.com/google/go-tpm v0.1.2-0.20190725015402-ae6dd98980d4
+	github.com/google/go-tpm v0.3.0
 	github.com/google/gopacket v1.1.17
 	github.com/gorilla/websocket v1.4.0
 	github.com/jackwakefield/gopac v1.0.2
@@ -66,9 +66,6 @@ replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl 
 replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8
 
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
-
-//Till we upstream ECDH TPM APIs
-replace github.com/google/go-tpm => github.com/cshari-zededa/go-tpm v0.0.0-20200701063353-bf25d5482637
 
 // because containerd
 replace github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154

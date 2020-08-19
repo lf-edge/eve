@@ -31,7 +31,7 @@ import (
 type NVPublic struct {
 	NVIndex    tpmutil.Handle
 	NameAlg    Algorithm
-	Attributes KeyProp
+	Attributes NVAttr
 	AuthPolicy tpmutil.U16Bytes
 	DataSize   uint16
 }
@@ -124,11 +124,11 @@ func (p Public) Name() (Name, error) {
 	if err != nil {
 		return Name{}, err
 	}
-	hash, err := p.NameAlg.HashConstructor()
+	hash, err := p.NameAlg.Hash()
 	if err != nil {
 		return Name{}, err
 	}
-	nameHash := hash()
+	nameHash := hash.New()
 	nameHash.Write(pubEncoded)
 	return Name{
 		Digest: &HashValue{
@@ -645,6 +645,13 @@ func DecodeAttestationData(in []byte) (*AttestationData, error) {
 	if err := tpmutil.UnpackBuf(buf, &ad.Magic, &ad.Type); err != nil {
 		return nil, fmt.Errorf("decoding Magic/Type: %v", err)
 	}
+	// All attestation structures have the magic prefix
+	// TPMS_GENERATED_VALUE to symbolize they were created by
+	// the TPM when signed with an AK.
+	if ad.Magic != 0xff544347 {
+		return nil, fmt.Errorf("incorrect magic value: %x", ad.Magic)
+	}
+
 	n, err := DecodeName(buf)
 	if err != nil {
 		return nil, fmt.Errorf("decoding QualifiedSigner: %v", err)
@@ -958,11 +965,11 @@ func decodeHashValue(in *bytes.Buffer) (*HashValue, error) {
 	if err := tpmutil.UnpackBuf(in, &hv.Alg); err != nil {
 		return nil, fmt.Errorf("decoding Alg: %v", err)
 	}
-	hfn, ok := hashConstructors[hv.Alg]
+	hfn, ok := hashMapping[hv.Alg]
 	if !ok {
-		return nil, fmt.Errorf("unsupported hash algorithm type 0x%x", hv.Alg)
+		return nil, fmt.Errorf("hash algorithm not supported: 0x%x", hv.Alg)
 	}
-	hv.Value = make(tpmutil.U16Bytes, hfn().Size())
+	hv.Value = make(tpmutil.U16Bytes, hfn.Size())
 	if _, err := in.Read(hv.Value); err != nil {
 		return nil, fmt.Errorf("decoding Value: %v", err)
 	}
@@ -1001,16 +1008,8 @@ type TaggedProperty struct {
 // information.
 type Ticket struct {
 	Type      tpmutil.Tag
-	Hierarchy uint32
+	Hierarchy tpmutil.Handle
 	Digest    tpmutil.U16Bytes
-}
-
-func decodeTicket(in *bytes.Buffer) (*Ticket, error) {
-	var t Ticket
-	if err := tpmutil.UnpackBuf(in, &t.Type, &t.Hierarchy, &t.Digest); err != nil {
-		return nil, fmt.Errorf("decoding Type, Hierarchy, Digest: %v", err)
-	}
-	return &t, nil
 }
 
 // AuthCommand represents a TPMS_AUTH_COMMAND. This structure encapsulates parameters
@@ -1020,4 +1019,12 @@ type AuthCommand struct {
 	Nonce      tpmutil.U16Bytes
 	Attributes SessionAttributes
 	Auth       tpmutil.U16Bytes
+}
+
+// TPMLDigest represents the TPML_Digest structure
+// It is used to convey a list of digest values.
+//This type is used in TPM2_PolicyOR() and in TPM2_PCR_Read()
+type TPMLDigest struct {
+	Count   uint32
+	Digests []tpmutil.U16Bytes
 }
