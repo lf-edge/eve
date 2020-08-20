@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io/ioutil"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -35,25 +36,37 @@ func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
+	//Follwing logic is derived from steps in
+	//https://golang.org/src/crypto/tls/tls.go:X509KeyPair()
 	var keyDERBlock *pem.Block
-	keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
-	if keyDERBlock == nil {
-		return nil, errors.New("No valid private key found")
+	var skippedBlockTypes []string
+	for {
+		keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
+		if keyDERBlock == nil {
+			if len(skippedBlockTypes) == 0 {
+				return nil, errors.New("Failed to find any PEM data in key input")
+			}
+			if len(skippedBlockTypes) == 1 && skippedBlockTypes[0] == "CERTIFICATE" {
+				return nil, errors.New("Got a certificate instead of key")
+			}
+			return nil, errors.New("No PEM block found with type PRIVATE KEY")
+		}
+		if keyDERBlock.Type == "PRIVATE KEY" ||
+			strings.HasSuffix(keyDERBlock.Type, "EC PRIVATE KEY") {
+			break
+		}
+		skippedBlockTypes = append(skippedBlockTypes, keyDERBlock.Type)
 	}
-	//Expect it to be "EC PRIVATE KEY" format
-	privateKey, err := x509.ParseECPrivateKey(keyDERBlock.Bytes)
-	if err == nil {
-		return privateKey, nil
-	}
-	//Try "PRIVATE KEY" format, as a fallback
-	parsedKey, err := x509.ParsePKCS8PrivateKey(keyDERBlock.Bytes)
-	if err == nil {
+	if key, err := x509.ParsePKCS8PrivateKey(keyDERBlock.Bytes); err == nil {
 		var pkey *ecdsa.PrivateKey
 		var ok bool
-		if pkey, ok = parsedKey.(*ecdsa.PrivateKey); !ok {
+		if pkey, ok = key.(*ecdsa.PrivateKey); !ok {
 			return nil, errors.New("Private key is not ecdsa type")
 		}
 		return pkey, nil
+	}
+	if key, err := x509.ParseECPrivateKey(keyDERBlock.Bytes); err == nil {
+		return key, nil
 	}
 	return nil, err
 }
