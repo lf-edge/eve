@@ -33,11 +33,7 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add ${ip}/${mask} dev $interface
-    if [ -n "$router" ] ; then
-      ip route add "${router%% *}" src "$ip" dev "$interface"
-    else
-      ip route add "${ip}"/"${mask}" dev "$interface"
-    fi
+    [ -n "$router" ] && ip route add "${router%% *}" src "$ip" dev "$interface"
 
     [ -n "$router" ] && ip route add "${router%% *}" src "$ip" dev "$interface" table "$TABLE"
     [ -n "$router" ] && ip route add default via "${router%% *}" table "$TABLE"

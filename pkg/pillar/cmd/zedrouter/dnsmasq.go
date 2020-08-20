@@ -176,10 +176,15 @@ func createDnsmasqConfiglet(
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
 	}
 	if netconf.Subnet.IP != nil {
-		// Network prefix "255.255.255.255" will force packets to go through
-		// dom0 virtual router that makes the packets pass through ACLs and flow log.
-		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
-			"255.255.255.255"))
+		if advertizeRouter {
+			// Network prefix "255.255.255.255" will force packets to go through
+			// dom0 virtual router that makes the packets pass through ACLs and flow log.
+			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
+				"255.255.255.255"))
+		} else {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
+				ipv4Netmask))
+		}
 	}
 	if advertizeRouter {
 		// IPv6 XXX needs to be handled in radvd
