@@ -180,8 +180,15 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 				CertificateChain: config.CertificateChain,
 			}
 			if lookupOrCreateBlobStatus(ctx, sv, config.ContentSha256) == nil {
+				// the blobType is binary unless we are dealing with OCI
+				// in reality, this is not determined by the *format* but by the source,
+				// i.e. an OCI registry may have other formats, no matter what the
+				// image format is. This will do for now, though.
 				blobType := types.BlobBinary
 				if config.Format == zconfig.Format_CONTAINER {
+					// when first creating the root, the type is unknown,
+					// but will be updated from the mediatype passed by the
+					// Content-Type http header
 					blobType = types.BlobUnknown
 				}
 				rootBlob := &types.BlobStatus{

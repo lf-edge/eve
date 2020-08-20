@@ -100,7 +100,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					Sha256:      status.ContentSha256,
 					Size:        status.MaxDownloadSize,
 					State:       types.INITIAL,
-					BlobType:    types.BlobUnknown,
+					BlobType:    types.BlobUnknown, // our initial type is unknown, but it will be set by the Content-Type http header
 				}
 				log.Infof("doUpdateContentTree: publishing new root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
@@ -172,19 +172,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			} else {
 				log.Infof("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
 				// if verified, check for any children and start them off
-				// resolve any unknown types and get manifests of index, or children of manifest
-				blobType, err := resolveBlobType(ctx, blob)
-				if blobType != blob.BlobType || err != nil {
-					blob.BlobType = blobType
-					publishBlobStatus(ctx, blob)
-					changed = true
-				}
-				if err != nil {
-					log.Infof("doUpdateContentTree(%s): error resolving blob type: %v", blob.Sha256, err)
-					blob.SetError(err.Error(), time.Now())
-					publishBlobStatus(ctx, blob)
-					changed = true
-				}
 				blobChildren := blobsNotInList(getBlobChildren(ctx, sv, blob), status.Blobs)
 				if len(blobChildren) > 0 {
 					log.Infof("doUpdateContentTree: adding %d children", len(blobChildren))
