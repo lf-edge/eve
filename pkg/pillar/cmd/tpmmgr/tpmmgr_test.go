@@ -41,6 +41,17 @@ AwEHoUQDQgAEnFLYeXVZ+SJniG0+QoqYRKDyEXx6Cs7+DyY+RcKQG16NsrkTCMXU
 -----END PRIVATE KEY-----
 `
 
+const ecdhKeyPemLegacy = `
+-----BEGIN EC PARAMETERS-----
+BggqhkjOPQMBBw==
+-----END EC PARAMETERS-----
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIMxnOmOgQvSj8WunVA9jh35PxI//5J4SwOejh+gkDIG2oAoGCCqGSM49
+AwEHoUQDQgAE2XOAHcLF+qfQf6vdd1KsGky6XlQQ62Srl9siwcTHvK1FChMJPpLD
+ZH/v/30uqPXQKtnUZLe+g/FThQ9Y3uDimw==
+-----END EC PRIVATE KEY-----
+`
+
 const attestCertPem = `
 -----BEGIN CERTIFICATE-----
 MIICDjCCAbOgAwIBAgIQYl4iR/oRi883qpeVSuD81zAKBggqhkjOPQQDAjBgMQsw
@@ -88,9 +99,10 @@ xYIAQpVm4p2mQ3IE8hf6Tw1Q5iDajik=
 -----END CERTIFICATE-----
 `
 const (
-	testEcdhCertFile  = "test_ecdh.cert.pem"
-	testEcdhKeyFile   = "test_ecdh.key.pem"
-	testDeviceKeyFile = "test_device.key.pem"
+	testEcdhCertFile      = "test_ecdh.cert.pem"
+	testEcdhKeyFile       = "test_ecdh.key.pem"
+	testEcdhKeyLegacyFile = "test_ecdh_legacy_key.pem"
+	testDeviceKeyFile     = "test_device.key.pem"
 )
 
 //Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys
@@ -131,11 +143,21 @@ func TestGetPrivateKeyFromFile(t *testing.T) {
 	}
 	defer os.Remove(testDeviceKeyFile)
 
+	err = ioutil.WriteFile(testEcdhKeyLegacyFile, []byte(ecdhKeyPemLegacy), 0644)
+	if err != nil {
+		t.Errorf("Failed to create test ecdh legacy key file: %v", err)
+	}
+	defer os.Remove(testEcdhKeyLegacyFile)
+
 	if _, err = etpm.GetPrivateKeyFromFile(testEcdhKeyFile); err != nil {
 		t.Errorf("%v", err)
 	}
 
 	if _, err = etpm.GetPrivateKeyFromFile(testDeviceKeyFile); err != nil {
+		t.Errorf("%v", err)
+	}
+
+	if _, err = etpm.GetPrivateKeyFromFile(testEcdhKeyLegacyFile); err != nil {
 		t.Errorf("%v", err)
 	}
 }

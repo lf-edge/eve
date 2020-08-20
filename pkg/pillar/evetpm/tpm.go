@@ -81,8 +81,8 @@ func (s TpmPrivateKey) Public() crypto.PublicKey {
 }
 
 //Sign implements cryto.PrivateKey interface
-func (s TpmPrivateKey) Sign(log *base.LogObject, r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	R, S, err := TpmSign(log, digest)
+func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	R, S, err := TpmSign(digest)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func ReadOwnerCrdl() (string, error) {
 
 //TpmSign is used by external packages to get a digest signed by
 //device key in TPM
-func TpmSign(log *base.LogObject, digest []byte) (*big.Int, *big.Int, error) {
+func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -114,7 +114,7 @@ func TpmSign(log *base.LogObject, digest []byte) (*big.Int, *big.Int, error) {
 
 	tpmOwnerPasswd, err := ReadOwnerCrdl()
 	if err != nil {
-		log.Fatalf("Error in fetching TPM credentials: %v", err)
+		return nil, nil, fmt.Errorf("Error in fetching TPM credentials: %v", err)
 	}
 
 	//XXX This "32" should really come from Hash algo used.
@@ -129,8 +129,7 @@ func TpmSign(log *base.LogObject, digest []byte) (*big.Int, *big.Int, error) {
 	sig, err := tpm2.Sign(rw, TpmDeviceKeyHdl,
 		tpmOwnerPasswd, digest, nil, scheme)
 	if err != nil {
-		log.Errorln("Sign using TPM failed")
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("Sign using TPM failed with error %v", err)
 	}
 	return sig.ECC.R, sig.ECC.S, nil
 }
