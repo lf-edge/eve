@@ -69,9 +69,12 @@ then
 elif test "$dhcp"
 then
     ip link set dev lo up
+    TABLE=200
     for i in $(cd /sys/class/net && echo eth*); do
         ip link set dev "$i" up
+        export TABLE
         udhcpc --interface="$i" --script=/udhcpc_script.sh
+        TABLE=$((TABLE + 1))
     done
 fi
 
