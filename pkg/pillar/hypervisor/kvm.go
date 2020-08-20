@@ -402,7 +402,12 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	tmplCtx.Memory = (config.Memory + 1023) / 1024
 	tmplCtx.DisplayName = domainName
 	if config.VirtualizationMode == types.FML || config.VirtualizationMode == types.PV {
-		tmplCtx.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+		// FIXME XXX hack to reuce memory pressure of UEFI when we run containers on x86
+		if config.IsContainer && runtime.GOARCH == "amd64" {
+			tmplCtx.BootLoader = "/usr/lib/xen/boot/seabios.bin"
+		} else {
+			tmplCtx.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+		}
 	} else {
 		tmplCtx.BootLoader = ""
 	}
