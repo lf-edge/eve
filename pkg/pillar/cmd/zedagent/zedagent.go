@@ -134,7 +134,7 @@ var flowQ *list.List
 var log *base.LogObject
 var zedcloudCtx *zedcloud.ZedCloudContext
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
@@ -156,28 +156,28 @@ func Run(ps *pubsub.PubSub) {
 	validate := *validatePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	if validate && parse == "" {
 		fmt.Printf("Setting -V requires -p\n")
-		os.Exit(1)
+		return 1
 	}
 	if parse != "" {
 		res, config := readValidateConfig(
 			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
 		if !res {
 			fmt.Printf("Failed to parse %s\n", parse)
-			os.Exit(1)
+			return 1
 		}
 		fmt.Printf("parsed proto <%v>\n", config)
 		if validate {
 			valid := validateConfigUTF8(config)
 			if !valid {
 				fmt.Printf("Found some invalid UTF-8\n")
-				os.Exit(1)
+				return 1
 			}
 		}
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)

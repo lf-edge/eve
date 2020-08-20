@@ -59,7 +59,7 @@ func hwFp(log *base.LogObject, outputFile string) {
 	enc.Encode(infos)
 }
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	pid := os.Getpid()
 	basename := filepath.Base(os.Args[0])
 	log := base.NewSourceLogObject(basename, pid)
@@ -71,11 +71,11 @@ func Run(ps *pubsub.PubSub) {
 	outputFile := *outputFilePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	if *hwPtr {
 		hwFp(log, outputFile)
-		return
+		return 0
 	}
 	model := hardware.GetHardwareModelNoOverride(log)
 	if *cPtr {
@@ -92,4 +92,5 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatal("WriteFile", err, outputFile)
 		}
 	}
+	return 0
 }

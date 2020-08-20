@@ -83,7 +83,7 @@ func (ctx *nimContext) processArgs() {
 }
 
 // Run - Main function - invoked from zedbox.go
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	nimCtx := nimContext{
 		fallbackPortMap:  make(map[string]bool),
 		filteredFallback: make(map[string]bool),
@@ -96,7 +96,7 @@ func Run(ps *pubsub.PubSub) {
 	nimCtx.processArgs()
 	if nimCtx.version {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)

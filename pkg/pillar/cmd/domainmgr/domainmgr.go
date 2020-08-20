@@ -110,7 +110,7 @@ var debugOverride bool          // From command line arg
 var hyper hypervisor.Hypervisor // Current hypervisor
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	handlersInit()
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
@@ -127,7 +127,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)

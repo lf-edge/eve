@@ -30,7 +30,7 @@ import (
 
 var debugOverride bool // From command line arg
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	agentNamePtr := flag.String("a", "zedrouter",
 		"Agent name")
 	agentScopePtr := flag.String("s", "", "agentScope")
@@ -51,7 +51,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if *persistentPtr {
 		testPersistent(ps, agentName, agentScope, topic)
-		return
+		return 0
 	}
 	format := *formatPtr
 

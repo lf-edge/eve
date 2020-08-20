@@ -79,7 +79,7 @@ var outfile = os.Stdout
 var nilUUID uuid.UUID
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
@@ -101,7 +101,7 @@ func Run(ps *pubsub.PubSub) {
 	outputFile := *outputFilePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)
@@ -188,7 +188,7 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		fmt.Fprintf(outfile, "ERROR: no device cert and no onboarding cert at %v\n",
 			time.Now().Format(time.RFC3339Nano))
-		os.Exit(1)
+		return 1
 	}
 	ctx.zedcloudCtx = &zedcloudCtx
 
@@ -295,6 +295,7 @@ func Run(ps *pubsub.PubSub) {
 			ctx.usingOnboardCert = false
 		}
 	}
+	return 0
 }
 
 func fileExists(filename string) bool {

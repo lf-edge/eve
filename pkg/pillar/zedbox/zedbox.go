@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,7 +46,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -55,59 +55,78 @@ const (
 	warningTime      = 40 * time.Second
 )
 
+type zedboxInline uint8
+
+const (
+	inlineNone          zedboxInline = iota
+	inlineUnlessService              // Unless "runAsService" in args
+	inlineAlways
+)
+
+// The function returns an exit value
+type entrypoint struct {
+	f      func(*pubsub.PubSub) int
+	inline zedboxInline
+}
+
 var (
-	debugOverride = false
-	//Version Set from Makefile
-	Version     = "No version specified"
-	entrypoints = map[string]func(*pubsub.PubSub){
-		"client":           client.Run,
-		"command":          command.Run,
-		"diag":             diag.Run,
-		"domainmgr":        domainmgr.Run,
-		"downloader":       downloader.Run,
-		"executor":         executor.Run,
-		"hardwaremodel":    hardwaremodel.Run,
-		"ledmanager":       ledmanager.Run,
-		"logmanager":       logmanager.Run,
-		"nim":              nim.Run,
-		"nodeagent":        nodeagent.Run,
-		"verifier":         verifier.Run,
-		"volumemgr":        volumemgr.Run,
-		"waitforaddr":      waitforaddr.Run,
-		"zedagent":         zedagent.Run,
-		"zedmanager":       zedmanager.Run,
-		"zedrouter":        zedrouter.Run,
-		"ipcmonitor":       ipcmonitor.Run,
-		"baseosmgr":        baseosmgr.Run,
-		"wstunnelclient":   wstunnelclient.Run,
-		"conntrack":        conntrack.Run,
-		"tpmmgr":           tpmmgr.Run,
-		"vaultmgr":         vaultmgr.Run,
-		"upgradeconverter": upgradeconverter.Run,
+	entrypoints = map[string]entrypoint{
+		"client":           {f: client.Run, inline: inlineAlways},
+		"command":          {f: command.Run},
+		"diag":             {f: diag.Run},
+		"domainmgr":        {f: domainmgr.Run},
+		"downloader":       {f: downloader.Run},
+		"executor":         {f: executor.Run},
+		"hardwaremodel":    {f: hardwaremodel.Run, inline: inlineAlways},
+		"ledmanager":       {f: ledmanager.Run},
+		"logmanager":       {f: logmanager.Run},
+		"nim":              {f: nim.Run},
+		"nodeagent":        {f: nodeagent.Run},
+		"verifier":         {f: verifier.Run},
+		"volumemgr":        {f: volumemgr.Run},
+		"waitforaddr":      {f: waitforaddr.Run, inline: inlineAlways},
+		"zedagent":         {f: zedagent.Run},
+		"zedmanager":       {f: zedmanager.Run},
+		"zedrouter":        {f: zedrouter.Run},
+		"ipcmonitor":       {f: ipcmonitor.Run, inline: inlineAlways},
+		"baseosmgr":        {f: baseosmgr.Run},
+		"wstunnelclient":   {f: wstunnelclient.Run},
+		"conntrack":        {f: conntrack.Run, inline: inlineAlways},
+		"tpmmgr":           {f: tpmmgr.Run, inline: inlineUnlessService},
+		"vaultmgr":         {f: vaultmgr.Run, inline: inlineUnlessService},
+		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
 	}
 	log *base.LogObject
 )
 
 func main() {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	debugOverride = *debugPtr
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-
-	log = agentlog.Init(agentName)
-
-	if debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
-	} else {
-		logrus.SetLevel(logrus.InfoLevel)
-	}
-
 	// Check what service we are intending to start.
 	basename := filepath.Base(os.Args[0])
-	if _, ok := entrypoints[basename]; ok {
+	if sep, ok := entrypoints[basename]; ok {
+		log = agentlog.Init(basename)
+		inline := false
+		if sep.inline == inlineAlways {
+			inline = true
+		} else if sep.inline == inlineUnlessService {
+			inline = true
+			for _, arg := range os.Args {
+				if arg == "runAsService" {
+					log.Infof("XXX found runAsService for %s",
+						basename)
+					inline = false
+					break
+				}
+			}
+		}
+		if inline {
+			log.Infof("Running inline command %s args: %+v",
+				basename, os.Args[1:])
+			pid := os.Getpid()
+			logObj := base.NewSourceLogObject(basename, pid)
+			ps := pubsub.New(&socketdriver.SocketDriver{Log: logObj}, logObj)
+			retval := sep.f(ps)
+			os.Exit(retval)
+		}
 		// If its a known child service, the notify zedbox binary to start that
 		sericeInitStatus := types.ServiceInitStatus{
 			ServiceName: basename,
@@ -123,6 +142,8 @@ func main() {
 		fmt.Printf("zedbox: Unknown package: %s\n", basename)
 		os.Exit(1)
 	}
+
+	log = agentlog.Init(agentName)
 
 	//Start zedbox
 	var sktData string
@@ -161,8 +182,7 @@ func main() {
 				go startAgentAndDone(serviceInitStatus.ServiceName, srvPs)
 				log.Infof("zedbox: Started %s", serviceInitStatus.ServiceName)
 			} else {
-				fmt.Printf("zedbox: Unknown package: %s\n", serviceInitStatus.ServiceName)
-				os.Exit(1)
+				log.Fatalf("zedbox: Unknown package: %s", serviceInitStatus.ServiceName)
 			}
 		case <-stillRunning.C:
 			ps.StillRunning(agentName, warningTime, errorTime)
@@ -238,6 +258,7 @@ func publish(agent string, data interface{}) error {
 		log.Errorf(err.Error())
 		return err
 	}
+	defer conn.Close()
 
 	if _, err := conn.Write(byteData); err != nil {
 		err := fmt.Errorf("publish(%s): exception while writing data to the socket. %s",
@@ -260,18 +281,22 @@ func serveConnection(conn net.Conn, retChan chan string) {
 		retChan <- string(buf[:count])
 
 	}
+	conn.Close()
 }
 
 func getSocketName(agent string, topic interface{}) string {
 	return path.Join(agentRunBasePath, agent, fmt.Sprintf("%s.sock", pubsub.TypeToName(topic)))
 }
 
-//startAgentAndDone start the given agent. Touches a <agentName>.done file once the agent returns.
+//startAgentAndDone start the given agent. Writes the return/exit value to
+// <agentName>.done file should the agent return.
 func startAgentAndDone(agentName string, srvPs *pubsub.PubSub) {
 	serviceEntrypoint, _ := entrypoints[agentName]
-	serviceEntrypoint(srvPs)
+	retval := serviceEntrypoint.f(srvPs)
 
-	if err := ioutil.WriteFile(fmt.Sprintf("%s/%s.done", agentRunBasePath, agentName), make([]byte, 0), 0700); err != nil {
-		log.Fatalf("Error creating done_file: %v", err)
+	ret := strconv.Itoa(retval)
+	if err := ioutil.WriteFile(fmt.Sprintf("/var/run/%s.done", agentName),
+		[]byte(ret), 0700); err != nil {
+		log.Fatalf("Error write done file: %v", err)
 	}
 }

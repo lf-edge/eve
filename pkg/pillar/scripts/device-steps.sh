@@ -5,10 +5,7 @@
 
 WATCHDOG_PID=/run/watchdog/pid
 WATCHDOG_FILE=/run/watchdog/file
-VAULT_DONE_FILE=/run/vaultmgr.done
-TPM_DONE_FILE=/run/tpmmgr.done
 CONFIGDIR=/config
-UUID_FILE=$CONFIGDIR/uuid
 PERSISTDIR=/persist
 PERSIST_CERTS=$PERSISTDIR/certs
 PERSIST_AGENT_DEBUG=$PERSISTDIR/agentdebug
@@ -59,18 +56,6 @@ wait_for_touch() {
     else
         echo "$(date -Ins -u) waited $waited for $f"
     fi
-}
-
-#waits for an agent's done file ($1)
-wait_for_done() {
-    f=/var/run/"$1".done
-    waited=0
-    while [ ! -f "$f" ]; do
-            echo "$(date -Ins -u) waiting for $f"
-            sleep 3
-            waited=$((waited + 3))
-    done
-    echo "$(date -Ins -u) waited $waited for $f"
 }
 
 mkdir -p $ZTMPDIR
@@ -148,9 +133,7 @@ touch "$WATCHDOG_PID/zedbox.pid" "$WATCHDOG_FILE/zedbox.touch"
 
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
 #It is a device with TPM, enable disk encryption
-    $BINDIR/vaultmgr setupVaults &
-    wait_for_done vaultmgr
-    if [ ! -f "$VAULT_DONE_FILE" ] ; then
+    if ! $BINDIR/vaultmgr setupVaults; then
         echo "$(date -Ins -u) device-steps: vaultmgr setupVaults failed"
     fi
 else
@@ -199,8 +182,7 @@ fi
 
 # Run upgradeconverter
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter"
-$BINDIR/upgradeconverter &
-wait_for_done upgradeconverter
+$BINDIR/upgradeconverter
 echo "$(date -Ins -u) device-steps: upgradeconverter Completed"
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
@@ -395,16 +377,12 @@ fi
 
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
     echo "$(date -Ins -u) device-steps: TPM device, creating additional security certificates"
-    $BINDIR/tpmmgr createCerts
-    wait_for_done tpmmgr
-    if [ ! -f "$TPM_DONE_FILE" ] ; then
+    if ! $BINDIR/tpmmgr createCerts; then
         echo "$(date -Ins -u) device-steps: createCerts failed"
     fi
 else
     echo "$(date -Ins -u) device-steps: NOT TPM device, creating additional security certificates"
-    $BINDIR/tpmmgr createSoftCerts
-    wait_for_done tpmmgr
-    if [ ! -f "$TPM_DONE_FILE" ] ; then
+    if ! $BINDIR/tpmmgr createSoftCerts; then
         echo "$(date -Ins -u) device-steps: createSoftCerts failed"
     fi
 fi
@@ -426,9 +404,7 @@ if [ $SELF_REGISTER = 1 ]; then
         exit 1
     fi
     echo "$(date -Ins -u) Starting client selfRegister getUuid"
-    $BINDIR/client selfRegister getUuid
-    wait_for_done client
-    if [ ! -f "$UUID_FILE" ] ; then
+    if ! $BINDIR/client selfRegister getUuid; then
         # XXX $? is always zero
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
@@ -456,7 +432,6 @@ else
     echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
     echo "$(date -Ins -u) Starting client getUuid"
     $BINDIR/client getUuid
-    wait_for_done client
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
         $BINDIR/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
@@ -464,7 +439,6 @@ else
     fi
 
     uuid=$(cat $CONFIGDIR/uuid)
-    echo "$(date -Ins -u) Client uuid $uuid"
     /bin/hostname "$uuid"
     /bin/hostname >/etc/hostname
 

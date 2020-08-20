@@ -91,7 +91,7 @@ var debug = false
 var debugOverride bool // From command line arg
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
@@ -104,7 +104,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)
@@ -408,7 +408,7 @@ func Run(ps *pubsub.PubSub) {
 	// First wait for restarted from zedmanager to
 	// reduce the number of LISP-RESTARTs
 	for !subAppNetworkConfig.Restarted() {
-		log.Infof("Waiting for zedmanager to report restarted\n")
+		log.Infof("Waiting for zedrouter to report restarted")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -441,7 +441,7 @@ func Run(ps *pubsub.PubSub) {
 				warningTime, errorTime)
 		}
 	}
-	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
+	log.Infof("Zedrouter has restarted. Entering main Select loop")
 
 	for {
 		select {

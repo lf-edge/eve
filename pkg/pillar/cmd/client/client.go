@@ -84,7 +84,7 @@ var (
 	log               *base.LogObject
 )
 
-func Run(ps *pubsub.PubSub) { //nolint:gocyclo
+func Run(ps *pubsub.PubSub) int { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
@@ -104,7 +104,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// Sending json log format to stdout
 	// XXX Make logrus record a noticable global source
@@ -338,7 +338,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 			if maxRetries != 0 && retryCount > maxRetries {
 				log.Errorf("Exceeded %d retries",
 					maxRetries)
-				os.Exit(1)
+				return 1
 			}
 
 		case <-t1.C:
@@ -443,6 +443,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	if err != nil {
 		log.Errorln(err)
 	}
+	return 0
 }
 
 // Post something without a return type.
