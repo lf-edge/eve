@@ -25,8 +25,6 @@ case "$1" in
     ip link set $interface up
     # remove any stored config info for this $interface
     rm -f $CFG
-    # remove previous dns
-    rm -f $RESOLV_CONF
     ;;
   bound)
     echo "udhcpc op bound interface ${interface}"
@@ -35,7 +33,18 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add ${ip}/${mask} dev $interface
-    [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
+    if [ -n "$router" ] ; then
+      ip route add "${router%% *}" src "$ip" dev "$interface"
+    else
+      ip route add "${ip}"/"${mask}" dev "$interface"
+    fi
+
+    [ -n "$router" ] && ip route add "${router%% *}" src "$ip" dev "$interface" table "$TABLE"
+    [ -n "$router" ] && ip route add default via "${router%% *}" table "$TABLE"
+    [ -n "$router" ] && ip rule add from "${ip}"/32 table "$TABLE"
+    [ -n "$router" ] && ip rule add to "${ip}"/32 table "$TABLE"
+
+    [ -n "$router" ] && ip route add default via "${router%% *}" dev "$interface" metric "$TABLE"
     # setup dns
     if [ "$interface" == "$PEERDNS_IF" ] ; then
       [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
@@ -66,7 +75,18 @@ case "$1" in
     if [ -n "$REDO_NET" ] ; then
       ip addr flush dev $interface
       ip addr add ${ip}/${mask} dev $interface
-      [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
+      if [ -n "$router" ] ; then
+        ip route add "${router%% *}" src "$ip" dev "$interface"
+      else
+        ip route add "${ip}"/"${mask}" dev "$interface"
+      fi
+
+      [ -n "$router" ] && ip route add "${router%% *}" src "$ip" dev "$interface" table "$TABLE"
+      [ -n "$router" ] && ip route add default via "${router%% *}" table "$TABLE"
+      [ -n "$router" ] && ip rule add from "${ip}"/32 table "$TABLE"
+      [ -n "$router" ] && ip rule add to "${ip}"/32 table "$TABLE"
+
+      [ -n "$router" ] && ip route add default via "${router%% *}" dev "$interface" metric "$TABLE"
     fi
     if [ -n "$REDO_DNS" -a "$interface" == "$PEERDNS_IF" ] ; then
       # remove previous dns

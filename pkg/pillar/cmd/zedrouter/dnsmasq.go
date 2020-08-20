@@ -175,32 +175,7 @@ func createDnsmasqConfiglet(
 	if netconf.Subnet.IP != nil {
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
 	}
-	// Special handling for IPv4 EID case to avoid ARP for EIDs.
-	// We add a router for the BridgeIPAddr plus a subnet route
-	// for the EID subnet, and no default route by clearing advertizeRouter
-	// above. We configure an all ones netmask. In addition, since the
-	// default broadcast address ends up being the bridgeIPAddr, we force
-	// a bogus one as the first .0 address in the subnet.
-	//
-	if Ipv4Eid {
-		file.WriteString("dhcp-option=option:netmask,255.255.255.255\n")
-		// Onlink aka ARPing route for our IP
-		route1 := fmt.Sprintf("%s/32,0.0.0.0", bridgeIPAddr)
-		var route2 string
-		var broadcast string
-		if netconf.Subnet.IP != nil {
-			route2 = fmt.Sprintf(",%s,%s", netconf.Subnet.String(),
-				bridgeIPAddr)
-			broadcast = netconf.Subnet.IP.String()
-		}
-		file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s%s\n",
-			route1, route2))
-		// Broadcast address option
-		if broadcast != "" {
-			file.WriteString(fmt.Sprintf("dhcp-option=28,%s\n",
-				broadcast))
-		}
-	} else if netconf.Subnet.IP != nil {
+	if netconf.Subnet.IP != nil {
 		// Network prefix "255.255.255.255" will force packets to go through
 		// dom0 virtual router that makes the packets pass through ACLs and flow log.
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
@@ -211,11 +186,18 @@ func createDnsmasqConfiglet(
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
 				router))
+			file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",
+				router, "0.0.0.0",
+				"0.0.0.0/0", router,
+				netconf.Subnet.String(), router))
 		}
 	} else {
 		log.Infof("createDnsmasqConfiglet: no router\n")
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+			file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s\n",
+				router, "0.0.0.0",
+				netconf.Subnet.String(), router))
 		}
 		if !advertizeDns {
 			// Handle isolated network by making sure
