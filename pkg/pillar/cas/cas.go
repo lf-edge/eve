@@ -31,6 +31,10 @@ type CAS interface {
 	GetBlobInfo(blobHash string) (*BlobInfo, error)
 	//ListBlobInfo: returns list of BlobInfo for all the blob present in CAS
 	ListBlobInfo() ([]*BlobInfo, error)
+	// ListBlobsMediaTypes get a map of all blobs and their media types.
+	// If a blob does not have a media type, it is not returned here.
+	// If you want *all* blobs, whether or not it has a type, use ListBlobInfo
+	ListBlobsMediaTypes() (map[string]string, error)
 	// IngestBlob: parses the given one or more `blobs` (BlobStatus) and for each blob reads the blob data from
 	// BlobStatus.Path and ingests it into CAS's blob store.
 	// Returns a list of loaded BlobStatus and an error is thrown if the read blob's hash does not match with the

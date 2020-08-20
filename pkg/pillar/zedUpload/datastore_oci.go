@@ -38,11 +38,12 @@ func (ep *OCITransportMethod) Action(req *DronaRequest) error {
 	var size int64
 	var list []string
 	var contentLength int64
-	var sha256 string
+	var sha256, contentType string
 
 	switch req.operation {
 	case SyncOpDownload:
-		size, err = ep.processDownload(req)
+		size, contentType, err = ep.processDownload(req)
+		req.contentType = contentType
 	case SyncOpUpload:
 		size, err = ep.processUpload(req)
 	case SyncOpDelete:
@@ -113,13 +114,14 @@ func (ep *OCITransportMethod) processUpload(req *DronaRequest) (int64, error) {
 }
 
 // processDownload Artifact download from OCI registry
-func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) {
+func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, string, error) {
 	var (
-		err  error
-		size int64
+		err         error
+		size        int64
+		contentType string
 	)
 	if ep.registry == "" {
-		return size, fmt.Errorf("cannot download from blank registry")
+		return size, "", fmt.Errorf("cannot download from blank registry")
 	}
 	prgChan := make(ociutil.NotifChan)
 	defer close(prgChan)
@@ -142,9 +144,9 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) 
 	}
 
 	// Pull down the blob as is and save it to a file named for the hash
-	size, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256, req.objloc, ep.uname, ep.apiKey, req.sizelimit, ep.hClient, prgChan)
+	size, contentType, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256, req.objloc, ep.uname, ep.apiKey, req.sizelimit, ep.hClient, prgChan)
 	// zedUpload's job is to download a blob from an OCI registry. Done.
-	return size, err
+	return size, contentType, err
 }
 
 // processDelete Artifact delete from OCI registry

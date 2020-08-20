@@ -114,6 +114,7 @@ type DownloaderStatus struct {
 	CurrentSize      int64   // current total downloaded size as reported by the downloader
 	Progress         uint    // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
 	ModTime          time.Time
+	ContentType      string // content-type header, if provided
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RetryCount int

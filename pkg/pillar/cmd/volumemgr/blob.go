@@ -5,12 +5,9 @@ package volumemgr
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -94,6 +91,10 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 	case types.DOWNLOADING:
 		// Nothing to do
 	case types.DOWNLOADED:
+		// save the blob type
+		if setBlobTypeFromContentType(blob, ds.ContentType) {
+			changed = true
+		}
 		// signal verifier to start if it hasn't already; add RefCount
 		if verifyBlob(ctx, sv, blob) {
 			changed = true
@@ -296,6 +297,7 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 						Sha256:      childHash,
 						Size:        uint64(child.Size),
 						State:       types.INITIAL,
+						BlobType:    resolveMediaType(child.MediaType),
 					})
 				}
 			}
@@ -304,76 +306,6 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 	default:
 		return nil
 	}
-}
-
-// resolveBlobType resolves what type of blob this is
-// returns if it updated it, including error
-func resolveBlobType(ctx *volumemgrContext, blob *types.BlobStatus) (types.BlobType, error) {
-	if blob.BlobType != types.BlobUnknown {
-		return blob.BlobType, nil
-	}
-	log.Infof("resolveBlobType(%s): is unknown, resolving type", blob.Sha256)
-	// figure out if it is anything we can process
-	var blobType types.BlobType
-	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
-	if blob.State == types.LOADED {
-		blobHash := checkAndCorrectBlobHash(blob.Sha256)
-		// try it as an index and as a straight manifest
-		reader, err := ctx.casClient.ReadBlob(blobHash)
-		if err != nil {
-			err = fmt.Errorf("resolveIndex(%s): Exception while reading blob: %v", blob.Sha256, err)
-			log.Errorf(err.Error())
-			return blob.BlobType, err
-		}
-		blobType, err = resolveBlobTypeFromReader(reader)
-		if err != nil {
-			err = fmt.Errorf("resolveBlobType(%s): exception while getting blobtype of blob from CAS. %s",
-				blob.Sha256, err.Error())
-			log.Errorf(err.Error())
-			return blob.BlobType, err
-		}
-	} else {
-		fileReader, err := os.Open(blob.Path)
-		if err != nil {
-			err = fmt.Errorf("resolveIndex(%s): failed to open file %s: %v", blob.Sha256, blob.Path, err)
-			log.Errorf(err.Error())
-			return blob.BlobType, err
-		}
-		blobType, err = resolveBlobTypeFromReader(fileReader)
-		if err != nil {
-			err = fmt.Errorf("resolveBlobType(%s): exception while getting blobtype of blob from %s. %s",
-				blob.Sha256, blob.Path, err.Error())
-			log.Errorf(err.Error())
-			return blob.BlobType, err
-		}
-		defer fileReader.Close()
-	}
-
-	return blobType, nil
-}
-
-func resolveBlobTypeFromReader(reader io.Reader) (types.BlobType, error) {
-	// we do not need to really parse it, just get the media type
-	desc, err := v1.ParseManifest(reader)
-	if err != nil {
-		if err != io.EOF {
-			return types.BlobBinary, nil
-		}
-		return types.BlobUnknown, err
-	}
-
-	var blobType types.BlobType
-
-	switch desc.MediaType {
-	case v1types.OCIImageIndex, v1types.DockerManifestList:
-		blobType = types.BlobIndex
-	case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
-		blobType = types.BlobManifest
-	default:
-		blobType = types.BlobBinary
-	}
-
-	return blobType, nil
 }
 
 // blobsNotInList find any in the first argument slice that are not in the second argument slice
@@ -550,18 +482,14 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 		log.Errorf("populateInitBlobStatus: exception while fetching existing blobs from CAS")
 		return
 	}
+	mediaMap, err := ctx.casClient.ListBlobsMediaTypes()
+	if err != nil {
+		log.Errorf("populateInitBlobStatus: exception while fetching existing media types from CAS")
+		return
+	}
 	newBlobStatus := make([]*types.BlobStatus, 0)
 	for _, blobInfo := range blobInfoList {
-		blobReader, err := ctx.casClient.ReadBlob(blobInfo.Digest)
-		if err != nil {
-			log.Errorf("populateInitBlobStatus: exception while reading blob %s from CAS: %s", blobInfo.Digest, err.Error())
-			continue
-		}
-		blobType, err := resolveBlobTypeFromReader(blobReader)
-		if err != nil {
-			log.Errorf("populateInitBlobStatus: exception while resolving blobType of %s: %s", blobInfo.Digest, err.Error())
-			continue
-		}
+		blobType := resolveMediaType(v1types.MediaType(mediaMap[blobInfo.Digest]))
 		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
 			log.Infof("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
@@ -579,6 +507,31 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 	if len(newBlobStatus) > 0 {
 		publishBlobStatus(ctx, newBlobStatus...)
 	}
+}
+
+// resolveMediaType convert the string of a mediaType into our enumerated types
+func resolveMediaType(contentType v1types.MediaType) types.BlobType {
+	var blobType types.BlobType
+	switch contentType {
+	case v1types.OCIImageIndex, v1types.DockerManifestList:
+		blobType = types.BlobIndex
+	case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
+		blobType = types.BlobManifest
+	default:
+		blobType = types.BlobBinary
+	}
+	return blobType
+}
+
+// setBlobTypeFromContentType set the blob type from the given content string
+func setBlobTypeFromContentType(blob *types.BlobStatus, contentType string) bool {
+	if blob.BlobType != types.BlobUnknown {
+		// unchanged; we only override for unknown types
+		return false
+	}
+
+	blob.BlobType = resolveMediaType(v1types.MediaType(contentType))
+	return true
 }
 
 //gcBlobStatus gc all blob object which doesn't have any reference

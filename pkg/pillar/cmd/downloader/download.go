@@ -12,11 +12,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
-// perform the actual download
+// download perform the actual download, given the necessary information.
+// Returns the content-type of the object downloaded, normally from the
+// Content-Type header, but subject to whatever the DronaRequest implementation
+// determined it is, empty string if not available; and the error, if any.
 func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	status Status, syncOp zedUpload.SyncOpType, downloadURL string,
 	auth *zedUpload.AuthInput, dpath, region string, maxsize uint64, ifname string,
-	ipSrc net.IP, filename, locFilename string) error {
+	ipSrc net.IP, filename, locFilename string) (string, error) {
 
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
@@ -35,7 +38,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s", err)
-		return err
+		return "", err
 	}
 	// check for proxies on the selected management port interface
 	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
@@ -57,7 +60,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
 		int64(maxsize), true, respChan)
 	if req == nil {
-		return errors.New("NewRequest failed")
+		return "", errors.New("NewRequest failed")
 	}
 
 	req.Post()
@@ -73,7 +76,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				errStr := fmt.Sprintf("Size '%v' provided in image config of '%s' is incorrect.\nDownload status (%v / %v). Aborting the download",
 					totalSize, resp.GetLocalName(), currentSize, totalSize)
 				log.Errorln(errStr)
-				return errors.New(errStr)
+				return "", errors.New(errStr)
 			}
 			status.Progress(progress, currentSize, totalSize)
 			continue
@@ -84,21 +87,21 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			_, err = resp.GetUpStatus()
 		}
 		if resp.IsError() {
-			return err
+			return "", err
 		}
 		asize, osize := resp.GetAsize(), resp.GetOsize()
 		log.Infof("Done for %v: size %v/%v",
 			resp.GetLocalName(),
 			asize, osize)
 		status.Progress(100, osize, asize)
-		return nil
+		return req.GetContentType(), nil
 	}
 	// if we got here, channel was closed
 	// range ends on a closed channel, which is the equivalent of "!ok"
 	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
 		dpath, region, filename)
 	log.Errorln(errStr)
-	return errors.New(errStr)
+	return "", errors.New(errStr)
 }
 
 func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,

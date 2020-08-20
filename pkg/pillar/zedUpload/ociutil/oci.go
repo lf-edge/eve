@@ -81,15 +81,16 @@ func Manifest(registry, repo, username, apiKey string, client *http.Client, prgc
 }
 
 // PullBlob downloads a blob from a registry and save it as a file as-is.
-func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize int64, client *http.Client, prgchan NotifChan) (int64, error) {
+func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize int64, client *http.Client, prgchan NotifChan) (int64, string, error) {
 	log.Infof("PullBlob(%s, %s, %s) to %s", registry, repo, hash, localFile)
 
 	var (
-		w        io.Writer
-		r        io.Reader
-		stats    UpdateStats
-		size     int64
-		finalErr error
+		w           io.Writer
+		r           io.Reader
+		stats       UpdateStats
+		size        int64
+		finalErr    error
+		contentType string
 	)
 
 	// send out the maximum size as we understand it
@@ -103,7 +104,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 	image := fmt.Sprintf("%s/%s", registry, repo)
 	ref, err := name.ParseReference(image)
 	if err != nil {
-		return 0, fmt.Errorf("parsing reference %q: %v", image, err)
+		return 0, "", fmt.Errorf("parsing reference %q: %v", image, err)
 	}
 
 	// If hash is not empty:
@@ -116,15 +117,15 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 			image = fmt.Sprintf("%s@%s", image, hash)
 			ref, err = name.ParseReference(image)
 			if err != nil {
-				return 0, fmt.Errorf("parsing reference %q: %v", image, err)
+				return 0, "", fmt.Errorf("parsing reference %q: %v", image, err)
 			}
 		} else {
 			d, ok := ref.(name.Digest)
 			if !ok {
-				return 0, fmt.Errorf("ref %s wasn't a tag or digest", image)
+				return 0, "", fmt.Errorf("ref %s wasn't a tag or digest", image)
 			}
 			if checkAndCorrectHash(d.DigestStr()) != hash {
-				return 0, fmt.Errorf("PullBlob: given hash %s is different from the hash in reference %s",
+				return 0, "", fmt.Errorf("PullBlob: given hash %s is different from the hash in reference %s",
 					hash, checkAndCorrectHash(d.DigestStr()))
 			}
 		}
@@ -133,20 +134,20 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 	// if we have only a tag, we know it is a manifest
 	if _, ok := ref.(name.Tag); ok {
 		log.Infof("PullBlob: requested manifest or had tag without hash, so just pulling root for %s", image)
-		r, err = ociGetManifest(ref, opts)
+		r, contentType, err = ociGetManifest(ref, opts)
 		if err != nil {
-			return 0, err
+			return 0, "", err
 		}
 	} else {
 		// we had a hash, so get the actual layer, but fall back to manifest
 		d, ok := ref.(name.Digest)
 		if !ok {
-			return 0, fmt.Errorf("ref %s wasn't a tag or digest", image)
+			return 0, "", fmt.Errorf("ref %s wasn't a tag or digest", image)
 		}
 		log.Infof("PullBlob: had hash, so pulling blob for %s", image)
 		layer, err := remote.Layer(d, opts...)
 		if err != nil {
-			return 0, fmt.Errorf("could not pull layer %s: %v", ref.String(), err)
+			return 0, "", fmt.Errorf("could not pull layer %s: %v", ref.String(), err)
 		}
 		// write the layer out to the file
 		lr, err := layer.Compressed()
@@ -154,12 +155,12 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 			// anything other than a 404 should return
 			terr, ok := err.(*transport.Error)
 			if !ok || terr.StatusCode != 404 {
-				return 0, fmt.Errorf("could not get layer reader %s: %v", ref.String(), err)
+				return 0, "", fmt.Errorf("could not get layer reader %s: %v", ref.String(), err)
 			}
 			// a 404 should try a manifest
-			r, err = ociGetManifest(ref, opts)
+			r, contentType, err = ociGetManifest(ref, opts)
 			if err != nil {
-				return 0, fmt.Errorf("could not retrieve as blob or manifest %s: %v", ref.String(), err)
+				return 0, "", fmt.Errorf("could not retrieve as blob or manifest %s: %v", ref.String(), err)
 			}
 		} else {
 			defer lr.Close()
@@ -170,7 +171,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 	if localFile != "" {
 		f, err := os.Create(localFile)
 		if err != nil {
-			return 0, fmt.Errorf("could not open local file %s for writing from %s: %v", localFile, ref.String(), err)
+			return 0, "", fmt.Errorf("could not open local file %s for writing from %s: %v", localFile, ref.String(), err)
 		}
 		defer f.Close()
 		w = f
@@ -225,16 +226,16 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 		}
 	}
 
-	return size, finalErr
+	return size, contentType, finalErr
 }
 
 // ociGetManifest get an OCI manifest
-func ociGetManifest(ref name.Reference, opts []remote.Option) (io.Reader, error) {
+func ociGetManifest(ref name.Reference, opts []remote.Option) (io.Reader, string, error) {
 	desc, err := remote.Get(ref, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("error getting manifest: %v", err)
+		return nil, "", fmt.Errorf("error getting manifest: %v", err)
 	}
-	return bytes.NewReader(desc.Manifest), nil
+	return bytes.NewReader(desc.Manifest), string(desc.MediaType), nil
 }
 
 // Pull downloads an entire image from a registry and saves it as a tar file at the provided location.

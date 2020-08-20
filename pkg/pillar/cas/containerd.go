@@ -20,6 +20,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
 	log "github.com/sirupsen/logrus" // XXX add log argument
@@ -60,7 +61,6 @@ func (c *containerdCAS) GetBlobInfo(blobHash string) (*BlobInfo, error) {
 		Size:   info.Size,
 		Labels: info.Labels,
 	}, nil
-
 }
 
 //ListBlobInfo: returns list of BlobInfo for all the blob present in CAS
@@ -78,6 +78,56 @@ func (c *containerdCAS) ListBlobInfo() ([]*BlobInfo, error) {
 		})
 	}
 	return blobInfos, nil
+}
+
+// ListBlobsMediaTypes get a map of all blobs and their media types.
+// If a blob does not have a media type, it is not returned here.
+// If you want *all* blobs, whether or not it has a type, use ListBlobInfo
+func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
+	hashMap := map[string]string{}
+
+	// start with all of the images
+	imageObjectList, err := containerd.CtrListImages()
+	if err != nil {
+		return nil, fmt.Errorf("ListBlobsMediaTypes: Exception while getting image list. %s", err.Error())
+	}
+	// save the root and type of each image
+	for _, i := range imageObjectList {
+		dig, mediaType := i.Target.Digest.String(), i.Target.MediaType
+		hashMap[dig] = mediaType
+		switch v1types.MediaType(mediaType) {
+		case v1types.OCIImageIndex, v1types.DockerManifestList:
+			index, err := getIndexManifest(c, dig)
+			if err != nil {
+				return nil, fmt.Errorf("ListBlobsMediaTypes: could not get index for %s", dig)
+			}
+			// save all of the manifests
+			for _, m := range index.Manifests {
+				hashMap[m.Digest.String()] = string(m.MediaType)
+				// and now read each manifest
+				manifest, err := getManifest(c, m.Digest.String())
+				if err != nil {
+					return nil, fmt.Errorf("ListBlobsMediaTypes: could not get manifest for %s", dig)
+				}
+				// read the config and the layers
+				hashMap[manifest.Config.Digest.String()] = string(manifest.Config.MediaType)
+				for _, l := range manifest.Layers {
+					hashMap[l.Digest.String()] = string(l.MediaType)
+				}
+			}
+		case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
+			manifest, err := getManifest(c, dig)
+			if err != nil {
+				return nil, fmt.Errorf("ListBlobsMediaTypes: could not get manifest for %s", dig)
+			}
+			// read the config and the layers
+			hashMap[manifest.Config.Digest.String()] = string(manifest.Config.MediaType)
+			for _, l := range manifest.Layers {
+				hashMap[l.Digest.String()] = string(l.MediaType)
+			}
+		}
+	}
+	return hashMap, nil
 }
 
 // IngestBlob: parses the given one or more `blobs` (BlobStatus) and for each blob reads the blob data from

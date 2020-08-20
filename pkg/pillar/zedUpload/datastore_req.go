@@ -49,6 +49,9 @@ type DronaRequest struct {
 	// Filled by Drona, images list
 	imgList []string
 
+	// Filled by Drona, download metadata
+	contentType string
+
 	// Filled by Drona, uploaded blob content length
 	contentLength int64
 
@@ -182,6 +185,14 @@ func (req *DronaRequest) GetRemoteFileMD5() string {
 	req.Lock()
 	defer req.Unlock()
 	return req.remoteFileMD5
+}
+
+// GetContentType return the content type if available. If not, return
+// an empty string.
+func (req *DronaRequest) GetContentType() string {
+	req.Lock()
+	defer req.Unlock()
+	return req.contentType
 }
 
 // Update the actual size

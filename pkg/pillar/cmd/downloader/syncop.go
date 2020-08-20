@@ -198,7 +198,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ctx:    ctx,
 			status: status,
 		}
-		err = download(ctx, trType, st, syncOp, serverURL, auth,
+		contentType, err := download(ctx, trType, st, syncOp, serverURL, auth,
 			dsCtx.Dpath, dsCtx.Region,
 			config.Size, ifname, ipSrc, remoteName, locFilename)
 		if err != nil {
@@ -215,6 +215,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			size = info.Size()
 		}
 		status.Size = uint64(size)
+		status.ContentType = contentType
 		zedcloud.ZedCloudSuccess(ifname,
 			metricsUrl, 1024, size)
 		handleSyncOpResponse(ctx, config, status,
