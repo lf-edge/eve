@@ -196,8 +196,7 @@ func execCmd(command string, args ...string) (string, string, error) {
 
 func linkKeyrings() error {
 	if _, _, err := execCmd(keyctlPath, keyctlParams...); err != nil {
-		log.Fatalf("Error in linking user keyring %v", err)
-		return err
+		return fmt.Errorf("Error in linking user keyring %v", err)
 	}
 	return nil
 }
@@ -261,13 +260,11 @@ func deriveVaultKey(cloudKeyOnlyMode bool) ([]byte, error) {
 func stageKey(cloudKeyOnlyMode bool, keyDirName string, keyFileName string) error {
 	//Create a tmpfs file to pass the secret to fscrypt
 	if _, _, err := execCmd("mkdir", keyDirName); err != nil {
-		log.Fatalf("Error creating keyDir %s %v", keyDirName, err)
-		return err
+		return fmt.Errorf("Error creating keyDir %s %v", keyDirName, err)
 	}
 
 	if _, _, err := execCmd("mount", "-t", "tmpfs", "tmpfs", keyDirName); err != nil {
-		log.Fatalf("Error mounting tmpfs on keyDir %s: %v", keyDirName, err)
-		return err
+		return fmt.Errorf("Error mounting tmpfs on keyDir %s: %v", keyDirName, err)
 	}
 
 	vaultKey, err := deriveVaultKey(cloudKeyOnlyMode)
@@ -276,7 +273,7 @@ func stageKey(cloudKeyOnlyMode bool, keyDirName string, keyFileName string) erro
 		return err
 	}
 	if err := ioutil.WriteFile(keyFileName, vaultKey, 0700); err != nil {
-		log.Fatalf("Error creating keyFile: %v", err)
+		return fmt.Errorf("Error creating keyFile: %v", err)
 	}
 	return nil
 }
@@ -284,15 +281,15 @@ func stageKey(cloudKeyOnlyMode bool, keyDirName string, keyFileName string) erro
 func unstageKey(keyDirName string, keyFileName string) {
 	//Shred the tmpfs file, and remove it
 	if _, _, err := execCmd("shred", "--remove", keyFileName); err != nil {
-		log.Fatalf("Error shredding keyFile %s: %v", keyFileName, err)
+		log.Errorf("Error shredding keyFile %s: %v", keyFileName, err)
 		return
 	}
 	if _, _, err := execCmd("umount", keyDirName); err != nil {
-		log.Fatalf("Error unmounting %s: %v", keyDirName, err)
+		log.Errorf("Error unmounting %s: %v", keyDirName, err)
 		return
 	}
 	if _, _, err := execCmd("rm", "-rf", keyDirName); err != nil {
-		log.Fatalf("Error removing keyDir %s : %v", keyDirName, err)
+		log.Errorf("Error removing keyDir %s : %v", keyDirName, err)
 		return
 	}
 	return
@@ -318,8 +315,7 @@ func isDirEmpty(path string) bool {
 func handleFirstUse() error {
 	//setup mountPoint for encryption
 	if _, _, err := execCmd(vault.FscryptPath, mntPointParams...); err != nil {
-		log.Fatalf("Error setting up mountpoint for encrption: %v", err)
-		return err
+		return fmt.Errorf("Error setting up mountpoint for encrption: %v", err)
 	}
 	return nil
 }
@@ -397,8 +393,7 @@ func setupVault(vaultPath string, deprecated bool) error {
 func setupFscryptEnv() error {
 	//setup fscrypt.conf, if not done already
 	if _, _, err := execCmd(vault.FscryptPath, setupParams...); err != nil {
-		log.Fatalf("Error setting up fscrypt.conf: %v", err)
-		return err
+		return fmt.Errorf("Error setting up fscrypt.conf: %v", err)
 	}
 	//Check if /persist is already setup for encryption
 	if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
@@ -476,30 +471,33 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 }
 
 //setup vaults on ext4, using fscrypt
-func setupVaultsOnExt4() {
+func setupVaultsOnExt4() error {
 	if err := setupFscryptEnv(); err != nil {
-		log.Fatal("Error in setting up fscrypt environment:", err)
+		return fmt.Errorf("Error in setting up fscrypt environment: %s",
+			err)
 	}
 	if err := setupVault(deprecatedImgVault, true); err != nil {
-		log.Fatalf("Error in setting up vault %s:%v", deprecatedImgVault, err)
+		return fmt.Errorf("Error in setting up vault %s:%v", deprecatedImgVault, err)
 	}
 	if err := setupVault(defaultCfgVault, false); err != nil {
-		log.Fatalf("Error in setting up vault %s %v", defaultCfgVault, err)
+		return fmt.Errorf("Error in setting up vault %s %v", defaultCfgVault, err)
 	}
 	if err := setupVault(defaultVault, false); err != nil {
-		log.Fatalf("Error in setting up vault %s:%v", defaultVault, err)
+		return fmt.Errorf("Error in setting up vault %s:%v", defaultVault, err)
 	}
+	return nil
 }
 
 //setup vaults on zfs, using zfs native encryption support
-func setupVaultsOnZfs() {
+func setupVaultsOnZfs() error {
 	if err := setupZfsVault(defaultSecretDataset); err != nil {
-		log.Fatalf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
+		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
 	}
 	//XXX: We are deprecating persist/config as a vault soon, till then set it up
 	if err := setupZfsVault(defaultCfgSecretDataset); err != nil {
-		log.Fatalf("Error in setting up ZFS vault %s:%v", defaultCfgSecretDataset, err)
+		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultCfgSecretDataset, err)
 	}
+	return nil
 }
 
 func publishAllFscryptVaultStatus(ctx *vaultMgrContext) {
@@ -544,7 +542,7 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
@@ -563,7 +561,8 @@ func Run(ps *pubsub.PubSub) {
 	log = agentlog.Init(agentName)
 
 	if len(flag.Args()) == 0 {
-		log.Fatal("Insufficient arguments")
+		log.Error("Insufficient arguments")
+		return 1
 	}
 
 	switch flag.Args()[0] {
@@ -572,9 +571,15 @@ func Run(ps *pubsub.PubSub) {
 		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
 		case "ext4":
-			setupVaultsOnExt4()
+			if err := setupVaultsOnExt4(); err != nil {
+				log.Error(err)
+				return 1
+			}
 		case "zfs":
-			setupVaultsOnZfs()
+			if err := setupVaultsOnZfs(); err != nil {
+				log.Error(err)
+				return 1
+			}
 		default:
 			log.Infof("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
 		}
@@ -640,8 +645,10 @@ func Run(ps *pubsub.PubSub) {
 			}
 		}
 	default:
-		log.Fatalf("Unknown argument %s", flag.Args()[0])
+		log.Errorf("Unknown argument %s", flag.Args()[0])
+		return 1
 	}
+	return 0
 }
 
 // Handles both create and modify events

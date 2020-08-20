@@ -90,7 +90,7 @@ var debugOverride bool // From command line arg
 var log *base.LogObject
 
 // Run - the main function invoked by zedbox
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
@@ -103,7 +103,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)

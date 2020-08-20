@@ -43,7 +43,7 @@ var debug = false
 var debugOverride bool // From command line arg
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	noPidPtr := flag.Bool("p", false, "Do not check for running agent")
@@ -58,7 +58,7 @@ func Run(ps *pubsub.PubSub) {
 	noPidFlag := *noPidPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// XXX Make logrus record a noticable global source
 	agentlog.Init("xyzzy-" + agentName)
@@ -113,6 +113,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	return 0
 }
 
 // Handles both create and modify events

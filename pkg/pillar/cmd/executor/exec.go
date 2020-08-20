@@ -53,7 +53,7 @@ type executorContext struct {
 var log *base.LogObject
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
@@ -74,7 +74,7 @@ func Run(ps *pubsub.PubSub) {
 
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)

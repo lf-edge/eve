@@ -60,7 +60,7 @@ var (
 )
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	// Report nano timestamps
 	formatter := logrus.JSONFormatter{
 		TimestampFormat: time.RFC3339Nano,
@@ -110,6 +110,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		execute(hdl, tokens[0], tokens[1:])
 	}
+	return 0
 }
 
 func execute(hdl *execlib.ExecuteHandle, command string, args []string) {

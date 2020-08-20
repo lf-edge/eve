@@ -141,7 +141,7 @@ func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
 }
 
 // Run : nodeagent run entry function
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	nodeagentCtx := newNodeagentContext(ps)
 
 	log = agentbase.Run(&nodeagentCtx)

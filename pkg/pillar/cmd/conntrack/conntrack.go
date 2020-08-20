@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	delFlow := flag.Bool("D", false, "Delete flow")
 	delSrcIP := flag.String("s", "", "Delete flow with Srouce IP")
 	delProto := flag.Int("p", 0, "Delete flow with protocol ID")
@@ -58,10 +58,10 @@ func Run(ps *pubsub.PubSub) {
 			} else {
 				fmt.Printf("ConntrackDeleteIPSrc: deleted %d flow\n", number)
 			}
-			return
+			return 0
 		}
 		fmt.Println("Usage: Conntrack -D <-s IP-Address> [-p Protocol][-P port][-m Mark][-mask MarkMask][-f ipv6]")
-		return
+		return 1
 	}
 	// XXX args := flag.Args()
 	res, err := netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET)
@@ -88,4 +88,5 @@ func Run(ps *pubsub.PubSub) {
 				entry.Reverse.Packets, entry.Reverse.Bytes)
 		}
 	}
+	return 0
 }
