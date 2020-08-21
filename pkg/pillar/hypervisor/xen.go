@@ -426,7 +426,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	}
 
 	// if task is alive, we augment task status with finer grained details from xl info
-	log.Infof("xlStatus %s %d\n", domainName, domainID)
+	log.Debugf("xlStatus %s %d\n", domainName, domainID)
 
 	stdOut, stdErr, err := containerd.CtrExec(domainName,
 		[]string{"/etc/xen/scripts/xen-info", domainName})
@@ -437,7 +437,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 		// and augment error reported back with it:
 		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s", err)
 	}
-	log.Infof("xen-info done. Result %s\n", stdOut)
+	log.Debugf("xen-info done. Result %s\n", stdOut)
 
 	stateMap := map[string]types.SwState{
 		"running": types.RUNNING,
