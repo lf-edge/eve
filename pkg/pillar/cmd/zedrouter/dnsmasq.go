@@ -200,9 +200,6 @@ func createDnsmasqConfiglet(
 		log.Infof("createDnsmasqConfiglet: no router\n")
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
-			file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s\n",
-				router, "0.0.0.0",
-				netconf.Subnet.String(), router))
 		}
 		if !advertizeDns {
 			// Handle isolated network by making sure
