@@ -56,7 +56,6 @@ var (
 	keyctlParams      = []string{"link", "@u", "@s"}
 	mntPointParams    = []string{"setup", vault.MountPoint, "--quiet"}
 	vaultStatusParams = []string{"status"}
-	setupParams       = []string{"setup", "--quiet"}
 	debug             = false
 	debugOverride     bool // From command line arg
 	log               *base.LogObject
@@ -391,10 +390,6 @@ func setupVault(vaultPath string, deprecated bool) error {
 }
 
 func setupFscryptEnv() error {
-	//setup fscrypt.conf, if not done already
-	if _, _, err := execCmd(vault.FscryptPath, setupParams...); err != nil {
-		return fmt.Errorf("Error setting up fscrypt.conf: %v", err)
-	}
 	//Check if /persist is already setup for encryption
 	if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
 		//Not yet setup, set it up for the first use
