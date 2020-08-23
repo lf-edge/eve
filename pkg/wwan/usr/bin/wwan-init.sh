@@ -194,7 +194,7 @@ detect_mode() {
   fi
 }
 
-# lets statrt with detecting what we're dealing with
+# lets start with detecting what we're dealing with
 detect_mode
 echo "Starting wwan manager in $MODE mode"
 
