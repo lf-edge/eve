@@ -302,12 +302,12 @@ func Run(ps *pubsub.PubSub) int {
 	log.Infof("Have %d management ports with usable addresses",
 		DNSctx.usableAddressCount)
 
+	//Get servername, set logUrl, get device id and initialize zedcloudCtx
+	sendCtxInit(&logmanagerCtx, &DNSctx)
+
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.GetDeferredChan(&zedcloudCtx)
 	DNSctx.doDeferred = true
-
-	//Get servername, set logUrl, get device id and initialize zedcloudCtx
-	sendCtxInit(&logmanagerCtx, &DNSctx)
 
 	// Publish send metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
