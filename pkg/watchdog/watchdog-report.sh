@@ -20,12 +20,9 @@ sync
 if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/run/.*\.touch' | sed 's,/run/\(.*\)\.touch,\1,')
     if [ -n "$agent" ]; then
-        # Map the various zedagent* to zedagent
-        if [ "$agent" = "zedagentmetrics" ] -o [ "$agent" = "zedagentconfig" ] -o [ "$agent" = "zedagentdevinfo" ]; then
-            agent="zedagent"
-        fi
-        echo "pkill -USR1 /opt/zededa/bin/$agent"
-        pkill -USR1 /opt/zededa/bin/"$agent"
+        echo "Watchdog report for $agent" >> /persist/log/watchdog.log
+        echo "pkill -USR1 /opt/zededa/bin/zedbox"
+        pkill -USR1 /opt/zededa/bin/zedbox
     fi
 fi
 
