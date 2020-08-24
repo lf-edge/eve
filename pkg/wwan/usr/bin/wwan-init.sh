@@ -1,5 +1,5 @@
 #!/bin/sh
-set -x
+# set -x
 
 # Currently our message bus is files in /run
 # When we replace it, we should pay attention
