@@ -576,9 +576,9 @@ func Init(agentName string) *base.LogObject {
 		signal.Notify(sigs, syscall.SIGUSR2)
 		log.Infof("Creating %s at %s", "handleSignals", GetMyStack())
 		go handleSignals(log, agentName, agentPid, sigs)
+		eh := func() { printStack(log, agentName, agentPid) }
+		logrus.RegisterExitHandler(eh)
 	}
-	eh := func() { printStack(log, agentName, agentPid) }
-	logrus.RegisterExitHandler(eh)
 	return log
 }
 
