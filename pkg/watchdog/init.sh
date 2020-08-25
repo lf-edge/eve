@@ -1,6 +1,9 @@
 #!/bin/sh
 
 USE_HW_WATCHDOG=1
+DEFAULT_WATCHDOG_CHANGE_TIME=300
+WATCHDOG_CHANGE_TIME=$(</proc/cmdline grep -o '\bchange=[^ ]*' | cut -d = -f 2)
+
 
 reload_watchdog() {
     # Firs thinsg first: kill it!
@@ -36,7 +39,7 @@ run_watchdog() {
       # Now lets see if we need to rebuild the configuration file
       (cat /etc/watchdog.conf.seed
        find /run/watchdog -type f | sed -e 's#/run/watchdog/pid#pidfile = /run#' \
-          -e '/\/run\/watchdog\/file/a change = 300'                             \
+          -e "/\/run\/watchdog\/file/a change = $WATCHDOG_CHANGE_TIME"                             \
           -e 's#/run/watchdog/file#file = /run#') > /etc/watchdog.conf.latest
 
       # If the configuration changed: reload watchdog
@@ -47,6 +50,11 @@ run_watchdog() {
 }
 
 # Lets get this party started
+
+if [ -z "${WATCHDOG_CHANGE_TIME}" ]; then
+    log "Setting value of $DEFAULT_WATCHDOG_CHANGE_TIME for WATCHDOG_CHANGE_TIME"
+    WATCHDOG_CHANGE_TIME=$DEFAULT_WATCHDOG_CHANGE_TIME
+fi
 
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
