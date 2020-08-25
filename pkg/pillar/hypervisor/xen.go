@@ -173,6 +173,9 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		}
 	} else {
 		file.WriteString(fmt.Sprintf("vnc = 0\n"))
+		if config.IsContainer {
+			file.WriteString(fmt.Sprintf("nographic = 1\nvga=\"none\"\n"))
+		}
 	}
 
 	// Go from kbytes to mbytes
