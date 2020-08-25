@@ -5,6 +5,8 @@ package logmanager
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"strconv"
+	"strings"
 )
 
 // Return the UUID of the instance based on the domainname
@@ -12,7 +14,8 @@ func lookupDomainName(ctxArg interface{}, domainName string) string {
 	ctx := ctxArg.(*logmanagerContext)
 	ctx.RLock()
 	defer ctx.RUnlock()
-	if du, ok := domainUuid[domainName]; ok {
+	newName := nameRemLastdotNum(domainName)
+	if du, ok := domainUuid[newName]; ok {
 		return du
 	}
 	return ""
@@ -30,9 +33,10 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	log.Infof("handleDomainStatusModify for %s", key)
 	status := statusArg.(types.DomainStatus)
 	// Record the domainName even if Pending* is set
-	log.Infof("handleDomainStatusModify add %s to %s",
-		status.DomainName, status.UUIDandVersion.UUID.String())
-	domainUuid[status.DomainName] = status.UUIDandVersion.UUID.String()
+	newName := nameRemLastdotNum(status.DomainName)
+	log.Infof("handleDomainStatusModify add %s(%s) to %s",
+		status.DomainName, newName, status.UUIDandVersion.UUID.String())
+	domainUuid[newName] = status.UUIDandVersion.UUID.String()
 	log.Infof("handleDomainStatusModify done for %s", key)
 }
 
@@ -51,6 +55,17 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleDomainStatusDomain remove %s",
 		status.DomainName)
-	delete(domainUuid, status.DomainName)
+	newName := nameRemLastdotNum(status.DomainName)
+	delete(domainUuid, newName)
 	log.Infof("handleDomainStatusDelete done for %s", key)
+}
+
+// XXX remove the .num from the domain name for now
+func nameRemLastdotNum(dName string) string {
+	dNames := strings.Split(dName, ".")
+	numPart := dNames[len(dNames)-1]
+	if _, err := strconv.Atoi(numPart); err == nil {
+		return strings.TrimSuffix(dName, "."+numPart)
+	}
+	return dName
 }
