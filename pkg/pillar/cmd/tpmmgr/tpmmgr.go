@@ -19,7 +19,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
-	"os"
 	"os/exec"
 	"reflect"
 	"time"
@@ -27,11 +26,12 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type tpmMgrContext struct {
@@ -185,6 +185,7 @@ var (
 	}
 	debug         = false
 	debugOverride bool // From command line arg
+	log           *base.LogObject
 )
 
 var toGoCurve = map[tpm2.EllipticCurve]elliptic.Curve{
@@ -243,7 +244,7 @@ func createDeviceKey() error {
 
 	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		log.Fatalf("Reading owner credential failed: %s", err)
+		return fmt.Errorf("Reading owner credential failed: %s", err)
 	}
 
 	//No previous key, create new one
@@ -355,8 +356,7 @@ func genCredentials() error {
 		// Generate a new uuid
 		out, err := exec.Command("uuidgen").Output()
 		if err != nil {
-			log.Fatalf("Error in generating uuid, %v", err)
-			return err
+			return fmt.Errorf("Error in generating uuid, %v", err)
 		}
 		//Write uuid to credentials file for faster access
 		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, out, 0644)
@@ -524,7 +524,7 @@ func testTpmEcdhSupport() error {
 	}
 	defer rw.Close()
 
-	z, p, err := tpm2.GenerateSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, emptyPassword)
+	z, p, err := tpm2.ECDHKeyGen(rw, etpm.TpmDeviceKeyHdl)
 	if err != nil {
 		fmt.Printf("generating Shared Secret failed: %s", err)
 		return err
@@ -535,7 +535,7 @@ func testTpmEcdhSupport() error {
 		return err
 	}
 
-	z1, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	z1, err := tpm2.ECDHZGen(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, *p)
 	if err != nil {
 		fmt.Printf("recovering Shared Secret failed: %s", err)
 		return err
@@ -609,7 +609,7 @@ func testEcdhAES() error {
 		Cert:     certBytes,
 		IsTpm:    isTpm,
 	}
-	err = etpm.DecryptSecretWithEcdhKey(publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
+	err = etpm.DecryptSecretWithEcdhKey(log, publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
 	if err != nil {
 		fmt.Printf("Decryption failed with error %v\n", err)
 		return err
@@ -1053,88 +1053,92 @@ func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certTy
 	log.Infof("publishEdgeNodeCertToController Done")
 }
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
+
 	// Sending json log format to stdout
-	agentlog.Init("tpmmgr")
+	log = agentlog.Init("tpmmgr")
 
 	if len(flag.Args()) == 0 {
-		log.Fatal("Insufficient arguments")
+		log.Error("Insufficient arguments")
+		return 1
 	}
 	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating device primary key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Endorsement key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Srk key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Attestation key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, true); err != nil {
 			log.Errorf("Error in creating Quote key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, true); err != nil {
 			log.Errorf("Error in creating ECDH key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 	case "readDeviceCert":
 		if err = readDeviceCert(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in reading device cert: %v", err)
-			os.Exit(1)
+			return 1
 		}
 	case "writeDeviceCert":
 		if err = writeDeviceCert(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in writing device cert: %v", err)
-			os.Exit(1)
+			return 1
 		}
 	case "readCredentials":
 		if err = readCredentials(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in reading credentials: %v", err)
-			os.Exit(1)
+			return 1
 		}
 	case "genCredentials":
 		if err = genCredentials(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in generating credentials: %v", err)
-			os.Exit(1)
+			return 1
 		}
 	case "runAsService":
 		log.Infof("Starting %s", agentName)
 
-		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
 		}
 
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
 		ctx := tpmMgrContext{}
@@ -1227,7 +1231,7 @@ func Run(ps *pubsub.PubSub) {
 				ctx.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 			}
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		log.Infof("processed GlobalConfig")
 
@@ -1235,7 +1239,8 @@ func Run(ps *pubsub.PubSub) {
 			err := readCredentials()
 			if err != nil {
 				//this indicates that we are in a very bad state
-				log.Fatalf("TPM is enabled, but credential file is absent: %v", err)
+				log.Errorf("TPM is enabled, but credential file is absent: %v", err)
+				return 1
 			}
 		}
 		for {
@@ -1247,7 +1252,7 @@ func Run(ps *pubsub.PubSub) {
 			case change := <-ctx.subAttestNonce.MsgChan():
 				ctx.subAttestNonce.ProcessChange(change)
 			case <-stillRunning.C:
-				agentlog.StillRunning(agentName, warningTime, errorTime)
+				ps.StillRunning(agentName, warningTime, errorTime)
 			}
 		}
 	case "printCapability":
@@ -1266,39 +1271,40 @@ func Run(ps *pubsub.PubSub) {
 		//Create additional security keys if already not created, followed by security certificates
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
 			log.Errorf("Error in creating Endorsement key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
 			log.Errorf("Error in creating Srk key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
 			log.Errorf("Error in creating Attestation key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
 			log.Errorf("Error in creating PCR Quote key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		if err = createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, false); err != nil {
 			log.Errorf("Error in creating Ecdh key: %v ", err)
-			os.Exit(1)
+			return 1
 		}
 		fallthrough
 	case "createSoftCerts":
 		if err := createEcdhCert(); err != nil {
 			log.Errorf("Error in creating Ecdh Certificate: %v", err)
-			os.Exit(1)
+			return 1
 		}
 		if err := createQuoteCert(); err != nil {
 			log.Errorf("Error in creating Quote Certificate: %v", err)
-			os.Exit(1)
+			return 1
 		}
 	default:
 		//No need for Fatal, caller will take action based on return code.
 		log.Errorf("Unknown argument %s", flag.Args()[0])
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // Handles both create and modify events
@@ -1312,7 +1318,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
@@ -1329,7 +1335,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
@@ -1377,6 +1383,7 @@ func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface
 	log.Infof("Received quote request from %s", nonceReq.Requester)
 	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
 	if err != nil {
+		// XXX does this need to be a fatal?
 		log.Fatalf("Error in fetching quote %v", err)
 	} else {
 		attestQuote := types.AttestQuote{

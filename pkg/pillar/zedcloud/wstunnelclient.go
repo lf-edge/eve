@@ -17,9 +17,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -41,6 +42,7 @@ type WSTunnelClient struct {
 	exitChan                chan struct{}     // channel to tell the tunnel goroutines to end
 	conn                    *WSConnection     // reference to remote websocket connection
 	retryOnFailCount        int               // no of times the ws connection attempts have continuously failed
+	log                     *base.LogObject
 }
 
 // WSConnection represents a single websocket connection
@@ -55,12 +57,13 @@ var connMutex sync.Mutex     // mutex to allow a single goroutine to check and r
 
 // InitializeTunnelClient returns a websocket tunnel client configured with the
 // requested remote and local servers.
-func InitializeTunnelClient(serverNameAndPort string, localRelay string) *WSTunnelClient {
+func InitializeTunnelClient(log *base.LogObject, serverNameAndPort string, localRelay string) *WSTunnelClient {
 	tunnelClient := WSTunnelClient{
 		TunnelServerNameAndPort: serverNameAndPort,
 		Tunnel:                  "wss://" + serverNameAndPort,
 		LocalRelayServer:        localRelay,
 		Timeout:                 30 * time.Second,
+		log:                     log,
 	}
 
 	return &tunnelClient
@@ -69,6 +72,8 @@ func InitializeTunnelClient(serverNameAndPort string, localRelay string) *WSTunn
 // Start triggers workflow to establish the websocket
 // session with remote tunnel server
 func (t *WSTunnelClient) Start() {
+	log := t.log
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		t.startSession()
 		<-make(chan struct{}, 0)
@@ -80,6 +85,7 @@ func (t *WSTunnelClient) Start() {
 // if the client can successfully connect to remote backend server.
 func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus, proxyURL *url.URL, localAddr net.IP, devUUID uuid.UUID) error {
 
+	log := t.log
 	if t.Tunnel == "" {
 		return fmt.Errorf("Must specify tunnel server ws://hostname:port")
 	}
@@ -146,6 +152,7 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 // to forward to local relay.
 func (t *WSTunnelClient) startSession() error {
 
+	log := t.log
 	// signal that tells tunnel client to exit instead of reopening
 	// a fresh connection.
 	t.exitChan = make(chan struct{}, 1)
@@ -153,6 +160,7 @@ func (t *WSTunnelClient) startSession() error {
 	t.retryOnFailCount = 0
 
 	// Keep opening websocket connections to tunnel requests
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		log.Debug("Looping through websocket connection requests")
 		for {
@@ -206,7 +214,7 @@ func (t *WSTunnelClient) startSession() error {
 
 // Stop tunnel client
 func (t *WSTunnelClient) Stop() {
-	log.Info("Shutting down WS tunnel client and exiting.")
+	t.log.Info("Shutting down WS tunnel client and exiting.")
 	t.exitChan <- struct{}{}
 }
 
@@ -214,6 +222,8 @@ func (t *WSTunnelClient) Stop() {
 // a goroutine to relay the request locally and optionally
 // return the result if any.
 func (wsc *WSConnection) handleRequests() {
+	log := wsc.tun.log
+	log.Infof("Creating %s at %s", "wsc.pinger", agentlog.GetMyStack())
 	go wsc.pinger()
 	for {
 		wsc.ws.SetReadDeadline(time.Time{}) // separate ping-pong routine does timeout
@@ -257,6 +267,7 @@ func (wsc *WSConnection) handleRequests() {
 
 	}
 	// delay a few seconds to allow for writes to drain and then force-close the socket
+	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		log.Info("Closing websocket connection")
 		time.Sleep(5 * time.Second)
@@ -266,6 +277,7 @@ func (wsc *WSConnection) handleRequests() {
 
 // Pinger that keeps connections alive and terminates them if they seem stuck
 func (wsc *WSConnection) pinger() {
+	log := wsc.tun.log
 	defer func() {
 		// panics may occur in WriteControl (in unit tests at least) for closed
 		// websocket connections
@@ -318,9 +330,12 @@ func (wsc *WSConnection) pinger() {
 // any responses that are optionally received.
 func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 
+	log := wsc.tun.log
 	host := wsc.tun.LocalRelayServer
 	if wsc.localConnection == nil {
 		wsc.dialLocalConnection()
+		log.Infof("Creating %s at %s", "wsc.ProcessResponse",
+			agentlog.GetMyStack())
 		go wsc.processResponses()
 	}
 
@@ -347,6 +362,7 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 // can be used to forcily update the cached local connection.
 func (wsc *WSConnection) refreshLocalConnection(forceCreate bool) (err error) {
 
+	log := wsc.tun.log
 	connMutex.Lock()
 	defer connMutex.Unlock()
 
@@ -377,6 +393,7 @@ func (wsc *WSConnection) refreshLocalConnection(forceCreate bool) (err error) {
 // dialLocalConnection creates a new connection to local relay server.
 func (wsc *WSConnection) dialLocalConnection() (err error) {
 
+	log := wsc.tun.log
 	host := wsc.tun.LocalRelayServer
 	if host == "" {
 		log.Error("Local server not found for WS connection")
@@ -398,6 +415,7 @@ func (wsc *WSConnection) dialLocalConnection() (err error) {
 // connection and forwards any received messages to the websocket.
 func (wsc *WSConnection) processResponses() {
 
+	log := wsc.tun.log
 	host := wsc.tun.LocalRelayServer
 	log.Infof("Processing responses from local relay: %s", host)
 
@@ -426,6 +444,8 @@ func (wsc *WSConnection) processResponses() {
 
 // writeResponseMessage forwards the response message on the websocket.
 func (wsc *WSConnection) writeResponseMessage(id int64, resp *bytes.Buffer) {
+
+	log := wsc.tun.log
 	// Get writer's lock
 	wsWriterMutex.Lock()
 	defer wsWriterMutex.Unlock()

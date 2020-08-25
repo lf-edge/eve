@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 )
 
 // Drona APIs for object Download

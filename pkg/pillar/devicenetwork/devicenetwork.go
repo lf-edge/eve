@@ -17,11 +17,11 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -87,7 +87,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //    For each interface verified
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
-func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
+func VerifyDeviceNetworkStatus(log *base.LogObject, status types.DeviceNetworkStatus,
 	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
 	log.Debugf("VerifyDeviceNetworkStatus() successCount %d, iteration %d",
@@ -103,11 +103,11 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: &status,
 		Timeout:          timeout,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        "devicenetwork",
 	})
 	log.Infof("VerifyDeviceNetworkStatus: Use V2 API %v\n", zedcloud.UseV2API())
@@ -140,7 +140,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range status.Ports {
-		err = CheckAndGetNetworkProxy(&status, &status.Ports[ix])
+		err = CheckAndGetNetworkProxy(log, &status, &status.Ports[ix])
 		if err != nil {
 			ifName := status.Ports[ix].IfName
 			errStr := fmt.Sprintf("ifName: %s. Failed to get NetworkProxy. Err:%s",
@@ -176,7 +176,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) types.DeviceNetworkStatus {
+func MakeDeviceNetworkStatus(log *base.LogObject, globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) types.DeviceNetworkStatus {
 	var globalStatus types.DeviceNetworkStatus
 
 	log.Infof("MakeDeviceNetworkStatus()\n")
@@ -204,7 +204,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].TestResults = u.TestResults
-		ifindex, err := IfnameToIndex(u.IfName)
+		ifindex, err := IfnameToIndex(log, u.IfName)
 		if err != nil {
 			errStr := fmt.Sprintf("Port %s does not exist - ignored",
 				u.IfName)
@@ -212,7 +212,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].RecordFailure(errStr)
 			continue
 		}
-		addrs, up, macAddr, err := GetIPAddrs(ifindex)
+		addrs, up, macAddr, err := GetIPAddrs(log, ifindex)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
 				u.IfName, ifindex, err)
@@ -236,17 +236,17 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr
 		}
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
-		GetDhcpInfo(&globalStatus.Ports[ix])
-		GetDNSInfo(&globalStatus.Ports[ix])
+		GetDhcpInfo(log, &globalStatus.Ports[ix])
+		GetDNSInfo(log, &globalStatus.Ports[ix])
 
 		// Get used default routers aka gateways from kernel
-		globalStatus.Ports[ix].DefaultRouters = getDefaultRouters(ifindex)
+		globalStatus.Ports[ix].DefaultRouters = getDefaultRouters(log, ifindex)
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
 		// We always redo this since we don't know what has changed
 		// from the previous DeviceNetworkStatus.
-		err = CheckAndGetNetworkProxy(&globalStatus,
+		err = CheckAndGetNetworkProxy(log, &globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed for %s: %s",
@@ -272,17 +272,17 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		}
 	}
 	// Need to write resolv.conf for Geo
-	UpdateResolvConf(globalStatus)
-	UpdatePBR(globalStatus)
+	UpdateResolvConf(log, globalStatus)
+	UpdatePBR(log, globalStatus)
 	// Immediate check
-	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
+	UpdateDeviceNetworkGeo(log, time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus
 }
 
 // write the access-point name into /run/accesspoint directory
 // the filenames are the physical ports with access-point address/name in content
-func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
+func devPortInstallAPname(log *base.LogObject, ifname string, wconfig types.WirelessConfig) {
 	if _, err := os.Stat(apDirname); err != nil {
 		if err := os.MkdirAll(apDirname, 0700); err != nil {
 			log.Errorln(err)
@@ -319,6 +319,8 @@ func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 
 func devPortInstallWifiConfig(ctx *DeviceNetworkContext,
 	ifname string, wconfig types.WirelessConfig) bool {
+
+	log := ctx.Log
 	if _, err := os.Stat(runwlanDir); os.IsNotExist(err) {
 		err = os.Mkdir(runwlanDir, 600)
 		if err != nil {
@@ -401,6 +403,8 @@ func devPortInstallWifiConfig(ctx *DeviceNetworkContext,
 
 func getWifiCredential(ctx *DeviceNetworkContext,
 	wifi types.WifiConfig) (types.EncryptionBlock, error) {
+
+	log := ctx.Log
 	if wifi.CipherBlockStatus.IsCipher {
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
 			"devicenetwork", wifi.CipherBlockStatus)
@@ -441,6 +445,7 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 // XXX identical code to HandleAddressChange
 func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 
+	log := ctx.Log
 	// Check if we have more or less addresses
 	var dnStatus types.DeviceNetworkStatus
 
@@ -448,7 +453,7 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 		ctx.Pending.Inprogress)
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
-		status := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+		status := MakeDeviceNetworkStatus(log, *ctx.DevicePortConfig,
 			dnStatus)
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
@@ -460,13 +465,13 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 			log.Infof("CheckDNSUpdate: No change\n")
 		}
 	} else {
-		dnStatus = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+		dnStatus = MakeDeviceNetworkStatus(log, *ctx.DevicePortConfig,
 			ctx.Pending.PendDNS)
 
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
 			log.Infof("CheckDNSUpdate pending: change from %v to %v\n",
 				ctx.Pending.PendDNS, dnStatus)
-			pingTestDNS := checkIfMgmtPortsHaveIPandDNS(dnStatus)
+			pingTestDNS := checkIfMgmtPortsHaveIPandDNS(log, dnStatus)
 			if pingTestDNS {
 				// We have a suitable candiate for running our cloud ping test.
 				log.Infof("CheckDNSUpdate: Running cloud ping test now, " +
@@ -486,7 +491,7 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 // are far from reliable.
 // If AddrChange worked reliably this would just be:
 // return IfindexToAddrs(ifindex)
-func GetIPAddrs(ifindex int) ([]net.IP, bool, net.HardwareAddr, error) {
+func GetIPAddrs(log *base.LogObject, ifindex int) ([]net.IP, bool, net.HardwareAddr, error) {
 
 	var addrs []net.IP
 	var up bool
@@ -515,20 +520,20 @@ func GetIPAddrs(ifindex int) ([]net.IP, bool, net.HardwareAddr, error) {
 	}
 
 	log.Infof("GetIPAddrs(%d) found %v and %v", ifindex, addrs4, addrs6)
-	IfindexToAddrsFlush(ifindex)
+	IfindexToAddrsFlush(log, ifindex)
 	for _, a := range addrs4 {
 		if a.IP == nil {
 			continue
 		}
 		addrs = append(addrs, a.IP)
-		IfindexToAddrsAdd(ifindex, a.IP)
+		IfindexToAddrsAdd(log, ifindex, a.IP)
 	}
 	for _, a := range addrs6 {
 		if a.IP == nil {
 			continue
 		}
 		addrs = append(addrs, a.IP)
-		IfindexToAddrsAdd(ifindex, a.IP)
+		IfindexToAddrsAdd(log, ifindex, a.IP)
 	}
 	return addrs, up, macAddr, nil
 
@@ -536,7 +541,7 @@ func GetIPAddrs(ifindex int) ([]net.IP, bool, net.HardwareAddr, error) {
 
 // getDefaultRouters retries the default routers from the kernel i.e.,
 // the ones actually in use whether from DHCP or static
-func getDefaultRouters(ifindex int) []net.IP {
+func getDefaultRouters(log *base.LogObject, ifindex int) []net.IP {
 	var res []net.IP
 	table := types.GetDefaultRouteTable()
 	// Note that a default route is represented as nil Dst
@@ -582,7 +587,7 @@ func lookupPortStatusAddr(status types.DeviceNetworkStatus,
 }
 
 // Returns true if anything might have changed
-func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
+func UpdateDeviceNetworkGeo(log *base.LogObject, timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
 	change := false
 	for ui := range globalStatus.Ports {
 		u := &globalStatus.Ports[ui]

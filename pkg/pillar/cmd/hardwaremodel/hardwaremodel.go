@@ -8,9 +8,10 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
+	"path/filepath"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/rackn/gohai/plugins/dmi"
@@ -26,7 +27,7 @@ type info interface {
 	Class() string
 }
 
-func hwFp(outputFile string) {
+func hwFp(log *base.LogObject, outputFile string) {
 	infos := map[string]info{}
 	dmiInfo, err := dmi.Gather()
 	if err != nil {
@@ -58,7 +59,10 @@ func hwFp(outputFile string) {
 	enc.Encode(infos)
 }
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
+	pid := os.Getpid()
+	basename := filepath.Base(os.Args[0])
+	log := base.NewSourceLogObject(basename, pid)
 	versionPtr := flag.Bool("v", false, "Version")
 	cPtr := flag.Bool("c", false, "No CRLF")
 	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
@@ -67,13 +71,13 @@ func Run(ps *pubsub.PubSub) {
 	outputFile := *outputFilePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	if *hwPtr {
-		hwFp(outputFile)
-		return
+		hwFp(log, outputFile)
+		return 0
 	}
-	model := hardware.GetHardwareModelNoOverride()
+	model := hardware.GetHardwareModelNoOverride(log)
 	if *cPtr {
 		b := []byte(fmt.Sprintf("%s", model))
 		err := ioutil.WriteFile(outputFile, b, 0644)
@@ -88,4 +92,5 @@ func Run(ps *pubsub.PubSub) {
 			log.Fatal("WriteFile", err, outputFile)
 		}
 	}
+	return 0
 }

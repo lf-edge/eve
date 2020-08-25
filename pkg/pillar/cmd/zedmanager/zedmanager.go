@@ -15,11 +15,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -50,32 +51,36 @@ type zedmanagerContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{
@@ -234,7 +239,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Handling all inputs")
 	for {
@@ -256,7 +261,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -376,7 +381,7 @@ func handleCreate(ctxArg interface{}, key string,
 	}
 
 	// Do we have a PurgeCmd counter from before the reboot?
-	c, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum,
+	c, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
 		config.UUIDandVersion.UUID, "purgeCmdCounter")
 	if err == nil {
 		if uint32(c) == status.PurgeCmd.Counter {
@@ -397,7 +402,7 @@ func handleCreate(ctxArg interface{}, key string,
 		log.Infof("handleCreate(%v) for %s saving purge counter %d",
 			config.UUIDandVersion, config.DisplayName,
 			config.PurgeCmd.Counter)
-		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
 			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
 			true, "purgeCmdCounter")
 	}
@@ -551,7 +556,7 @@ func handleDelete(ctx *zedmanagerContext, key string,
 
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
-	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
+	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s", status.DisplayName)
 }
 
@@ -655,7 +660,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
@@ -673,7 +678,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)

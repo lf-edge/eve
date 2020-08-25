@@ -3,10 +3,6 @@
 
 package downloader
 
-import (
-	log "github.com/sirupsen/logrus"
-)
-
 // for function name consistency
 func handleResolveModify(ctxArg interface{}, key string,
 	configArg interface{}) {

@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 )
 
 // Cipher Information Context
@@ -168,19 +167,19 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 
 	for {
 		select {
 		case <-triggerCerts:
 			start := time.Now()
 			getCertsFromController(ctx)
-			pubsub.CheckMaxTimeTopic(agentName+"ccerts", "publishCerts", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"ccerts", "publishCerts", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 }
 
@@ -194,7 +193,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx,
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 		certURL, 0, nil, 0, false)
 	if err != nil {
 		switch rtf {
@@ -227,14 +226,14 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	}
 
 	// validate the certificate message payload
-	certBytes, ret := zedcloud.VerifySigningCertChain(&zedcloudCtx, contents)
+	certBytes, ret := zedcloud.VerifySigningCertChain(zedcloudCtx, contents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
 		return false
 	}
 
 	// write the signing cert to file
-	if err := zedcloud.UpdateServerCert(&zedcloudCtx, certBytes); err != nil {
+	if err := zedcloud.UpdateServerCert(zedcloudCtx, certBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Errorf("getCertsFromController: " + errStr)
 		return false
@@ -254,20 +253,20 @@ func edgeNodeCertsTask(ctx *zedagentContext, triggerEdgeNodeCerts chan struct{})
 	publishEdgeNodeCertsToController(ctx)
 
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	for {
 		select {
 		case <-triggerEdgeNodeCerts:
 			start := time.Now()
 			publishEdgeNodeCertsToController(ctx)
-			pubsub.CheckMaxTimeTopic(agentName+"attest",
+			ctx.ps.CheckMaxTimeTopic(agentName+"attest",
 				"publishEdgeNodeCertsToController", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 }
 
@@ -320,14 +319,14 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	}
 
 	deferKey := "attest:" + zcdevUUID.String()
-	zedcloud.RemoveDeferred(deferKey)
+	zedcloud.RemoveDeferred(zedcloudCtx, deferKey)
 
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "attest")
 	const bailOnHTTPErr = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, attestURL,
+	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, attestURL,
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful
@@ -343,8 +342,8 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		default:
 			log.Errorf("sendAttestReqProtobuf failed: %s", err)
 		}
-		zedcloud.SetDeferred(deferKey, buf, size, attestURL,
-			zedcloudCtx, true)
+		zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
+			true)
 	}
 }
 
@@ -363,9 +362,11 @@ func cipherModuleStart(ctx *zedagentContext) {
 		// we will run the tasks for watchdog
 	}
 	// start the edge node certificate push task
+	log.Infof("Creating %s at %s", "edgeNodeCertsTask", agentlog.GetMyStack())
 	go edgeNodeCertsTask(ctx, ctx.cipherCtx.triggerEdgeNodeCerts)
 
 	// start the controller certificate fetch task
+	log.Infof("Creating %s at %s", "controllerCertsTask", agentlog.GetMyStack())
 	go controllerCertsTask(ctx, ctx.cipherCtx.triggerControllerCerts)
 }
 

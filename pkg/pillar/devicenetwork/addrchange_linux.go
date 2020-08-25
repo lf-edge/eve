@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 func getDefaultRouteTable() int {
@@ -28,7 +28,7 @@ func getRouteUpdateTypeNEWROUTE() uint16 {
 }
 
 // LinkChange handles a link change. Returns ifindex for changed interface
-func LinkChange(change netlink.LinkUpdate) (bool, int) {
+func LinkChange(log *base.LogObject, change netlink.LinkUpdate) (bool, int) {
 
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
@@ -36,22 +36,22 @@ func LinkChange(change netlink.LinkUpdate) (bool, int) {
 	changed := false
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		relevantFlag, upFlag := RelevantLastResort(change.Link)
+		relevantFlag, upFlag := RelevantLastResort(log, change.Link)
 		log.Infof("LinkChange: NEWLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
-		changed = IfindexToNameAdd(ifindex, ifname, linkType, relevantFlag, upFlag)
+		changed = IfindexToNameAdd(log, ifindex, ifname, linkType, relevantFlag, upFlag)
 		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)
 		if changed && relevantFlag && !upFlag {
-			setLinkUp(ifname)
+			setLinkUp(log, ifname)
 		}
 	case syscall.RTM_DELLINK:
 		log.Infof("LinkChange: DELLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
 		// Drop all cached addresses
-		IfindexToAddrsFlush(ifindex)
+		IfindexToAddrsFlush(log, ifindex)
 
-		changed = IfindexToNameDel(ifindex, ifname)
+		changed = IfindexToNameDel(log, ifindex, ifname)
 		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)
 	}
@@ -59,7 +59,7 @@ func LinkChange(change netlink.LinkUpdate) (bool, int) {
 }
 
 // Set up to be able to see LOWER-UP and NO-CARRIER in operStatus later
-func setLinkUp(ifname string) {
+func setLinkUp(log *base.LogObject, ifname string) {
 	log.Infof("setLinkUp(%s)", ifname)
 	link, err := netlink.LinkByName(ifname)
 	if link == nil {

@@ -16,8 +16,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type AssignableAdapters struct {
@@ -87,8 +87,7 @@ var nilUUID = uuid.UUID{}
 // HasAdapterChanged - We store each Physical Adapter using the IoBundle object.
 // Compares IoBundle with Physical adapter and returns if they are the Same
 // or the Physical Adapter has changed.
-// XXX pass log argument
-func (ib IoBundle) HasAdapterChanged(phyAdapter PhysicalIOAdapter) bool {
+func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOAdapter) bool {
 	if IoType(phyAdapter.Ptype) != ib.Type {
 		log.Infof("Type changed from %d to %d", ib.Type, phyAdapter.Ptype)
 		return true
@@ -144,7 +143,7 @@ func (ib IoBundle) HasAdapterChanged(phyAdapter PhysicalIOAdapter) bool {
 }
 
 // IoBundleFromPhyAdapter - Creates an IoBundle from the given PhyAdapter
-func IoBundleFromPhyAdapter(phyAdapter PhysicalIOAdapter) *IoBundle {
+func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *IoBundle {
 	// XXX - We should really change IoType to type zcommon.PhyIoType
 	ib := IoBundle{}
 	ib.Type = IoType(phyAdapter.Ptype)
@@ -202,7 +201,7 @@ func (ioType IoType) IsNet() bool {
 // The information we preserve are of two kinds:
 // - IsPort/IsPCIBack/UsedByUUID which come from interaction with nim
 // - Unique/MacAddr which come from the PhysicalIoAdapter
-func (aa *AssignableAdapters) AddOrUpdateIoBundle(ib IoBundle) {
+func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBundle) {
 	curIbPtr := aa.LookupIoBundlePhylabel(ib.Phylabel)
 	if curIbPtr == nil {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) New bundle",

@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -32,7 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -76,8 +77,9 @@ var simulateDnsFailure = false
 var simulatePingFailure = false
 var outfile = os.Stdout
 var nilUUID uuid.UUID
+var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
@@ -90,19 +92,21 @@ func Run(ps *pubsub.PubSub) {
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	simulateDnsFailure = *simulateDnsFailurePtr
 	simulatePingFailure = *simulatePingFailurePtr
 	outputFile := *outputFilePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
+	log = agentlog.Init(agentName)
 	if outputFile != "" {
 		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -120,7 +124,7 @@ func Run(ps *pubsub.PubSub) {
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile()
+	utils.EnsureGCFile(log)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
@@ -148,12 +152,12 @@ func Run(ps *pubsub.PubSub) {
 	ctx.serverNameAndPort = strings.TrimSpace(string(server))
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.DeviceNetworkStatus,
 		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
@@ -184,7 +188,7 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		fmt.Fprintf(outfile, "ERROR: no device cert and no onboarding cert at %v\n",
 			time.Now().Format(time.RFC3339Nano))
-		os.Exit(1)
+		return 1
 	}
 	ctx.zedcloudCtx = &zedcloudCtx
 
@@ -291,6 +295,7 @@ func Run(ps *pubsub.PubSub) {
 			ctx.usingOnboardCert = false
 		}
 	}
+	return 0
 }
 
 func fileExists(filename string) bool {
@@ -964,7 +969,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	} else {
 		preqURL = "https://" + reqURL
 	}
-	proxyURL, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
+	proxyURL, err := zedcloud.LookupProxy(log, zedcloudCtx.DeviceNetworkStatus,
 		ifname, preqURL)
 	if err != nil {
 		fmt.Fprintf(outfile, "ERROR: %s: LookupProxy failed: %s\n", ifname, err)
@@ -1024,7 +1029,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	} else {
 		preqURL = "https://" + reqURL
 	}
-	proxyURL, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
+	proxyURL, err := zedcloud.LookupProxy(log, zedcloudCtx.DeviceNetworkStatus,
 		ifname, preqURL)
 	if err != nil {
 		fmt.Fprintf(outfile, "ERROR: %s: LookupProxy failed: %s\n", ifname, err)
@@ -1084,7 +1089,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
@@ -1101,7 +1106,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)

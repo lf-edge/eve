@@ -5,7 +5,6 @@ package logmanager
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // Return the UUID of the instance based on the domainname

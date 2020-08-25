@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 const baseTableIndex = 500
@@ -18,7 +18,7 @@ const baseTableIndex = 500
 
 // FlushRoutesTable removes all rules from this table.
 // If ifindex is non-zero we also compare it
-func FlushRoutesTable(table int, ifindex int) {
+func FlushRoutesTable(log *base.LogObject, table int, ifindex int) {
 	filter := netlink.Route{Table: table, LinkIndex: ifindex}
 	fflags := netlink.RT_FILTER_TABLE
 	if ifindex != 0 {
@@ -52,7 +52,7 @@ func FlushRoutesTable(table int, ifindex int) {
 // ==== manage the ip rules
 
 // FlushRules removes any rules we created for this ifindex
-func FlushRules(ifindex int) {
+func FlushRules(log *base.LogObject, ifindex int) {
 	rules, err := netlink.RuleList(syscall.AF_UNSPEC)
 	if err != nil {
 		log.Errorf("FlushRules: for ifindex %d failed, error %v", ifindex, err)
@@ -90,7 +90,7 @@ func makeNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool) *netlink.Rule 
 
 // AddSourceRule create a pbr rule for the address or subet which refers to the
 // specific table for the ifindex.
-func AddSourceRule(ifindex int, p net.IPNet, addForSubnet bool) {
+func AddSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet bool) {
 
 	log.Infof("AddSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
 	r := makeNetlinkRule(ifindex, p, addForSubnet)
@@ -105,7 +105,7 @@ func AddSourceRule(ifindex int, p net.IPNet, addForSubnet bool) {
 
 // DelSourceRule removes the pbr rule for the address or subet which refers to the
 // specific table for the ifindex.
-func DelSourceRule(ifindex int, p net.IPNet, addForSubnet bool) {
+func DelSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet bool) {
 
 	log.Infof("DelSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
 	r := makeNetlinkRule(ifindex, p, addForSubnet)

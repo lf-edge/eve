@@ -8,10 +8,10 @@ package utils
 import (
 	"os"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -21,17 +21,17 @@ const (
 
 // EnsureGCFile is used by agents which wait for GlobalConfig to become initialized
 // on startup in order to make sure we have a GlobalConfig file.
-func EnsureGCFile() {
+func EnsureGCFile(log *base.LogObject) {
 	pubGlobalConfig, err := pubsublegacy.PublishPersistent("", types.ConfigItemValueMap{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ReadAndUpdateGCFile(pubGlobalConfig)
+	ReadAndUpdateGCFile(log, pubGlobalConfig)
 }
 
-// CreateSymlink - Creates Symbolick link:
+// CreateSymlink - Creates Symbolic link:
 //  linkDir -->targetDir
-func CreateSymlink(linkDir, targetDir string) {
+func CreateSymlink(log *base.LogObject, linkDir, targetDir string) {
 	// Make sure we have a correct symlink from /var/tmp/zededa so
 	// others can subscribe from there
 	log.Debugf("CreateSymlink")
@@ -57,7 +57,7 @@ func CreateSymlink(linkDir, targetDir string) {
 // GlobalConfig based on the current definition of GlobalConfig which
 // might be different than the file stored on disk if we did an update
 // of EVE.
-func ReadAndUpdateGCFile(pub pubsub.Publication) {
+func ReadAndUpdateGCFile(log *base.LogObject, pub pubsub.Publication) {
 	key := "global"
 	item, err := pub.Get(key)
 	if err == nil {
@@ -76,7 +76,7 @@ func ReadAndUpdateGCFile(pub pubsub.Publication) {
 				err)
 		}
 	}
-	CreateSymlink(symlinkDir, globalConfigDir)
+	CreateSymlink(log, symlinkDir, globalConfigDir)
 }
 
 // RoundToMbytes - Byts convert to Mbytes with round-off

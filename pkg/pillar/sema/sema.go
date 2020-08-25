@@ -4,32 +4,42 @@
 package sema
 
 import (
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 type empty interface{}
-type Semaphore chan empty
 
-func Create(n int) Semaphore {
-	log.Infof("sema.create()\n")
-	return make(Semaphore, n)
+// Semaphore is our representation of a semaphore
+type Semaphore struct {
+	c   chan empty
+	log *base.LogObject
+}
+
+// New returns a Semaphore object
+func New(log *base.LogObject, n int) *Semaphore {
+	log.Infof("sema.New()")
+	return &Semaphore{
+		c:   make(chan empty, n),
+		log: log,
+	}
+
 }
 
 // Acquire n resources
-func (s Semaphore) P(n int) {
-	log.Infof("sema.P(%d)\n", n)
+func (s *Semaphore) P(n int) {
+	s.log.Infof("sema.P(%d)", n)
 	var e empty
 	for i := 0; i < n; i++ {
-		s <- e
+		s.c <- e
 	}
-	log.Infof("sema.P(%d) done\n", n)
+	s.log.Infof("sema.P(%d) done", n)
 }
 
 // Release n resources
-func (s Semaphore) V(n int) {
-	log.Infof("sema.V(%d)\n", n)
+func (s *Semaphore) V(n int) {
+	s.log.Infof("sema.V(%d)", n)
 	for i := 0; i < n; i++ {
-		<-s
+		<-s.c
 	}
-	log.Infof("sema.V(%d) done\n", n)
+	s.log.Infof("sema.V(%d) done", n)
 }

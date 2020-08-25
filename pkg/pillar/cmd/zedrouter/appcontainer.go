@@ -22,9 +22,9 @@ import (
 	apitypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	log "github.com/sirupsen/logrus"
 )
 
 // DOCKERAPIPORT - constant define of docker API TCP port value
@@ -110,6 +110,8 @@ func ensureStatsCollectRunning(ctx *zedrouterContext) {
 	if !ctx.appCollectStatsRunning {
 		ctx.appCollectStatsRunning = true
 		ctx.appStatsMutex.Unlock()
+		log.Infof("Creating %s at %s", "appStatusAndLogCollect",
+			agentlog.GetMyStack())
 		go appStatsAndLogCollect(ctx)
 	} else {
 		ctx.appStatsMutex.Unlock()
@@ -280,11 +282,10 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Tim
 					message = msg[0]
 				}
 				// insert container-name, app-UUID and module timestamp in log to be processed by logmanager
-				log.WithFields(log.Fields{
-					"appuuid":       status.UUIDandVersion.UUID.String(),
-					"containername": containerName,
-					"eventtime":     time,
-				}).Infof("%s", message)
+				log.CloneAndAddField("appuuid", status.UUIDandVersion.UUID.String()).
+					AddField("containername", containerName).
+					AddField("eventtime", time).
+					Infof("%s", message)
 			}
 		}
 		// remember the last entry time by a container

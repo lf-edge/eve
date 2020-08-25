@@ -23,14 +23,13 @@ import (
 	"time"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
-// XXX should we add some Init() function to create this?
-// Currently caller fills it in.
+// ZedCloudContent is set up by NewContext() below
 type ZedCloudContext struct {
 	DeviceNetworkStatus *types.DeviceNetworkStatus
 	TlsConfig           *tls.Config
@@ -52,6 +51,8 @@ type ZedCloudContext struct {
 	onBoardCertHash       []byte
 	serverSigningCertHash []byte
 	onBoardCertBytes      []byte
+	log                   *base.LogObject
+	deferredCtx           DeferredContext
 }
 
 // ContextOptions - options to be passed at NewContext
@@ -62,10 +63,9 @@ type ContextOptions struct {
 	Timeout          uint32
 	Serial           string
 	SoftSerial       string
-	AgentName        string
+	AgentName        string // XXX replace by NoLogFailures?
 }
 
-var sendCounter uint32
 var nilUUID = uuid.UUID{}
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -77,6 +77,8 @@ var nilUUID = uuid.UUID{}
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
 func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
+
+	log := ctx.log
 	// If failed then try the non-free
 	const allowProxy = true
 	var errorList []error
@@ -159,6 +161,8 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 func VerifyAllIntf(ctx *ZedCloudContext,
 	url string, successCount uint,
 	iteration int) (bool, bool, types.IntfStatusMap, error) {
+
+	log := ctx.log
 	var intfSuccessCount uint
 	const allowProxy = true
 	var errorList []error
@@ -248,6 +252,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 // the controller but it is overloaded, or has certificate issues.
 func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, types.SenderResult, error) {
 
+	log := ctx.log
 	var reqUrl string
 	var useTLS, isEdgenode, isGet, useOnboard, isCerts bool
 
@@ -316,7 +321,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 	}
 
 	// Get the transport header with proxy information filled
-	proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus, intf, reqUrl)
+	proxyUrl, err := LookupProxy(ctx.log, ctx.DeviceNetworkStatus, intf, reqUrl)
 	var transport *http.Transport
 	var usedProxy bool
 	if err == nil && proxyUrl != nil && allowProxy {
@@ -407,9 +412,8 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			if devSoftSerial != "" {
 				req.Header.Add("X-Soft-Serial", devSoftSerial)
 			}
-			log.Debugf("Serial-Numbers, count (%d), serial: %s, soft-serial %s",
-				sendCounter, devSerialNum, devSoftSerial)
-			sendCounter++
+			log.Debugf("Serial-Numbers, serial: %s, soft-serial %s",
+				devSerialNum, devSoftSerial)
 		}
 
 		trace := &httptrace.ClientTrace{
@@ -500,7 +504,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				errorList = append(errorList, err)
 				// Inform ledmanager about broken cloud connectivity
 				if !ctx.NoLedManager {
-					utils.UpdateLedManagerConfig(12)
+					utils.UpdateLedManagerConfig(log, 12)
 				}
 				if ctx.FailureFunc != nil {
 					ctx.FailureFunc(intf, reqUrl, reqlen,
@@ -510,7 +514,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			}
 
 			if connState.OCSPResponse == nil ||
-				!stapledCheck(connState) {
+				!stapledCheck(log, connState) {
 
 				if connState.OCSPResponse == nil {
 					// XXX remove debug check
@@ -526,7 +530,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 					log.Errorln(errStr)
 					// Inform ledmanager about broken cloud connectivity
 					if !ctx.NoLedManager {
-						utils.UpdateLedManagerConfig(13)
+						utils.UpdateLedManagerConfig(log, 13)
 					}
 					if ctx.FailureFunc != nil {
 						ctx.FailureFunc(intf, reqUrl,
@@ -660,7 +664,7 @@ func isNoSuitableAddress(err error) bool {
 }
 
 // NewContext - return initialized cloud context
-func NewContext(opt ContextOptions) ZedCloudContext {
+func NewContext(log *base.LogObject, opt ContextOptions) ZedCloudContext {
 	ctx := ZedCloudContext{
 		DeviceNetworkStatus: opt.DevNetworkStatus,
 		NetworkSendTimeout:  opt.Timeout,
@@ -669,6 +673,7 @@ func NewContext(opt ContextOptions) ZedCloudContext {
 		DevSerial:           opt.Serial,
 		DevSoftSerial:       opt.SoftSerial,
 		AgentName:           opt.AgentName,
+		log:                 log,
 	}
 	if opt.NeedStatsFunc {
 		ctx.FailureFunc = ZedCloudFailure

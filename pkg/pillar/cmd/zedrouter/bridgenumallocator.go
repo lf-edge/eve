@@ -11,7 +11,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 var AllocReservedBridgeNumBits Bitmap
@@ -46,7 +45,7 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 		log.Infof("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
 		AllocReservedBridgeNumBits.Set(bridgeNum)
 		// Clear InUse
-		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
+		uuidtonum.UuidToNumFree(log, ctx.pubUuidToNum, uuid)
 	}
 	// In case zedrouter process restarted we fill in InUse from
 	// NetworkInstanceStatus
@@ -67,7 +66,7 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 		}
 		log.Infof("Marking InUse bridgeNum %d for %s\n", bridgeNum, uuid)
 		// Set InUse
-		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, bridgeNum,
+		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, bridgeNum,
 			false, "bridgeNum")
 	}
 }
@@ -102,7 +101,7 @@ func bridgeNumAllocatorGC(ctx *zedrouterContext) {
 func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 
 	// Do we already have a number?
-	bridgeNum, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum, uuid,
+	bridgeNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid,
 		"bridgeNum")
 	if err == nil {
 		log.Infof("Found allocated bridgeNum %d for %s\n",
@@ -112,7 +111,7 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 				bridgeNum)
 		}
 		// Set InUse and update time
-		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, bridgeNum,
+		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, bridgeNum,
 			false, "bridgeNum")
 		return bridgeNum
 	}
@@ -131,13 +130,13 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 	if bridgeNum == 0 {
 		log.Infof("Failed to find free bridgeNum for %s. Reusing!\n",
 			uuid)
-		oldUuid, oldBridgeNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "bridgeNum")
+		oldUuid, oldBridgeNum, err := uuidtonum.UuidToNumGetOldestUnused(log, ctx.pubUuidToNum, "bridgeNum")
 		if err != nil {
 			log.Fatal("All 255 bridgeNums are in use!")
 		}
 		log.Infof("Reuse found bridgeNum %d for %s. Reusing!\n",
 			oldBridgeNum, oldUuid)
-		uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, oldUuid)
+		uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, oldUuid)
 		AllocReservedBridgeNumBits.Clear(oldBridgeNum)
 		bridgeNum = oldBridgeNum
 	}
@@ -146,14 +145,14 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 			bridgeNum)
 	}
 	AllocReservedBridgeNumBits.Set(bridgeNum)
-	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, bridgeNum, true,
+	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, bridgeNum, true,
 		"bridgeNum")
 	return bridgeNum
 }
 
 func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 
-	bridgeNum, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum, uuid, "bridgeNum")
+	bridgeNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid, "bridgeNum")
 	if err != nil {
 		log.Fatalf("bridgeNumFree: num not found for %s\n",
 			uuid.String())
@@ -164,5 +163,5 @@ func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 			bridgeNum)
 	}
 	AllocReservedBridgeNumBits.Clear(bridgeNum)
-	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
+	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, uuid)
 }

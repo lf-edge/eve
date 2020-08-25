@@ -10,11 +10,11 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -64,6 +64,7 @@ type DeviceNetworkContext struct {
 	NetworkTestInterval       uint32 // Test interval in minutes.
 	NetworkTestBetterInterval uint32 // Look for lower/better index
 	TestSendTimeout           uint32 // Timeout for HTTP/Send
+	Log                       *base.LogObject
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
@@ -81,6 +82,7 @@ func RemoveLastResortPortConfig(ctx *DeviceNetworkContext) {
 
 func SetupVerify(ctx *DeviceNetworkContext, index int) {
 
+	log := ctx.Log
 	log.Infof("SetupVerify: Setting up verification for DPC at index %d",
 		index)
 	ctx.NextDPCIndex = index
@@ -89,7 +91,7 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending := &ctx.Pending
 	pending.Inprogress = true
 	pending.PendDPC = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	pend2 := MakeDeviceNetworkStatus(log, pending.PendDPC, pending.PendDNS)
 	pending.PendDNS = pend2
 	pending.TestCount = 0
 	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
@@ -98,6 +100,8 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 }
 
 func RestartVerify(ctx *DeviceNetworkContext, caller string) {
+
+	log := ctx.Log
 	log.Infof("RestartVerify: Caller %s initialized DPC list verify at %v",
 		caller, time.Now())
 
@@ -113,8 +117,8 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 		log.Infof("RestartVerify: nothing testable")
 		// Need to publish so that other agents see we have initialized
 		// even if we have no IPs
-		UpdateResolvConf(*ctx.DeviceNetworkStatus)
-		UpdatePBR(*ctx.DeviceNetworkStatus)
+		UpdateResolvConf(log, *ctx.DeviceNetworkStatus)
+		UpdatePBR(log, *ctx.DeviceNetworkStatus)
 		if ctx.PubDeviceNetworkStatus != nil {
 			ctx.DeviceNetworkStatus.Testing = false
 			log.Infof("PublishDeviceNetworkStatus: %+v\n",
@@ -132,6 +136,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 
 func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 
+	log := ctx.Log
 	dpcl := compressDPCL(ctx)
 	if ctx.PubDevicePortConfigList != nil {
 		log.Infof("publishing DevicePortConfigList compressed: %+v\n", dpcl)
@@ -148,6 +153,7 @@ func compressDPCL(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 
 	var newConfig []types.DevicePortConfig
 
+	log := ctx.Log
 	dpcl := ctx.DevicePortConfigList
 
 	if ctx.Pending.Inprogress || dpcl.CurrentIndex != 0 ||
@@ -196,6 +202,7 @@ var nilUUID = uuid.UUID{} // Really a const
 func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	aa *types.AssignableAdapters, timeout uint32) types.PendDPCStatus {
 
+	log := ctx.Log
 	log.Infof("VerifyPending()\n")
 	// Stop pending timer if its running.
 	pending.PendTimer.Stop()
@@ -203,7 +210,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	// Check if all the ports in the config are out of pciBack.
 	// If yes, apply config.
 	// If not, wait for all the ports to come out of PCIBack.
-	portInPciBack, ifName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(aa)
+	portInPciBack, ifName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(log, aa)
 	if portInPciBack {
 		if usedByUUID != nilUUID {
 			errStr := fmt.Sprintf("port %s in PCIBack "+
@@ -221,7 +228,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
 
-	ifname, err := checkInterfacesExists(pending.PendDPC)
+	ifname, err := checkInterfacesExists(log, pending.PendDPC)
 	if err != nil {
 		// Still waiting for a network interface to appear
 		if pending.TestCount < MaxDPCCheckIfCount {
@@ -244,17 +251,17 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		UpdateDhcpClient(log, pending.PendDPC, pending.OldDPC)
 		pending.OldDPC = pending.PendDPC
 	}
-	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	pend2 := MakeDeviceNetworkStatus(log, pending.PendDPC, pending.PendDNS)
 	pending.PendDNS = pend2
 
 	// We want connectivity to zedcloud via atleast one Management port.
 	// Hard-coded at 1 for now; at least one interface needs to work
 	const successCount uint = 1
 	ctx.Iteration++
-	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(pending.PendDNS,
+	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(log, pending.PendDNS,
 		successCount, ctx.Iteration, timeout)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
@@ -264,7 +271,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	ctx.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
 	pending.PendDNS.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	if err == nil {
-		if checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
+		if checkIfMgmtPortsHaveIPandDNS(log, pending.PendDNS) {
 			pending.PendDPC.LastIPAndDNS = time.Now()
 		}
 		pending.PendDPC.RecordSuccess()
@@ -279,7 +286,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		// certificate or ECONNREFUSED is fixed on the server side.
 		return types.DPC_REMOTE_WAIT
 	}
-	if !checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
+	if !checkIfMgmtPortsHaveIPandDNS(log, pending.PendDNS) {
 		// Still waiting for IP or DNS
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount++
@@ -302,11 +309,11 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 
 // Check if all interfaces exist in the kernel
 // Returns the ifname for the first missing if there is an error
-func checkInterfacesExists(dpc types.DevicePortConfig) (string, error) {
+func checkInterfacesExists(log *base.LogObject, dpc types.DevicePortConfig) (string, error) {
 
 	for _, nuc := range dpc.Ports {
 		// Check the ifname exists
-		_, err := IfnameToIndex(nuc.IfName)
+		_, err := IfnameToIndex(log, nuc.IfName)
 		if err != nil {
 			return nuc.IfName, err
 		}
@@ -315,6 +322,7 @@ func checkInterfacesExists(dpc types.DevicePortConfig) (string, error) {
 }
 
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
+	log := ctx.Log
 	log.Infof("VerifyDevicePortConfig()\n")
 	if !ctx.Pending.Inprogress {
 		log.Infof("VerifyDevicePortConfig() not Inprogress\n")
@@ -335,8 +343,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		dpc.State = res
 		ctx.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
 		ctx.Pending.PendDNS.State = dpc.State
-		UpdateResolvConf(ctx.Pending.PendDNS)
-		UpdatePBR(ctx.Pending.PendDNS)
+		UpdateResolvConf(log, ctx.Pending.PendDNS)
+		UpdatePBR(log, ctx.Pending.PendDNS)
 		// Publish in case we need a port back from domainmgr
 		if ctx.PubDeviceNetworkStatus != nil {
 			ctx.Pending.PendDNS.Testing = true
@@ -470,6 +478,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 // Also skip entries with no management IP addresses
 func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 
+	log := ctx.Log
 	log.Infof("getNextTestableDPCIndex: start %d\n", start)
 	// We want to wrap around, but should not keep looping around.
 	// We do one loop of the entire list searching for a testable candidate.
@@ -520,11 +529,12 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig := configArg.(types.DevicePortConfig)
 	ctx := ctxArg.(*DeviceNetworkContext)
+	log := ctx.Log
 
 	log.Infof("HandleDPCModify: key: %s, Current Config: %+v, portConfig: %+v\n",
 		key, ctx.DevicePortConfig, portConfig)
 
-	portConfig.DoSanitize(true, true, key, true)
+	portConfig.DoSanitize(log, true, true, key, true)
 	mgmtCount := portConfig.CountMgmtPorts()
 	if mgmtCount == 0 {
 		// This DPC will be ignored when we check IsDPCUsable which
@@ -558,14 +568,16 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 //
 func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Infof("HandleDPCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
+	log := ctx.Log
+
+	log.Infof("HandleDPCDelete for %s\n", key)
 	portConfig := configArg.(types.DevicePortConfig)
 
 	log.Infof("HandleDPCDelete for %s current time %v deleted time %v\n",
 		key, ctx.DevicePortConfig.TimePriority, portConfig.TimePriority)
 
-	portConfig.DoSanitize(false, true, key, true)
+	portConfig.DoSanitize(log, false, true, key, true)
 
 	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, true)
 	if !configChanged {
@@ -581,11 +593,13 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	ctx := ctxArg.(*DeviceNetworkContext)
+	log := ctx.Log
+
 	if key != "global" {
 		log.Infof("HandleAssignableAdaptersModify: ignoring %s\n", key)
 		return
 	}
-	ctx := ctxArg.(*DeviceNetworkContext)
 	newAssignableAdapters := statusArg.(types.AssignableAdapters)
 	log.Infof("HandleAssignableAdaptersModify() %+v\n", newAssignableAdapters)
 
@@ -631,6 +645,10 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 // HandleAssignableAdaptersModify - Handle Assignable Adapter list deletions
 func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
+
+	ctx := ctxArg.(*DeviceNetworkContext)
+	log := ctx.Log
+
 	// this usually happens only at restart - as any changes to assignable
 	//   adapters results in domain restart and takes affect only after
 	//   the restart.
@@ -644,6 +662,7 @@ func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 // Removes useless ones (which might be re-added by the controller/zedagent
 // later but at least they are not in the way during boot)
 func IngestPortConfigList(ctx *DeviceNetworkContext) {
+	log := ctx.Log
 	log.Infof("IngestPortConfigList")
 	item, err := ctx.PubDevicePortConfigList.Get("global")
 	var storedDpcl types.DevicePortConfigList
@@ -677,6 +696,7 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 func lookupPortConfig(ctx *DeviceNetworkContext,
 	portConfig types.DevicePortConfig) (*types.DevicePortConfig, int) {
 
+	log := ctx.Log
 	for i, port := range ctx.DevicePortConfigList.PortConfigList {
 		if port.Version == portConfig.Version &&
 			port.Key == portConfig.Key &&
@@ -704,6 +724,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	portConfig *types.DevicePortConfig, delete bool) bool {
 	// Look up based on timestamp, then content
 
+	log := ctx.Log
 	current := getCurrentDPC(ctx) // Used to determine if index needs to change
 	currentIndex := ctx.DevicePortConfigList.CurrentIndex
 	oldConfig, _ := lookupPortConfig(ctx, *portConfig)
@@ -776,6 +797,8 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 }
 
 func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortConfig, portCfg *types.DevicePortConfig) {
+
+	log := ctx.Log
 	log.Infof("checkAndUpdateWireless: oCfg type %v, nil %v, portCfg Ports %v\n", portCfg.Key, oCfg == nil, portCfg.Ports)
 	for _, pCfg := range portCfg.Ports {
 		var oldPortCfg *types.NetworkPortConfig
@@ -790,7 +813,7 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 		if oldPortCfg == nil || !reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
 			if pCfg.WirelessCfg.WType == types.WirelessTypeCellular ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeCellular {
-				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
+				devPortInstallAPname(log, pCfg.IfName, pCfg.WirelessCfg)
 			} else if pCfg.WirelessCfg.WType == types.WirelessTypeWifi ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi {
 				status := devPortInstallWifiConfig(ctx, pCfg.IfName, pCfg.WirelessCfg)
@@ -803,6 +826,7 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 // Update content and move if the timestamp changed
 func updatePortConfig(ctx *DeviceNetworkContext, oldConfig *types.DevicePortConfig, portConfig types.DevicePortConfig) {
 
+	log := ctx.Log
 	if oldConfig.TimePriority == portConfig.TimePriority {
 		log.Infof("updatePortConfig: same time update %+v\n",
 			portConfig)
@@ -821,6 +845,7 @@ func updatePortConfig(ctx *DeviceNetworkContext, oldConfig *types.DevicePortConf
 // Insert in reverse timestamp order
 func insertPortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConfig) {
 
+	log := ctx.Log
 	var newConfig []types.DevicePortConfig
 	inserted := false
 	for _, port := range ctx.DevicePortConfigList.PortConfigList {
@@ -841,6 +866,7 @@ func insertPortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConf
 
 // Remove by matching TimePriority and Key
 func removePortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConfig) {
+	log := ctx.Log
 	var newConfig []types.DevicePortConfig
 	removed := false
 	for _, port := range ctx.DevicePortConfigList.PortConfigList {
@@ -863,6 +889,7 @@ func removePortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConf
 // DoDNSUpdate
 //	Update the device network status and publish it.
 func DoDNSUpdate(ctx *DeviceNetworkContext) {
+	log := ctx.Log
 	// Did we loose all usable addresses or gain the first usable
 	// address?
 	newAddrCount := types.CountLocalIPv4AddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
@@ -872,8 +899,8 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		// ledmanager subscribes to DeviceNetworkStatus to see changes
 		ctx.UsableAddressCount = newAddrCount
 	}
-	UpdateResolvConf(*ctx.DeviceNetworkStatus)
-	UpdatePBR(*ctx.DeviceNetworkStatus)
+	UpdateResolvConf(log, *ctx.DeviceNetworkStatus)
+	UpdatePBR(log, *ctx.DeviceNetworkStatus)
 	if ctx.PubDeviceNetworkStatus != nil {
 		ctx.DeviceNetworkStatus.Testing = false
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
@@ -891,7 +918,7 @@ var lastServers []net.IP
 
 // UpdateResolvConf produces a /etc/resolv.conf based on the management ports
 // in DeviceNetworkStatus
-func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
+func UpdateResolvConf(log *base.LogObject, globalStatus types.DeviceNetworkStatus) int {
 
 	log.Infof("UpdateResolvConf")
 	servers := types.GetDNSServers(globalStatus, "")
@@ -906,7 +933,7 @@ func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 	}
 	defer destfile.Close()
 
-	numAddrs := generateResolvConf(globalStatus, destfile)
+	numAddrs := generateResolvConf(log, globalStatus, destfile)
 	log.Infof("UpdateResolvConf DONE %d addrs", numAddrs)
 	lastServers = servers
 	return numAddrs
@@ -914,7 +941,7 @@ func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 
 // Note that we don't add a search nor domainname option since
 // it seems to mess up the retry logic
-func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.File) int {
+func generateResolvConf(log *base.LogObject, globalStatus types.DeviceNetworkStatus, destfile *os.File) int {
 	destfile.WriteString("# Generated by nim\n")
 	destfile.WriteString("# Do not edit\n")
 	var written []net.IP

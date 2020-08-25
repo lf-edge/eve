@@ -23,14 +23,12 @@ import (
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
@@ -38,7 +36,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
-	log "github.com/sirupsen/logrus"
 )
 
 // Report disk usage for these paths
@@ -126,7 +123,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 
 	for {
 		select {
@@ -134,12 +131,12 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 			start := time.Now()
 			iteration += 1
 			publishMetrics(ctx, iteration)
-			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}
 }
 
@@ -384,9 +381,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			&metric)
 	}
 
-	disks := diskmetrics.FindDisksPartitions()
+	disks := diskmetrics.FindDisksPartitions(log)
 	for _, d := range disks {
-		size, _ := diskmetrics.PartitionSize(d)
+		size, _ := diskmetrics.PartitionSize(log, d)
 		log.Debugf("Disk/partition %s size %d", d, size)
 		size = utils.RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
@@ -426,7 +423,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	log.Debugf("persistUsage %d, elapse sec %v", persistUsage, time.Since(startPubTime).Seconds())
 
 	for _, path := range reportDirPaths {
-		usage := diskmetrics.SizeFromDir(path)
+		usage := diskmetrics.SizeFromDir(log, path)
 		log.Debugf("Path %s usage %d", path, usage)
 		metric := metrics.DiskMetric{MountPath: path,
 			Used: utils.RoundToMbytes(usage),
@@ -439,7 +436,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	// for the benefits of applications
 	var persistAppUsage uint64
 	for _, path := range appPersistPaths {
-		persistAppUsage += diskmetrics.SizeFromDir(path)
+		persistAppUsage += diskmetrics.SizeFromDir(log, path)
 	}
 	log.Debugf("persistAppUsage %d, elapse sec %v", persistAppUsage, time.Since(startPubTime).Seconds())
 
@@ -823,10 +820,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
 	// Find all disks and partitions
-	disks := diskmetrics.FindDisksPartitions()
+	disks := diskmetrics.FindDisksPartitions(log)
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
-		size, _ := diskmetrics.PartitionSize(disk)
+		size, _ := diskmetrics.PartitionSize(log, disk)
 		log.Debugf("Disk/partition %s size %d", disk, size)
 		size = utils.RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
@@ -857,19 +854,19 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceManufacturerInfo := new(info.ZInfoManufacturer)
 	if strings.Contains(machineArch, "x86") {
-		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo()
+		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo(log)
 		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productManufacturer))
 		ReportDeviceManufacturerInfo.ProductName = *proto.String(strings.TrimSpace(productName))
 		ReportDeviceManufacturerInfo.Version = *proto.String(strings.TrimSpace(productVersion))
 		ReportDeviceManufacturerInfo.SerialNumber = *proto.String(strings.TrimSpace(productSerial))
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 
-		biosVendor, biosVersion, biosReleaseDate := hardware.GetDeviceBios()
+		biosVendor, biosVersion, biosReleaseDate := hardware.GetDeviceBios(log)
 		ReportDeviceManufacturerInfo.BiosVendor = *proto.String(strings.TrimSpace(biosVendor))
 		ReportDeviceManufacturerInfo.BiosVersion = *proto.String(strings.TrimSpace(biosVersion))
 		ReportDeviceManufacturerInfo.BiosReleaseDate = *proto.String(strings.TrimSpace(biosReleaseDate))
 	}
-	compatible := hardware.GetCompatible()
+	compatible := hardware.GetCompatible(log)
 	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 
@@ -1100,7 +1097,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	//This will be removed after new fields propagate to Controller.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
-		vault.GetOperInfo()
+		vault.GetOperInfo(log)
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	// Add SecurityInfo
@@ -1126,7 +1123,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-	zedcloud.RemoveDeferred(deviceUUID)
+	zedcloud.RemoveDeferred(zedcloudCtx, deviceUUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1141,8 +1138,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(deviceUUID, buf, size, statusUrl,
-			zedcloudCtx, true)
+		zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
+			statusUrl, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
 	}
@@ -1520,7 +1517,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(uuid)
+	zedcloud.RemoveDeferred(zedcloudCtx, uuid)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1535,7 +1532,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(uuid, buf, size, statusUrl, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusUrl,
 			true)
 	} else {
 		writeSentAppInfoProtoMessage(data)
@@ -1593,7 +1590,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(uuid)
+	zedcloud.RemoveDeferred(zedcloudCtx, uuid)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1608,7 +1605,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
 			true)
 	}
 }
@@ -1672,7 +1669,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(uuid)
+	zedcloud.RemoveDeferred(zedcloudCtx, uuid)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1687,7 +1684,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(uuid, buf, size, statusURL, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
 			true)
 	}
 }
@@ -1730,7 +1727,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	zedcloud.RemoveDeferred(blobSha)
+	zedcloud.RemoveDeferred(zedcloudCtx, blobSha)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -1745,7 +1742,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(blobSha, buf, size, statusURL, zedcloudCtx,
+		zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
 			true)
 	}
 }
@@ -1767,7 +1764,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
-	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
+	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
 		size, buf, iteration, bailOnHTTPErr)
 	if resp != nil {
 		switch resp.StatusCode {
@@ -1802,7 +1799,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "metrics")
 	const bailOnHTTPErr = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, metricsUrl,
+	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful

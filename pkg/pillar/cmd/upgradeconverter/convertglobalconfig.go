@@ -10,7 +10,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -111,7 +110,7 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 
 	// Create a symlink of one doesn't currently exist
 	symLinkPath := ctxPtr.varTmpDir + "/ConfigItemValueMap"
-	utils.CreateSymlink(symLinkPath, ctxPtr.configItemValueMapDir())
+	utils.CreateSymlink(log, symLinkPath, ctxPtr.configItemValueMapDir())
 	log.Debugf("Created symlink %s -> %s",
 		symLinkPath, ctxPtr.configItemValueMapDir())
 

@@ -11,7 +11,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // MaybeAddVolumeRefConfig publishes volume ref config with refcount
@@ -37,7 +36,7 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 		}
 		publishVolumeRefConfig(ctx, &vrc)
 	}
-	base.NewRelationObject(base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
+	base.NewRelationObject(log, base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
 		base.VolumeRefConfigLogType, key).Infof("App instance to volume relation.")
 	log.Infof("MaybeAddVolumeRefConfig done for %s", key)
 }
@@ -67,7 +66,7 @@ func MaybeRemoveVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 			m.RefCount, key)
 		publishVolumeRefConfig(ctx, m)
 	}
-	base.NewRelationObject(base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
+	base.NewRelationObject(log, base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
 		base.VolumeRefConfigLogType, key).Infof("App instance to volume relation.")
 	log.Infof("MaybeRemoveVolumeRefConfig done for %s", key)
 }

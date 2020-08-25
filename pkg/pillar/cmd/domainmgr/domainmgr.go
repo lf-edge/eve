@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"runtime"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
@@ -36,9 +38,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -67,6 +68,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
+	ps *pubsub.PubSub
 	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
 	decryptCipherContext   cipher.DecryptCipherContext
@@ -85,7 +87,7 @@ type domainContext struct {
 	pubHostMemory          pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
 	usbAccess              bool
-	createSema             sema.Semaphore
+	createSema             *sema.Semaphore
 	onboarded              bool
 	GCComplete             bool
 	setInitialUsbAccess    bool
@@ -106,8 +108,9 @@ func (ctx *domainContext) publishAssignableAdapters() {
 var debug = false
 var debugOverride bool          // From command line arg
 var hyper hypervisor.Hypervisor // Current hypervisor
+var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	handlersInit()
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
@@ -118,29 +121,32 @@ func Run(ps *pubsub.PubSub) {
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
+
+	log = agentlog.Init(agentName)
 
 	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s with %s hypervisor backend", agentName, hyper.Name())
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Publish metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -181,6 +187,7 @@ func Run(ps *pubsub.PubSub) {
 	// hence will be overridden in handleGlobalConfig below.
 	// This helps onboarding new hardware by making keyboard etc available
 	domainCtx := domainContext{
+		ps:                  ps,
 		usbAccess:           true,
 		domainBootRetryTime: 600,
 	}
@@ -188,7 +195,7 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.assignableAdapters = &aa
 
 	// Allow only one concurrent domain create
-	domainCtx.createSema = sema.Create(1)
+	domainCtx.createSema = sema.New(log, 1)
 	domainCtx.createSema.P(1)
 
 	pubDomainStatus, err := ps.NewPublication(
@@ -265,6 +272,7 @@ func Run(ps *pubsub.PubSub) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	domainCtx.decryptCipherContext.Log = log
 	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
@@ -374,7 +382,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GCComplete")
 
@@ -398,7 +406,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -412,10 +420,11 @@ func Run(ps *pubsub.PubSub) {
 		case <-stillRunning.C:
 
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed onboarded")
 
+	log.Infof("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&domainCtx, hyper)
 
 	// Wait for DeviceNetworkStatus to be init so we know the management
@@ -432,7 +441,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
@@ -471,7 +480,7 @@ func Run(ps *pubsub.PubSub) {
 		// PhysicalIO which depends on cloud connectivity
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
@@ -524,12 +533,12 @@ func Run(ps *pubsub.PubSub) {
 			if err != nil {
 				log.Errorln(err)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -640,6 +649,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	h1 := make(chan Notify, 1)
 	handlerMap[config.Key()] = h1
+	log.Infof("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, h1)
 	h = h1
 	select {
@@ -1872,7 +1882,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
@@ -1906,7 +1916,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
@@ -2072,7 +2082,8 @@ func mkisofs(output string, dir string) error {
 		"-rock",
 		dir,
 	}
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("mkisofs failed: %s",
 			string(stdoutStderr))
@@ -2095,10 +2106,10 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	if !aa.Initialized {
 		// Setup list first because functions lookup in IoBundleList
 		for _, phyAdapter := range phyIOAdapterList.AdapterList {
-			ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+			ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
-			aa.AddOrUpdateIoBundle(ib)
+			aa.AddOrUpdateIoBundle(log, ib)
 		}
 		// Now initialize each entry
 		for _, ib := range aa.IoBundleList {
@@ -2131,13 +2142,13 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 
 	// Any add or modify?
 	for _, phyAdapter := range phyIOAdapterList.AdapterList {
-		ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+		ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
 		if currentIbPtr == nil {
 			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
 				"added. %+v", phyAdapter.Phylabel, ib)
 			handleIBCreate(ctx, ib)
-		} else if currentIbPtr.HasAdapterChanged(phyAdapter) {
+		} else if currentIbPtr.HasAdapterChanged(log, phyAdapter) {
 			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
 				"changed. Current: %+v, New: %+v", phyAdapter.Phylabel,
 				*currentIbPtr, ib)
@@ -2183,7 +2194,7 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
 		return
 	}
 	// We assume AddOrUpdateIoBundle will preserve any existing Unique/MacAddr
-	aa.AddOrUpdateIoBundle(ib)
+	aa.AddOrUpdateIoBundle(log, ib)
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
@@ -2261,7 +2272,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 				// Seems like like no risk for race; when we return
 				// from above the driver has been attached and
 				// any ifname has been registered.
-				found, ifname := types.PciLongToIfname(ib.PciLong)
+				found, ifname := types.PciLongToIfname(log, ib.PciLong)
 				if !found {
 					log.Errorf("Not found: %d %s %s",
 						ib.Type, ib.Phylabel, ib.Ifname)
@@ -2269,13 +2280,13 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 					log.Warnf("Found: %d %s %s at %s",
 						ib.Type, ib.Phylabel, ib.Ifname,
 						ifname)
-					types.IfRename(ifname, ib.Ifname)
+					types.IfRename(log, ifname, ib.Ifname)
 				}
 			}
 			ib.IsPCIBack = false
 			changed = true
 			// Verify that it has been returned from pciback
-			_, err := types.IoBundleToPci(ib)
+			_, err := types.IoBundleToPci(log, ib)
 			if err != nil {
 				log.Warnf("checkAndSetIoMember(%d %s %s) gone?: %s",
 					ib.Type, ib.Phylabel, ib.AssignmentGroup, err)
@@ -2295,7 +2306,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 	}
 
 	// For a new PCI device we check if it exists in hardware/kernel
-	long, err := types.IoBundleToPci(ib)
+	long, err := types.IoBundleToPci(log, ib)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -2307,7 +2318,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
 
 		// Save somewhat Unique string for debug
-		found, unique := types.PciLongToUnique(long)
+		found, unique := types.PciLongToUnique(log, long)
 		if !found {
 			errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique not found",
 				ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
@@ -2377,7 +2388,7 @@ func checkIoBundleAll(ctx *domainContext) {
 // changed in addition to the name to pci-id lookup.
 func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	long, err := types.IoBundleToPci(ib)
+	long, err := types.IoBundleToPci(log, ib)
 	if err != nil {
 		return err
 	}
@@ -2385,7 +2396,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		// Doesn't exist
 		return nil
 	}
-	found, unique := types.PciLongToUnique(long)
+	found, unique := types.PciLongToUnique(log, long)
 	if !found {
 		errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique %s not foun",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup,
@@ -2573,7 +2584,8 @@ func doModprobe(driver string, add bool) error {
 		args = append(args, "-r")
 	}
 	args = append(args, driver)
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Error(err)
 		log.Errorf("modprobe output: %s", stdoutStderr)

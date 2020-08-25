@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -31,7 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/mcuadros/go-syslog.v2"
 )
 
@@ -66,6 +67,7 @@ var (
 	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
+	log     *base.LogObject
 )
 
 // global stuff
@@ -145,7 +147,7 @@ type inputLogMetrics struct {
 }
 
 // Run is an entry point into running logmanager
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	forcePtr := flag.Bool("f", false, "Force")
@@ -157,24 +159,27 @@ func Run(ps *pubsub.PubSub) {
 	fatalFlag := *fatalPtr
 	hangFlag := *hangPtr
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := ps.NewPublication(
@@ -267,7 +272,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -291,14 +296,14 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 	log.Infof("Have %d management ports with usable addresses",
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred(agentName)
+	deferredChan := zedcloud.GetDeferredChan(&zedcloudCtx)
 	DNSctx.doDeferred = true
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
@@ -319,8 +324,11 @@ func Run(ps *pubsub.PubSub) {
 		inputMetrics: &inputMetrics}
 
 	// Start sender of log events
+	log.Infof("Creating %s at %s", "processEvents", agentlog.GetMyStack())
 	go processEvents(currentPartition, loggerChan, eveVersion, &logmanagerCtx)
 
+	log.Infof("Creating %s at %s", "parseAndSendSyslogEntries",
+		agentlog.GetMyStack())
 	go parseAndSendSyslogEntries(&ctx)
 
 	for {
@@ -341,25 +349,25 @@ func Run(ps *pubsub.PubSub) {
 			if err != nil {
 				log.Errorln(err)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
 
 		case change := <-deferredChan:
 			iteration++
-			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(log, *deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
 			if err != nil {
 				log.Errorf("logmanager(Run): log message processing still in "+
 					"deferred state. err: %s", err)
 				continue
 			}
 			start := time.Now()
-			done := zedcloud.HandleDeferred(change, 1*time.Second)
+			done := zedcloud.HandleDeferred(&zedcloudCtx, change, 1*time.Second)
 			dbg.FreeOSMemory()
 			globalDeferInprogress = !done
 			if globalDeferInprogress {
 				log.Warnf("logmanager: globalDeferInprogress")
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -371,7 +379,7 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }
@@ -464,7 +472,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.usableAddressCount = newAddrCount
 	if cameOnline && ctx.doDeferred {
 		change := time.Now()
-		done := zedcloud.HandleDeferred(change, 1*time.Second)
+		done := zedcloud.HandleDeferred(&zedcloudCtx, change, 1*time.Second)
 		globalDeferInprogress = !done
 		if globalDeferInprogress {
 			log.Warnf("handleDNSModify: globalDeferInprogress")
@@ -535,7 +543,7 @@ func processEvents(image string, logChan <-chan logEntry,
 				continue
 			}
 			iteration++
-			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(log, *deviceNetworkStatus, successCount, iteration, sendTimeoutInSecs)
 			if err != nil {
 				log.Warnf("processEvents:(%s) log message processing still"+
 					" in deferred state", image)
@@ -826,10 +834,10 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 
 	// For any 4xx and 5xx HTTP error we abandon
 	const bailOnHTTPErr = true
-	if zedcloud.HasDeferred(image) {
+	if zedcloud.HasDeferred(&zedcloudCtx, image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s",
 			image)
-		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
@@ -857,7 +865,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
@@ -911,10 +919,10 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 
 	// For any 4xx and 5xx HTTP error we abandon
 	const bailOnHTTPErr = true
-	if zedcloud.HasDeferred(image) {
+	if zedcloud.HasDeferred(&zedcloudCtx, image) {
 		log.Infof("SendProtoStrForAppLogs queued after existing for %s",
 			image)
-		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
@@ -947,7 +955,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, appLogsURL, zedcloudCtx,
+		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
@@ -977,12 +985,12 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx = zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
 	log.Infof("sendCtxInit: Use V2 API %v", zedcloud.UseV2API())
@@ -1032,7 +1040,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s", key)
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
+	debug, gcp = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig,
 		agentName, debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
@@ -1066,7 +1074,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
@@ -1076,11 +1084,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 // Cache of loglevels per agent. Protected by mutex since accessed by
 // multiple goroutines
 var remoteMapLock sync.Mutex
-var remoteMap map[string]log.Level = make(map[string]log.Level)
+var remoteMap map[string]logrus.Level = make(map[string]logrus.Level)
 
 func addRemoteMap(agentName string, logLevel string) {
 	log.Infof("addRemoteMap(%s, %s)", agentName, logLevel)
-	level, err := log.ParseLevel(logLevel)
+	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		log.Errorf("addRemoteMap: ParseLevel failed: %s", err)
 		return
@@ -1116,12 +1124,12 @@ func delRemoteMapAll() {
 	log.Infof("delRemoteMapAll()")
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
-	remoteMap = make(map[string]log.Level)
+	remoteMap = make(map[string]logrus.Level)
 }
 
 // If source exists in GlobalConfig and has a remoteLogLevel, then
 // we compare. If not we accept all
-func dropEvent(source string, level log.Level) bool {
+func dropEvent(source string, level logrus.Level) bool {
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	if l, ok := remoteMap[source]; ok {
@@ -1134,20 +1142,20 @@ func dropEvent(source string, level log.Level) bool {
 	return false
 }
 
-func parseLogLevel(logLevel string) log.Level {
-	level, err := log.ParseLevel(logLevel)
+func parseLogLevel(logLevel string) logrus.Level {
+	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		// XXX Some of the log sources send logs with
 		// severity set to err, emerg & notice.
 		// Logrus log level parse does not recognize the above severities.
 		// Map err, emerg to error and notice to info.
 		if logLevel == "err" || logLevel == "emerg" {
-			level = log.ErrorLevel
+			level = logrus.ErrorLevel
 		} else if logLevel == "notice" {
-			level = log.InfoLevel
+			level = logrus.InfoLevel
 		} else {
 			log.Errorf("ParseLevel failed: %s, defaulting log level to Info", err)
-			level = log.InfoLevel
+			level = logrus.InfoLevel
 		}
 	}
 	return level

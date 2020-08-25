@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // AddOrRefcountDownloaderConfig used to publish the downloader config

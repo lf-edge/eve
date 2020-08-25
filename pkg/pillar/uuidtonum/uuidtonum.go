@@ -8,17 +8,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // Update LastUseTime; set CreateTime if no entry, set InUse
 // The number can be updated as part of this. Entry could already be InUse
 // If mustCreate is set the entry should not exist.
 // XXX doesn't allocate; merely reserves the number for the UUID
-func UuidToNumAllocate(pub pubsub.Publication, uuid uuid.UUID,
+func UuidToNumAllocate(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID,
 	number int, mustCreate bool, numType string) {
 
 	log.Infof("UuidToNumAllocate(%s, %d, %v)\n", uuid.String(), number,
@@ -68,7 +68,7 @@ func UuidToNumAllocate(pub pubsub.Publication, uuid uuid.UUID,
 }
 
 // Clear InUse
-func UuidToNumFree(pub pubsub.Publication, uuid uuid.UUID) {
+func UuidToNumFree(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) {
 
 	log.Infof("UuidToNumFree(%s)\n", uuid.String())
 	i, err := pub.Get(uuid.String())
@@ -86,7 +86,7 @@ func UuidToNumFree(pub pubsub.Publication, uuid uuid.UUID) {
 	}
 }
 
-func UuidToNumDelete(pub pubsub.Publication, uuid uuid.UUID) {
+func UuidToNumDelete(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) {
 
 	log.Infof("UuidToNumDelete(%s)\n", uuid.String())
 	_, err := pub.Get(uuid.String())
@@ -100,7 +100,7 @@ func UuidToNumDelete(pub pubsub.Publication, uuid uuid.UUID) {
 	}
 }
 
-func UuidToNumGet(pub pubsub.Publication, uuid uuid.UUID,
+func UuidToNumGet(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID,
 	numType string) (int, error) {
 
 	key := uuid.String()
@@ -114,7 +114,7 @@ func UuidToNumGet(pub pubsub.Publication, uuid uuid.UUID,
 	return u.Number, nil
 }
 
-func UuidToNumGetOldestUnused(pub pubsub.Publication,
+func UuidToNumGetOldestUnused(log *base.LogObject, pub pubsub.Publication,
 	numType string) (uuid.UUID, int, error) {
 
 	log.Infof("UuidToNumGetOldestUnused(%s)\n", numType)

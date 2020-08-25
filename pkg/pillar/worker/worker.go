@@ -9,7 +9,8 @@ package worker
 import (
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // Worker captures the worker channels
@@ -54,11 +55,12 @@ type WorkFunction func(ctx interface{}, work Work) WorkResult
 
 // NewWorker creates a new function for a specific function and context
 // function takes the context and the channels
-func NewWorker(fn WorkFunction, ctx interface{}, length int) *Worker {
+func NewWorker(log *base.LogObject, fn WorkFunction, ctx interface{}, length int) *Worker {
 	w := new(Worker)
 	requestChan := make(chan Work, length)
 	resultChan := make(chan privateResult, length)
-	go w.processWork(ctx, fn, requestChan, resultChan)
+	log.Infof("Creating %s at %s", "w.processWork", agentlog.GetMyStack())
+	go w.processWork(log, ctx, fn, requestChan, resultChan)
 	w.requestChan = requestChan
 	w.resultChan = resultChan
 	return w
@@ -72,7 +74,7 @@ func (workerPtr Worker) NumPending() int {
 }
 
 // processWork calls the fn for each work until the requestChan is closed
-func (workerPtr *Worker) processWork(ctx interface{}, fn WorkFunction, requestChan <-chan Work, resultChan chan<- privateResult) {
+func (workerPtr *Worker) processWork(log *base.LogObject, ctx interface{}, fn WorkFunction, requestChan <-chan Work, resultChan chan<- privateResult) {
 
 	log.Infof("processWork starting for context %T", ctx)
 	for w := range requestChan {

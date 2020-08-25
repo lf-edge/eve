@@ -7,7 +7,6 @@ import (
 	"reflect"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // MaybeAddAppNetworkConfig ensures we have an AppNetworkConfig

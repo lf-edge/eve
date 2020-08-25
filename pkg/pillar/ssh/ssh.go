@@ -18,8 +18,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -31,7 +31,7 @@ const (
 	sshCommand = `command="ctr --namespace services.linuxkit t exec ${TERM:+-t} --exec-id $(basename $(mktemp)) pillar ${TERM:+env TERM=\"$TERM\"} ${SSH_ORIGINAL_COMMAND:-sh} ${TERM:+-l}"`
 )
 
-func UpdateSshAuthorizedKeys(authorizedKeys string) {
+func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 
 	log.Infof("UpdateSshAuthorizedKeys: %s", authorizedKeys)
 	tmpfile, err := ioutil.TempFile(runDir, "ak")

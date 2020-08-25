@@ -13,7 +13,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // Bitmap of the reserved and allocated
@@ -57,7 +56,7 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 		log.Infof("Reserving appNum %d for %s\n", appNum, uuid)
 		AllocReservedAppNumBits.Set(appNum)
 		// Clear InUse
-		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
+		uuidtonum.UuidToNumFree(log, ctx.pubUuidToNum, uuid)
 	}
 	// In case zedrouter process restarted we fill in InUse from
 	// AppNetworkStatus
@@ -78,7 +77,7 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 		}
 		log.Infof("Marking InUse appNum %d for %s\n", appNum, uuid)
 		// Set InUse
-		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum,
+		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, appNum,
 			false, "appNum")
 	}
 }
@@ -114,7 +113,7 @@ func appNumAllocate(ctx *zedrouterContext,
 	uuid uuid.UUID, isZedmanager bool) int {
 
 	// Do we already have a number?
-	appNum, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum, uuid, "appNum")
+	appNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid, "appNum")
 	if err == nil {
 		log.Infof("Found allocated appNum %d for %s\n", appNum, uuid)
 		if !AllocReservedAppNumBits.IsSet(appNum) {
@@ -122,7 +121,7 @@ func appNumAllocate(ctx *zedrouterContext,
 				appNum)
 		}
 		// Set InUse and update time
-		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum,
+		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, appNum,
 			false, "appNum")
 		return appNum
 	}
@@ -146,13 +145,13 @@ func appNumAllocate(ctx *zedrouterContext,
 		if appNum == 0 {
 			log.Infof("Failed to find free appNum for %s. Reusing!\n",
 				uuid)
-			oldUuid, oldAppNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "appNum")
+			oldUuid, oldAppNum, err := uuidtonum.UuidToNumGetOldestUnused(log, ctx.pubUuidToNum, "appNum")
 			if err != nil {
 				log.Fatal("All 255 appNums are in use!")
 			}
 			log.Infof("Reuse found appNum %d for %s. Reusing!\n",
 				oldAppNum, oldUuid)
-			uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, oldUuid)
+			uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, oldUuid)
 			AllocReservedAppNumBits.Clear(oldAppNum)
 			appNum = oldAppNum
 		}
@@ -162,14 +161,14 @@ func appNumAllocate(ctx *zedrouterContext,
 			appNum)
 	}
 	AllocReservedAppNumBits.Set(appNum)
-	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum, true,
+	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, appNum, true,
 		"appNum")
 	return appNum
 }
 
 func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 
-	appNum, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum, uuid, "appNum")
+	appNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid, "appNum")
 	if err != nil {
 		log.Fatalf("appNumFree: num not found for %s\n",
 			uuid.String())
@@ -180,5 +179,5 @@ func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 			appNum)
 	}
 	AllocReservedAppNumBits.Clear(appNum)
-	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
+	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, uuid)
 }

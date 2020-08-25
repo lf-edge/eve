@@ -10,7 +10,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // Update this AppInstanceStatus generate config updates to
@@ -605,7 +604,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		config.Key(), len(status.VolumeRefStatusList), len(newVrs))
 	status.VolumeRefStatusList = newVrs
 	// Update persistent counter
-	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
 		status.UUIDandVersion.UUID,
 		int(status.PurgeCmd.Counter),
 		false, "purgeCmdCounter")

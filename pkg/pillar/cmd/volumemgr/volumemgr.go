@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -20,7 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -86,26 +87,30 @@ type volumemgrContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var log *base.LogObject
 
 // Run - the main function invoked by zedbox
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
@@ -121,7 +126,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -413,7 +418,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -449,7 +454,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Handling all inputs. Updating .touch file")
 
@@ -502,7 +507,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			gcObjects(&ctx, volumeEncryptedDirName)
 			gcObjects(&ctx, volumeClearDirName)
-			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+			ps.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
 		case res := <-ctx.worker.MsgChan():
@@ -510,7 +515,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -540,7 +545,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
@@ -561,7 +566,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)

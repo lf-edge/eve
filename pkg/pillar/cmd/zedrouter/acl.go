@@ -15,7 +15,6 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // XXX Stop gap allocator copied from zedrouter/appnumallocator.go
@@ -1389,19 +1388,19 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 		ruleStr = append(ruleStr, rule.Action...)
 	}
 	if rule.IPVer == 4 {
-		err = iptables.IptableCmd(ruleStr...)
+		err = iptables.IptableCmd(log, ruleStr...)
 		if operation == "-D" && rule.Table == "mangle" {
 			if rule.ActionChainName != "" {
 				chainFlush := []string{"-t", "mangle", "--flush", rule.ActionChainName}
 				chainDelete := []string{"-t", "mangle", "-X", rule.ActionChainName}
-				err = iptables.IptableCmd(chainFlush...)
+				err = iptables.IptableCmd(log, chainFlush...)
 				if err == nil {
-					iptables.IptableCmd(chainDelete...)
+					iptables.IptableCmd(log, chainDelete...)
 				}
 			}
 		}
 	} else if rule.IPVer == 6 {
-		err = iptables.Ip6tableCmd(ruleStr...)
+		err = iptables.Ip6tableCmd(log, ruleStr...)
 	} else {
 		errStr := fmt.Sprintf("ACL: Unknown IP version %d", rule.IPVer)
 		err = errors.New(errStr)
@@ -1583,7 +1582,7 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 
 	newChain := []string{"-t", "mangle", "-N", name}
 	log.Infof("createMarkAndAcceptChain: Creating new chain (%s)", name)
-	err := iptables.IptableCmd(newChain...)
+	err := iptables.IptableCmd(log, newChain...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New chain (%s) creation failed: %s",
 			name, err)
@@ -1608,44 +1607,44 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 	chainFlush := []string{"-t", "mangle", "--flush", name}
 	chainDelete := []string{"-t", "mangle", "-X", name}
 
-	err = iptables.IptableCmd(rule1...)
+	err = iptables.IptableCmd(log, rule1...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
 			rule1, err)
-		iptables.IptableCmd(chainFlush...)
-		iptables.IptableCmd(chainDelete...)
+		iptables.IptableCmd(log, chainFlush...)
+		iptables.IptableCmd(log, chainDelete...)
 		return err
 	}
-	err = iptables.IptableCmd(rule2...)
+	err = iptables.IptableCmd(log, rule2...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
 			rule2, err)
-		iptables.IptableCmd(chainFlush...)
-		iptables.IptableCmd(chainDelete...)
+		iptables.IptableCmd(log, chainFlush...)
+		iptables.IptableCmd(log, chainDelete...)
 		return err
 	}
-	err = iptables.IptableCmd(rule3...)
+	err = iptables.IptableCmd(log, rule3...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
 			rule3, err)
-		iptables.IptableCmd(chainFlush...)
-		iptables.IptableCmd(chainDelete...)
+		iptables.IptableCmd(log, chainFlush...)
+		iptables.IptableCmd(log, chainDelete...)
 		return err
 	}
-	err = iptables.IptableCmd(rule4...)
+	err = iptables.IptableCmd(log, rule4...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
 			rule4, err)
-		iptables.IptableCmd(chainFlush...)
-		iptables.IptableCmd(chainDelete...)
+		iptables.IptableCmd(log, chainFlush...)
+		iptables.IptableCmd(log, chainDelete...)
 		return err
 	}
-	err = iptables.IptableCmd(rule5...)
+	err = iptables.IptableCmd(log, rule5...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
 			rule5, err)
-		iptables.IptableCmd(chainFlush...)
-		iptables.IptableCmd(chainDelete...)
+		iptables.IptableCmd(log, chainFlush...)
+		iptables.IptableCmd(log, chainDelete...)
 		return err
 	}
 	return nil
@@ -1669,10 +1668,10 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 	//   later it may be possible to change below '-j DROP' to '-j MARK' action
 	if isRemove {
 		action = "-D"
-		err = iptables.IptableCmd("-t", "raw", action, "PREROUTING", "-d", appIPAddr.String(), "-p", "tcp",
+		err = iptables.IptableCmd(log, "-t", "raw", action, "PREROUTING", "-d", appIPAddr.String(), "-p", "tcp",
 			"--dport", strconv.Itoa(DOCKERAPIPORT), "-j", "DROP")
 	} else {
-		err = iptables.IptableCmd("-t", "raw", action, "PREROUTING", "1", "-d", appIPAddr.String(), "-p", "tcp",
+		err = iptables.IptableCmd(log, "-t", "raw", action, "PREROUTING", "1", "-d", appIPAddr.String(), "-p", "tcp",
 			"--dport", strconv.Itoa(DOCKERAPIPORT), "-j", "DROP")
 	}
 	if err != nil {

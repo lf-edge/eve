@@ -12,7 +12,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
-	log "github.com/sirupsen/logrus"
 )
 
 // node health timer funcions
@@ -210,6 +209,7 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
+	log.Infof("Creating %s at %s", "handleNodeReboot", agentlog.GetMyStack())
 	go handleNodeReboot(ctxPtr, reasonStr)
 }
 
@@ -282,5 +282,5 @@ func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	log.Infof("Timer Expired.. Zboot.Reset()")
 	syscall.Sync()
 	<-rebootTimer.C
-	zboot.Reset()
+	zboot.Reset(log)
 }

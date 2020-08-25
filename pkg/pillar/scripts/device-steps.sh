@@ -121,6 +121,16 @@ fi
 
 CONFIGDEV=$(zboot partdev CONFIG)
 
+# If zedbox is already running we don't have to start it.
+if ! pgrep zedbox >/dev/null; then
+    echo "$(date -Ins -u) Starting zedbox"
+    $BINDIR/zedbox &
+    wait_for_touch zedbox
+fi
+
+mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
+touch "$WATCHDOG_PID/zedbox.pid" "$WATCHDOG_FILE/zedbox.touch"
+
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
 #It is a device with TPM, enable disk encryption
     if ! $BINDIR/vaultmgr setupVaults; then
@@ -172,8 +182,8 @@ fi
 
 # Run upgradeconverter
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter"
-status=$($BINDIR/upgradeconverter)
-echo "$(date -Ins -u) device-steps: upgradeconverter Completed. Status: $status"
+$BINDIR/upgradeconverter
+echo "$(date -Ins -u) device-steps: upgradeconverter Completed"
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -202,7 +212,6 @@ echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent &
 wait_for_touch nodeagent
 
-mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
       "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch" \
       "$WATCHDOG_PID/domainmgr.pid" "$WATCHDOG_FILE/domainmgr.touch"
@@ -248,8 +257,8 @@ access_usb() {
             [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
-            /opt/zededa/bin/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
-            /opt/zededa/bin/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
+            $BINDIR/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
+            $BINDIR/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
             sync
         fi
         if [ -d /mnt/dump ]; then
@@ -404,7 +413,7 @@ if [ $SELF_REGISTER = 1 ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-        /opt/zededa/bin/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
+        $BINDIR/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
         echo "$(date -Ins -u) Created default hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
@@ -425,7 +434,7 @@ else
     $BINDIR/client getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
-        /opt/zededa/bin/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
+        $BINDIR/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
         echo "$(date -Ins -u) Created hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
 

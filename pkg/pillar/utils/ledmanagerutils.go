@@ -4,9 +4,9 @@
 package utils
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -14,7 +14,7 @@ const (
 )
 
 // UpdateLedManagerConfig is used by callers to change the behavior or the LED
-func UpdateLedManagerConfig(count int) {
+func UpdateLedManagerConfig(log *base.LogObject, count int) {
 	blinkCount := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}

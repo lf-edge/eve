@@ -5,12 +5,12 @@ package devicenetwork
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -18,7 +18,7 @@ import (
 // GetDhcpInfo gets info from dhcpcd. Updates Gateway and Subnet
 // XXX set NtpServer once we know what name it has
 // XXX add IPv6 support?
-func GetDhcpInfo(us *types.NetworkPortStatus) {
+func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 
 	log.Infof("GetDhcpInfo(%s)\n", us.IfName)
 	if us.Dhcp != types.DT_CLIENT {
@@ -30,7 +30,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) {
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
-	cmd := wrap.Command("dhcpcd", "-U", "-4", us.IfName)
+	cmd := exec.Command("dhcpcd", "-U", "-4", us.IfName)
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
@@ -74,7 +74,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) {
 }
 
 // GetDNSInfo gets DNS info from /run files. Updates DomainName and DnsServers
-func GetDNSInfo(us *types.NetworkPortStatus) {
+func GetDNSInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 
 	log.Infof("GetDNSInfo(%s)\n", us.IfName)
 	if us.Dhcp != types.DT_CLIENT {

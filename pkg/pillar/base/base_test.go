@@ -24,22 +24,22 @@ func (agent Agent) LogKey() string {
 	return "james-bond-007"
 }
 
-func (agent Agent) LogCreate() {
-	logObject := EnsureLogObject("secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
+func (agent Agent) LogCreate(logBase *LogObject) {
+	logObject := EnsureLogObject(logBase, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
 	logObject.CloneAndAddField("agent_name", agent.AgentName).
 		AddField("agent_number", agent.AgentNumber).
 		AddField("agent_is_brosnan", true).AddField("agent_age", agent.AgentAge).Infof("I am Bond, James Bond")
 }
 
 func (agent Agent) LogModify(old interface{}) {
-	logObject := EnsureLogObject("secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
+	logObject := EnsureLogObject(nil, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
 	logObject.CloneAndAddField("agent_name", agent.AgentName).
 		AddField("agent_number", agent.AgentNumber).
 		AddField("agent_is_brosnan", true).AddField("agent_age", agent.AgentAge).Infof("James Bond gets old!")
 }
 
 func (agent Agent) LogDelete() {
-	logObject := EnsureLogObject("secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
+	logObject := EnsureLogObject(nil, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
 	logObject.CloneAndAddField("agent_name", agent.AgentName).
 		AddField("agent_number", agent.AgentNumber).
 		AddField("agent_is_brosnan", true).AddField("agent_age", agent.AgentAge).Infof("James Bond dies!")
@@ -88,7 +88,7 @@ func TestSpecialAgent(t *testing.T) {
 		logBuffer.Reset()
 		switch test.action {
 		case "create":
-			test.agent.LogCreate()
+			test.agent.LogCreate(nil)
 			expected := "{\"agent_age\":30,\"agent_is_brosnan\":true,\"agent_name\":\"James Bond\",\"agent_number\":7,\"level\":\"info\",\"log_event_type\":\"log\",\"msg\":\"I am Bond, James Bond\",\"obj_key\":\"james-bond-007\",\"obj_name\":\"Pierce Brosnan\",\"obj_type\":\"secret_agent\"}"
 			assert.Equal(t, expected, strings.TrimSpace(logBuffer.String()))
 		case "modify":

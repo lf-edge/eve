@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // MaybeAddDomainConfig makes sure we have a DomainConfig

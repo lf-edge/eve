@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -41,7 +41,7 @@ var (
 )
 
 //getFscryptOperInfo returns operational status of fscrypt encryption
-func getFscryptOperInfo() (info.DataSecAtRestStatus, string) {
+func getFscryptOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(FscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(FscryptPath, StatusParams...); err != nil {
@@ -63,9 +63,9 @@ func getFscryptOperInfo() (info.DataSecAtRestStatus, string) {
 }
 
 //getZfsOperInfo returns operational status of ZFS encryption
-func getZfsOperInfo() (info.DataSecAtRestStatus, string) {
+func getZfsOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	//Check if default zpool (i.e. "persist" dataset) is setup
-	_, err := CheckOperStatus(DefaultZpool)
+	_, err := CheckOperStatus(log, DefaultZpool)
 	if err != nil {
 		log.Errorf("default zpool status returns error %v", err)
 		return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
@@ -77,7 +77,7 @@ func getZfsOperInfo() (info.DataSecAtRestStatus, string) {
 }
 
 //GetOperInfo gets the current operational state of encryption tool
-func GetOperInfo() (info.DataSecAtRestStatus, string) {
+func GetOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	if !etpm.IsTpmEnabled() {
 		//No encryption on plaforms without a (working) TPM
 		log.Debug("Setting status to disabled, TPM is not in use")
@@ -87,9 +87,9 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 	persistFsType := ReadPersistType()
 	switch persistFsType {
 	case "ext4":
-		return getFscryptOperInfo()
+		return getFscryptOperInfo(log)
 	case "zfs":
-		return getZfsOperInfo()
+		return getZfsOperInfo(log)
 	default:
 		log.Debugf("Unsupported filesystem (%s), setting status to disabled",
 			persistFsType)

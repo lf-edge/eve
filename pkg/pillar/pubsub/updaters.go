@@ -3,7 +3,7 @@ package pubsub
 import (
 	"sync"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 type notifyName struct {
@@ -20,7 +20,7 @@ type Updaters struct {
 }
 
 // Add an updater
-func (u *Updaters) Add(updater chan Notify, name string, instance int) {
+func (u *Updaters) Add(log *base.LogObject, updater chan Notify, name string, instance int) {
 	u.lock.Lock()
 	nn := notifyName{name: name, instance: instance, ch: updater}
 	u.servers = append(u.servers, nn)
@@ -28,7 +28,7 @@ func (u *Updaters) Add(updater chan Notify, name string, instance int) {
 }
 
 // Remove an updater
-func (u *Updaters) Remove(updater chan Notify) {
+func (u *Updaters) Remove(log *base.LogObject, updater chan Notify) {
 	u.lock.Lock()
 	// A new slice which points to the same underlying array
 	servers := u.servers[:0]

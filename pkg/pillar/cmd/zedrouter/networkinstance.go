@@ -12,15 +12,15 @@ import (
 	"fmt"
 	uuid "github.com/satori/go.uuid"
 	"net"
+	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
 )
 
 func allowSharedPort(status *types.NetworkInstanceStatus) bool {
@@ -143,7 +143,8 @@ func checkPortAvailable(
 func disableIcmpRedirects(bridgeName string) {
 	sysctlSetting := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", bridgeName)
 	args := []string{"-w", sysctlSetting}
-	out, err := wrap.Command("sysctl", args...).CombinedOutput()
+	log.Infof("Calling command %s %v\n", "sysctl", args)
+	out, err := exec.Command("sysctl", args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
 			args, err, out)
@@ -519,6 +520,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 
 	// monitor the DNS and DHCP information
+	log.Infof("Creating %s at %s", "DNSMonitor", agentlog.GetMyStack())
 	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
@@ -966,12 +968,12 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 
 	// Get IP address from Logicallabel
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
-	ifindex, err := devicenetwork.IfnameToIndex(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(log, ifname)
 	if err != nil {
 		return "", err
 	}
 	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
+	addrs, err := devicenetwork.IfindexToAddrs(log, ifindex)
 	if err != nil {
 		log.Warnf("IfIndexToAddrs failed: %s\n", err)
 		addrs = nil
@@ -1210,7 +1212,7 @@ func getIfNameListForLLOrIfname(
 			//	remove this check for ifindex here when the MakeDeviceStatus
 			//	is fixed.
 			// XXX That bug has been fixed. Retest without this code?
-			ifIndex, err := devicenetwork.IfnameToIndex(ifName)
+			ifIndex, err := devicenetwork.IfnameToIndex(log, ifName)
 			if err == nil {
 				log.Infof("ifName %s, ifindex: %d added to filteredList",
 					ifName, ifIndex)
@@ -1324,8 +1326,8 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 		Type:           status.Type,
 	}
 	netMetrics := types.NetworkMetrics{}
-	netMetric := status.UpdateNetworkMetrics(nms)
-	status.UpdateBridgeMetrics(nms, netMetric)
+	netMetric := status.UpdateNetworkMetrics(log, nms)
+	status.UpdateBridgeMetrics(log, nms, netMetric)
 
 	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
 	niMetrics.NetworkMetrics = netMetrics
@@ -1463,7 +1465,7 @@ func natActivate(ctx *zedrouterContext,
 	}
 	for _, a := range status.IfNameList {
 		log.Infof("Adding iptables rules for %s \n", a)
-		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
+		err := iptables.IptableCmd(log, "-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("IptableCmd failed: %s", err)
@@ -1491,7 +1493,7 @@ func natInactivate(ctx *zedrouterContext,
 	} else {
 		oldUplinkIntf = status.CurrentUplinkIntf
 	}
-	err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
+	err := iptables.IptableCmd(log, "-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
 		"-s", subnetStr, "-j", "MASQUERADE")
 	if err != nil {
 		log.Errorf("natInactivate: iptableCmd failed %s\n", err)

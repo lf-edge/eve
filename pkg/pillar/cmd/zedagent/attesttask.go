@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"reflect"
@@ -67,7 +66,7 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "attest")
-	return zedcloud.SendOnAllIntf(&zedcloudCtx, attestURL,
+	return zedcloud.SendOnAllIntf(zedcloudCtx, attestURL,
 		size, buf, iteration, true)
 }
 
@@ -270,7 +269,7 @@ func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error 
 //PunchWatchdog implements PunchWatchdog method of zattest.Watchdog
 func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
 	log.Debug("[ATTEST] Punching watchdog")
-	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+	ctx.PubSub.StillRunning(agentName+"attest", warningTime, errorTime)
 	return nil
 }
 
@@ -316,7 +315,7 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		ctx.attestCtx = &attestContext{}
 	}
 
-	c, err := zattest.New(retryTimeInterval, watchdogInterval, ctx.attestCtx)
+	c, err := zattest.New(ctx.ps, log, retryTimeInterval, watchdogInterval, ctx.attestCtx)
 	if err != nil {
 		log.Errorf("[ATTEST] Error %v while initializing attestation FSM", err)
 		return err
@@ -344,6 +343,8 @@ func attestModuleStart(ctx *zedagentContext) error {
 	if ctx.attestCtx.attestFsmCtx == nil {
 		return fmt.Errorf("No state machine context found")
 	}
+	log.Infof("Creating %s at %s", "attestFsmCtx.EnterEventLoop",
+		agentlog.GetMyStack())
 	go ctx.attestCtx.attestFsmCtx.EnterEventLoop()
 	zattest.Kickstart(ctx.attestCtx.attestFsmCtx)
 	return nil

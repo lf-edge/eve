@@ -3,10 +3,12 @@ package agentbase
 import (
 	"flag"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // AgentBase - Interface for all agents to use the AgentBase.
@@ -25,6 +27,7 @@ type CliParams struct {
 
 // Context - a struct that represents a general agent context
 type Context struct {
+	PubSub       *pubsub.PubSub
 	CLIParams    CliParams
 	ErrorTime    time.Duration
 	WarningTime  time.Duration
@@ -43,21 +46,22 @@ func processCLIFlags(agentBase AgentBase) {
 }
 
 // Run - a general run function that will handle all of the common code for agents
-func Run(agentSpecificContext AgentBase) {
+func Run(agentSpecificContext AgentBase) *base.LogObject {
 	processCLIFlags(agentSpecificContext)
 	ctx := agentSpecificContext.AgentBaseContext()
 	debugOverride := ctx.CLIParams.DebugOverride
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
-	agentlog.Init(ctx.AgentName)
-	if err := pidfile.CheckAndCreatePidfile(ctx.AgentName); err != nil {
+	log := agentlog.Init(ctx.AgentName)
+	if err := pidfile.CheckAndCreatePidfile(log, ctx.AgentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", ctx.AgentName)
 	if ctx.NeedWatchdog {
-		agentlog.StillRunning(ctx.AgentName, ctx.WarningTime, ctx.ErrorTime)
+		ctx.PubSub.StillRunning(ctx.AgentName, ctx.WarningTime, ctx.ErrorTime)
 	}
+	return log
 }

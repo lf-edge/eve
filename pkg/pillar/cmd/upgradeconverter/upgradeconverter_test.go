@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 type testEntry struct {
@@ -101,6 +101,7 @@ func checkNoDir(t *testing.T, dir string) {
 func ucContextForTest() *ucContext {
 	//log.SetLevel(log.DebugLevel)
 	var err error
+	log = base.NewSourceLogObject("upgradeconverter", 0)
 	ctxPtr := &ucContext{}
 	ctxPtr.persistDir, err = ioutil.TempDir(".", "PersistDir")
 	if err != nil {

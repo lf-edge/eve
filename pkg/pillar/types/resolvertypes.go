@@ -28,8 +28,8 @@ func (config ResolveConfig) Key() string {
 }
 
 // LogCreate :
-func (config ResolveConfig) LogCreate() {
-	logObject := base.NewLogObject(base.ResolveConfigLogType, config.Name,
+func (config ResolveConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
 	if logObject == nil {
 		return
@@ -39,7 +39,7 @@ func (config ResolveConfig) LogCreate() {
 
 // LogModify :
 func (config ResolveConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ResolveConfigLogType, config.Name,
+	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
 
 	// Why would it change?
@@ -48,7 +48,7 @@ func (config ResolveConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config ResolveConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.ResolveConfigLogType, config.Name,
+	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
 	logObject.Infof("Resolve config delete")
 
@@ -80,8 +80,8 @@ func (status ResolveStatus) Key() string {
 }
 
 // LogCreate :
-func (status ResolveStatus) LogCreate() {
-	logObject := base.NewLogObject(base.ResolveStatusLogType, status.Name,
+func (status ResolveStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ResolveStatusLogType, status.Name,
 		status.DatastoreID, status.LogKey())
 	if logObject == nil {
 		return
@@ -93,7 +93,7 @@ func (status ResolveStatus) LogCreate() {
 
 // LogModify :
 func (status ResolveStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.ResolveStatusLogType, status.Name,
+	logObject := base.EnsureLogObject(nil, base.ResolveStatusLogType, status.Name,
 		status.DatastoreID, status.LogKey())
 
 	oldStatus, ok := old.(ResolveStatus)
@@ -122,7 +122,7 @@ func (status ResolveStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status ResolveStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.ResolveStatusLogType, status.Name,
+	logObject := base.EnsureLogObject(nil, base.ResolveStatusLogType, status.Name,
 		status.DatastoreID, status.LogKey())
 	logObject.CloneAndAddField("image-sha256", status.ImageSha256).
 		AddField("retry-count-int64", status.RetryCount).

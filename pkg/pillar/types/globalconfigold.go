@@ -8,7 +8,7 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // OK in this old code
 )
 
 // OldGlobalConfig - Legacy version of global config. Kept for upgradeconverter

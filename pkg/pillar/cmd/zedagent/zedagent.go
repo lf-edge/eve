@@ -34,13 +34,14 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -78,6 +79,7 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
+	ps                        *pubsub.PubSub
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
 	attestCtx                 *attestContext    // Cross link
@@ -129,8 +131,10 @@ type zedagentContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 var flowQ *list.List
+var log *base.LogObject
+var zedcloudCtx *zedcloud.ZedCloudContext
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
@@ -144,46 +148,52 @@ func Run(ps *pubsub.PubSub) {
 	fatalFlag := *fatalPtr
 	hangFlag := *hangPtr
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	parse := *parsePtr
 	validate := *validatePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	if validate && parse == "" {
 		fmt.Printf("Setting -V requires -p\n")
-		os.Exit(1)
+		return 1
 	}
 	if parse != "" {
 		res, config := readValidateConfig(
 			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
 		if !res {
 			fmt.Printf("Failed to parse %s\n", parse)
-			os.Exit(1)
+			return 1
 		}
 		fmt.Printf("parsed proto <%v>\n", config)
 		if validate {
 			valid := validateConfigUTF8(config)
 			if !valid {
 				fmt.Printf("Found some invalid UTF-8\n")
-				os.Exit(1)
+				return 1
 			}
 		}
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
+
+	log = agentlog.Init(agentName)
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 
 	log.Infof("Starting %s", agentName)
 
 	triggerDeviceInfo := make(chan struct{}, 1)
-	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
+	zedagentCtx := zedagentContext{
+		ps:                ps,
+		TriggerDeviceInfo: triggerDeviceInfo,
+	}
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
 	zedagentCtx.globalStatus.ConfigItems = make(
@@ -211,16 +221,16 @@ func Run(ps *pubsub.PubSub) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
-	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
-	agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName+"config", warningTime, errorTime)
+	ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+	ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
+	ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
-	handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+	zedcloudCtx = handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
@@ -243,10 +253,10 @@ func Run(ps *pubsub.PubSub) {
 	zedagentCtx.attestCtx = &attestCtx
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred(agentName)
+	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
-	utils.ReadAndUpdateGCFile(zedagentCtx.pubGlobalConfig)
+	utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -793,14 +803,14 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
+		ps.StillRunning(agentName+"config", warningTime, errorTime)
+		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ps.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses")
@@ -832,8 +842,8 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-deferredChan:
 			start := time.Now()
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond)
+			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -845,14 +855,14 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"attest", warningTime, errorTime)
-		agentlog.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ps.StillRunning(agentName+"config", warningTime, errorTime)
+		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ps.StillRunning(agentName+"attest", warningTime, errorTime)
+		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -925,6 +935,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
+	log.Infof("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
 
 	// Publish initial device info.
@@ -932,11 +943,13 @@ func Run(ps *pubsub.PubSub) {
 
 	// start the metrics reporting task
 	handleChannel := make(chan interface{})
+	log.Infof("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	// start the config fetch tasks, when zboot status is ready
+	log.Infof("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
 	go configTimerTask(handleChannel, &getconfigCtx)
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
@@ -1038,8 +1051,8 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-deferredChan:
 			start := time.Now()
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond)
+			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
 		case change := <-subCipherMetricsDL.MsgChan():
@@ -1109,7 +1122,7 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }
@@ -1141,11 +1154,11 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 			PublishDeviceInfoToZedCloud(ctxPtr)
 			ctxPtr.iteration++
 			log.Info("deviceInfoTask done with message")
-			pubsub.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
+			ctxPtr.ps.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
 				warningTime, errorTime)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ctxPtr.ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 }
 
@@ -1157,9 +1170,9 @@ func handleZbootRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-func handleInit(networkSendTimeout uint32) {
+func handleInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 	initializeDirs()
-	handleConfigInit(networkSendTimeout)
+	return handleConfigInit(networkSendTimeout)
 }
 
 func initializeDirs() {
@@ -1262,7 +1275,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.triggerDeviceInfo = true
 
 	if zedcloudCtx.V2API {
-		zedcloud.UpdateTLSProxyCerts(&zedcloudCtx)
+		zedcloud.UpdateTLSProxyCerts(zedcloudCtx)
 	}
 	log.Infof("handleDNSModify done for %s", key)
 }
@@ -1364,7 +1377,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctx.GCInitialized {
 		ctx.globalConfig = *gcp
@@ -1382,7 +1395,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)

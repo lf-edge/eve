@@ -13,12 +13,12 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // CopyRoutesTable adds routes from one table to another.
 // If ifindex is non-zero we also compare it
-func CopyRoutesTable(srcTable int, ifindex int, dstTable int) {
+func CopyRoutesTable(log *base.LogObject, srcTable int, ifindex int, dstTable int) {
 	if srcTable == 0 {
 		srcTable = getDefaultRouteTable()
 	}

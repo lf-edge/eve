@@ -16,10 +16,11 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -49,8 +50,10 @@ type executorContext struct {
 	timeLimit     uint // In seconds
 }
 
+var log *base.LogObject
+
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
@@ -59,25 +62,28 @@ func Run(ps *pubsub.PubSub) {
 	execCtx.debug = *debugPtr
 	execCtx.debugOverride = execCtx.debug
 	if execCtx.debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	execCtx.timeLimit = *timeLimitPtr
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
+
+	log = agentlog.Init(agentName)
 
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	pubExecStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -112,7 +118,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -195,7 +201,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -343,7 +349,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	execCtx.debug, gcp = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
+	execCtx.debug, gcp = agentlog.HandleGlobalConfig(log, execCtx.subGlobalConfig, agentName,
 		execCtx.debugOverride)
 	if gcp != nil {
 		execCtx.GCInitialized = true
@@ -360,7 +366,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	execCtx.debug, _ = agentlog.HandleGlobalConfig(execCtx.subGlobalConfig, agentName,
+	execCtx.debug, _ = agentlog.HandleGlobalConfig(log, execCtx.subGlobalConfig, agentName,
 		execCtx.debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

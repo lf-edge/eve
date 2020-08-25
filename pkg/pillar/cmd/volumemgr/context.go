@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 func (ctx *volumemgrContext) subscription(topicType interface{}, objType string) pubsub.Subscription {

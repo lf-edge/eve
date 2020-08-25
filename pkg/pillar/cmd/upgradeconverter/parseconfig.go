@@ -12,7 +12,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type parseResult struct {

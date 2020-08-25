@@ -21,7 +21,6 @@ import (
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
 )
 
 var flowIteration int
@@ -689,7 +688,7 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
 	}
 	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-	zedcloud.RemoveDeferred(UUID)
+	zedcloud.RemoveDeferred(zedcloudCtx, UUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -704,8 +703,8 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(UUID, buf, size, statusUrl,
-			zedcloudCtx, true)
+		zedcloud.SetDeferred(zedcloudCtx, UUID, buf, size, statusUrl,
+			true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
 	}
@@ -846,7 +845,7 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		size := int64(proto.Size(pflowsPtr))
 		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
 		const bailOnHTTPErr = false
-		_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, flowlogURL,
+		_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
 			size, buf, flowIteration, bailOnHTTPErr)
 		if err != nil {
 			log.Errorf("FlowStats: sendFlowProtobuf status %d failed: %s",

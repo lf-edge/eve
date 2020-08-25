@@ -11,7 +11,7 @@ import (
 
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
 // SwState started with enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
@@ -146,7 +146,7 @@ func (state SwState) ZSwState() info.ZSwState {
 	case PURGING:
 		return info.ZSwState_PURGING
 	default:
-		log.Fatalf("Unknown state %d", state)
+		logrus.Fatalf("Unknown state %d", state)
 	}
 	return info.ZSwState_INITIAL
 }
@@ -181,7 +181,7 @@ func SafenameToFilename(safename string) string {
 	// Drop "."sha256 tail part of Safename
 	i := strings.LastIndex(last, ".")
 	if i == -1 {
-		log.Fatal("Malformed safename with no .sha256",
+		logrus.Fatal("Malformed safename with no .sha256",
 			safename)
 	}
 	last = last[0:i]
@@ -248,7 +248,7 @@ func FormatTriState(state TriState) string {
 	case TS_DISABLED:
 		return "disabled"
 	default:
-		log.Fatalf("Invalid TriState Value: %v", state)
+		logrus.Fatalf("Invalid TriState Value: %v", state)
 	}
 	return ""
 }

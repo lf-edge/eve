@@ -8,12 +8,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -33,19 +30,19 @@ func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 
 	for {
 		select {
 		case <-ticker.C:
 			start := time.Now()
 			getAndPublishMetrics(ctx, hyper)
-			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}
 }
 

@@ -7,10 +7,11 @@ import (
 	"flag"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var conversionHandlers = []ConversionHandler{
@@ -75,7 +76,7 @@ func (ctx ucContext) configCheckpointFile() string {
 
 func runHandlers(ctxPtr *ucContext) {
 	for _, handler := range conversionHandlers {
-		log.Printf("upgradeconverter.Run: Running Conversion handler: %s",
+		log.Infof("upgradeconverter.Run: Running Conversion handler: %s",
 			handler.description)
 		err := handler.handlerFunc(ctxPtr)
 		if err != nil {
@@ -85,8 +86,10 @@ func runHandlers(ctxPtr *ucContext) {
 	}
 }
 
+var log *base.LogObject
+
 // Run - runs the main upgradeconverter process
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	ctx := &ucContext{agentName: "upgradeconverter",
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
@@ -101,17 +104,21 @@ func Run(ps *pubsub.PubSub) {
 	ctx.persistDir = *persistPtr // XXX remove? Or use for tests?
 	ctx.noFlag = *noFlagPtr
 	if ctx.debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 
-	agentlog.Init("upgradeconverter")
-	if err := pidfile.CheckAndCreatePidfile(ctx.agentName); err != nil {
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + ctx.agentName)
+
+	log = agentlog.Init(ctx.agentName)
+	if err := pidfile.CheckAndCreatePidfile(log, ctx.agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", ctx.agentName)
 	runHandlers(ctx)
+	return 0
 }
 
 // HandlerFunc - defines functions to handle each conversion

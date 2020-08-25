@@ -4,6 +4,9 @@
 # https://github.com/debian-pi/raspbian-ua-netinst/blob/master/scripts/etc/udhcpc/default.script
 # and modified as per EVE requirement
 
+: "${staticroutes:=}"
+: "${ip:=}"
+
 [ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
 
 # create etc directory if not already done
@@ -17,6 +20,18 @@ RESOLV_CONF='/mnt/rootfs/etc/resolv.conf'
 # interface for which DNS is to be configured
 PEERDNS_IF=eth0
 
+install_classless_routes()
+{
+    while [ -n "$1" ] && [ -n "$2" ]; do
+        if [ "$2" == '0.0.0.0' ]; then
+            ip route add "$1" dev "$interface" src "$ip"
+        else
+            ip route add "$1" via "$2" dev "$interface"
+        fi
+        shift 2
+    done
+}
+
 case "$1" in
   deconfig)
     echo "udhcpc op deconfig interface ${interface}"
@@ -25,8 +40,6 @@ case "$1" in
     ip link set $interface up
     # remove any stored config info for this $interface
     rm -f $CFG
-    # remove previous dns
-    rm -f $RESOLV_CONF
     ;;
   bound)
     echo "udhcpc op bound interface ${interface}"
@@ -35,7 +48,8 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add ${ip}/${mask} dev $interface
-    [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
+    # shellcheck disable=SC2086
+    [ -n "$router" ] && [ -n "$staticroutes" ] && install_classless_routes $staticroutes
     # setup dns
     if [ "$interface" == "$PEERDNS_IF" ] ; then
       [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
@@ -66,7 +80,8 @@ case "$1" in
     if [ -n "$REDO_NET" ] ; then
       ip addr flush dev $interface
       ip addr add ${ip}/${mask} dev $interface
-      [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
+      # shellcheck disable=SC2086
+      [ -n "$router" ] && [ -n "$staticroutes" ] && install_classless_routes $staticroutes
     fi
     if [ -n "$REDO_DNS" -a "$interface" == "$PEERDNS_IF" ] ; then
       # remove previous dns

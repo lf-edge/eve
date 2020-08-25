@@ -15,7 +15,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -23,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // This is set once at init time and not changed
@@ -62,9 +60,6 @@ type getconfigContext struct {
 	rebootFlag               bool
 }
 
-// tlsConfig is initialized once i.e. effectively a constant
-var zedcloudCtx zedcloud.ZedCloudContext
-
 // devUUID is set in handleConfigInit and never changed
 var devUUID uuid.UUID
 
@@ -74,7 +69,7 @@ var zcdevUUID uuid.UUID
 // Really a constant
 var nilUUID uuid.UUID
 
-func handleConfigInit(networkSendTimeout uint32) {
+func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -84,12 +79,12 @@ func handleConfigInit(networkSendTimeout uint32) {
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
-	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          networkSendTimeout,
 		NeedStatsFunc:    true,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
 
@@ -115,12 +110,14 @@ func handleConfigInit(networkSendTimeout uint32) {
 	log.Infof("Read UUID %s", devUUID)
 	zedcloudCtx.DevUUID = devUUID
 	zcdevUUID = devUUID
+	return &zedcloudCtx
 }
 
 // Run a periodic fetch of the config
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 
+	ctx := getconfigCtx.zedagentCtx
 	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
@@ -138,7 +135,7 @@ func configTimerTask(handleChannel chan interface{},
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+	ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
 
 	for {
 		select {
@@ -147,7 +144,7 @@ func configTimerTask(handleChannel chan interface{},
 			iteration += 1
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
-			pubsub.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
+			ctx.ps.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
 
@@ -156,7 +153,7 @@ func configTimerTask(handleChannel chan interface{},
 				log.Infof("reboot flag set")
 			}
 		}
-		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+		ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
 	}
 }
 
@@ -202,7 +199,7 @@ func getLatestConfig(url string, iteration int,
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := 2
 		switch rtf {
@@ -231,7 +228,7 @@ func getLatestConfig(url string, iteration int,
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
-			utils.UpdateLedManagerConfig(newCount)
+			utils.UpdateLedManagerConfig(log, newCount)
 			getconfigCtx.ledManagerCount = newCount
 		}
 		// If we didn't yet get a config, then look for a file
@@ -262,7 +259,7 @@ func getLatestConfig(url string, iteration int,
 	if resp.StatusCode == http.StatusNotModified {
 		log.Debugf("StatusNotModified len %d", len(contents))
 		// Inform ledmanager about config received from cloud
-		utils.UpdateLedManagerConfig(4)
+		utils.UpdateLedManagerConfig(log, 4)
 		getconfigCtx.ledManagerCount = 4
 
 		if !getconfigCtx.configReceived {
@@ -280,7 +277,7 @@ func getLatestConfig(url string, iteration int,
 	if err := validateProtoMessage(url, resp); err != nil {
 		log.Errorln("validateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(log, 3)
 		getconfigCtx.ledManagerCount = 3
 		publishZedAgentStatus(getconfigCtx)
 		return false
@@ -290,14 +287,14 @@ func getLatestConfig(url string, iteration int,
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(log, 3)
 		getconfigCtx.ledManagerCount = 3
 		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
 	// Inform ledmanager about config received from cloud
-	utils.UpdateLedManagerConfig(4)
+	utils.UpdateLedManagerConfig(log, 4)
 	getconfigCtx.ledManagerCount = 4
 
 	if !getconfigCtx.configReceived {

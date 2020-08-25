@@ -8,7 +8,6 @@ package nodeagent
 import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 )
 
 // baseos upgrade installation path

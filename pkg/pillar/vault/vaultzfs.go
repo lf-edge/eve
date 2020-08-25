@@ -4,7 +4,7 @@
 package vault
 
 import (
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 func getOperStatusParams(vaultPath string) []string {
@@ -13,7 +13,7 @@ func getOperStatusParams(vaultPath string) []string {
 }
 
 // CheckOperStatus returns ZFS status
-func CheckOperStatus(vaultPath string) (string, error) {
+func CheckOperStatus(log *base.LogObject, vaultPath string) (string, error) {
 	args := getOperStatusParams(vaultPath)
 	if stdOut, stdErr, err := execCmd(ZfsPath, args...); err != nil {
 		log.Errorf("oper status query for %s results in error=%v, %s, %s",

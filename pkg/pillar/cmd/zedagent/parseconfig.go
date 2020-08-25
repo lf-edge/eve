@@ -23,7 +23,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -1613,7 +1612,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		if newSSHAuthorizedKeys != oldSSHAuthorizedKeys {
 			log.Infof("parseConfigItems: %s changed from %v to %v",
 				"SshAuthorizedKeys", oldSSHAuthorizedKeys, newSSHAuthorizedKeys)
-			ssh.UpdateSshAuthorizedKeys(newSSHAuthorizedKeys)
+			ssh.UpdateSshAuthorizedKeys(log, newSSHAuthorizedKeys)
 		}
 		pub := ctx.zedagentCtx.pubGlobalConfig
 		err := pub.Publish("global", *gcPtr)

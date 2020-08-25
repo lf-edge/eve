@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -22,7 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -42,33 +43,37 @@ var (
 	nilUUID       uuid.UUID                          // should be a const, just the default nil value of uuid.UUID
 	dHandler      = makeDownloadHandler()
 	resHandler    = makeResolveHandler()
+	log           *base.LogObject
 )
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	metricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -111,7 +116,7 @@ func Run(ps *pubsub.PubSub) {
 			ctx.subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -136,7 +141,7 @@ func Run(ps *pubsub.PubSub) {
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d management ports addresses to use",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
@@ -182,12 +187,12 @@ func Run(ps *pubsub.PubSub) {
 			if err != nil {
 				log.Errorln(err)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

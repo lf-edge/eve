@@ -8,14 +8,15 @@ package iptables
 import (
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-func IptableCmdOut(dolog bool, args ...string) (string, error) {
+// IptableCmdOut logs the command string if log is set
+func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	cmd := "iptables"
 	var out []byte
 	var err error
@@ -25,8 +26,9 @@ func IptableCmdOut(dolog bool, args ...string) (string, error) {
 	copy(args[2:], args[0:])
 	args[0] = "-w"
 	args[1] = "5"
-	if dolog {
-		out, err = wrap.Command(cmd, args...).CombinedOutput()
+	if log != nil {
+		log.Infof("Calling command %s %v\n", cmd, args)
+		out, err = exec.Command(cmd, args...).CombinedOutput()
 	} else {
 		out, err = exec.Command(cmd, args...).Output()
 	}
@@ -39,12 +41,14 @@ func IptableCmdOut(dolog bool, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func IptableCmd(args ...string) error {
-	_, err := IptableCmdOut(true, args...)
+// IptableCmd logs the command string if log is set
+func IptableCmd(log *base.LogObject, args ...string) error {
+	_, err := IptableCmdOut(log, args...)
 	return err
 }
 
-func Ip6tableCmdOut(dolog bool, args ...string) (string, error) {
+// Ip6tableCmdOut logs the command string if log is set
+func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	cmd := "ip6tables"
 	var out []byte
 	var err error
@@ -54,8 +58,9 @@ func Ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	copy(args[2:], args[0:])
 	args[0] = "-w"
 	args[1] = "5"
-	if dolog {
-		out, err = wrap.Command(cmd, args...).CombinedOutput()
+	if log != nil {
+		log.Infof("Calling command %s %v\n", cmd, args)
+		out, err = exec.Command(cmd, args...).CombinedOutput()
 	} else {
 		out, err = exec.Command(cmd, args...).Output()
 	}
@@ -68,80 +73,82 @@ func Ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func Ip6tableCmd(args ...string) error {
-	_, err := Ip6tableCmdOut(true, args...)
+// Ip6tableCmd logs the command string if log is set
+func Ip6tableCmd(log *base.LogObject, args ...string) error {
+	_, err := Ip6tableCmdOut(log, args...)
 	return err
 }
 
-func IptablesInit() {
+func IptablesInit(log *base.LogObject) {
 	// Avoid adding nat rule multiple times as we restart by flushing first
-	IptableCmd("-t", "nat", "-F", "POSTROUTING")
+	IptableCmd(log, "-t", "nat", "-F", "POSTROUTING")
 
 	// Flush IPv6 mangle rules from previous run
-	Ip6tableCmd("-F", "PREROUTING", "-t", "mangle")
+	Ip6tableCmd(log, "-F", "PREROUTING", "-t", "mangle")
 
 	// Add mangle rules for IPv6 packets from dom0 overlay
 	// since netfront/netback thinks there is checksum offload
 	// XXX not needed once we have disaggregated dom0
-	IptableCmd("-F", "POSTROUTING", "-t", "mangle")
-	IptableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
+	IptableCmd(log, "-F", "POSTROUTING", "-t", "mangle")
+	IptableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
 		"-j", "CHECKSUM", "--checksum-fill")
-	IptableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
+	IptableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
 		"-j", "CHECKSUM", "--checksum-fill")
-	Ip6tableCmd("-F", "POSTROUTING", "-t", "mangle")
-	Ip6tableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
+	Ip6tableCmd(log, "-F", "POSTROUTING", "-t", "mangle")
+	Ip6tableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
 		"-j", "CHECKSUM", "--checksum-fill")
-	Ip6tableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
+	Ip6tableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
 		"-j", "CHECKSUM", "--checksum-fill")
 }
 
-func FetchIprulesCounters() []AclCounters {
+func FetchIprulesCounters(log *base.LogObject) []AclCounters {
 	var counters []AclCounters
 	// get for IPv4 filter, IPv6 filter, and IPv6 raw
-	out, err := IptableCmdOut(false, "-t", "filter", "-S", "FORWARD", "-v")
+	// Do not log anything
+	out, err := IptableCmdOut(nil, "-t", "filter", "-S", "FORWARD", "-v")
 	if err != nil {
 		log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", 4)
+		c := parseCounters(log, out, "filter", 4)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
 
-	out, err = IptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
+	out, err = IptableCmdOut(nil, "-t", "raw", "-S", "PREROUTING", "-v")
 	if err != nil {
 		log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", 4)
+		c := parseCounters(log, out, "filter", 4)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
 
 	// Only needed to get dbo1x0 stats
-	out, err = Ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
+	out, err = Ip6tableCmdOut(nil, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
 		log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", 6)
+		c := parseCounters(log, out, "filter", 6)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
-	out, err = Ip6tableCmdOut(false, "-t", "filter", "-S", "FORWARD", "-v")
+	out, err = Ip6tableCmdOut(nil, "-t", "filter", "-S", "FORWARD", "-v")
 	if err != nil {
 		log.Errorf("FetchIprulesCounters: ip6tables failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", 6)
+		c := parseCounters(log, out, "filter", 6)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
-	out, err = Ip6tableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
+	out, err = Ip6tableCmdOut(nil, "-t", "raw", "-S", "PREROUTING", "-v")
 	if err != nil {
 		log.Errorf("FetchIprulesCounters: ip6tables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", 6)
+		c := parseCounters(log, out, "filter", 6)
 		if c != nil {
 			counters = append(counters, c...)
 		}
@@ -149,7 +156,7 @@ func FetchIprulesCounters() []AclCounters {
 	return counters
 }
 
-func getIpRuleCounters(counters []AclCounters, match *AclCounters) *AclCounters {
+func getIpRuleCounters(log *base.LogObject, counters []AclCounters, match *AclCounters) *AclCounters {
 	for i, c := range counters {
 		if c.IpVer != match.IpVer || c.Log != match.Log ||
 			c.Drop != match.Drop || c.Limit != match.Limit {
@@ -174,7 +181,7 @@ func getIpRuleCounters(counters []AclCounters, match *AclCounters) *AclCounters 
 // Look for a LOG entry without More; we don't have those for rate limits
 // acl.go appends a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface. Need to match that here.
-func GetIPRuleACLDrop(counters []AclCounters, bridgeName string, vifName string,
+func GetIPRuleACLDrop(log *base.LogObject, counters []AclCounters, bridgeName string, vifName string,
 	ipVer int, input bool) uint64 {
 
 	var iif string
@@ -190,7 +197,7 @@ func GetIPRuleACLDrop(counters []AclCounters, bridgeName string, vifName string,
 	}
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
 		Drop: true, Limit: false}
-	c := getIpRuleCounters(counters, &match)
+	c := getIpRuleCounters(log, counters, &match)
 	if c == nil {
 		return 0
 	}
@@ -198,7 +205,7 @@ func GetIPRuleACLDrop(counters []AclCounters, bridgeName string, vifName string,
 }
 
 // GetIPRuleACLLog : Get the packet/byte count of logged packets
-func GetIPRuleACLLog(counters []AclCounters, bridgeName string, vifName string,
+func GetIPRuleACLLog(log *base.LogObject, counters []AclCounters, bridgeName string, vifName string,
 	ipVer int, input bool) uint64 {
 
 	var iif string
@@ -214,7 +221,7 @@ func GetIPRuleACLLog(counters []AclCounters, bridgeName string, vifName string,
 	}
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
 		Drop: false, Limit: false, Log: true}
-	c := getIpRuleCounters(counters, &match)
+	c := getIpRuleCounters(log, counters, &match)
 	if c == nil {
 		return 0
 	}
@@ -225,7 +232,7 @@ func GetIPRuleACLLog(counters []AclCounters, bridgeName string, vifName string,
 // Look for a DROP entry with More set.
 // acl.go appends a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface. Need to match that here.
-func GetIPRuleACLRateLimitDrop(counters []AclCounters, bridgeName string,
+func GetIPRuleACLRateLimitDrop(log *base.LogObject, counters []AclCounters, bridgeName string,
 	vifName string, ipVer int, input bool) uint64 {
 
 	var iif string
@@ -242,7 +249,7 @@ func GetIPRuleACLRateLimitDrop(counters []AclCounters, bridgeName string,
 	// for RateLimit Drops, the Drop is false
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
 		Drop: false, Limit: true}
-	c := getIpRuleCounters(counters, &match)
+	c := getIpRuleCounters(log, counters, &match)
 	if c == nil {
 		return 0
 	}
@@ -250,12 +257,12 @@ func GetIPRuleACLRateLimitDrop(counters []AclCounters, bridgeName string,
 }
 
 // Parse the output of iptables -S -v
-func parseCounters(out string, table string, ipVer int) []AclCounters {
+func parseCounters(log *base.LogObject, out string, table string, ipVer int) []AclCounters {
 	var counters []AclCounters
 
 	lines := strings.Split(out, "\n")
 	for _, line := range lines {
-		ac := parseline(line, table, ipVer)
+		ac := parseline(log, line, table, ipVer)
 		if ac != nil {
 			counters = append(counters, *ac)
 		}
@@ -281,7 +288,7 @@ type AclCounters struct {
 	Pkts   uint64
 }
 
-func parseline(line string, table string, ipVer int) *AclCounters {
+func parseline(log *base.LogObject, line string, table string, ipVer int) *AclCounters {
 	items := strings.Split(line, " ")
 	if len(items) < 4 {
 		// log.Debugf("Too short: %s\n", line)

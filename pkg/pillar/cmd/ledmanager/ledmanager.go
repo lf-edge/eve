@@ -28,12 +28,13 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -162,11 +163,12 @@ var mToF = []modelToFuncs{
 
 var debug bool
 var debugOverride bool // From command line arg
+var log *base.LogObject
 
 // Set from Makefile
 var Version = "No version specified"
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
@@ -177,26 +179,29 @@ func Run(ps *pubsub.PubSub) {
 	fatalFlag := *fatalPtr
 	hangFlag := *hangPtr
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
-	model := hardware.GetHardwareModel()
+	model := hardware.GetHardwareModel(log)
 	log.Infof("Got HardwareModel %s", model)
 
 	var blinkFunc Blink200msFunc
@@ -227,6 +232,7 @@ func Run(ps *pubsub.PubSub) {
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
+	log.Infof("Creating %s at %s", "triggerBinkOnDevice", agentlog.GetMyStack())
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc, ledName)
 
 	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -289,7 +295,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -313,7 +319,7 @@ func Run(ps *pubsub.PubSub) {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName, warningTime, errorTime)
+			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }
@@ -408,7 +414,7 @@ func InitDellCmd(ledName string) {
 // InitDDCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
 func InitDDCmd(ledName string) {
-	disk := diskmetrics.FindLargestDisk()
+	disk := diskmetrics.FindLargestDisk(log)
 	if disk == "" {
 		return
 	}
@@ -571,7 +577,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
@@ -588,7 +594,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

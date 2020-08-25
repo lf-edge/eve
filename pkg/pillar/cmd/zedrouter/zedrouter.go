@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"time"
@@ -22,15 +23,15 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -88,32 +89,36 @@ type zedrouterContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) {
+func Run(ps *pubsub.PubSub) int {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
-	agentlog.Init(agentName)
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+	log = agentlog.Init(agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Infof("Create %s\n", runDirname)
@@ -287,7 +292,7 @@ func Run(ps *pubsub.PubSub) {
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
 
@@ -314,7 +319,7 @@ func Run(ps *pubsub.PubSub) {
 		// Former depends on cloud connectivity.
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
@@ -374,9 +379,9 @@ func Run(ps *pubsub.PubSub) {
 	subAppNetworkConfigAg.Activate()
 
 	PbrInit(&zedrouterCtx)
-	routeChanges := devicenetwork.RouteChangeInit()
-	addrChanges := devicenetwork.AddrChangeInit()
-	linkChanges := devicenetwork.LinkChangeInit()
+	routeChanges := devicenetwork.RouteChangeInit(log)
+	addrChanges := devicenetwork.AddrChangeInit(log)
+	linkChanges := devicenetwork.LinkChangeInit(log)
 
 	// Publish network metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -403,7 +408,7 @@ func Run(ps *pubsub.PubSub) {
 	// First wait for restarted from zedmanager to
 	// reduce the number of LISP-RESTARTs
 	for !subAppNetworkConfig.Restarted() {
-		log.Infof("Waiting for zedmanager to report restarted\n")
+		log.Infof("Waiting for zedrouter to report restarted")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -432,11 +437,11 @@ func Run(ps *pubsub.PubSub) {
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
-			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
+			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
 	}
-	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
+	log.Infof("Zedrouter has restarted. Entering main Select loop")
 
 	for {
 		select {
@@ -461,7 +466,7 @@ func Run(ps *pubsub.PubSub) {
 			start := time.Now()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
-				addrChanges = devicenetwork.AddrChangeInit()
+				addrChanges = devicenetwork.AddrChangeInit(log)
 				break
 			}
 			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
@@ -475,14 +480,14 @@ func Run(ps *pubsub.PubSub) {
 				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "addrChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
 			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
-				linkChanges = devicenetwork.LinkChangeInit()
+				linkChanges = devicenetwork.LinkChangeInit(log)
 				break
 			}
 			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
@@ -496,19 +501,19 @@ func Run(ps *pubsub.PubSub) {
 				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
-			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
 				warningTime, errorTime)
 
 		case change, ok := <-routeChanges:
 			start := time.Now()
 			if !ok {
 				log.Errorf("routeChanges closed\n")
-				routeChanges = devicenetwork.RouteChangeInit()
+				routeChanges = devicenetwork.RouteChangeInit(log)
 				break
 			}
 			PbrRouteChange(&zedrouterCtx,
 				zedrouterCtx.deviceNetworkStatus, change)
-			pubsub.CheckMaxTimeTopic(agentName, "routeChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "routeChanges", start,
 				warningTime, errorTime)
 
 		case <-publishTimer.C:
@@ -520,7 +525,7 @@ func Run(ps *pubsub.PubSub) {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
+			ps.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
 				warningTime, errorTime)
 
 			start = time.Now()
@@ -528,37 +533,41 @@ func Run(ps *pubsub.PubSub) {
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
+			ps.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
 				warningTime, errorTime)
 
 		case <-flowStatTimer.C:
 			start := time.Now()
 			log.Debugf("FlowStatTimer at %v", time.Now())
 			// XXX why start a new go routine for each change?
+			log.Infof("Creating %s at %s", "FlowStatsCollect",
+				agentlog.GetMyStack())
 			go FlowStatsCollect(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
+			ps.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.hostProbeTimer.C:
 			start := time.Now()
 			log.Debugf("HostProbeTimer at %v", time.Now())
 			// launch the go function gateway/remote hosts probing check
+			log.Infof("Creating %s at %s", "launchHostProbe",
+				agentlog.GetMyStack())
 			go launchHostProbe(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
+			ps.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.appNetCreateTimer.C:
 			start := time.Now()
 			log.Debugf("appNetCreateTimer: at %v", time.Now())
 			scanAppNetworkStatusInErrorAndUpdate(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
+			ps.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.checkNIUplinks:
 			start := time.Now()
 			log.Infof("checkNIUplinks channel signal\n")
 			checkAndReprogramNetworkInstances(&zedrouterCtx)
-			pubsub.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
+			ps.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
 				warningTime, errorTime)
 
 		case change := <-subNetworkInstanceConfig.MsgChan():
@@ -567,7 +576,7 @@ func Run(ps *pubsub.PubSub) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 		// Are we likely to have seen all of the initial config?
 		if zedrouterCtx.triggerNumGC &&
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
@@ -575,7 +584,7 @@ func Run(ps *pubsub.PubSub) {
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
-			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
+			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
 	}
@@ -622,7 +631,7 @@ func handleInit(runDirname string) {
 	}
 
 	// Setup initial iptables rules
-	iptables.IptablesInit()
+	iptables.IptablesInit(log)
 
 	// ipsets which are independent of config
 	createDefaultIpset()
@@ -819,13 +828,13 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 	}
 
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
-	ifindex, err := devicenetwork.IfnameToIndex(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(log, ifname)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
 			status.DisplayName, ifname, err)
 		return "", errors.New(errStr)
 	}
-	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
+	addrs, err := devicenetwork.IfindexToAddrs(log, ifindex)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfindexToAddrs(%s, index %d) failed %s",
 			status.DisplayName, ifname, ifindex, err)
@@ -976,7 +985,7 @@ func appNetworkDoActivateUnderlayNetwork(
 			dnsServers)
 		startDnsmasq(bridgeName)
 	}
-	networkInstanceInfo.AddVif(vifName, appMac,
+	networkInstanceInfo.AddVif(log, vifName, appMac,
 		config.UUIDandVersion.UUID)
 	networkInstanceInfo.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
@@ -1513,7 +1522,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
 		startDnsmasq(bridgeName)
 	}
-	netstatus.RemoveVif(ulStatus.Vif)
+	netstatus.RemoveVif(log, ulStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -1534,7 +1543,8 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	var err error
 	var out []byte
 	for i := 0; i < 3; i++ {
-		out, err = wrap.Command(cmd, args...).CombinedOutput()
+		log.Infof("Calling command %s %v\n", cmd, args)
+		out, err = exec.Command(cmd, args...).CombinedOutput()
 		if err == nil {
 			break
 		}
@@ -1560,7 +1570,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.GCInitialized = true
@@ -1578,7 +1588,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	gcp := *types.DefaultConfigItemValueMap()
 	ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)

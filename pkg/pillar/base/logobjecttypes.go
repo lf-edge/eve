@@ -85,6 +85,8 @@ const (
 	VolumeRefConfigLogType LogObjectType = "volume_ref_config"
 	// VolumeRefStatusLogType:
 	VolumeRefStatusLogType LogObjectType = "volume_ref_status"
+	// ServiceInitType:
+	ServiceInitLogType LogObjectType = "service_init"
 )
 
 // RelationObjectType :
@@ -110,7 +112,7 @@ var logObjectMap = NewLockedStringMap()
 // LoggableObject :
 type LoggableObject interface {
 	LogKey() string
-	LogCreate()
+	LogCreate(logBase *LogObject)
 	LogModify(old interface{})
 	LogDelete()
 }
@@ -122,7 +124,7 @@ type LoggableObject interface {
 // key     -> [MANDATORY] Key used for storing internal data. This should be the same Key your LoggableObject.Key()
 // would return. LogObject craeted here and the corresponding LoggableObject are linked using this key.
 // objType and objName are mandatory parameters
-func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
+func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
 	if objType == UnknownLogType || len(key) == 0 {
 		log.Fatal("NewLogObject: objType and key parameters mandatory")
 	}
@@ -138,13 +140,13 @@ func NewLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key 
 	}
 
 	object = new(LogObject)
-	InitLogObject(object, objType, objName, objUUID, key)
+	InitLogObject(logBase, object, objType, objName, objUUID, key)
 
 	return object
 }
 
 // InitLogObject : Initialize an already allocated LogObject
-func InitLogObject(object *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) {
+func InitLogObject(logBase *LogObject, object *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) {
 	if objType == UnknownLogType || len(key) == 0 {
 		log.Fatal("InitLogObject: objType and key parameters mandatory")
 	}
@@ -163,7 +165,21 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 	}
 	object.Initialized = true
 	object.Fields = fields
+	if logBase != nil {
+		object.Merge(logBase)
+	}
 	logObjectMap.Store(key, object)
+}
+
+// NewSourceLogObject : create an object with agentName and agentPid
+func NewSourceLogObject(agentName string, agentPid int) *LogObject {
+	object := new(LogObject)
+	object.Initialized = true
+	fields := make(map[string]interface{})
+	fields["source"] = agentName
+	fields["pid"] = agentPid
+	object.Fields = fields
+	return object
 }
 
 // NewRelationObject : Creates a relation object.
@@ -174,7 +190,7 @@ func InitLogObject(object *LogObject, objType LogObjectType, objName string, obj
 // fromObjName        -> Name of the source point of relation
 // toObjType          -> Type of the destination point of relation
 // toObjName          -> Name of the destination point of relation
-func NewRelationObject(relationObjectType RelationObjectType,
+func NewRelationObject(logBase *LogObject, relationObjectType RelationObjectType,
 	fromObjType LogObjectType, fromObjNameOrKey string,
 	toObjType LogObjectType, toObjNameOrKey string) *LogObject {
 
@@ -194,6 +210,9 @@ func NewRelationObject(relationObjectType RelationObjectType,
 	object.Initialized = true
 	object.Fields = fields
 
+	if logBase != nil {
+		object.Merge(logBase)
+	}
 	return object
 }
 
@@ -212,10 +231,10 @@ func LookupLogObject(key string) *LogObject {
 }
 
 // EnsureLogObject : Look for log object with given key or create new if we do not already have one.
-func EnsureLogObject(objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
+func EnsureLogObject(logBase *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
 	logObject := LookupLogObject(key)
 	if logObject == nil {
-		logObject = NewLogObject(objType, objName, objUUID, key)
+		logObject = NewLogObject(logBase, objType, objName, objUUID, key)
 	}
 	return logObject
 }

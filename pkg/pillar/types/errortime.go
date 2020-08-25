@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
 // Common error with timestamp
@@ -21,7 +21,7 @@ type ErrorAndTime struct {
 // SetErrorNow uses the current time
 func (etPtr *ErrorAndTime) SetErrorNow(errStr string) {
 	if errStr == "" {
-		log.Fatal("Missing error string")
+		logrus.Fatal("Missing error string")
 	}
 	etPtr.Error = errStr
 	etPtr.ErrorTime = time.Now()
@@ -30,7 +30,7 @@ func (etPtr *ErrorAndTime) SetErrorNow(errStr string) {
 // SetError is when time is specified
 func (etPtr *ErrorAndTime) SetError(errStr string, errorTime time.Time) {
 	if errStr == "" {
-		log.Fatal("Missing error string")
+		logrus.Fatal("Missing error string")
 	}
 	etPtr.Error = errStr
 	etPtr.ErrorTime = errorTime
@@ -69,7 +69,7 @@ type ErrorAndTimeWithSource struct {
 // SetError - Sets error state with no source type
 func (etsPtr *ErrorAndTimeWithSource) SetError(errStr string, errTime time.Time) {
 	if errStr == "" {
-		log.Fatal("Missing error string")
+		logrus.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
 	etsPtr.ErrorSourceType = ""
@@ -83,10 +83,10 @@ func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 	source interface{}, errTime time.Time) {
 
 	if !allowedSourceType(source) {
-		log.Fatalf("Bad ErrorSourceType %T", source)
+		logrus.Fatalf("Bad ErrorSourceType %T", source)
 	}
 	if errStr == "" {
-		log.Fatal("Missing error string")
+		logrus.Fatal("Missing error string")
 	}
 	etsPtr.Error = errStr
 	switch source.(type) {
@@ -101,7 +101,7 @@ func (etsPtr *ErrorAndTimeWithSource) SetErrorWithSource(errStr string,
 // IsErrorSource returns true if the source type matches
 func (etsPtr *ErrorAndTimeWithSource) IsErrorSource(source interface{}) bool {
 	if !allowedSourceType(source) {
-		log.Fatalf("Bad ErrorSourceType %T", source)
+		logrus.Fatalf("Bad ErrorSourceType %T", source)
 	}
 	if !etsPtr.HasError() {
 		return false

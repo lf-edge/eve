@@ -11,7 +11,7 @@ import (
 
 	"github.com/containerd/containerd"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus" // XXX add log argument
 )
 
 const (

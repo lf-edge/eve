@@ -14,7 +14,7 @@ package queuelock
 import (
 	"sync"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // Handle is the handle used by the caller
@@ -24,12 +24,16 @@ type Handle struct {
 	running   uint      // what is currently running holding the lock
 	waiting   []uint    // things waiting to run
 	next      chan uint // Tell user what to run next
+	log       *base.LogObject
 }
 
 // NewQueueLock creates a lock
-func NewQueueLock() *Handle {
+func NewQueueLock(log *base.LogObject) *Handle {
 	log.Infof("NewQueueLock()")
-	handle := Handle{next: make(chan uint, 1)}
+	handle := Handle{
+		next: make(chan uint, 1),
+		log:  log,
+	}
 	return &handle
 }
 
@@ -46,12 +50,12 @@ func (hdl *Handle) Enter(work uint) bool {
 	defer hdl.Unlock()
 	if hdl.isRunning {
 		hdl.enqueue(work)
-		log.Infof("Enter(%d) queued", work)
+		hdl.log.Infof("Enter(%d) queued", work)
 		return false
 	}
 	hdl.isRunning = true
 	hdl.running = work
-	log.Infof("Enter(%d) ok", work)
+	hdl.log.Infof("Enter(%d) ok", work)
 	return true
 }
 
@@ -61,25 +65,25 @@ func (hdl *Handle) Exit(work uint) {
 	hdl.Lock()
 	defer hdl.Unlock()
 	if !hdl.isRunning {
-		log.Panicf("Exit but not running")
+		hdl.log.Panicf("Exit but not running")
 	}
 	if hdl.running != work {
-		log.Panicf("Exit mismatched running %d work %d",
+		hdl.log.Panicf("Exit mismatched running %d work %d",
 			hdl.running, work)
 	}
 	hdl.isRunning = false
 	hdl.running = 0
 	if len(hdl.waiting) == 0 {
-		log.Infof("Exit(%d) no waiting", work)
+		hdl.log.Infof("Exit(%d) no waiting", work)
 		return
 	}
-	log.Infof("Exit(%d) %d waiting", work, len(hdl.waiting))
+	hdl.log.Infof("Exit(%d) %d waiting", work, len(hdl.waiting))
 	next := hdl.dequeue()
 	select {
 	case hdl.next <- next:
-		log.Infof("Exit() sent %d", next)
+		hdl.log.Infof("Exit() sent %d", next)
 	default:
-		log.Panicf("Exit channel busy")
+		hdl.log.Panicf("Exit channel busy")
 	}
 }
 
@@ -103,27 +107,27 @@ func (hdl *Handle) NumWaiters() int {
 // Caller must hold lock
 // Supress duplicates when adding
 func (hdl *Handle) enqueue(work uint) {
-	log.Infof("enqueue(%d) %d waiting", work, len(hdl.waiting))
+	hdl.log.Infof("enqueue(%d) %d waiting", work, len(hdl.waiting))
 	for i := range hdl.waiting {
 		if hdl.waiting[i] == work {
-			log.Infof("queue(%d) duplicate at %d, %d waiting",
+			hdl.log.Infof("queue(%d) duplicate at %d, %d waiting",
 				work, i, len(hdl.waiting))
 			return
 		}
 	}
 	hdl.waiting = append(hdl.waiting, work)
-	log.Infof("queue(%d) done, %d waiting", work, len(hdl.waiting))
+	hdl.log.Infof("queue(%d) done, %d waiting", work, len(hdl.waiting))
 }
 
 // Caller must hold lock
 // Panic if empty
 func (hdl *Handle) dequeue() uint {
-	log.Infof("dequeue() %d waiting", len(hdl.waiting))
+	hdl.log.Infof("dequeue() %d waiting", len(hdl.waiting))
 	if len(hdl.waiting) == 0 {
-		log.Panicf("dequeue empty waiting")
+		hdl.log.Panicf("dequeue empty waiting")
 	}
 	work := hdl.waiting[0]
 	hdl.waiting = hdl.waiting[1:]
-	log.Infof("dequeue -> %d, %d waiting", work, len(hdl.waiting))
+	hdl.log.Infof("dequeue -> %d, %d waiting", work, len(hdl.waiting))
 	return work
 }

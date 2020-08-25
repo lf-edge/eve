@@ -38,8 +38,8 @@ func (config BaseOsConfig) Key() string {
 }
 
 // LogCreate :
-func (config BaseOsConfig) LogCreate() {
-	logObject := base.NewLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
+func (config BaseOsConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -50,7 +50,7 @@ func (config BaseOsConfig) LogCreate() {
 
 // LogModify :
 func (config BaseOsConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
+	logObject := base.EnsureLogObject(nil, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(BaseOsConfig)
@@ -68,7 +68,7 @@ func (config BaseOsConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config BaseOsConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.BaseOsConfigLogType, config.BaseOsVersion,
+	logObject := base.EnsureLogObject(nil, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		Infof("BaseOs config delete")
@@ -108,8 +108,8 @@ func (status BaseOsStatus) Key() string {
 }
 
 // LogCreate :
-func (status BaseOsStatus) LogCreate() {
-	logObject := base.NewLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
+func (status BaseOsStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -120,7 +120,7 @@ func (status BaseOsStatus) LogCreate() {
 
 // LogModify :
 func (status BaseOsStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
+	logObject := base.EnsureLogObject(nil, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(BaseOsStatus)
@@ -145,7 +145,7 @@ func (status BaseOsStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status BaseOsStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.BaseOsStatusLogType, status.BaseOsVersion,
+	logObject := base.EnsureLogObject(nil, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		Infof("BaseOs status delete")

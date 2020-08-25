@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/register"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -28,7 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -80,9 +81,10 @@ var (
 	serverNameAndPort string
 	onboardTLSConfig  *tls.Config
 	devtlsConfig      *tls.Config
+	log               *base.LogObject
 )
 
-func Run(ps *pubsub.PubSub) { //nolint:gocyclo
+func Run(ps *pubsub.PubSub) int { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
@@ -93,21 +95,24 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		return 0
 	}
 	// Sending json log format to stdout
-	agentlog.Init("client")
+	// XXX Make logrus record a noticable global source
+	agentlog.Init("xyzzy-" + agentName)
+
+	log = agentlog.Init("client")
 	if !noPidFlag {
-		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -155,7 +160,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		}
 	}
 	// Check if we have a /config/hardwaremodel file
-	oldHardwaremodel := hardware.GetHardwareModelOverride()
+	oldHardwaremodel := hardware.GetHardwareModelOverride(log)
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -195,12 +200,12 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
-	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
 		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
-		Serial:           hardware.GetProductSerial(),
-		SoftSerial:       hardware.GetSoftSerial(),
+		Serial:           hardware.GetProductSerial(log),
+		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
 
@@ -210,7 +215,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName, warningTime, errorTime)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait for a usable IP address.
 	// After 5 seconds we check; if we already have a UUID we proceed.
@@ -333,7 +338,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 			if maxRetries != 0 && retryCount > maxRetries {
 				log.Errorf("Exceeded %d retries",
 					maxRetries)
-				os.Exit(1)
+				return 1
 			}
 
 		case <-t1.C:
@@ -358,7 +363,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Post loop code
@@ -438,6 +443,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	if err != nil {
 		log.Errorln(err)
 	}
+	return 0
 }
 
 // Post something without a return type.
@@ -468,25 +474,25 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 
 	if !zedcloudCtx.NoLedManager {
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(log, 3)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(4)
+			utils.UpdateLedManagerConfig(log, 4)
 		}
 		log.Infof("%s StatusOK", requrl)
 	case http.StatusCreated:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(4)
+			utils.UpdateLedManagerConfig(log, 4)
 		}
 		log.Infof("%s StatusCreated", requrl)
 	case http.StatusConflict:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(10)
+			utils.UpdateLedManagerConfig(log, 10)
 		}
 		log.Errorf("%s StatusConflict", requrl)
 		// Retry until fixed
@@ -527,9 +533,9 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, deviceCertPem []byte, retryCount int) bool {
 	// XXX add option to get this from a file in /config + override
 	// logic
-	productSerial := hardware.GetProductSerial()
+	productSerial := hardware.GetProductSerial(log)
 	productSerial = strings.TrimSpace(productSerial)
-	softSerial := hardware.GetSoftSerial()
+	softSerial := hardware.GetSoftSerial(log)
 	softSerial = strings.TrimSpace(softSerial)
 	log.Infof("ProductSerial %s, SoftwareSerial %s", productSerial, softSerial)
 
@@ -551,7 +557,7 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 	if resp != nil && resp.StatusCode == http.StatusNotModified {
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(10)
+			utils.UpdateLedManagerConfig(log, 10)
 		}
 		log.Errorf("%s StatusNotModified", requrl)
 		// Retry until fixed
@@ -654,7 +660,7 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
-			utils.UpdateLedManagerConfig(4)
+			utils.UpdateLedManagerConfig(log, 4)
 		}
 		return true, devUUID, hardwaremodel, enterprise, name
 	}
@@ -674,7 +680,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
@@ -691,7 +697,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)
@@ -733,7 +739,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.zedcloudCtx.DeviceNetworkStatus = &status
 	// if there is proxy certs change, needs to update both
 	// onboard and device tlsconfig
-	cloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+	cloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.zedcloudCtx.DeviceNetworkStatus,
 		TLSConfig:        devtlsConfig,
 		AgentName:        agentName,

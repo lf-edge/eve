@@ -3,9 +3,14 @@
 
 package attest
 
-import "testing"
-import "time"
-import "fmt"
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+)
 
 type VerifierMock struct{}
 
@@ -83,7 +88,11 @@ func initTest() *Context {
 	simulateITokenMismatch = false
 	simulateTpmAgentDown = false
 
+	log := base.NewSourceLogObject("test", 1234)
+	ps := pubsub.New(&pubsub.EmptyDriver{}, log)
 	ctx := &Context{
+		PubSub:       ps,
+		log:          log,
 		event:        EventInitialize,
 		state:        StateNone,
 		restartTimer: time.NewTimer(1 * time.Second),

@@ -15,7 +15,7 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // Indexed by UUID
@@ -178,8 +178,8 @@ func (config DevicePortConfigList) PubKey() string {
 }
 
 // LogCreate :
-func (config DevicePortConfigList) LogCreate() {
-	logObject := base.NewLogObject(base.DevicePortConfigListLogType, "",
+func (config DevicePortConfigList) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -191,7 +191,7 @@ func (config DevicePortConfigList) LogCreate() {
 
 // LogModify :
 func (config DevicePortConfigList) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DevicePortConfigList)
@@ -213,7 +213,7 @@ func (config DevicePortConfigList) LogModify(old interface{}) {
 
 // LogDelete :
 func (config DevicePortConfigList) LogDelete() {
-	logObject := base.EnsureLogObject(base.DevicePortConfigListLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
 		AddField("num-portconfig-int64", len(config.PortConfigList)).
@@ -287,8 +287,8 @@ func (config DevicePortConfig) PubKey() string {
 }
 
 // LogCreate :
-func (config DevicePortConfig) LogCreate() {
-	logObject := base.NewLogObject(base.DevicePortConfigLogType, "",
+func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -311,7 +311,7 @@ func (config DevicePortConfig) LogCreate() {
 
 // LogModify :
 func (config DevicePortConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DevicePortConfig)
@@ -361,7 +361,7 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config DevicePortConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.DevicePortConfigLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 		AddField("last-failed", config.LastFailed).
@@ -405,7 +405,7 @@ func (trPtr *TestResults) RecordSuccess() {
 // Keeps the LastSucceeded in place as history
 func (trPtr *TestResults) RecordFailure(errStr string) {
 	if errStr == "" {
-		log.Fatal("Missing error string")
+		logrus.Fatal("Missing error string")
 	}
 	trPtr.LastFailed = time.Now()
 	trPtr.LastError = errStr
@@ -454,9 +454,6 @@ func (config *DevicePortConfig) RecordPortSuccess(ifname string) {
 	portPtr := config.GetPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordSuccess()
-	} else {
-		log.Errorf("DevicePortConfig.RecordPortSuccess - port %s not found",
-			ifname)
 	}
 }
 
@@ -465,9 +462,6 @@ func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) 
 	portPtr := config.GetPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordFailure(errStr)
-	} else {
-		log.Errorf("DevicePortConfig.RecordPortFailure - port %s not found, "+
-			"err: %s", ifname, errStr)
 	}
 }
 
@@ -479,9 +473,8 @@ const (
 )
 
 // DoSanitize -
-func (config *DevicePortConfig) DoSanitize(
-	sanitizeTimePriority bool,
-	sanitizeKey bool, key string,
+func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
+	sanitizeTimePriority bool, sanitizeKey bool, key string,
 	sanitizeName bool) {
 
 	if sanitizeTimePriority {
@@ -784,8 +777,8 @@ func (status DeviceNetworkStatus) Key() string {
 }
 
 // LogCreate :
-func (status DeviceNetworkStatus) LogCreate() {
-	logObject := base.NewLogObject(base.DeviceNetworkStatusLogType, "",
+func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -806,7 +799,7 @@ func (status DeviceNetworkStatus) LogCreate() {
 
 // LogModify :
 func (status DeviceNetworkStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(DeviceNetworkStatus)
@@ -850,7 +843,7 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status DeviceNetworkStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.DeviceNetworkStatusLogType, "",
+	logObject := base.EnsureLogObject(nil, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
@@ -878,7 +871,6 @@ func (status *DeviceNetworkStatus) GetPortByIfName(
 	ifname string) *NetworkPortStatus {
 	for _, portStatus := range status.Ports {
 		if portStatus.IfName == ifname {
-			log.Infof("Found NetworkPortStatus for %s", ifname)
 			return &portStatus
 		}
 	}
@@ -890,7 +882,6 @@ func (status *DeviceNetworkStatus) GetPortByLogicallabel(
 	label string) *NetworkPortStatus {
 	for _, portStatus := range status.Ports {
 		if portStatus.Logicallabel == label {
-			log.Infof("Found NetworkPortStatus for %s", label)
 			return &portStatus
 		}
 	}
@@ -984,8 +975,6 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, false, "", false)
 	count := 0
-	log.Infof("CountLocalIPv4AddrAnyNoLinkLocal: total %d: %v\n",
-		len(addrs), addrs)
 	for _, addr := range addrs {
 		if addr.To4() == nil {
 			continue
@@ -1051,8 +1040,6 @@ func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, phylabelOrIfname, false)
 	count := 0
-	log.Infof("CountLocalIPv4AddrAnyNoLinkLocalIf(%s): total %d: %v\n",
-		phylabelOrIfname, len(addrs), addrs)
 	for _, addr := range addrs {
 		if addr.To4() == nil {
 			continue
@@ -1170,7 +1157,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, phylabelOr
 }
 
 // Return the list of ifnames in DNC which exist in the kernel
-func GetExistingInterfaceList(globalStatus DeviceNetworkStatus) []string {
+func GetExistingInterfaceList(log *base.LogObject, globalStatus DeviceNetworkStatus) []string {
 
 	var ifs []string
 	for _, us := range globalStatus.Ports {
@@ -1334,18 +1321,14 @@ func PhylabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.Phylabel == phylabelOrIfname {
-			log.Debugf("PhylabelToIfName: found %s for %s\n",
-				p.IfName, phylabelOrIfname)
 			return p.IfName
 		}
 	}
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.IfName == phylabelOrIfname {
-			log.Debugf("PhylabelToIfName: matched %s\n", phylabelOrIfname)
 			return phylabelOrIfname
 		}
 	}
-	log.Debugf("PhylabelToIfName: no match for %s\n", phylabelOrIfname)
 	return phylabelOrIfname
 }
 
@@ -1368,7 +1351,7 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 //	Also returns whether it is currently used by an application by
 //	returning a UUID. If the UUID is zero it is in PCIback but available.
 func (config *DevicePortConfig) IsAnyPortInPciBack(
-	aa *AssignableAdapters) (bool, string, uuid.UUID) {
+	log *base.LogObject, aa *AssignableAdapters) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Infof("IsAnyPortInPciBack: nil aa")
 		return false, "", uuid.UUID{}
@@ -1605,7 +1588,7 @@ func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
 	return false
 }
 
-func (instanceInfo *NetworkInstanceInfo) RemoveVif(
+func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 	vifName string) {
 	log.Infof("DelVif(%s, %s)\n", instanceInfo.BridgeName, vifName)
 
@@ -1618,7 +1601,7 @@ func (instanceInfo *NetworkInstanceInfo) RemoveVif(
 	instanceInfo.Vifs = vifs
 }
 
-func (instanceInfo *NetworkInstanceInfo) AddVif(
+func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
 	vifName string, appMac string, appID uuid.UUID) {
 
 	log.Infof("addVifToBridge(%s, %s, %s, %s)\n",
@@ -1872,7 +1855,7 @@ type IPTablesRuleList []IPTablesRule
  * Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
  * on all member virtual interface including the bridge.
  */
-func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
+func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
 	nms *NetworkMetrics) *NetworkMetric {
 
 	netMetric := NetworkMetric{IfName: status.BridgeName}
@@ -1909,7 +1892,7 @@ func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
  * Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
  * on all member virtual interface including the bridge.
  */
-func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
+func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
 	nms *NetworkMetrics, netMetric *NetworkMetric) {
 	// Get bridge metrics
 	bridgeMetric, found := nms.LookupNetworkMetrics(status.BridgeName)

@@ -8,7 +8,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/disk"
-	log "github.com/sirupsen/logrus"
 )
 
 // getRemainingVolumeDiskSpace returns how many bytes remain for volume usage

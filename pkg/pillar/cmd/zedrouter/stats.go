@@ -9,12 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type ipSecCmdOut struct {
@@ -164,7 +165,7 @@ func swanCtlCmdParse(vpnStatus *types.VpnStatus, outStr string) uint32 {
 		connInfo := populateConnInfo(cblock, outLines)
 		vpnStatus.ActiveVpnConns[idx] = connInfo
 	}
-	if log.GetLevel() == log.DebugLevel {
+	if logrus.GetLevel() == logrus.DebugLevel {
 		if bytes, err := json.Marshal(vpnStatus); err == nil {
 			log.Debugf("swanCtlCmdParse(): %s\n", string(bytes))
 		}
@@ -254,7 +255,7 @@ func swanCtlCmdGetBlockInfo(cmdOut *readBlock, outLines []string) {
 			cblock.childBlocks[lidx-1].endLine = cblock.endLine
 		}
 	}
-	if log.GetLevel() == log.DebugLevel {
+	if logrus.GetLevel() == logrus.DebugLevel {
 		swanCtlCmdOutPrint(cmdOut, 0)
 	}
 }

@@ -52,8 +52,8 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 }
 
 // LogCreate :
-func (config DomainConfig) LogCreate() {
-	logObject := base.NewLogObject(base.DomainConfigLogType, config.DisplayName,
+func (config DomainConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DomainConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	if logObject == nil {
 		return
@@ -65,7 +65,7 @@ func (config DomainConfig) LogCreate() {
 
 // LogModify :
 func (config DomainConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DomainConfigLogType, config.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.DomainConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(DomainConfig)
@@ -86,7 +86,7 @@ func (config DomainConfig) LogModify(old interface{}) {
 
 // LogDelete :
 func (config DomainConfig) LogDelete() {
-	logObject := base.EnsureLogObject(base.DomainConfigLogType, config.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.DomainConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
@@ -198,8 +198,8 @@ func (status DomainStatus) VifInfoByVif(vif string) *VifInfo {
 }
 
 // LogCreate :
-func (status DomainStatus) LogCreate() {
-	logObject := base.NewLogObject(base.DomainStatusLogType, status.DisplayName,
+func (status DomainStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DomainStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	if logObject == nil {
 		return
@@ -211,7 +211,7 @@ func (status DomainStatus) LogCreate() {
 
 // LogModify :
 func (status DomainStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(base.DomainStatusLogType, status.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.DomainStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(DomainStatus)
@@ -240,7 +240,7 @@ func (status DomainStatus) LogModify(old interface{}) {
 
 // LogDelete :
 func (status DomainStatus) LogDelete() {
-	logObject := base.EnsureLogObject(base.DomainStatusLogType, status.DisplayName,
+	logObject := base.EnsureLogObject(nil, base.DomainStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("activated", status.Activated).
