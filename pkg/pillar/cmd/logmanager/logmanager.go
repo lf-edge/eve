@@ -44,7 +44,7 @@ const (
 	// Time limits for event loop handlers
 	errorTime              = 3 * time.Minute
 	warningTime            = 40 * time.Second
-	metricsPublishInterval = 300 * time.Second
+	metricsPublishInterval = 60 * time.Second // XXX temp for debug purpose
 
 	// We want connectivity to zedcloud via atleast one Management port.
 	// Hard-coded at 1 for now; at least one interface needs to work
@@ -392,7 +392,10 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 	server.SetHandler(handler)
 	server.ListenTCP("localhost:5140")
 	server.Boot()
+	// XXX for debug
+	idx := 0
 	for logParts := range logChannel {
+		idx++
 		logInfo, ok := agentlog.ParseLoginfo(logParts["content"].(string))
 		if !ok {
 			continue
@@ -441,6 +444,9 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			filename:  logInfo.Filename,
 			appUUID:   appUUID,
 			isAppLog:  appLog,
+		}
+		if idx%20 == 0 { // XXX debug
+			log.Infof("parseAndSendSyslogEntries: idx %d, logMsg %v", idx, logMsg)
 		}
 		ctx.logChan <- logMsg
 
