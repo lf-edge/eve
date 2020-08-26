@@ -19,7 +19,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -462,7 +461,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s", key)
-	if cmp.Equal(deviceNetworkStatus, status) {
+	// Ignore test status and timestamps
+	if deviceNetworkStatus.Equal(status) {
 		log.Infof("handleDNSModify no change")
 		return
 	}
