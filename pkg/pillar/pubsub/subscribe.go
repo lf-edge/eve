@@ -37,6 +37,7 @@ type SubscriptionImpl struct {
 	driver       DriverSubscriber
 	defaultName  string
 	log          *base.LogObject
+	myAgentName  string // For logging
 	ps           *PubSub
 }
 
@@ -104,7 +105,7 @@ func (sub *SubscriptionImpl) ProcessChange(change Change) {
 	case Modify:
 		handleModify(sub, change.Key, change.Value)
 	}
-	sub.ps.CheckMaxTimeTopic(sub.agentName, sub.topic, start, sub.MaxProcessTimeWarn, sub.MaxProcessTimeError)
+	sub.ps.CheckMaxTimeTopic(sub.myAgentName, sub.topic, start, sub.MaxProcessTimeWarn, sub.MaxProcessTimeError)
 }
 
 // Get - Get object with specified Key from this Subscription.
