@@ -58,7 +58,7 @@ func updateAgentIfnameMetrics(log *base.LogObject, ifname string, m types.Zedclo
 }
 
 func ZedCloudFailure(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64, authenFail bool) {
-	log.Infof("XXX ZedCloudFailure(%s, %s) %d %d",
+	log.Debugf("ZedCloudFailure(%s, %s) %d %d",
 		ifname, url, reqLen, respLen)
 	mutex.Lock()
 	m := getAgentIfnameMetrics(log, ifname)
@@ -87,7 +87,7 @@ func ZedCloudFailure(log *base.LogObject, ifname string, url string, reqLen int6
 }
 
 func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64) {
-	log.Infof("XXX ZedCloudSuccess(%s, %s) %d %d",
+	log.Debugf("ZedCloudSuccess(%s, %s) %d %d",
 		ifname, url, reqLen, respLen)
 	mutex.Lock()
 	m := getAgentIfnameMetrics(log, ifname)
