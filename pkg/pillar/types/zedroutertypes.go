@@ -866,6 +866,75 @@ func (status DeviceNetworkStatus) LogKey() string {
 	return string(base.DeviceNetworkStatusLogType) + "-" + status.Key()
 }
 
+// Equal compares two DeviceNetworkStatus but skips things the test status/results aspects.
+// We compare the Ports in array order.
+func (status DeviceNetworkStatus) Equal(status2 DeviceNetworkStatus) bool {
+
+	if len(status.Ports) != len(status2.Ports) {
+		return false
+	}
+	for i, p1 := range status.Ports {
+		p2 := status2.Ports[i]
+		if p1.IfName != p2.IfName ||
+			p1.Phylabel != p2.Phylabel ||
+			p1.Logicallabel != p2.Logicallabel ||
+			p1.Alias != p2.Alias ||
+			p1.IsMgmt != p2.IsMgmt ||
+			p1.Free != p2.Free {
+			return false
+		}
+		if p1.Dhcp != p2.Dhcp ||
+			!EqualSubnet(p1.Subnet, p2.Subnet) ||
+			!p1.NtpServer.Equal(p2.NtpServer) ||
+			p1.DomainName != p2.DomainName {
+			return false
+		}
+		if len(p1.DNSServers) != len(p2.DNSServers) {
+			return false
+		}
+		for i := range p1.DNSServers {
+			if !p1.DNSServers[i].Equal(p2.DNSServers[i]) {
+				return false
+			}
+		}
+		if len(p1.AddrInfoList) != len(p2.AddrInfoList) {
+			return false
+		}
+		for i := range p1.AddrInfoList {
+			if !p1.AddrInfoList[i].Addr.Equal(p2.AddrInfoList[i].Addr) {
+				return false
+			}
+		}
+		if p1.Up != p2.Up ||
+			p1.MacAddr != p2.MacAddr {
+			return false
+		}
+		if len(p1.DefaultRouters) != len(p2.DefaultRouters) {
+			return false
+		}
+		for i := range p1.DefaultRouters {
+			if !p1.DefaultRouters[i].Equal(p2.DefaultRouters[i]) {
+				return false
+			}
+		}
+
+		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) {
+			return false
+		}
+	}
+	return true
+}
+
+// EqualSubnet compares two subnets; silently assumes contigious masks
+func EqualSubnet(subnet1, subnet2 net.IPNet) bool {
+	if !subnet1.IP.Equal(subnet2.IP) {
+		return false
+	}
+	len1, _ := subnet1.Mask.Size()
+	len2, _ := subnet2.Mask.Size()
+	return len1 == len2
+}
+
 // GetPortByIfName - Get Port Status for port with given Ifname
 func (status *DeviceNetworkStatus) GetPortByIfName(
 	ifname string) *NetworkPortStatus {

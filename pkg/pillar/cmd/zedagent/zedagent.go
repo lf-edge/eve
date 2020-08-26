@@ -1266,7 +1266,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s", key)
-	// XXX empty is equal
+	// Since we report the TestResults we compare the whole struct
 	if cmp.Equal(*deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change")
 		ctx.DNSinitialized = true

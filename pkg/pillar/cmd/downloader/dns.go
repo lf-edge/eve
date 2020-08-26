@@ -4,7 +4,6 @@
 package downloader
 
 import (
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -18,7 +17,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s", key)
-	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+	// Ignore test status and timestamps
+	if ctx.deviceNetworkStatus.Equal(status) {
 		log.Infof("handleDNSModify unchanged")
 		return
 	}
