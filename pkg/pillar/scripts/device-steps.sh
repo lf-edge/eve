@@ -212,9 +212,9 @@ echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent &
 wait_for_touch nodeagent
 
-touch "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
-      "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch" \
-      "$WATCHDOG_PID/domainmgr.pid" "$WATCHDOG_FILE/domainmgr.touch"
+touch "$WATCHDOG_FILE/nodeagent.touch" \
+      "$WATCHDOG_FILE/ledmanager.touch" \
+      "$WATCHDOG_FILE/domainmgr.touch"
 
 mkdir -p $DPCDIR
 
@@ -302,8 +302,8 @@ echo "$(date -Ins -u) Starting nim"
 $BINDIR/nim &
 wait_for_touch nim
 
-# Restart watchdog ledmanager and nim
-touch "$WATCHDOG_PID/nim.pid" "$WATCHDOG_FILE/nim.touch"
+# Add nim to watchdog
+touch "$WATCHDOG_FILE/nim.touch"
 
 # Print diag output forever on changes
 $BINDIR/diag -f -o /dev/console &
@@ -337,7 +337,7 @@ while [ "$YEAR" = "1970" ]; do
     YEAR=$(date +%Y)
 done
 
-# Restart watchdog ledmanager, and nim
+# Add ndpd to watchdog
 touch "$WATCHDOG_PID/ntpd.pid"
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
@@ -390,7 +390,7 @@ fi
 # Deposit any diag information from nim and onboarding
 access_usb
 
-# Restart watchdog ledmanager, client, and nim
+# Add zedclient to watchdog; it runs as a separate process
 touch "$WATCHDOG_PID/zedclient.pid"
 
 if [ $SELF_REGISTER = 1 ]; then
@@ -458,7 +458,7 @@ space=$((size / 2048))
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
-# Remove zedclient.pid from watchdog (get back to ledmanager and nim)
+# Remove zedclient.pid from watchdog
 rm "$WATCHDOG_PID/zedclient.pid"
 
 #If logmanager is already running we don't have to start it.
@@ -466,7 +466,7 @@ if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
     $BINDIR/logmanager &
     wait_for_touch logmanager
-    touch "$WATCHDOG_PID/logmanager.pid" "$WATCHDOG_FILE/logmanager.touch"
+    touch "$WATCHDOG_FILE/logmanager.touch"
 fi
 
 for AGENT in $AGENTS1; do
@@ -478,16 +478,15 @@ done
 # Start vaultmgr as a service
 $BINDIR/vaultmgr runAsService &
 wait_for_touch vaultmgr
-touch "$WATCHDOG_PID/vaultmgr.pid" "$WATCHDOG_FILE/vaultmgr.touch"
+touch "$WATCHDOG_FILE/vaultmgr.touch"
 
 echo "$(date -Ins -u) Starting tpmmgr as a service agent"
 $BINDIR/tpmmgr runAsService &
 wait_for_touch tpmmgr
-touch "$WATCHDOG_PID/tpmmgr.pid" "$WATCHDOG_FILE/tpmmgr.touch"
+touch "$WATCHDOG_FILE/tpmmgr.touch"
 
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do
-    touch "$WATCHDOG_PID/$AGENT.pid"
     touch "$WATCHDOG_FILE/$AGENT.touch"
     if [ "$AGENT" = "zedagent" ]; then
        touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch" "$WATCHDOG_FILE/${AGENT}attest.touch" "$WATCHDOG_FILE/${AGENT}ccerts.touch"
