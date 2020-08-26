@@ -30,6 +30,7 @@ type SubscriptionOptions struct {
 	Activate       bool
 	Ctx            interface{}
 	Persistent     bool
+	MyAgentName    string // For logging
 }
 
 // SubHandler is a generic handler to handle create, modify and delete
@@ -110,6 +111,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 		MaxProcessTimeError: options.ErrorTime,
 		Persistent:          options.Persistent,
 		log:                 p.log,
+		myAgentName:         options.MyAgentName,
 		ps:                  p,
 	}
 	name := sub.nameString()
