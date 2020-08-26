@@ -35,6 +35,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -126,6 +127,7 @@ type zedagentContext struct {
 	specMap                 types.ConfigItemSpecMap
 	globalStatus            types.GlobalStatus
 	appContainerStatsTime   time.Time // last time the App Container stats uploaded
+	pubMetrics              pubsub.Publication
 }
 
 var debug = false
@@ -877,7 +879,17 @@ func Run(ps *pubsub.PubSub) int {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
-	cms := zedcloud.GetCloudMetrics()
+	cms := zedcloud.GetCloudMetrics(log)
+	// Publish our own metrics for debug purposes
+	metricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: cms,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.pubMetrics = metricsPub
+
 	subClientMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "zedclient",
 		TopicImpl: cms,
@@ -961,6 +973,13 @@ func Run(ps *pubsub.PubSub) int {
 
 	// start remote attestation task
 	attestModuleStart(&zedagentCtx)
+
+	// Publish metrics for debug purposes every 10 seconds
+	interval := time.Duration(10 * time.Second)
+	max := float64(interval)
+	min := max * 0.3
+	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 
 	for {
 		select {
@@ -1116,6 +1135,15 @@ func Run(ps *pubsub.PubSub) int {
 
 		case change := <-subAppContainerMetrics.MsgChan():
 			subAppContainerMetrics.ProcessChange(change)
+
+		case <-publishTimer.C:
+			start := time.Now()
+			err := metricsPub.Publish("global", zedcloud.GetCloudMetrics(log))
+			if err != nil {
+				log.Errorln(err)
+			}
+			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 			// Fault injection

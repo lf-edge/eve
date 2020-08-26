@@ -8,30 +8,60 @@
 package zedcloud
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 	"sync"
 	"time"
 )
 
-var metrics = make(types.MetricsMap)
+// agentMetrics has one entry per agentName aka LogObject
+// Makes it usable when multiple agents are running in the same process aka zedbox
+type agentMetrics struct {
+	metrics types.MetricsMap
+}
+
+type allMetricsMap map[*base.LogObject]agentMetrics
+
+var allMetrics = make(allMetricsMap)
 var mutex = &sync.Mutex{}
 
-func maybeInit(ifname string) {
-	if metrics == nil {
-		logrus.Fatal("no zedcloudmetric map\n")
+// getAgentIfnameMetrics assumes the caller is holding the mutex
+// The caller needs to call updateAgentIfnameMetrics after any update
+func getAgentIfnameMetrics(log *base.LogObject, ifname string) types.ZedcloudMetric {
+	if allMetrics == nil {
+		logrus.Fatal("no allMetrics")
 	}
+	if _, ok := allMetrics[log]; !ok {
+		allMetrics[log] = agentMetrics{metrics: make(types.MetricsMap)}
+	}
+	metrics := allMetrics[log].metrics
 	if _, ok := metrics[ifname]; !ok {
 		metrics[ifname] = types.ZedcloudMetric{
 			URLCounters: make(map[string]types.UrlcloudMetrics),
 		}
+		allMetrics[log] = agentMetrics{metrics: metrics}
 	}
+	return metrics[ifname]
 }
 
-func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64, authenFail bool) {
+func updateAgentIfnameMetrics(log *base.LogObject, ifname string, m types.ZedcloudMetric) {
+	if allMetrics == nil {
+		logrus.Fatal("no allMetrics")
+	}
+	if _, ok := allMetrics[log]; !ok {
+		logrus.Fatal("allMetrics not initialized")
+	}
+	metrics := allMetrics[log].metrics
+	metrics[ifname] = m
+	allMetrics[log] = agentMetrics{metrics: metrics}
+}
+
+func ZedCloudFailure(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64, authenFail bool) {
+	log.Infof("XXX ZedCloudFailure(%s, %s) %d %d",
+		ifname, url, reqLen, respLen)
 	mutex.Lock()
-	maybeInit(ifname)
-	m := metrics[ifname]
+	m := getAgentIfnameMetrics(log, ifname)
 	// if we have authen verify failure, the network part is success
 	if authenFail {
 		m.AuthFailCount++
@@ -52,14 +82,15 @@ func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64, aut
 		}
 		m.URLCounters[url] = u
 	}
-	metrics[ifname] = m
+	updateAgentIfnameMetrics(log, ifname, m)
 	mutex.Unlock()
 }
 
-func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
+func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64) {
+	log.Infof("XXX ZedCloudSuccess(%s, %s) %d %d",
+		ifname, url, reqLen, respLen)
 	mutex.Lock()
-	maybeInit(ifname)
-	m := metrics[ifname]
+	m := getAgentIfnameMetrics(log, ifname)
 	m.SuccessCount += 1
 	m.LastSuccess = time.Now()
 	var u types.UrlcloudMetrics
@@ -72,12 +103,18 @@ func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
 	m.URLCounters[url] = u
-	metrics[ifname] = m
+	updateAgentIfnameMetrics(log, ifname, m)
 	mutex.Unlock()
 }
 
-func GetCloudMetrics() types.MetricsMap {
-	return metrics
+func GetCloudMetrics(log *base.LogObject) types.MetricsMap {
+	if allMetrics == nil {
+		logrus.Fatal("no allMetrics")
+	}
+	if _, ok := allMetrics[log]; !ok {
+		allMetrics[log] = agentMetrics{metrics: make(types.MetricsMap)}
+	}
+	return allMetrics[log].metrics
 }
 
 // Concatenate different interfaces and URLs into a union map

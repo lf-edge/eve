@@ -135,7 +135,7 @@ func Run(ps *pubsub.PubSub) int { //nolint:gocyclo
 	enterpriseFileName := types.IdentityDirname + "/enterprise"
 	nameFileName := types.IdentityDirname + "/name"
 
-	cms := zedcloud.GetCloudMetrics() // Need type of data
+	cms := zedcloud.GetCloudMetrics(log) // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: cms,
@@ -439,7 +439,7 @@ func Run(ps *pubsub.PubSub) int { //nolint:gocyclo
 		log.Debugf("Wrote name %s", name)
 	}
 
-	err = pub.Publish("global", zedcloud.GetCloudMetrics())
+	err = pub.Publish("global", zedcloud.GetCloudMetrics(log))
 	if err != nil {
 		log.Errorln(err)
 	}
