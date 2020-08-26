@@ -303,7 +303,11 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	log.Debugln("log metrics: ", ReportDeviceMetric.Log)
 
 	// Collect zedcloud metrics from ourselves and other agents
-	cms := zedcloud.GetCloudMetrics(log)
+	cms := types.MetricsMap{} // Start empty
+	zedagentMetrics := zedcloud.GetCloudMetrics(log)
+	if zedagentMetrics != nil {
+		cms = zedcloud.Append(cms, zedagentMetrics)
+	}
 	if clientMetrics != nil {
 		cms = zedcloud.Append(cms, clientMetrics)
 	}
