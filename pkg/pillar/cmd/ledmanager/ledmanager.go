@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -524,7 +523,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s", key)
-	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+	// Ignore test status and timestamps
+	if ctx.deviceNetworkStatus.Equal(status) {
 		log.Infof("handleDNSModify no change")
 		return
 	}
