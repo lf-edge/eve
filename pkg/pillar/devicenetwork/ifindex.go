@@ -224,8 +224,12 @@ func IfindexToAddrsDel(log *base.LogObject, index int, addr net.IP) bool {
 		if a.Equal(addr) {
 			log.Debugf("IfindexToAddrsDel del %v for %d\n",
 				addr, index)
-			ifindexToAddrs[index] = append(ifindexToAddrs[index][:i],
-				ifindexToAddrs[index][i+1:]...)
+			if i+1 == len(addrs) {
+				ifindexToAddrs[index] = ifindexToAddrs[index][:i]
+			} else {
+				ifindexToAddrs[index] = append(ifindexToAddrs[index][:i],
+					ifindexToAddrs[index][i+1:]...)
+			}
 			// log.Debugf("ifindexToAddrs post remove %v\n", ifindexToAddrs)
 			// XXX should we check for zero and remove ifindex?
 			return true
