@@ -1843,12 +1843,16 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleDNSModify: ignoring %s", key)
 		return
 	}
-	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+	// Ignore test status and timestamps
+	// Compare Testing to save its updated value which is used by us
+	if ctx.deviceNetworkStatus.Equal(status) &&
+		ctx.deviceNetworkStatus.Testing == status.Testing {
 		log.Infof("handleDNSModify unchanged")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Infof("handleDNSModify: changed %v",
+		cmp.Diff(ctx.deviceNetworkStatus, status))
 	// Even if Testing is set we look at it for pciback transitions to
 	// bring things out of pciback (but not to add to pciback)
 	ctx.deviceNetworkStatus = status
