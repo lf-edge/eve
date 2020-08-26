@@ -181,7 +181,7 @@ func Run(ps *pubsub.PubSub) int {
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	cms := zedcloud.GetCloudMetrics() // Need type of data
+	cms := zedcloud.GetCloudMetrics(log) // Need type of data
 	pub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -345,7 +345,7 @@ func Run(ps *pubsub.PubSub) int {
 		case <-publishTimer.C:
 			start := time.Now()
 			log.Debugln("publishTimer at", time.Now())
-			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := pub.Publish("global", zedcloud.GetCloudMetrics(log))
 			if err != nil {
 				log.Errorln(err)
 			}
