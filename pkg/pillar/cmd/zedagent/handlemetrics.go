@@ -313,12 +313,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	if downloaderMetrics != nil {
 		cms = zedcloud.Append(cms, downloaderMetrics)
 	}
-	// XXX for debug purposes we publish total
-	err = ctx.pubMetrics.Publish("total", cms)
-	if err != nil {
-		log.Errorln(err)
-	}
-
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
 			Failures:          cm.FailureCount,
