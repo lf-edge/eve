@@ -20,6 +20,8 @@ type LogMetrics struct {
 	NumDeviceEventErrors          uint64
 	LastDeviceBundleSendTime      time.Time
 	LastAppBundleSendTime         time.Time
+	AvgDeviceBundleSendTime       uint64
+	AvgAppBundleSendTime          uint64
 
 	IsLogProcessingDeferred bool
 	NumTimesDeferred        uint64

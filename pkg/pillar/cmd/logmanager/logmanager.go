@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -317,7 +316,7 @@ func Run(ps *pubsub.PubSub) int {
 		time.Duration(max))
 
 	currentPartition := zboot.GetCurrentPartition()
-	loggerChan := make(chan logEntry)
+	loggerChan := make(chan logEntry, 100)
 	ctx := loggerContext{
 		logChan:      loggerChan,
 		image:        currentPartition,
@@ -613,20 +612,24 @@ func processEvents(image string, logChan <-chan logEntry,
 			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d",
 				image, messageCount, byteCount)
 			if event.isAppLog {
-				sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+				var appSendTime uint64
+				sent, is4xx, appSendTime = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
 				if is4xx {
 					logMetrics.Num4xxResponses += uint64(messageCount)
 				} else {
 					logMetrics.NumAppEventsSent += uint64(messageCount)
 					logMetrics.NumAppBundleProtoBytesSent += uint64(byteCount)
+					logMetrics.AvgAppBundleSendTime = (logMetrics.AvgAppBundleSendTime*logMetrics.NumAppBundlesSent + appSendTime) / (logMetrics.NumAppBundlesSent + 1)
 					logMetrics.NumAppBundlesSent++
 					logMetrics.LastAppBundleSendTime = time.Now()
 				}
 				delete(appLogBundles, appUUID)
 			} else {
-				sent = sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
+				var devSendTime uint64
+				sent, devSendTime = sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
 				logMetrics.NumDeviceEventsSent += uint64(messageCount)
 				logMetrics.NumDeviceBundleProtoBytesSent += uint64(byteCount)
+				logMetrics.AvgDeviceBundleSendTime = (logMetrics.AvgDeviceBundleSendTime*logMetrics.NumDeviceBundlesSent + devSendTime) / (logMetrics.NumDeviceBundlesSent + 1)
 				logMetrics.NumDeviceBundlesSent++
 				logMetrics.LastDeviceBundleSendTime = time.Now()
 			}
@@ -677,10 +680,11 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 	logMetrics *types.LogMetrics) bool {
 	messageCount := len(reportLogs.Log)
 	byteCount := proto.Size(reportLogs)
-	sent := sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
+	sent, devSendTime := sendProtoStrForLogs(reportLogs, image, iteration, eveVersion)
 	// Take care of metrics
 	logMetrics.NumDeviceEventsSent += uint64(messageCount)
 	logMetrics.NumDeviceBundleProtoBytesSent += uint64(byteCount)
+	logMetrics.AvgDeviceBundleSendTime = (logMetrics.AvgDeviceBundleSendTime*logMetrics.NumDeviceBundlesSent + devSendTime) / (logMetrics.NumDeviceBundlesSent + 1)
 	logMetrics.NumDeviceBundlesSent++
 	logMetrics.LastDeviceBundleSendTime = time.Now()
 
@@ -698,7 +702,8 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 		if len(appLogBundle.Log) == 0 {
 			continue
 		}
-		sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
+		var appSendTime uint64
+		sent, is4xx, appSendTime = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
 
 		// Take care of metrics
 		if is4xx {
@@ -706,6 +711,7 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 		} else {
 			logMetrics.NumAppEventsSent += uint64(messageCount)
 			logMetrics.NumAppBundleProtoBytesSent += uint64(byteCount)
+			logMetrics.AvgAppBundleSendTime = (logMetrics.AvgAppBundleSendTime*logMetrics.NumAppBundlesSent + appSendTime) / (logMetrics.NumAppBundlesSent + 1)
 			logMetrics.NumAppBundlesSent++
 			logMetrics.LastAppBundleSendTime = time.Now()
 		}
@@ -738,13 +744,7 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	}
 
 	logDetails := &logs.LogEntry{}
-	// XXX Is this still required. rsyslogd is now configured to do the same
-	logDetails.Content = strings.Map(func(r rune) rune {
-		if r == utf8.RuneError {
-			return -1
-		}
-		return r
-	}, event.content)
+	logDetails.Content = event.content
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
@@ -778,12 +778,7 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) bool {
 	}
 
 	logDetails := &logs.LogEntry{}
-	logDetails.Content = strings.Map(func(r rune) rune {
-		if r == utf8.RuneError {
-			return -1
-		}
-		return r
-	}, event.content)
+	logDetails.Content = event.content
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
@@ -801,11 +796,12 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) bool {
 	return true
 }
 
-// Returns true if a message was successfully sent
+// Returns a bool that indicates the success/fail of sending log bundle
+// along with time spend on the API call in milli seconds.
 func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
-	iteration int, eveVersion string) bool {
+	iteration int, eveVersion string) (bool, uint64) {
 	if len(reportLogs.Log) == 0 {
-		return true
+		return true, 0
 	}
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
@@ -840,8 +836,9 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
-		return false
+		return false, 0
 	}
+	startOfBundleSend := time.Now()
 	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, logsURL,
 		size, buf, iteration, bailOnHTTPErr)
 	// XXX We seem to still get large or bad messages which are rejected
@@ -852,7 +849,8 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error",
 			size, image, logsURL)
 		reportLogs.Log = []*logs.LogEntry{}
-		return true
+		totalBundleSend := time.Since(startOfBundleSend)
+		return true, uint64(totalBundleSend / time.Millisecond)
 	}
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s",
@@ -868,18 +866,22 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
 		reportLogs.Log = []*logs.LogEntry{}
-		return false
+		totalBundleSend := time.Since(startOfBundleSend)
+		return false, uint64(totalBundleSend / time.Millisecond)
 	}
 	log.Debugf("Sent %d bytes image %s to %s", size, image, logsURL)
 	reportLogs.Log = []*logs.LogEntry{}
-	return true
+	totalBundleSend := time.Since(startOfBundleSend)
+	return true, uint64(totalBundleSend / time.Millisecond)
 }
 
-// Returns true if a message was successfully sent
+// Returns a boolean that indicates the success/fail of sending log bundle, a second boolean
+// that indicates if the failure if any is because of the API returning 4xx code along with
+// time spend on the API call in milli seconds.
 func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
-	iteration int, image string) (sent, is4xx bool) {
+	iteration int, image string) (sent, is4xx bool, devSendTime uint64) {
 	if len(appLogs.Log) == 0 {
-		return true, false
+		return true, false, 0
 	}
 	log.Debugln("sendProtoStrForAppLogs called...", iteration)
 	data, err := proto.Marshal(appLogs)
@@ -925,8 +927,9 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
-		return false, false
+		return false, false, 0
 	}
+	startOfBundleSend := time.Now()
 	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, appLogsURL,
 		size, buf, iteration, bailOnHTTPErr)
 	// XXX We seem to still get large or bad messages which are rejected
@@ -941,7 +944,8 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error",
 				size, image, appLogsURL, resp.StatusCode)
 			appLogs.Log = []*logs.LogEntry{}
-			return true, true
+			totalBundleSend := time.Since(startOfBundleSend)
+			return true, true, uint64(totalBundleSend / time.Millisecond)
 		}
 	}
 	if err != nil {
@@ -958,11 +962,13 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
 		appLogs.Log = []*logs.LogEntry{}
-		return false, false
+		totalBundleSend := time.Since(startOfBundleSend)
+		return false, false, uint64(totalBundleSend / time.Millisecond)
 	}
 	log.Debugf("Sent %d bytes image %s to %s", size, image, appLogsURL)
 	appLogs.Log = []*logs.LogEntry{}
-	return true, false
+	totalBundleSend := time.Since(startOfBundleSend)
+	return true, false, uint64(totalBundleSend / time.Millisecond)
 }
 
 func isResp4xx(code int) bool {

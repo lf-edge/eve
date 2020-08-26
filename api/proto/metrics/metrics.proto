@@ -228,6 +228,9 @@ message logMetric {
 
   uint64 numDeviceBundleProtoBytesSent = 17;
   uint64 numAppBundleProtoBytesSent = 18;
+
+  uint64 avg_device_bundle_send_time_millis = 19;
+  uint64 avg_app_bundle_send_time_millis = 20;
 }
 
 // Lisp stats
