@@ -761,6 +761,7 @@ func Run(ps *pubsub.PubSub) int {
 		log.Fatal(err)
 	}
 	zedagentCtx.subLogMetrics = subLogMetrics
+	subLogMetrics.Activate()
 
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
@@ -986,6 +987,9 @@ func Run(ps *pubsub.PubSub) int {
 
 		case change := <-subBaseOsStatus.MsgChan():
 			subBaseOsStatus.ProcessChange(change)
+
+		case change := <-subLogMetrics.MsgChan():
+			subLogMetrics.ProcessChange(change)
 
 		case change := <-subBlobStatus.MsgChan():
 			subBlobStatus.ProcessChange(change)
