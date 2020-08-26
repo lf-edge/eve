@@ -215,8 +215,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			size = info.Size()
 		}
 		status.Size = uint64(size)
-		status.ContentType = contentType
-		zedcloud.ZedCloudSuccess(ifname,
+		zedcloud.ZedCloudSuccess(log, ifname,
 			metricsUrl, 1024, size)
 		handleSyncOpResponse(ctx, config, status,
 			locFilename, key, "")
@@ -316,7 +315,7 @@ func constructDatastoreContext(ctx *downloaderContext, configName string, NameIs
 
 func sourceFailureError(ip, ifname, url string, err error) {
 	log.Errorf("Source IP %s failed: %s", ip, err)
-	zedcloud.ZedCloudFailure(ifname, url, 1024, 0, false)
+	zedcloud.ZedCloudFailure(log, ifname, url, 1024, 0, false)
 }
 
 func getDatastoreCredential(ctx *downloaderContext,

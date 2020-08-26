@@ -33,8 +33,8 @@ import (
 type ZedCloudContext struct {
 	DeviceNetworkStatus *types.DeviceNetworkStatus
 	TlsConfig           *tls.Config
-	FailureFunc         func(intf string, url string, reqLen int64, respLen int64, authFail bool)
-	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
+	FailureFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, authFail bool)
+	SuccessFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64)
 	NoLedManager        bool // Don't call UpdateLedManagerConfig
 	DevUUID             uuid.UUID
 	DevSerial           string
@@ -287,7 +287,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 
 	if addrCount == 0 {
 		if ctx.FailureFunc != nil {
-			ctx.FailureFunc(intf, reqUrl, 0, 0, false)
+			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 		}
 		// Determine a specific failure for intf
 		link, err := netlink.LinkByName(intf)
@@ -312,7 +312,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 	numDNSServers := types.CountDNSServers(*ctx.DeviceNetworkStatus, intf)
 	if numDNSServers == 0 {
 		if ctx.FailureFunc != nil {
-			ctx.FailureFunc(intf, reqUrl, 0, 0, false)
+			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 		}
 		errStr := fmt.Sprintf("No DNS servers to connect to %s using intf %s",
 			reqUrl, intf)
@@ -507,7 +507,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 					utils.UpdateLedManagerConfig(log, 12)
 				}
 				if ctx.FailureFunc != nil {
-					ctx.FailureFunc(intf, reqUrl, reqlen,
+					ctx.FailureFunc(log, intf, reqUrl, reqlen,
 						resplen, false)
 				}
 				continue
@@ -533,7 +533,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 						utils.UpdateLedManagerConfig(log, 13)
 					}
 					if ctx.FailureFunc != nil {
-						ctx.FailureFunc(intf, reqUrl,
+						ctx.FailureFunc(log, intf, reqUrl,
 							reqlen, resplen, false)
 					}
 					err = errors.New(errStr)
@@ -546,7 +546,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		// Even if we got e.g., a 404 we consider the connection a
 		// success since we care about the connectivity to the cloud.
 		if ctx.SuccessFunc != nil {
-			ctx.SuccessFunc(intf, reqUrl, reqlen, resplen)
+			ctx.SuccessFunc(log, intf, reqUrl, reqlen, resplen)
 		}
 
 		switch resp.StatusCode {
@@ -568,7 +568,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 						log.Errorf("SendOnIntf verify auth error %v, V2 %v, content len %d, url %s, extraStatus %v\n",
 							err, !envelopeErr, len(contents), reqUrl, rtf) // XXX change to debug later
 						if ctx.FailureFunc != nil {
-							ctx.FailureFunc(intf, reqUrl, 0, 0, true)
+							ctx.FailureFunc(log, intf, reqUrl, 0, 0, true)
 						}
 						return nil, nil, rtf, err
 					}
@@ -595,7 +595,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		}
 	}
 	if ctx.FailureFunc != nil {
-		ctx.FailureFunc(intf, reqUrl, 0, 0, false)
+		ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed: %v",
 		reqUrl, intf, errorList)
