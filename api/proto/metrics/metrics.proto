@@ -228,6 +228,9 @@ message logMetric {
 
   uint64 numDeviceBundleProtoBytesSent = 17;
   uint64 numAppBundleProtoBytesSent = 18;
+
+  // Split of totalDeviceLogInput per source string
+  map <string, uint64> input_sources = 19;
 }
 
 // Lisp stats

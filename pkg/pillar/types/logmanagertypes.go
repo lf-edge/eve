@@ -27,4 +27,5 @@ type LogMetrics struct {
 
 	TotalDeviceLogInput uint64
 	TotalAppLogInput    uint64
+	DeviceLogInput      map[string]uint64 // map from source
 }
