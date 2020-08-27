@@ -7,6 +7,7 @@ echo 'nameserver 8.8.8.8' > /etc/resolv.conf
 
 #Copy pre-defined fscrypt.conf
 cp fscrypt.conf /etc/fscrypt.conf
+cp periodic_sigusr1.sh /sbin/
 
 # Need to disable H/W TCP offload since it seems to mess us up
 for i in $(cd /sys/class/net || return ; echo eth*) ; do

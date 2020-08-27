@@ -503,6 +503,7 @@ if [ $MEASURE = 1 ]; then
 fi
 
 echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
+/sbin/periodic_sigusr1.sh &
 
 # If there is a USB stick inserted and debug.enable.usb is set, we periodically
 # check for any usb.json with DevicePortConfig, deposit our identity,
