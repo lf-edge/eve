@@ -131,6 +131,7 @@ func Run(ps *pubsub.PubSub) int {
 			log.Fatal(err)
 		}
 	}
+	dnsmasqInitDirs()
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
