@@ -143,6 +143,7 @@ type zedcloudLogs struct {
 type inputLogMetrics struct {
 	totalDeviceLogInput uint64
 	totalAppLogInput    uint64
+	deviceLogInput      map[string]uint64 // map from source
 }
 
 // Run is an entry point into running logmanager
@@ -190,7 +191,8 @@ func Run(ps *pubsub.PubSub) int {
 		log.Fatal(err)
 	}
 
-	var inputMetrics inputLogMetrics
+	inputMetrics := inputLogMetrics{deviceLogInput: make(map[string]uint64)}
+
 	metricsPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -447,6 +449,12 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			ctx.inputMetrics.totalAppLogInput++
 		} else {
 			ctx.inputMetrics.totalDeviceLogInput++
+			c, ok := ctx.inputMetrics.deviceLogInput[logSource]
+			if !ok {
+				c = 0
+			}
+			c++
+			ctx.inputMetrics.deviceLogInput[logSource] = c
 		}
 	}
 }
@@ -669,6 +677,10 @@ func processEvents(image string, logChan <-chan logEntry,
 func publishLogMetrics(ctx *logmanagerContext, outMetrics *types.LogMetrics) {
 	outMetrics.TotalDeviceLogInput = ctx.inputMetrics.totalDeviceLogInput
 	outMetrics.TotalAppLogInput = ctx.inputMetrics.totalAppLogInput
+	outMetrics.DeviceLogInput = make(map[string]uint64)
+	for s, c := range ctx.inputMetrics.deviceLogInput {
+		outMetrics.DeviceLogInput[s] = c
+	}
 	ctx.metricsPub.Publish("global", *outMetrics)
 }
 
