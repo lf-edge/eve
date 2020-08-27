@@ -409,6 +409,10 @@ if [ $SELF_REGISTER = 1 ]; then
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
     fi
+
+    # Remove zedclient.pid from watchdog
+    rm "$WATCHDOG_PID/zedclient.pid"
+
     rm -f $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
@@ -432,6 +436,10 @@ else
     echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
     echo "$(date -Ins -u) Starting client getUuid"
     $BINDIR/client getUuid
+
+    # Remove zedclient.pid from watchdog
+    rm "$WATCHDOG_PID/zedclient.pid"
+
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
         $BINDIR/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
@@ -457,9 +465,6 @@ size=$(df -B1 --output=size $PERSISTDIR | tail -1)
 space=$((size / 2048))
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
-
-# Remove zedclient.pid from watchdog
-rm "$WATCHDOG_PID/zedclient.pid"
 
 #If logmanager is already running we don't have to start it.
 if ! pgrep logmanager >/dev/null; then
