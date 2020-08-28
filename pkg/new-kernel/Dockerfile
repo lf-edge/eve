@@ -139,10 +139,13 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
     make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
                    M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
          modules modules_install
-#  * Realtek rtl8821CU
-RUN git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU && (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c)
-RUN make -C /tmp/rtl8821CU KSRC=/linux modules
-RUN install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
+#  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
+RUN if [ "$(uname -m)" != aarch64 ]; then \
+       git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
+       (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c) &&\
+       make -C /tmp/rtl8821CU KSRC=/linux modules &&\
+       install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
+     fi
 
 # Strip at least some of the modules to conserve space
 RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules/*/extra -name \*.ko` ;fi
