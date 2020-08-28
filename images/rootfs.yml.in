@@ -29,6 +29,10 @@ services:
    - name: rsyslogd
      image: RSYSLOGD_TAG
      cgroupsPath: /eve/services/rsyslogd
+     resources:
+       memory:
+         limit: 52428800 #50M
+         reservation: 52428800
    - name: ntpd
      image: linuxkit/openntpd:v0.5
      cgroupsPath: /eve/services/ntpd
