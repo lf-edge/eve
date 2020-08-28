@@ -35,11 +35,11 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 	// the one we just created is it; set our State to DOWNLOADING and return
 	if ds == nil || ds.Expired || ds.RefCount == 0 {
 		if ds == nil {
-			log.Infof("downloadStatus not found for blob %s", blob.Sha256)
+			log.Debugf("downloadStatus not found for blob %s", blob.Sha256)
 		} else if ds.Expired {
-			log.Infof("downloadStatus Expired set for blob %s", blob.Sha256)
+			log.Debugf("downloadStatus Expired set for blob %s", blob.Sha256)
 		} else {
-			log.Infof("downloadStatus RefCount=0 for blob %s", blob.Sha256)
+			log.Debugf("downloadStatus RefCount=0 for blob %s", blob.Sha256)
 		}
 		blob.State = types.DOWNLOADING
 		return true
@@ -68,7 +68,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 		changed = true
 	}
 	if ds.Pending() {
-		log.Infof("lookupDownloaderStatus Pending for blob %s", blob.Sha256)
+		log.Debugf("lookupDownloaderStatus Pending for blob %s", blob.Sha256)
 		return changed
 	}
 	if ds.HasError() {
@@ -225,11 +225,11 @@ func startBlobVerification(ctx *volumemgrContext, sv SignatureVerifier, blob *ty
 
 // getBlobChildren get the children of a blob
 func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) []*types.BlobStatus {
-	log.Infof("getBlobChildren(%s)", blob.Sha256)
+	log.Debugf("getBlobChildren(%s)", blob.Sha256)
 	if blob.State < types.VERIFIED {
 		return nil
 	}
-	log.Infof("getBlobChildren(%s): VERIFIED", blob.Sha256)
+	log.Debugf("getBlobChildren(%s): VERIFIED", blob.Sha256)
 	// if verified, check for any children and start them off
 	switch blob.BlobType {
 	case types.BlobIndex:
@@ -286,7 +286,7 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 				//Check if childBlob already exists
 				existingChild := lookupOrCreateBlobStatus(ctx, sv, childHash)
 				if existingChild != nil {
-					log.Infof("getBlobChildren(%s): child blob %s already exists.", blob.Sha256, childHash)
+					log.Debugf("getBlobChildren(%s): child blob %s already exists.", blob.Sha256, childHash)
 					blobChildren = append(blobChildren, existingChild)
 				} else {
 					log.Infof("getBlobChildren(%s): creating a new BlobStatus for child %s", blob.Sha256, childHash)
@@ -449,7 +449,7 @@ func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 // lookupOrCreateBlobStatus tries to lookup a BlobStatus. If one is not found,
 // and a VerifyImageStatus exists, use that to create the BlobStatus.
 func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, blobSha string) *types.BlobStatus {
-	log.Infof("lookupOrCreateBlobStatus(%s)", blobSha)
+	log.Debugf("lookupOrCreateBlobStatus(%s)", blobSha)
 	if blobSha == "" {
 		return nil
 	}
