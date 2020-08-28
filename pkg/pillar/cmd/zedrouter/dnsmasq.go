@@ -484,7 +484,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 
 // findLease returns a pointer so the caller can update the
 // lease information
-// XXX should we check that lease isn't expired?
+// Ignores a lease which has expired
 func findLease(ctx *zedrouterContext, hostname string, mac string) *dnsmasqLease {
 	for i := range ctx.dhcpLeases {
 		l := &ctx.dhcpLeases[i]
@@ -493,6 +493,10 @@ func findLease(ctx *zedrouterContext, hostname string, mac string) *dnsmasqLease
 		}
 		if l.MacAddr != mac {
 			continue
+		}
+		if l.LeaseTime.Before(time.Now()) {
+			log.Warnf("XXX Ignoring expired lease: %v", *l)
+			return nil
 		}
 		log.Debugf("Found %v", *l)
 		return l
@@ -587,11 +591,12 @@ func updateAllLeases(ctx *zedrouterContext) bool {
 	// every 10 seconds or so.
 	removed := false
 	for _, l := range ctx.dhcpLeases {
-		if time.Since(l.LastSeen) <= leaseGCTime {
+		if time.Since(l.LastSeen) <= leaseGCTime ||
+			time.Since(l.LeaseTime) <= leaseGCTime {
 			continue
 		}
-		log.Infof("lease %v garbage collected: age %v",
-			l, time.Since(l.LastSeen))
+		log.Infof("lease %v garbage collected: lastSeen %v ago, lease expiry %v ago",
+			l, time.Since(l.LastSeen), time.Since(l.LeaseTime))
 		markRemoveLease(ctx, l.Hostname, l.MacAddr)
 		changed = true
 		removed = true
