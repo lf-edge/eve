@@ -82,19 +82,19 @@ func purgeLatchContentTreeHash(ctx *volumemgrContext, contentID uuid.UUID) {
 func lookupLatchContentTreeHash(ctx *volumemgrContext,
 	contentID uuid.UUID, generationCounter uint32) string {
 
-	log.Infof("lookupLatchContentTreeHash(%s, %d)", contentID, generationCounter)
+	log.Debugf("lookupLatchContentTreeHash(%s, %d)", contentID, generationCounter)
 	temp := types.AppAndImageToHash{
 		ImageID:      contentID,
 		PurgeCounter: generationCounter,
 	}
 	item, _ := ctx.pubContentTreeToHash.Get(temp.Key())
 	if item == nil {
-		log.Infof("lookupLatchContentTreeHash(%s, %d) not found",
+		log.Debugf("lookupLatchContentTreeHash(%s, %d) not found",
 			contentID, generationCounter)
 		return ""
 	}
 	aih := item.(types.AppAndImageToHash)
-	log.Infof("lookupLatchContentTreeHash(%s, %d) found %s",
+	log.Debugf("lookupLatchContentTreeHash(%s, %d) found %s",
 		contentID, generationCounter, aih.Hash)
 	return aih.Hash
 }

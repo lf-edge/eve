@@ -46,30 +46,30 @@ func unpublishResolveConfig(ctx *volumemgrContext,
 func lookupResolveConfig(ctx *volumemgrContext,
 	key string) *types.ResolveConfig {
 
-	log.Infof("lookupResolveConfig(%s)", key)
+	log.Debugf("lookupResolveConfig(%s)", key)
 	pub := ctx.pubResolveConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveConfig(%s) not found", key)
+		log.Debugf("lookupResolveConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.ResolveConfig)
-	log.Infof("lookupResolveConfig(%s) Done", key)
+	log.Debugf("lookupResolveConfig(%s) Done", key)
 	return &config
 }
 
 func lookupResolveStatus(ctx *volumemgrContext,
 	key string) *types.ResolveStatus {
 
-	log.Infof("lookupResolveStatus(%s)", key)
+	log.Debugf("lookupResolveStatus(%s)", key)
 	sub := ctx.subResolveStatus
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupResolveStatus(%s) not found", key)
+		log.Debugf("lookupResolveStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.ResolveStatus)
-	log.Infof("lookupResolveStatus(%s) Done", key)
+	log.Debugf("lookupResolveStatus(%s) Done", key)
 	return &status
 }
 

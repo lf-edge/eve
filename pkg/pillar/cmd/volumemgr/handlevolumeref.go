@@ -91,7 +91,7 @@ func lookupVolumeRefConfig(ctx *volumemgrContext, key string) *types.VolumeRefCo
 	sub := ctx.subVolumeRefConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeRefConfig(%s) not found", key)
+		log.Debugf("lookupVolumeRefConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.VolumeRefConfig)
@@ -103,7 +103,7 @@ func lookupVolumeRefStatus(ctx *volumemgrContext, key string) *types.VolumeRefSt
 	pub := ctx.pubVolumeRefStatus
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeRefStatus(%s) not found", key)
+		log.Debugf("lookupVolumeRefStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.VolumeRefStatus)
