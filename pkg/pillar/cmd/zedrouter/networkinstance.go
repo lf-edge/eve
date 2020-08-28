@@ -871,14 +871,22 @@ func lookupOrAllocateIPv4(
 		}
 		log.Infof("lookupOrAllocateIPv4(%s) found free %s\n",
 			mac.String(), a.String())
-		status.IPAssignments[mac.String()] = a
-		// Publish the allocation
-		publishNetworkInstanceStatus(ctx, status)
+
+		recordIPAssignment(ctx, status, a, mac.String())
 		return a.String(), nil
 	}
 	errStr := fmt.Sprintf("lookupOrAllocateIPv4(%s) no free address in DhcpRange",
 		status.Key())
 	return "", errors.New(errStr)
+}
+
+// recordIPAssigment updates status and publishes the result
+func recordIPAssignment(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus, ip net.IP, mac string) {
+
+	status.IPAssignments[mac] = ip
+	// Publish the allocation
+	publishNetworkInstanceStatus(ctx, status)
 }
 
 // Add to an IPv4 address

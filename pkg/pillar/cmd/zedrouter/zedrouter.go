@@ -1138,6 +1138,8 @@ func getUlAddrs(ctx *zedrouterContext,
 		// Assumption is that the config specifies a gateway/router
 		// in the same subnet as the static address.
 		appIPAddr = status.AppIPAddr.String()
+		recordIPAssignment(ctx, netInstStatus, status.AppIPAddr,
+			status.Mac)
 	} else if status.Mac != "" {
 		// XXX or change type of VifInfo.Mac to avoid parsing?
 		var mac net.HardwareAddr
