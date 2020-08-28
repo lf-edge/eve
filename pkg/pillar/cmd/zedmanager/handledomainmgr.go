@@ -86,7 +86,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 	pub := ctx.pubDomainConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupDomainConfig(%s) not found", key)
+		log.Debugf("lookupDomainConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.DomainConfig)
@@ -98,7 +98,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 	sub := ctx.subDomainStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupDomainStatus(%s) not found", key)
+		log.Debugf("lookupDomainStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.DomainStatus)

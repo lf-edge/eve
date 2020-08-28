@@ -342,7 +342,7 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	pub := ctx.pubAppInstanceStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupAppInstanceStatus(%s) not found", key)
+		log.Debugf("lookupAppInstanceStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.AppInstanceStatus)
@@ -354,7 +354,7 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	sub := ctx.subAppInstanceConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupAppInstanceConfig(%s) not found", key)
+		log.Debugf("lookupAppInstanceConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.AppInstanceConfig)

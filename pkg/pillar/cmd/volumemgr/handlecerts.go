@@ -185,7 +185,7 @@ func lookupCertObjConfig(ctx *volumemgrContext, key string) *types.CertObjConfig
 	sub := ctx.subCertObjConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupCertObjConfig(%s) not found", key)
+		log.Debugf("lookupCertObjConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.CertObjConfig)
@@ -197,7 +197,7 @@ func lookupCertObjStatus(ctx *volumemgrContext, key string) *types.CertObjStatus
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupCertObjStatus(%s) not found", key)
+		log.Debugf("lookupCertObjStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.CertObjStatus)

@@ -73,7 +73,7 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 	pub := ctx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupAppNetworkConfig(%s) not found", key)
+		log.Debugf("lookupAppNetworkConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.AppNetworkConfig)
@@ -85,7 +85,7 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 	sub := ctx.subAppNetworkStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupAppNetworkStatus(%s) not found", key)
+		log.Debugf("lookupAppNetworkStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.AppNetworkStatus)
