@@ -298,6 +298,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		deviceLogMetric.NumAppEventErrors = logMetrics.NumAppEventErrors
 		deviceLogMetric.NumDeviceBundleProtoBytesSent = logMetrics.NumDeviceBundleProtoBytesSent
 		deviceLogMetric.NumAppBundleProtoBytesSent = logMetrics.NumAppBundleProtoBytesSent
+		deviceLogMetric.InputSources = make(map[string]uint64)
 		for source, val := range logMetrics.DeviceLogInput {
 			deviceLogMetric.InputSources[source] = val
 		}
