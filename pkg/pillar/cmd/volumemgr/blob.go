@@ -439,7 +439,7 @@ func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 	pub := ctx.pubBlobStatus
 	s, _ := pub.Get(blobSha)
 	if s == nil {
-		log.Infof("lookupBlobStatus(%s) not found", blobSha)
+		log.Debugf("lookupBlobStatus(%s) not found", blobSha)
 		return nil
 	}
 	status := s.(types.BlobStatus)
@@ -500,7 +500,7 @@ func lookupBlobStatuses(ctx *volumemgrContext, shas ...string) []*types.BlobStat
 func publishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	for _, blob := range blobs {
 		key := blob.Sha256
-		log.Infof("publishBlobStatus(%s)", key)
+		log.Debugf("publishBlobStatus(%s)", key)
 		ctx.pubBlobStatus.Publish(key, *blob)
 	}
 }

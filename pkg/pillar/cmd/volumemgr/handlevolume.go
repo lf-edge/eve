@@ -162,30 +162,30 @@ func unpublishVolumeStatus(ctx *volumemgrContext,
 func lookupVolumeStatus(ctx *volumemgrContext,
 	key string) *types.VolumeStatus {
 
-	log.Infof("lookupVolumeStatus(%s)", key)
+	log.Debugf("lookupVolumeStatus(%s)", key)
 	pub := ctx.pubVolumeStatus
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeStatus(%s) not found", key)
+		log.Debugf("lookupVolumeStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.VolumeStatus)
-	log.Infof("lookupVolumeStatus(%s) Done", key)
+	log.Debugf("lookupVolumeStatus(%s) Done", key)
 	return &status
 }
 
 func lookupVolumeConfig(ctx *volumemgrContext,
 	key string) *types.VolumeConfig {
 
-	log.Infof("lookupVolumeConfig(%s)", key)
+	log.Debugf("lookupVolumeConfig(%s)", key)
 	sub := ctx.subVolumeConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeConfig(%s) not found", key)
+		log.Debugf("lookupVolumeConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.VolumeConfig)
-	log.Infof("lookupVolumeConfig(%s) Done", key)
+	log.Debugf("lookupVolumeConfig(%s) Done", key)
 	return &config
 }
 

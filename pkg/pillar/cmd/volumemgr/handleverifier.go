@@ -15,7 +15,7 @@ func lookupVerifyImageConfig(ctx *volumemgrContext,
 	pub := ctx.pubVerifyImageConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupVerifyImageConfig(%s) not found", key)
+		log.Debugf("lookupVerifyImageConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.VerifyImageConfig)
@@ -222,7 +222,7 @@ func lookupVerifyImageStatus(ctx *volumemgrContext,
 	sub := ctx.subVerifyImageStatus
 	s, _ := sub.Get(key)
 	if s == nil {
-		log.Infof("lookupVerifyImageStatus(%s) not found", key)
+		log.Debugf("lookupVerifyImageStatus(%s) not found", key)
 		return nil
 	}
 	status := s.(types.VerifyImageStatus)
