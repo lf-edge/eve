@@ -1,0 +1,30 @@
+From b8f6e8e103adeba2d2c3120be595dea427137d3a Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Wed, 26 Aug 2020 00:02:19 +0300
+Subject: [PATCH] rsi91x: Check wowlan pointer in rsi_shutdown
+
+Check wowlan pointer before calling rsi_config_wowlan to
+prevent erroneous configuration attempts
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ drivers/net/wireless/rsi/rsi_91x_sdio.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/rsi/rsi_91x_sdio.c b/drivers/net/wireless/rsi/rsi_91x_sdio.c
+index 5733e440ecaf..d5aaa3bbe078 100644
+--- a/drivers/net/wireless/rsi/rsi_91x_sdio.c
++++ b/drivers/net/wireless/rsi/rsi_91x_sdio.c
+@@ -1349,7 +1349,8 @@ static void rsi_shutdown(struct device *dev)
+ 
+ 	rsi_dbg(ERR_ZONE, "SDIO Bus shutdown =====>\n");
+ 
+-	if (rsi_config_wowlan(adapter, wowlan))
++	if (wowlan &&
++		rsi_config_wowlan(adapter, wowlan))
+ 		rsi_dbg(ERR_ZONE, "Failed to configure WoWLAN\n");
+ 
+ 	rsi_sdio_disable_interrupts(sdev->pfunction);
+-- 
+2.26.2
+
