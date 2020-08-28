@@ -153,7 +153,7 @@ func lookupDownloaderConfig(ctx *volumemgrContext,
 	pub := ctx.pubDownloaderConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupDownloaderConfig(%s) not found", key)
+		log.Debugf("lookupDownloaderConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.DownloaderConfig)
@@ -167,7 +167,7 @@ func lookupDownloaderStatus(ctx *volumemgrContext,
 	sub := ctx.subDownloaderStatus
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupDownloaderStatus(%s) not found", key)
+		log.Debugf("lookupDownloaderStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.DownloaderStatus)

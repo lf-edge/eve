@@ -76,7 +76,7 @@ func lookupVolumeRefConfig(ctx *zedmanagerContext, key string) *types.VolumeRefC
 	pub := ctx.pubVolumeRefConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeRefConfig(%s) not found", key)
+		log.Debugf("lookupVolumeRefConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.VolumeRefConfig)
@@ -88,7 +88,7 @@ func lookupVolumeRefStatus(ctx *zedmanagerContext, key string) *types.VolumeRefS
 	sub := ctx.subVolumeRefStatus
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupVolumeRefStatus(%s) not found", key)
+		log.Debugf("lookupVolumeRefStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.VolumeRefStatus)

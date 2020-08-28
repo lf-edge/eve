@@ -683,7 +683,7 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 	pub := ctx.pubAppNetworkStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupAppNetworkStatus(%s) not found\n", key)
+		log.Debugf("lookupAppNetworkStatus(%s) not found\n", key)
 		return nil
 	}
 	status := st.(types.AppNetworkStatus)
@@ -698,7 +698,7 @@ func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetwork
 		sub = ctx.subAppNetworkConfigAg
 		c, _ = sub.Get(key)
 		if c == nil {
-			log.Infof("lookupAppNetworkConfig(%s) not found\n", key)
+			log.Debugf("lookupAppNetworkConfig(%s) not found\n", key)
 			return nil
 		}
 	}

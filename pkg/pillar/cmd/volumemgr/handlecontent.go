@@ -121,30 +121,30 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 func lookupContentTreeStatus(ctx *volumemgrContext,
 	key, objType string) *types.ContentTreeStatus {
 
-	log.Infof("lookupContentTreeStatus(%s/%s)", key, objType)
+	log.Debugf("lookupContentTreeStatus(%s/%s)", key, objType)
 	pub := ctx.publication(types.ContentTreeStatus{}, objType)
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupContentTreeStatus(%s/%s) not found", key, objType)
+		log.Debugf("lookupContentTreeStatus(%s/%s) not found", key, objType)
 		return nil
 	}
 	status := c.(types.ContentTreeStatus)
-	log.Infof("lookupContentTreeStatus(%s/%s) Done", key, objType)
+	log.Debugf("lookupContentTreeStatus(%s/%s) Done", key, objType)
 	return &status
 }
 
 func lookupContentTreeConfig(ctx *volumemgrContext,
 	key, objType string) *types.ContentTreeConfig {
 
-	log.Infof("lookupContentTreeConfig(%s/%s)", key, objType)
+	log.Debugf("lookupContentTreeConfig(%s/%s)", key, objType)
 	sub := ctx.subscription(types.ContentTreeConfig{}, objType)
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupContentTreeConfig(%s/%s) not found", key, objType)
+		log.Debugf("lookupContentTreeConfig(%s/%s) not found", key, objType)
 		return nil
 	}
 	config := c.(types.ContentTreeConfig)
-	log.Infof("lookupContentTreeConfig(%s/%s) Done", key, objType)
+	log.Debugf("lookupContentTreeConfig(%s/%s) Done", key, objType)
 	return &config
 }
 
