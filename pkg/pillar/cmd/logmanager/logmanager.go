@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -318,7 +317,7 @@ func Run(ps *pubsub.PubSub) int {
 		time.Duration(max))
 
 	currentPartition := zboot.GetCurrentPartition()
-	loggerChan := make(chan logEntry)
+	loggerChan := make(chan logEntry, 100)
 	ctx := loggerContext{
 		logChan:      loggerChan,
 		image:        currentPartition,
@@ -750,13 +749,6 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	}
 
 	logDetails := &logs.LogEntry{}
-	// XXX Is this still required. rsyslogd is now configured to do the same
-	logDetails.Content = strings.Map(func(r rune) rune {
-		if r == utf8.RuneError {
-			return -1
-		}
-		return r
-	}, event.content)
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
@@ -790,12 +782,6 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) bool {
 	}
 
 	logDetails := &logs.LogEntry{}
-	logDetails.Content = strings.Map(func(r rune) rune {
-		if r == utf8.RuneError {
-			return -1
-		}
-		return r
-	}, event.content)
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
