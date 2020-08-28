@@ -22,10 +22,11 @@ type ZedcloudMetric struct {
 
 // UrlcloudMetrics are metrics for a particular URL
 type UrlcloudMetrics struct {
-	TryMsgCount   int64
-	TryByteCount  int64
-	SentMsgCount  int64
-	SentByteCount int64
-	RecvMsgCount  int64
-	RecvByteCount int64 // Based on content-length which could be off
+	TryMsgCount    int64
+	TryByteCount   int64
+	SentMsgCount   int64
+	SentByteCount  int64
+	RecvMsgCount   int64
+	RecvByteCount  int64 // Based on content-length which could be off
+	TotalTimeSpent int64
 }

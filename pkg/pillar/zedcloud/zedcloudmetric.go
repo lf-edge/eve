@@ -86,7 +86,7 @@ func ZedCloudFailure(log *base.LogObject, ifname string, url string, reqLen int6
 	mutex.Unlock()
 }
 
-func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64) {
+func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64, timeSpent int64) {
 	log.Debugf("ZedCloudSuccess(%s, %s) %d %d",
 		ifname, url, reqLen, respLen)
 	mutex.Lock()
@@ -102,6 +102,7 @@ func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int6
 	u.SentByteCount += reqLen
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
+	u.TotalTimeSpent += timeSpent
 	m.URLCounters[url] = u
 	updateAgentIfnameMetrics(log, ifname, m)
 	mutex.Unlock()
