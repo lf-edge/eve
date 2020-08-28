@@ -4,6 +4,7 @@
 package types
 
 import (
+	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )
@@ -23,8 +24,8 @@ type BlobStatus struct {
 	Path string
 	// State of download of this blob; only supports: INITIAL, DOWNLOADING, DOWNLOADED, VERIFYING, VERIFIED
 	State SwState
-	// BlobType what kind of blob type this is
-	BlobType BlobType
+	// MediaType the actual media type string for this blob
+	MediaType string
 	// HasDownloaderRef whether or not we have started a downloader for this blob
 	HasDownloaderRef bool
 	// HasVerifierRef whether or not we have started a verifier for this blob
@@ -41,24 +42,29 @@ type BlobStatus struct {
 	ErrorAndTimeWithSource
 }
 
-// BlobType what kind of blob this is. Usually we use the MediaType,
-// but this is good shorthand to make it easier to process.
-type BlobType uint8
-
-const (
-	// BlobBinary a binary layer
-	BlobBinary BlobType = iota
-	// BlobManifest an OCI manifest
-	BlobManifest
-	// BlobIndex an OCI index
-	BlobIndex
-	// BlobUnknown an unknown status
-	BlobUnknown
-)
-
-// Key returns the pubsub Key
+// Key returns the pubsub Key.
 func (status BlobStatus) Key() string {
 	return status.Sha256
+}
+
+// IsIndex is this an index.
+func (status BlobStatus) IsIndex() bool {
+	switch v1types.MediaType(status.MediaType) {
+	case v1types.OCIImageIndex, v1types.DockerManifestList:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsManifest is this a manifest.
+func (status BlobStatus) IsManifest() bool {
+	switch v1types.MediaType(status.MediaType) {
+	case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
+		return true
+	default:
+		return false
+	}
 }
 
 // LogCreate :
@@ -71,7 +77,7 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("datastoreid-uuid", status.DatastoreID).
 		AddField("size-int64", status.Size).
-		AddField("blobtype-int64", status.BlobType).
+		AddField("blobtype-string", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
 		Infof("Blob status create")
 }

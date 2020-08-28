@@ -100,7 +100,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					Sha256:      status.ContentSha256,
 					Size:        status.MaxDownloadSize,
 					State:       types.INITIAL,
-					BlobType:    types.BlobUnknown, // our initial type is unknown, but it will be set by the Content-Type http header
 				}
 				log.Infof("doUpdateContentTree: publishing new root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
@@ -183,7 +182,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
 					AddBlobsToContentTreeStatus(ctx, status, addedBlobs...)
 				}
-				if blob.BlobType == types.BlobManifest {
+				if blob.IsManifest() {
 					size := resolveManifestSize(ctx, *blob)
 					if size != status.TotalSize {
 						status.TotalSize = size

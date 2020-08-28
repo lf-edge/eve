@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -232,8 +231,8 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 	}
 	log.Debugf("getBlobChildren(%s): VERIFIED", blob.Sha256)
 	// if verified, check for any children and start them off
-	switch blob.BlobType {
-	case types.BlobIndex:
+	switch {
+	case blob.IsIndex():
 		log.Infof("getBlobChildren(%s): is an index, looking for manifest", blob.Sha256)
 		// resolve to our platform-specific one
 		manifest, err := resolveIndex(ctx, blob)
@@ -259,7 +258,6 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 					Sha256:      strings.ToLower(manifest.Digest.Hex),
 					Size:        uint64(manifest.Size),
 					State:       types.INITIAL,
-					BlobType:    types.BlobManifest,
 				},
 			}
 		} else if existingChild.State == types.LOADED {
@@ -271,7 +269,7 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 		log.Infof("getBlobChildren(%s): manifest %s already exists.", blob.Sha256, childHash)
 		return []*types.BlobStatus{existingChild}
 
-	case types.BlobManifest:
+	case blob.IsManifest():
 		log.Infof("getBlobChildren(%s): is a manifest, adding children", blob.Sha256)
 		// get all of the parts
 		_, children, err := resolveManifestChildren(ctx, blob)
@@ -297,7 +295,7 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 						Sha256:      childHash,
 						Size:        uint64(child.Size),
 						State:       types.INITIAL,
-						BlobType:    resolveMediaType(child.MediaType),
+						MediaType:   string(child.MediaType),
 					})
 				}
 			}
@@ -350,7 +348,7 @@ func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, a []*
 // resolveManifestSize resolve the size of total image for a manifest.
 // If the blob is not of type Manifest, return existing size
 func resolveManifestSize(ctx *volumemgrContext, blob types.BlobStatus) int64 {
-	if blob.BlobType != types.BlobManifest {
+	if !blob.IsManifest() {
 		return blob.TotalSize
 	}
 
@@ -400,7 +398,6 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, blobS
 	if vs != nil && !vs.Expired {
 		log.Infof("lookupOrCreateBlobStatus(%s) VerifyImageStatus found, creating and publishing BlobStatus", blobSha)
 		blob := &types.BlobStatus{
-			BlobType:    types.BlobUnknown,
 			Sha256:      blobSha,
 			State:       vs.State,
 			Path:        vs.FileLocation,
@@ -489,14 +486,14 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 	}
 	newBlobStatus := make([]*types.BlobStatus, 0)
 	for _, blobInfo := range blobInfoList {
-		blobType := resolveMediaType(v1types.MediaType(mediaMap[blobInfo.Digest]))
+		mediaType := mediaMap[blobInfo.Digest]
 		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
 			log.Infof("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
 				Sha256:      strings.TrimPrefix(blobInfo.Digest, "sha256:"),
 				Size:        uint64(blobInfo.Size),
 				State:       types.LOADED,
-				BlobType:    blobType,
+				MediaType:   mediaType,
 				TotalSize:   blobInfo.Size,
 				CurrentSize: blobInfo.Size,
 				Progress:    100,
@@ -509,28 +506,13 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 	}
 }
 
-// resolveMediaType convert the string of a mediaType into our enumerated types
-func resolveMediaType(contentType v1types.MediaType) types.BlobType {
-	var blobType types.BlobType
-	switch contentType {
-	case v1types.OCIImageIndex, v1types.DockerManifestList:
-		blobType = types.BlobIndex
-	case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
-		blobType = types.BlobManifest
-	default:
-		blobType = types.BlobBinary
-	}
-	return blobType
-}
-
 // setBlobTypeFromContentType set the blob type from the given content string
 func setBlobTypeFromContentType(blob *types.BlobStatus, contentType string) bool {
-	if blob.BlobType != types.BlobUnknown {
+	if blob.MediaType != "" {
 		// unchanged; we only override for unknown types
 		return false
 	}
-
-	blob.BlobType = resolveMediaType(v1types.MediaType(contentType))
+	blob.MediaType = contentType
 	return true
 }
 

@@ -62,7 +62,7 @@ type CAS interface {
 	//CreateImage: creates a reference which points to a blob with 'blobHash'. 'blobHash' must belong to a index blob
 	//Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
 	//Returns error if no blob is found matching the given 'blobHash' or if the given 'blobHash' does not belong to an index.
-	CreateImage(reference, blobHash string) error
+	CreateImage(reference, mediaType, blobHash string) error
 	//GetImageHash: returns a blob hash of format <algo>:<hash> (currently supporting only sha256:<hash>) which the given 'reference' is pointing to.
 	// Returns error if the given 'reference' is not found.
 	GetImageHash(reference string) (string, error)
@@ -75,7 +75,7 @@ type CAS interface {
 	//Returns error if the given 'reference' or a blob matching the given arg 'blobHash' is not found.
 	//Returns if the given 'blobHash' does not belong to an index.
 	//Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
-	ReplaceImage(reference, blobHash string) error
+	ReplaceImage(reference, mediaType, blobHash string) error
 
 	//Snapshot APIs
 	//CreateSnapshotForImage: creates an snapshot with the given snapshotID for the given 'reference'

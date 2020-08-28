@@ -172,8 +172,8 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 		defer fileReader.Close()
 
 		//Step 1.2: Resolve blob type and if this is a manifest or index, we will need to process (parse) it accordingly
-		switch blob.BlobType {
-		case types.BlobIndex:
+		switch {
+		case blob.IsIndex():
 			// read it in so we can process it
 			data, err := ioutil.ReadAll(fileReader)
 			if err != nil {
@@ -193,7 +193,7 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 				return loadedBlobs, err
 			}
 			indexHash = sha
-		case types.BlobManifest:
+		case blob.IsManifest():
 			// read it in so we can process it
 			data, err := ioutil.ReadAll(fileReader)
 			if err != nil {
@@ -366,8 +366,8 @@ func (c *containerdCAS) Children(blobHash string) ([]string, error) {
 //CreateImage: creates a reference which points to a blob with 'blobHash'. 'blobHash' must belong to a index blob
 //Arg 'blobHash' should be of format sha256:<hash>.
 //Returns error if no blob is found matching the given 'blobHash' or if the given 'blobHash' does not belong to an index.
-func (c *containerdCAS) CreateImage(reference, blobHash string) error {
-	manifest, mediaType, err := getManifestAndMediaType(c, blobHash)
+func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error {
+	size, err := getBlobSize(c, blobHash)
 	if err != nil {
 		return fmt.Errorf("CreateImage: exception while parsing blob %s: %s", blobHash, err.Error())
 	}
@@ -377,7 +377,7 @@ func (c *containerdCAS) CreateImage(reference, blobHash string) error {
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
-			Size:      manifest.Config.Size,
+			Size:      size,
 		},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Time{},
@@ -425,8 +425,8 @@ func (c *containerdCAS) RemoveImage(reference string) error {
 //Returns error if the given 'reference' or a blob matching the given arg 'blobHash' is not found.
 //Returns if the given 'blobHash' does not belong to an index.
 //Arg 'blobHash' should be of format sha256:<hash>.
-func (c *containerdCAS) ReplaceImage(reference, blobHash string) error {
-	manifest, mediaType, err := getManifestAndMediaType(c, blobHash)
+func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) error {
+	size, err := getBlobSize(c, blobHash)
 	if err != nil {
 		return fmt.Errorf("CreateImage: exception while parsing blob %s: %s", blobHash, err.Error())
 	}
@@ -436,7 +436,7 @@ func (c *containerdCAS) ReplaceImage(reference, blobHash string) error {
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
-			Size:      manifest.Config.Size,
+			Size:      size,
 		},
 	}
 	if _, err := containerd.CtrUpdateImage(image, "target"); err != nil {
@@ -624,10 +624,11 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 		return nil, err
 	}
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blobs[0].Sha256))
+	mediaType := blobs[0].MediaType
 	imageHash, err := c.GetImageHash(reference)
 	log.Infof("IngestBlobsAndCreateImage: creating/updating reference: %s for rootBlob %s", reference, rootBlobSha)
 	if err != nil || imageHash == "" {
-		if err := c.CreateImage(reference, rootBlobSha); err != nil {
+		if err := c.CreateImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			log.Errorf(err.Error())
@@ -635,7 +636,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 			return nil, err
 		}
 	} else {
-		if err := c.ReplaceImage(reference, rootBlobSha); err != nil {
+		if err := c.ReplaceImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not update reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			log.Errorf(err.Error())
@@ -717,31 +718,13 @@ func isNotFoundError(err error) bool {
 	return strings.HasSuffix(err.Error(), "not found")
 }
 
-func getManifestAndMediaType(c *containerdCAS, blobHash string) (*v1.Manifest, string, error) {
-	var (
-		manifest  *v1.Manifest
-		mediaType string
-	)
-	index, err := getIndexManifest(c, blobHash)
+// getBlobSize get the size of a blob
+func getBlobSize(c *containerdCAS, blobHash string) (int64, error) {
+	info, err := c.GetBlobInfo(blobHash)
 	if err != nil {
-		return nil, "", fmt.Errorf("getManifestAndMediaType: Exception while parsing blob as IndexManifest. %s", err.Error())
+		return 0, fmt.Errorf("unable to get blob info for %s: %v", blobHash, err)
 	}
-	if index.Manifests == nil {
-		//Not an index. Check if the blob is manifest
-		manifest, err = getManifest(c, blobHash)
-		if err != nil {
-			return nil, "", fmt.Errorf("getManifestAndMediaType: Exception while parsing blob as Manifest. %s", err.Error())
-		}
-		mediaType = images.MediaTypeDockerSchema2Manifest
-	} else {
-		manifest, err = getManifestFromIndex(c, index)
-		if err != nil {
-			return nil, "", fmt.Errorf("getManifestAndMediaType: Exception while fetching Manifest. %s", err.Error())
-		}
-		mediaType = images.MediaTypeDockerSchema2ManifestList
-	}
-
-	return manifest, mediaType, nil
+	return info.Size, nil
 }
 
 //getImageConfig returns imageConfig for a reference
