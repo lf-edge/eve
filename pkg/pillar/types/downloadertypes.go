@@ -205,17 +205,6 @@ func (status DownloaderStatus) LogKey() string {
 	return string(base.DownloaderStatusLogType) + "-" + status.Key()
 }
 
-type GlobalDownloadConfig struct {
-	MaxSpace uint64 // Number of kbytes allowed in types.DownloadDirname
-}
-
-// These are all in kbytes
-type GlobalDownloadStatus struct {
-	UsedSpace      uint64 // Number of kbytes used in types.DownloadDirname
-	ReservedSpace  uint64 // Reserved for ongoing downloads
-	RemainingSpace uint64 // MaxSpace - UsedSpace - ReservedSpace
-}
-
 // DatastoreContext : datastore detail
 type DatastoreContext struct {
 	DownloadURL     string

@@ -13,23 +13,19 @@ import (
 )
 
 type downloaderContext struct {
-	decryptCipherContext    cipher.DecryptCipherContext
-	dCtx                    *zedUpload.DronaCtx
-	subDeviceNetworkStatus  pubsub.Subscription
-	subDownloaderConfig     pubsub.Subscription
-	pubDownloaderStatus     pubsub.Publication
-	subResolveConfig        pubsub.Subscription
-	pubResolveStatus        pubsub.Publication
-	subGlobalDownloadConfig pubsub.Subscription
-	pubGlobalDownloadStatus pubsub.Publication
-	pubCipherBlockStatus    pubsub.Publication
-	subDatastoreConfig      pubsub.Subscription
-	deviceNetworkStatus     types.DeviceNetworkStatus
-	globalConfig            types.GlobalDownloadConfig
-	globalStatusLock        sync.Mutex
-	globalStatus            types.GlobalDownloadStatus
-	subGlobalConfig         pubsub.Subscription
-	GCInitialized           bool
+	decryptCipherContext   cipher.DecryptCipherContext
+	dCtx                   *zedUpload.DronaCtx
+	subDeviceNetworkStatus pubsub.Subscription
+	subDownloaderConfig    pubsub.Subscription
+	pubDownloaderStatus    pubsub.Publication
+	subResolveConfig       pubsub.Subscription
+	pubResolveStatus       pubsub.Publication
+	pubCipherBlockStatus   pubsub.Publication
+	subDatastoreConfig     pubsub.Subscription
+	deviceNetworkStatus    types.DeviceNetworkStatus
+	globalStatusLock       sync.Mutex
+	subGlobalConfig        pubsub.Subscription
+	GCInitialized          bool
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
@@ -113,20 +109,6 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subGlobalDownloadConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleGlobalDownloadConfigModify,
-		ModifyHandler: handleGlobalDownloadConfigModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		Ctx:           ctx,
-		TopicImpl:     types.GlobalDownloadConfig{},
-	})
-	if err != nil {
-		return err
-	}
-	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
-	subGlobalDownloadConfig.Activate()
-
 	// Look for DatastoreConfig. We should process this
 	// before any download config. Without DataStore Config,
 	// Image Downloads will run into errors, which requires retries
@@ -154,15 +136,6 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		return err
 	}
 	ctx.pubCipherBlockStatus = pubCipherBlockStatus
-
-	pubGlobalDownloadStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.GlobalDownloadStatus{},
-	})
-	if err != nil {
-		return err
-	}
-	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubDownloaderStatus, err := ps.NewPublication(pubsub.PublicationOptions{

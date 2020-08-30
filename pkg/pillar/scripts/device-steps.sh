@@ -459,13 +459,6 @@ else
     fi
 fi
 
-# Setup default amount of space for images
-# Half of /persist by default! Convert to kbytes
-size=$(df -B1 --output=size $PERSISTDIR | tail -1)
-space=$((size / 2048))
-mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
-echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
-
 #If logmanager is already running we don't have to start it.
 if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"

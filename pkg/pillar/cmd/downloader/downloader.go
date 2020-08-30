@@ -122,10 +122,8 @@ func Run(ps *pubsub.PubSub) int {
 
 	// First wait to have some management ports with addresses
 	// Looking at any management ports since we can do download over all
-	// Also ensure GlobalDownloadConfig has been read
-	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
-		ctx.globalConfig.MaxSpace == 0 {
-		log.Infof("Waiting for management port addresses or Global Config")
+	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 {
+		log.Infof("Waiting for management port addresses")
 
 		select {
 		case change := <-ctx.subGlobalConfig.MsgChan():
@@ -133,9 +131,6 @@ func Run(ps *pubsub.PubSub) int {
 
 		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
-
-		case change := <-ctx.subGlobalDownloadConfig.MsgChan():
-			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
@@ -173,9 +168,6 @@ func Run(ps *pubsub.PubSub) int {
 
 		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)
-
-		case change := <-ctx.subGlobalDownloadConfig.MsgChan():
-			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
 			start := time.Now()
