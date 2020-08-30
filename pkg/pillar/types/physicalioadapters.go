@@ -7,7 +7,9 @@ package types
 //  These are translated to AssignableAdapters
 
 import (
+	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // PhysicalAddress - Structure that represents various attributes related
@@ -60,6 +62,49 @@ type PhysicalIOAdapter struct {
 type PhysicalIOAdapterList struct {
 	Initialized bool
 	AdapterList []PhysicalIOAdapter
+}
+
+// Key returns the key for pubsub
+func (ioAdapterList PhysicalIOAdapterList) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (ioAdapterList PhysicalIOAdapterList) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.PhysicalIOAdapterListLogType, "",
+		nilUUID, ioAdapterList.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Onboarding ioAdapterList create")
+}
+
+// LogModify :
+func (ioAdapterList PhysicalIOAdapterList) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.PhysicalIOAdapterListLogType, "",
+		nilUUID, ioAdapterList.LogKey())
+
+	oldIoAdapterList, ok := old.(PhysicalIOAdapterList)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of PhysicalIOAdapterList type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldIoAdapterList, ioAdapterList)).
+		Metricf("Onboarding ioAdapterList modify")
+}
+
+// LogDelete :
+func (ioAdapterList PhysicalIOAdapterList) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.PhysicalIOAdapterListLogType, "",
+		nilUUID, ioAdapterList.LogKey())
+	logObject.Metricf("Onboarding ioAdapterList delete")
+
+	base.DeleteLogObject(ioAdapterList.LogKey())
+}
+
+// LogKey :
+func (ioAdapterList PhysicalIOAdapterList) LogKey() string {
+	return string(base.PhysicalIOAdapterListLogType) + "-" + ioAdapterList.Key()
 }
 
 // LookupAdapter - look up an Adapter by its name ( phylabel )

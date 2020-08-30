@@ -8,6 +8,9 @@ import (
 )
 
 // MetricsMap maps from an ifname string to some metrics
+// Note that there are no LogCreate etc functions for this type
+// since it is published by logmanager and we don't want to cause logs
+// when logging
 type MetricsMap map[string]ZedcloudMetric
 
 // ZedcloudMetric are metrics for one interface

@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -208,8 +210,47 @@ type UuidToNum struct {
 	InUse       bool
 }
 
+// Key is the key in pubsub
 func (info UuidToNum) Key() string {
 	return info.UUID.String()
+}
+
+// LogCreate :
+func (info UuidToNum) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.UUIDToNumLogType, "",
+		info.UUID, info.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("UuidToNum info create")
+}
+
+// LogModify :
+func (info UuidToNum) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.UUIDToNumLogType, "",
+		info.UUID, info.LogKey())
+
+	oldInfo, ok := old.(UuidToNum)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of UuidToNum type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldInfo, info)).
+		Tracef("UuidToNum info modify")
+}
+
+// LogDelete :
+func (info UuidToNum) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.UUIDToNumLogType, "",
+		info.UUID, info.LogKey())
+	logObject.Tracef("UuidToNum info delete")
+
+	base.DeleteLogObject(info.LogKey())
+}
+
+// LogKey :
+func (info UuidToNum) LogKey() string {
+	return string(base.UUIDToNumLogType) + "-" + info.Key()
 }
 
 // Use this for booleans which have a none/dontcare/notset value

@@ -5,6 +5,9 @@ package types
 
 import (
 	"encoding/hex"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 //AttestNonce carries nonce published by requester
@@ -16,6 +19,44 @@ type AttestNonce struct {
 //Key returns nonce content, which is the key as well
 func (nonce AttestNonce) Key() string {
 	return hex.EncodeToString(nonce.Nonce)
+}
+
+// LogCreate :
+func (nonce AttestNonce) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AttestNonceLogType, "",
+		nilUUID, nonce.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Attest nonce create")
+}
+
+// LogModify :
+func (nonce AttestNonce) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AttestNonceLogType, "",
+		nilUUID, nonce.LogKey())
+
+	oldNonce, ok := old.(AttestNonce)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AttestNonce type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldNonce, nonce)).
+		Tracef("Attest nonce modify")
+}
+
+// LogDelete :
+func (nonce AttestNonce) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AttestNonceLogType, "",
+		nilUUID, nonce.LogKey())
+	logObject.Tracef("Attest nonce delete")
+
+	base.DeleteLogObject(nonce.LogKey())
+}
+
+// LogKey :
+func (nonce AttestNonce) LogKey() string {
+	return string(base.AttestNonceLogType) + "-" + nonce.Key()
 }
 
 //SigAlg denotes the Signature algorithm in use e.g. ECDSA, RSASSA
@@ -75,6 +116,44 @@ func (quote AttestQuote) Key() string {
 	return hex.EncodeToString(quote.Nonce)
 }
 
+// LogCreate :
+func (quote AttestQuote) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AttestQuoteLogType, "",
+		nilUUID, quote.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Attest quote create")
+}
+
+// LogModify :
+func (quote AttestQuote) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AttestQuoteLogType, "",
+		nilUUID, quote.LogKey())
+
+	oldQuote, ok := old.(AttestQuote)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AttestQuote type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldQuote, quote)).
+		Tracef("Attest quote modify")
+}
+
+// LogDelete :
+func (quote AttestQuote) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AttestQuoteLogType, "",
+		nilUUID, quote.LogKey())
+	logObject.Tracef("Attest quote delete")
+
+	base.DeleteLogObject(quote.LogKey())
+}
+
+// LogKey :
+func (quote AttestQuote) LogKey() string {
+	return string(base.AttestQuoteLogType) + "-" + quote.Key()
+}
+
 //Needs to match api/proto/attest/attest.proto:ZEveCertHashType
 //Various CertHashType fields
 const (
@@ -96,4 +175,42 @@ type EdgeNodeCert struct {
 //Key uniquely identifies the certificate
 func (cert EdgeNodeCert) Key() string {
 	return hex.EncodeToString(cert.CertID)
+}
+
+// LogCreate :
+func (cert EdgeNodeCert) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.EdgeNodeCertLogType, "",
+		nilUUID, cert.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Edge node cert create")
+}
+
+// LogModify :
+func (cert EdgeNodeCert) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.EdgeNodeCertLogType, "",
+		nilUUID, cert.LogKey())
+
+	oldCert, ok := old.(EdgeNodeCert)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of EdgeNodeCert type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldCert, cert)).
+		Tracef("Edge node cert modify")
+}
+
+// LogDelete :
+func (cert EdgeNodeCert) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.EdgeNodeCertLogType, "",
+		nilUUID, cert.LogKey())
+	logObject.Tracef("Edge node cert delete")
+
+	base.DeleteLogObject(cert.LogKey())
+}
+
+// LogKey :
+func (cert EdgeNodeCert) LogKey() string {
+	return string(base.EdgeNodeCertLogType) + "-" + cert.Key()
 }

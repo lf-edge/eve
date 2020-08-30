@@ -5,6 +5,9 @@ package types
 
 import (
 	"time"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // CipherMetricsMap maps from an agentname string to some metrics
@@ -38,3 +41,46 @@ const (
 
 	MaxCipherError // Must be last
 )
+
+// Key - key for pubsub
+func (cipherMetric CipherMetrics) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (cipherMetric CipherMetrics) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.CipherMetricsLogType, "",
+		nilUUID, cipherMetric.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Cipher metric create")
+}
+
+// LogModify :
+func (cipherMetric CipherMetrics) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.CipherMetricsLogType, "",
+		nilUUID, cipherMetric.LogKey())
+
+	oldAcMetric, ok := old.(CipherMetrics)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of CipherMetrics type")
+	}
+	// XXX remove? XXX huge?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldAcMetric, cipherMetric)).
+		Metricf("Cipher metric modify")
+}
+
+// LogDelete :
+func (cipherMetric CipherMetrics) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.CipherMetricsLogType, "",
+		nilUUID, cipherMetric.LogKey())
+	logObject.Metricf("Cipher metric delete")
+
+	base.DeleteLogObject(cipherMetric.LogKey())
+}
+
+// LogKey :
+func (cipherMetric CipherMetrics) LogKey() string {
+	return string(base.CipherMetricsLogType) + "-" + cipherMetric.Key()
+}

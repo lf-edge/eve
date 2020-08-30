@@ -5,6 +5,9 @@ package types
 
 import (
 	"github.com/lf-edge/eve/api/go/info"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 //VaultStatus represents running status of a Vault
@@ -18,6 +21,50 @@ type VaultStatus struct {
 //Key returns the key used for indexing into a list of vaults
 func (status VaultStatus) Key() string {
 	return status.Name
+}
+
+// LogCreate :
+func (status VaultStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VaultStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Vault status create")
+}
+
+// LogModify :
+func (status VaultStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.VaultStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(VaultStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VaultStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Tracef("Vault status modify")
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime
+		logObject.CloneAndAddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).
+			Errorf("Vault status modify")
+	}
+}
+
+// LogDelete :
+func (status VaultStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.VaultStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	logObject.Tracef("Vault status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status VaultStatus) LogKey() string {
+	return string(base.VaultStatusLogType) + "-" + status.Key()
 }
 
 //EncryptedVaultKeyFromDevice is published by vaultmgr towards Controller (through zedagent)

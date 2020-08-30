@@ -260,6 +260,44 @@ func (config DatastoreConfig) Key() string {
 	return config.UUID.String()
 }
 
+// LogCreate :
+func (config DatastoreConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DatastoreConfigLogType, "",
+		config.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Datastore config create")
+}
+
+// LogModify :
+func (config DatastoreConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.DatastoreConfigLogType, "",
+		config.UUID, config.LogKey())
+
+	oldConfig, ok := old.(DatastoreConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DatastoreConfig type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Tracef("Datastore config modify")
+}
+
+// LogDelete :
+func (config DatastoreConfig) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.DatastoreConfigLogType, "",
+		config.UUID, config.LogKey())
+	logObject.Tracef("Datastore config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config DatastoreConfig) LogKey() string {
+	return string(base.DatastoreConfigLogType) + "-" + config.Key()
+}
+
 // NodeAgentStatus :
 type NodeAgentStatus struct {
 	Name              string
@@ -277,6 +315,44 @@ type NodeAgentStatus struct {
 // Key :
 func (status NodeAgentStatus) Key() string {
 	return status.Name
+}
+
+// LogCreate :
+func (status NodeAgentStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NodeAgentStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Nodeagent status create")
+}
+
+// LogModify :
+func (status NodeAgentStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.NodeAgentStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(NodeAgentStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NodeAgentStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Tracef("Nodeagent status modify")
+}
+
+// LogDelete :
+func (status NodeAgentStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.NodeAgentStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	logObject.Tracef("Nodeagent status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status NodeAgentStatus) LogKey() string {
+	return string(base.NodeAgentStatusLogType) + "-" + status.Key()
 }
 
 // ConfigGetStatus : Config Get Status from Controller
@@ -301,6 +377,44 @@ type ZedAgentStatus struct {
 // Key :
 func (status ZedAgentStatus) Key() string {
 	return status.Name
+}
+
+// LogCreate :
+func (status ZedAgentStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.ZedAgentStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Zedagent status create")
+}
+
+// LogModify :
+func (status ZedAgentStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.ZedAgentStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(ZedAgentStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ZedAgentStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Tracef("Zedagent status modify")
+}
+
+// LogDelete :
+func (status ZedAgentStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.ZedAgentStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	logObject.Tracef("Zedagent status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status ZedAgentStatus) LogKey() string {
+	return string(base.ZedAgentStatusLogType) + "-" + status.Key()
 }
 
 // DeviceOpsCmd - copy of zconfig.DeviceOpsCmd

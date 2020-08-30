@@ -32,6 +32,53 @@ func (config AppNetworkConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
+// LogCreate :
+func (config AppNetworkConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppNetworkConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("activate", config.Activate).
+		Tracef("App network config create")
+}
+
+// LogModify :
+func (config AppNetworkConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AppNetworkConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+
+	oldConfig, ok := old.(AppNetworkConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppNetworkConfig type")
+	}
+	if oldConfig.Activate != config.Activate {
+
+		logObject.CloneAndAddField("activate", config.Activate).
+			AddField("old-activate", oldConfig.Activate).
+			Tracef("App network config modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("App network config modify other change")
+	}
+}
+
+// LogDelete :
+func (config AppNetworkConfig) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AppNetworkConfigLogType, config.DisplayName,
+		config.UUIDandVersion.UUID, config.LogKey())
+	logObject.CloneAndAddField("activate", config.Activate).
+		Tracef("App network config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config AppNetworkConfig) LogKey() string {
+	return string(base.AppNetworkConfigLogType) + "-" + config.Key()
+}
+
 func (config *AppNetworkConfig) getUnderlayConfig(
 	network uuid.UUID) *UnderlayNetworkConfig {
 	for i := range config.UnderlayNetworkList {
@@ -78,6 +125,61 @@ func (status AppNetworkStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
+// LogCreate :
+func (status AppNetworkStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppNetworkStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("activated", status.Activated).
+		Tracef("App network status create")
+}
+
+// LogModify :
+func (status AppNetworkStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AppNetworkStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+
+	oldStatus, ok := old.(AppNetworkStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppNetworkStatus type")
+	}
+	if oldStatus.Activated != status.Activated {
+
+		logObject.CloneAndAddField("activated", status.Activated).
+			AddField("old-activated", oldStatus.Activated).
+			Tracef("App network status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("App network status modify other change")
+	}
+
+	if status.HasError() {
+		errAndTime := status.ErrorAndTime
+		logObject.CloneAndAddField("activated", status.Activated).
+			AddField("error", errAndTime.Error).
+			AddField("error-time", errAndTime.ErrorTime).
+			Errorf("App network status modify")
+	}
+}
+
+// LogDelete :
+func (status AppNetworkStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AppNetworkStatusLogType, status.DisplayName,
+		status.UUIDandVersion.UUID, status.LogKey())
+	logObject.CloneAndAddField("activated", status.Activated).
+		Tracef("App network status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status AppNetworkStatus) LogKey() string {
+	return string(base.AppNetworkStatusLogType) + "-" + status.Key()
+}
+
 // AppContainerMetrics - App Container Metrics
 type AppContainerMetrics struct {
 	UUIDandVersion UUIDandVersion // App UUID
@@ -106,9 +208,47 @@ type AppContainerStats struct {
 	WriteBytes uint64 // in MBytes
 }
 
-// Key - key for AppContainerMetric
+// Key - key for AppContainerMetrics
 func (acMetric AppContainerMetrics) Key() string {
 	return acMetric.UUIDandVersion.UUID.String()
+}
+
+// LogCreate :
+func (acMetric AppContainerMetrics) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppContainerMetricsLogType, "",
+		acMetric.UUIDandVersion.UUID, acMetric.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("App container metric create")
+}
+
+// LogModify :
+func (acMetric AppContainerMetrics) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AppContainerMetricsLogType, "",
+		acMetric.UUIDandVersion.UUID, acMetric.LogKey())
+
+	oldAcMetric, ok := old.(AppContainerMetrics)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppContainerMetrics type")
+	}
+	// XXX remove? XXX huge?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldAcMetric, acMetric)).
+		Metricf("App container metric modify")
+}
+
+// LogDelete :
+func (acMetric AppContainerMetrics) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AppContainerMetricsLogType, "",
+		acMetric.UUIDandVersion.UUID, acMetric.LogKey())
+	logObject.Metricf("App container metric delete")
+
+	base.DeleteLogObject(acMetric.LogKey())
+}
+
+// LogKey :
+func (acMetric AppContainerMetrics) LogKey() string {
+	return string(base.AppContainerMetricsLogType) + "-" + acMetric.Key()
 }
 
 // IntfStatusMap - Used to return per-interface test results (success and failures)
@@ -1598,6 +1738,44 @@ func (config NetworkXObjectConfig) Key() string {
 	return config.UUID.String()
 }
 
+// LogCreate :
+func (config NetworkXObjectConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NetworkXObjectConfigLogType, "",
+		config.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("NetworkXObject config create")
+}
+
+// LogModify :
+func (config NetworkXObjectConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.NetworkXObjectConfigLogType, "",
+		config.UUID, config.LogKey())
+
+	oldConfig, ok := old.(NetworkXObjectConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NetworkXObjectConfig type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Tracef("NetworkXObject config modify")
+}
+
+// LogDelete :
+func (config NetworkXObjectConfig) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.NetworkXObjectConfigLogType, "",
+		config.UUID, config.LogKey())
+	logObject.Tracef("NetworkXObject config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config NetworkXObjectConfig) LogKey() string {
+	return string(base.NetworkXObjectConfigLogType) + "-" + config.Key()
+}
+
 type NetworkInstanceInfo struct {
 	BridgeNum    int
 	BridgeName   string // bn<N>
@@ -1724,10 +1902,91 @@ func (metrics NetworkInstanceMetrics) Key() string {
 	return metrics.UUIDandVersion.UUID.String()
 }
 
+// LogCreate :
+func (metrics NetworkInstanceMetrics) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NetworkInstanceMetricsLogType, "",
+		metrics.UUIDandVersion.UUID, metrics.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Network instance metrics create")
+}
+
+// LogModify :
+func (metrics NetworkInstanceMetrics) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.NetworkInstanceMetricsLogType, "",
+		metrics.UUIDandVersion.UUID, metrics.LogKey())
+
+	oldMetrics, ok := old.(NetworkInstanceMetrics)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NetworkInstanceMetrics type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldMetrics, metrics)).
+		Metricf("Network instance metrics modify")
+}
+
+// LogDelete :
+func (metrics NetworkInstanceMetrics) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.NetworkInstanceMetricsLogType, "",
+		metrics.UUIDandVersion.UUID, metrics.LogKey())
+	logObject.Metricf("Network instance metrics delete")
+
+	base.DeleteLogObject(metrics.LogKey())
+}
+
+// LogKey :
+func (metrics NetworkInstanceMetrics) LogKey() string {
+	return string(base.NetworkInstanceMetricsLogType) + "-" + metrics.Key()
+}
+
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
 	MetricList []NetworkMetric
+}
+
+// Key is used for pubsub
+func (nms NetworkMetrics) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (nms NetworkMetrics) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NetworkMetricsLogType, "",
+		nilUUID, nms.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Network nms create")
+}
+
+// LogModify :
+func (nms NetworkMetrics) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.NetworkMetricsLogType, "",
+		nilUUID, nms.LogKey())
+
+	oldNms, ok := old.(NetworkMetrics)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NetworkMetrics type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldNms, nms)).
+		Metricf("Network metrics modify")
+}
+
+// LogDelete :
+func (nms NetworkMetrics) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.NetworkMetricsLogType, "",
+		nilUUID, nms.LogKey())
+	logObject.Metricf("Network metrics delete")
+
+	base.DeleteLogObject(nms.LogKey())
+}
+
+// LogKey :
+func (nms NetworkMetrics) LogKey() string {
+	return string(base.NetworkMetricsLogType) + "-" + nms.Key()
 }
 
 func (nms *NetworkMetrics) LookupNetworkMetrics(ifName string) (NetworkMetric, bool) {
@@ -1816,6 +2075,44 @@ func (config *NetworkInstanceConfig) Key() string {
 	return config.UUID.String()
 }
 
+// LogCreate :
+func (config NetworkInstanceConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NetworkInstanceConfigLogType, "",
+		config.UUIDandVersion.UUID, config.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Network instance config create")
+}
+
+// LogModify :
+func (config NetworkInstanceConfig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.NetworkInstanceConfigLogType, "",
+		config.UUIDandVersion.UUID, config.LogKey())
+
+	oldConfig, ok := old.(NetworkInstanceConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NetworkInstanceConfig type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Metricf("Network instance config modify")
+}
+
+// LogDelete :
+func (config NetworkInstanceConfig) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.NetworkInstanceConfigLogType, "",
+		config.UUIDandVersion.UUID, config.LogKey())
+	logObject.Metricf("Network instance config delete")
+
+	base.DeleteLogObject(config.LogKey())
+}
+
+// LogKey :
+func (config NetworkInstanceConfig) LogKey() string {
+	return string(base.NetworkInstanceConfigLogType) + "-" + config.Key()
+}
+
 func (config *NetworkInstanceConfig) IsIPv6() bool {
 	switch config.IpType {
 	case AddressTypeIPV6:
@@ -1853,6 +2150,44 @@ type NetworkInstanceStatus struct {
 	VpnStatus    *VpnStatus
 
 	NetworkInstanceProbeStatus
+}
+
+// LogCreate :
+func (status NetworkInstanceStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.NetworkInstanceStatusLogType, "",
+		status.UUIDandVersion.UUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Network instance status create")
+}
+
+// LogModify :
+func (status NetworkInstanceStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.NetworkInstanceStatusLogType, "",
+		status.UUIDandVersion.UUID, status.LogKey())
+
+	oldStatus, ok := old.(NetworkInstanceStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of NetworkInstanceStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Metricf("Network instance status modify")
+}
+
+// LogDelete :
+func (status NetworkInstanceStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.NetworkInstanceStatusLogType, "",
+		status.UUIDandVersion.UUID, status.LogKey())
+	logObject.Metricf("Network instance status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status NetworkInstanceStatus) LogKey() string {
+	return string(base.NetworkInstanceStatusLogType) + "-" + status.Key()
 }
 
 type VifNameMac struct {
@@ -2267,6 +2602,44 @@ func (flows IPFlow) Key() string {
 	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String() + flows.Scope.Sequence
 }
 
+// LogCreate : we treat IPFlow as Metrics for logging
+func (flows IPFlow) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.IPFlowLogType, "",
+		flows.DevID, flows.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("IP flow create")
+}
+
+// LogModify :
+func (flows IPFlow) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.IPFlowLogType, "",
+		flows.DevID, flows.LogKey())
+
+	oldFlows, ok := old.(IPFlow)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of IPFlow type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldFlows, flows)).
+		Metricf("IP flow modify")
+}
+
+// LogDelete :
+func (flows IPFlow) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.IPFlowLogType, "",
+		flows.DevID, flows.LogKey())
+	logObject.Metricf("IP flow delete")
+
+	base.DeleteLogObject(flows.LogKey())
+}
+
+// LogKey :
+func (flows IPFlow) LogKey() string {
+	return string(base.IPFlowLogType) + "-" + flows.Key()
+}
+
 // VifIPTrig - structure contains Mac Address
 type VifIPTrig struct {
 	MacAddr string
@@ -2278,7 +2651,88 @@ func (vifIP VifIPTrig) Key() string {
 	return vifIP.MacAddr
 }
 
+// LogCreate :
+func (vifIP VifIPTrig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VifIPTrigLogType, "",
+		nilUUID, vifIP.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Vif IP trig create")
+}
+
+// LogModify :
+func (vifIP VifIPTrig) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.VifIPTrigLogType, "",
+		nilUUID, vifIP.LogKey())
+
+	oldVifIP, ok := old.(VifIPTrig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VifIPTrig type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldVifIP, vifIP)).
+		Metricf("Vif IP trig modify")
+}
+
+// LogDelete :
+func (vifIP VifIPTrig) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.VifIPTrigLogType, "",
+		nilUUID, vifIP.LogKey())
+	logObject.Metricf("Vif IP trig delete")
+
+	base.DeleteLogObject(vifIP.LogKey())
+}
+
+// LogKey :
+func (vifIP VifIPTrig) LogKey() string {
+	return string(base.VifIPTrigLogType) + "-" + vifIP.Key()
+}
+
 // OnboardingStatus - UUID, etc. advertised by client process
 type OnboardingStatus struct {
 	DeviceUUID uuid.UUID
+}
+
+// Key returns the key for pubsub
+func (status OnboardingStatus) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (status OnboardingStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.OnboardingStatusLogType, "",
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Onboarding status create")
+}
+
+// LogModify :
+func (status OnboardingStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.OnboardingStatusLogType, "",
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(OnboardingStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of OnboardingStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Metricf("Onboarding status modify")
+}
+
+// LogDelete :
+func (status OnboardingStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.OnboardingStatusLogType, "",
+		nilUUID, status.LogKey())
+	logObject.Metricf("Onboarding status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status OnboardingStatus) LogKey() string {
+	return string(base.OnboardingStatusLogType) + "-" + status.Key()
 }

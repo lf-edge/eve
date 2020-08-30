@@ -196,6 +196,49 @@ func (ioType IoType) IsNet() bool {
 	}
 }
 
+// Key is used with pubsub
+func (aa AssignableAdapters) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (aa AssignableAdapters) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AssignableAdaptersLogType, "",
+		nilUUID, aa.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Assignable adapters create")
+}
+
+// LogModify :
+func (aa AssignableAdapters) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AssignableAdaptersLogType, "",
+		nilUUID, aa.LogKey())
+
+	oldAa, ok := old.(AssignableAdapters)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AssignableAdapters type")
+	}
+	// XXX remove? XXX huge?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldAa, aa)).
+		Tracef("Assignable adapters modify")
+}
+
+// LogDelete :
+func (aa AssignableAdapters) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AssignableAdaptersLogType, "",
+		nilUUID, aa.LogKey())
+	logObject.Tracef("Assignable adapters delete")
+
+	base.DeleteLogObject(aa.LogKey())
+}
+
+// LogKey :
+func (aa AssignableAdapters) LogKey() string {
+	return string(base.AssignableAdaptersLogType) + "-" + aa.Key()
+}
+
 // AddOrUpdateIoBundle - Add an Io bundle to AA. If the bundle already exists,
 // the function updates it, while preserving the most specific information.
 // The information we preserve are of two kinds:
