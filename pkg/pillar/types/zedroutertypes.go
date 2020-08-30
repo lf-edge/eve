@@ -13,6 +13,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -186,7 +187,7 @@ func (config DevicePortConfigList) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
 		AddField("num-portconfig-int64", len(config.PortConfigList)).
-		Infof("DevicePortConfigList create")
+		Tracef("DevicePortConfigList create")
 }
 
 // LogModify :
@@ -206,7 +207,11 @@ func (config DevicePortConfigList) LogModify(old interface{}) {
 			AddField("num-portconfig-int64", len(config.PortConfigList)).
 			AddField("old-current-index-int64", oldConfig.CurrentIndex).
 			AddField("old-num-portconfig-int64", len(oldConfig.PortConfigList)).
-			Infof("DevicePortConfigList modify")
+			Tracef("DevicePortConfigList modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("DevicePortConfigList modify other change")
 	}
 
 }
@@ -217,7 +222,7 @@ func (config DevicePortConfigList) LogDelete() {
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
 		AddField("num-portconfig-int64", len(config.PortConfigList)).
-		Infof("DevicePortConfigList delete")
+		Tracef("DevicePortConfigList delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -298,14 +303,14 @@ func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
 		AddField("state", config.State.String()).
-		Infof("DevicePortConfig create")
+		Tracef("DevicePortConfig create")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
-			Infof("DevicePortConfig port create")
+			Tracef("DevicePortConfig port create")
 	}
 }
 
@@ -334,7 +339,11 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 			AddField("old-last-succeeded", oldConfig.LastSucceeded).
 			AddField("old-last-error", oldConfig.LastError).
 			AddField("old-state", oldConfig.State.String()).
-			Infof("DevicePortConfig modify")
+			Tracef("DevicePortConfig modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("DevicePortConfig modify other change")
 	}
 	// XXX which fields to compare/log?
 	for i, p := range config.Ports {
@@ -354,7 +363,7 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 				AddField("old-last-error", op.LastError).
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed).
-				Infof("DevicePortConfig port modify")
+				Tracef("DevicePortConfig port modify")
 		}
 	}
 }
@@ -368,14 +377,14 @@ func (config DevicePortConfig) LogDelete() {
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
 		AddField("state", config.State.String()).
-		Infof("DevicePortConfig delete")
+		Tracef("DevicePortConfig delete")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
-			Infof("DevicePortConfig port delete")
+			Tracef("DevicePortConfig port delete")
 	}
 
 	base.DeleteLogObject(config.LogKey())
@@ -786,14 +795,14 @@ func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
 		AddField("state", status.State.String()).
-		Infof("DeviceNetworkStatus create")
+		Tracef("DeviceNetworkStatus create")
 	for _, p := range status.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
-			Infof("DeviceNetworkStatus port create")
+			Tracef("DeviceNetworkStatus port create")
 	}
 }
 
@@ -816,7 +825,11 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 			AddField("old-testing-bool", oldStatus.Testing).
 			AddField("old-ports-int64", len(oldStatus.Ports)).
 			AddField("old-state", oldStatus.State.String()).
-			Infof("DeviceNetworkStatus modify")
+			Tracef("DeviceNetworkStatus modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("DeviceNetworkStatus modify other change")
 	}
 	// XXX which fields to compare/log?
 	for i, p := range status.Ports {
@@ -836,7 +849,7 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 				AddField("old-last-error", op.LastError).
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed).
-				Infof("DeviceNetworkStatus port modify")
+				Tracef("DeviceNetworkStatus port modify")
 		}
 	}
 }
@@ -848,14 +861,14 @@ func (status DeviceNetworkStatus) LogDelete() {
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
 		AddField("state", status.State.String()).
-		Infof("DeviceNetworkStatus instance status delete")
+		Tracef("DeviceNetworkStatus instance status delete")
 	for _, p := range status.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
-			Infof("DeviceNetworkStatus port delete")
+			Tracef("DeviceNetworkStatus port delete")
 	}
 
 	base.DeleteLogObject(status.LogKey())

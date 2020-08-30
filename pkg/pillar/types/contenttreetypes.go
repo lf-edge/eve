@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 
+	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
@@ -44,7 +45,7 @@ func (config ContentTreeConfig) LogCreate(logBase *base.LogObject) {
 		AddField("format", config.Format).
 		AddField("content-sha256", config.ContentSha256).
 		AddField("max-download-size-int64", config.MaxDownloadSize).
-		Infof("Content tree config create")
+		Tracef("Content tree config create")
 }
 
 // LogModify :
@@ -72,7 +73,11 @@ func (config ContentTreeConfig) LogModify(old interface{}) {
 			AddField("old-format", oldConfig.Format).
 			AddField("old-content-sha256", oldConfig.ContentSha256).
 			AddField("old-max-download-size-int64", oldConfig.MaxDownloadSize).
-			Infof("Content tree config modify")
+			Tracef("Content tree config modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("Content tree config modify other change")
 	}
 }
 
@@ -85,7 +90,7 @@ func (config ContentTreeConfig) LogDelete() {
 		AddField("format", config.Format).
 		AddField("content-sha256", config.ContentSha256).
 		AddField("max-download-size-int64", config.MaxDownloadSize).
-		Infof("Content tree config delete")
+		Tracef("Content tree config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -170,7 +175,7 @@ func (status ContentTreeStatus) LogCreate(logBase *base.LogObject) {
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
 		AddField("objtype", status.ObjType).
-		Infof("Content tree status create")
+		Tracef("Content tree status create")
 }
 
 // LogModify :
@@ -199,7 +204,11 @@ func (status ContentTreeStatus) LogModify(old interface{}) {
 			AddField("old-progress", oldStatus.Progress).
 			AddField("old-filelocation", oldStatus.FileLocation).
 			AddField("objtype", status.ObjType).
-			Infof("Content tree status modify")
+			Tracef("Content tree status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("Content tree status modify other change")
 	}
 }
 
@@ -213,7 +222,7 @@ func (status ContentTreeStatus) LogDelete() {
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
 		AddField("objtype", status.ObjType).
-		Infof("Content tree status delete")
+		Tracef("Content tree status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

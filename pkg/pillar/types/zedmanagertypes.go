@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )
@@ -91,7 +92,7 @@ func (config AppInstanceConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("remote-console", config.RemoteConsole).
-		Infof("App instance config create")
+		Tracef("App instance config create")
 }
 
 // LogModify :
@@ -110,9 +111,12 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 			AddField("remote-console", config.RemoteConsole).
 			AddField("old-activate", oldConfig.Activate).
 			AddField("old-remote-console", oldConfig.RemoteConsole).
-			Infof("App instance config modify")
+			Tracef("App instance config modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("App instance config modify other change")
 	}
-
 }
 
 // LogDelete :
@@ -121,7 +125,7 @@ func (config AppInstanceConfig) LogDelete() {
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("remote-console", config.RemoteConsole).
-		Infof("App instance config delete")
+		Tracef("App instance config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -177,7 +181,7 @@ func (status AppInstanceStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
-		Infof("App instance status create")
+		Tracef("App instance status create")
 }
 
 // LogModify :
@@ -199,7 +203,11 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-restart-in-progress", oldStatus.RestartInprogress).
 			AddField("old-purge-in-progress", oldStatus.PurgeInprogress).
-			Infof("App instance status modify")
+			Tracef("App instance status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("App instance status modify other change")
 	}
 
 	if status.HasError() {
@@ -220,7 +228,7 @@ func (status AppInstanceStatus) LogDelete() {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
-		Infof("App instance status delete")
+		Tracef("App instance status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

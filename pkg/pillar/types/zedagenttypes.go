@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 )
@@ -45,7 +46,7 @@ func (config BaseOsConfig) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
-		Infof("BaseOs config create")
+		Tracef("BaseOs config create")
 }
 
 // LogModify :
@@ -61,7 +62,11 @@ func (config BaseOsConfig) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("activate", config.Activate).
 			AddField("old-activate", oldConfig.Activate).
-			Infof("BaseOs config modify")
+			Tracef("BaseOs config modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("BaseOs config modify other change")
 	}
 
 }
@@ -71,7 +76,7 @@ func (config BaseOsConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
-		Infof("BaseOs config delete")
+		Tracef("BaseOs config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -115,7 +120,7 @@ func (status BaseOsStatus) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
-		Infof("BaseOs status create")
+		Tracef("BaseOs status create")
 }
 
 // LogModify :
@@ -131,7 +136,11 @@ func (status BaseOsStatus) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("old-state", oldStatus.State.String()).
-			Infof("BaseOs status modify")
+			Tracef("BaseOs status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("BaseOs status modify other change")
 	}
 
 	if status.HasError() {
@@ -148,7 +157,7 @@ func (status BaseOsStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
-		Infof("BaseOs status delete")
+		Tracef("BaseOs status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
