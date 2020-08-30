@@ -466,7 +466,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 		status := st.(types.AppNetworkStatus)
 		for i := range status.UnderlayNetworkList {
 			ulStatus := &status.UnderlayNetworkList[i]
-			l := findLease(ctx, status.Key(), ulStatus.Mac)
+			l := findLease(ctx, status.Key(), ulStatus.Mac, true)
 			assigned := (l != nil)
 			if ulStatus.Assigned != assigned {
 				log.Infof("Changing(%s) %s mac %s to %t",
@@ -484,8 +484,8 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 
 // findLease returns a pointer so the caller can update the
 // lease information
-// Ignores a lease which has expired
-func findLease(ctx *zedrouterContext, hostname string, mac string) *dnsmasqLease {
+// Ignores a lease which has expired if ignoreExpired is set
+func findLease(ctx *zedrouterContext, hostname string, mac string, ignoreExpired bool) *dnsmasqLease {
 	for i := range ctx.dhcpLeases {
 		l := &ctx.dhcpLeases[i]
 		if l.Hostname != hostname {
@@ -494,8 +494,8 @@ func findLease(ctx *zedrouterContext, hostname string, mac string) *dnsmasqLease
 		if l.MacAddr != mac {
 			continue
 		}
-		if l.LeaseTime.Before(time.Now()) {
-			log.Warnf("XXX Ignoring expired lease: %v", *l)
+		if ignoreExpired && l.LeaseTime.Before(time.Now()) {
+			log.Warnf("Ignoring expired lease: %v", *l)
 			return nil
 		}
 		log.Debugf("Found %v", *l)
@@ -507,7 +507,7 @@ func findLease(ctx *zedrouterContext, hostname string, mac string) *dnsmasqLease
 
 // addOrUpdateLease returns true if something changed
 func addOrUpdateLease(ctx *zedrouterContext, lease dnsmasqLease) bool {
-	l := findLease(ctx, lease.Hostname, lease.MacAddr)
+	l := findLease(ctx, lease.Hostname, lease.MacAddr, false)
 	if l == nil {
 		ctx.dhcpLeases = append(ctx.dhcpLeases, lease)
 		log.Infof("Adding lease %v", lease)
@@ -524,7 +524,7 @@ func addOrUpdateLease(ctx *zedrouterContext, lease dnsmasqLease) bool {
 // markRemoveLease will fatal if the lease does not exist
 // Merely marks for removal; see purgeRemovedLeases
 func markRemoveLease(ctx *zedrouterContext, hostname string, mac string) {
-	l := findLease(ctx, hostname, mac)
+	l := findLease(ctx, hostname, mac, false)
 	if l == nil {
 		log.Fatalf("Lease not found %s/%s", hostname, mac)
 	}
