@@ -6,6 +6,7 @@ package types
 import (
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
@@ -39,7 +40,7 @@ func (config DownloaderConfig) LogCreate(logBase *base.LogObject) {
 		AddField("datastore-id", config.DatastoreID).
 		AddField("refcount-int64", config.RefCount).
 		AddField("size-int64", config.Size).
-		Infof("Download config create")
+		Tracef("Download config create")
 }
 
 // LogModify :
@@ -64,7 +65,11 @@ func (config DownloaderConfig) LogModify(old interface{}) {
 			AddField("old-datastore-id", oldConfig.DatastoreID).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			AddField("old-size-int64", oldConfig.Size).
-			Infof("Download config modify")
+			Tracef("Download config modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("Download config modify other change")
 	}
 }
 
@@ -76,7 +81,7 @@ func (config DownloaderConfig) LogDelete() {
 		AddField("datastore-id", config.DatastoreID).
 		AddField("refcount-int64", config.RefCount).
 		AddField("size-int64", config.Size).
-		Infof("Download config delete")
+		Tracef("Download config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -154,7 +159,7 @@ func (status DownloaderStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
-		Infof("Download status create")
+		Tracef("Download status create")
 }
 
 // LogModify :
@@ -176,7 +181,11 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-size-int64", oldStatus.Size).
-			Infof("Download status modify")
+			Tracef("Download status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("Download status modify other change")
 	}
 
 	if status.HasError() {
@@ -195,7 +204,7 @@ func (status DownloaderStatus) LogDelete() {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
-		Infof("Download status delete")
+		Tracef("Download status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

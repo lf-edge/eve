@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )
@@ -34,7 +35,7 @@ func (config ResolveConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Infof("Resolve config create")
+	logObject.Tracef("Resolve config create")
 }
 
 // LogModify :
@@ -42,15 +43,20 @@ func (config ResolveConfig) LogModify(old interface{}) {
 	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
 
+	oldConfig, ok := old.(ResolveConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ResolveConfig type")
+	}
 	// Why would it change?
-	logObject.Infof("Resolve config modify")
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Tracef("Resolve config modify other change")
 }
 
 // LogDelete :
 func (config ResolveConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
-	logObject.Infof("Resolve config delete")
+	logObject.Tracef("Resolve config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -88,7 +94,7 @@ func (status ResolveStatus) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("image-sha256", status.ImageSha256).
 		AddField("retry-count-int64", status.RetryCount).
-		Infof("Resolve status create")
+		Tracef("Resolve status create")
 }
 
 // LogModify :
@@ -107,7 +113,11 @@ func (status ResolveStatus) LogModify(old interface{}) {
 			AddField("retry-count-int64", status.RetryCount).
 			AddField("old-image-sha256", oldStatus.ImageSha256).
 			AddField("old-retry-count-int64", oldStatus.RetryCount).
-			Infof("Resolve status modify")
+			Tracef("Resolve status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("Resolve status modify other change")
 	}
 
 	if status.HasError() {
@@ -126,7 +136,7 @@ func (status ResolveStatus) LogDelete() {
 		status.DatastoreID, status.LogKey())
 	logObject.CloneAndAddField("image-sha256", status.ImageSha256).
 		AddField("retry-count-int64", status.RetryCount).
-		Infof("Resolve status delete")
+		Tracef("Resolve status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

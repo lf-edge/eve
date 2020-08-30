@@ -213,3 +213,32 @@ func (object *LogObject) Fatalln(args ...interface{}) {
 	}
 	object.logger.WithFields(object.Fields).Fatalln(args...)
 }
+
+// Emulate a Trace level - mapped to Warning
+
+// Trace :
+func (object *LogObject) Trace(args ...interface{}) {
+	if !object.Initialized {
+		log.Fatal("LogObject used without initialization")
+		return
+	}
+	log.WithFields(object.Fields).Warn(args...)
+}
+
+// Tracef :
+func (object *LogObject) Tracef(format string, args ...interface{}) {
+	if !object.Initialized {
+		log.Fatal("LogObject used without initialization")
+		return
+	}
+	log.WithFields(object.Fields).Warnf(format, args...)
+}
+
+// Traceln :
+func (object *LogObject) Traceln(args ...interface{}) {
+	if !object.Initialized {
+		log.Fatal("LogObject used without initialization")
+		return
+	}
+	log.WithFields(object.Fields).Warnln(args...)
+}

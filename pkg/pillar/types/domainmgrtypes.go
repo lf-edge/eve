@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
@@ -60,7 +61,7 @@ func (config DomainConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
-		Infof("domain config create")
+		Tracef("domain config create")
 }
 
 // LogModify :
@@ -79,9 +80,12 @@ func (config DomainConfig) LogModify(old interface{}) {
 			AddField("enable-vnc", config.EnableVnc).
 			AddField("old-activate", oldConfig.Activate).
 			AddField("old-enable-vnc", oldConfig.EnableVnc).
-			Infof("domain config modify")
+			Tracef("domain config modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+			Tracef("domain config modify other change")
 	}
-
 }
 
 // LogDelete :
@@ -90,7 +94,7 @@ func (config DomainConfig) LogDelete() {
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
-		Infof("domain config delete")
+		Tracef("domain config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -206,7 +210,7 @@ func (status DomainStatus) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("activated", status.Activated).
-		Infof("domain status create")
+		Tracef("domain status create")
 }
 
 // LogModify :
@@ -225,7 +229,11 @@ func (status DomainStatus) LogModify(old interface{}) {
 			AddField("activated", status.Activated).
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-activated", oldStatus.Activated).
-			Infof("domain status modify")
+			Tracef("domain status modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+			Tracef("domain status modify other change")
 	}
 
 	if status.HasError() {
@@ -244,7 +252,7 @@ func (status DomainStatus) LogDelete() {
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("activated", status.Activated).
-		Infof("domain status delete")
+		Tracef("domain status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
