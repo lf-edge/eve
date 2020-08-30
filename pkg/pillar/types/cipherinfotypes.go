@@ -6,8 +6,10 @@ package types
 import (
 	"encoding/hex"
 
+	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // CipherContext : a pair of device and controller certificate
@@ -39,6 +41,44 @@ func (status *CipherContext) EdgeNodeCertKey() string {
 	return hex.EncodeToString(status.DeviceCertHash)
 }
 
+// LogCreate :
+func (status CipherContext) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.CipherContextLogType, "",
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Cipher block status create")
+}
+
+// LogModify :
+func (status CipherContext) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.CipherContextLogType, "",
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(CipherContext)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of CipherContext type")
+	}
+	// XXX remove? XXX huge?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Tracef("Cipher block status modify")
+}
+
+// LogDelete :
+func (status CipherContext) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.CipherContextLogType, "",
+		nilUUID, status.LogKey())
+	logObject.Tracef("Cipher block status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status CipherContext) LogKey() string {
+	return string(base.CipherContextLogType) + "-" + status.Key()
+}
+
 // CipherBlockStatus : Object specific encryption information
 type CipherBlockStatus struct {
 	CipherBlockID   string // constructed using individual reference
@@ -54,6 +94,44 @@ type CipherBlockStatus struct {
 // Key :
 func (status *CipherBlockStatus) Key() string {
 	return status.CipherBlockID
+}
+
+// LogCreate :
+func (status CipherBlockStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.CipherBlockStatusLogType, "",
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Tracef("Cipher block status create")
+}
+
+// LogModify :
+func (status CipherBlockStatus) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.CipherBlockStatusLogType, "",
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(CipherBlockStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of CipherBlockStatus type")
+	}
+	// XXX remove? XXX huge?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Tracef("Cipher block status modify")
+}
+
+// LogDelete :
+func (status CipherBlockStatus) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.CipherBlockStatusLogType, "",
+		nilUUID, status.LogKey())
+	logObject.Tracef("Cipher block status delete")
+
+	base.DeleteLogObject(status.LogKey())
+}
+
+// LogKey :
+func (status CipherBlockStatus) LogKey() string {
+	return string(base.CipherBlockStatusLogType) + "-" + status.Key()
 }
 
 // EncryptionBlock - This is a Mirror of

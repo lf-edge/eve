@@ -306,6 +306,44 @@ func (metric DomainMetric) Key() string {
 	return metric.UUIDandVersion.UUID.String()
 }
 
+// LogCreate :
+func (metric DomainMetric) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.DomainMetricLogType, "",
+		metric.UUIDandVersion.UUID, metric.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Domain metric create")
+}
+
+// LogModify :
+func (metric DomainMetric) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.DomainMetricLogType, "",
+		metric.UUIDandVersion.UUID, metric.LogKey())
+
+	oldMetric, ok := old.(DomainMetric)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DomainMetric type")
+	}
+	// XXX remove? XXX huge?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldMetric, metric)).
+		Metricf("Domain metric modify")
+}
+
+// LogDelete :
+func (metric DomainMetric) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.DomainMetricLogType, "",
+		metric.UUIDandVersion.UUID, metric.LogKey())
+	logObject.Metricf("Domain metric delete")
+
+	base.DeleteLogObject(metric.LogKey())
+}
+
+// LogKey :
+func (metric DomainMetric) LogKey() string {
+	return string(base.DomainMetricLogType) + "-" + metric.Key()
+}
+
 // HostMemory reports global stats. Published under "global" key
 // Note that Ncpus is the set of physical CPUs which is different
 // than the set of CPUs assigned to dom0
@@ -313,4 +351,47 @@ type HostMemory struct {
 	TotalMemoryMB uint64
 	FreeMemoryMB  uint64
 	Ncpus         uint32
+}
+
+// Key returns the key for pubsub
+func (hm HostMemory) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (hm HostMemory) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.HostMemoryLogType, "",
+		nilUUID, hm.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Host memory create")
+}
+
+// LogModify :
+func (hm HostMemory) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.HostMemoryLogType, "",
+		nilUUID, hm.LogKey())
+
+	oldHm, ok := old.(HostMemory)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of HostMemory type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldHm, hm)).
+		Metricf("Host memory modify")
+}
+
+// LogDelete :
+func (hm HostMemory) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.HostMemoryLogType, "",
+		nilUUID, hm.LogKey())
+	logObject.Metricf("Host memory delete")
+
+	base.DeleteLogObject(hm.LogKey())
+}
+
+// LogKey :
+func (hm HostMemory) LogKey() string {
+	return string(base.HostMemoryLogType) + "-" + hm.Key()
 }

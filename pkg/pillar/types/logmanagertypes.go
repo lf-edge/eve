@@ -8,6 +8,8 @@ import (
 )
 
 // LogMetrics Metrics from logmanager
+// Note that there are no LogCreate etc functions for this type
+// since we don't want to cause logs when logging
 type LogMetrics struct {
 	NumDeviceEventsSent           uint64
 	NumDeviceBundlesSent          uint64

@@ -31,24 +31,30 @@ const (
 	UnknownLogType LogObjectType = ""
 	// ImageLogType :
 	ImageLogType LogObjectType = "image"
-	// NetworkInstanceLogType :
-	NetworkInstanceLogType LogObjectType = "network_instance"
 	// AppInstanceStatusLogType :
 	AppInstanceStatusLogType LogObjectType = "app_instance_status"
 	// AppInstanceConfigLogType :
 	AppInstanceConfigLogType LogObjectType = "app_instance_config"
-	// OldVolumeConfigLogType :
-	OldVolumeConfigLogType LogObjectType = "old_volume_config"
-	// OldVolumeStatusLogType :
-	OldVolumeStatusLogType LogObjectType = "old_volume_status"
+	// AppNetworkStatusLogType :
+	AppNetworkStatusLogType LogObjectType = "app_network_status"
+	// AppNetworkConfigLogType :
+	AppNetworkConfigLogType LogObjectType = "app_network_config"
+	// DatastoreConfigLogType :
+	DatastoreConfigLogType LogObjectType = "datastore_config"
 	// DomainConfigLogType :
 	DomainConfigLogType LogObjectType = "domain_config"
 	// DomainStatusLogType :
 	DomainStatusLogType LogObjectType = "domain_status"
+	// DomainMetricLogType :
+	DomainMetricLogType LogObjectType = "domain_metric"
 	// BaseOsConfigLogType :
 	BaseOsConfigLogType LogObjectType = "baseos_config"
 	// BaseOsStatusLogType :
 	BaseOsStatusLogType LogObjectType = "baseos_status"
+	// NodeAgentStatusLogType :
+	NodeAgentStatusLogType LogObjectType = "nodeagent_status"
+	// ZedAgentStatusLogType :
+	ZedAgentStatusLogType LogObjectType = "zedagent_status"
 	// ZbootConfigLogType :
 	ZbootConfigLogType LogObjectType = "zboot_config"
 	// ZbootStatusLogType :
@@ -87,6 +93,50 @@ const (
 	VolumeRefStatusLogType LogObjectType = "volume_ref_status"
 	// ServiceInitType:
 	ServiceInitLogType LogObjectType = "service_init"
+	// AppAndImageToHashLogType:
+	AppAndImageToHashLogType LogObjectType = "app_and_image_to_hash"
+	// AppContainerMetricsLogType:
+	AppContainerMetricsLogType LogObjectType = "app_container_metric"
+	// AssignableAdaptersLogType:
+	AssignableAdaptersLogType LogObjectType = "assignable_adapters"
+	// PhysicalIOAdapterListLogType:
+	PhysicalIOAdapterListLogType LogObjectType = "physical_io_adapter_list"
+	// AttestNonceLogType:
+	AttestNonceLogType LogObjectType = "attest_nonce"
+	// AttestQuoteLogType:
+	AttestQuoteLogType LogObjectType = "attest_quote"
+	// VaultStatusLogType:
+	VaultStatusLogType LogObjectType = "vault_status"
+	// CipherBlockStatusLogType:
+	CipherBlockStatusLogType LogObjectType = "cipher_block_status"
+	// CipherContextLogType:
+	CipherContextLogType LogObjectType = "cipher_context"
+	// CipherMetricsLogType:
+	CipherMetricsLogType LogObjectType = "cipher_metric"
+	// ControllerCertLogType:
+	ControllerCertLogType LogObjectType = "controller_cert"
+	// EdgeNodeCertLogType:
+	EdgeNodeCertLogType LogObjectType = "edge_node_cert"
+	// HostMemoryLogType:
+	HostMemoryLogType LogObjectType = "host_memory"
+	// IPFlowLogType:
+	IPFlowLogType LogObjectType = "ip_flow"
+	// VifIPTrigLogType:
+	VifIPTrigLogType LogObjectType = "vif_ip_trig"
+	// OnboardingStatusLogType:
+	OnboardingStatusLogType LogObjectType = "onboarding_status"
+	// NetworkInstanceConfigLogType:
+	NetworkInstanceConfigLogType LogObjectType = "network_instance_config"
+	// NetworkInstanceStatusLogType:
+	NetworkInstanceStatusLogType LogObjectType = "network_instance_status"
+	// NetworkInstanceMetricsLogType:
+	NetworkInstanceMetricsLogType LogObjectType = "network_instance_metrics"
+	// NetworkMetricsLogType:
+	NetworkMetricsLogType LogObjectType = "network_metrics"
+	// NetworkXObjectConfigLogType:
+	NetworkXObjectConfigLogType LogObjectType = "network_x_object"
+	// UUIDToNumLogType:
+	UUIDToNumLogType LogObjectType = "uuid_to_num"
 )
 
 // RelationObjectType :

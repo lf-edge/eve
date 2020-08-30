@@ -305,3 +305,59 @@ func (aih AppAndImageToHash) Key() string {
 		return fmt.Sprintf("%s.%s.%d", aih.AppUUID.String(), aih.ImageID.String(), aih.PurgeCounter)
 	}
 }
+
+// LogCreate :
+func (aih AppAndImageToHash) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppAndImageToHashLogType, "",
+		aih.AppUUID, aih.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("purge-counter-int64", aih.PurgeCounter).
+		AddField("image-id", aih.ImageID.String()).
+		AddField("hash", aih.Hash).
+		Tracef("App and image to hash create")
+}
+
+// LogModify :
+func (aih AppAndImageToHash) LogModify(old interface{}) {
+	logObject := base.EnsureLogObject(nil, base.AppAndImageToHashLogType, "",
+		aih.AppUUID, aih.LogKey())
+
+	oldAih, ok := old.(AppAndImageToHash)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppAndImageToHash type")
+	}
+	if oldAih.Hash != aih.Hash ||
+		oldAih.PurgeCounter != aih.PurgeCounter {
+
+		logObject.CloneAndAddField("purge-counter-int64", aih.PurgeCounter).
+			AddField("image-id", aih.ImageID.String()).
+			AddField("hash", aih.Hash).
+			AddField("purge-counter-int64", aih.PurgeCounter).
+			AddField("old-hash", oldAih.Hash).
+			AddField("old-purge-counter-int64", oldAih.PurgeCounter).
+			Tracef("App and image to hash modify")
+	} else {
+		// XXX remove?
+		logObject.CloneAndAddField("diff", cmp.Diff(oldAih, aih)).
+			Tracef("App and image to hash modify other change")
+	}
+}
+
+// LogDelete :
+func (aih AppAndImageToHash) LogDelete() {
+	logObject := base.EnsureLogObject(nil, base.AppAndImageToHashLogType, "",
+		aih.AppUUID, aih.LogKey())
+	logObject.CloneAndAddField("purge-counter-int64", aih.PurgeCounter).
+		AddField("image-id", aih.ImageID.String()).
+		AddField("hash", aih.Hash).
+		Tracef("App and image to hash delete")
+
+	base.DeleteLogObject(aih.LogKey())
+}
+
+// LogKey :
+func (aih AppAndImageToHash) LogKey() string {
+	return string(base.AppAndImageToHashLogType) + "-" + aih.Key()
+}
