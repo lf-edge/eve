@@ -1,0 +1,46 @@
+From 277a9ea5eb2cac29a05d9e13a99bf97b02286ca6 Mon Sep 17 00:00:00 2001
+From: "Kirill A. Shutemov" <kirill.shutemov@linux.intel.com>
+Date: Fri, 30 Nov 2018 23:23:28 +0300
+Subject: [PATCH 2/2] x86/dump_pagetables: Fix LDT remap address marker
+
+The LDT remap placement has been changed. It's now placed before direct
+mapping in the kernel virtual address space for both paging modes.
+
+Change address markers order accordingly.
+
+Signed-off-by: Kirill A. Shutemov <kirill.shutemov@linux.intel.com>
+Fixes: d52888aa2753 ("x86/mm: Move LDT remap out of KASLR region on 5-level paging")
+---
+ arch/x86/mm/dump_pagetables.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/arch/x86/mm/dump_pagetables.c b/arch/x86/mm/dump_pagetables.c
+index 073755c89126..c05a818224bb 100644
+--- a/arch/x86/mm/dump_pagetables.c
++++ b/arch/x86/mm/dump_pagetables.c
+@@ -53,10 +53,10 @@ struct addr_marker {
+ enum address_markers_idx {
+ 	USER_SPACE_NR = 0,
+ 	KERNEL_SPACE_NR,
+-	LOW_KERNEL_NR,
+-#if defined(CONFIG_MODIFY_LDT_SYSCALL) && defined(CONFIG_X86_5LEVEL)
++#ifdef CONFIG_MODIFY_LDT_SYSCALL
+ 	LDT_NR,
+ #endif
++	LOW_KERNEL_NR,
+ 	VMALLOC_START_NR,
+ 	VMEMMAP_START_NR,
+ #ifdef CONFIG_KASAN
+@@ -64,9 +64,6 @@ enum address_markers_idx {
+ 	KASAN_SHADOW_END_NR,
+ #endif
+ 	CPU_ENTRY_AREA_NR,
+-#if defined(CONFIG_MODIFY_LDT_SYSCALL) && !defined(CONFIG_X86_5LEVEL)
+-	LDT_NR,
+-#endif
+ #ifdef CONFIG_X86_ESPFIX64
+ 	ESPFIX_START_NR,
+ #endif
+-- 
+2.26.2
+
