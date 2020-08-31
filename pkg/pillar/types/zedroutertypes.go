@@ -1502,34 +1502,6 @@ type NetworkInstanceProbeStatus struct {
 	PInfo             map[string]ProbeInfo // per physical port eth0, eth1 probing state
 }
 
-type MapServer struct {
-	ServiceType MapServerType
-	NameOrIp    string
-	Credential  string
-}
-
-type LispConfig struct {
-	MapServers    []MapServer
-	IID           uint32
-	Allocate      bool
-	ExportPrivate bool
-	EidPrefix     net.IP
-	EidPrefixLen  uint32
-
-	Experimental bool
-}
-
-type NetworkInstanceLispConfig struct {
-	MapServers    []MapServer
-	IID           uint32
-	Allocate      bool
-	ExportPrivate bool
-	EidPrefix     net.IP
-	EidPrefixLen  uint32
-
-	Experimental bool
-}
-
 type DhcpType uint8
 
 const (
@@ -1710,7 +1682,6 @@ type NetworkInstanceMetrics struct {
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
 	VpnMetrics     *VpnMetrics
-	LispMetrics    *LispMetrics
 }
 
 // ProbeMetrics - NI probe metrics
@@ -1823,10 +1794,9 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
-	HasEncap bool // Lisp/Vpn, for adjusting pMTU
-	// For other network services - Proxy / Lisp /StrongSwan etc..
+	HasEncap bool // Vpn, for adjusting pMTU
+	// For other network services - Proxy / StrongSwan etc..
 	OpaqueConfig string
-	LispConfig   NetworkInstanceLispConfig
 }
 
 func (config *NetworkInstanceConfig) Key() string {
@@ -1867,11 +1837,7 @@ type NetworkInstanceStatus struct {
 	NetworkInstanceInfo
 
 	OpaqueStatus string
-	LispStatus   NetworkInstanceLispConfig
-
-	VpnStatus      *VpnStatus
-	LispInfoStatus *LispInfoStatus
-	LispMetrics    *LispMetrics
+	VpnStatus    *VpnStatus
 
 	NetworkInstanceProbeStatus
 }
@@ -2114,81 +2080,6 @@ type VpnTunnelConfig struct {
 	Metric       string
 	LocalIpAddr  string
 	RemoteIpAddr string
-}
-
-type LispRlocState struct {
-	Rloc      net.IP
-	Reachable bool
-}
-
-type LispMapCacheEntry struct {
-	EID   net.IP
-	Rlocs []LispRlocState
-}
-
-type LispDatabaseMap struct {
-	IID             uint64
-	MapCacheEntries []LispMapCacheEntry
-}
-
-type LispDecapKey struct {
-	Rloc     net.IP
-	Port     uint64
-	KeyCount uint64
-}
-
-type LispInfoStatus struct {
-	ItrCryptoPort uint64
-	EtrNatPort    uint64
-	Interfaces    []string
-	DatabaseMaps  []LispDatabaseMap
-	DecapKeys     []LispDecapKey
-}
-
-type LispPktStat struct {
-	Pkts  uint64
-	Bytes uint64
-}
-
-type LispRlocStatistics struct {
-	Rloc                   net.IP
-	Stats                  LispPktStat
-	SecondsSinceLastPacket uint64
-}
-
-type EidStatistics struct {
-	IID       uint64
-	Eid       net.IP
-	RlocStats []LispRlocStatistics
-}
-
-type EidMap struct {
-	IID  uint64
-	Eids []net.IP
-}
-
-type LispMetrics struct {
-	// Encap Statistics
-	EidMaps            []EidMap
-	EidStats           []EidStatistics
-	ItrPacketSendError LispPktStat
-	InvalidEidError    LispPktStat
-
-	// Decap Statistics
-	NoDecryptKey       LispPktStat
-	OuterHeaderError   LispPktStat
-	BadInnerVersion    LispPktStat
-	GoodPackets        LispPktStat
-	ICVError           LispPktStat
-	LispHeaderError    LispPktStat
-	CheckSumError      LispPktStat
-	DecapReInjectError LispPktStat
-	DecryptError       LispPktStat
-}
-
-type LispDataplaneConfig struct {
-	// If true, we run legacy lispers.net data plane.
-	Legacy bool
 }
 
 type VpnState uint8
