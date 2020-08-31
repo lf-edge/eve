@@ -8,9 +8,9 @@ package zedrouter
 import (
 	"encoding/json"
 	"errors"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -34,8 +34,7 @@ type readBlock struct {
 }
 
 func ipSecStatusCmdGet(vpnStatus *types.VpnStatus) error {
-	cmd := exec.Command("ipsec", "statusall")
-	bytes, err := cmd.Output()
+	bytes, err := base.Exec(log, "ipsec", "statusall").Output()
 	if err != nil {
 		log.Errorf("%s for %s statusall\n", err.Error(), "ipsec")
 		return err
@@ -50,8 +49,7 @@ func ipSecStatusCmdGet(vpnStatus *types.VpnStatus) error {
 }
 
 func swanCtlCmdGet(vpnStatus *types.VpnStatus) error {
-	cmd := exec.Command("swanctl", "-l")
-	bytes, err := cmd.Output()
+	bytes, err := base.Exec(log, "swanctl", "-l").Output()
 	if err != nil {
 		log.Errorf("%s for %s -l\n", err.Error(), "swanctl")
 		return err

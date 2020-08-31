@@ -19,7 +19,6 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -348,9 +347,8 @@ func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkSta
 	}
 
 	cmdName := "/usr/sbin/update-ca-certificates"
-	cmd := exec.Command(cmdName)
 	log.Infof("updateEtcSSLforProxyCerts: Calling command %s", cmdName)
-	out, err := cmd.CombinedOutput()
+	out, err := base.Exec(log, cmdName).CombinedOutput()
 	if err != nil {
 		log.Errorf("updateEtcSSLforProxyCerts: update-ca-certificates, certs num %d, (%s)", len(newCerts), err)
 	} else {

@@ -8,7 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // Matches the json output of qemu-img info
@@ -21,14 +22,14 @@ type ImgInfo struct {
 	DirtyFlag   bool   `json:"dirty-flag"`
 }
 
-func GetImgInfo(diskfile string) (*ImgInfo, error) {
+func GetImgInfo(log *base.LogObject, diskfile string) (*ImgInfo, error) {
 	var imgInfo ImgInfo
 
 	if _, err := os.Stat(diskfile); err != nil {
 		return nil, err
 	}
-	output, err := exec.Command("/usr/bin/qemu-img",
-		"info", "-U", "--output=json", diskfile).CombinedOutput()
+	output, err := base.Exec(log, "/usr/bin/qemu-img", "info", "-U", "--output=json",
+		diskfile).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -41,21 +42,21 @@ func GetImgInfo(diskfile string) (*ImgInfo, error) {
 }
 
 // GetDiskVirtualSize - returns VirtualSize of the image
-func GetDiskVirtualSize(diskfile string) (uint64, error) {
-	imgInfo, err := GetImgInfo(diskfile)
+func GetDiskVirtualSize(log *base.LogObject, diskfile string) (uint64, error) {
+	imgInfo, err := GetImgInfo(log, diskfile)
 	if err != nil {
 		return 0, err
 	}
 	return imgInfo.VirtualSize, nil
 }
 
-func ResizeImg(diskfile string, newsize uint64) error {
+func ResizeImg(log *base.LogObject, diskfile string, newsize uint64) error {
 
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
 	}
-	output, err := exec.Command("/usr/bin/qemu-img",
-		"resize", diskfile, fmt.Sprintf("%d", newsize)).CombinedOutput()
+	output, err := base.Exec(log, "/usr/bin/qemu-img", "resize", diskfile,
+		fmt.Sprintf("%d", newsize)).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)

@@ -8,7 +8,6 @@ package iptables
 import (
 	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -28,9 +27,9 @@ func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[1] = "5"
 	if log != nil {
 		log.Infof("Calling command %s %v\n", cmd, args)
-		out, err = exec.Command(cmd, args...).CombinedOutput()
+		out, err = base.Exec(log, cmd, args...).CombinedOutput()
 	} else {
-		out, err = exec.Command(cmd, args...).Output()
+		out, err = base.Exec(log, cmd, args...).Output()
 	}
 	if err != nil {
 		errStr := fmt.Sprintf("iptables command %s failed %s output %s",
@@ -60,9 +59,9 @@ func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[1] = "5"
 	if log != nil {
 		log.Infof("Calling command %s %v\n", cmd, args)
-		out, err = exec.Command(cmd, args...).CombinedOutput()
+		out, err = base.Exec(log, cmd, args...).CombinedOutput()
 	} else {
-		out, err = exec.Command(cmd, args...).Output()
+		out, err = base.Exec(log, cmd, args...).Output()
 	}
 	if err != nil {
 		errStr := fmt.Sprintf("ip6tables command %s failed %s output %s",

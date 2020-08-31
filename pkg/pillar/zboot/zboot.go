@@ -333,9 +333,8 @@ func WriteToPartition(log *base.LogObject, srcFilename string, partName string) 
 
 	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
 
-	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	zbootMutex.Lock()
-	_, err := ddCmd.Output()
+	_, err := base.Exec(log, "dd", "if="+srcFilename, "of="+devName, "bs=8M").Output()
 	zbootMutex.Unlock()
 	if err != nil {
 		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)

@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -144,7 +144,7 @@ func disableIcmpRedirects(bridgeName string) {
 	sysctlSetting := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", bridgeName)
 	args := []string{"-w", sysctlSetting}
 	log.Infof("Calling command %s %v\n", "sysctl", args)
-	out, err := exec.Command("sysctl", args...).CombinedOutput()
+	out, err := base.Exec(log, "sysctl", args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
 			args, err, out)
