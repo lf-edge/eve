@@ -749,6 +749,7 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool 
 	}
 
 	logDetails := &logs.LogEntry{}
+	logDetails.Content = event.content
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
@@ -782,6 +783,7 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) bool {
 	}
 
 	logDetails := &logs.LogEntry{}
+	logDetails.Content = event.content
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
