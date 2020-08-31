@@ -1,0 +1,32 @@
+From c8a1d7cda8ccb7ea8d5ea6f09a7dc4d019e5abab Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Sun, 23 Aug 2020 17:38:47 +0300
+Subject: [PATCH] efi: Always map EfiRuntimeServicesCode and
+ EfiRuntimeServicesData
+
+This helps overcome problems observed with some UEFI implementations
+which don't set the Attributes field in memery descriptors properly
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ xen/common/efi/boot.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/xen/common/efi/boot.c b/xen/common/efi/boot.c
+index 5a520bf21d..4644ce2525 100644
+--- a/xen/common/efi/boot.c
++++ b/xen/common/efi/boot.c
+@@ -1521,7 +1521,9 @@ void __init efi_init_memory(void)
+         }
+ 
+         if ( !efi_enabled(EFI_RS) ||
+-             (!(desc->Attribute & EFI_MEMORY_RUNTIME) &&
++             ((!(desc->Attribute & EFI_MEMORY_RUNTIME) &&
++                (desc->Type != EfiRuntimeServicesCode &&
++                 desc->Type != EfiRuntimeServicesData)) &&
+               (!map_bs ||
+                (desc->Type != EfiBootServicesCode &&
+                 desc->Type != EfiBootServicesData))) )
+-- 
+2.26.2
+
