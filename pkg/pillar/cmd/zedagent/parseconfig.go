@@ -327,18 +327,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 				networkInstanceConfig)
 
-		case types.NetworkInstanceTypeMesh:
-			// mark HasEncap as true, for special MTU handling
-			networkInstanceConfig.HasEncap = true
-			// if not cryptoIPv4/IPv6 type, flag it
-			if networkInstanceConfig.IpType != types.AddressTypeCryptoIPV4 && networkInstanceConfig.IpType != types.AddressTypeCryptoIPV6 {
-				log.Errorf("Network instance %s %s, %v not crypto type",
-					networkInstanceConfig.UUID.String(),
-					networkInstanceConfig.DisplayName,
-					networkInstanceConfig.IpType)
-			}
-			populateLispConfig(apiConfigEntry, &networkInstanceConfig)
-
 		// FIXME:XXX set encap flag, when the dummy interface
 		// is tested for the VPN
 		case types.NetworkInstanceTypeCloud:
@@ -379,34 +367,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 			networkInstanceConfig)
-	}
-}
-
-func populateLispConfig(apiConfigEntry *zconfig.NetworkInstanceConfig,
-	networkInstanceConfig *types.NetworkInstanceConfig) {
-	lispConfig := apiConfigEntry.Cfg.LispConfig
-	if lispConfig != nil {
-		mapServers := []types.MapServer{}
-		for _, ms := range lispConfig.LispMSs {
-			mapServer := types.MapServer{
-				ServiceType: types.MapServerType(ms.ZsType),
-				NameOrIp:    ms.NameOrIp,
-				Credential:  ms.Credential,
-			}
-			mapServers = append(mapServers, mapServer)
-		}
-		eidPrefix := net.IP(lispConfig.Allocationprefix)
-
-		// Populate service Lisp config that should be sent to zedrouter
-		networkInstanceConfig.LispConfig = types.NetworkInstanceLispConfig{
-			MapServers:    mapServers,
-			IID:           lispConfig.LispInstanceId,
-			Allocate:      lispConfig.Allocate,
-			ExportPrivate: lispConfig.Exportprivate,
-			EidPrefix:     eidPrefix,
-			EidPrefixLen:  lispConfig.Allocationprefixlen,
-			Experimental:  lispConfig.Experimental,
-		}
 	}
 }
 

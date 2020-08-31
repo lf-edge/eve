@@ -134,12 +134,6 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 				reportAA)
 		}
 
-		// For now we just send an empty lispInfo to indicate deletion to cloud.
-		// It can't be omitted since protobuf requires something to satisfy
-		// the oneof.
-		if status.LispInfoStatus != nil {
-			fillLispInfo(info, status.LispInfoStatus)
-		}
 		// fill Vpn info
 		if status.VpnStatus != nil {
 			fillVpnInfo(info, status.VpnStatus)
@@ -153,58 +147,6 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	log.Debugf("Publish NetworkInstance Info message to zedcloud: %v",
 		infoMsg)
 	publishInfo(ctx, uuid, infoMsg)
-}
-
-func fillLispInfo(info *zinfo.ZInfoNetworkInstance, lispStatus *types.LispInfoStatus) {
-
-	lispInfo := new(zinfo.ZInfoLisp)
-
-	lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
-	lispInfo.EtrNatPort = lispStatus.EtrNatPort
-	for _, intf := range lispStatus.Interfaces {
-		lispInfo.Interfaces = append(lispInfo.Interfaces, intf)
-	}
-
-	// Copy ITR database map entries
-	for _, dbMap := range lispStatus.DatabaseMaps {
-		dbMapEntry := &zinfo.DatabaseMap{
-			IID: dbMap.IID,
-		}
-
-		for _, mapEntry := range dbMap.MapCacheEntries {
-			mapCacheEntry := &zinfo.MapCacheEntry{
-				EID: mapEntry.EID.String(),
-			}
-
-			for _, rloc := range mapEntry.Rlocs {
-				rlocEntry := &zinfo.RlocState{
-					Rloc:      rloc.Rloc.String(),
-					Reachable: rloc.Reachable,
-				}
-				mapCacheEntry.Rlocs = append(mapCacheEntry.Rlocs,
-					rlocEntry)
-			}
-			dbMapEntry.MapCacheEntries = append(dbMapEntry.MapCacheEntries,
-				mapCacheEntry)
-		}
-		lispInfo.DatabaseMaps = append(lispInfo.DatabaseMaps,
-			dbMapEntry)
-	}
-
-	// Copy ETR decap entries
-	for _, decapKey := range lispStatus.DecapKeys {
-		decap := &zinfo.DecapKey{
-			Rloc:     decapKey.Rloc.String(),
-			Port:     decapKey.Port,
-			KeyCount: decapKey.KeyCount,
-		}
-		lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
-	}
-
-	info.InfoContent = new(zinfo.ZInfoNetworkInstance_Linfo)
-	if x, ok := info.GetInfoContent().(*zinfo.ZInfoNetworkInstance_Linfo); ok {
-		x.Linfo = lispInfo
-	}
 }
 
 func fillVpnInfo(info *zinfo.ZInfoNetworkInstance, vpnStatus *types.VpnStatus) {
@@ -296,10 +238,6 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 	case types.NetworkInstanceTypeCloud:
 		protoEncodeVpnInstanceMetric(status, metric)
 
-	case types.NetworkInstanceTypeMesh: // XXX any subtype?
-		log.Debugf("Publish Lisp Instance Metric to Zedcloud %v",
-			metric)
-		protoEncodeLispInstanceMetric(status, metric)
 	default:
 		protoEncodeGenericInstanceMetric(status, metric)
 	}
@@ -336,191 +274,6 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	networkStats.Rx = rxStats
 	networkStats.Tx = txStats
 	metric.NetworkStats = networkStats
-}
-
-func protoEncodeLispInstanceMetric(status types.NetworkInstanceMetrics,
-	metric *zmet.ZMetricNetworkInstance) {
-	if status.LispMetrics == nil {
-		return
-	}
-	protoEncodeGenericInstanceMetric(status, metric)
-	metrics := status.LispMetrics
-
-	lispGlobalMetric := new(zmet.ZMetricLispGlobal)
-	lispGlobalMetric.ItrPacketSendError = &zmet.PktStat{
-		Packets: metrics.ItrPacketSendError.Pkts,
-		Bytes:   metrics.ItrPacketSendError.Bytes,
-	}
-	lispGlobalMetric.InvalidEidError = &zmet.PktStat{
-		Packets: metrics.InvalidEidError.Pkts,
-		Bytes:   metrics.InvalidEidError.Bytes,
-	}
-	lispGlobalMetric.NoDecryptKey = &zmet.PktStat{
-		Packets: metrics.NoDecryptKey.Pkts,
-		Bytes:   metrics.NoDecryptKey.Bytes,
-	}
-	lispGlobalMetric.OuterHeaderError = &zmet.PktStat{
-		Packets: metrics.OuterHeaderError.Pkts,
-		Bytes:   metrics.OuterHeaderError.Bytes,
-	}
-	lispGlobalMetric.BadInnerVersion = &zmet.PktStat{
-		Packets: metrics.BadInnerVersion.Pkts,
-		Bytes:   metrics.BadInnerVersion.Bytes,
-	}
-	lispGlobalMetric.GoodPackets = &zmet.PktStat{
-		Packets: metrics.GoodPackets.Pkts,
-		Bytes:   metrics.GoodPackets.Bytes,
-	}
-	lispGlobalMetric.ICVError = &zmet.PktStat{
-		Packets: metrics.ICVError.Pkts,
-		Bytes:   metrics.ICVError.Bytes,
-	}
-	lispGlobalMetric.LispHeaderError = &zmet.PktStat{
-		Packets: metrics.LispHeaderError.Pkts,
-		Bytes:   metrics.LispHeaderError.Bytes,
-	}
-	lispGlobalMetric.CheckSumError = &zmet.PktStat{
-		Packets: metrics.CheckSumError.Pkts,
-		Bytes:   metrics.CheckSumError.Bytes,
-	}
-	lispGlobalMetric.DecapReInjectError = &zmet.PktStat{
-		Packets: metrics.DecapReInjectError.Pkts,
-		Bytes:   metrics.DecapReInjectError.Bytes,
-	}
-	lispGlobalMetric.DecryptError = &zmet.PktStat{
-		Packets: metrics.DecryptError.Pkts,
-		Bytes:   metrics.DecryptError.Bytes,
-	}
-	metric.LispGlobalStats = lispGlobalMetric
-
-	flowStats := []*zmet.ZMetricFlow{}
-
-	for _, eidStat := range metrics.EidStats {
-		iid := eidStat.IID
-		metricFlow := &zmet.ZMetricFlow{
-			Iid: iid,
-		}
-		lEndPoint := &zmet.ZMetricFlowEndPoint{}
-		flowLinks := []*zmet.ZMetricFlowLink{}
-		for _, eidMap := range metrics.EidMaps {
-			for _, eid := range eidMap.Eids {
-				flowLink := &zmet.ZMetricFlowLink{}
-				flowLink.Link = new(zmet.ZMetricFlowLink_Eid)
-				if x, ok := flowLink.GetLink().(*zmet.ZMetricFlowLink_Eid); ok {
-					x.Eid = eid.String()
-				}
-				flowLinks = append(flowLinks, flowLink)
-			}
-		}
-		lEndPoint.Link = flowLinks
-		metricFlow.LEndPoint = lEndPoint
-
-		rEndPoint := []*zmet.ZMetricFlowEndPoint{}
-		eid := eidStat.Eid
-		for _, rlocStat := range eidStat.RlocStats {
-			rloc := rlocStat.Rloc
-			stat := rlocStat.Stats
-			flowEndPoint := &zmet.ZMetricFlowEndPoint{}
-			flowEndPoint.Stats = &zmet.PktStat{
-				Packets: stat.Pkts,
-				Bytes:   stat.Bytes,
-			}
-			flowEndPoint.Endpoint = new(zmet.ZMetricFlowEndPoint_Rloc)
-			if x, ok := flowEndPoint.GetEndpoint().(*zmet.ZMetricFlowEndPoint_Rloc); ok {
-				x.Rloc = rloc.String()
-			}
-			flowLinks := []*zmet.ZMetricFlowLink{}
-			flowLink := &zmet.ZMetricFlowLink{}
-			flowLink.Link = new(zmet.ZMetricFlowLink_Eid)
-			if x, ok := flowLink.GetLink().(*zmet.ZMetricFlowLink_Eid); ok {
-				x.Eid = eid.String()
-			}
-			flowLinks = append(flowLinks, flowLink)
-			flowEndPoint.Link = flowLinks
-
-			rEndPoint = append(rEndPoint, flowEndPoint)
-		}
-		metricFlow.REndPoint = rEndPoint
-		flowStats = append(flowStats, metricFlow)
-	}
-	metric.FlowStats = flowStats
-
-	// Fill lisp metric stats also for now.
-	// We can deprecate the same later
-	lispMetric := new(zmet.ZMetricLisp)
-	lispMetric.ItrPacketSendError = &zmet.PktStat{
-		Packets: metrics.ItrPacketSendError.Pkts,
-		Bytes:   metrics.ItrPacketSendError.Bytes,
-	}
-	lispMetric.InvalidEidError = &zmet.PktStat{
-		Packets: metrics.InvalidEidError.Pkts,
-		Bytes:   metrics.InvalidEidError.Bytes,
-	}
-	lispMetric.NoDecryptKey = &zmet.PktStat{
-		Packets: metrics.NoDecryptKey.Pkts,
-		Bytes:   metrics.NoDecryptKey.Bytes,
-	}
-	lispMetric.OuterHeaderError = &zmet.PktStat{
-		Packets: metrics.OuterHeaderError.Pkts,
-		Bytes:   metrics.OuterHeaderError.Bytes,
-	}
-	lispMetric.BadInnerVersion = &zmet.PktStat{
-		Packets: metrics.BadInnerVersion.Pkts,
-		Bytes:   metrics.BadInnerVersion.Bytes,
-	}
-	lispMetric.GoodPackets = &zmet.PktStat{
-		Packets: metrics.GoodPackets.Pkts,
-		Bytes:   metrics.GoodPackets.Bytes,
-	}
-	lispMetric.ICVError = &zmet.PktStat{
-		Packets: metrics.ICVError.Pkts,
-		Bytes:   metrics.ICVError.Bytes,
-	}
-	lispMetric.LispHeaderError = &zmet.PktStat{
-		Packets: metrics.LispHeaderError.Pkts,
-		Bytes:   metrics.LispHeaderError.Bytes,
-	}
-	lispMetric.CheckSumError = &zmet.PktStat{
-		Packets: metrics.CheckSumError.Pkts,
-		Bytes:   metrics.CheckSumError.Bytes,
-	}
-	lispMetric.DecapReInjectError = &zmet.PktStat{
-		Packets: metrics.DecapReInjectError.Pkts,
-		Bytes:   metrics.DecapReInjectError.Bytes,
-	}
-	lispMetric.DecryptError = &zmet.PktStat{
-		Packets: metrics.DecryptError.Pkts,
-		Bytes:   metrics.DecryptError.Bytes,
-	}
-
-	lispStats := []*zmet.EidStats{}
-	for _, eidStat := range metrics.EidStats {
-		lispStat := &zmet.EidStats{
-			IID: eidStat.IID,
-			EID: eidStat.Eid.String(),
-		}
-
-		rlocStats := []*zmet.RlocStats{}
-		for _, rloc := range eidStat.RlocStats {
-			rlocStat := &zmet.RlocStats{
-				Rloc: rloc.Rloc.String(),
-				Stats: &zmet.PktStat{
-					Packets: rloc.Stats.Pkts,
-					Bytes:   rloc.Stats.Bytes,
-				},
-				SecondsSinceLastPacket: rloc.SecondsSinceLastPacket,
-			}
-			rlocStats = append(rlocStats, rlocStat)
-		}
-		lispStat.RlocStatsEntries = rlocStats
-		lispStats = append(lispStats, lispStat)
-	}
-	lispMetric.EidStatsEntries = lispStats
-
-	metric.InstanceContent = new(zmet.ZMetricNetworkInstance_Lispm)
-	if x, ok := metric.GetInstanceContent().(*zmet.ZMetricNetworkInstance_Lispm); ok {
-		x.Lispm = lispMetric
-	}
 }
 
 func protoEncodeVpnInstanceMetric(metrics types.NetworkInstanceMetrics,
