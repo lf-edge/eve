@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -53,15 +52,13 @@ func GetHardwareModelNoOverride(log *base.LogObject) string {
 	product := ""
 	manufacturer := ""
 
-	cmd := exec.Command("dmidecode", "-s", "system-product-name")
-	pname, err := cmd.Output()
+	pname, err := base.Exec(log, "dmidecode", "-s", "system-product-name").Output()
 	if err != nil {
 		log.Errorln("dmidecode system-product-name:", err)
 	} else {
 		product = string(pname)
 	}
-	cmd = exec.Command("dmidecode", "-s", "system-manufacturer")
-	manu, err := cmd.Output()
+	manu, err := base.Exec(log, "dmidecode", "-s", "system-manufacturer").Output()
 	if err != nil {
 		log.Errorln("dmidecode system-manufacturer:", err)
 	} else {
@@ -165,8 +162,7 @@ func GetSoftSerial(log *base.LogObject) string {
 }
 
 func GetProductSerial(log *base.LogObject) string {
-	cmd := exec.Command("dmidecode", "-s", "system-serial-number")
-	serial, err := cmd.Output()
+	serial, err := base.Exec(log, "dmidecode", "-s", "system-serial-number").Output()
 	if err != nil {
 		log.Errorf("GetProductSerial system-serial-number failed %s\n",
 			err)
@@ -181,29 +177,25 @@ func GetProductSerial(log *base.LogObject) string {
 
 // Returns productManufacturer, productName, productVersion, productSerial, productUuid
 func GetDeviceManufacturerInfo(log *base.LogObject) (string, string, string, string, string) {
-	cmd := exec.Command("dmidecode", "-s", "system-product-name")
-	pname, err := cmd.Output()
+	pname, err := base.Exec(log, "dmidecode", "-s", "system-product-name").Output()
 	if err != nil {
 		log.Errorf("GetDeviceManufacturerInfo system-product-name failed %s\n",
 			err)
 		pname = []byte{}
 	}
-	cmd = exec.Command("dmidecode", "-s", "system-manufacturer")
-	manufacturer, err := cmd.Output()
+	manufacturer, err := base.Exec(log, "dmidecode", "-s", "system-manufacturer").Output()
 	if err != nil {
 		log.Errorf("GetDeviceManufacturerInfo system-manufacturer failed %s\n",
 			err)
 		manufacturer = []byte{}
 	}
-	cmd = exec.Command("dmidecode", "-s", "system-version")
-	version, err := cmd.Output()
+	version, err := base.Exec(log, "dmidecode", "-s", "system-version").Output()
 	if err != nil {
 		log.Errorf("GetDeviceManufacturerInfo system-version failed %s\n",
 			err)
 		version = []byte{}
 	}
-	cmd = exec.Command("dmidecode", "-s", "system-uuid")
-	uuid, err := cmd.Output()
+	uuid, err := base.Exec(log, "dmidecode", "-s", "system-uuid").Output()
 	if err != nil {
 		log.Errorf("GetDeviceManufacturerInfo system-uuid failed %s\n",
 			err)
@@ -219,22 +211,19 @@ func GetDeviceManufacturerInfo(log *base.LogObject) (string, string, string, str
 
 // Returns BIOS vendor, version, release-date
 func GetDeviceBios(log *base.LogObject) (string, string, string) {
-	cmd := exec.Command("dmidecode", "-s", "bios-vendor")
-	vendor, err := cmd.Output()
+	vendor, err := base.Exec(log, "dmidecode", "-s", "bios-vendor").Output()
 	if err != nil {
 		log.Errorf("GetDeviceBios bios-vendor failed %s\n",
 			err)
 		vendor = []byte{}
 	}
-	cmd = exec.Command("dmidecode", "-s", "bios-version")
-	version, err := cmd.Output()
+	version, err := base.Exec(log, "dmidecode", "-s", "bios-version").Output()
 	if err != nil {
 		log.Errorf("GetDeviceBios bios-version failed %s\n",
 			err)
 		version = []byte{}
 	}
-	cmd = exec.Command("dmidecode", "-s", "bios-release-date")
-	releaseDate, err := cmd.Output()
+	releaseDate, err := base.Exec(log, "dmidecode", "-s", "bios-release-date").Output()
 	if err != nil {
 		log.Errorf("GetDeviceBios bios-release-date failed %s\n",
 			err)

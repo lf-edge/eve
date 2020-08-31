@@ -6,6 +6,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"os"
 	"path/filepath"
 
@@ -28,7 +29,7 @@ func dirSize(path string) (uint64, error) {
 }
 
 // GetVolumeSize returns the actual and maximum size of the volume
-func GetVolumeSize(name string) (uint64, uint64, error) {
+func GetVolumeSize(log *base.LogObject, name string) (uint64, uint64, error) {
 	info, err := os.Stat(name)
 	if err != nil {
 		errStr := fmt.Sprintf("GetVolumeMaxSize failed for %s: %v",
@@ -44,7 +45,7 @@ func GetVolumeSize(name string) (uint64, uint64, error) {
 		}
 		return size, size, nil
 	}
-	imgInfo, err := diskmetrics.GetImgInfo(name)
+	imgInfo, err := diskmetrics.GetImgInfo(log, name)
 	if err != nil {
 		errStr := fmt.Sprintf("GetVolumeMaxSize failed for %s: %v",
 			name, err)

@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"runtime"
 	"strconv"
@@ -1552,7 +1551,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 // by comparing the output from 'qemu-img info' and the format passed
 // in object in config
 func checkDiskFormat(diskStatus types.DiskStatus) error {
-	imgInfo, err := diskmetrics.GetImgInfo(diskStatus.FileLocation)
+	imgInfo, err := diskmetrics.GetImgInfo(log, diskStatus.FileLocation)
 	if err != nil {
 		return err
 	}
@@ -2087,7 +2086,7 @@ func mkisofs(output string, dir string) error {
 		dir,
 	}
 	log.Infof("Calling command %s %v\n", cmd, args)
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := base.Exec(log, cmd, args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("mkisofs failed: %s",
 			string(stdoutStderr))
@@ -2589,7 +2588,7 @@ func doModprobe(driver string, add bool) error {
 	}
 	args = append(args, driver)
 	log.Infof("Calling command %s %v\n", cmd, args)
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := base.Exec(log, cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Error(err)
 		log.Errorf("modprobe output: %s", stdoutStderr)

@@ -10,7 +10,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -30,8 +29,7 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
-	cmd := exec.Command("dhcpcd", "-U", "-4", us.IfName)
-	stdoutStderr, err := cmd.CombinedOutput()
+	stdoutStderr, err := base.Exec(log, "dhcpcd", "-U", "-4", us.IfName).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)

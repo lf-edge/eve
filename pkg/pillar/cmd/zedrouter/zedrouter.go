@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"sync"
 	"time"
@@ -1547,7 +1546,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	var out []byte
 	for i := 0; i < 3; i++ {
 		log.Infof("Calling command %s %v\n", cmd, args)
-		out, err = exec.Command(cmd, args...).CombinedOutput()
+		out, err = base.Exec(log, cmd, args...).CombinedOutput()
 		if err == nil {
 			break
 		}

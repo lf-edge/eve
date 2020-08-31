@@ -19,7 +19,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
-	"os/exec"
 	"reflect"
 	"time"
 
@@ -31,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -353,13 +353,8 @@ func genCredentials() error {
 	//First try to read from TPM, if it was stored earlier
 	err := readCredentials()
 	if err != nil {
-		// Generate a new uuid
-		out, err := exec.Command("uuidgen").Output()
-		if err != nil {
-			return fmt.Errorf("Error in generating uuid, %v", err)
-		}
 		//Write uuid to credentials file for faster access
-		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, out, 0644)
+		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, []byte(uuid.NewV4().String()), 0644)
 		if err != nil {
 			log.Errorf("Writing to credentials file failed: %v", err)
 			return err

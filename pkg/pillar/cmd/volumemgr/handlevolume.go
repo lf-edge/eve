@@ -44,7 +44,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		status.VolumeCreated = true
 		if status.MaxVolSize == 0 {
 			var err error
-			_, status.MaxVolSize, err = utils.GetVolumeSize(status.FileLocation)
+			_, status.MaxVolSize, err = utils.GetVolumeSize(log, status.FileLocation)
 			if err != nil {
 				log.Error(err)
 			}

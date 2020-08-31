@@ -423,7 +423,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				var err error
 				log.Infof("doUpdateVol: MaxVolSize is 0 for %s. Filling it up.",
 					status.FileLocation)
-				_, status.MaxVolSize, err = utils.GetVolumeSize(status.FileLocation)
+				_, status.MaxVolSize, err = utils.GetVolumeSize(log, status.FileLocation)
 				if err != nil {
 					log.Error(err)
 				}

@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -451,9 +450,8 @@ func ExecuteDDCmd(ledName string) {
 }
 
 func doDD(count int) {
-	cmd := exec.Command("dd", "if="+diskDevice, "of=/dev/null", "bs=4M",
-		fmt.Sprintf("count=%d", count), "iflag=nocache")
-	stdout, err := cmd.Output()
+	stdout, err := base.Exec(log, "dd", "if="+diskDevice, "of=/dev/null", "bs=4M",
+		fmt.Sprintf("count=%d", count), "iflag=nocache").Output()
 	if err != nil {
 		if printOnce {
 			log.Errorln("dd error: ", err)

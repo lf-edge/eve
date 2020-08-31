@@ -5,7 +5,6 @@ package diskmetrics
 
 import (
 	"io/ioutil"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -38,7 +37,7 @@ func SizeFromDir(log *base.LogObject, dirname string) uint64 {
 // PartitionSize - Given "sdb1" return the size of the partition; "sdb"
 // to size of disk. Returns size and a bool to indicate that it is a partition.
 func PartitionSize(log *base.LogObject, part string) (uint64, bool) {
-	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
+	out, err := base.Exec(log, "lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
 		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
 		return 0, false
@@ -55,7 +54,7 @@ func PartitionSize(log *base.LogObject, part string) (uint64, bool) {
 
 // diskType returns a string like "disk", "part", "loop"
 func diskType(log *base.LogObject, part string) string {
-	out, err := exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
+	out, err := base.Exec(log, "lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
 	if err != nil {
 		log.Errorf("lsblk -nbdo TYPE %s failed %s\n", "/dev/"+part, err)
 		return ""
@@ -66,7 +65,7 @@ func diskType(log *base.LogObject, part string) string {
 // FindDisksPartitions returns the names of all disks and all partitions
 // Return an array of names like "sda", "sdb1"
 func FindDisksPartitions(log *base.LogObject) []string {
-	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
+	out, err := base.Exec(log, "lsblk", "-nlo", "NAME").Output()
 	if err != nil {
 		log.Errorf("lsblk -nlo NAME failed %s", err)
 		return nil

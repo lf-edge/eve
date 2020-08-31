@@ -234,7 +234,7 @@ func dhcpcdCmd(log *base.LogObject, op string, extras []string, ifname string, b
 		}()
 	} else {
 		log.Infof("Calling command %s %v\n", name, args)
-		out, err := exec.Command(name, args...).CombinedOutput()
+		out, err := base.Exec(log, name, args...).CombinedOutput()
 		if err != nil {
 			errStr := fmt.Sprintf("dhcpcd command %s failed %s output %s",
 				args, err, out)

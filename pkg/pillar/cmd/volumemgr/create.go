@@ -184,7 +184,7 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	if maxsizebytes == 0 {
 		return nil
 	}
-	currentSize, err := diskmetrics.GetDiskVirtualSize(diskfile)
+	currentSize, err := diskmetrics.GetDiskVirtualSize(log, diskfile)
 	if err != nil {
 		return err
 	}
@@ -195,6 +195,6 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 			diskfile, maxsizebytes, currentSize)
 		return nil
 	}
-	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
+	err = diskmetrics.ResizeImg(log, diskfile, maxsizebytes)
 	return err
 }

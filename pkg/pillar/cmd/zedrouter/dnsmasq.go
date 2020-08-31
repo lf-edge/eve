@@ -8,11 +8,11 @@ package zedrouter
 import (
 	"bufio"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -385,9 +385,8 @@ func startDnsmasq(bridgeName string) {
 		"-C",
 		cfgPathname,
 	}
-	cmd := exec.Command(name, args...)
 	log.Infof("Calling command %s %v\n", name, args)
-	out, err := cmd.CombinedOutput()
+	out, err := base.Exec(log, name, args...).CombinedOutput()
 	if err != nil {
 		log.Errorf("startDnsmasq: Failed starting dnsmasq for bridge %s (%s)",
 			bridgeName, err)

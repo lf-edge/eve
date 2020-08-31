@@ -640,7 +640,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 }
 
 func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
-	actualSize, maxSize, err := utils.GetVolumeSize(vrs.ActiveFileLocation)
+	actualSize, maxSize, err := utils.GetVolumeSize(log, vrs.ActiveFileLocation)
 	if err != nil {
 		return err
 	}
@@ -651,7 +651,7 @@ func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetri
 		appDiskDetails.DiskType = "CONTAINER"
 		return nil
 	}
-	imgInfo, err := diskmetrics.GetImgInfo(vrs.ActiveFileLocation)
+	imgInfo, err := diskmetrics.GetImgInfo(log, vrs.ActiveFileLocation)
 	if err != nil {
 		return err
 	}
@@ -663,7 +663,7 @@ func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetri
 func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
 	volumeResourcesDetails *info.VolumeResources) error {
 
-	actualSize, maxSize, err := utils.GetVolumeSize(volStatus.FileLocation)
+	actualSize, maxSize, err := utils.GetVolumeSize(log, volStatus.FileLocation)
 	if err != nil {
 		return err
 	}
@@ -1245,7 +1245,7 @@ func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.Z
 
 func getVolumeResourcesMetrics(name string, volumeMetric *metrics.ZMetricVolume) error {
 
-	actualSize, maxSize, err := utils.GetVolumeSize(name)
+	actualSize, maxSize, err := utils.GetVolumeSize(log, name)
 	if err != nil {
 		return err
 	}

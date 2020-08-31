@@ -8,8 +8,8 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -75,7 +75,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo := new(info.ZInfoDevice)
 
 	var machineArch string
-	stdout, err := exec.Command("uname", "-m").Output()
+	stdout, err := base.Exec(log, "uname", "-m").Output()
 	if err != nil {
 		log.Errorf("uname -m failed %s", err)
 	} else {
@@ -83,7 +83,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
 	}
 
-	stdout, err = exec.Command("uname", "-p").Output()
+	stdout, err = base.Exec(log, "uname", "-p").Output()
 	if err != nil {
 		log.Errorf("uname -p failed %s", err)
 	} else {
@@ -91,7 +91,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.CpuArch = *proto.String(strings.TrimSpace(cpuArch))
 	}
 
-	stdout, err = exec.Command("uname", "-i").Output()
+	stdout, err = base.Exec(log, "uname", "-i").Output()
 	if err != nil {
 		log.Errorf("uname -i failed %s", err)
 	} else {
