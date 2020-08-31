@@ -5,15 +5,42 @@ package client
 
 import (
 	"fmt"
+	"io/ioutil"
 	"mime"
 	"net/http"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 )
+
+// Return UUID, hardwaremodel, enterprise, and devicename
+func parseUUIDResponse(resp *http.Response, contents []byte) (uuid.UUID, string, string, string, error) {
+	var hardwaremodel string
+	var devUUID uuid.UUID
+	var uuidResponse = &eveuuid.UuidResponse{}
+	err := proto.Unmarshal(contents, uuidResponse)
+	if err != nil {
+		log.Errorf("Unmarshalling uuidResponse failed: %v", err)
+		return devUUID, hardwaremodel, "", "", err
+	}
+	productName := uuidResponse.GetProductName()
+	manufacturer := uuidResponse.GetManufacturer()
+	if manufacturer != "" && productName != "" {
+		hardwaremodel = hardware.FormatModel(manufacturer, productName, "")
+	}
+	uuidStr := strings.TrimSpace(uuidResponse.GetUuid())
+	devUUID, err = uuid.FromString(uuidStr)
+	if err != nil {
+		log.Errorf("uuid.FromString(%s): %s", uuidStr, err)
+		return devUUID, hardwaremodel, "", "", err
+	}
+	return devUUID, hardwaremodel, "", "", err
+}
 
 // Return UUID, hardwaremodel, enterprise, and devicename
 func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.UUID, string, string, string, error) {
@@ -111,6 +138,22 @@ func generateConfigRequest() ([]byte, error) {
 		ConfigHash: prevConfigHash,
 	}
 	b, err := proto.Marshal(configRequest)
+	if err != nil {
+		log.Errorln(err)
+		return b, err
+	}
+	return b, nil
+}
+
+func generateUUIDRequest() ([]byte, error) {
+	deviceCertPem, err := ioutil.ReadFile(types.DeviceCertName)
+	if err != nil {
+		return nil, fmt.Errorf("Error in reading device cert: %v", err)
+	}
+	uuidRequest := &eveuuid.UuidRequest{
+		DeviceCert: deviceCertPem,
+	}
+	b, err := proto.Marshal(uuidRequest)
 	if err != nil {
 		log.Errorln(err)
 		return b, err

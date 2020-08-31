@@ -625,6 +625,59 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 
 func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string, string, string) {
+	//First try the new /uuid api, if fails, fall back to /config
+	done, devUUID, hardwaremodel, enterprise, name := doGetUUIDNew(ctx, tlsConfig, retryCount)
+	if done {
+		return done, devUUID, hardwaremodel, enterprise, name
+	} else {
+		log.Warnln("/uuid API failed, falling back to /config for doGetUUID")
+		return doGetUUIDLegacy(ctx, tlsConfig, retryCount)
+	}
+}
+
+func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
+	retryCount int) (bool, uuid.UUID, string, string, string) {
+	var resp *http.Response
+	var contents []byte
+	var rtf types.SenderResult
+	zedcloudCtx := ctx.zedcloudCtx
+
+	// get UUID does not have UUID string in V2 API
+	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "uuid")
+	b, err := generateUUIDRequest()
+	if err != nil {
+		log.Errorln(err)
+		return false, nilUUID, "", "", ""
+	}
+	var done bool
+	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
+		int64(len(b)), bytes.NewBuffer(b))
+	if !done {
+		// This may be due to the cloud cert file is stale, since the hash does not match.
+		// acquire new cert chain.
+		if rtf == types.SenderStatusCertMiss {
+			interval := time.Duration(1)
+			ctx.getCertsTimer = time.NewTimer(interval * time.Second)
+			log.Infof("doGetUUID: Cert miss. Setup timer to acquire")
+		}
+		return false, nilUUID, "", "", ""
+	}
+	log.Infof("doGetUUID: client getUUID ok")
+	devUUID, hardwaremodel, enterprise, name, err := parseUUIDResponse(resp, contents)
+	if err == nil {
+		// Inform ledmanager about config received from cloud
+		if !zedcloudCtx.NoLedManager {
+			utils.UpdateLedManagerConfig(log, 4)
+		}
+		return true, devUUID, hardwaremodel, enterprise, name
+	}
+	// Keep on trying until it parses
+	log.Errorf("Failed parsing uuid: %s", err)
+	return false, nilUUID, "", "", ""
+}
+
+func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
+	retryCount int) (bool, uuid.UUID, string, string, string) {
 
 	var resp *http.Response
 	var contents []byte
