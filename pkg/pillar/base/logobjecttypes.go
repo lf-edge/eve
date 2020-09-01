@@ -6,7 +6,7 @@ package base
 import (
 	"encoding/json"
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // LogEventType : Predefined object types
@@ -130,7 +130,7 @@ type LoggableObject interface {
 // objType and objName are mandatory parameters
 func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
 	if objType == UnknownLogType || len(key) == 0 {
-		log.Fatal("NewLogObject: objType and key parameters mandatory")
+		logrus.Fatal("NewLogObject: objType and key parameters mandatory")
 	}
 	// Check if we already have an object with the given key
 	var object *LogObject
@@ -140,7 +140,7 @@ func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, obj
 		if ok {
 			return object
 		}
-		log.Fatalf("NewLogObject: Object found in key map is not of type *LogObject, found: %T", value)
+		logrus.Fatalf("NewLogObject: Object found in key map is not of type *LogObject, found: %T", value)
 	}
 
 	object = new(LogObject)
@@ -152,10 +152,10 @@ func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, obj
 // InitLogObject : Initialize an already allocated LogObject
 func InitLogObject(logBase *LogObject, object *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) {
 	if objType == UnknownLogType || len(key) == 0 {
-		log.Fatal("InitLogObject: objType and key parameters mandatory")
+		logrus.Fatal("InitLogObject: objType and key parameters mandatory")
 	}
 	if object == nil {
-		log.Fatal("InitLogObject: LogObject cannot be nil")
+		logrus.Fatal("InitLogObject: LogObject cannot be nil")
 	}
 	fields := make(map[string]interface{})
 	fields["log_event_type"] = LogObjectEventType
@@ -187,7 +187,7 @@ func NewSourceLogObject(agentName string, agentPid int) *LogObject {
 		if ok {
 			return object
 		}
-		log.Fatalf("NewSourceLogObject: Object found is not of type *LogObject, found: %T",
+		logrus.Fatalf("NewSourceLogObject: Object found is not of type *LogObject, found: %T",
 			value)
 	}
 
@@ -215,7 +215,7 @@ func NewRelationObject(logBase *LogObject, relationObjectType RelationObjectType
 
 	object := new(LogObject)
 	if object == nil {
-		log.Fatal("Relation object allocation failed")
+		logrus.Fatal("Relation object allocation failed")
 	}
 
 	fields := make(map[string]interface{})
@@ -244,7 +244,7 @@ func LookupLogObject(key string) *LogObject {
 	}
 	object, ok = value.(*LogObject)
 	if !ok {
-		log.Fatalf("LookupLogObject: Object found in key map is not of type *LogObject, found: %T", value)
+		logrus.Fatalf("LookupLogObject: Object found in key map is not of type *LogObject, found: %T", value)
 	}
 	return object
 }
@@ -262,7 +262,7 @@ func EnsureLogObject(logBase *LogObject, objType LogObjectType, objName string, 
 func DeleteLogObject(key string) {
 	_, ok := logObjectMap.Load(key)
 	if !ok {
-		log.Errorf("DeleteLogObject: LogObject with key %s not found in internal map", key)
+		logrus.Errorf("DeleteLogObject: LogObject with key %s not found in internal map", key)
 		return
 	}
 	logObjectMap.Delete(key)
