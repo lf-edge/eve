@@ -644,20 +644,19 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 
 	// get UUID does not have UUID string in V2 API
 	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "uuid")
+	var done bool
 	b, err := generateUUIDRequest()
 	if err != nil {
 		log.Errorln(err)
 		return false, nilUUID, "", "", ""
 	}
-	var done bool
 	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if !done {
 		// This may be due to the cloud cert file is stale, since the hash does not match.
 		// acquire new cert chain.
 		if rtf == types.SenderStatusCertMiss {
-			interval := time.Duration(1)
-			ctx.getCertsTimer = time.NewTimer(interval * time.Second)
+			ctx.getCertsTimer = time.NewTimer(time.Second)
 			log.Infof("doGetUUID: Cert miss. Setup timer to acquire")
 		}
 		return false, nilUUID, "", "", ""

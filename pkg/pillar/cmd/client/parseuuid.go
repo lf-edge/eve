@@ -5,7 +5,6 @@ package client
 
 import (
 	"fmt"
-	"io/ioutil"
 	"mime"
 	"net/http"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 )
 
@@ -146,16 +144,9 @@ func generateConfigRequest() ([]byte, error) {
 }
 
 func generateUUIDRequest() ([]byte, error) {
-	deviceCertPem, err := ioutil.ReadFile(types.DeviceCertName)
-	if err != nil {
-		return nil, fmt.Errorf("Error in reading device cert: %v", err)
-	}
-	uuidRequest := &eveuuid.UuidRequest{
-		DeviceCert: deviceCertPem,
-	}
+	uuidRequest := &eveuuid.UuidRequest{}
 	b, err := proto.Marshal(uuidRequest)
 	if err != nil {
-		log.Errorln(err)
 		return b, err
 	}
 	return b, nil

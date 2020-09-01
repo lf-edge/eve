@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='org.lfedge.eve.uuid',
   syntax='proto3',
   serialized_options=_b('\n\023org.lfedge.eve.uuidB\007EveUuidP\001Z\"github.com/lf-edge/eve/api/go/uuid'),
-  serialized_pb=_b('\n\x15\x65veuuid/eveuuid.proto\x12\x13org.lfedge.eve.uuid\"\"\n\x0bUuidRequest\x12\x13\n\x0b\x64\x65vice_cert\x18\x01 \x01(\x0c\"H\n\x0cUuidResponse\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x14\n\x0cmanufacturer\x18\x02 \x01(\t\x12\x14\n\x0cproduct_name\x18\x03 \x01(\tBD\n\x13org.lfedge.eve.uuidB\x07\x45veUuidP\x01Z\"github.com/lf-edge/eve/api/go/uuidb\x06proto3')
+  serialized_pb=_b('\n\x15\x65veuuid/eveuuid.proto\x12\x13org.lfedge.eve.uuid\"\r\n\x0bUuidRequest\"H\n\x0cUuidResponse\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x14\n\x0cmanufacturer\x18\x02 \x01(\t\x12\x14\n\x0cproduct_name\x18\x03 \x01(\tBD\n\x13org.lfedge.eve.uuidB\x07\x45veUuidP\x01Z\"github.com/lf-edge/eve/api/go/uuidb\x06proto3')
 )
 
 
@@ -32,13 +32,6 @@ _UUIDREQUEST = _descriptor.Descriptor(
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
-    _descriptor.FieldDescriptor(
-      name='device_cert', full_name='org.lfedge.eve.uuid.UuidRequest.device_cert', index=0,
-      number=1, type=12, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b(""),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -52,7 +45,7 @@ _UUIDREQUEST = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=46,
-  serialized_end=80,
+  serialized_end=59,
 )
 
 
@@ -96,8 +89,8 @@ _UUIDRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=82,
-  serialized_end=154,
+  serialized_start=61,
+  serialized_end=133,
 )
 
 DESCRIPTOR.message_types_by_name['UuidRequest'] = _UUIDREQUEST
