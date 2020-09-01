@@ -150,23 +150,6 @@ func markControlFlows(log *base.LogObject) {
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_vnc"])
 
-	// Mark Lisp control/data packets
-	portStr = "4341,4342"
-	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
-		"--match", "multiport", "--dports", portStr,
-		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_dports"])
-
-	Ip6tableCmd(log, "-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
-		"--match", "multiport", "--dports", portStr,
-		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_dports"])
-
-	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "4", "-p", "udp",
-		"--match", "multiport", "--sports", portStr,
-		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_sports"])
-
-	Ip6tableCmd(log, "-t", "mangle", "-I", "PREROUTING", "4", "-p", "udp",
-		"--match", "multiport", "--sports", portStr,
-		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_lisp_sports"])
 	// Mark strongswan VPN control packets
 	portStr = "4500,500"
 	IptableCmd(log, "-t", "mangle", "-I", "PREROUTING", "5", "-p", "udp",
