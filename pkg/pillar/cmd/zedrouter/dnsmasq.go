@@ -33,7 +33,9 @@ const dnsmasqStatic = `
 except-interface=lo
 bind-interfaces
 # log-queries XXX way to noisy
-log-dhcp
+# log-dhcp
+quiet-dhcp
+quiet-dhcp6
 no-hosts
 no-ping
 bogus-priv
