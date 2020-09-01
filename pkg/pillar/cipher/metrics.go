@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// agentName is the key to this map hence can be used in zedbox
 var metrics = make(types.CipherMetricsMap)
 var mutex = &sync.Mutex{}
 
