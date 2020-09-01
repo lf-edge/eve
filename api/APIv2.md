@@ -489,7 +489,7 @@ Return codes:
 Request:
 
 The request mime type MUST be "application/x-proto-binary".
-The request MUST have the body of a single protobuf message of type AuthContainer where the AuthBody is a protobuf message of type [uuid.UuidRequest](./proto/uuid/uuid.proto). The message should include device certificate of the edge device.
+The request MUST have the body of a single protobuf message of type AuthContainer where the AuthBody is a protobuf message of type [uuid.UuidRequest](./proto/uuid/uuid.proto).
 
 Response:
 

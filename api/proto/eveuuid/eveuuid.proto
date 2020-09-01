@@ -10,10 +10,7 @@ option java_package = "org.lfedge.eve.uuid";
 option java_multiple_files = true;
 option java_outer_classname = "EveUuid";
 
-// This is the request payload for POST /api/v2/edgeDevice/uuid
-// The message is assumed to be protected by signing envelope
-message UuidRequest{
-   bytes device_cert = 1; //Device certificate
+message UuidRequest {
 }
 
 // This is the response payload for POST /api/v2/edgeDevice/uuid
