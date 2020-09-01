@@ -1144,6 +1144,28 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 	}
 }
 
+func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) {
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+
+	for {
+		select {
+		case <-triggerDeviceInfo:
+			start := time.Now()
+			log.Info("deviceInfoTask got message")
+
+			PublishDeviceInfoToZedCloud(ctxPtr)
+			ctxPtr.iteration++
+			log.Info("deviceInfoTask done with message")
+			ctxPtr.ps.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
+				warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		ctxPtr.ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+	}
+}
+
 func handleZbootRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedagentContext)
 	log.Infof("handleZbootRestarted(%v)", done)
