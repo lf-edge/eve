@@ -212,39 +212,6 @@ func handleNetworkInstanceMetricsDelete(ctxArg interface{}, key string,
 	log.Infof("handleNetworkInstanceMetricsDelete(%s)", key)
 }
 
-func createNetworkInstanceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetricMsg) {
-
-	sub := ctx.subNetworkInstanceMetrics
-	metlist := sub.GetAll()
-	if metlist == nil || len(metlist) == 0 {
-		return
-	}
-	for _, met := range metlist {
-		metrics := met.(types.NetworkInstanceMetrics)
-		metricInstance := protoEncodeNetworkInstanceMetricProto(metrics)
-		reportMetrics.Nm = append(reportMetrics.Nm, metricInstance)
-	}
-	log.Debugln("network instance metrics: ", reportMetrics.Nm)
-}
-
-func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) *zmet.ZMetricNetworkInstance {
-
-	metric := new(zmet.ZMetricNetworkInstance)
-	metric.NetworkID = status.Key()
-	metric.NetworkVersion = status.UUIDandVersion.Version
-	metric.Displayname = status.DisplayName
-	metric.InstType = uint32(status.Type)
-	switch status.Type {
-	case types.NetworkInstanceTypeCloud:
-		protoEncodeVpnInstanceMetric(status, metric)
-
-	default:
-		protoEncodeGenericInstanceMetric(status, metric)
-	}
-
-	return metric
-}
-
 func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	metric *zmet.ZMetricNetworkInstance) {
 	networkStats := new(zmet.ZMetricNetworkStats)
@@ -440,14 +407,14 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 	if err != nil {
 		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 	zedcloud.RemoveDeferred(zedcloudCtx, UUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(infoMsg))
-	err = SendProtobuf(statusUrl, buf, size, iteration)
+	err = SendProtobuf(statusURL, buf, size, iteration)
 	if err != nil {
 		log.Errorf("publishInfoToZedCloud failed: %s", err)
 		// Try sending later
@@ -456,7 +423,7 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 		if buf == nil {
 			log.Fatal("malloc error")
 		}
-		zedcloud.SetDeferred(zedcloudCtx, UUID, buf, size, statusUrl,
+		zedcloud.SetDeferred(zedcloudCtx, UUID, buf, size, statusURL,
 			true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
