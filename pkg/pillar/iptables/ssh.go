@@ -21,10 +21,9 @@ var ControlProtocolMarkingIDMap = map[string]string{
 	"in_http_ssh_guacamole": "1",
 	// INPUT flows for VNC
 	"in_vnc": "2",
-	// INPUT flows for Lisp destination ports 4341, 4342
-	"in_lisp_dports": "3",
-	// INPUT flows for Lisp source ports 4341, 4342
-	"in_lisp_sports": "4",
+	// There was some feature here that used marking values "3" & "4".
+	// Marking values "3" & "4" are unused as of now.
+
 	// OUTPUT flows for all types
 	"out_all": "5",
 	// App initiated UCP flows towards dom0 for DHCP, DNS
