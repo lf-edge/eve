@@ -28,7 +28,7 @@ func (nonce AttestNonce) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Attest nonce create")
+	logObject.Noticef("Attest nonce create")
 }
 
 // LogModify :
@@ -42,14 +42,14 @@ func (nonce AttestNonce) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldNonce, nonce)).
-		Tracef("Attest nonce modify")
+		Noticef("Attest nonce modify")
 }
 
 // LogDelete :
 func (nonce AttestNonce) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.AttestNonceLogType, "",
 		nilUUID, nonce.LogKey())
-	logObject.Tracef("Attest nonce delete")
+	logObject.Noticef("Attest nonce delete")
 
 	base.DeleteLogObject(nonce.LogKey())
 }
@@ -123,7 +123,7 @@ func (quote AttestQuote) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Attest quote create")
+	logObject.Noticef("Attest quote create")
 }
 
 // LogModify :
@@ -137,14 +137,14 @@ func (quote AttestQuote) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldQuote, quote)).
-		Tracef("Attest quote modify")
+		Noticef("Attest quote modify")
 }
 
 // LogDelete :
 func (quote AttestQuote) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.AttestQuoteLogType, "",
 		nilUUID, quote.LogKey())
-	logObject.Tracef("Attest quote delete")
+	logObject.Noticef("Attest quote delete")
 
 	base.DeleteLogObject(quote.LogKey())
 }
@@ -184,7 +184,7 @@ func (cert EdgeNodeCert) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Edge node cert create")
+	logObject.Noticef("Edge node cert create")
 }
 
 // LogModify :
@@ -198,14 +198,14 @@ func (cert EdgeNodeCert) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldCert, cert)).
-		Tracef("Edge node cert modify")
+		Noticef("Edge node cert modify")
 }
 
 // LogDelete :
 func (cert EdgeNodeCert) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.EdgeNodeCertLogType, "",
 		nilUUID, cert.LogKey())
-	logObject.Tracef("Edge node cert delete")
+	logObject.Noticef("Edge node cert delete")
 
 	base.DeleteLogObject(cert.LogKey())
 }

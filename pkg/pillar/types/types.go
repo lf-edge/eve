@@ -222,7 +222,7 @@ func (info UuidToNum) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("UuidToNum info create")
+	logObject.Noticef("UuidToNum info create")
 }
 
 // LogModify :
@@ -236,14 +236,14 @@ func (info UuidToNum) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldInfo, info)).
-		Tracef("UuidToNum info modify")
+		Noticef("UuidToNum info modify")
 }
 
 // LogDelete :
 func (info UuidToNum) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.UUIDToNumLogType, "",
 		info.UUID, info.LogKey())
-	logObject.Tracef("UuidToNum info delete")
+	logObject.Noticef("UuidToNum info delete")
 
 	base.DeleteLogObject(info.LogKey())
 }

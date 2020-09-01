@@ -46,7 +46,7 @@ func (config BaseOsConfig) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
-		Tracef("BaseOs config create")
+		Noticef("BaseOs config create")
 }
 
 // LogModify :
@@ -62,11 +62,11 @@ func (config BaseOsConfig) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("activate", config.Activate).
 			AddField("old-activate", oldConfig.Activate).
-			Tracef("BaseOs config modify")
+			Noticef("BaseOs config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("BaseOs config modify other change")
+			Noticef("BaseOs config modify other change")
 	}
 
 }
@@ -76,7 +76,7 @@ func (config BaseOsConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
-		Tracef("BaseOs config delete")
+		Noticef("BaseOs config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -120,7 +120,7 @@ func (status BaseOsStatus) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
-		Tracef("BaseOs status create")
+		Noticef("BaseOs status create")
 }
 
 // LogModify :
@@ -136,11 +136,11 @@ func (status BaseOsStatus) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("old-state", oldStatus.State.String()).
-			Tracef("BaseOs status modify")
+			Noticef("BaseOs status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("BaseOs status modify other change")
+			Noticef("BaseOs status modify other change")
 	}
 
 	if status.HasError() {
@@ -157,7 +157,7 @@ func (status BaseOsStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
-		Tracef("BaseOs status delete")
+		Noticef("BaseOs status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
@@ -267,7 +267,7 @@ func (config DatastoreConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Datastore config create")
+	logObject.Noticef("Datastore config create")
 }
 
 // LogModify :
@@ -281,14 +281,14 @@ func (config DatastoreConfig) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-		Tracef("Datastore config modify")
+		Noticef("Datastore config modify")
 }
 
 // LogDelete :
 func (config DatastoreConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.DatastoreConfigLogType, "",
 		config.UUID, config.LogKey())
-	logObject.Tracef("Datastore config delete")
+	logObject.Noticef("Datastore config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -324,7 +324,7 @@ func (status NodeAgentStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Nodeagent status create")
+	logObject.Noticef("Nodeagent status create")
 }
 
 // LogModify :
@@ -338,14 +338,14 @@ func (status NodeAgentStatus) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Tracef("Nodeagent status modify")
+		Noticef("Nodeagent status modify")
 }
 
 // LogDelete :
 func (status NodeAgentStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.NodeAgentStatusLogType, status.Name,
 		nilUUID, status.LogKey())
-	logObject.Tracef("Nodeagent status delete")
+	logObject.Noticef("Nodeagent status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
@@ -386,7 +386,7 @@ func (status ZedAgentStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Zedagent status create")
+	logObject.Noticef("Zedagent status create")
 }
 
 // LogModify :
@@ -400,14 +400,14 @@ func (status ZedAgentStatus) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Tracef("Zedagent status modify")
+		Noticef("Zedagent status modify")
 }
 
 // LogDelete :
 func (status ZedAgentStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.ZedAgentStatusLogType, status.Name,
 		nilUUID, status.LogKey())
-	logObject.Tracef("Zedagent status delete")
+	logObject.Noticef("Zedagent status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

@@ -37,7 +37,7 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 		publishVolumeRefConfig(ctx, &vrc)
 	}
 	base.NewRelationObject(log, base.AddRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.VolumeRefConfigLogType, key).Tracef("App instance to volume relation.")
+		base.VolumeRefConfigLogType, key).Noticef("App instance to volume relation.")
 	log.Infof("MaybeAddVolumeRefConfig done for %s", key)
 }
 
@@ -67,7 +67,7 @@ func MaybeRemoveVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 		publishVolumeRefConfig(ctx, m)
 	}
 	base.NewRelationObject(log, base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
-		base.VolumeRefConfigLogType, key).Tracef("App instance to volume relation.")
+		base.VolumeRefConfigLogType, key).Noticef("App instance to volume relation.")
 	log.Infof("MaybeRemoveVolumeRefConfig done for %s", key)
 }
 

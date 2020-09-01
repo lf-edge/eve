@@ -80,7 +80,7 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 		AddField("size-int64", status.Size).
 		AddField("blobtype-string", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
-		Tracef("Blob status create")
+		Noticef("Blob status create")
 }
 
 // LogModify :
@@ -102,11 +102,11 @@ func (status BlobStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-size-int64", oldStatus.Size).
-			Tracef("Blob status modify")
+			Noticef("Blob status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("Blob status modify other change")
+			Noticef("Blob status modify other change")
 	}
 
 	if status.HasError() {
@@ -124,7 +124,7 @@ func (status BlobStatus) LogDelete() {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
-		Tracef("Blob status delete")
+		Noticef("Blob status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

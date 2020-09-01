@@ -61,7 +61,7 @@ func (config DomainConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
-		Tracef("domain config create")
+		Noticef("domain config create")
 }
 
 // LogModify :
@@ -80,11 +80,11 @@ func (config DomainConfig) LogModify(old interface{}) {
 			AddField("enable-vnc", config.EnableVnc).
 			AddField("old-activate", oldConfig.Activate).
 			AddField("old-enable-vnc", oldConfig.EnableVnc).
-			Tracef("domain config modify")
+			Noticef("domain config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("domain config modify other change")
+			Noticef("domain config modify other change")
 	}
 }
 
@@ -94,7 +94,7 @@ func (config DomainConfig) LogDelete() {
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
-		Tracef("domain config delete")
+		Noticef("domain config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -210,7 +210,7 @@ func (status DomainStatus) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("activated", status.Activated).
-		Tracef("domain status create")
+		Noticef("domain status create")
 }
 
 // LogModify :
@@ -229,11 +229,11 @@ func (status DomainStatus) LogModify(old interface{}) {
 			AddField("activated", status.Activated).
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-activated", oldStatus.Activated).
-			Tracef("domain status modify")
+			Noticef("domain status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("domain status modify other change")
+			Noticef("domain status modify other change")
 	}
 
 	if status.HasError() {
@@ -252,7 +252,7 @@ func (status DomainStatus) LogDelete() {
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("activated", status.Activated).
-		Tracef("domain status delete")
+		Noticef("domain status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

@@ -30,7 +30,7 @@ func (status VaultStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Vault status create")
+	logObject.Noticef("Vault status create")
 }
 
 // LogModify :
@@ -44,7 +44,7 @@ func (status VaultStatus) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Tracef("Vault status modify")
+		Noticef("Vault status modify")
 	if status.HasError() {
 		errAndTime := status.ErrorAndTime
 		logObject.CloneAndAddField("error", errAndTime.Error).
@@ -57,7 +57,7 @@ func (status VaultStatus) LogModify(old interface{}) {
 func (status VaultStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.VaultStatusLogType, status.Name,
 		nilUUID, status.LogKey())
-	logObject.Tracef("Vault status delete")
+	logObject.Noticef("Vault status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
