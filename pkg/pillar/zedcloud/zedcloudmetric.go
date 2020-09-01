@@ -161,6 +161,7 @@ func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
 			um.SentByteCount += um1.SentByteCount
 			um.RecvMsgCount += um1.RecvMsgCount
 			um.RecvByteCount += um1.RecvByteCount
+			um.TotalTimeSpent += um1.TotalTimeSpent
 			cmu[url] = um
 		}
 		cms[ifname] = cm
