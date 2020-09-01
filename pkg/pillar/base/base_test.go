@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -57,10 +57,10 @@ var (
 )
 
 func initLog() {
-	formatter := log.JSONFormatter{DisableTimestamp: true}
-	log.SetFormatter(&formatter)
+	formatter := logrus.JSONFormatter{DisableTimestamp: true}
+	logrus.SetFormatter(&formatter)
 	logBuffer = bytes.NewBuffer(make([]byte, 1000))
-	log.SetOutput(logBuffer)
+	logrus.SetOutput(logBuffer)
 }
 
 func TestSpecialAgent(t *testing.T) {
