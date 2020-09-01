@@ -128,9 +128,6 @@ func Run(ps *pubsub.PubSub) int {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0
 	}
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + agentName)
-
 	log = agentlog.Init(agentName)
 
 	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)

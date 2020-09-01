@@ -67,9 +67,6 @@ func Run(ps *pubsub.PubSub) int {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
 	execCtx.timeLimit = *timeLimitPtr
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + agentName)
-
 	log = agentlog.Init(agentName)
 
 	if *versionPtr {

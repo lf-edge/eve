@@ -107,9 +107,6 @@ func Run(ps *pubsub.PubSub) int { //nolint:gocyclo
 		return 0
 	}
 	// Sending json log format to stdout
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + agentName)
-
 	log = agentlog.Init("client")
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {

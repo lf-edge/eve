@@ -109,9 +109,6 @@ func Run(ps *pubsub.PubSub) int {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
 
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + ctx.agentName)
-
 	log = agentlog.Init(ctx.agentName)
 	if err := pidfile.CheckAndCreatePidfile(log, ctx.agentName); err != nil {
 		log.Fatal(err)
