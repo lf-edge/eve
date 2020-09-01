@@ -549,9 +549,6 @@ func Run(ps *pubsub.PubSub) int {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
 
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + agentName)
-
 	// Sending json log format to stdout
 	log = agentlog.Init(agentName)
 

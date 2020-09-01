@@ -103,9 +103,6 @@ func Run(ps *pubsub.PubSub) int {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0
 	}
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + agentName)
-
 	log = agentlog.Init(agentName)
 	if outputFile != "" {
 		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

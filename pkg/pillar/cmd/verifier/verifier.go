@@ -78,9 +78,6 @@ func Run(ps *pubsub.PubSub) int {
 	} else {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
-	// XXX Make logrus record a noticable global source
-	agentlog.Init("xyzzy-" + agentName)
-
 	log = agentlog.Init(agentName)
 
 	if *versionPtr {
