@@ -43,7 +43,7 @@ func (config VolumeConfig) LogCreate(logBase *base.LogObject) {
 		AddField("max-vol-size-int64", config.MaxVolSize).
 		AddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
-		Tracef("Volume config create")
+		Noticef("Volume config create")
 }
 
 // LogModify :
@@ -68,11 +68,11 @@ func (config VolumeConfig) LogModify(old interface{}) {
 			AddField("old-max-vol-size-int64", oldConfig.MaxVolSize).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			AddField("old-generation-counter-int64", oldConfig.GenerationCounter).
-			Tracef("Volume config modify")
+			Noticef("Volume config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("Volume config modify other change")
+			Noticef("Volume config modify other change")
 	}
 }
 
@@ -84,7 +84,7 @@ func (config VolumeConfig) LogDelete() {
 		AddField("max-vol-size-int64", config.MaxVolSize).
 		AddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
-		Tracef("Volume config delete")
+		Noticef("Volume config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -152,7 +152,7 @@ func (status VolumeStatus) LogCreate(logBase *base.LogObject) {
 		AddField("progress-int64", status.Progress).
 		AddField("refcount-int64", status.RefCount).
 		AddField("filelocation", status.FileLocation).
-		Tracef("Volume status create")
+		Noticef("Volume status create")
 }
 
 // LogModify :
@@ -183,11 +183,11 @@ func (status VolumeStatus) LogModify(old interface{}) {
 			AddField("old-progress-int64", oldStatus.Progress).
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-filelocation", oldStatus.FileLocation).
-			Tracef("Volume status modify")
+			Noticef("Volume status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("Volume status modify other change")
+			Noticef("Volume status modify other change")
 	}
 }
 
@@ -201,7 +201,7 @@ func (status VolumeStatus) LogDelete() {
 		AddField("progress-int64", status.Progress).
 		AddField("refcount-int64", status.RefCount).
 		AddField("filelocation", status.FileLocation).
-		Tracef("Volume status delete")
+		Noticef("Volume status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
@@ -240,7 +240,7 @@ func (config VolumeRefConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
-		Tracef("Volume ref config create")
+		Noticef("Volume ref config create")
 }
 
 // LogModify :
@@ -255,11 +255,11 @@ func (config VolumeRefConfig) LogModify(old interface{}) {
 	if oldConfig.RefCount != config.RefCount {
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
 			AddField("old-refcount-int64", oldConfig.RefCount).
-			Tracef("Volume ref config modify")
+			Noticef("Volume ref config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("Volume ref config modify other change")
+			Noticef("Volume ref config modify other change")
 	}
 }
 
@@ -268,7 +268,7 @@ func (config VolumeRefConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.VolumeRefConfigLogType, "",
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Tracef("Volume ref config delete")
+		Noticef("Volume ref config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -332,7 +332,7 @@ func (status VolumeRefStatus) LogCreate(logBase *base.LogObject) {
 		AddField("displayname", status.DisplayName).
 		AddField("max-vol-size-int64", status.MaxVolSize).
 		AddField("pending-add-bool", status.PendingAdd).
-		Tracef("Volume ref status create")
+		Noticef("Volume ref status create")
 }
 
 // LogModify :
@@ -369,7 +369,7 @@ func (status VolumeRefStatus) LogModify(old interface{}) {
 			AddField("displayname", oldStatus.DisplayName).
 			AddField("old-max-vol-size-int64", oldStatus.MaxVolSize).
 			AddField("Pending-add-bool", oldStatus.PendingAdd).
-			Tracef("Volume ref status modify")
+			Noticef("Volume ref status modify")
 	}
 }
 
@@ -386,7 +386,7 @@ func (status VolumeRefStatus) LogDelete() {
 		AddField("displayname", status.DisplayName).
 		AddField("max-vol-size-int64", status.MaxVolSize).
 		AddField("pending-add-bool", status.PendingAdd).
-		Tracef("Volume ref status delete")
+		Noticef("Volume ref status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

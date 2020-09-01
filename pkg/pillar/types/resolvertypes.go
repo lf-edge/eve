@@ -35,7 +35,7 @@ func (config ResolveConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Resolve config create")
+	logObject.Noticef("Resolve config create")
 }
 
 // LogModify :
@@ -49,14 +49,14 @@ func (config ResolveConfig) LogModify(old interface{}) {
 	}
 	// Why would it change?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-		Tracef("Resolve config modify other change")
+		Noticef("Resolve config modify other change")
 }
 
 // LogDelete :
 func (config ResolveConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
-	logObject.Tracef("Resolve config delete")
+	logObject.Noticef("Resolve config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -94,7 +94,7 @@ func (status ResolveStatus) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("image-sha256", status.ImageSha256).
 		AddField("retry-count-int64", status.RetryCount).
-		Tracef("Resolve status create")
+		Noticef("Resolve status create")
 }
 
 // LogModify :
@@ -113,11 +113,11 @@ func (status ResolveStatus) LogModify(old interface{}) {
 			AddField("retry-count-int64", status.RetryCount).
 			AddField("old-image-sha256", oldStatus.ImageSha256).
 			AddField("old-retry-count-int64", oldStatus.RetryCount).
-			Tracef("Resolve status modify")
+			Noticef("Resolve status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("Resolve status modify other change")
+			Noticef("Resolve status modify other change")
 	}
 
 	if status.HasError() {
@@ -136,7 +136,7 @@ func (status ResolveStatus) LogDelete() {
 		status.DatastoreID, status.LogKey())
 	logObject.CloneAndAddField("image-sha256", status.ImageSha256).
 		AddField("retry-count-int64", status.RetryCount).
-		Tracef("Resolve status delete")
+		Noticef("Resolve status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

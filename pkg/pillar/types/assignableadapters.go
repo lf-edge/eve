@@ -208,7 +208,7 @@ func (aa AssignableAdapters) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Assignable adapters create")
+	logObject.Noticef("Assignable adapters create")
 }
 
 // LogModify :
@@ -222,14 +222,14 @@ func (aa AssignableAdapters) LogModify(old interface{}) {
 	}
 	// XXX remove? XXX huge?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldAa, aa)).
-		Tracef("Assignable adapters modify")
+		Noticef("Assignable adapters modify")
 }
 
 // LogDelete :
 func (aa AssignableAdapters) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.AssignableAdaptersLogType, "",
 		nilUUID, aa.LogKey())
-	logObject.Tracef("Assignable adapters delete")
+	logObject.Noticef("Assignable adapters delete")
 
 	base.DeleteLogObject(aa.LogKey())
 }

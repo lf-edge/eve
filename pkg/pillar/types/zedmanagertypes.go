@@ -92,7 +92,7 @@ func (config AppInstanceConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("remote-console", config.RemoteConsole).
-		Tracef("App instance config create")
+		Noticef("App instance config create")
 }
 
 // LogModify :
@@ -111,11 +111,11 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 			AddField("remote-console", config.RemoteConsole).
 			AddField("old-activate", oldConfig.Activate).
 			AddField("old-remote-console", oldConfig.RemoteConsole).
-			Tracef("App instance config modify")
+			Noticef("App instance config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("App instance config modify other change")
+			Noticef("App instance config modify other change")
 	}
 }
 
@@ -125,7 +125,7 @@ func (config AppInstanceConfig) LogDelete() {
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("remote-console", config.RemoteConsole).
-		Tracef("App instance config delete")
+		Noticef("App instance config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -181,7 +181,7 @@ func (status AppInstanceStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
-		Tracef("App instance status create")
+		Noticef("App instance status create")
 }
 
 // LogModify :
@@ -203,11 +203,11 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-restart-in-progress", oldStatus.RestartInprogress).
 			AddField("old-purge-in-progress", oldStatus.PurgeInprogress).
-			Tracef("App instance status modify")
+			Noticef("App instance status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("App instance status modify other change")
+			Noticef("App instance status modify other change")
 	}
 
 	if status.HasError() {
@@ -228,7 +228,7 @@ func (status AppInstanceStatus) LogDelete() {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
-		Tracef("App instance status delete")
+		Noticef("App instance status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
@@ -316,7 +316,7 @@ func (aih AppAndImageToHash) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("purge-counter-int64", aih.PurgeCounter).
 		AddField("image-id", aih.ImageID.String()).
 		AddField("hash", aih.Hash).
-		Tracef("App and image to hash create")
+		Noticef("App and image to hash create")
 }
 
 // LogModify :
@@ -337,11 +337,11 @@ func (aih AppAndImageToHash) LogModify(old interface{}) {
 			AddField("purge-counter-int64", aih.PurgeCounter).
 			AddField("old-hash", oldAih.Hash).
 			AddField("old-purge-counter-int64", oldAih.PurgeCounter).
-			Tracef("App and image to hash modify")
+			Noticef("App and image to hash modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldAih, aih)).
-			Tracef("App and image to hash modify other change")
+			Noticef("App and image to hash modify other change")
 	}
 }
 
@@ -352,7 +352,7 @@ func (aih AppAndImageToHash) LogDelete() {
 	logObject.CloneAndAddField("purge-counter-int64", aih.PurgeCounter).
 		AddField("image-id", aih.ImageID.String()).
 		AddField("hash", aih.Hash).
-		Tracef("App and image to hash delete")
+		Noticef("App and image to hash delete")
 
 	base.DeleteLogObject(aih.LogKey())
 }

@@ -214,13 +214,14 @@ func (object *LogObject) Fatalln(args ...interface{}) {
 	object.logger.WithFields(object.Fields).Fatalln(args...)
 }
 
-// Emulate a Trace level - mapped to Warning
-// XXX Current Info should be logrus.Trace with this Trace becoming Info
-// and this Metric becoming Debug.
-// XXX rename current Info to Function so we can map that to Trace
+// Emulate a Notice level - mapped to Warning
+// XXX Current Info should use logrus.Debug with this Notice using logrus.Info
+// and below Metric using logrus.Debug.
+// XXX current Debug should use logrus.Trace
+// XXX rename current Info to ??? and Debug to Trace
 
-// Trace :
-func (object *LogObject) Trace(args ...interface{}) {
+// Notice :
+func (object *LogObject) Notice(args ...interface{}) {
 	if !object.Initialized {
 		log.Fatal("LogObject used without initialization")
 		return
@@ -228,8 +229,8 @@ func (object *LogObject) Trace(args ...interface{}) {
 	log.WithFields(object.Fields).Warn(args...)
 }
 
-// Tracef :
-func (object *LogObject) Tracef(format string, args ...interface{}) {
+// Noticef :
+func (object *LogObject) Noticef(format string, args ...interface{}) {
 	if !object.Initialized {
 		log.Fatal("LogObject used without initialization")
 		return
@@ -237,8 +238,8 @@ func (object *LogObject) Tracef(format string, args ...interface{}) {
 	log.WithFields(object.Fields).Warnf(format, args...)
 }
 
-// Traceln :
-func (object *LogObject) Traceln(args ...interface{}) {
+// Noticeln :
+func (object *LogObject) Noticeln(args ...interface{}) {
 	if !object.Initialized {
 		log.Fatal("LogObject used without initialization")
 		return

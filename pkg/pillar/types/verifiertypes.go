@@ -47,7 +47,7 @@ func (config VerifyImageConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		AddField("expired-bool", config.Expired).
-		Tracef("VerifyImage config create")
+		Noticef("VerifyImage config create")
 }
 
 // LogModify :
@@ -66,11 +66,11 @@ func (config VerifyImageConfig) LogModify(old interface{}) {
 			AddField("expired-bool", config.Expired).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			AddField("old-expired-bool", oldConfig.Expired).
-			Tracef("VerifyImage config modify")
+			Noticef("VerifyImage config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("VerifyImage config modify other change")
+			Noticef("VerifyImage config modify other change")
 	}
 }
 
@@ -80,7 +80,7 @@ func (config VerifyImageConfig) LogDelete() {
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		AddField("expired-bool", config.Expired).
-		Tracef("VerifyImage config delete")
+		Noticef("VerifyImage config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -124,7 +124,7 @@ func (status VerifyImageStatus) LogCreate(logBase *base.LogObject) {
 		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
 		AddField("filelocation", status.FileLocation).
-		Tracef("VerifyImage status create")
+		Noticef("VerifyImage status create")
 }
 
 // LogModify :
@@ -152,11 +152,11 @@ func (status VerifyImageStatus) LogModify(old interface{}) {
 			AddField("old-size-int64", oldStatus.Size).
 			AddField("filelocation", status.FileLocation).
 			AddField("old-filelocation", oldStatus.FileLocation).
-			Tracef("VerifyImage status modify")
+			Noticef("VerifyImage status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("VerifyImage status modify other change")
+			Noticef("VerifyImage status modify other change")
 	}
 
 	if status.HasError() {
@@ -177,7 +177,7 @@ func (status VerifyImageStatus) LogDelete() {
 		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
 		AddField("filelocation", status.FileLocation).
-		Tracef("VerifyImage status delete")
+		Noticef("VerifyImage status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

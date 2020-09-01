@@ -26,7 +26,7 @@ func (s ServiceInitStatus) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("servicename", s.ServiceName).
 		AddField("cmdargs", s.CmdArgs).
-		Tracef("ServiceInitStatus create")
+		Noticef("ServiceInitStatus create")
 }
 
 // LogModify :
@@ -39,7 +39,7 @@ func (s ServiceInitStatus) LogModify(old interface{}) {
 
 	logObject.CloneAndAddField("servicename", s.ServiceName).
 		AddField("cmdargs", s.CmdArgs).
-		Tracef("ServiceInitStatus modify")
+		Noticef("ServiceInitStatus modify")
 }
 
 // LogDelete :
@@ -47,7 +47,7 @@ func (s ServiceInitStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.ServiceInitLogType, s.ServiceName, nilUUID, s.LogKey())
 	logObject.CloneAndAddField("servicename", s.ServiceName).
 		AddField("cmdargs", s.CmdArgs).
-		Tracef("ServiceInitStatus modify")
+		Noticef("ServiceInitStatus modify")
 
 	base.DeleteLogObject(s.LogKey())
 }

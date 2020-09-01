@@ -48,7 +48,7 @@ func (status CipherContext) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Cipher block status create")
+	logObject.Noticef("Cipher block status create")
 }
 
 // LogModify :
@@ -62,14 +62,14 @@ func (status CipherContext) LogModify(old interface{}) {
 	}
 	// XXX remove? XXX huge?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Tracef("Cipher block status modify")
+		Noticef("Cipher block status modify")
 }
 
 // LogDelete :
 func (status CipherContext) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.CipherContextLogType, "",
 		nilUUID, status.LogKey())
-	logObject.Tracef("Cipher block status delete")
+	logObject.Noticef("Cipher block status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }
@@ -103,7 +103,7 @@ func (status CipherBlockStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Cipher block status create")
+	logObject.Noticef("Cipher block status create")
 }
 
 // LogModify :
@@ -117,14 +117,14 @@ func (status CipherBlockStatus) LogModify(old interface{}) {
 	}
 	// XXX remove? XXX huge?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Tracef("Cipher block status modify")
+		Noticef("Cipher block status modify")
 }
 
 // LogDelete :
 func (status CipherBlockStatus) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.CipherBlockStatusLogType, "",
 		nilUUID, status.LogKey())
-	logObject.Tracef("Cipher block status delete")
+	logObject.Noticef("Cipher block status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

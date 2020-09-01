@@ -28,7 +28,7 @@ func (config ZbootConfig) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("test-complete-bool", config.TestComplete).
-		Tracef("Zboot config create")
+		Noticef("Zboot config create")
 }
 
 // LogModify :
@@ -44,11 +44,11 @@ func (config ZbootConfig) LogModify(old interface{}) {
 
 		logObject.CloneAndAddField("test-complete-bool", config.TestComplete).
 			AddField("old-test-complete-bool", oldConfig.TestComplete).
-			Tracef("Zboot config modify")
+			Noticef("Zboot config modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Tracef("Zboot config modify other change")
+			Noticef("Zboot config modify other change")
 	}
 }
 
@@ -57,7 +57,7 @@ func (config ZbootConfig) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.ZbootConfigLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("test-complete-bool", config.TestComplete).
-		Tracef("Zboot config delete")
+		Noticef("Zboot config delete")
 
 	base.DeleteLogObject(config.LogKey())
 }
@@ -91,7 +91,7 @@ func (status ZbootStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("partition-state", status.PartitionState).
 		AddField("current-partition-bool", status.CurrentPartition).
 		AddField("test-complete-bool", status.TestComplete).
-		Tracef("Zboot status create")
+		Noticef("Zboot status create")
 }
 
 // LogModify :
@@ -113,11 +113,11 @@ func (status ZbootStatus) LogModify(old interface{}) {
 			AddField("old-current-partition-bool", oldStatus.CurrentPartition).
 			AddField("test-complete-bool", status.TestComplete).
 			AddField("old-test-complete-bool", oldStatus.TestComplete).
-			Tracef("Zboot status modify")
+			Noticef("Zboot status modify")
 	} else {
 		// XXX remove?
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Tracef("Zboot status modify other change")
+			Noticef("Zboot status modify other change")
 	}
 }
 
@@ -128,7 +128,7 @@ func (status ZbootStatus) LogDelete() {
 	logObject.CloneAndAddField("partition-state", status.PartitionState).
 		AddField("current-partition-bool", status.CurrentPartition).
 		AddField("test-complete-bool", status.TestComplete).
-		Tracef("Zboot status delete")
+		Noticef("Zboot status delete")
 
 	base.DeleteLogObject(status.LogKey())
 }

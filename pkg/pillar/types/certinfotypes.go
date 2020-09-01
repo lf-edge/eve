@@ -33,7 +33,7 @@ func (cert ControllerCert) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Tracef("Controller cert create")
+	logObject.Noticef("Controller cert create")
 }
 
 // LogModify :
@@ -47,14 +47,14 @@ func (cert ControllerCert) LogModify(old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldCert, cert)).
-		Tracef("Controller cert modify")
+		Noticef("Controller cert modify")
 }
 
 // LogDelete :
 func (cert ControllerCert) LogDelete() {
 	logObject := base.EnsureLogObject(nil, base.ControllerCertLogType, "",
 		nilUUID, cert.LogKey())
-	logObject.Tracef("Controller cert delete")
+	logObject.Noticef("Controller cert delete")
 
 	base.DeleteLogObject(cert.LogKey())
 }
