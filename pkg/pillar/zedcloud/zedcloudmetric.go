@@ -123,9 +123,8 @@ func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
 	for ifname, cm1 := range cms1 {
 		cm, ok := cms[ifname]
 		if !ok {
-			// New ifname; take all
-			cms[ifname] = cm
-			continue
+			// New ifname; take all but need to deepcopy
+			cm = types.ZedcloudMetric{}
 		}
 		if cm.LastFailure.IsZero() {
 			// Don't care if cm1 is zero

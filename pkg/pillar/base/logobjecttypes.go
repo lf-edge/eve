@@ -107,7 +107,11 @@ type LogObject struct {
 	Fields      map[string]interface{}
 }
 
+// logObjectMap tracks objects for NewLogObject
 var logObjectMap = NewLockedStringMap()
+
+// logSourceObjectMap tracks objects for NewSourceLogObject
+var logSourceObjectMap = NewLockedStringMap()
 
 // LoggableObject :
 type LoggableObject interface {
@@ -172,13 +176,28 @@ func InitLogObject(logBase *LogObject, object *LogObject, objType LogObjectType,
 }
 
 // NewSourceLogObject : create an object with agentName and agentPid
+// Since there might be multiple calls to this for the same agent
+// we check for an existing one for the agentName
 func NewSourceLogObject(agentName string, agentPid int) *LogObject {
-	object := new(LogObject)
+	// Check if we already have an object with the given agentName
+	var object *LogObject
+	value, ok := logSourceObjectMap.Load(agentName)
+	if ok {
+		object, ok = value.(*LogObject)
+		if ok {
+			return object
+		}
+		log.Fatalf("NewSourceLogObject: Object found is not of type *LogObject, found: %T",
+			value)
+	}
+
+	object = new(LogObject)
 	object.Initialized = true
 	fields := make(map[string]interface{})
 	fields["source"] = agentName
 	fields["pid"] = agentPid
 	object.Fields = fields
+	logSourceObjectMap.Store(agentName, object)
 	return object
 }
 
