@@ -1017,7 +1017,8 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) {
 
 	publishAssignableAdapters := false
-	var assignments []string
+	var assignmentsPci []string
+	var assignmentsUsb []string
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("doAssignIoAdaptersToDomain processing adapter %d %s",
 			adapter.Type, adapter.Name)
@@ -1046,23 +1047,25 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			if !isInUsbGroup(*aa, *ib) {
 				continue
 			}
-			if ib.PciLong == "" {
-				log.Warnf("doAssignIoAdaptersToDomain missing PciLong: %d %s for %s",
-					adapter.Type, adapter.Name, status.DomainName)
-			} else if ctx.usbAccess && !ib.IsPCIBack {
+			if ib.UsbAddr != "" {
+				log.Infof("Assigning %s (%s) to %s",
+					ib.Phylabel, ib.UsbAddr, status.DomainName)
+				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
+			} else if ib.PciLong != "" && ctx.usbAccess && !ib.IsPCIBack {
 				log.Infof("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.PciLong, status.DomainName)
-				assignments = addNoDuplicate(assignments, ib.PciLong)
+				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
 				ib.IsPCIBack = true
-				publishAssignableAdapters = true
 			}
 		}
+		publishAssignableAdapters = len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
+
 	}
-	for i, long := range assignments {
+	for i, long := range assignmentsPci {
 		err := hyper.PCIReserve(long)
 		if err != nil {
 			// Undo what we assigned
-			for j, long := range assignments {
+			for j, long := range assignmentsPci {
 				if j >= i {
 					break
 				}
@@ -2280,6 +2283,7 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 		log.Error(err)
 		return err
 	}
+	// This is a PCI device
 	if long != "" {
 		ib.PciLong = long
 		changed = true
@@ -2298,9 +2302,6 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			log.Infof("checkAndSetIoMember(%d %s %s) %s unique %s",
 				ib.Type, ib.Phylabel, ib.AssignmentGroup, long, unique)
 		}
-	} else {
-		log.Infof("checkAndSetIoMember(%d %s %s) not found PCI",
-			ib.Type, ib.Phylabel, ib.AssignmentGroup)
 	}
 
 	if !ib.IsPort && !ib.IsPCIBack {
@@ -2458,7 +2459,7 @@ func maybeAssignableRemUSB(ctx *domainContext) bool {
 		if !isInUsbGroup(*aa, *ib) {
 			continue
 		}
-		if ib.PciLong == "" {
+		if ib.PciLong == "" && ib.UsbAddr == "" {
 			continue
 		}
 		if ib.IsPCIBack {
