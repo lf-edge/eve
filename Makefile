@@ -116,8 +116,8 @@ QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
-QEMU_ACCEL_Y_Darwin=-M accel=hvf --cpu host
-QEMU_ACCEL_Y_Linux=-enable-kvm
+QEMU_ACCEL_Y_Darwin=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
+QEMU_ACCEL_Y_Linux=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
 
 QEMU_OPTS_NET1=192.168.1.0/24
@@ -127,11 +127,10 @@ QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 
 QEMU_MEMORY:=4096
 
-ifeq ($(PFLASH),)
-QEMU_OPTS_BIOS=-bios $(DIST)/OVMF.fd
-else
-QEMU_OPTS_BIOS=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(DIST)/OVMF_VARS.fd
-endif
+PFLASH=y
+QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(DIST)/OVMF_VARS.fd
+QEMU_OPTS_BIOS_=-bios $(DIST)/OVMF.fd
+QEMU_OPTS_BIOS=$(QEMU_OPTS_BIOS_$(PFLASH))
 
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
