@@ -85,19 +85,7 @@ func IptablesInit(log *base.LogObject) {
 	// Flush IPv6 mangle rules from previous run
 	Ip6tableCmd(log, "-F", "PREROUTING", "-t", "mangle")
 
-	// Add mangle rules for IPv6 packets from dom0 overlay
-	// since netfront/netback thinks there is checksum offload
-	// XXX not needed once we have disaggregated dom0
 	IptableCmd(log, "-F", "POSTROUTING", "-t", "mangle")
-	IptableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
-		"-j", "CHECKSUM", "--checksum-fill")
-	IptableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
-		"-j", "CHECKSUM", "--checksum-fill")
-	Ip6tableCmd(log, "-F", "POSTROUTING", "-t", "mangle")
-	Ip6tableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
-		"-j", "CHECKSUM", "--checksum-fill")
-	Ip6tableCmd(log, "-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
-		"-j", "CHECKSUM", "--checksum-fill")
 }
 
 func FetchIprulesCounters(log *base.LogObject) []AclCounters {
