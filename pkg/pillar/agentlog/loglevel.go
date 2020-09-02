@@ -109,24 +109,32 @@ func LogLevel(gc *types.ConfigItemValueMap, agentName string) string {
 	return ""
 }
 
-// Update LogLevel setting based on GlobalConfig and debugOverride
-// Return debug bool
+// HandleGlobalConfig updates the LogLevel setting in the passed in logger
+// based on GlobalConfig and debugOverride
+// Returns the debug bool
 func HandleGlobalConfig(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	debugOverride bool) (bool, *types.ConfigItemValueMap) {
+	debugOverride bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
-	return handleGlobalConfigImpl(log, sub, agentName, debugOverride, true)
+	return handleGlobalConfigImpl(log, sub, agentName, debugOverride, true,
+		logger)
 }
 
+// HandleGlobalConfigNoDefault updates the LogLevel setting in the passed in logger
+// based on GlobalConfig and debugOverride
+// Returns the debug bool
+// Unlike HandleGlobalConfig it does not look at debug.default.loglevel
+// XXX Only used by logmanager since enable debug for it slows it down too much
 func HandleGlobalConfigNoDefault(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	debugOverride bool) (bool, *types.ConfigItemValueMap) {
+	debugOverride bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
-	return handleGlobalConfigImpl(log, sub, agentName, debugOverride, false)
+	return handleGlobalConfigImpl(log, sub, agentName, debugOverride, false,
+		logger)
 }
 
 func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	debugOverride bool, allowDefault bool) (bool, *types.ConfigItemValueMap) {
+	debugOverride bool, allowDefault bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
 	level := logrus.InfoLevel
 	debug := false
 	gcp := GetGlobalConfig(log, sub)
@@ -151,6 +159,6 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 		log.Errorf("***handleGlobalConfigImpl: Failed to get loglevel")
 	}
 	log.Infof("handleGlobalConfigImpl: Setting loglevel to %s", level)
-	logrus.SetLevel(level)
+	logger.SetLevel(level)
 	return debug, gcp
 }

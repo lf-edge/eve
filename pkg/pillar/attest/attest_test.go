@@ -10,6 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/sirupsen/logrus"
 )
 
 type VerifierMock struct{}
@@ -88,8 +89,9 @@ func initTest() *Context {
 	simulateITokenMismatch = false
 	simulateTpmAgentDown = false
 
-	log := base.NewSourceLogObject("test", 1234)
-	ps := pubsub.New(&pubsub.EmptyDriver{}, log)
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "test", 1234)
+	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
 	ctx := &Context{
 		PubSub:       ps,
 		log:          log,

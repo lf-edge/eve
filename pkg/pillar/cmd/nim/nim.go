@@ -63,6 +63,7 @@ type nimContext struct {
 
 // Set from Makefile
 var Version = "No version specified"
+var logger *logrus.Logger
 var log *base.LogObject
 
 func (ctx *nimContext) processArgs() {
@@ -83,7 +84,9 @@ func (ctx *nimContext) processArgs() {
 }
 
 // Run - Main function - invoked from zedbox.go
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	nimCtx := nimContext{
 		fallbackPortMap:  make(map[string]bool),
 		filteredFallback: make(map[string]bool),
@@ -98,7 +101,6 @@ func Run(ps *pubsub.PubSub) int {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0
 	}
-	log = agentlog.Init(agentName)
 	nimCtx.deviceNetworkContext.Log = log
 
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
@@ -927,7 +929,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		ctx.debugOverride)
+		ctx.debugOverride, logger)
 	first := !ctx.GCInitialized
 	if gcp != nil {
 		gcpSSHAccess := gcp.GlobalValueString(types.SSHAuthorizedKeys) != ""
@@ -987,7 +989,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		ctx.debugOverride)
+		ctx.debugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

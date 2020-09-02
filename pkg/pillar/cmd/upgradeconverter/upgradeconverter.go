@@ -6,7 +6,6 @@ package upgradeconverter
 import (
 	"flag"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -86,10 +85,13 @@ func runHandlers(ctxPtr *ucContext) {
 	}
 }
 
+var logger *logrus.Logger
 var log *base.LogObject
 
 // Run - runs the main upgradeconverter process
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	ctx := &ucContext{agentName: "upgradeconverter",
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
@@ -104,12 +106,10 @@ func Run(ps *pubsub.PubSub) int {
 	ctx.persistDir = *persistPtr // XXX remove? Or use for tests?
 	ctx.noFlag = *noFlagPtr
 	if ctx.debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
-
-	log = agentlog.Init(ctx.agentName)
 	if err := pidfile.CheckAndCreatePidfile(log, ctx.agentName); err != nil {
 		log.Fatal(err)
 	}

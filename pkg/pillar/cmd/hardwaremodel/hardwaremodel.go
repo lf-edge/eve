@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -18,6 +17,7 @@ import (
 	"github.com/rackn/gohai/plugins/net"
 	"github.com/rackn/gohai/plugins/storage"
 	"github.com/rackn/gohai/plugins/system"
+	"github.com/sirupsen/logrus"
 )
 
 // Set from Makefile
@@ -59,16 +59,24 @@ func hwFp(log *base.LogObject, outputFile string) {
 	enc.Encode(infos)
 }
 
-func Run(ps *pubsub.PubSub) int {
-	pid := os.Getpid()
-	basename := filepath.Base(os.Args[0])
-	log := base.NewSourceLogObject(basename, pid)
+var logger *logrus.Logger
+var log *base.LogObject
+
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	versionPtr := flag.Bool("v", false, "Version")
 	cPtr := flag.Bool("c", false, "No CRLF")
 	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
 	outputFilePtr := flag.String("o", "/config/hardwaremodel", "file or device for output")
 	flag.Parse()
 	outputFile := *outputFilePtr
+	if *debugPtr {
+		logger.SetLevel(logrus.DebugLevel)
+	} else {
+		logger.SetLevel(logrus.InfoLevel)
+	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0

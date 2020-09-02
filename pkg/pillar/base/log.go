@@ -13,7 +13,7 @@ func (object *LogObject) Debug(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Debug(args...)
+	object.logger.WithFields(object.Fields).Debug(args...)
 }
 
 // Print :
@@ -22,7 +22,7 @@ func (object *LogObject) Print(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Print(args...)
+	object.logger.WithFields(object.Fields).Print(args...)
 }
 
 // Info :
@@ -31,7 +31,7 @@ func (object *LogObject) Info(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Info(args...)
+	object.logger.WithFields(object.Fields).Info(args...)
 }
 
 // Warn :
@@ -40,7 +40,7 @@ func (object *LogObject) Warn(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Warn(args...)
+	object.logger.WithFields(object.Fields).Warn(args...)
 }
 
 // Warning :
@@ -49,7 +49,7 @@ func (object *LogObject) Warning(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Warning(args...)
+	object.logger.WithFields(object.Fields).Warning(args...)
 }
 
 // Error :
@@ -58,7 +58,7 @@ func (object *LogObject) Error(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Error(args...)
+	object.logger.WithFields(object.Fields).Error(args...)
 }
 
 // Panic :
@@ -67,7 +67,7 @@ func (object *LogObject) Panic(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Panic(args...)
+	object.logger.WithFields(object.Fields).Panic(args...)
 }
 
 // Fatal :
@@ -76,7 +76,7 @@ func (object *LogObject) Fatal(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Fatal(args...)
+	object.logger.WithFields(object.Fields).Fatal(args...)
 }
 
 // Debugf :
@@ -85,7 +85,7 @@ func (object *LogObject) Debugf(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Debugf(format, args...)
+	object.logger.WithFields(object.Fields).Debugf(format, args...)
 }
 
 // Infof :
@@ -94,7 +94,7 @@ func (object *LogObject) Infof(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Infof(format, args...)
+	object.logger.WithFields(object.Fields).Infof(format, args...)
 }
 
 // Warnf :
@@ -103,7 +103,7 @@ func (object *LogObject) Warnf(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Warnf(format, args...)
+	object.logger.WithFields(object.Fields).Warnf(format, args...)
 }
 
 // Warningf :
@@ -112,7 +112,7 @@ func (object *LogObject) Warningf(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Warningf(format, args...)
+	object.logger.WithFields(object.Fields).Warningf(format, args...)
 }
 
 // Panicf :
@@ -121,7 +121,7 @@ func (object *LogObject) Panicf(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Panicf(format, args...)
+	object.logger.WithFields(object.Fields).Panicf(format, args...)
 }
 
 // Fatalf :
@@ -130,7 +130,7 @@ func (object *LogObject) Fatalf(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Fatalf(format, args...)
+	object.logger.WithFields(object.Fields).Fatalf(format, args...)
 }
 
 // Errorf :
@@ -139,7 +139,7 @@ func (object *LogObject) Errorf(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Errorf(format, args...)
+	object.logger.WithFields(object.Fields).Errorf(format, args...)
 }
 
 // Debugln :
@@ -148,7 +148,7 @@ func (object *LogObject) Debugln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Debugln(args...)
+	object.logger.WithFields(object.Fields).Debugln(args...)
 }
 
 // Println :
@@ -157,7 +157,7 @@ func (object *LogObject) Println(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Println(args...)
+	object.logger.WithFields(object.Fields).Println(args...)
 }
 
 // Infoln :
@@ -166,7 +166,7 @@ func (object *LogObject) Infoln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Infoln(args...)
+	object.logger.WithFields(object.Fields).Infoln(args...)
 }
 
 // Warnln :
@@ -175,7 +175,7 @@ func (object *LogObject) Warnln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Warnln(args...)
+	object.logger.WithFields(object.Fields).Warnln(args...)
 }
 
 // Warningln :
@@ -184,7 +184,7 @@ func (object *LogObject) Warningln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Warningln(args...)
+	object.logger.WithFields(object.Fields).Warningln(args...)
 }
 
 // Errorln :
@@ -193,7 +193,7 @@ func (object *LogObject) Errorln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Errorln(args...)
+	object.logger.WithFields(object.Fields).Errorln(args...)
 }
 
 // Panicln :
@@ -202,7 +202,7 @@ func (object *LogObject) Panicln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Panicln(args...)
+	object.logger.WithFields(object.Fields).Panicln(args...)
 }
 
 // Fatalln :
@@ -211,5 +211,5 @@ func (object *LogObject) Fatalln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	logrus.WithFields(object.Fields).Fatalln(args...)
+	object.logger.WithFields(object.Fields).Fatalln(args...)
 }

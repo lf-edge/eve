@@ -50,10 +50,13 @@ type executorContext struct {
 	timeLimit     uint // In seconds
 }
 
+var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
@@ -62,13 +65,11 @@ func Run(ps *pubsub.PubSub) int {
 	execCtx.debug = *debugPtr
 	execCtx.debugOverride = execCtx.debug
 	if execCtx.debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
 	execCtx.timeLimit = *timeLimitPtr
-	log = agentlog.Init(agentName)
-
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0
@@ -347,7 +348,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	execCtx.debug, gcp = agentlog.HandleGlobalConfig(log, execCtx.subGlobalConfig, agentName,
-		execCtx.debugOverride)
+		execCtx.debugOverride, logger)
 	if gcp != nil {
 		execCtx.GCInitialized = true
 	}
@@ -364,6 +365,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
 	execCtx.debug, _ = agentlog.HandleGlobalConfig(log, execCtx.subGlobalConfig, agentName,
-		execCtx.debugOverride)
+		execCtx.debugOverride, logger)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

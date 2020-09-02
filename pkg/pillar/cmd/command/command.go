@@ -57,15 +57,19 @@ var (
 	combinedOutput bool
 	environ        []string
 	dontWait       bool
+	logger         *logrus.Logger
+	log            *base.LogObject
 )
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	// Report nano timestamps
 	formatter := logrus.JSONFormatter{
 		TimestampFormat: time.RFC3339Nano,
 	}
-	logrus.SetFormatter(&formatter)
+	logger.SetFormatter(&formatter)
 
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	quietPtr := flag.Bool("q", false, "Quiet flag")
@@ -82,14 +86,13 @@ func Run(ps *pubsub.PubSub) int {
 		environ = append(environ, *environPtr)
 	}
 	if *quietPtr {
-		logrus.SetLevel(logrus.WarnLevel)
+		logger.SetLevel(logrus.WarnLevel)
 	} else if *debugPtr {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
 
-	log := base.NewSourceLogObject(agentName, os.Getpid())
 	hdl, err := execlib.New(ps, log, agentName, "executor")
 	if err != nil {
 		log.Fatal(err)

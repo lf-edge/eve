@@ -77,9 +77,12 @@ var simulateDnsFailure = false
 var simulatePingFailure = false
 var outfile = os.Stdout
 var nilUUID uuid.UUID
+var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
@@ -92,9 +95,9 @@ func Run(ps *pubsub.PubSub) int {
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
 	simulateDnsFailure = *simulateDnsFailurePtr
 	simulatePingFailure = *simulatePingFailurePtr
@@ -103,7 +106,6 @@ func Run(ps *pubsub.PubSub) int {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0
 	}
-	log = agentlog.Init(agentName)
 	if outputFile != "" {
 		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -1088,7 +1090,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 	}
@@ -1105,7 +1107,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

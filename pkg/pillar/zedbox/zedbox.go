@@ -46,6 +46,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -65,7 +66,7 @@ const (
 
 // The function returns an exit value
 type entrypoint struct {
-	f      func(*pubsub.PubSub) int
+	f      func(*pubsub.PubSub, *logrus.Logger, *base.LogObject) int
 	inline zedboxInline
 }
 
@@ -96,14 +97,15 @@ var (
 		"vaultmgr":         {f: vaultmgr.Run, inline: inlineUnlessService},
 		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
 	}
-	log *base.LogObject
+	logger *logrus.Logger
+	log    *base.LogObject
 )
 
 func main() {
 	// Check what service we are intending to start.
 	basename := filepath.Base(os.Args[0])
 	if sep, ok := entrypoints[basename]; ok {
-		log = agentlog.Init(basename)
+		logger, log = agentlog.Init(basename)
 		inline := false
 		if sep.inline == inlineAlways {
 			inline = true
@@ -111,7 +113,7 @@ func main() {
 			inline = true
 			for _, arg := range os.Args {
 				if arg == "runAsService" {
-					log.Infof("XXX found runAsService for %s",
+					log.Infof("Found runAsService for %s",
 						basename)
 					inline = false
 					break
@@ -121,10 +123,10 @@ func main() {
 		if inline {
 			log.Infof("Running inline command %s args: %+v",
 				basename, os.Args[1:])
-			pid := os.Getpid()
-			logObj := base.NewSourceLogObject(basename, pid)
-			ps := pubsub.New(&socketdriver.SocketDriver{Log: logObj}, logObj)
-			retval := sep.f(ps)
+			ps := pubsub.New(
+				&socketdriver.SocketDriver{Logger: logger, Log: log},
+				logger, log)
+			retval := sep.f(ps, logger, log)
 			os.Exit(retval)
 		}
 		// If its a known child service, the notify zedbox binary to start that
@@ -143,15 +145,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	log = agentlog.Init(agentName)
-
 	//Start zedbox
+	logger, log = agentlog.Init(agentName)
+
 	var sktData string
 	sktChan := make(chan string)
 	stillRunning := time.NewTicker(15 * time.Second)
-	pid := os.Getpid()
-	logObj := base.NewSourceLogObject(agentName, pid)
-	ps := pubsub.New(&socketdriver.SocketDriver{Log: logObj}, logObj)
+	ps := pubsub.New(
+		&socketdriver.SocketDriver{Logger: logger, Log: log},
+		logger, log)
 
 	log.Infof("Starting %s", agentName)
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
@@ -171,15 +173,20 @@ func main() {
 				break
 			}
 
-			log.Infof("zedbox: Received command = %s agrs = %v",
+			log.Infof("zedbox: Received command = %s args = %v",
 				serviceInitStatus.ServiceName, serviceInitStatus.CmdArgs)
-			srvLogObj := base.NewSourceLogObject(serviceInitStatus.ServiceName, pid)
-			srvPs := pubsub.New(&socketdriver.SocketDriver{Log: srvLogObj}, srvLogObj)
+			srvLogger, srvLog := agentlog.Init(serviceInitStatus.ServiceName)
+			srvPs := pubsub.New(
+				&socketdriver.SocketDriver{
+					Logger: srvLogger,
+					Log:    srvLog,
+				},
+				srvLogger, srvLog)
 			if _, ok := entrypoints[serviceInitStatus.ServiceName]; ok {
 				log.Infof("zedbox: Starting %s", serviceInitStatus.ServiceName)
 				flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 				os.Args = serviceInitStatus.CmdArgs
-				go startAgentAndDone(serviceInitStatus.ServiceName, srvPs)
+				go startAgentAndDone(serviceInitStatus.ServiceName, srvPs, srvLogger, srvLog)
 				log.Infof("zedbox: Started %s", serviceInitStatus.ServiceName)
 			} else {
 				log.Fatalf("zedbox: Unknown package: %s", serviceInitStatus.ServiceName)
@@ -290,9 +297,11 @@ func getSocketName(agent string, topic interface{}) string {
 
 //startAgentAndDone start the given agent. Writes the return/exit value to
 // <agentName>.done file should the agent return.
-func startAgentAndDone(agentName string, srvPs *pubsub.PubSub) {
+func startAgentAndDone(agentName string, srvPs *pubsub.PubSub,
+	srvLogger *logrus.Logger, srvLog *base.LogObject) {
+
 	serviceEntrypoint, _ := entrypoints[agentName]
-	retval := serviceEntrypoint.f(srvPs)
+	retval := serviceEntrypoint.f(srvPs, srvLogger, srvLog)
 
 	ret := strconv.Itoa(retval)
 	if err := ioutil.WriteFile(fmt.Sprintf("/var/run/%s.done", agentName),

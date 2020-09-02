@@ -7,6 +7,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/sirupsen/logrus"
 )
 
 var onceLock = &sync.Mutex{}
@@ -14,6 +15,7 @@ var onceVal bool
 
 // Protected by once()
 var (
+	logger        *logrus.Logger
 	log           *base.LogObject
 	defaultPubsub *pubsub.PubSub
 )
@@ -34,8 +36,7 @@ func once() bool {
 // XXX remove? Used by ledmanagerutils.go
 func Publish(agentName string, topicType interface{}) (pubsub.Publication, error) {
 	if once() {
-		log = base.NewSourceLogObject(agentName, os.Getpid())
-		defaultPubsub = pubsub.New(&socketdriver.SocketDriver{Log: log}, log)
+		initialize(agentName)
 	}
 	log.Debugf("legacy.Publish agentName(%s)", agentName)
 	return defaultPubsub.NewPublication(pubsub.PublicationOptions{
@@ -49,8 +50,7 @@ func Publish(agentName string, topicType interface{}) (pubsub.Publication, error
 // XXX remove? Used by globalutils.go
 func PublishPersistent(agentName string, topicType interface{}) (pubsub.Publication, error) {
 	if once() {
-		log = base.NewSourceLogObject(agentName, os.Getpid())
-		defaultPubsub = pubsub.New(&socketdriver.SocketDriver{Log: log}, log)
+		initialize(agentName)
 	}
 	log.Infof("legacy.PublishPersistent agentName(%s)", agentName)
 	return defaultPubsub.NewPublication(pubsub.PublicationOptions{
@@ -58,4 +58,11 @@ func PublishPersistent(agentName string, topicType interface{}) (pubsub.Publicat
 		TopicType:  topicType,
 		Persistent: true,
 	})
+}
+
+func initialize(agentName string) {
+	logger = logrus.New()
+	log = base.NewSourceLogObject(logger, agentName, os.Getpid())
+	defaultPubsub = pubsub.New(&socketdriver.SocketDriver{Log: log},
+		logger, log)
 }

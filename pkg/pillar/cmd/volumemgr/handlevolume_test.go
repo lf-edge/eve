@@ -13,10 +13,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 func TestIsErrorSourceOnPubSub(t *testing.T) {
-	log = base.NewSourceLogObject("volumemgr", 0)
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "volumemgr", 0)
 	status := &types.VolumeStatus{}
 	errStr := "test1"
 	status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
@@ -39,8 +40,9 @@ func TestIsErrorSourceOnPubSub(t *testing.T) {
 
 func initStatusCtx(t *testing.T) volumemgrContext {
 	ctx := volumemgrContext{}
-	log = base.NewSourceLogObject("volumemgr", 0)
-	ps := pubsub.New(&pubsub.EmptyDriver{}, log)
+	logger := logrus.StandardLogger()
+	log = base.NewSourceLogObject(logger, "test", 1234)
+	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
 
 	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,

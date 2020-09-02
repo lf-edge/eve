@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/sirupsen/logrus"
 )
 
 // Publisher implementation of `pubsub.DriverPublisher` for `SocketDriver`.
@@ -33,6 +34,7 @@ type Publisher struct {
 	updaters       *pubsub.Updaters
 	differ         pubsub.Differ
 	restarted      pubsub.Restarted
+	logger         *logrus.Logger
 	log            *base.LogObject
 }
 

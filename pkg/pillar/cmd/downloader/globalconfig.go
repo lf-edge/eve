@@ -22,7 +22,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, logger)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DownloadRetryTime) != 0 {
 			retryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
@@ -42,6 +42,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, logger)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
