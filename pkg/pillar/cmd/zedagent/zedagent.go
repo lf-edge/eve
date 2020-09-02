@@ -259,6 +259,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -416,6 +417,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -433,6 +435,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
 		TopicImpl:     types.NetworkInstanceStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -450,6 +453,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subNetworkInstanceMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
 		TopicImpl:     types.NetworkInstanceMetrics{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -467,6 +471,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAppFlowMonitor, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
 		TopicImpl:     types.IPFlow{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -485,6 +490,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAppVifIPTrig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
 		TopicImpl:     types.VifIPTrig{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -501,6 +507,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AppInstanceStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -519,6 +526,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for ContentTreeStatus from volumemgr
 	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.ContentTreeStatus{},
 		Activate:      false,
@@ -538,6 +546,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for VolumeStatus from volumemgr
 	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeStatus{},
 		Activate:      false,
@@ -557,6 +566,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for DomainMetric from domainmgr
 	subDomainMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
+		MyAgentName: agentName,
 		TopicImpl:   types.DomainMetric{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
@@ -570,6 +580,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subHostMemory, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
+		MyAgentName: agentName,
 		TopicImpl:   types.HostMemory{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
@@ -584,6 +595,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for zboot status
 	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "baseosmgr",
+		MyAgentName:    agentName,
 		TopicImpl:      types.ZbootStatus{},
 		Activate:       false,
 		Ctx:            &zedagentCtx,
@@ -603,6 +615,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// sub AppContainerMetrics from zedrouter
 	subAppContainerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AppContainerMetrics{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -619,6 +632,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "baseosmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.BaseOsStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -636,6 +650,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeNodeCert{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -652,6 +667,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.VaultStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -668,6 +684,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAttestQuote, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AttestQuote{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -685,6 +702,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for nodeagent status
 	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nodeagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.NodeAgentStatus{},
 		Activate:      false,
 		Ctx:           &getconfigCtx,
@@ -702,6 +720,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	DNSctx := DNSContext{}
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &DNSctx,
@@ -718,6 +737,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subDevicePortConfigList, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfigList{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -734,6 +754,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subBlobStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.BlobStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
@@ -751,10 +772,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Subscribe to Log metrics from logmanager
 	subLogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "logmanager",
-		TopicImpl: types.LogMetrics{},
-		Activate:  false,
-		Ctx:       &zedagentCtx,
+		AgentName:   "logmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.LogMetrics{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -867,10 +889,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Subscribe to network metrics from zedrouter
 	subNetworkMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "zedrouter",
-		TopicImpl: types.NetworkMetrics{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.NetworkMetrics{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -878,56 +901,62 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics(log)
 	subClientMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "zedclient",
-		TopicImpl: cms,
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "zedclient",
+		MyAgentName: agentName,
+		TopicImpl:   cms,
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subLogmanagerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "logmanager",
-		TopicImpl: cms,
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "logmanager",
+		MyAgentName: agentName,
+		TopicImpl:   cms,
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subDownloaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "downloader",
-		TopicImpl: cms,
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "downloader",
+		MyAgentName: agentName,
+		TopicImpl:   cms,
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "downloader",
-		TopicImpl: types.CipherMetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "downloader",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetricsMap{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subCipherMetricsDM, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "domainmgr",
-		TopicImpl: types.CipherMetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetricsMap{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subCipherMetricsNim, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "nim",
-		TopicImpl: types.CipherMetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetricsMap{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)

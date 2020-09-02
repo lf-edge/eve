@@ -94,6 +94,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Ctx:           &execCtx,
 		CreateHandler: handleGlobalConfigModify,
@@ -121,6 +123,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Infof("processed GlobalConfig")
 
 	subTmpConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ExecConfig{},
 		Ctx:           &execCtx,
 		CreateHandler: handleCreate,
@@ -137,6 +141,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subCommandConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "command",
+		MyAgentName:   agentName,
 		Ctx:           &execCtx,
 		TopicImpl:     types.ExecConfig{},
 		CreateHandler: handleCreate,
@@ -153,6 +158,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subVerifierConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "verifier",
+		MyAgentName:   agentName,
 		Ctx:           &execCtx,
 		TopicImpl:     types.ExecConfig{},
 		CreateHandler: handleCreate,
@@ -169,6 +175,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subDomainConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
 		Ctx:           &execCtx,
 		TopicImpl:     types.ExecConfig{},
 		CreateHandler: handleCreate,

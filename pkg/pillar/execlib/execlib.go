@@ -65,6 +65,7 @@ func New(ps *pubsub.PubSub, log *base.LogObject, agentName string, executor stri
 	}
 	subExecStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "executor",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ExecStatus{},
 		Ctx:           &handle,
 		CreateHandler: handleStatus,

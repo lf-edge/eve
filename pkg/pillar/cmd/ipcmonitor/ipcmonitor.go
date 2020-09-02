@@ -166,8 +166,9 @@ func nameString(agentname, agentscope, topic string) string {
 func testPersistent(ps *pubsub.PubSub, agentName string, agentScope string, topic string) {
 	ctx := 3
 	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:  agentName,
-		AgentScope: agentScope,
+		AgentName:   agentName,
+		AgentScope:  agentScope,
+		MyAgentName: agentName,
 		// XXX hard-coded; need nameToType ;-)
 		TopicImpl:     types.DevicePortConfigList{},
 		Activate:      false,

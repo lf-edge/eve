@@ -139,6 +139,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &ctx,
@@ -157,6 +158,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "zedagent",
+		MyAgentName:    agentName,
 		TopicImpl:      types.AppInstanceConfig{},
 		Activate:       false,
 		Ctx:            &ctx,
@@ -176,6 +178,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for VolumeRefStatus from volumemgr
 	subVolumeRefStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeRefStatus{},
 		Activate:      false,
@@ -195,6 +198,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "zedrouter",
+		MyAgentName:    agentName,
 		TopicImpl:      types.AppNetworkStatus{},
 		Activate:       false,
 		Ctx:            &ctx,
@@ -214,6 +218,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DomainStatus{},
 		Activate:      false,
 		Ctx:           &ctx,

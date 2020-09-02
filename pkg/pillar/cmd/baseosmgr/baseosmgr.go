@@ -298,6 +298,7 @@ func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
+			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           ctx,
@@ -319,6 +320,7 @@ func initializeNodeAgentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subNodeAgentStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nodeagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.NodeAgentStatus{},
 			Activate:      false,
 			Ctx:           ctx,
@@ -337,6 +339,7 @@ func initializeNodeAgentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subZbootConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nodeagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.ZbootConfig{},
 			Activate:      false,
 			Ctx:           ctx,
@@ -358,6 +361,7 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subBaseOsConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.BaseOsConfig{},
 			Activate:      false,
 			Ctx:           ctx,
@@ -379,6 +383,7 @@ func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subContentTreeStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
+			MyAgentName:   agentName,
 			AgentScope:    types.BaseOsObj,
 			TopicImpl:     types.ContentTreeStatus{},
 			Activate:      false,
