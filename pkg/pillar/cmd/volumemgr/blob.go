@@ -476,12 +476,12 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 func populateInitBlobStatus(ctx *volumemgrContext) {
 	blobInfoList, err := ctx.casClient.ListBlobInfo()
 	if err != nil {
-		log.Errorf("populateInitBlobStatus: exception while fetching existing blobs from CAS")
+		log.Errorf("populateInitBlobStatus: exception while fetching existing blobs from CAS: %v", err)
 		return
 	}
 	mediaMap, err := ctx.casClient.ListBlobsMediaTypes()
 	if err != nil {
-		log.Errorf("populateInitBlobStatus: exception while fetching existing media types from CAS")
+		log.Errorf("populateInitBlobStatus: exception while fetching existing media types from CAS: %v", err)
 		return
 	}
 	newBlobStatus := make([]*types.BlobStatus, 0)
