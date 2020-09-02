@@ -811,6 +811,8 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 				port.Phyaddr.Irq = value
 			case "ioports":
 				port.Phyaddr.Ioports = value
+			case "usbaddr":
+				port.Phyaddr.UsbAddr = value
 			default:
 				port.Phyaddr.UnknownType = value
 				log.Warnf("Unrecognized Physical address Ignored: "+

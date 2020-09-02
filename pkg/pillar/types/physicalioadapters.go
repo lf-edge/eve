@@ -20,6 +20,7 @@ type PhysicalAddress struct {
 	Serial  string
 	Irq     string
 	Ioports string
+	UsbAddr string
 	// unknownType - If a type in config is unknown, store it here.
 	UnknownType string
 }

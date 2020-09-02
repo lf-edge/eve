@@ -368,6 +368,7 @@ type PhysicalIO struct {
 	//    separated list of integers or even a range of integers. Hence using
 	//    a string to address this.
 	// "ioports": the address is a string such as "2f8-2ff"
+	// "usbaddr" the USB address like "1:2.3"
 	// If the type is PhyIoNet*, then there needs to be an "ifname" physaddr.
 	Phyaddrs map[string]string `protobuf:"bytes,3,rep,name=phyaddrs,proto3" json:"phyaddrs,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// logicallabel - provides the ability to model designer to refer
