@@ -99,15 +99,18 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 		case v1types.OCIImageIndex, v1types.DockerManifestList:
 			index, err := getIndexManifest(c, dig)
 			if err != nil {
-				return nil, fmt.Errorf("ListBlobsMediaTypes: could not get index for %s", dig)
+				log.Infof("ListBlobsMediaTypes: could not get index for %s, ignoring", dig)
+				continue
 			}
 			// save all of the manifests
 			for _, m := range index.Manifests {
-				hashMap[m.Digest.String()] = string(m.MediaType)
+				digm := m.Digest.String()
+				hashMap[digm] = string(m.MediaType)
 				// and now read each manifest
-				manifest, err := getManifest(c, m.Digest.String())
+				manifest, err := getManifest(c, digm)
 				if err != nil {
-					return nil, fmt.Errorf("ListBlobsMediaTypes: could not get manifest for %s", dig)
+					log.Infof("ListBlobsMediaTypes: could not get manifest for %s in index %s, ignoring", digm, dig)
+					continue
 				}
 				// read the config and the layers
 				hashMap[manifest.Config.Digest.String()] = string(manifest.Config.MediaType)
@@ -118,7 +121,8 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 		case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
 			manifest, err := getManifest(c, dig)
 			if err != nil {
-				return nil, fmt.Errorf("ListBlobsMediaTypes: could not get manifest for %s", dig)
+				log.Infof("ListBlobsMediaTypes: could not get manifest for %s, ignoring", dig)
+				continue
 			}
 			// read the config and the layers
 			hashMap[manifest.Config.Digest.String()] = string(manifest.Config.MediaType)
