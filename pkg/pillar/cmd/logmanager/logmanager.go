@@ -65,6 +65,7 @@ var (
 	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
+	logger  *logrus.Logger
 	log     *base.LogObject
 )
 
@@ -146,7 +147,9 @@ type inputLogMetrics struct {
 }
 
 // Run is an entry point into running logmanager
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	forcePtr := flag.Bool("f", false, "Force")
@@ -158,16 +161,15 @@ func Run(ps *pubsub.PubSub) int {
 	fatalFlag := *fatalPtr
 	hangFlag := *hangPtr
 	if debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
 	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return 0
 	}
-	log = agentlog.Init(agentName)
 
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
@@ -1038,7 +1040,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig,
-		agentName, debugOverride)
+		agentName, debugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
@@ -1071,8 +1073,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+	debug, _ = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig, agentName,
+		debugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s", key)

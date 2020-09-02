@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 )
 
 // enum values for work
@@ -37,7 +38,7 @@ func assertPanic(t *testing.T, f func()) {
 	f()
 }
 
-var log = base.NewSourceLogObject("test", 1234)
+var log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
 
 func TestExtraExit(t *testing.T) {
 	h := NewQueueLock(log)

@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -55,7 +56,6 @@ const (
 
 // Version : module version
 var Version = "No version specified"
-var log *base.LogObject
 
 type nodeagentContext struct {
 	agentBaseContext            agentbase.Context
@@ -100,7 +100,7 @@ type nodeagentContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
-func newNodeagentContext(ps *pubsub.PubSub) nodeagentContext {
+func newNodeagentContext(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) nodeagentContext {
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.minRebootDelay = minRebootDelay
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
@@ -118,6 +118,8 @@ func newNodeagentContext(ps *pubsub.PubSub) nodeagentContext {
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
 	nodeagentCtx.agentBaseContext.PubSub = ps
+	nodeagentCtx.agentBaseContext.Logger = logger
+	nodeagentCtx.agentBaseContext.Log = log
 	nodeagentCtx.agentBaseContext.ErrorTime = errorTime
 	nodeagentCtx.agentBaseContext.AgentName = agentName
 	nodeagentCtx.agentBaseContext.WarningTime = warningTime
@@ -140,11 +142,15 @@ func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
 	return
 }
 
-// Run : nodeagent run entry function
-func Run(ps *pubsub.PubSub) int {
-	nodeagentCtx := newNodeagentContext(ps)
+// Global to make log calls easier
+var log *base.LogObject
 
-	log = agentbase.Run(&nodeagentCtx)
+// Run : nodeagent run entry function
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	log = logArg
+	nodeagentCtx := newNodeagentContext(ps, loggerArg, logArg)
+
+	agentbase.Run(&nodeagentCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile(log)
@@ -365,7 +371,7 @@ func handleGlobalConfigModify(ctxArg interface{},
 	log.Infof("handleGlobalConfigModify for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, ctxPtr.agentBaseContext.Logger)
 	if gcp != nil && !ctxPtr.GCInitialized {
 		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
@@ -383,7 +389,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, ctxPtr.agentBaseContext.Logger)
 	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }

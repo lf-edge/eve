@@ -36,6 +36,7 @@ type SubscriptionImpl struct {
 	synchronized bool
 	driver       DriverSubscriber
 	defaultName  string
+	logger       *logrus.Logger
 	log          *base.LogObject
 	myAgentName  string // For logging
 	ps           *PubSub
@@ -219,7 +220,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 		}
 	}
 	sub.km.key.Store(key, item)
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if sub.logger.GetLevel() == logrus.DebugLevel {
 		sub.dump("after handleModify")
 	}
 	// Need a copy in case the caller will modify e.g., embedded maps
@@ -250,7 +251,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	// DO NOT log Values. They may contain sensitive information.
 	sub.log.Debugf("pubsub.handleDelete(%s) key %s", name, key)
 	sub.km.key.Delete(key)
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if sub.logger.GetLevel() == logrus.DebugLevel {
 		sub.dump("after handleDelete")
 	}
 	if sub.DeleteHandler != nil {

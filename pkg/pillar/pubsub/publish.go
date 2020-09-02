@@ -51,6 +51,7 @@ type PublicationImpl struct {
 	global      bool
 	defaultName string
 	updaterList *Updaters
+	logger      *logrus.Logger
 	log         *base.LogObject
 
 	driver DriverPublisher
@@ -99,7 +100,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	}
 	pub.km.key.Store(key, newItem)
 
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if pub.logger.GetLevel() == logrus.DebugLevel {
 		pub.dump("after Publish")
 	}
 	pub.updatersNotify(name)
@@ -129,7 +130,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 		return errors.New(errStr)
 	}
 	pub.km.key.Delete(key)
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if pub.logger.GetLevel() == logrus.DebugLevel {
 		pub.dump("after Unpublish")
 	}
 	pub.updatersNotify(name)

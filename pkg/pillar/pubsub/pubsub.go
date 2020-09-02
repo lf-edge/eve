@@ -69,14 +69,16 @@ type keyMap struct {
 type PubSub struct {
 	driver      Driver
 	updaterList *Updaters
+	logger      *logrus.Logger
 	log         *base.LogObject
 }
 
 // New create a new `PubSub` with a given `Driver`.
-func New(driver Driver, logObj *base.LogObject) *PubSub {
+func New(driver Driver, logger *logrus.Logger, log *base.LogObject) *PubSub {
 	return &PubSub{
 		driver: driver,
-		log:    logObj,
+		logger: logger,
+		log:    log,
 	}
 }
 
@@ -110,6 +112,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 		MaxProcessTimeWarn:  options.WarningTime,
 		MaxProcessTimeError: options.ErrorTime,
 		Persistent:          options.Persistent,
+		logger:              p.logger,
 		log:                 p.log,
 		myAgentName:         options.MyAgentName,
 		ps:                  p,
@@ -164,6 +167,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 		km:          keyMap{key: base.NewLockedStringMap()},
 		updaterList: p.updaterList,
 		defaultName: p.driver.DefaultName(),
+		logger:      p.logger,
 		log:         p.log,
 	}
 	// create the driver
@@ -178,8 +182,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 	pub.driver = driver
 
 	pub.populate()
-	// XXX logger vs. event question
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if pub.logger.GetLevel() == logrus.DebugLevel {
 		pub.dump("after populate")
 	}
 	pub.log.Debugf("Publish(%s)\n", name)

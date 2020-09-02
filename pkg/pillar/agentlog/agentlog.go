@@ -547,29 +547,33 @@ func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
 	return originalStdout
 }
 
-func Init(agentName string) *base.LogObject {
+// Init provides both a logger and a logObject
+func Init(agentName string) (*logrus.Logger, *base.LogObject) {
 	agentPid := os.Getpid()
-	log := base.NewSourceLogObject(agentName, agentPid)
+	logger := logrus.New()
+	// Report nano timestamps
+	formatter := logrus.JSONFormatter{
+		TimestampFormat: time.RFC3339Nano,
+	}
+	logger.SetFormatter(&formatter)
+	logger.SetReportCaller(true)
+	log := base.NewSourceLogObject(logger, agentName, agentPid)
+	hook := new(FatalHook)
+	hook.agentName = agentName
+	hook.agentPid = agentPid
+	logger.AddHook(hook)
+	hook2 := new(SourceHook)
+	hook2.agentName = agentName
+	hook2.agentPid = agentPid
+	logger.AddHook(hook2)
+	hook3 := new(SkipCallerHook)
+	logger.AddHook(hook3)
+	// For every separate process we set up output redirection
+	// to /persist/agentdebug (while keeping logs on stdout) and
+	// signal handlers
 	if once() {
-		logrus.SetOutput(os.Stdout)
 		originalStdout := spoofStdFDs(log, agentName)
-		logrus.SetOutput(originalStdout)
-		hook := new(FatalHook)
-		hook.agentName = agentName
-		hook.agentPid = agentPid
-		logrus.AddHook(hook)
-		hook2 := new(SourceHook)
-		hook2.agentName = agentName
-		hook2.agentPid = agentPid
-		logrus.AddHook(hook2)
-		hook3 := new(SkipCallerHook)
-		logrus.AddHook(hook3)
-		// Report nano timestamps
-		formatter := logrus.JSONFormatter{
-			TimestampFormat: time.RFC3339Nano,
-		}
-		logrus.SetFormatter(&formatter)
-		logrus.SetReportCaller(true)
+		logger.SetOutput(originalStdout)
 
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)
@@ -579,7 +583,7 @@ func Init(agentName string) *base.LogObject {
 		eh := func() { printStack(log, agentName, agentPid) }
 		logrus.RegisterExitHandler(eh)
 	}
-	return log
+	return logger, log
 }
 
 var otherIMGdir = ""

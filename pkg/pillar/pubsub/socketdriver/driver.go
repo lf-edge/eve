@@ -13,6 +13,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/sirupsen/logrus"
 )
 
 // Protocol over AF_UNIX or other IPC mechanism
@@ -55,7 +56,8 @@ const (
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
 type SocketDriver struct {
-	Log *base.LogObject
+	Logger *logrus.Logger
+	Log    *base.LogObject
 }
 
 // Publisher return an implementation of `pubsub.DriverPublisher` for
@@ -149,6 +151,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		updaters:       updaterList,
 		differ:         differ,
 		restarted:      restarted,
+		logger:         s.Logger,
 		log:            s.Log,
 	}, nil
 }
@@ -197,6 +200,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		topic:            topic,
 		sockName:         sockName,
 		C:                C,
+		logger:           s.Logger,
 		log:              s.Log,
 	}, nil
 }

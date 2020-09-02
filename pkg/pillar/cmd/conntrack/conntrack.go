@@ -10,11 +10,17 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
-func Run(ps *pubsub.PubSub) int {
+var logger *logrus.Logger
+var log *base.LogObject
+
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	delFlow := flag.Bool("D", false, "Delete flow")
 	delSrcIP := flag.String("s", "", "Delete flow with Srouce IP")
 	delProto := flag.Int("p", 0, "Delete flow with protocol ID")
@@ -54,7 +60,7 @@ func Run(ps *pubsub.PubSub) int {
 
 			number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family, src, proto, port, mark, mask, true)
 			if err != nil {
-				log.Println("ConntrackDeleteIPSrc error:", err)
+				logger.Println("ConntrackDeleteIPSrc error:", err)
 			} else {
 				fmt.Printf("ConntrackDeleteIPSrc: deleted %d flow\n", number)
 			}
@@ -66,7 +72,7 @@ func Run(ps *pubsub.PubSub) int {
 	// XXX args := flag.Args()
 	res, err := netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET)
 	if err != nil {
-		log.Println("ContrackTableList", err)
+		logger.Println("ContrackTableList", err)
 	} else {
 		for i, entry := range res {
 			fmt.Printf("[%d]: %s\n", i, entry.String())
@@ -78,7 +84,7 @@ func Run(ps *pubsub.PubSub) int {
 	}
 	res, err = netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET6)
 	if err != nil {
-		log.Println("ContrackTableList", err)
+		logger.Println("ContrackTableList", err)
 	} else {
 		for i, entry := range res {
 			fmt.Printf("[%d]: %s\n", i, entry.String())

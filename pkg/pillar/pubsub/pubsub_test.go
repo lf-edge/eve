@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,8 +28,9 @@ var (
 )
 
 func TestHandleModify(t *testing.T) {
-	log := base.NewSourceLogObject("test", 1234)
-	ps := New(&EmptyDriver{}, log)
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "test", 1234)
+	ps := New(&EmptyDriver{}, logger, log)
 	sub, err := ps.NewSubscription(SubscriptionOptions{
 		AgentName:  agentName,
 		AgentScope: agentScope,

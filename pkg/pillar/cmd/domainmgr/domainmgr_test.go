@@ -9,14 +9,16 @@
 package domainmgr
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"reflect"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
-	log = base.NewSourceLogObject("domainmgr", 0)
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "domainmgr", 0)
 	type fetchEnvVar struct {
 		config       types.DomainConfig
 		expectOutput map[string]string

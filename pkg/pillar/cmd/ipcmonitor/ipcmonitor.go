@@ -23,14 +23,20 @@ import (
 	"net"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var debugOverride bool // From command line arg
 
-func Run(ps *pubsub.PubSub) int {
+var logger *logrus.Logger
+var log *base.LogObject
+
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 	agentNamePtr := flag.String("a", "zedrouter",
 		"Agent name")
 	agentScopePtr := flag.String("s", "", "agentScope")
@@ -45,9 +51,9 @@ func Run(ps *pubsub.PubSub) int {
 	topic := *topicPtr
 	debugOverride = *debugPtr
 	if debugOverride {
-		log.SetLevel(log.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		log.SetLevel(log.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
 	if *persistentPtr {
 		testPersistent(ps, agentName, agentScope, topic)

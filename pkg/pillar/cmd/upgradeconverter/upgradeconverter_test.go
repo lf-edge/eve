@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 type testEntry struct {
@@ -49,6 +50,7 @@ func newConfigItemValueMap() types.ConfigItemValueMap {
 		types.TS_ENABLED)
 	config.SetGlobalValueString(types.DefaultLogLevel, "warn")
 	config.SetAgentSettingStringValue("zedagent", types.LogLevel, "debug")
+
 	config.SetAgentSettingStringValue("zedagent", types.RemoteLogLevel, "crit")
 	return *config
 }
@@ -101,7 +103,6 @@ func checkNoDir(t *testing.T, dir string) {
 func ucContextForTest() *ucContext {
 	//log.SetLevel(log.DebugLevel)
 	var err error
-	log = base.NewSourceLogObject("upgradeconverter", 0)
 	ctxPtr := &ucContext{}
 	ctxPtr.persistDir, err = ioutil.TempDir(".", "PersistDir")
 	if err != nil {
@@ -128,6 +129,7 @@ func ucContextCleanupDirs(ctxPtr *ucContext) {
 }
 
 func runTestMatrix(t *testing.T, testMatrix map[string]testEntry) {
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "domainmgr", 0)
 	oldConfig := oldGlobalConfig()
 	newConfig := newConfigItemValueMap()
 

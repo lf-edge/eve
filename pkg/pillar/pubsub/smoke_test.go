@@ -10,11 +10,13 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/sirupsen/logrus"
 )
 
 func foo() {
-	log := base.NewSourceLogObject("foo", 1234)
-	driver := socketdriver.SocketDriver{Log: log}
-	ps := pubsub.New(&driver, log)
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "test", 1234)
+	driver := socketdriver.SocketDriver{Logger: logger, Log: log}
+	ps := pubsub.New(&driver, logger, log)
 	fmt.Println(ps)
 }

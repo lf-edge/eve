@@ -378,7 +378,7 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 func TestCompressDPCL(t *testing.T) {
 
-	log := base.NewSourceLogObject("test", 1234)
+	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
 	logrus.SetLevel(logrus.DebugLevel)
 
 	for testname, test := range testMatrix {

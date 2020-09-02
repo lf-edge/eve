@@ -29,6 +29,7 @@ type Subscriber struct {
 	topic            string
 	dirName          string
 	C                chan<- pubsub.Change
+	logger           *logrus.Logger
 	log              *base.LogObject
 }
 
@@ -226,7 +227,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				s.log.Errorln(errStr)
 				continue
 			}
-			if logrus.GetLevel() == logrus.DebugLevel {
+			if s.logger.GetLevel() == logrus.DebugLevel {
 				s.log.Debugf("connectAndRead(%s): delete type %s key %s\n", s.name, t, string(key))
 			}
 			return msg, string(key), nil
@@ -251,7 +252,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				s.log.Errorln(errStr)
 				continue
 			}
-			if logrus.GetLevel() == logrus.DebugLevel {
+			if s.logger.GetLevel() == logrus.DebugLevel {
 				s.log.Debugf("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
 			}
 			return msg, string(key), val

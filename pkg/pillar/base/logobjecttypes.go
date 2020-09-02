@@ -105,6 +105,7 @@ const (
 type LogObject struct {
 	Initialized bool
 	Fields      map[string]interface{}
+	logger      *logrus.Logger
 }
 
 // logObjectMap tracks objects for NewLogObject
@@ -167,18 +168,24 @@ func InitLogObject(logBase *LogObject, object *LogObject, objType LogObjectType,
 	if !uuid.Equal(objUUID, uuid.UUID{}) {
 		fields["obj_uuid"] = objUUID.String()
 	}
-	object.Initialized = true
 	object.Fields = fields
-	if logBase != nil {
+	if logBase == nil {
+		// Happens if we see a delete for something we don't have
+		// created
+		// XXX add logbase to all the LogModify and LogDelete functions
+		object.logger = logrus.StandardLogger()
+	} else {
+		object.logger = logBase.logger
 		object.Merge(logBase)
 	}
+	object.Initialized = true
 	logObjectMap.Store(key, object)
 }
 
 // NewSourceLogObject : create an object with agentName and agentPid
 // Since there might be multiple calls to this for the same agent
 // we check for an existing one for the agentName
-func NewSourceLogObject(agentName string, agentPid int) *LogObject {
+func NewSourceLogObject(logger *logrus.Logger, agentName string, agentPid int) *LogObject {
 	// Check if we already have an object with the given agentName
 	var object *LogObject
 	value, ok := logSourceObjectMap.Load(agentName)
@@ -192,6 +199,7 @@ func NewSourceLogObject(agentName string, agentPid int) *LogObject {
 	}
 
 	object = new(LogObject)
+	object.logger = logger
 	object.Initialized = true
 	fields := make(map[string]interface{})
 	fields["source"] = agentName
@@ -213,6 +221,11 @@ func NewRelationObject(logBase *LogObject, relationObjectType RelationObjectType
 	fromObjType LogObjectType, fromObjNameOrKey string,
 	toObjType LogObjectType, toObjNameOrKey string) *LogObject {
 
+	if logBase == nil {
+		logrus.Fatalf("No logBase for %s to %s",
+			fromObjNameOrKey, toObjNameOrKey)
+	}
+
 	object := new(LogObject)
 	if object == nil {
 		logrus.Fatal("Relation object allocation failed")
@@ -226,12 +239,10 @@ func NewRelationObject(logBase *LogObject, relationObjectType RelationObjectType
 	fields["to_obj_type"] = toObjType
 	fields["to_obj_name_or_key"] = toObjNameOrKey
 
+	object.logger = logBase.logger
 	object.Initialized = true
 	object.Fields = fields
-
-	if logBase != nil {
-		object.Merge(logBase)
-	}
+	object.Merge(logBase)
 	return object
 }
 
@@ -314,6 +325,7 @@ func (object *LogObject) Clone() *LogObject {
 	for key, value := range object.Fields {
 		newLogObject.Fields[key] = value
 	}
+	newLogObject.logger = object.logger
 	newLogObject.Initialized = true
 	return newLogObject
 }

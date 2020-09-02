@@ -58,6 +58,7 @@ var (
 	vaultStatusParams = []string{"status"}
 	debug             = false
 	debugOverride     bool // From command line arg
+	logger            *logrus.Logger
 	log               *base.LogObject
 )
 
@@ -537,21 +538,19 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
-func Run(ps *pubsub.PubSub) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+	logger = loggerArg
+	log = logArg
 
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	} else {
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
-
-	// Sending json log format to stdout
-	log = agentlog.Init(agentName)
-
 	if len(flag.Args()) == 0 {
 		log.Error("Insufficient arguments")
 		return 1
@@ -655,7 +654,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -672,6 +671,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride)
+		debugOverride, logger)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
