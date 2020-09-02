@@ -27,13 +27,18 @@ mkdir /mnt/rootfs/sys >/dev/null 2>&1
 mkdir /mnt/rootfs/proc >/dev/null 2>&1
 mkdir /dev/pts >/dev/null 2>&1
 mkdir /dev/shm >/dev/null 2>&1
+mkdir /dev/mqueue >/dev/null 2>&1
 mount -o bind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
 mount -o bind /proc /mnt/rootfs/proc
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
 mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
 mount -t tmpfs -o nodev,nosuid,noexec,size=20% tmp /mnt/rootfs/tmp
+mount -t mqueue -o nodev,nosuid,noexec none /mnt/rootfs/dev/mqueue
 ln -s /proc/self/fd /mnt/rootfs/dev/fd
+ln -s /proc/self/fd/0 /mnt/rootfs/dev/stdin
+ln -s /proc/self/fd/1 /mnt/rootfs/dev/stdout
+ln -s /proc/self/fd/2 /mnt/rootfs/dev/stderr
 
 ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
 gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`
