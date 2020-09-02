@@ -32,6 +32,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
+		MyAgentName: agentName,
 		TopicImpl:   types.ControllerCert{},
 		Activate:    false,
 		Ctx:         ctx,
@@ -49,6 +50,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	// Look for edge node certs which will be used for decryption
 	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "tpmmgr",
+		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
 		Ctx:         ctx,
@@ -64,6 +66,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
+		MyAgentName: agentName,
 		TopicImpl:   types.CipherContext{},
 		Activate:    false,
 		Ctx:         ctx,
@@ -79,6 +82,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		MyAgentName:   agentName,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -102,6 +107,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Ctx:           ctx,
 		AgentName:     "nim",
+		MyAgentName:   agentName,
 	})
 	if err != nil {
 		return err
@@ -119,6 +125,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DatastoreConfig{},
 		Ctx:           ctx,
 	})
@@ -163,6 +170,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DownloaderConfig{},
 		Ctx:           ctx,
 	})
@@ -179,6 +187,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ResolveConfig{},
 		Ctx:           ctx,
 	})

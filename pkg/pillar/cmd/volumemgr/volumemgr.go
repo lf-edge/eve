@@ -129,6 +129,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &ctx,
@@ -255,6 +256,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ZedAgentStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
@@ -272,6 +274,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for DownloaderStatus from downloader
 	subDownloaderStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "downloader",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DownloaderStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
@@ -290,6 +293,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for VerifyImageStatus from verifier
 	subVerifyImageStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "verifier",
+		MyAgentName:    agentName,
 		TopicImpl:      types.VerifyImageStatus{},
 		Activate:       false,
 		Ctx:            &ctx,
@@ -310,6 +314,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCertObjConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.CertObjConfig{},
 			Activate:      false,
 			Ctx:           &ctx,
@@ -328,6 +333,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for ResolveStatus from downloader
 	subResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "downloader",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ResolveStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
@@ -350,6 +356,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		WarningTime:    warningTime,
 		ErrorTime:      errorTime,
 		AgentName:      "zedagent",
+		MyAgentName:    agentName,
 		TopicImpl:      types.ContentTreeConfig{},
 		Ctx:            &ctx,
 	})
@@ -366,6 +373,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.VolumeConfig{},
 		Ctx:           &ctx,
 	})
@@ -383,6 +391,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ErrorTime:     errorTime,
 		AgentName:     "zedmanager",
 		AgentScope:    types.AppImgObj,
+		MyAgentName:   agentName,
 		TopicImpl:     types.VolumeRefConfig{},
 		Ctx:           &ctx,
 	})
@@ -399,6 +408,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "baseosmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ContentTreeConfig{},
 		Ctx:           &ctx,
 	})

@@ -1137,6 +1137,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		// Look for global config such as log levels
 		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "",
+			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &ctx,
@@ -1154,6 +1155,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "nodeagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.NodeAgentStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
@@ -1179,6 +1181,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ctx.pubAttestQuote = pubAttestQuote
 		subAttestNonce, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.AttestNonce{},
 			Activate:      false,
 			Ctx:           &ctx,

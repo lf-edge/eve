@@ -158,6 +158,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
@@ -175,6 +176,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
@@ -196,6 +198,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
@@ -323,6 +326,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subNetworkInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.NetworkInstanceConfig{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
@@ -342,6 +346,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "zedmanager",
+		MyAgentName:    agentName,
 		TopicImpl:      types.AppNetworkConfig{},
 		Activate:       false,
 		Ctx:            &zedrouterCtx,
@@ -361,6 +366,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Subscribe to AppNetworkConfig from zedmanager
 	subAppNetworkConfigAg, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AppNetworkConfig{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,

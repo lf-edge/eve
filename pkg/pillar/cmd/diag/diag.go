@@ -129,6 +129,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
+			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &ctx,
@@ -194,6 +195,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subLedBlinkCounter, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
+			MyAgentName:   agentName,
 			TopicImpl:     types.LedBlinkCounter{},
 			Activate:      false,
 			Ctx:           &ctx,
@@ -212,6 +214,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
+			MyAgentName:   agentName,
 			TopicImpl:     types.DeviceNetworkStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
@@ -231,6 +234,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDevicePortConfigList, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
+			MyAgentName:   agentName,
 			Persistent:    true,
 			TopicImpl:     types.DevicePortConfigList{},
 			Activate:      false,
@@ -247,6 +251,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedclient",
+		MyAgentName:   agentName,
 		CreateHandler: handleOnboardStatusModify,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,

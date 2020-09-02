@@ -185,6 +185,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &nodeagentCtx,
@@ -202,6 +203,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedclient",
+		MyAgentName:   agentName,
 		CreateHandler: handleOnboardStatusModify,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,
@@ -227,10 +229,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName: "domainmgr",
-		TopicImpl: types.DomainStatus{},
-		Activate:  false,
-		Ctx:       &nodeagentCtx,
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.DomainStatus{},
+		Activate:    false,
+		Ctx:         &nodeagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -295,6 +298,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// subscribe to zboot status events
 	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "baseosmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ZbootStatus{},
 		Activate:      false,
 		Ctx:           &nodeagentCtx,
@@ -312,6 +316,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// subscribe to zedagent status events
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ZedAgentStatus{},
 		Activate:      false,
 		Ctx:           &nodeagentCtx,

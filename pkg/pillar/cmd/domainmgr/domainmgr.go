@@ -259,6 +259,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
+		MyAgentName: agentName,
 		TopicImpl:   types.ControllerCert{},
 		Activate:    false,
 		Ctx:         &domainCtx,
@@ -276,6 +277,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for edge node certs which will be used for decryption
 	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "tpmmgr",
+		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
 		Ctx:         &domainCtx,
@@ -291,6 +293,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
+		MyAgentName: agentName,
 		TopicImpl:   types.CipherContext{},
 		Activate:    false,
 		Ctx:         &domainCtx,
@@ -308,6 +311,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
+			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &domainCtx,
@@ -326,6 +330,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedclient",
+		MyAgentName:   agentName,
 		CreateHandler: handleOnboardStatusModify,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,
@@ -343,6 +348,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
+			MyAgentName:   agentName,
 			TopicImpl:     types.DeviceNetworkStatus{},
 			Activate:      false,
 			Ctx:           &domainCtx,
@@ -445,6 +451,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subPhysicalIOAdapter, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
+			MyAgentName:   agentName,
 			TopicImpl:     types.PhysicalIOAdapterList{},
 			Activate:      false,
 			Ctx:           &domainCtx,
@@ -485,6 +492,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDomainConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:      "zedmanager",
+			MyAgentName:    agentName,
 			TopicImpl:      types.DomainConfig{},
 			Activate:       false,
 			Ctx:            &domainCtx,

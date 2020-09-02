@@ -185,6 +185,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
+		MyAgentName: agentName,
 		TopicImpl:   types.ControllerCert{},
 		Activate:    false,
 		Ctx:         &nimCtx,
@@ -202,6 +203,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for edge node certs which will be used for decryption
 	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "tpmmgr",
+		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
 		Ctx:         &nimCtx,
@@ -217,6 +219,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
+		MyAgentName: agentName,
 		TopicImpl:   types.CipherContext{},
 		Activate:    false,
 		Ctx:         &nimCtx,
@@ -233,6 +236,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &nimCtx,
@@ -265,6 +269,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// 3. "lastresort" derived from the set of network interfaces
 	subDevicePortConfigA, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
@@ -282,6 +287,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subDevicePortConfigO, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
+		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
@@ -299,6 +305,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subDevicePortConfigS, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     agentName,
+		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
@@ -316,6 +323,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
@@ -333,6 +341,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
 		TopicImpl:     types.NetworkInstanceStatus{},
 		Activate:      false,
 		Ctx:           &nimCtx,
