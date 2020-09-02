@@ -62,6 +62,7 @@ type IoBundle struct {
 	Irq     string // E.g., "5"
 	Ioports string // E.g., "2f8-2ff"
 	Serial  string // E.g., "/dev/ttyS1"
+	UsbAddr string // E.g., "1:2.3"
 
 	// Attributes Derived and assigned locally ( not from controller)
 
@@ -111,6 +112,11 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 			ib.Serial, phyAdapter.Phyaddr.Serial)
 		return true
 	}
+	if phyAdapter.Phyaddr.UsbAddr != ib.UsbAddr {
+		log.Infof("USB address changed from %s to %s",
+			ib.UsbAddr, phyAdapter.Phyaddr.UsbAddr)
+		return true
+	}
 	if phyAdapter.Phyaddr.Irq != ib.Irq {
 		log.Infof("Irq changed from %s to %s", ib.Irq, phyAdapter.Phyaddr.Irq)
 		return true
@@ -152,6 +158,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.AssignmentGroup = phyAdapter.Assigngrp
 	ib.Ifname = phyAdapter.Phyaddr.Ifname
 	ib.PciLong = phyAdapter.Phyaddr.PciLong
+	ib.UsbAddr = phyAdapter.Phyaddr.UsbAddr
 	ib.Irq = phyAdapter.Phyaddr.Irq
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
