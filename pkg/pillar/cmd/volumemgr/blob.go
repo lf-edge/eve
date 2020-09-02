@@ -486,7 +486,12 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 	}
 	newBlobStatus := make([]*types.BlobStatus, 0)
 	for _, blobInfo := range blobInfoList {
-		mediaType := mediaMap[blobInfo.Digest]
+		mediaType, ok := mediaMap[blobInfo.Digest]
+		if !ok {
+			// if we could not find the media type, we do not know what this blob is, so we ignore it
+			log.Infof("populateInitBlobStatus: blob %s in CAS could not get mediaType", blobInfo.Digest)
+			continue
+		}
 		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
 			log.Infof("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
