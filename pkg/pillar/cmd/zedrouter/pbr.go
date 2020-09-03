@@ -243,53 +243,6 @@ func isErrno(err error, errno syscall.Errno) bool {
 	return e1 == errno
 }
 
-// Handle an IP address change
-// Returns the ifname if there was a change
-func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
-	change netlink.AddrUpdate) string {
-
-	changed := false
-	if change.NewAddr {
-		changed = devicenetwork.IfindexToAddrsAdd(log, change.LinkIndex,
-			change.LinkAddress.IP)
-		if changed {
-			_, linkType, err := devicenetwork.IfindexToName(log, change.LinkIndex)
-			if err != nil {
-				log.Errorf("XXX NewAddr IfindexToName(%d) failed %s\n",
-					change.LinkIndex, err)
-			}
-			if linkType == "bridge" {
-				devicenetwork.AddSourceRule(log, change.LinkIndex, change.LinkAddress,
-					linkType == "bridge")
-			}
-		}
-	} else {
-		changed = devicenetwork.IfindexToAddrsDel(log, change.LinkIndex,
-			change.LinkAddress.IP)
-		if changed {
-			_, linkType, err := devicenetwork.IfindexToName(log, change.LinkIndex)
-			if err != nil {
-				log.Errorf("XXX DelAddr IfindexToName(%d) failed %s\n",
-					change.LinkIndex, err)
-			}
-			if linkType == "bridge" {
-				devicenetwork.DelSourceRule(log, change.LinkIndex, change.LinkAddress,
-					linkType == "bridge")
-			}
-		}
-	}
-	if changed {
-		ifname, _, err := devicenetwork.IfindexToName(log, change.LinkIndex)
-		if err != nil {
-			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
-				change.LinkIndex, err)
-			return ""
-		}
-		return ifname
-	}
-	return ""
-}
-
 func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	oifIndex int, ipnet *net.IPNet) error {
 	log.Debugf("AddOverlayRuleAndRoute: IIF index %d, Prefix %s, OIF index %d",

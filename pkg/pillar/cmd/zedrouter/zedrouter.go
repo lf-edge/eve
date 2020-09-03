@@ -384,7 +384,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	PbrInit(&zedrouterCtx)
 	routeChanges := devicenetwork.RouteChangeInit(log)
-	addrChanges := devicenetwork.AddrChangeInit(log)
 	linkChanges := devicenetwork.LinkChangeInit(log)
 
 	// Publish network metrics for zedagent every 10 seconds
@@ -465,27 +464,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
-
-		case change, ok := <-addrChanges:
-			start := time.Now()
-			if !ok {
-				log.Errorf("addrChanges closed\n")
-				addrChanges = devicenetwork.AddrChangeInit(log)
-				break
-			}
-			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
-				change)
-			if ifname != "" &&
-				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
-					ifname) {
-				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
-				// Even if ethN isn't individually assignable, it
-				// could be used for a bridge.
-				maybeUpdateBridgeIPAddr(
-					&zedrouterCtx, ifname)
-			}
-			ps.CheckMaxTimeTopic(agentName, "addrChanges", start,
-				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
 			start := time.Now()
