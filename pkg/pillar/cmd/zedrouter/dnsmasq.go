@@ -135,8 +135,13 @@ func createDnsmasqConfiglet(
 	file.WriteString(fmt.Sprintf("dhcp-leasefile=%s\n",
 		dnsmasqLeasePath(bridgeName)))
 
-	if len(dnsServers) != 0 {
-		// Pick file where dnsmasq should send DNS read upstream
+	// Pick file where dnsmasq should send DNS read upstream
+	// If we have no uplink for this network instance that is nowhere
+	// If we have an uplink but no dnsServers for it, then we let
+	// dnsmasq use the host's /etc/resolv.conf
+	if uplink == "" {
+		file.WriteString("no-resolv\n")
+	} else if len(dnsServers) != 0 {
 		for _, s := range dnsServers {
 			file.WriteString(fmt.Sprintf("server=%s@%s\n", s, uplink))
 		}
