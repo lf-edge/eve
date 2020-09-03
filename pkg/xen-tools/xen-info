@@ -9,7 +9,15 @@ bail() {
 [ $# -ne 1 ] && bail "Usage: $0 <domain name>"
 
 # find the domain
+# Sometimes after EVE reboot, we called xen-info before xen-start finished executing,
+# which led to domian not found error. To prevent that, we wait for sometime for the domain to come up.
+waited=0
 ID=$(xl domid "$1" 2>/dev/null)
+while [ -z "$ID" ] && [ "$waited" -lt 60 ]; do
+        ID=$(xl domid "$1" 2>/dev/null)
+        sleep 3
+        waited=$((waited + 3))
+done
 [ -z "$ID" ] && bail "Couldn't find domain ID for domain $1"
 
 # we expect to get rbpscd where every letter can also be a dash (-)
