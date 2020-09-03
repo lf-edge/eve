@@ -13,7 +13,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 	"net"
-	"strconv"
 	"strings"
 
 	"github.com/eriknordmark/netlink"
@@ -191,6 +190,17 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 		return errors.New(errStr), ""
 	}
 	disableIcmpRedirects(bridgeName)
+
+	// Get Ifindex of bridge and store it in network instance status
+	bridgeLink, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		errStr := fmt.Sprintf("doCreateBridge: LinkByName(%s) failed: %s",
+			bridgeName, err)
+		log.Errorln(errStr)
+		return errors.New(errStr), ""
+	}
+	index := bridgeLink.Attrs().Index
+	status.BridgeIfindex = index
 
 	// For the case of Lisp/Vpn networks, we route all traffic coming from
 	// the bridge to a dummy interface with MTU 1280. This is done to
@@ -562,8 +572,6 @@ func doNetworkInstanceSanityCheck(
 		// Do nothing
 	case types.NetworkInstanceTypeCloud:
 		// Do nothing
-	case types.NetworkInstanceTypeMesh:
-		// Do nothing
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
 		return errors.New(err)
@@ -659,10 +667,6 @@ func DoNetworkInstanceStatusDhcpRangeSanityCheck(
 	status *types.NetworkInstanceStatus) error {
 	// For Mesh type network instance with Crypto V6 addressing, no dhcp-range
 	// will be specified.
-	if status.Type == types.NetworkInstanceTypeMesh &&
-		status.IpType == types.AddressTypeCryptoIPV6 {
-		return nil
-	}
 	if status.DhcpRange.Start == nil || status.DhcpRange.Start.IsUnspecified() {
 		err := fmt.Sprintf("DhcpRange Start Unspecified: %+v\n",
 			status.DhcpRange.Start)
@@ -1033,24 +1037,6 @@ func setBridgeIPAddr(
 		}
 		log.Infof("Bridge: %s, Link: %s, ipAddr: %s\n",
 			status.BridgeName, link, ipAddr)
-	case types.NetworkInstanceTypeMesh:
-		status.Ipv4Eid = (status.Subnet.IP != nil && status.Subnet.IP.To4() != nil)
-		if status.Ipv4Eid {
-			// Require an IPv4 gateway
-			if status.Gateway == nil {
-				errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
-					status.BridgeName, status.Key(),
-					status.Subnet.String())
-				return errors.New(errStr)
-			}
-			ipAddr = status.Gateway.String()
-			log.Infof("setBridgeIPAddr: Bridge %s assigned IPv4 EID %s",
-				status.BridgeName, ipAddr)
-		} else {
-			ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
-			log.Infof("setBridgeIPAddr: Bridge %s assigned IPv6 EID %s",
-				status.BridgeName, ipAddr)
-		}
 	}
 
 	// If not we do a local allocation
@@ -1485,6 +1471,7 @@ func natActivate(ctx *zedrouterContext,
 				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
+		devicenetwork.AddSourceRule(log, status.BridgeIfindex, status.Subnet, true)
 	}
 	return nil
 }
@@ -1506,6 +1493,7 @@ func natInactivate(ctx *zedrouterContext,
 	if err != nil {
 		log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 	}
+	devicenetwork.DelSourceRule(log, status.BridgeIfindex, status.Subnet, true)
 	err = PbrRouteDeleteAll(status.BridgeName, oldUplinkIntf)
 	if err != nil {
 		log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
@@ -1845,8 +1833,6 @@ func doNetworkInstanceFallback(
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)
 		}
-	case types.NetworkInstanceTypeMesh:
-		// XXX Add support for Mesh network instance
 	}
 	status.NeedIntfUpdate = false
 	publishNetworkInstanceStatus(ctx, status)

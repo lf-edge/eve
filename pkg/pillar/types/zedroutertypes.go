@@ -1586,10 +1586,11 @@ func (config NetworkXObjectConfig) Key() string {
 }
 
 type NetworkInstanceInfo struct {
-	BridgeNum    int
-	BridgeName   string // bn<N>
-	BridgeIPAddr string
-	BridgeMac    string
+	BridgeNum     int
+	BridgeName    string // bn<N>
+	BridgeIPAddr  string
+	BridgeMac     string
+	BridgeIfindex int
 
 	// interface names for the Logicallabel
 	IfNameList []string // Recorded at time of activate
@@ -1750,7 +1751,6 @@ const (
 	NetworkInstanceTypeSwitch      NetworkInstanceType = 1
 	NetworkInstanceTypeLocal       NetworkInstanceType = 2
 	NetworkInstanceTypeCloud       NetworkInstanceType = 3
-	NetworkInstanceTypeMesh        NetworkInstanceType = 4
 	NetworkInstanceTypeHoneyPot    NetworkInstanceType = 5
 	NetworkInstanceTypeTransparent NetworkInstanceType = 6
 	NetworkInstanceTypeLast        NetworkInstanceType = 255
