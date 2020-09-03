@@ -1456,11 +1456,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
-	numOfContainerDisks := 0
 	for i, dc := range config.DiskConfigList {
-		if dc.Format == zconfig.Format_CONTAINER {
-			numOfContainerDisks++
-		}
 		ds := &status.DiskStatusList[i]
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
@@ -1486,12 +1482,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			xv = "xvd" + string(int('a')+i)
 		}
 		ds.Vdev = xv
-	}
-	if numOfContainerDisks > 1 {
-		err := `Bundle contains more than one container disk, running multiple containers
-				inside a pod is not supported now.`
-		log.Errorf(err)
-		return fmt.Errorf(err)
 	}
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
