@@ -283,6 +283,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	var pciAssignments []typeAndPCI
 	var irqAssignments []string
 	var ioportsAssignments []string
+	var usbAssignments []string
 
 	for _, irq := range config.IRQs {
 		irqString := fmt.Sprintf("%d", irq)
@@ -322,6 +323,10 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 			if ib.Serial != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.FML) {
 				log.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
+			}
+			if ib.UsbAddr != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.PV) {
+				log.Infof("Adding USB <%s>\n", ib.UsbAddr)
+				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
 			}
 		}
 	}
@@ -376,6 +381,22 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	if serialString != "" {
 		file.WriteString(fmt.Sprintf("serial = [%s]\n", serialString))
 	}
+	if len(usbAssignments) != 0 {
+		log.Infof("USB assignments %v\n", usbAssignments)
+		cfg := fmt.Sprintf("usbctrl = ['type=auto, version=2, ports=%d']\n", 6)
+		cfg += fmt.Sprintf("usbdev = [")
+		for i, UsbAddr := range usbAssignments {
+			if i > 0 {
+				cfg = cfg + ", "
+			}
+			bus, addr := usbBusPort(UsbAddr)
+			cfg = cfg + fmt.Sprintf("'hostbus=%s,hostaddr=%s,controller=0,port=%d'", bus, addr, i)
+		}
+		cfg = cfg + "]\n"
+		log.Debugf("Adding pci config <%s>\n", cfg)
+		file.WriteString(fmt.Sprintf("%s\n", cfg))
+	}
+
 	// XXX log file content: log.Infof("Created %s: %s
 	return nil
 }
