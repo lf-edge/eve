@@ -417,6 +417,7 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs.VolumeID = vrc.VolumeID
 		vrs.GenerationCounter = vrc.GenerationCounter
 		vrs.RefCount = vrc.RefCount
+		vrs.MountDir = vrc.MountDir
 		vrs.PendingAdd = true
 	}
 

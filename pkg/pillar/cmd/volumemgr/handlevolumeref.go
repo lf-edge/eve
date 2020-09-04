@@ -43,6 +43,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			VolumeID:          config.VolumeID,
 			GenerationCounter: config.GenerationCounter,
 			RefCount:          config.RefCount,
+			MountDir:          config.MountDir,
 			State:             types.INITIAL, // Waiting for VolumeConfig from zedagent
 		}
 	}

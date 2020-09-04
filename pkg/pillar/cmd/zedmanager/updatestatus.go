@@ -234,6 +234,7 @@ func doInstall(ctx *zedmanagerContext,
 			VolumeID:          vrc.VolumeID,
 			GenerationCounter: vrc.GenerationCounter,
 			RefCount:          vrc.RefCount,
+			MountDir:          vrc.MountDir,
 			PendingAdd:        true,
 			State:             types.INITIAL,
 		}
