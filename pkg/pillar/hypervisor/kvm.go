@@ -20,7 +20,7 @@ import (
 
 //TBD: Have a better way to calculate this number.
 //For now it is based on some trial-and-error experiments
-const qemuOverHead = int64(500 * 1024 * 1024)
+const qemuOverHead = int64(600 * 1024 * 1024)
 
 // We build device model around PCIe topology according to best practices
 //    https://github.com/qemu/qemu/blob/master/docs/pcie.txt
