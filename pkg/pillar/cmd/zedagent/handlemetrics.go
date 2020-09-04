@@ -963,7 +963,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		}
 
 		ContentResourcesInfo := new(info.ContentResources)
-		ContentResourcesInfo.CurSizeBytes = ctStatus.MaxDownloadSize
+		ContentResourcesInfo.CurSizeBytes = uint64(ctStatus.TotalSize)
 		ReportContentInfo.Resources = ContentResourcesInfo
 
 		ReportContentInfo.Sha256 = ctStatus.ContentSha256
