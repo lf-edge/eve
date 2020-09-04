@@ -6,7 +6,6 @@ package hypervisor
 import (
 	"errors"
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
@@ -82,7 +81,7 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 	}
 
 	args := []string{"/etc/xen/scripts/xen-start", domainName, file.Name()}
-	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, 0, args); err != nil {
+	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, &status, 0, args); err != nil {
 		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
 	}
 
@@ -232,10 +231,12 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	var diskStrings []string
 	var p9Strings []string
 	for i, ds := range diskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
+		switch ds.Devtype {
+		case "":
+		case "9P":
 			p9Strings = append(p9Strings,
 				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FileLocation))
-		} else {
+		default:
 			access := "rw"
 			if ds.ReadOnly {
 				access = "ro"

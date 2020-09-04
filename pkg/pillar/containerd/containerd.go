@@ -625,7 +625,7 @@ func CtrDeleteContainer(containerID string) error {
 // filesystem to be available under `dirname specFile`/lower and we will be mounting
 // it R/O into the container. On top of that we expect the usual suspects of /run,
 // /persist and /config to be taken care of by the OCI config that lk produced.
-func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOverhead int64, args []string) error {
+func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, domStatus *types.DomainStatus, memOverhead int64, args []string) error {
 	config := "/containers/services/" + linuxkit + "/config.json"
 	rootfs := "/containers/services/" + linuxkit + "/rootfs"
 
@@ -634,6 +634,7 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 	if err != nil {
 		return fmt.Errorf("LKTaskLaunch: can't open spec file %s %v", config, err)
 	}
+	defer f.Close()
 
 	spec, err := NewOciSpec(name)
 	if err != nil {
@@ -653,7 +654,7 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, memOv
 		if memOverhead > 0 {
 			spec.AdjustMemLimit(*domSettings, memOverhead)
 		}
-		spec.UpdateMounts(domSettings.DiskConfigList)
+		spec.UpdateMountsNested(domStatus.DiskStatusList)
 	}
 
 	if args != nil {

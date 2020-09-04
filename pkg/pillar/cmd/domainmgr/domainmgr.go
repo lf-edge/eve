@@ -1133,15 +1133,27 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.IoAdapterList = config.IoAdapterList
 	}
 
-	if status.IsContainer && (config.IsCipher || config.CloudInitUserData != nil) {
-		envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
-		if err != nil {
-			fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
-			log.Error(fetchError)
-			status.SetErrorNow(fetchError.Error())
+	// Pre-flight checks for containers
+	if config.IsContainer {
+		if len(status.DiskStatusList) == 0 || status.DiskStatusList[0].Format != zconfig.Format_CONTAINER {
+			err := fmt.Errorf("doActivate failed: containers must have the first volume of type OCI")
+			log.Error(err.Error())
+			status.SetErrorNow(err.Error())
 			return
+		} else {
+			status.DiskStatusList[0].MountDir = "/"
 		}
-		status.EnvVariables = envList
+
+		if config.IsCipher || config.CloudInitUserData != nil {
+			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
+			if err != nil {
+				fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
+				log.Error(fetchError)
+				status.SetErrorNow(fetchError.Error())
+				return
+			}
+			status.EnvVariables = envList
+		}
 	}
 
 	// Assign any I/O devices
@@ -1149,28 +1161,42 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	// Finish preparing for container runtime.
 	for _, ds := range status.DiskStatusList {
-		if ds.Format != zconfig.Format_CONTAINER {
-			continue
-		}
+		switch ds.Format {
+		case zconfig.Format_FmtUnknown:
+			// do nothing
+		case zconfig.Format_CONTAINER:
+			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
+			if err := ctx.casClient.MountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
+				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+					snapshotID, config.UUIDandVersion.UUID, err)
+				log.Error(err.Error())
+				status.SetErrorNow(err.Error())
+				return
+			}
 
-		snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-		if err := ctx.casClient.MountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
-			err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
-				snapshotID, config.UUIDandVersion.UUID, err)
-			log.Error(err.Error())
-			status.SetErrorNow(err.Error())
-			return
-		}
+			// XXX apparently this is under the appInstID and not under
+			// the ImageID aka VolumeID
+			if err := containerd.PrepareMount(config.UUIDandVersion.UUID,
+				ds.FileLocation, status.EnvVariables,
+				len(status.DiskStatusList)); err != nil {
 
-		// XXX apparently this is under the appInstID and not under
-		// the ImageID aka VolumeID
-		if err := containerd.PrepareMount(config.UUIDandVersion.UUID,
-			ds.FileLocation, status.EnvVariables,
-			len(status.DiskStatusList)); err != nil {
-
-			log.Errorf("Failed to create ctr bundle. Error %s", err)
-			status.SetErrorNow(err.Error())
-			return
+				log.Errorf("Failed to create ctr bundle. Error %s", err)
+				status.SetErrorNow(err.Error())
+				return
+			}
+		default:
+			// assume everything else to be disk formats
+			imgInfo, err := diskmetrics.GetImgInfo(log, ds.FileLocation)
+			if err == nil && imgInfo.Format != strings.ToLower(ds.Format.String()) {
+				err = fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img %v\n"+
+					"Note: Format mismatch may be because of disk corruption also.",
+					ds.Format, imgInfo.Format)
+			}
+			if err != nil {
+				log.Errorf("Failed to check disk format: %v", err.Error())
+				status.SetErrorNow(err.Error())
+				return
+			}
 		}
 	}
 
@@ -1456,6 +1482,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
+	need9P := false
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
 		ds.ReadOnly = dc.ReadOnly
@@ -1466,22 +1493,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Format == zconfig.Format_CONTAINER {
-			ds.Devtype = "container"
+			ds.Devtype = ""
+			need9P = true
 		} else {
 			ds.Devtype = "hdd"
 		}
-		var xv string
-		if status.IsContainer {
-			// map from i=1 to xvdb, 2 to xvdc etc
-			// For container instances xvda will be used for container disk
-			// So for other disks we are starting from xvdb
-			// Currently, we are not supporting multiple container disks inside a pod
-			xv = "xvd" + string(int('b')+i)
-		} else {
-			// map from i=1 to xvda, 2 to xvdb etc
-			xv = "xvd" + string(int('a')+i)
-		}
-		ds.Vdev = xv
+		// map from i=1 to xvdb, 2 to xvdc etc
+		ds.Vdev = "xvd" + string(int('a')+i)
 	}
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
@@ -1495,6 +1513,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 					*ds)
 			}
 		}
+	}
+	if need9P {
+		status.DiskStatusList = append(status.DiskStatusList, types.DiskStatus{
+			FileLocation: "/mnt",
+			Devtype:      "9P",
+			ReadOnly:     false,
+		})
 	}
 	return nil
 }
@@ -1539,22 +1564,6 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 				config.Key(), adapter.Type, adapter.Name, ibp.Phylabel)
 			ibp.UsedByUUID = config.UUIDandVersion.UUID
 		}
-	}
-	return nil
-}
-
-// checkDiskFormat will check the disk corruption and format mismatch
-// by comparing the output from 'qemu-img info' and the format passed
-// in object in config
-func checkDiskFormat(diskStatus types.DiskStatus) error {
-	imgInfo, err := diskmetrics.GetImgInfo(log, diskStatus.FileLocation)
-	if err != nil {
-		return err
-	}
-	if imgInfo.Format != strings.ToLower(diskStatus.Format.String()) {
-		return fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img %v\n"+
-			"Note: Format mismatch may be because of disk corruption also.",
-			diskStatus.Format, imgInfo.Format)
 	}
 	return nil
 }
@@ -1793,15 +1802,6 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 
 	filename := xenCfgFilename(status.AppNum)
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s", status.DomainName, filename)
-	for _, ds := range status.DiskStatusList {
-		if ds.Format != zconfig.Format_CONTAINER {
-			err := checkDiskFormat(ds)
-			if err != nil {
-				log.Errorf("%v", err)
-				return domainID, err
-			}
-		}
-	}
 
 	// Now create a domain
 	log.Infof("Creating domain with the config - %s", filename)
