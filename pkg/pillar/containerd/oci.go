@@ -13,16 +13,15 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path"
-	"strings"
-
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/oci"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"os"
+	"path"
 )
 
 const eveScript = "/bin/eve"
@@ -51,7 +50,8 @@ type OCISpec interface {
 	UpdateVifList(types.DomainConfig)
 	UpdateFromDomain(types.DomainConfig)
 	UpdateFromVolume(string) error
-	UpdateMounts([]types.DiskConfig)
+	UpdateMounts([]types.DiskStatus)
+	UpdateMountsNested([]types.DiskStatus)
 	UpdateEnvVar(map[string]string)
 }
 
@@ -223,30 +223,86 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 	return oci.WithAdditionalGIDs("root")(ctrdCtx, CtrdClient, &dummy, &s.Spec)
 }
 
-// UpdateMounts
-func (s *ociSpec) UpdateMounts(disks []types.DiskConfig) {
-	for i := range disks {
-		// Skipping root container disk
-		if i == 0 || isFile(disks[i].FileLocation) {
-			continue
-		}
-		mount := specs.Mount{}
-		access := ""
-		if disks[i].ReadOnly {
-			access = "rbind:ro"
-		} else {
-			access = "rbind:rw"
-		}
-		mount.Type = "bind"
-		mount.Source = path.Join("/var", disks[i].FileLocation)
-		if disks[i].MountDir != "" {
-			mount.Destination = disks[i].MountDir
-		} else {
-			mount.Destination = path.Join("/mnt", disks[i].DisplayName)
-		}
-		mount.Options = strings.Split(access, ":")
-		s.Mounts = append(s.Mounts, mount)
+func (s *ociSpec) updateMounts(disks []types.DiskStatus, nested bool) {
+	ociVolumeData := "rootfs"
+	root := ""
+	mounts := []specs.Mount{}
+	rootMount := specs.Mount{Type: "bind"}
+
+	if nested {
+		rootMount.Destination = "/mnt"
+		root = path.Join(rootMount.Destination, ociVolumeData)
+		mounts = append(mounts, specs.Mount{
+			Type:        "tmpfs",
+			Source:      "tmpfs",
+			Destination: path.Join(root, "dev"),
+			Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536"},
+		})
 	}
+
+	for id, disk := range disks {
+		src := path.Join("/var", disk.FileLocation)
+		opts := []string{"rbind"}
+		if disk.ReadOnly {
+			opts = append(opts, "ro")
+		} else {
+			opts = append(opts, "rw")
+		}
+
+		// we may need additional filtering here, but for now assume that
+		// we can bind mount anything aside from FmtUnknown
+		switch disk.Format {
+		case zconfig.Format_FmtUnknown:
+			continue
+		case zconfig.Format_CONTAINER:
+			if path.Clean(disk.MountDir) == "/" {
+				rootMount.Options = opts
+				rootMount.Source = src
+				continue
+			} else {
+				src = path.Join(src, ociVolumeData)
+			}
+		}
+
+		dests := []string{fmt.Sprintf("/dev/eve/volumes/by-id/%d", id)}
+		if disk.DisplayName != "" {
+			dests = append(dests, "/dev/eve/volumes/by-name/"+disk.DisplayName)
+		}
+		if disk.MountDir != "" {
+			dst := disk.MountDir
+			if disk.Format != zconfig.Format_CONTAINER {
+				// this is a bit of a hack: we assume that anything but
+				// the container image has to be a file and thus make it
+				// appear *under* destination directory as a file with ID
+				dst = fmt.Sprintf("%s/%d", dst, id)
+			}
+			dests = append(dests, dst)
+		}
+
+		for _, dest := range dests {
+			mounts = append(mounts, specs.Mount{
+				Type:        "bind",
+				Source:      src,
+				Destination: path.Join(root, dest),
+				Options:     opts,
+			})
+		}
+	}
+
+	if nested && rootMount.Source != "" {
+		s.Mounts = append(s.Mounts, rootMount)
+	}
+	s.Mounts = append(s.Mounts, mounts...)
+}
+
+// UpdateMounts adds volume specification mount points to the OCI runtime spec
+func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) {
+	s.updateMounts(disks, false)
+}
+
+// UpdateMountsNested adds volume specification mount points to the OCI runtime spec under a static root
+func (s *ociSpec) UpdateMountsNested(disks []types.DiskStatus) {
+	s.updateMounts(disks, true)
 }
 
 // UpdateEnvVar adds user specified env variables to the OCI spec.

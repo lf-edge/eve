@@ -61,7 +61,8 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 		}
 	}
 
-	spec.UpdateMounts(config.DiskConfigList)
+	spec.UpdateFromDomain(config)
+	spec.UpdateMounts(status.DiskStatusList)
 	spec.UpdateVifList(config)
 	spec.UpdateEnvVar(status.EnvVariables)
 	if err := spec.CreateContainer(true); err != nil {

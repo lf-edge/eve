@@ -47,10 +47,11 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 		},
 	}
 	disks := []types.DiskStatus{
-		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "HDD"},
-		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "Unclassified"},
-		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "HDD_EMPTY"},
-		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "CDROM"},
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "hdd"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "9P"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "hdd"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "cdrom"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
 	}
 	aa := types.AssignableAdapters{
 		Initialized: true,
@@ -228,7 +229,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
-  bootindex = "0"
 
 
 [fsdev "fsdev1"]
@@ -261,7 +261,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
-  bootindex = "2"
 
 
 [drive "drive-sata0-3"]
@@ -489,7 +488,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
-  bootindex = "0"
 
 
 [fsdev "fsdev1"]
@@ -522,7 +520,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
-  bootindex = "2"
 
 
 [drive "drive-sata0-3"]
@@ -730,7 +727,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
-  bootindex = "0"
 
 
 [fsdev "fsdev1"]
@@ -763,7 +759,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
-  bootindex = "2"
 
 
 [drive "drive-sata0-3"]
@@ -856,10 +851,11 @@ func TestCreateDomConfig(t *testing.T) {
 		},
 	}
 	disks := []types.DiskStatus{
-		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "HDD"},
-		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "Unclassified"},
-		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "HDD_EMPTY"},
-		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "CDROM"},
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "hdd"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "9P"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "hdd"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "cdrom"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
 	}
 	aa := types.AssignableAdapters{
 		Initialized: true,
@@ -1045,7 +1041,6 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
-  bootindex = "0"
 
 
 [fsdev "fsdev1"]
@@ -1078,7 +1073,6 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
-  bootindex = "2"
 
 
 [drive "drive-sata0-3"]
@@ -1309,7 +1303,6 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
-  bootindex = "0"
 
 
 [fsdev "fsdev1"]
@@ -1342,7 +1335,6 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
-  bootindex = "2"
 
 
 [drive "drive-sata0-3"]
@@ -1553,7 +1545,6 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.4"
   addr = "0x0"
   drive = "drive-virtio-disk0"
-  bootindex = "0"
 
 
 [fsdev "fsdev1"]
@@ -1586,7 +1577,6 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.6"
   addr = "0x0"
   drive = "drive-virtio-disk2"
-  bootindex = "2"
 
 
 [drive "drive-sata0-3"]

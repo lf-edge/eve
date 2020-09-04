@@ -28,7 +28,11 @@ mkdir /mnt/rootfs/proc >/dev/null 2>&1
 mkdir /dev/pts >/dev/null 2>&1
 mkdir /dev/shm >/dev/null 2>&1
 mkdir /dev/mqueue >/dev/null 2>&1
-mount -o bind /dev /mnt/rootfs/dev
+if [ -d /mnt/rootfs/dev/eve ]; then
+   mkdir -p /dev/eve
+   mount -o bind /mnt/rootfs/dev/eve /dev/eve
+fi
+mount -o rbind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
 mount -o bind /proc /mnt/rootfs/proc
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
