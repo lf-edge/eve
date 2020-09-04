@@ -534,6 +534,31 @@ func gcBlobStatus(ctx *volumemgrContext) {
 	}
 }
 
+//gcImagesFromCAS gc all unused images from CAS
+func gcImagesFromCAS(ctx *volumemgrContext) {
+	log.Infof("gcImagesFromCAS")
+	contentIDAndContentTreeStatus := getAllAppContentTreeStatus(ctx)
+	referenceMap := make(map[string]interface{})
+	for _, contentTreeStatus := range contentIDAndContentTreeStatus {
+		referenceMap[getReferenceID(contentTreeStatus.ContentID.String(), contentTreeStatus.RelativeURL)] = true
+	}
+
+	casImages, err := ctx.casClient.ListImages()
+	if err != nil {
+		log.Errorf("gcImagesFromCAS: Exception while getting image list from CAS. %s", err)
+		return
+	}
+
+	for _, image := range casImages {
+		if _, ok := referenceMap[image]; !ok {
+			log.Infof("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
+			if err := ctx.casClient.RemoveImage(image); err != nil {
+				log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
+			}
+		}
+	}
+}
+
 //checkAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
 func checkAndCorrectBlobHash(blobHash string) string {
 	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(blobHash, "sha256:"))

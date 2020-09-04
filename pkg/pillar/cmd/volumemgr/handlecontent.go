@@ -134,6 +134,19 @@ func lookupContentTreeStatus(ctx *volumemgrContext,
 	return &status
 }
 
+func getAllAppContentTreeStatus(ctx *volumemgrContext) map[string]*types.ContentTreeStatus {
+	log.Debugf("getAllAppContentTreeStatus")
+	pub := ctx.publication(types.ContentTreeStatus{}, types.AppImgObj)
+	contentIDAndContentTreeStatusIntf := pub.GetAll()
+	contentIDAndContentTreeStatus := make(map[string]*types.ContentTreeStatus)
+	for contentIDKey, contentTreeStatusIntf := range contentIDAndContentTreeStatusIntf {
+		contentTreeStatus := contentTreeStatusIntf.(types.ContentTreeStatus)
+		contentIDAndContentTreeStatus[contentIDKey] = &contentTreeStatus
+	}
+	log.Debugf("getAllAppContentTreeStatus")
+	return contentIDAndContentTreeStatus
+}
+
 func lookupContentTreeConfig(ctx *volumemgrContext,
 	key, objType string) *types.ContentTreeConfig {
 
