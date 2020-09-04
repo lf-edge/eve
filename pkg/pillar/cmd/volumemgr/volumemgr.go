@@ -532,6 +532,7 @@ func gcUnusedInitObjects(ctx *volumemgrContext) {
 	log.Infof("gcUnusedInitObjects")
 	gcBlobStatus(ctx)
 	gcVerifyImageConfig(ctx)
+	gcImagesFromCAS(ctx)
 }
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
