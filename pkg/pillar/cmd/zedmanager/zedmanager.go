@@ -96,9 +96,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubAppInstanceStatus.ClearRestarted()
 
 	pubVolumeRefConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeRefConfig{},
+		AgentName: agentName,
+		TopicType: types.VolumeRefConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)

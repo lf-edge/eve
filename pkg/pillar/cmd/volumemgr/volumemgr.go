@@ -390,7 +390,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "zedmanager",
-		AgentScope:    types.AppImgObj,
 		MyAgentName:   agentName,
 		TopicImpl:     types.VolumeRefConfig{},
 		Ctx:           &ctx,
