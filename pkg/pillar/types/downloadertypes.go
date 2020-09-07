@@ -233,9 +233,6 @@ func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 		return gc.GlobalValueTriState(AllowNonFreeAppImages) == TS_ENABLED
 	case BaseOsObj:
 		return gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED
-	case CertObj:
-		return (gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED) ||
-			(gc.GlobalValueTriState(AllowNonFreeAppImages) == TS_ENABLED)
 	default:
 		logrus.Fatalf("AllowNonFreePort: Unknown ObjType %s\n",
 			objType)

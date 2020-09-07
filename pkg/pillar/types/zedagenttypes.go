@@ -4,7 +4,6 @@
 package types
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -165,49 +164,6 @@ func (status BaseOsStatus) LogDelete() {
 // LogKey :
 func (status BaseOsStatus) LogKey() string {
 	return string(base.BaseOsStatusLogType) + "-" + status.BaseOsVersion
-}
-
-// captures the certificate config currently embeded
-// in Storage config from various objects
-// the UUIDandVersion/Config Sha are just
-// copied from the holder object configuration
-// for indexing
-// XXX shouldn't it be keyed by safename
-type CertObjConfig struct {
-	UUIDandVersion UUIDandVersion
-	ConfigSha256   string
-}
-
-func (config CertObjConfig) Key() string {
-	return config.UUIDandVersion.UUID.String()
-}
-
-// Indexed by UUIDandVersion as above
-// XXX shouldn't it be keyed by safename
-type CertObjStatus struct {
-	UUIDandVersion UUIDandVersion
-	ConfigSha256   string
-	// Error* set implies error.
-	State SwState
-	// error strings across all steps/StorageStatus
-	// ErrorAndTime provides SetErrorNow() and ClearError()
-	ErrorAndTime
-}
-
-func (status CertObjStatus) Key() string {
-	return status.UUIDandVersion.UUID.String()
-}
-
-// getCertObjStatus finds a certificate, and returns the status
-// returns three values,
-//  - whether the cert object status is found
-//  - whether the cert object is installed
-//  - any error information
-func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorAndTime) {
-	return false, false, ErrorAndTime{
-		Error:     fmt.Sprintf("Invalid Certificate %s, not found", certURL),
-		ErrorTime: time.Now(),
-	}
 }
 
 // return value holder
