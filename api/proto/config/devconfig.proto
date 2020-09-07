@@ -12,7 +12,6 @@ import "config/appconfig.proto";
 import "config/baseosconfig.proto";
 import "config/devcommon.proto";
 import "config/devmodel.proto";
-import "config/mesh.proto";
 import "config/netconfig.proto";
 import "config/netinst.proto";
 import "config/storage.proto";
@@ -33,7 +32,7 @@ message EdgeDevConfig {
   repeated NetworkConfig networks = 5;
   repeated DatastoreConfig datastores = 6;
 
-  DeviceLispDetails lispInfo = 7;
+  // deprecated 7;
   repeated BaseOSConfig base = 8;        // BaseOSImage config block
   DeviceOpsCmd reboot = 9;
   DeviceOpsCmd backup = 10;

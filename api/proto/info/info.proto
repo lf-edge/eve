@@ -468,36 +468,6 @@ message ZInfoVpn {
   repeated ZInfoVpnConn conn = 10; // Connection Information
 }
 
-// Lisp state information
-message RlocState {
-  string Rloc = 1;
-  bool Reachable = 2;
-}
-
-message MapCacheEntry {
-  string EID = 1;
-  repeated RlocState Rlocs = 2;
-}
-
-message DatabaseMap {
-  uint64 IID = 1;
-  repeated MapCacheEntry MapCacheEntries = 2;
-}
-
-message DecapKey {
-  string Rloc = 1;
-  uint64 Port = 2;
-  uint64 KeyCount = 3;
-}
-
-message ZInfoLisp {
-  uint64 ItrCryptoPort = 1;
-  uint64 EtrNatPort = 2;
-  repeated string Interfaces = 3;
-  repeated DatabaseMap DatabaseMaps = 4;
-  repeated DecapKey DecapKeys = 5;
-}
-
 // Network Instance information
 message ZInfoNetworkInstance {
   string networkID = 2;        // UUID
@@ -523,7 +493,7 @@ message ZInfoNetworkInstance {
   repeated ZioBundle assignedAdapters = 30;
   oneof InfoContent {
     ZInfoVpn vinfo = 31;
-    ZInfoLisp linfo = 32;
+    // deprecated 32;
   }
   repeated ErrorInfo networkErr = 40;
 }

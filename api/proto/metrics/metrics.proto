@@ -240,36 +240,6 @@ message PktStat {
   uint64 Bytes = 2;
 }
 
-message RlocStats {
-  string Rloc = 1;
-  PktStat Stats = 2;
-  uint64 SecondsSinceLastPacket = 3;
-}
-
-message EidStats {
-  uint64 IID = 1;
-  string EID = 2;
-  repeated RlocStats RlocStatsEntries = 3;
-}
-
-message ZMetricLisp {
-  // Encap Statistics
-  repeated EidStats EidStatsEntries = 1; // ITR Statistics
-  PktStat ItrPacketSendError = 2;
-  PktStat InvalidEidError = 3;
-
-  // Decap Statistics
-  PktStat NoDecryptKey = 4;
-  PktStat OuterHeaderError = 5;
-  PktStat BadInnerVersion = 6;
-  PktStat GoodPackets = 7;
-  PktStat ICVError = 8;
-  PktStat LispHeaderError = 9;
-  PktStat CheckSumError = 10;
-  PktStat DecapReInjectError = 11;
-  PktStat DecryptError = 12;
-}
-
 // Vpn Stats
 message ZMetricConn {
   PktStat InPkts = 1;
@@ -293,7 +263,7 @@ message ZMetricNone {
 message ZMetricFlowLink {
   oneof Link {
     string subNet = 1; // IpSec: Subnet
-    string eid = 2;    // LISP: EID
+    // deprecated 2;
   }
   string spiId = 3;    // IpSec: SpiId
 }
@@ -301,37 +271,20 @@ message ZMetricFlowLink {
 message ZMetricFlowEndPoint {
   oneof Endpoint {
     string ipAddr = 1; // IpSec: Endpoint Ip Address
-    string rloc = 2;   // LISP: RLOC
+    // deprecated 2;
   }
   repeated ZMetricFlowLink link = 5;
   PktStat stats = 10;  // traffic
 }
 
 message ZMetricFlow {
-  string id = 1;      // IpSec Conn-Id/Lisp
+  string id = 1;      // IpSec Conn-Id
   string name = 2;    // IpSec Tun-Name
-  uint32 type = 3;    // IpSec-Vpn or, LISP
-  uint64 iid  = 4;    // LISP: IID
+  uint32 type = 3;    // IpSec-Vpn
+  // deprecated 4;
   uint64 estTime = 5; // in seconds
   ZMetricFlowEndPoint lEndPoint = 10;
   repeated ZMetricFlowEndPoint rEndPoint = 11;
-}
-
-message ZMetricLispGlobal {
-  // Encap/ITR Statistics
-  PktStat ItrPacketSendError = 2;
-  PktStat InvalidEidError = 3;
-
-  // Decap/ETR Statistics
-  PktStat NoDecryptKey = 4;
-  PktStat OuterHeaderError = 5;
-  PktStat BadInnerVersion = 6;
-  PktStat GoodPackets = 7;
-  PktStat ICVError = 8;
-  PktStat LispHeaderError = 9;
-  PktStat CheckSumError = 10;
-  PktStat DecapReInjectError = 11;
-  PktStat DecryptError = 12;
 }
 
 message NetworkStats {
@@ -378,11 +331,11 @@ message ZMetricNetworkInstance {
   ZProbeNIMetrics probeMetric = 12;     // NI uplink probing stats
   oneof InstanceContent {
     ZMetricVpn  vpnm = 20;
-    ZMetricLisp lispm = 21;
+    // deprecated 21;
     ZMetricNone nonem = 22;
   }
   repeated ZMetricFlow flowStats = 30;
-  ZMetricLispGlobal lispGlobalStats = 31;
+  // deprecated 31;
 
   ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
 }
