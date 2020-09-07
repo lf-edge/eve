@@ -133,8 +133,8 @@ touch "$WATCHDOG_PID/zedbox.pid" "$WATCHDOG_FILE/zedbox.touch"
 
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
 #It is a device with TPM, enable disk encryption
-    if ! $BINDIR/vaultmgr setupVaults; then
-        echo "$(date -Ins -u) device-steps: vaultmgr setupVaults failed"
+    if ! $BINDIR/vaultmgr setupDeprecatedVaults; then
+        echo "$(date -Ins -u) device-steps: vaultmgr setupDeprecatedVaults failed"
     fi
 else
     if [ ! -d $PERSISTDIR/vault ]; then

@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -108,16 +109,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s", agentName)
-
-	// create the directories
-	initializeDirs()
-
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
 		vdiskGCTime:  3600,
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
+
+	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -233,11 +231,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	ctx.pubBlobStatus = pubBlobStatus
-
-	// Iterate over volume directory and prepares map of
-	// volume's content format with the volume key
-	populateExistingVolumesFormat(volumeEncryptedDirName)
-	populateExistingVolumesFormat(volumeClearDirName)
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -395,6 +388,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
+
+	if err := utils.WaitForVault(ps, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("processed Vault Status")
+
+	// create the directories
+	initializeDirs()
+
+	// Iterate over volume directory and prepares map of
+	// volume's content format with the volume key
+	populateExistingVolumesFormat(volumeEncryptedDirName)
+	populateExistingVolumesFormat(volumeClearDirName)
 
 	if ctx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())

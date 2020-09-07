@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -81,14 +82,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
+
 	log.Infof("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-
-	// create the directories
-	initializeDirs()
 
 	// Any state needed by handler functions
 	ctx := verifierContext{}
@@ -152,6 +151,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
+
+	if err := utils.WaitForVault(ps, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Infof("processed vault status")
+
+	// create the directories
+	initializeDirs()
 
 	// Publish status for any objects that were verified before reboot
 	// The signatures and shas can re-checked during handleCreate
