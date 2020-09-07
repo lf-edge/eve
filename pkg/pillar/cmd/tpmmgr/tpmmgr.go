@@ -5,7 +5,6 @@ package tpmmgr
 
 import (
 	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -53,24 +52,8 @@ const (
 	//TpmDeviceCertFileName is the file name to store device certificate
 	TpmDeviceCertFileName = types.DeviceCertName
 
-	//TpmEKHdl is the well known TPM permanent handle for Endorsement key
-	TpmEKHdl tpmutil.Handle = 0x81000001
-
-	//TpmSRKHdl is the well known TPM permanent handle for Storage key
-	TpmSRKHdl tpmutil.Handle = 0x81000002
-
-	//TpmAKHdl is the well known TPM permanent handle for AIK key
-	TpmAKHdl tpmutil.Handle = 0x81000003
-
-	//TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
-	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004
-
-	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
-	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
-
-	emptyPassword = ""
-	tpmLockName   = types.TmpDirname + "/tpm.lock"
-	maxPCRIndex   = 23
+	tpmLockName = types.TmpDirname + "/tpm.lock"
+	maxPCRIndex = 23
 
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
@@ -213,20 +196,20 @@ func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, over
 	handle, _, err := tpm2.CreatePrimary(rw,
 		tpm2.HandleOwner,
 		pcrSelection,
-		emptyPassword,
-		emptyPassword,
+		etpm.EmptyPassword,
+		etpm.EmptyPassword,
 		template)
 	if err != nil {
 		log.Errorf("create 0x%x failed: %s, do BIOS reset of TPM", keyHandle, err)
 		return err
 	}
-	if err := tpm2.EvictControl(rw, emptyPassword,
+	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner,
 		keyHandle,
 		keyHandle); err != nil {
 		log.Debugf("EvictControl failed: %v", err)
 	}
-	if err := tpm2.EvictControl(rw, emptyPassword,
+	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner, handle,
 		keyHandle); err != nil {
 		log.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
@@ -252,20 +235,20 @@ func createDeviceKey() error {
 	signerHandle, newPubKey, err := tpm2.CreatePrimary(rw,
 		tpm2.HandleOwner,
 		pcrSelection,
-		emptyPassword,
+		etpm.EmptyPassword,
 		tpmOwnerPasswd,
 		defaultKeyParams)
 	if err != nil {
 		log.Errorf("CreatePrimary failed: %s, do BIOS reset of TPM", err)
 		return err
 	}
-	if err := tpm2.EvictControl(rw, emptyPassword,
+	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner,
 		etpm.TpmDeviceKeyHdl,
 		etpm.TpmDeviceKeyHdl); err != nil {
 		log.Errorf("EvictControl failed: %v", err)
 	}
-	if err := tpm2.EvictControl(rw, emptyPassword,
+	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner, signerHandle,
 		etpm.TpmDeviceKeyHdl); err != nil {
 		log.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
@@ -290,8 +273,8 @@ func writeDeviceCert() error {
 	}
 	defer rw.Close()
 
-	if err := tpm2.NVUndefineSpace(rw, emptyPassword,
-		tpm2.HandleOwner, TpmDeviceCertHdl,
+	if err := tpm2.NVUndefineSpace(rw, etpm.EmptyPassword,
+		tpm2.HandleOwner, etpm.TpmDeviceCertHdl,
 	); err != nil {
 		log.Debugf("NVUndefineSpace failed: %v", err)
 	}
@@ -305,9 +288,9 @@ func writeDeviceCert() error {
 	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
 	if err := tpm2.NVDefineSpace(rw,
 		tpm2.HandleOwner,
-		TpmDeviceCertHdl,
-		emptyPassword,
-		emptyPassword,
+		etpm.TpmDeviceCertHdl,
+		etpm.EmptyPassword,
+		etpm.EmptyPassword,
 		nil,
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(deviceCertBytes)),
@@ -317,8 +300,8 @@ func writeDeviceCert() error {
 	}
 
 	// Write the data
-	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmDeviceCertHdl,
-		emptyPassword, deviceCertBytes, 0); err != nil {
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, etpm.TpmDeviceCertHdl,
+		etpm.EmptyPassword, deviceCertBytes, 0); err != nil {
 		log.Errorf("NVWrite failed: %v", err)
 		return err
 	}
@@ -334,8 +317,8 @@ func readDeviceCert() error {
 	defer rw.Close()
 
 	// Read all of the data with NVReadEx
-	deviceCertBytes, err := tpm2.NVReadEx(rw, TpmDeviceCertHdl,
-		tpm2.HandleOwner, emptyPassword, 0)
+	deviceCertBytes, err := tpm2.NVReadEx(rw, etpm.TpmDeviceCertHdl,
+		tpm2.HandleOwner, etpm.EmptyPassword, 0)
 	if err != nil {
 		log.Errorf("NVReadEx failed: %v", err)
 		return err
@@ -378,7 +361,7 @@ func writeCredentials() error {
 	}
 	defer rw.Close()
 
-	if err := tpm2.NVUndefineSpace(rw, emptyPassword,
+	if err := tpm2.NVUndefineSpace(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner, etpm.TpmPasswdHdl,
 	); err != nil {
 		log.Debugf("NVUndefineSpace failed: %v", err)
@@ -394,8 +377,8 @@ func writeCredentials() error {
 	if err := tpm2.NVDefineSpace(rw,
 		tpm2.HandleOwner,
 		etpm.TpmPasswdHdl,
-		emptyPassword,
-		emptyPassword,
+		etpm.EmptyPassword,
+		etpm.EmptyPassword,
 		nil,
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(tpmCredentialBytes)),
@@ -406,7 +389,7 @@ func writeCredentials() error {
 
 	// Write the data
 	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, etpm.TpmPasswdHdl,
-		emptyPassword, tpmCredentialBytes, 0); err != nil {
+		etpm.EmptyPassword, tpmCredentialBytes, 0); err != nil {
 		log.Errorf("NVWrite failed: %v", err)
 		return err
 	}
@@ -423,7 +406,7 @@ func readCredentials() error {
 
 	// Read all of the data with NVReadEx
 	tpmCredentialBytes, err := tpm2.NVReadEx(rw, etpm.TpmPasswdHdl,
-		tpm2.HandleOwner, emptyPassword, 0)
+		tpm2.HandleOwner, etpm.EmptyPassword, 0)
 	if err != nil {
 		log.Errorf("NVReadEx failed: %v", err)
 		return err
@@ -474,9 +457,9 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 		}
 		pcrs = append(pcrs, pcr)
 	}
-	attestData, sig, err := tpm2.Quote(rw, TpmQuoteKeyHdl,
-		emptyPassword,
-		emptyPassword,
+	attestData, sig, err := tpm2.Quote(rw, etpm.TpmQuoteKeyHdl,
+		etpm.EmptyPassword,
+		etpm.EmptyPassword,
 		nonce,
 		pcrListForQuote,
 		tpm2.AlgNull)
@@ -540,16 +523,6 @@ func testTpmEcdhSupport() error {
 	return nil
 }
 
-func aesEncrypt(ciphertext, plaintext, key, iv []byte) error {
-	aesBlockEncrypter, err := aes.NewCipher([]byte(key))
-	if err != nil {
-		return err
-	}
-	aesEncrypter := cipher.NewCFBEncrypter(aesBlockEncrypter, iv)
-	aesEncrypter.XORKeyStream(ciphertext, plaintext)
-	return nil
-}
-
 //Test ECDH key exchange and a symmetric cipher based on ECDH
 func testEcdhAES() error {
 	//Simulate Controller generating an ephemeral key
@@ -584,7 +557,7 @@ func testEcdhAES() error {
 
 	msg := []byte("this is the secret")
 	ciphertext := make([]byte, len(msg))
-	aesEncrypt(ciphertext, msg, encryptKey[:], iv)
+	etpm.AESEncrypt(ciphertext, msg, encryptKey[:], iv)
 
 	recoveredMsg := make([]byte, len(ciphertext))
 	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
@@ -614,6 +587,20 @@ func testEcdhAES() error {
 		return nil
 	} else {
 		return fmt.Errorf("want %v, but got %v", msg, recoveredMsg)
+	}
+}
+
+func testEncryptDecrypt() error {
+	plaintext := []byte("This is the Secret Key")
+	ciphertext, err := etpm.EncryptDecryptUsingTpm(plaintext, true)
+	if err != nil {
+		return err
+	}
+	decryptedtext, err := etpm.EncryptDecryptUsingTpm(ciphertext, false)
+	if reflect.DeepEqual(plaintext, decryptedtext) == true {
+		return nil
+	} else {
+		return fmt.Errorf("want %v, but got %v", plaintext, decryptedtext)
 	}
 }
 
@@ -660,7 +647,7 @@ func createQuoteCertOnTpm() error {
 			return err
 		}
 
-		quoteKey, _, _, err := tpm2.ReadPublic(rw, TpmQuoteKeyHdl)
+		quoteKey, _, _, err := tpm2.ReadPublic(rw, etpm.TpmQuoteKeyHdl)
 		if err != nil {
 			return err
 		}
@@ -1073,22 +1060,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			log.Errorf("Error in creating device primary key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
+		if err = createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Endorsement key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
+		if err = createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Srk key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
+		if err = createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating Attestation key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, true); err != nil {
+		if err = createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, true); err != nil {
 			log.Errorf("Error in creating Quote key: %v ", err)
 			return 1
 		}
@@ -1261,21 +1248,27 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			fmt.Printf("test passed")
 		}
+	case "testEncryptDecrypt":
+		if err = testEncryptDecrypt(); err != nil {
+			fmt.Printf("failed with error %v", err)
+		} else {
+			fmt.Printf("test passed")
+		}
 	case "createCerts":
 		//Create additional security keys if already not created, followed by security certificates
-		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
+		if err = createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
 			log.Errorf("Error in creating Endorsement key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
+		if err = createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
 			log.Errorf("Error in creating Srk key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
+		if err = createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
 			log.Errorf("Error in creating Attestation key: %v ", err)
 			return 1
 		}
-		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
+		if err = createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
 			log.Errorf("Error in creating PCR Quote key: %v ", err)
 			return 1
 		}

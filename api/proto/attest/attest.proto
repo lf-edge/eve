@@ -157,3 +157,9 @@ enum AttestStorageKeysResponseCode {
 message AttestStorageKeysResp {
   AttestStorageKeysResponseCode response = 1;    //Result of processing Z_ATTEST_REQ_TYPE_STORE_KEYS in Controller
 }
+
+message AttestVolumeKeyData {
+  bytes encrypted_key = 1; //key in encrypted format
+  bytes digest_sha256 = 2; //SHA 256 digest of the key
+}
+

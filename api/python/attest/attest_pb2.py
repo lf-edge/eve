@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='org.lfedge.eve.attest',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attest'),
-  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x12\x15org.lfedge.eve.attest\x1a\x11\x63\x65rts/certs.proto\"\xe4\x01\n\nZAttestReq\x12\x36\n\x07reqType\x18\x01 \x01(\x0e\x32%.org.lfedge.eve.attest.ZAttestReqType\x12\x32\n\x05quote\x18\x02 \x01(\x0b\x32#.org.lfedge.eve.attest.ZAttestQuote\x12*\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\x1b.org.lfedge.eve.certs.ZCert\x12>\n\x0cstorage_keys\x18\x04 \x01(\x0b\x32(.org.lfedge.eve.attest.AttestStorageKeys\"\x88\x02\n\x0fZAttestResponse\x12\x38\n\x08respType\x18\x01 \x01(\x0e\x32&.org.lfedge.eve.attest.ZAttestRespType\x12\x36\n\x05nonce\x18\x02 \x01(\x0b\x32\'.org.lfedge.eve.attest.ZAttestNonceResp\x12:\n\tquoteResp\x18\x03 \x01(\x0b\x32\'.org.lfedge.eve.attest.ZAttestQuoteResp\x12G\n\x11storage_keys_resp\x18\x04 \x01(\x0b\x32,.org.lfedge.eve.attest.AttestStorageKeysResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"W\n\x0eTpmEventDigest\x12\x35\n\thash_algo\x18\x01 \x01(\x0e\x32\".org.lfedge.eve.attest.TpmHashAlgo\x12\x0e\n\x06\x64igest\x18\x02 \x01(\x0c\"\xb5\x01\n\x10TpmEventLogEntry\x12\r\n\x05index\x18\x01 \x01(\r\x12\x11\n\tpcr_index\x18\x02 \x01(\r\x12\x12\n\nevent_type\x18\x03 \x01(\r\x12\x35\n\x06\x64igest\x18\x04 \x01(\x0b\x32%.org.lfedge.eve.attest.TpmEventDigest\x12\x19\n\x11\x65vent_data_binary\x18\x05 \x01(\x0c\x12\x19\n\x11\x65vent_data_string\x18\x06 \x01(\t\"u\n\x14\x41ttestGPSCoordinates\x12\x38\n\tgps_input\x18\x01 \x01(\x0e\x32%.org.lfedge.eve.attest.AttestGPSInput\x12\x10\n\x08latitude\x18\x02 \x01(\x01\x12\x11\n\tlongitude\x18\x03 \x01(\x01\"d\n\x11\x41ttestVersionInfo\x12>\n\x0cversion_type\x18\x01 \x01(\x0e\x32(.org.lfedge.eve.attest.AttestVersionType\x12\x0f\n\x07version\x18\x02 \x01(\t\"b\n\x0bTpmPCRValue\x12\r\n\x05index\x18\x01 \x01(\r\x12\x35\n\thash_algo\x18\x02 \x01(\x0e\x32\".org.lfedge.eve.attest.TpmHashAlgo\x12\r\n\x05value\x18\x03 \x01(\x0c\"\xa4\x02\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\x12\x36\n\npcr_values\x18\x03 \x03(\x0b\x32\".org.lfedge.eve.attest.TpmPCRValue\x12:\n\tevent_log\x18\x04 \x03(\x0b\x32\'.org.lfedge.eve.attest.TpmEventLogEntry\x12:\n\x08versions\x18\x05 \x03(\x0b\x32(.org.lfedge.eve.attest.AttestVersionInfo\x12=\n\x08gps_info\x18\x06 \x01(\x0b\x32+.org.lfedge.eve.attest.AttestGPSCoordinates\"\\\n\x0f\x41ttestVolumeKey\x12<\n\x08key_type\x18\x01 \x01(\x0e\x32*.org.lfedge.eve.attest.AttestVolumeKeyType\x12\x0b\n\x03key\x18\x02 \x01(\x0c\"\x9f\x01\n\x10ZAttestQuoteResp\x12<\n\x08response\x18\x01 \x01(\x0e\x32*.org.lfedge.eve.attest.ZAttestResponseCode\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\x12\x34\n\x04keys\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.attest.AttestVolumeKey\"b\n\x11\x41ttestStorageKeys\x12\x17\n\x0fintegrity_token\x18\x01 \x01(\x0c\x12\x34\n\x04keys\x18\x02 \x03(\x0b\x32&.org.lfedge.eve.attest.AttestVolumeKey\"_\n\x15\x41ttestStorageKeysResp\x12\x46\n\x08response\x18\x01 \x01(\x0e\x32\x34.org.lfedge.eve.attest.AttestStorageKeysResponseCode*\x88\x01\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03\x12 \n\x1cZ_ATTEST_REQ_TYPE_STORE_KEYS\x10\x04*\x93\x01\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03\x12!\n\x1dZ_ATTEST_RESP_TYPE_STORE_KEYS\x10\x04*t\n\x0bTpmHashAlgo\x12\x19\n\x15TPM_HASH_ALGO_INVALID\x10\x00\x12\x16\n\x12TPM_HASH_ALGO_SHA1\x10\x01\x12\x18\n\x14TPM_HASH_ALGO_SHA256\x10\x02\x12\x18\n\x14TPM_HASH_ALGO_SHA512\x10\x03*i\n\x0e\x41ttestGPSInput\x12\x1c\n\x18\x41TTEST_GPS_INPUT_INVALID\x10\x00\x12\x1c\n\x18\x41TTEST_GPS_INPUT_PRESENT\x10\x01\x12\x1b\n\x17\x41TTEST_GPS_INPUT_ABSENT\x10\x02*s\n\x11\x41ttestVersionType\x12\x1f\n\x1b\x41TTEST_VERSION_TYPE_INVALID\x10\x00\x12\x1b\n\x17\x41TTEST_VERSION_TYPE_EVE\x10\x01\x12 \n\x1c\x41TTEST_VERSION_TYPE_FIRMWARE\x10\x02*\xdb\x01\n\x13ZAttestResponseCode\x12\"\n\x1eZ_ATTEST_RESPONSE_CODE_INVALID\x10\x00\x12\"\n\x1eZ_ATTEST_RESPONSE_CODE_SUCCESS\x10\x01\x12)\n%Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH\x10\x02\x12(\n$Z_ATTEST_RESPONSE_CODE_NO_CERT_FOUND\x10\x03\x12\'\n#Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED\x10\x04*Y\n\x13\x41ttestVolumeKeyType\x12\"\n\x1e\x41TTEST_VOLUME_KEY_TYPE_INVALID\x10\x00\x12\x1e\n\x1a\x41TTEST_VOLUME_KEY_TYPE_VSK\x10\x01*\xb4\x01\n\x1d\x41ttestStorageKeysResponseCode\x12-\n)ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID\x10\x00\x12-\n)ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS\x10\x01\x12\x35\n1ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH\x10\x02\x42=\n\x15org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
+  serialized_pb=_b('\n\x13\x61ttest/attest.proto\x12\x15org.lfedge.eve.attest\x1a\x11\x63\x65rts/certs.proto\"\xe4\x01\n\nZAttestReq\x12\x36\n\x07reqType\x18\x01 \x01(\x0e\x32%.org.lfedge.eve.attest.ZAttestReqType\x12\x32\n\x05quote\x18\x02 \x01(\x0b\x32#.org.lfedge.eve.attest.ZAttestQuote\x12*\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\x1b.org.lfedge.eve.certs.ZCert\x12>\n\x0cstorage_keys\x18\x04 \x01(\x0b\x32(.org.lfedge.eve.attest.AttestStorageKeys\"\x88\x02\n\x0fZAttestResponse\x12\x38\n\x08respType\x18\x01 \x01(\x0e\x32&.org.lfedge.eve.attest.ZAttestRespType\x12\x36\n\x05nonce\x18\x02 \x01(\x0b\x32\'.org.lfedge.eve.attest.ZAttestNonceResp\x12:\n\tquoteResp\x18\x03 \x01(\x0b\x32\'.org.lfedge.eve.attest.ZAttestQuoteResp\x12G\n\x11storage_keys_resp\x18\x04 \x01(\x0b\x32,.org.lfedge.eve.attest.AttestStorageKeysResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"W\n\x0eTpmEventDigest\x12\x35\n\thash_algo\x18\x01 \x01(\x0e\x32\".org.lfedge.eve.attest.TpmHashAlgo\x12\x0e\n\x06\x64igest\x18\x02 \x01(\x0c\"\xb5\x01\n\x10TpmEventLogEntry\x12\r\n\x05index\x18\x01 \x01(\r\x12\x11\n\tpcr_index\x18\x02 \x01(\r\x12\x12\n\nevent_type\x18\x03 \x01(\r\x12\x35\n\x06\x64igest\x18\x04 \x01(\x0b\x32%.org.lfedge.eve.attest.TpmEventDigest\x12\x19\n\x11\x65vent_data_binary\x18\x05 \x01(\x0c\x12\x19\n\x11\x65vent_data_string\x18\x06 \x01(\t\"u\n\x14\x41ttestGPSCoordinates\x12\x38\n\tgps_input\x18\x01 \x01(\x0e\x32%.org.lfedge.eve.attest.AttestGPSInput\x12\x10\n\x08latitude\x18\x02 \x01(\x01\x12\x11\n\tlongitude\x18\x03 \x01(\x01\"d\n\x11\x41ttestVersionInfo\x12>\n\x0cversion_type\x18\x01 \x01(\x0e\x32(.org.lfedge.eve.attest.AttestVersionType\x12\x0f\n\x07version\x18\x02 \x01(\t\"b\n\x0bTpmPCRValue\x12\r\n\x05index\x18\x01 \x01(\r\x12\x35\n\thash_algo\x18\x02 \x01(\x0e\x32\".org.lfedge.eve.attest.TpmHashAlgo\x12\r\n\x05value\x18\x03 \x01(\x0c\"\xa4\x02\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\x12\x36\n\npcr_values\x18\x03 \x03(\x0b\x32\".org.lfedge.eve.attest.TpmPCRValue\x12:\n\tevent_log\x18\x04 \x03(\x0b\x32\'.org.lfedge.eve.attest.TpmEventLogEntry\x12:\n\x08versions\x18\x05 \x03(\x0b\x32(.org.lfedge.eve.attest.AttestVersionInfo\x12=\n\x08gps_info\x18\x06 \x01(\x0b\x32+.org.lfedge.eve.attest.AttestGPSCoordinates\"\\\n\x0f\x41ttestVolumeKey\x12<\n\x08key_type\x18\x01 \x01(\x0e\x32*.org.lfedge.eve.attest.AttestVolumeKeyType\x12\x0b\n\x03key\x18\x02 \x01(\x0c\"\x9f\x01\n\x10ZAttestQuoteResp\x12<\n\x08response\x18\x01 \x01(\x0e\x32*.org.lfedge.eve.attest.ZAttestResponseCode\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\x12\x34\n\x04keys\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.attest.AttestVolumeKey\"b\n\x11\x41ttestStorageKeys\x12\x17\n\x0fintegrity_token\x18\x01 \x01(\x0c\x12\x34\n\x04keys\x18\x02 \x03(\x0b\x32&.org.lfedge.eve.attest.AttestVolumeKey\"_\n\x15\x41ttestStorageKeysResp\x12\x46\n\x08response\x18\x01 \x01(\x0e\x32\x34.org.lfedge.eve.attest.AttestStorageKeysResponseCode\"C\n\x13\x41ttestVolumeKeyData\x12\x15\n\rencrypted_key\x18\x01 \x01(\x0c\x12\x15\n\rdigest_sha256\x18\x02 \x01(\x0c*\x88\x01\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03\x12 \n\x1cZ_ATTEST_REQ_TYPE_STORE_KEYS\x10\x04*\x93\x01\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03\x12!\n\x1dZ_ATTEST_RESP_TYPE_STORE_KEYS\x10\x04*t\n\x0bTpmHashAlgo\x12\x19\n\x15TPM_HASH_ALGO_INVALID\x10\x00\x12\x16\n\x12TPM_HASH_ALGO_SHA1\x10\x01\x12\x18\n\x14TPM_HASH_ALGO_SHA256\x10\x02\x12\x18\n\x14TPM_HASH_ALGO_SHA512\x10\x03*i\n\x0e\x41ttestGPSInput\x12\x1c\n\x18\x41TTEST_GPS_INPUT_INVALID\x10\x00\x12\x1c\n\x18\x41TTEST_GPS_INPUT_PRESENT\x10\x01\x12\x1b\n\x17\x41TTEST_GPS_INPUT_ABSENT\x10\x02*s\n\x11\x41ttestVersionType\x12\x1f\n\x1b\x41TTEST_VERSION_TYPE_INVALID\x10\x00\x12\x1b\n\x17\x41TTEST_VERSION_TYPE_EVE\x10\x01\x12 \n\x1c\x41TTEST_VERSION_TYPE_FIRMWARE\x10\x02*\xdb\x01\n\x13ZAttestResponseCode\x12\"\n\x1eZ_ATTEST_RESPONSE_CODE_INVALID\x10\x00\x12\"\n\x1eZ_ATTEST_RESPONSE_CODE_SUCCESS\x10\x01\x12)\n%Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH\x10\x02\x12(\n$Z_ATTEST_RESPONSE_CODE_NO_CERT_FOUND\x10\x03\x12\'\n#Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED\x10\x04*Y\n\x13\x41ttestVolumeKeyType\x12\"\n\x1e\x41TTEST_VOLUME_KEY_TYPE_INVALID\x10\x00\x12\x1e\n\x1a\x41TTEST_VOLUME_KEY_TYPE_VSK\x10\x01*\xb4\x01\n\x1d\x41ttestStorageKeysResponseCode\x12-\n)ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID\x10\x00\x12-\n)ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS\x10\x01\x12\x35\n1ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH\x10\x02\x42=\n\x15org.lfedge.eve.attestZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
   ,
   dependencies=[certs_dot_certs__pb2.DESCRIPTOR,])
 
@@ -54,8 +54,8 @@ _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1941,
-  serialized_end=2077,
+  serialized_start=2010,
+  serialized_end=2146,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTREQTYPE)
 
@@ -89,8 +89,8 @@ _ZATTESTRESPTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2080,
-  serialized_end=2227,
+  serialized_start=2149,
+  serialized_end=2296,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPTYPE)
 
@@ -120,8 +120,8 @@ _TPMHASHALGO = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2229,
-  serialized_end=2345,
+  serialized_start=2298,
+  serialized_end=2414,
 )
 _sym_db.RegisterEnumDescriptor(_TPMHASHALGO)
 
@@ -147,8 +147,8 @@ _ATTESTGPSINPUT = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2347,
-  serialized_end=2452,
+  serialized_start=2416,
+  serialized_end=2521,
 )
 _sym_db.RegisterEnumDescriptor(_ATTESTGPSINPUT)
 
@@ -174,8 +174,8 @@ _ATTESTVERSIONTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2454,
-  serialized_end=2569,
+  serialized_start=2523,
+  serialized_end=2638,
 )
 _sym_db.RegisterEnumDescriptor(_ATTESTVERSIONTYPE)
 
@@ -209,8 +209,8 @@ _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2572,
-  serialized_end=2791,
+  serialized_start=2641,
+  serialized_end=2860,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPONSECODE)
 
@@ -232,8 +232,8 @@ _ATTESTVOLUMEKEYTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2793,
-  serialized_end=2882,
+  serialized_start=2862,
+  serialized_end=2951,
 )
 _sym_db.RegisterEnumDescriptor(_ATTESTVOLUMEKEYTYPE)
 
@@ -259,8 +259,8 @@ _ATTESTSTORAGEKEYSRESPONSECODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=2885,
-  serialized_end=3065,
+  serialized_start=2954,
+  serialized_end=3134,
 )
 _sym_db.RegisterEnumDescriptor(_ATTESTSTORAGEKEYSRESPONSECODE)
 
@@ -882,6 +882,44 @@ _ATTESTSTORAGEKEYSRESP = _descriptor.Descriptor(
   serialized_end=1938,
 )
 
+
+_ATTESTVOLUMEKEYDATA = _descriptor.Descriptor(
+  name='AttestVolumeKeyData',
+  full_name='org.lfedge.eve.attest.AttestVolumeKeyData',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='encrypted_key', full_name='org.lfedge.eve.attest.AttestVolumeKeyData.encrypted_key', index=0,
+      number=1, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='digest_sha256', full_name='org.lfedge.eve.attest.AttestVolumeKeyData.digest_sha256', index=1,
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1940,
+  serialized_end=2007,
+)
+
 _ZATTESTREQ.fields_by_name['reqType'].enum_type = _ZATTESTREQTYPE
 _ZATTESTREQ.fields_by_name['quote'].message_type = _ZATTESTQUOTE
 _ZATTESTREQ.fields_by_name['certs'].message_type = certs_dot_certs__pb2._ZCERT
@@ -917,6 +955,7 @@ DESCRIPTOR.message_types_by_name['AttestVolumeKey'] = _ATTESTVOLUMEKEY
 DESCRIPTOR.message_types_by_name['ZAttestQuoteResp'] = _ZATTESTQUOTERESP
 DESCRIPTOR.message_types_by_name['AttestStorageKeys'] = _ATTESTSTORAGEKEYS
 DESCRIPTOR.message_types_by_name['AttestStorageKeysResp'] = _ATTESTSTORAGEKEYSRESP
+DESCRIPTOR.message_types_by_name['AttestVolumeKeyData'] = _ATTESTVOLUMEKEYDATA
 DESCRIPTOR.enum_types_by_name['ZAttestReqType'] = _ZATTESTREQTYPE
 DESCRIPTOR.enum_types_by_name['ZAttestRespType'] = _ZATTESTRESPTYPE
 DESCRIPTOR.enum_types_by_name['TpmHashAlgo'] = _TPMHASHALGO
@@ -1017,6 +1056,13 @@ AttestStorageKeysResp = _reflection.GeneratedProtocolMessageType('AttestStorageK
   # @@protoc_insertion_point(class_scope:org.lfedge.eve.attest.AttestStorageKeysResp)
   ))
 _sym_db.RegisterMessage(AttestStorageKeysResp)
+
+AttestVolumeKeyData = _reflection.GeneratedProtocolMessageType('AttestVolumeKeyData', (_message.Message,), dict(
+  DESCRIPTOR = _ATTESTVOLUMEKEYDATA,
+  __module__ = 'attest.attest_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.attest.AttestVolumeKeyData)
+  ))
+_sym_db.RegisterMessage(AttestVolumeKeyData)
 
 
 DESCRIPTOR._options = None

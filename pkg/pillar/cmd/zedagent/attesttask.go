@@ -381,7 +381,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 		log.Errorf("[ATTEST] Integrity Token Mismatch")
 		return zattest.ErrITokenMismatch
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS:
-		log.Errorf("[ATTEST] Escrow successful")
+		log.Infof("[ATTEST] Escrow successful")
 		return nil
 	default:
 		log.Errorf("[ATTEST] Unknown escrowRespCode %v", escrowRespCode)

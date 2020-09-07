@@ -1,10 +1,30 @@
 // Copyright (c) 2018-2019 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//Please note:
+//As part of remote attestation, encryption key for the volume vault
+//i.e. types.DefaultVaultName is sent to the Controller. This is done
+//so that after an EVE upgrade, the device will fail to unseal the key
+//from TPM (because PCRs have changed), and after proving that the device
+//software is trustworthy (via PCR quote etc), Controller will send back
+//the copy of the key to the device.
+
+//However, in the above mechanism, it is desired that, the key is not sent
+//in clear text, but instead be encrypted using a TPM based key, so that,
+//the key is protected from being exposed in the Controller. To that requirement,
+//in this PR, we add support to encrypt (aka key wrapping), the vault key
+//using a TPM based key (we re-use ECDH key here) the device public key. Basically
+//we are re-using a simplified ECDH exchange here, with both the parties being
+//the same device. To decrypt the key, one has to be on the same device with
+//access to the same TPM, where the private part of the ECDH key resides.
+//publishVaultKey and handleVaultKeyFromControllerModify are the relevant
+//methods that handle this functionality.
+
 package vaultmgr
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +36,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	attest "github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -28,10 +50,12 @@ import (
 )
 
 type vaultMgrContext struct {
-	pubVaultStatus       pubsub.Publication
-	subGlobalConfig      pubsub.Subscription
-	GCInitialized        bool // GlobalConfig initialized
-	defaultVaultUnlocked bool
+	pubVaultStatus            pubsub.Publication
+	pubVaultKeyFromDevice     pubsub.Publication
+	subGlobalConfig           pubsub.Subscription
+	subVaultKeyFromController pubsub.Subscription
+	GCInitialized             bool // GlobalConfig initialized
+	defaultVaultUnlocked      bool
 }
 
 const (
@@ -472,6 +496,18 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	}
 	pubVaultStatus.ClearRestarted()
 	ctx.pubVaultStatus = pubVaultStatus
+
+	//to publish encrypted vault key to controller
+	pubVaultKeyFromDevice, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.EncryptedVaultKeyFromDevice{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubVaultKeyFromDevice.ClearRestarted()
+	ctx.pubVaultKeyFromDevice = pubVaultKeyFromDevice
 }
 
 func setupDeprecatedVaultsOnExt4(ignoreDefaultVault bool) error {
@@ -621,6 +657,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ctx.subGlobalConfig = subGlobalConfig
 		subGlobalConfig.Activate()
 
+		// Look for encrypted vault key coming from Controller
+		subVaultKeyFromController, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			MyAgentName:   agentName,
+			TopicImpl:     types.EncryptedVaultKeyFromController{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleVaultKeyFromControllerModify,
+			ModifyHandler: handleVaultKeyFromControllerModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		ctx.subVaultKeyFromController = subVaultKeyFromController
+		//Enable it once we have publisher support
+		subVaultKeyFromController.Activate()
+
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
 			log.Infof("waiting for GCInitialized")
@@ -653,8 +709,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		//Publish current status of vault
 		publishVaultStatus(&ctx)
+		if err == nil {
+			//publish vault key to Controller
+			if err := publishVaultKey(&ctx, types.DefaultVaultName); err != nil {
+				log.Errorf("Failed to publish Vault Key, %v", err)
+			}
+		}
+
 		for {
 			select {
+			case change := <-subVaultKeyFromController.MsgChan():
+				subVaultKeyFromController.ProcessChange(change)
 			case <-stillRunning.C:
 				ps.StillRunning(agentName, warningTime, errorTime)
 			}
@@ -697,4 +762,92 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Handles both create and modify events
+func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
+	keyArg interface{}) {
+	ctx := ctxArg.(*vaultMgrContext)
+	keyFromController, ok := keyArg.(types.EncryptedVaultKeyFromController)
+	if !ok {
+		log.Fatalf("[VAULT] Unexpected pub type %T", keyArg)
+	}
+	if keyFromController.Name != types.DefaultVaultName {
+		log.Warnf("Ignoring unknown vault %s", keyFromController.Name)
+		return
+	}
+	log.Debugf("Processing EncryptedVaultKeyFromController %s\n", key)
+	keyData := &attest.AttestVolumeKeyData{}
+	if err := proto.Unmarshal(keyFromController.EncryptedVaultKey, keyData); err != nil {
+		log.Errorf("Failed to unmarshal keyData %v", err)
+		return
+	}
+	decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, false)
+	if err != nil {
+		log.Errorf("Failed to decrypt Controller provided key data: %v", err)
+		return
+	}
+
+	hash := sha256.New()
+	hash.Write(decryptedKey)
+	digest256 := hash.Sum(nil)
+	if !bytes.Equal(digest256, keyData.DigestSha256) {
+		log.Errorf("Computed SHA is not matching provided SHA")
+		return
+	}
+	log.Infof("Computed and provided SHA are matching")
+
+	err = etpm.SealVaultKey(decryptedKey)
+	if err != nil {
+		log.Errorf("Failed to Seal key in TPM %v", err)
+		return
+	}
+	log.Infof("Sealed key in TPM")
+
+	//Try unlocking the vault now, in case it is not yet unlocked
+	if !ctx.defaultVaultUnlocked {
+		log.Errorf("[ATTEST] Vault is still locked, trying to unlock")
+		err = unlockVault(types.DefaultVaultName, false)
+		if err != nil {
+			log.Errorf("Failed to unlock vault after receiving Controller key, %v",
+				err)
+			return
+		}
+		//fetch, set and publish the latest status
+		publishVaultStatus(ctx)
+	}
+}
+
+func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
+	keyBytes, err := retrieveTpmKey()
+	if err != nil {
+		return fmt.Errorf("Failed to retrieve key from TPM %v", err)
+	}
+
+	encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
+	if err != nil {
+		return fmt.Errorf("Failed to encrypt vault key %v", err)
+	}
+
+	hash := sha256.New()
+	hash.Write(keyBytes)
+	digest256 := hash.Sum(nil)
+
+	keyData := &attest.AttestVolumeKeyData{
+		EncryptedKey: encryptedKey,
+		DigestSha256: digest256,
+	}
+	b, err := proto.Marshal(keyData)
+	if err != nil {
+		return fmt.Errorf("Failed to Marshal keyData %v", err)
+	}
+
+	keyFromDevice := types.EncryptedVaultKeyFromDevice{}
+	keyFromDevice.Name = vaultName
+	keyFromDevice.EncryptedVaultKey = b
+	key := keyFromDevice.Key()
+	log.Debugf("Publishing EncryptedVaultKeyFromDevice %s\n", key)
+	pub := ctx.pubVaultKeyFromDevice
+	pub.Publish(key, keyFromDevice)
+	return nil
 }
