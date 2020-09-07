@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/api/go/info"
@@ -27,26 +28,26 @@ import (
 )
 
 type vaultMgrContext struct {
-	pubVaultStatus  pubsub.Publication
-	subGlobalConfig pubsub.Subscription
-	GCInitialized   bool // GlobalConfig initialized
+	pubVaultStatus       pubsub.Publication
+	subGlobalConfig      pubsub.Subscription
+	GCInitialized        bool // GlobalConfig initialized
+	defaultVaultUnlocked bool
 }
 
 const (
-	agentName           = "vaultmgr"
-	keyctlPath          = "/bin/keyctl"
-	deprecatedImgVault  = types.PersistDir + "/img"
-	defaultCfgVault     = types.PersistDir + "/config"
-	defaultVault        = types.PersistDir + "/vault"
-	oldKeyDir           = "/TmpVaultDir1"
-	oldKeyFile          = oldKeyDir + "/protector.key"
-	keyDir              = "/TmpVaultDir2"
-	keyFile             = keyDir + "/protector.key"
-	protectorPrefix     = "TheVaultKey"
-	vaultKeyLen         = 32 //bytes
-	vaultHalfKeyLen     = 16 //bytes
-	defaultVaultName    = "Application Data Store"
-	defaultCfgVaultName = "Configuration Data Store"
+	agentName              = "vaultmgr"
+	keyctlPath             = "/bin/keyctl"
+	deprecatedImgVault     = types.PersistDir + "/img"
+	deprecatedCfgVault     = types.PersistDir + "/config"
+	defaultVault           = types.PersistDir + "/vault"
+	oldKeyDir              = "/TmpVaultDir1"
+	oldKeyFile             = oldKeyDir + "/protector.key"
+	keyDir                 = "/TmpVaultDir2"
+	keyFile                = keyDir + "/protector.key"
+	protectorPrefix        = "TheVaultKey"
+	vaultKeyLen            = 32 //bytes
+	vaultHalfKeyLen        = 16 //bytes
+	deprecatedCfgVaultName = "Configuration Data Store"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -399,7 +400,7 @@ func setupFscryptEnv() error {
 	return nil
 }
 
-func publishVaultStatus(ctx *vaultMgrContext,
+func publishFscryptVaultStatus(ctx *vaultMgrContext,
 	vaultName string, vaultPath string,
 	fscryptStatus info.DataSecAtRestStatus,
 	fscryptError string) {
@@ -415,7 +416,13 @@ func publishVaultStatus(ctx *vaultMgrContext,
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
 			status.SetErrorNow(stdOut + stdErr)
 		} else {
-			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
+			if strings.Contains(stdOut, "Unlocked: Yes") {
+				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
+				ctx.defaultVaultUnlocked = true
+			} else {
+				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+				status.SetErrorNow("Failed to unlock vault")
+			}
 		}
 	}
 	key := status.Key()
@@ -454,6 +461,7 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 }
 
 func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
+	//to publish vault status to other agents
 	pubVaultStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -466,8 +474,7 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	ctx.pubVaultStatus = pubVaultStatus
 }
 
-//setup vaults on ext4, using fscrypt
-func setupVaultsOnExt4() error {
+func setupDeprecatedVaultsOnExt4(ignoreDefaultVault bool) error {
 	if err := setupFscryptEnv(); err != nil {
 		return fmt.Errorf("Error in setting up fscrypt environment: %s",
 			err)
@@ -475,9 +482,14 @@ func setupVaultsOnExt4() error {
 	if err := setupVault(deprecatedImgVault, true); err != nil {
 		return fmt.Errorf("Error in setting up vault %s:%v", deprecatedImgVault, err)
 	}
-	if err := setupVault(defaultCfgVault, false); err != nil {
-		return fmt.Errorf("Error in setting up vault %s %v", defaultCfgVault, err)
+	if err := setupVault(deprecatedCfgVault, true); err != nil {
+		return fmt.Errorf("Error in setting up vault %s %v", deprecatedCfgVault, err)
 	}
+	return nil
+}
+
+//setup vaults on ext4, using fscrypt
+func setupVaultOnExt4() error {
 	if err := setupVault(defaultVault, false); err != nil {
 		return fmt.Errorf("Error in setting up vault %s:%v", defaultVault, err)
 	}
@@ -485,29 +497,25 @@ func setupVaultsOnExt4() error {
 }
 
 //setup vaults on zfs, using zfs native encryption support
-func setupVaultsOnZfs() error {
+func setupVaultOnZfs() error {
 	if err := setupZfsVault(defaultSecretDataset); err != nil {
 		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
-	}
-	//XXX: We are deprecating persist/config as a vault soon, till then set it up
-	if err := setupZfsVault(defaultCfgSecretDataset); err != nil {
-		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultCfgSecretDataset, err)
 	}
 	return nil
 }
 
 func publishAllFscryptVaultStatus(ctx *vaultMgrContext) {
-	fscryptStatus, fscryptErr := fetchFscryptStatus()
-	publishVaultStatus(ctx, defaultVaultName, defaultVault,
+	fscryptStatus, fscryptErr := vault.GetOperInfo(log)
+	publishFscryptVaultStatus(ctx, types.DefaultVaultName, defaultVault,
 		fscryptStatus, fscryptErr)
-	publishVaultStatus(ctx, defaultCfgVaultName, defaultCfgVault,
+	publishFscryptVaultStatus(ctx, deprecatedCfgVaultName, deprecatedCfgVault,
 		fscryptStatus, fscryptErr)
 }
 
 func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
 	//XXX: till Controller deprecates handling status of persist/config, keep sending
-	publishZfsVaultStatus(ctx, defaultCfgVaultName, defaultCfgSecretDataset)
-	publishZfsVaultStatus(ctx, defaultVaultName, defaultSecretDataset)
+	publishZfsVaultStatus(ctx, deprecatedCfgVaultName, defaultCfgSecretDataset)
+	publishZfsVaultStatus(ctx, types.DefaultVaultName, defaultSecretDataset)
 }
 
 func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
@@ -537,6 +545,18 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 	pub.Publish(key, status)
 }
 
+func publishVaultStatus(ctx *vaultMgrContext) {
+	persistFsType := vault.ReadPersistType()
+	switch persistFsType {
+	case "ext4":
+		publishAllFscryptVaultStatus(ctx)
+	case "zfs":
+		publishAllZfsVaultStatus(ctx)
+	default:
+		log.Warnf("Ignoring unknown filesystem type %s", persistFsType)
+	}
+}
+
 //Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
@@ -557,20 +577,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	switch flag.Args()[0] {
-	case "setupVaults":
-		//start with an assumption that nothing needs to be done
+	case "setupDeprecatedVaults":
 		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
 		case "ext4":
-			if err := setupVaultsOnExt4(); err != nil {
+			if err := setupDeprecatedVaultsOnExt4(true); err != nil {
 				log.Error(err)
 				return 1
 			}
-		case "zfs":
-			if err := setupVaultsOnZfs(); err != nil {
-				log.Error(err)
-				return 1
-			}
+			//We don't have deprecated vaults on ZFS
 		default:
 			log.Infof("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
 		}
@@ -624,12 +639,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
 		case "ext4":
-			publishAllFscryptVaultStatus(&ctx)
+			if err := setupVaultOnExt4(); err != nil {
+				log.Error(err)
+			}
 		case "zfs":
-			publishAllZfsVaultStatus(&ctx)
+			if err := setupVaultOnZfs(); err != nil {
+				log.Error(err)
+			}
 		default:
-			log.Warnf("Ignoring unknown filesystem type %s", persistFsType)
+			log.Infof("unsupported %s filesystem, ignoring vault setup",
+				persistFsType)
 		}
+
+		//Publish current status of vault
+		publishVaultStatus(&ctx)
 		for {
 			select {
 			case <-stillRunning.C:
