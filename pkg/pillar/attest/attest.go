@@ -117,8 +117,10 @@ var (
 	ErrNonceMismatch       = errors.New("Nonce Mismatch")
 	ErrQuoteMismatch       = errors.New("Quote Mismatch")
 	ErrNoCertYet           = errors.New("No Cert Found")
-	ErrInfoTokenInvalid    = errors.New("Provided Integrity Token is Invalid")
+	ErrITokenMismatch      = errors.New("Mismatch in integrity-token")
 	ErrTpmAgentUnavailable = errors.New("TPM agent is unavailable")
+	ErrNoEscrowData        = errors.New("No Escrow Data available")
+	ErrNoVerifier          = errors.New("No verifier support in Controller")
 )
 
 //Watchdog needs to be implemented by the consumer of this package
@@ -250,6 +252,11 @@ func handleInitializeAtNone(ctx *Context) error {
 	switch err {
 	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
+	case ErrNoVerifier:
+		//Verifier support is missing in Controller
+		//let the state machine wait in this state forever
+		//until we get an EventRestart
+		return nil
 	default:
 		return fmt.Errorf("Unknown error %v", err)
 	}
@@ -289,6 +296,13 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 		return triggerSelfEvent(ctx, EventNoQuoteCertRecvd)
 	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
+	case ErrNoVerifier:
+		//Verifier support is missing in Controller
+		//We should not have got here since Nonce request
+		//itself should have failed. But still being defensive.
+		//let the state machine wait in this state forever
+		//until we get an EventRestart
+		return nil
 	default:
 		return fmt.Errorf("Unknown error %v", err)
 	}
@@ -302,13 +316,20 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 		triggerSelfEvent(ctx, EventAttestEscrowRecorded)
 		return nil
 	}
-	ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
+	//ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
 	switch err {
-	case ErrControllerReqFailed:
+	case ErrControllerReqFailed, ErrNoEscrowData:
 		return startNewRetryTimer(ctx)
-	case ErrInfoTokenInvalid:
+	case ErrITokenMismatch:
 		ctx.state = StateRestartWait
 		startNewRetryTimer(ctx)
+	case ErrNoVerifier:
+		//Verifier support is missing in Controller
+		//We should not have got here, since Nonce request
+		//itself should have failed. But still being defensive.
+		//let the state machine wait in this state forever
+		//until we get an EventRestart
+		return nil
 	default:
 		return fmt.Errorf("Unknown error %v", err)
 	}

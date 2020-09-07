@@ -99,6 +99,7 @@ type zedagentContext struct {
 	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
 	subAttestQuote            pubsub.Subscription
+	subEncryptedKeyFromDevice pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
 	subBlobStatus             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -699,6 +700,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subAttestQuote = subAttestQuote
 	subAttestQuote.Activate()
 
+	subEncryptedKeyFromDevice, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "vaultmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EncryptedVaultKeyFromDevice{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		ModifyHandler: handleEncryptedKeyFromDeviceModify,
+		DeleteHandler: handleEncryptedKeyFromDeviceModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subEncryptedKeyFromDevice = subEncryptedKeyFromDevice
+	subEncryptedKeyFromDevice.Activate()
+
 	// Look for nodeagent status
 	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nodeagent",
@@ -861,6 +879,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subAttestQuote.MsgChan():
 			subAttestQuote.ProcessChange(change)
+
+		case change := <-subEncryptedKeyFromDevice.MsgChan():
+			subEncryptedKeyFromDevice.ProcessChange(change)
 
 		case change := <-deferredChan:
 			start := time.Now()
@@ -1141,6 +1162,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subAttestQuote.MsgChan():
 			subAttestQuote.ProcessChange(change)
+
+		case change := <-subEncryptedKeyFromDevice.MsgChan():
+			subEncryptedKeyFromDevice.ProcessChange(change)
 
 		case change := <-subAppContainerMetrics.MsgChan():
 			subAppContainerMetrics.ProcessChange(change)

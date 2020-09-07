@@ -22,49 +22,52 @@ var (
 	simulateNoCertToValidate     = false
 	simulateITokenMismatch       = false
 	simulateTpmAgentDown         = false
+	simulateNoVerifier           = false
+	simulateNoEscrowData         = false
 )
 
 func (server *VerifierMock) SendNonceRequest(ctx *Context) error {
-	if simulateControllerReqFailure == true {
+	switch {
+	case simulateControllerReqFailure:
 		fmt.Printf("Simulating Controller being down\n")
 		return ErrControllerReqFailed
+	case simulateNoVerifier:
+		fmt.Printf("Simulating no verifier support in Controller\n")
+		return ErrNoVerifier
 	}
-
 	return nil
 }
 
 func (server *VerifierMock) SendAttestQuote(ctx *Context) error {
-	if simulateControllerReqFailure == true {
+	switch {
+	case simulateControllerReqFailure:
 		fmt.Printf("Simulating Controller being down\n")
 		return ErrControllerReqFailed
-	}
 
-	if simulateNonceMismatch == true {
+	case simulateNonceMismatch:
 		fmt.Printf("Simulating Nonce mismatch\n")
 		return ErrNonceMismatch
-	}
 
-	if simulateQuoteMismatch == true {
+	case simulateQuoteMismatch:
 		fmt.Printf("Simulating Quote mismatch\n")
 		return ErrQuoteMismatch
-	}
 
-	if simulateNoCertToValidate == true {
+	case simulateNoCertToValidate:
 		fmt.Printf("Simulating No quote cert in Controller\n")
 		return ErrNoCertYet
 	}
-
 	return nil
 }
 
 func (server *VerifierMock) SendAttestEscrow(ctx *Context) error {
-	if simulateControllerReqFailure == true {
+	switch {
+	case simulateControllerReqFailure:
 		fmt.Printf("Simulating Controller being down\n")
 		return ErrControllerReqFailed
-	}
 
-	if simulateITokenMismatch == true {
-		return ErrInfoTokenInvalid
+	case simulateITokenMismatch:
+		fmt.Printf("Simulating Integrity Token mismatch\n")
+		return ErrITokenMismatch
 	}
 
 	return nil
@@ -88,6 +91,8 @@ func initTest() *Context {
 	simulateNoCertToValidate = false
 	simulateITokenMismatch = false
 	simulateTpmAgentDown = false
+	simulateNoVerifier = false
+	simulateNoEscrowData = false
 
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "test", 1234)
@@ -284,6 +289,33 @@ func TestControllerNotAvbleInAttestEscrowWait(t *testing.T) {
 		case <-ctx.restartTimer.C:
 			if ctx.state != StateAttestEscrowWait {
 				t.Errorf("Expected %s, Got %s", StateAttestEscrowWait.String(), ctx.state.String())
+			}
+			return
+		}
+	}
+}
+
+func TestNoVerifierInNonceWait(t *testing.T) {
+	fmt.Println("--------TestNoVerifierInNonceWait----")
+	ctx := initTest()
+	stopTrigger := make(chan int)
+
+	go func() {
+		ctx.state = StateNone
+		simulateNoVerifier = true
+		ctx.eventTrigger <- EventInitialize
+		time.Sleep(1 * time.Second)
+		stopTrigger <- 1
+	}()
+	for {
+		select {
+		case trigger := <-ctx.eventTrigger:
+			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+				t.Errorf("%v", err)
+			}
+		case <-stopTrigger:
+			if ctx.state != StateNonceWait {
+				t.Errorf("Expected %s, Got %s", StateNonceWait.String(), ctx.state.String())
 			}
 			return
 		}

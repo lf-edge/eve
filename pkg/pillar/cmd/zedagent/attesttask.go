@@ -35,13 +35,16 @@ type WatchdogImpl struct{}
 
 // Attest Information Context
 type attestContext struct {
-	zedagentCtx    *zedagentContext
-	attestFsmCtx   *zattest.Context
-	pubAttestNonce pubsub.Publication
+	zedagentCtx                   *zedagentContext
+	attestFsmCtx                  *zattest.Context
+	pubAttestNonce                pubsub.Publication
+	pubEncryptedKeyFromController pubsub.Publication
 	//Nonce for the current attestation cycle
 	Nonce []byte
 	//Quote for the current attestation cycle
 	InternalQuote *types.AttestQuote
+	//Data to be escrowed with Controller
+	EscrowData []byte
 	//Iteration keeps track of retry count
 	Iteration int
 	//EventLogEntries are the TPM EventLog entries
@@ -91,7 +94,7 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 
 	// bail if V2API is not supported
 	if !zedcloud.UseV2API() {
-		return zattest.ErrControllerReqFailed
+		return zattest.ErrNoVerifier
 	}
 
 	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_NONCE
@@ -217,7 +220,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 
 	// bail if V2API is not supported
 	if !zedcloud.UseV2API() {
-		return zattest.ErrControllerReqFailed
+		return zattest.ErrNoVerifier
 	}
 
 	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_QUOTE
@@ -248,7 +251,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
-	log.Debugf("Sending Quote request %v", attestReq)
+	log.Debugf("Sending Quote request")
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
@@ -259,7 +262,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 
 	attestResp := &attest.ZAttestResponse{}
 	if err := proto.Unmarshal(contents, attestResp); err != nil {
-		log.Errorf("[ATTEST] Error %v in Unmarshaling nonce response", err)
+		log.Errorf("[ATTEST] Error %v in Unmarshaling quote response", err)
 		return zattest.ErrControllerReqFailed
 	}
 
@@ -283,7 +286,17 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_SUCCESS:
 		//Retrieve integrity token
 		storeIntegrityToken(quoteResp.GetIntegrityToken())
-		log.Infof("[ATTEST] Attestation successful")
+		log.Infof("[ATTEST] Attestation successful, processing keys given by Controller")
+		if encryptedKeys := quoteResp.GetKeys(); encryptedKeys != nil {
+			for _, sk := range encryptedKeys {
+				encryptedKeyType := sk.GetKeyType()
+				encryptedKey := sk.GetKey()
+				if encryptedKeyType == attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK {
+					publishEncryptedKeyFromController(attestCtx, encryptedKey)
+					log.Infof("[ATTEST] published Controller-given encrypted key")
+				}
+			}
+		}
 		return nil
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH:
 		log.Errorf("[ATTEST] Nonce Mismatch")
@@ -294,14 +307,86 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED:
 		log.Errorf("[ATTEST] Quote Mismatch")
 		return zattest.ErrQuoteMismatch
+	default:
+		log.Errorf("[ATTEST] Unknown quoteRespCode %v", quoteRespCode)
+		return zattest.ErrControllerReqFailed
 	}
-	return nil
 }
 
 //SendAttestEscrow implements SendAttestEscrow method of zattest.Verifier
 func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
-	//XXX: Fill it in when Controller code is ready
-	return nil
+	if ctx.OpaqueCtx == nil {
+		log.Fatalf("[ATTEST] Uninitialized access to OpaqueCtx")
+	}
+	attestCtx, ok := ctx.OpaqueCtx.(*attestContext)
+	if !ok {
+		log.Fatalf("[ATTEST] Unexpected type from opaque ctx: %T",
+			ctx.OpaqueCtx)
+	}
+	// bail if V2API is not supported
+	if !zedcloud.UseV2API() {
+		return zattest.ErrNoVerifier
+	}
+	if attestCtx.EscrowData == nil {
+		return zattest.ErrNoEscrowData
+	}
+
+	escrowMsg := &attest.AttestStorageKeys{}
+	escrowMsg.Keys = make([]*attest.AttestVolumeKey, 0)
+	key := new(attest.AttestVolumeKey)
+	key.KeyType = attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK
+	key.Key = attestCtx.EscrowData
+	escrowMsg.Keys = append(escrowMsg.Keys, key)
+	if b, err := readIntegrityToken(); err == nil {
+		escrowMsg.IntegrityToken = b
+	}
+	var attestReq = &attest.ZAttestReq{}
+	attestReq.ReqType = attest.ZAttestReqType_Z_ATTEST_REQ_TYPE_STORE_KEYS
+	attestReq.StorageKeys = escrowMsg
+
+	//Increment Iteration for interface rotation
+	attestCtx.Iteration++
+	log.Debugf("Sending Escrow data")
+
+	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
+	if err != nil || senderStatus != types.SenderStatusNone {
+		log.Errorf("[ATTEST] Error %v, senderStatus %v",
+			err, senderStatus)
+		return zattest.ErrControllerReqFailed
+	}
+	attestResp := &attest.ZAttestResponse{}
+	if err := proto.Unmarshal(contents, attestResp); err != nil {
+		log.Errorf("[ATTEST] Error %v in Unmarshaling storage keys response", err)
+		return zattest.ErrControllerReqFailed
+	}
+
+	respType := attestResp.GetRespType()
+	if respType != attest.ZAttestRespType_Z_ATTEST_RESP_TYPE_STORE_KEYS {
+		log.Errorf("[ATTEST] Got %v, but want %v",
+			respType, attest.ZAttestRespType_Z_ATTEST_RESP_TYPE_STORE_KEYS)
+		return zattest.ErrControllerReqFailed
+	}
+
+	var escrowResp *attest.AttestStorageKeysResp
+	if escrowResp = attestResp.GetStorageKeysResp(); escrowResp == nil {
+		log.Errorf("[ATTEST] Got empty storage keys response")
+		return zattest.ErrControllerReqFailed
+	}
+	escrowRespCode := escrowResp.GetResponse()
+	switch escrowRespCode {
+	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID:
+		log.Errorf("[ATTEST] Invalid response code")
+		return zattest.ErrControllerReqFailed
+	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH:
+		log.Errorf("[ATTEST] Integrity Token Mismatch")
+		return zattest.ErrITokenMismatch
+	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS:
+		log.Errorf("[ATTEST] Escrow successful")
+		return nil
+	default:
+		log.Errorf("[ATTEST] Unknown escrowRespCode %v", escrowRespCode)
+		return zattest.ErrControllerReqFailed
+	}
 }
 
 //SendInternalQuoteRequest implements SendInternalQuoteRequest method of zattest.TpmAgent
@@ -388,6 +473,15 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		log.Fatal(err)
 	}
 	ctx.attestCtx.pubAttestNonce = pubAttestNonce
+	pubEncryptedKeyFromController, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.EncryptedVaultKeyFromController{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.attestCtx.pubEncryptedKeyFromController = pubEncryptedKeyFromController
 	parseTpmEventLog(ctx.attestCtx)
 	return nil
 }
@@ -478,6 +572,32 @@ func handleAttestQuoteDelete(ctxArg interface{}, key string, quoteArg interface{
 	return
 }
 
+func handleEncryptedKeyFromDeviceModify(ctxArg interface{}, key string, vaultKeyArg interface{}) {
+
+	//Store quote received in state machine
+	ctx, ok := ctxArg.(*zedagentContext)
+	if !ok {
+		log.Fatalf("[ATTEST] Unexpected ctx type %T", ctxArg)
+	}
+
+	vaultKey, ok := vaultKeyArg.(types.EncryptedVaultKeyFromDevice)
+	if !ok {
+		log.Fatalf("[ATTEST] Unexpected pub type %T", vaultKeyArg)
+	}
+
+	if ctx.attestCtx == nil {
+		log.Fatalf("[ATTEST] Uninitialized access to attestCtx")
+	}
+
+	if vaultKey.Name != types.DefaultVaultName {
+		log.Warnf("Ignoring unknown vault %s", vaultKey.Name)
+		return
+	}
+
+	attestCtx := ctx.attestCtx
+	attestCtx.EscrowData = vaultKey.EncryptedVaultKey
+}
+
 func publishAttestNonce(ctx *attestContext) {
 	nonce := types.AttestNonce{
 		Nonce:     ctx.Nonce,
@@ -488,6 +608,18 @@ func publishAttestNonce(ctx *attestContext) {
 	pub := ctx.pubAttestNonce
 	pub.Publish(key, nonce)
 	log.Debugf("[ATTEST] publishAttestNonce done for %s", key)
+}
+
+func publishEncryptedKeyFromController(ctx *attestContext, encryptedVaultKey []byte) {
+	sK := types.EncryptedVaultKeyFromController{
+		Name:              types.DefaultVaultName,
+		EncryptedVaultKey: encryptedVaultKey,
+	}
+	key := sK.Key()
+	log.Debugf("[ATTEST] publishEncryptedKeyFromController %s", key)
+	pub := ctx.pubEncryptedKeyFromController
+	pub.Publish(key, sK)
+	log.Debugf("[ATTEST] publishEncryptedKeyFromController done for %s", key)
 }
 
 func unpublishAttestNonce(ctx *attestContext) {
