@@ -316,7 +316,7 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 		triggerSelfEvent(ctx, EventAttestEscrowRecorded)
 		return nil
 	}
-	//ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
+	ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
 	switch err {
 	case ErrControllerReqFailed, ErrNoEscrowData:
 		return startNewRetryTimer(ctx)

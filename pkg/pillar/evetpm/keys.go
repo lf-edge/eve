@@ -4,10 +4,12 @@
 package evetpm
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"strings"
 
@@ -69,4 +71,21 @@ func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 		return key, nil
 	}
 	return nil, err
+}
+
+//GetPublicKeyFromCert gets public key from a X.509 cert
+func GetPublicKeyFromCert(certFile string) (crypto.PublicKey, error) {
+	//read public key from ecdh certificate
+	certBytes, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		fmt.Printf("error in reading ecdh cert file: %v", err)
+		return nil, err
+	}
+	block, _ := pem.Decode(certBytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		fmt.Printf("error in parsing ecdh cert file: %v", err)
+		return nil, err
+	}
+	return cert.PublicKey, nil
 }

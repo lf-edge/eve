@@ -108,6 +108,12 @@ One big driving factor for this is protecting Edge Containers and the Data Volum
 
 For more details, please consider [Encrypting Sensitive Information at Rest at the Edge](https://wiki.lfedge.org/display/EVE/Encrypting+Sensitive+Information+at+Rest+at+the+Edge) design proposal.
 
+The encryption key is sealed into TPM using PCR values. This means that the key can only be retrieved from TPM when the software booting sequence has not changed. In addition, the encryption key is escrowed with the Controller. This is done so that after an EVE/firmware upgrade, the device will fail to unseal the key from TPM (because its PCRs have changed), and after proving that the device software is trustworthy (via PCR quote etc), Controller will send back the key to the device.
+
+However, in the above mechanism, it is desired that, the key is not sent in clear text, but instead be encrypted using a TPM based key, so that, the key is protected from being exposed in Controller. To this effect, the vault key itself is encrypted using a TPM based key. To decrypt the key, one has to be on the same device with access to the same TPM.
+
+For more details, please refer to [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) design proposal.
+
 ## Secure Overlay Network
 
 EVE provides a secure overlay network for ECOS for cases when east-west communication is needed between ECOS. This is built using [LISP](https://tools.ietf.org/html/rfc6830) with a strong security foundation. Each ECO is attached to a mesh network instance which describes common parameters for the overlay network such as the location of the LISP RTR.
