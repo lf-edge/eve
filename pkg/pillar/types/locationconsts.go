@@ -66,4 +66,6 @@ const (
 	ITokenFile = "/var/run/eve.integrity_token"
 	//EveVersionFile contains the running version of EVE
 	EveVersionFile = "/run/eve-release"
+	//DefaultVaultName is the name of the default vault
+	DefaultVaultName = "Application Data Store"
 )
