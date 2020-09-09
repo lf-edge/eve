@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package socketdriver
 
 import (
@@ -145,8 +148,6 @@ func (s *Subscriber) watchSock() {
 // Returns msg, key, val
 // key and val are base64-encoded
 func (s *Subscriber) connectAndRead() (string, string, []byte) {
-	buf := make([]byte, maxsize+1)
-
 	// Waiting for publisher to appear; retry on error
 	for {
 		if s.sock == nil {
@@ -174,94 +175,118 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 		}
 
-		res, err := s.sock.Read(buf)
-		if err != nil {
-			errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
+		// wait for readable conn
+		if err := connReadCheck(s.sock); err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s) connReadCheck failed: %s",
 				s.name, err)
 			s.log.Errorln(errStr)
 			s.sock.Close()
 			s.sock = nil
 			continue
 		}
-
-		if res == len(buf) {
-			// Likely truncated
-			// Peer process could have died
-			s.log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
+		msg, key, val := s.read()
+		if msg == "" {
 			continue
 		}
-		reply := strings.Split(string(buf[0:res]), " ")
-		count := len(reply)
-		if count < 2 {
-			errStr := fmt.Sprintf("connectAndRead(%s): too short read", s.name)
+		return msg, key, val
+	}
+}
+
+// Returns msg, key, val
+// key and val are base64-encoded
+// msg is "" if there is nothing to process
+func (s *Subscriber) read() (string, string, []byte) {
+
+	buf, doneFunc := getBuffer()
+	defer doneFunc()
+
+	res, err := s.sock.Read(buf)
+	if err != nil {
+		errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
+			s.name, err)
+		s.log.Errorln(errStr)
+		s.sock.Close()
+		s.sock = nil
+		return "", "", nil
+	}
+
+	if res == len(buf) {
+		// Likely truncated
+		// Peer process could have died
+		s.log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
+		return "", "", nil
+	}
+	reply := strings.Split(string(buf[0:res]), " ")
+	count := len(reply)
+	if count < 2 {
+		errStr := fmt.Sprintf("connectAndRead(%s): too short read", s.name)
+		s.log.Errorln(errStr)
+		return "", "", nil
+	}
+	msg := reply[0]
+	t := reply[1]
+
+	if t != s.topic {
+		errStr := fmt.Sprintf("connectAndRead(%s): mismatched topic %s vs. %s for %s", s.name, t, s.topic, msg)
+		s.log.Errorln(errStr)
+		// XXX return "", "", nil?
+	}
+
+	// XXX are there error cases where we should Close and
+	// continue aka reconnect?
+	switch msg {
+	case "hello", "restarted", "complete":
+		s.log.Debugf("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
+		return msg, "", nil
+
+	case "delete":
+		if count < 3 {
+			errStr := fmt.Sprintf("connectAndRead(%s): too short delete", s.name)
 			s.log.Errorln(errStr)
-			continue
+			return "", "", nil
 		}
-		msg := reply[0]
-		t := reply[1]
+		recvKey := reply[2]
 
-		if t != s.topic {
-			errStr := fmt.Sprintf("connectAndRead(%s): mismatched topic %s vs. %s for %s", s.name, t, s.topic, msg)
+		key, err := base64.StdEncoding.DecodeString(recvKey)
+		if err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s", s.name, err)
 			s.log.Errorln(errStr)
-			// XXX continue
+			return "", "", nil
 		}
+		if s.logger.GetLevel() == logrus.TraceLevel {
+			s.log.Debugf("connectAndRead(%s): delete type %s key %s\n", s.name, t, string(key))
+		}
+		return msg, string(key), nil
 
-		// XXX are there error cases where we should Close and
-		// continue aka reconnect?
-		switch msg {
-		case "hello", "restarted", "complete":
-			s.log.Debugf("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
-			return msg, "", nil
-
-		case "delete":
-			if count < 3 {
-				errStr := fmt.Sprintf("connectAndRead(%s): too short delete", s.name)
-				s.log.Errorln(errStr)
-				continue
-			}
-			recvKey := reply[2]
-
-			key, err := base64.StdEncoding.DecodeString(recvKey)
-			if err != nil {
-				errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s", s.name, err)
-				s.log.Errorln(errStr)
-				continue
-			}
-			if s.logger.GetLevel() == logrus.TraceLevel {
-				s.log.Debugf("connectAndRead(%s): delete type %s key %s\n", s.name, t, string(key))
-			}
-			return msg, string(key), nil
-
-		case "update":
-			if count != 4 {
-				errStr := fmt.Sprintf("connectAndRead(%s): update of %d parts instead of expected 4", s.name, count)
-				s.log.Errorln(errStr)
-				continue
-			}
-			recvKey := reply[2]
-			recvVal := reply[3]
-			key, err := base64.StdEncoding.DecodeString(recvKey)
-			if err != nil {
-				errStr := fmt.Sprintf("connectAndRead(%s): base64 key failed %s", s.name, err)
-				s.log.Errorln(errStr)
-				continue
-			}
-			val, err := base64.StdEncoding.DecodeString(recvVal)
-			if err != nil {
-				errStr := fmt.Sprintf("connectAndRead(%s): base64 val failed %s", s.name, err)
-				s.log.Errorln(errStr)
-				continue
-			}
-			if s.logger.GetLevel() == logrus.TraceLevel {
-				s.log.Debugf("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
-			}
-			return msg, string(key), val
-
-		default:
-			errStr := fmt.Sprintf("connectAndRead(%s): unknown message %s", s.name, msg)
+	case "update":
+		if count != 4 {
+			errStr := fmt.Sprintf("connectAndRead(%s): update of %d parts instead of expected 4", s.name, count)
 			s.log.Errorln(errStr)
-			continue
+			return "", "", nil
 		}
+		recvKey := reply[2]
+		recvVal := reply[3]
+		key, err := base64.StdEncoding.DecodeString(recvKey)
+		if err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s): base64 key failed %s", s.name, err)
+			s.log.Errorln(errStr)
+			return "", "", nil
+		}
+		val, err := base64.StdEncoding.DecodeString(recvVal)
+		if err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s): base64 val failed %s", s.name, err)
+			s.log.Errorln(errStr)
+			return "", "", nil
+		}
+		if s.logger.GetLevel() == logrus.TraceLevel {
+			s.log.Debugf("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
+		}
+		return msg, string(key), val
+
+	default:
+		errStr := fmt.Sprintf("connectAndRead(%s): unknown message %s", s.name, msg)
+		s.log.Errorln(errStr)
+		return "", "", nil
 	}
 }
 

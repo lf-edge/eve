@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Zededa, Inc.
+// Copyright (c) 2019-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package socketdriver
@@ -10,6 +10,8 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -224,4 +226,53 @@ func (s *SocketDriver) fixedDirName(name string) string {
 
 func (s *SocketDriver) persistentDirName(name string) string {
 	return fmt.Sprintf("%s/status/%s", "/persist", name)
+}
+
+// Use a buffer pool to minimize memory usage
+var bufPool = &sync.Pool{
+	New: func() interface{} {
+		buffer := make([]byte, maxsize+1)
+		return buffer
+	},
+}
+
+//getBuffer returns a buffer and a done func to call at defer.
+func getBuffer() ([]byte, func()) {
+	buf := bufPool.Get().([]byte)
+	return buf, func() {
+		bufPool.Put(buf)
+	}
+}
+
+// check and waits till conn's fd is readable
+func connReadCheck(conn net.Conn) error {
+	var sysErr error
+
+	sysConn, ok := conn.(syscall.Conn)
+	if !ok {
+		return fmt.Errorf("Not syscall.Conn")
+	}
+	rawConn, err := sysConn.SyscallConn()
+	if err != nil {
+		return fmt.Errorf("Exception while getting rawConn: %s",
+			err)
+	}
+
+	err = rawConn.Read(func(fd uintptr) bool {
+		_, _, err := syscall.Recvfrom(int(fd), []byte{}, syscall.MSG_PEEK)
+		if err != nil {
+			if err == syscall.EAGAIN {
+				return false
+			}
+			//assign unknown error to syserr which will be handled later.
+			sysErr = fmt.Errorf("Unknown error from syscall.Recvfrom: %s",
+				err)
+		}
+		return true
+	})
+	if err != nil {
+		return fmt.Errorf("Exception from rawConn.Read: %s",
+			err)
+	}
+	return sysErr
 }
