@@ -2097,7 +2097,7 @@ type ZMetricFlow struct {
 	Id   string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`      // IpSec Conn-Id
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`  // IpSec Tun-Name
 	Type uint32 `protobuf:"varint,3,opt,name=type,proto3" json:"type,omitempty"` // IpSec-Vpn
-	// deprecated 4;
+	// deprecated  = 4; uint64 iid  = 4
 	EstTime   uint64                 `protobuf:"varint,5,opt,name=estTime,proto3" json:"estTime,omitempty"` // in seconds
 	LEndPoint *ZMetricFlowEndPoint   `protobuf:"bytes,10,opt,name=lEndPoint,proto3" json:"lEndPoint,omitempty"`
 	REndPoint []*ZMetricFlowEndPoint `protobuf:"bytes,11,rep,name=rEndPoint,proto3" json:"rEndPoint,omitempty"`
@@ -2406,7 +2406,7 @@ type ZMetricNetworkInstance struct {
 	//	*ZMetricNetworkInstance_Vpnm
 	//	*ZMetricNetworkInstance_Nonem
 	InstanceContent isZMetricNetworkInstance_InstanceContent `protobuf_oneof:"InstanceContent"`
-	FlowStats       []*ZMetricFlow                           `protobuf:"bytes,30,rep,name=flowStats,proto3" json:"flowStats,omitempty"`       // deprecated 31;
+	FlowStats       []*ZMetricFlow                           `protobuf:"bytes,30,rep,name=flowStats,proto3" json:"flowStats,omitempty"`       // deprecated = 31; ZMetricLispGlobal lispGlobalStats = 31
 	NetworkStats    *ZMetricNetworkStats                     `protobuf:"bytes,40,opt,name=networkStats,proto3" json:"networkStats,omitempty"` // Network bridge interface statistics
 }
 
@@ -2535,7 +2535,7 @@ type ZMetricNetworkInstance_Vpnm struct {
 }
 
 type ZMetricNetworkInstance_Nonem struct {
-	// deprecated 21;
+	// deprecated = 21; ZMetricLisp lispm = 21
 	Nonem *ZMetricNone `protobuf:"bytes,22,opt,name=nonem,proto3,oneof"`
 }
 

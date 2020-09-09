@@ -3627,7 +3627,7 @@ type isZInfoNetworkInstance_InfoContent interface {
 }
 
 type ZInfoNetworkInstance_Vinfo struct {
-	Vinfo *ZInfoVpn `protobuf:"bytes,31,opt,name=vinfo,proto3,oneof"` // deprecated 32;
+	Vinfo *ZInfoVpn `protobuf:"bytes,31,opt,name=vinfo,proto3,oneof"` // deprecated = 32; ZInfoLisp linfo = 32
 }
 
 func (*ZInfoNetworkInstance_Vinfo) isZInfoNetworkInstance_InfoContent() {}
