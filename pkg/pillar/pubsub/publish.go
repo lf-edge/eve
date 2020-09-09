@@ -100,7 +100,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	}
 	pub.km.key.Store(key, newItem)
 
-	if pub.logger.GetLevel() == logrus.DebugLevel {
+	if pub.logger.GetLevel() == logrus.TraceLevel {
 		pub.dump("after Publish")
 	}
 	pub.updatersNotify(name)
@@ -130,7 +130,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 		return errors.New(errStr)
 	}
 	pub.km.key.Delete(key)
-	if pub.logger.GetLevel() == logrus.DebugLevel {
+	if pub.logger.GetLevel() == logrus.TraceLevel {
 		pub.dump("after Unpublish")
 	}
 	pub.updatersNotify(name)

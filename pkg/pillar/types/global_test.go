@@ -130,7 +130,7 @@ func TestAddStringItem(t *testing.T) {
 }
 
 func TestNewConfigItemSpecMap(t *testing.T) {
-	// log.SetLevel(log.DebugLevel)
+	// log.SetLevel(log.TraceLevel)
 	specMap := NewConfigItemSpecMap()
 
 	// Verify none of the Global key have agent as prefix
@@ -280,7 +280,7 @@ func (testPtr *parseItemTestEntry) verifyEntry(t *testing.T, testname string,
 }
 
 func TestParseGlobalItem(t *testing.T) {
-	// log.SetLevel(log.DebugLevel)
+	// log.SetLevel(log.TraceLevel)
 	specMap := NewConfigItemSpecMap()
 	testMatrix := map[string]parseItemTestEntry{
 		"Global String Setting": {
@@ -370,7 +370,7 @@ func TestParseGlobalItem(t *testing.T) {
 //  Verify Unknown settings ( New and Legacy ) are rejected
 //  Verify Invalid Values for known settings are rejected and old value retained
 func TestParseAgentItem(t *testing.T) {
-	// log.SetLevel(log.DebugLevel)
+	// log.SetLevel(log.TraceLevel)
 	specMap := NewConfigItemSpecMap()
 
 	testMatrix := map[string]parseItemTestEntry{

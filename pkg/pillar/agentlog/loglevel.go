@@ -141,7 +141,7 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 	log.Infof("handleGlobalConfigImpl: gcp %+v\n", gcp)
 	if debugOverride {
 		debug = true
-		level = logrus.DebugLevel
+		level = logrus.TraceLevel
 		log.Infof("handleGlobalConfigImpl: debugOverride set. set loglevel to debug")
 	} else if loglevel, ok := getLogLevelImpl(log, sub, agentName, allowDefault); ok {
 		l, err := logrus.ParseLevel(loglevel)
@@ -152,7 +152,7 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 			log.Infof("handleGlobalConfigModify: level %v\n",
 				level)
 		}
-		if level == logrus.DebugLevel {
+		if level == logrus.TraceLevel {
 			debug = true
 		}
 	} else {

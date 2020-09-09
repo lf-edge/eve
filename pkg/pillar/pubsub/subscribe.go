@@ -220,7 +220,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 		}
 	}
 	sub.km.key.Store(key, item)
-	if sub.logger.GetLevel() == logrus.DebugLevel {
+	if sub.logger.GetLevel() == logrus.TraceLevel {
 		sub.dump("after handleModify")
 	}
 	// Need a copy in case the caller will modify e.g., embedded maps
@@ -251,7 +251,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	// DO NOT log Values. They may contain sensitive information.
 	sub.log.Debugf("pubsub.handleDelete(%s) key %s", name, key)
 	sub.km.key.Delete(key)
-	if sub.logger.GetLevel() == logrus.DebugLevel {
+	if sub.logger.GetLevel() == logrus.TraceLevel {
 		sub.dump("after handleDelete")
 	}
 	if sub.DeleteHandler != nil {

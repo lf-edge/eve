@@ -182,7 +182,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 	pub.driver = driver
 
 	pub.populate()
-	if pub.logger.GetLevel() == logrus.DebugLevel {
+	if pub.logger.GetLevel() == logrus.TraceLevel {
 		pub.dump("after populate")
 	}
 	pub.log.Debugf("Publish(%s)\n", name)
