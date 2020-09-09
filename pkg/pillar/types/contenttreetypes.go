@@ -22,9 +22,6 @@ type ContentTreeConfig struct {
 	ContentSha256     string
 	MaxDownloadSize   uint64
 	GenerationCounter int64
-	ImageSignature    []byte   //signature of image
-	SignatureKey      string   //certificate containing public key
-	CertificateChain  []string //name of intermediate certificates
 	DisplayName       string
 }
 
@@ -109,12 +106,8 @@ type ContentTreeStatus struct {
 	ContentSha256     string
 	MaxDownloadSize   uint64
 	GenerationCounter int64
-	ImageSignature    []byte   //signature of image
-	SignatureKey      string   //certificate containing public key
-	CertificateChain  []string //name of intermediate certificates
 	DisplayName       string
 	HasResolverRef    bool
-	WaitingForCerts   bool
 	State             SwState
 	TotalSize         int64  // expected size as reported by the downloader, if any
 	CurrentSize       int64  // current total downloaded size as reported by the downloader
@@ -156,9 +149,6 @@ func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeC
 	status.ContentSha256 = config.ContentSha256
 	status.MaxDownloadSize = config.MaxDownloadSize
 	status.GenerationCounter = config.GenerationCounter
-	status.ImageSignature = config.ImageSignature
-	status.SignatureKey = config.SignatureKey
-	status.CertificateChain = config.CertificateChain
 	status.DisplayName = config.DisplayName
 }
 

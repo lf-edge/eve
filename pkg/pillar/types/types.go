@@ -6,7 +6,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -158,46 +157,6 @@ const (
 	// NoHash constant to indicate that we have no real hash
 	NoHash = "sha"
 )
-
-// UrlToSafename returns a safename
-// XXX deprecate? We might need something for certs
-func UrlToSafename(url string, sha string) string {
-
-	var safename string
-
-	if sha != "" {
-		safename = strings.Replace(url, "/", " ", -1) + "." + sha
-	} else {
-		safename = strings.Replace(url, "/", " ", -1) + "." + NoHash
-	}
-	return safename
-}
-
-// SafenameToFilename returns the filename from inside the safename
-// Remove initial part up to last '/' in URL. Note that '/' was converted
-// to ' ' in Safename
-// XXX deprecate? We might need something for certs
-func SafenameToFilename(safename string) string {
-	comp := strings.Split(safename, " ")
-	last := comp[len(comp)-1]
-	// Drop "."sha256 tail part of Safename
-	i := strings.LastIndex(last, ".")
-	if i == -1 {
-		logrus.Fatal("Malformed safename with no .sha256",
-			safename)
-	}
-	last = last[0:i]
-	return last
-}
-
-// UrlToFilename returns the last component of a URL.
-// XXX deprecate? We might need something for certs
-// XXX assumes len
-func UrlToFilename(urlName string) string {
-	comp := strings.Split(urlName, "/")
-	last := comp[len(comp)-1]
-	return last
-}
 
 // Used to retain UUID to integer maps across reboots.
 // Used for appNum and bridgeNum

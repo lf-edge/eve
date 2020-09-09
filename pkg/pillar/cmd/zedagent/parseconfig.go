@@ -938,18 +938,6 @@ func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drive
 			contentTree.ContentSha256 = strings.ToLower(drive.Image.Sha256)
 			contentTree.MaxDownloadSize = uint64(drive.Image.SizeBytes)
 			contentTree.DisplayName = drive.Image.Name
-			contentTree.ImageSignature = drive.Image.Siginfo.Signature
-			contentTree.SignatureKey = drive.Image.Siginfo.Signercerturl
-
-			// XXX:FIXME certificates can be many
-			// this list, currently contains the certUrls
-			// should be the sha/uuid of cert filenames
-			// as proper DataStore Entries
-
-			if drive.Image.Siginfo.Intercertsurl != "" {
-				contentTree.CertificateChain = make([]string, 1)
-				contentTree.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
-			}
 		}
 		contentTreeList[idx] = *contentTree
 		idx++

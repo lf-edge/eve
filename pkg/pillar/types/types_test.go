@@ -6,32 +6,6 @@ import (
 	"testing"
 )
 
-// XXX deprecate? We might need something for certs
-func TestUrlToSafename(t *testing.T) {
-	testMatrix := map[string]struct {
-		safename string
-		url      string
-		sha      string
-	}{
-		"Sha is none": {
-			safename: "hello world --  .none",
-			url:      "hello/world/-- /",
-			sha:      "none",
-		},
-		"Blank sha": {
-			safename: "hello world --  .sha",
-			url:      "hello/world/-- /",
-			sha:      "",
-		},
-	}
-
-	for testname, test := range testMatrix {
-		t.Logf("Running test case %s", testname)
-		safename := UrlToSafename(test.url, test.sha)
-		assert.Equal(t, test.safename, safename)
-	}
-}
-
 func TestParseTriState(t *testing.T) {
 	testMatrix := map[string]struct {
 		err   error
