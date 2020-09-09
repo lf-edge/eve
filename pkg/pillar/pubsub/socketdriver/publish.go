@@ -154,8 +154,17 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	// Track the set of keys/values we are sending to the peer
 	sendToPeer := make(pubsub.LocalCollection)
 	sentRestarted := false
+
+	// wait for readable conn
+	if err := connReadCheck(conn); err != nil {
+		s.log.Errorf("serveConnection(%s) connReadCheck failed: %s",
+			s.name, err)
+		return
+	}
+	buf, doneFunc := getBuffer()
+	defer doneFunc()
+
 	// Read request
-	buf := make([]byte, 65536)
 	res, err := conn.Read(buf)
 	if err != nil {
 		// Peer process could have died

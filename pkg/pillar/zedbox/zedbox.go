@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -220,7 +223,7 @@ func startSubscriber(agent string, topic interface{}, subSkt chan string) {
 		// This could either be a left-over in the filesystem
 		// or some other process (or ourselves) using the same
 		// name to publish. Try connect to see if it is the latter.
-		_, err := net.Dial("unix", sockName)
+		_, err := net.Dial("unixpacket", sockName)
 		if err == nil {
 			log.Fatalf("connectAndRead(%s): Can not publish %s since its already used",
 				agent, sockName)
@@ -230,7 +233,7 @@ func startSubscriber(agent string, topic interface{}, subSkt chan string) {
 				agent, sockName, err)
 		}
 	}
-	listener, err := net.Listen("unix", sockName)
+	listener, err := net.Listen("unixpacket", sockName)
 	if err != nil {
 		log.Fatalf("connectAndRead(%s): Exception while listening at sock %s. %s",
 			agent, sockName, err)
@@ -242,7 +245,7 @@ func startSubscriber(agent string, topic interface{}, subSkt chan string) {
 			log.Errorf("connectAndRead(%s) failed %s\n", sockName, err)
 			continue
 		}
-		go serveConnection(c, subSkt)
+		go serveConnection(c, subSkt, sockName)
 	}
 }
 
@@ -265,7 +268,7 @@ func publish(agent string, data interface{}) error {
 		return err
 	}
 
-	conn, err := net.Dial("unix", sockName)
+	conn, err := net.Dial("unixpacket", sockName)
 	if err != nil {
 		err := fmt.Errorf("publish(%s): exception while dialing socket. %s",
 			sockName, err.Error())
@@ -283,17 +286,30 @@ func publish(agent string, data interface{}) error {
 	return nil
 }
 
-func serveConnection(conn net.Conn, retChan chan string) {
+func serveConnection(conn net.Conn, retChan chan string, name string) {
 
 	for {
-		buf := make([]byte, 2048)
+		// wait for readable conn
+		if err := connReadCheck(conn); err != nil {
+			if err != io.EOF {
+				log.Errorf("serveConnection: Error on connReadCheck: %s",
+					err)
+			}
+			break
+		}
+
+		buf, doneFunc := getBuffer()
+		defer doneFunc()
+
 		count, err := conn.Read(buf)
 		if err != nil {
-			log.Errorf("serveConnection: Error on read: %s", err)
+			if err != io.EOF {
+				log.Errorf("serveConnection: Error on read: %s",
+					err)
+			}
 			break
 		}
 		retChan <- string(buf[:count])
-
 	}
 	conn.Close()
 }
@@ -315,4 +331,57 @@ func startAgentAndDone(agentName string, srvPs *pubsub.PubSub,
 		[]byte(ret), 0700); err != nil {
 		log.Fatalf("Error write done file: %v", err)
 	}
+}
+
+const maxsize = 2048
+
+// Use a buffer pool to minimize memory usage
+// While this isn't critical here, doing the same as in pubsub/socketdriver
+// makes it easier to test things using zedbox publish and subscribe
+var bufPool = &sync.Pool{
+	New: func() interface{} {
+		buffer := make([]byte, maxsize+1)
+		return buffer
+	},
+}
+
+//getBuffer returns a buffer and a done func to call at defer.
+func getBuffer() ([]byte, func()) {
+	buf := bufPool.Get().([]byte)
+	return buf, func() {
+		bufPool.Put(buf)
+	}
+}
+
+// check and waits till conn's fd is readable
+func connReadCheck(conn net.Conn) error {
+	var sysErr error
+
+	sysConn, ok := conn.(syscall.Conn)
+	if !ok {
+		return fmt.Errorf("Not syscall.Conn")
+	}
+	rawConn, err := sysConn.SyscallConn()
+	if err != nil {
+		return fmt.Errorf("Exception while getting rawConn: %s",
+			err)
+	}
+
+	err = rawConn.Read(func(fd uintptr) bool {
+		_, _, err := syscall.Recvfrom(int(fd), []byte{}, syscall.MSG_PEEK)
+		if err != nil {
+			if err == syscall.EAGAIN {
+				return false
+			}
+			//assign unknown error to syserr which will be handled later.
+			sysErr = fmt.Errorf("Unknown error from syscall.Recvfrom: %s",
+				err)
+		}
+		return true
+	})
+	if err != nil {
+		return fmt.Errorf("Exception from rawConn.Read: %s",
+			err)
+	}
+	return sysErr
 }
