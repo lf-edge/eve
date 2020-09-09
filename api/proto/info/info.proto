@@ -493,7 +493,7 @@ message ZInfoNetworkInstance {
   repeated ZioBundle assignedAdapters = 30;
   oneof InfoContent {
     ZInfoVpn vinfo = 31;
-    // deprecated 32;
+    // deprecated = 32; ZInfoLisp linfo = 32
   }
   repeated ErrorInfo networkErr = 40;
 }

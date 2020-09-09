@@ -263,7 +263,7 @@ message ZMetricNone {
 message ZMetricFlowLink {
   oneof Link {
     string subNet = 1; // IpSec: Subnet
-    // deprecated 2;
+    // deprecated = 2; string eid = 2
   }
   string spiId = 3;    // IpSec: SpiId
 }
@@ -271,7 +271,7 @@ message ZMetricFlowLink {
 message ZMetricFlowEndPoint {
   oneof Endpoint {
     string ipAddr = 1; // IpSec: Endpoint Ip Address
-    // deprecated 2;
+    // deprecated = 2; string rloc = 2
   }
   repeated ZMetricFlowLink link = 5;
   PktStat stats = 10;  // traffic
@@ -281,7 +281,7 @@ message ZMetricFlow {
   string id = 1;      // IpSec Conn-Id
   string name = 2;    // IpSec Tun-Name
   uint32 type = 3;    // IpSec-Vpn
-  // deprecated 4;
+  // deprecated  = 4; uint64 iid  = 4
   uint64 estTime = 5; // in seconds
   ZMetricFlowEndPoint lEndPoint = 10;
   repeated ZMetricFlowEndPoint rEndPoint = 11;
@@ -331,11 +331,11 @@ message ZMetricNetworkInstance {
   ZProbeNIMetrics probeMetric = 12;     // NI uplink probing stats
   oneof InstanceContent {
     ZMetricVpn  vpnm = 20;
-    // deprecated 21;
+    // deprecated = 21; ZMetricLisp lispm = 21
     ZMetricNone nonem = 22;
   }
   repeated ZMetricFlow flowStats = 30;
-  // deprecated 31;
+  // deprecated = 31; ZMetricLispGlobal lispGlobalStats = 31
 
   ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
 }

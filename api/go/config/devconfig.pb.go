@@ -44,7 +44,7 @@ type EdgeDevConfig struct {
 	Apps       []*AppInstanceConfig `protobuf:"bytes,4,rep,name=apps,proto3" json:"apps,omitempty"`
 	Networks   []*NetworkConfig     `protobuf:"bytes,5,rep,name=networks,proto3" json:"networks,omitempty"`
 	Datastores []*DatastoreConfig   `protobuf:"bytes,6,rep,name=datastores,proto3" json:"datastores,omitempty"`
-	// deprecated 7;
+	// deprecated 7; DeviceLispDetails lispInfo = 7
 	Base        []*BaseOSConfig `protobuf:"bytes,8,rep,name=base,proto3" json:"base,omitempty"` // BaseOSImage config block
 	Reboot      *DeviceOpsCmd   `protobuf:"bytes,9,opt,name=reboot,proto3" json:"reboot,omitempty"`
 	Backup      *DeviceOpsCmd   `protobuf:"bytes,10,opt,name=backup,proto3" json:"backup,omitempty"`
