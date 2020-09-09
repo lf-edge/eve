@@ -10,9 +10,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-// XXX more than images; rename type and clean up comments
-// XXX make clean that Cert/Key are names of them and not PEM content
-
 // Types for verifying the images.
 // For now we just verify the sha checksum.
 // For defense-in-depth we assume that the ZedManager with the help of
@@ -22,15 +19,12 @@ import (
 // VerifyImageConfig captures the verifications which have been requested.
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type VerifyImageConfig struct {
-	ImageSha256      string // sha256 of immutable image
-	Name             string
-	CertificateChain []string //name of intermediate certificates
-	ImageSignature   []byte   //signature of image
-	SignatureKey     string   //certificate containing public key
-	FileLocation     string   // Current location; should be info about file
-	Size             int64    //FileLocation size
-	RefCount         uint
-	Expired          bool // Used in delete handshake
+	ImageSha256  string // sha256 of immutable image
+	Name         string
+	FileLocation string // Current location; should be info about file
+	Size         int64  //FileLocation size
+	RefCount     uint
+	Expired      bool // Used in delete handshake
 }
 
 // Key returns the pubsub Key

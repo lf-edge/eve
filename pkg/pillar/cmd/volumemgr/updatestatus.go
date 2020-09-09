@@ -21,15 +21,9 @@ import (
 func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, bool) {
 
 	log.Infof("doUpdateContentTree(%s) name %s state %s", status.Key(), status.DisplayName, status.State)
-	status.WaitingForCerts = false
 
 	changed := false
 	addedBlobs := []string{}
-	sv := SignatureVerifier{
-		Signature:        status.ImageSignature,
-		PublicKey:        status.SignatureKey,
-		CertificateChain: status.CertificateChain,
-	}
 
 	if status.State < types.VERIFIED {
 
@@ -92,7 +86,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 			// at this point, we will have the hash of the root blob as status.ContentSha256,
 			// so we need to create the BlobStatus, if it does not exist already
-			rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.ContentSha256)
+			rootBlob := lookupOrCreateBlobStatus(ctx, status.ContentSha256)
 			if rootBlob == nil {
 				rootBlob = &types.BlobStatus{
 					DatastoreID: status.DatastoreID,
@@ -135,7 +129,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		)
 		for _, blobSha := range status.Blobs {
 			// get the actual blobStatus
-			blob := lookupOrCreateBlobStatus(ctx, sv, blobSha)
+			blob := lookupOrCreateBlobStatus(ctx, blobSha)
 			if blob == nil {
 				log.Errorf("doUpdateContentTree: could not find BlobStatus(%s)", blobSha)
 				leftToProcess = true
@@ -151,7 +145,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				// any state less than downloaded, we ask for download, so that we have the refcount;
 				// downloadBlob() is smart enough to look for existing references
 				log.Debugf("doUpdateContentTree: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
-				if downloadBlob(ctx, status.ObjType, sv, blob) {
+				if downloadBlob(ctx, status.ObjType, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
@@ -159,7 +153,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
 				// downloaded: kick off verifier for this blob
 				log.Infof("doUpdateContentTree: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
-				if verifyBlob(ctx, sv, blob) {
+				if verifyBlob(ctx, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
@@ -171,7 +165,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			} else {
 				log.Debugf("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
 				// if verified, check for any children and start them off
-				blobChildren := blobsNotInList(getBlobChildren(ctx, sv, blob), status.Blobs)
+				blobChildren := blobsNotInList(getBlobChildren(ctx, blob), status.Blobs)
 				if len(blobChildren) > 0 {
 					log.Infof("doUpdateContentTree: adding %d children", len(blobChildren))
 					// add all of the children
@@ -179,7 +173,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 						addedBlobs = append(addedBlobs, blob.Sha256)
 					}
 					// only publish those that do not already exist
-					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, sv, blobChildren)...)
+					publishBlobStatus(ctx, blobsNotInStatusOrCreate(ctx, blobChildren)...)
 					AddBlobsToContentTreeStatus(ctx, status, addedBlobs...)
 				}
 				if blob.IsManifest() {
@@ -216,7 +210,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				currentSize, totalSize, status.Progress)
 		}
 
-		rootBlob := lookupOrCreateBlobStatus(ctx, sv, status.Blobs[0])
+		rootBlob := lookupOrCreateBlobStatus(ctx, status.Blobs[0])
 		if rootBlob == nil {
 			log.Errorf("doUpdateContentTree(%s) name %s: could not find BlobStatus(%s)",
 				status.Key(), status.DisplayName, status.Blobs[0])

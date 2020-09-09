@@ -91,13 +91,6 @@ func (config DownloaderConfig) LogKey() string {
 	return string(base.DownloaderConfigLogType) + "-" + config.Key()
 }
 
-// Cert Object may contain multiple objects
-
-type CertConfig struct {
-	ServerCert DownloaderConfig
-	CertChain  []DownloaderConfig
-}
-
 // The key/index to this is the ImageSha256 which comes from DownloaderConfig.
 type DownloaderStatus struct {
 	ImageSha256      string

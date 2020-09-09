@@ -12,18 +12,11 @@
 package verifier
 
 import (
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/big"
 	"os"
 	"path"
 	"strings"
@@ -369,13 +362,6 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 	}
 
 	log.Infof("Sha validation successful for %s", config.Name)
-
-	if cerr := verifyObjectShaSignature(status, config, imageHashB); cerr != "" {
-		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("Signature validation failed for %s, %s",
-			config.Name, cerr)
-		return false
-	}
 	return true
 }
 
@@ -391,143 +377,6 @@ func computeShaFile(filename string) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
-}
-
-func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.VerifyImageConfig, imageHash []byte) string {
-
-	// XXX:FIXME if Image Signature is absent, skip
-	// mark it as verified; implicitly assuming,
-	// if signature is filled in, marking this object
-	//  as valid may not hold good always!!!
-	if (config.ImageSignature == nil) ||
-		(len(config.ImageSignature) == 0) {
-		log.Infof("No signature to verify for %s",
-			config.Name)
-		return ""
-	}
-
-	log.Infof("Validating %s using cert %s sha %s",
-		config.Name, config.SignatureKey,
-		config.ImageSha256)
-
-	//Read the server certificate
-	//Decode it and parse it
-	//And find out the puplic key and it's type
-	//we will use this certificate for both cert chain verification
-	//and signature verification...
-
-	//This func literal will take care of writing status during
-	//cert chain and signature verification...
-
-	serverCertName := types.UrlToFilename(config.SignatureKey)
-	serverCertificate, err := ioutil.ReadFile(types.CertificateDirname + "/" + serverCertName)
-	if err != nil {
-		cerr := fmt.Sprintf("unable to read the certificate %s: %s", serverCertName, err)
-		return cerr
-	}
-
-	block, _ := pem.Decode(serverCertificate)
-	if block == nil {
-		cerr := fmt.Sprintf("unable to decode server certificate")
-		return cerr
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		cerr := fmt.Sprintf("unable to parse certificate: %s", err)
-		return cerr
-	}
-
-	//Verify chain of certificates. Chain contains
-	//root, server, intermediate certificates ...
-
-	certificateNameInChain := config.CertificateChain
-
-	//Create the set of root certificates...
-	roots := x509.NewCertPool()
-
-	// Read the signing root cerificates from /config
-	rootCertificate, err := ioutil.ReadFile(types.RootCertFileName)
-	if err != nil {
-		log.Errorln(err)
-		cerr := fmt.Sprintf("failed to find root certificate: %s", err)
-		return cerr
-	}
-
-	if ok := roots.AppendCertsFromPEM(rootCertificate); !ok {
-		cerr := fmt.Sprintf("failed to parse root certificate")
-		return cerr
-	}
-
-	for _, certUrl := range certificateNameInChain {
-
-		certName := types.UrlToFilename(certUrl)
-
-		bytes, err := ioutil.ReadFile(types.CertificateDirname + "/" + certName)
-		if err != nil {
-			cerr := fmt.Sprintf("failed to read certificate Directory %s: %s",
-				certName, err)
-			return cerr
-		}
-
-		// XXX must put these in Intermediates not Rootfs
-		if ok := roots.AppendCertsFromPEM(bytes); !ok {
-			cerr := fmt.Sprintf("failed to parse intermediate certificate")
-			return cerr
-		}
-	}
-
-	opts := x509.VerifyOptions{Roots: roots}
-	if _, err := cert.Verify(opts); err != nil {
-		cerr := fmt.Sprintf("failed to verify certificate chain: %s",
-			err)
-		return cerr
-	}
-
-	log.Infof("certificate options verified for %s", config.Name)
-
-	//Read the signature from config file...
-	imgSig := config.ImageSignature
-
-	switch pub := cert.PublicKey.(type) {
-
-	case *rsa.PublicKey:
-		err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
-		if err != nil {
-			cerr := fmt.Sprintf("rsa image signature verification failed: %s", err)
-			return cerr
-		}
-		log.Infof("VerifyPKCS1v15 successful for %s",
-			config.Name)
-	case *ecdsa.PublicKey:
-		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
-		if err != nil {
-			cerr := fmt.Sprintf("DecodeString failed: %v ", err)
-			return cerr
-		}
-
-		log.Debugf("Decoded imgSignature (len %d): % x",
-			len(imgSignature), imgSignature)
-		rbytes := imgSignature[0:32]
-		sbytes := imgSignature[32:]
-		log.Debugf("Decoded r %d s %d", len(rbytes), len(sbytes))
-		r := new(big.Int)
-		s := new(big.Int)
-		r.SetBytes(rbytes)
-		s.SetBytes(sbytes)
-		log.Debugf("Decoded r, s: %v, %v", r, s)
-		ok := ecdsa.Verify(pub, imageHash, r, s)
-		if !ok {
-			cerr := fmt.Sprintf("ecdsa image signature verification failed")
-			return cerr
-		}
-		log.Infof("ecdsa Verify successful for %s",
-			config.Name)
-	default:
-		cerr := fmt.Sprintf("unknown type of public key")
-		return cerr
-	}
-	return ""
 }
 
 // This merely updates the RefCount and Expired in the status

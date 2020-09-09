@@ -280,13 +280,6 @@ func RoundupToKB(b uint64) uint64 {
 	return (b + 1023) / 1024
 }
 
-// The Intermediate can be a byte sequence of PEM certs
-type SignatureInfo struct {
-	IntermediateCertsPem []byte
-	SignerCertPem        []byte
-	Signature            []byte
-}
-
 // AppAndImageToHash is used to retain <app,image> to sha maps across reboots.
 // Key for OCI images which can be specified with a tag and we need to be
 // able to latch the sha and choose when to update/refresh from the tag.

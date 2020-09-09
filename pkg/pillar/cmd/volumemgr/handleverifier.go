@@ -44,7 +44,7 @@ func unpublishVerifyImageConfig(ctx *volumemgrContext, key string) {
 }
 
 // MaybeAddVerifyImageConfigBlob publishes the verifier config
-func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus, signature SignatureVerifier) (bool, types.ErrorAndTime) {
+func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus) (bool, types.ErrorAndTime) {
 
 	log.Infof("MaybeAddVerifyImageConfigBlob for %s", blob.Sha256)
 
@@ -53,27 +53,16 @@ func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus,
 	// If we have expired it we will create a new one and replace the old.
 	// See delete handshake comment below.
 	if vic != nil && !vic.Expired {
-		if vic.RefCount == 0 {
-			// VerifyImageStatus + Config might have been
-			// created from file. Fill in potentially missing
-			// fields.
-			vic.CertificateChain = signature.CertificateChain
-			vic.ImageSignature = signature.Signature
-			vic.SignatureKey = signature.PublicKey
-		}
 		vic.RefCount++
 		log.Infof("MaybeAddVerifyImageConfigBlob: refcnt to %d for %s",
 			vic.RefCount, blob.Sha256)
 	} else {
 		log.Infof("MaybeAddVerifyImageConfigBlob: add for %s", blob.Sha256)
 		vic = &types.VerifyImageConfig{
-			FileLocation:     blob.Path,   // the source of the file to verify
-			ImageSha256:      blob.Sha256, // the sha to verify
-			Name:             blob.Sha256, // we are just going to use the sha for the verifier display
-			CertificateChain: signature.CertificateChain,
-			ImageSignature:   signature.Signature,
-			SignatureKey:     signature.PublicKey,
-			RefCount:         1,
+			FileLocation: blob.Path,   // the source of the file to verify
+			ImageSha256:  blob.Sha256, // the sha to verify
+			Name:         blob.Sha256, // we are just going to use the sha for the verifier display
+			RefCount:     1,
 		}
 		log.Debugf("MaybeAddVerifyImageConfigBlob - config: %+v", vic)
 	}

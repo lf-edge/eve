@@ -65,17 +65,6 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.ContentSha256 = strings.ToLower(cfgContentTree.GetSha256())
 		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
-		contentConfig.ImageSignature = cfgContentTree.Siginfo.Signature
-		contentConfig.SignatureKey = cfgContentTree.Siginfo.Signercerturl
-
-		// XXX:FIXME certificates can be many
-		// this list, currently contains the certUrls
-		// should be the sha/uuid of cert filenames
-		// as proper DataStore Entries
-		if cfgContentTree.Siginfo.Intercertsurl != "" {
-			contentConfig.CertificateChain = make([]string, 1)
-			contentConfig.CertificateChain[0] = cfgContentTree.Siginfo.Intercertsurl
-		}
 		publishContentTreeConfig(ctx, *contentConfig)
 	}
 	ctx.pubContentTreeConfig.SignalRestarted()

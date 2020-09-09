@@ -14,7 +14,7 @@ import (
 // downloadBlob download a blob from a content tree
 // returns whether or not the BlobStatus has changed
 // The objType is only used to check the free vs. non-free policy for downloads
-func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus) bool {
 
 	changed := false
 	// Make sure we kick the downloader and have a refcount
@@ -95,7 +95,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, sv SignatureVerifier, b
 			changed = true
 		}
 		// signal verifier to start if it hasn't already; add RefCount
-		if verifyBlob(ctx, sv, blob) {
+		if verifyBlob(ctx, blob) {
 			changed = true
 		}
 	}
@@ -171,7 +171,7 @@ func updateBlobFromVerifyImageStatus(vs *types.VerifyImageStatus, blob *types.Bl
 // potentially incrementing creating or incrementing the refcount on a
 // VerifyImageConfig to trigger the generation of a VerifyImageStatus.
 // returns if the BlobStatus was changed, and thus woudl require publishing
-func verifyBlob(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func verifyBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 	changed := false
 
 	// A: try to use an existing VerifyImageStatus
@@ -181,7 +181,7 @@ func verifyBlob(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobSta
 		changed = updateBlobFromVerifyImageStatus(vs, blob)
 
 		// if we do not reference it, increment the refcount
-		if startBlobVerification(ctx, sv, blob) {
+		if startBlobVerification(ctx, blob) {
 			changed = true
 		}
 
@@ -193,7 +193,7 @@ func verifyBlob(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobSta
 		blob.State = types.VERIFYING
 		changed = true
 	}
-	if startBlobVerification(ctx, sv, blob) {
+	if startBlobVerification(ctx, blob) {
 		changed = true
 	}
 	return changed
@@ -201,12 +201,12 @@ func verifyBlob(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobSta
 
 // startBlobVerification kick off verification of a blob, or increment the refcount.
 // Used only in verifyBlob, but repetitive, so a separate utility function
-func startBlobVerification(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) bool {
+func startBlobVerification(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 	changed := false
 	if blob.HasVerifierRef {
 		return false
 	}
-	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, *blob, sv)
+	done, errorAndTime := MaybeAddVerifyImageConfigBlob(ctx, *blob)
 	if done {
 		blob.HasVerifierRef = true
 		return true
@@ -216,15 +216,12 @@ func startBlobVerification(ctx *volumemgrContext, sv SignatureVerifier, blob *ty
 	if errorAndTime.HasError() {
 		blob.SetError(errorAndTime.Error, errorAndTime.ErrorTime)
 		changed = true
-	} else if !blob.WaitingForCerts {
-		blob.WaitingForCerts = true
-		changed = true
 	}
 	return changed
 }
 
 // getBlobChildren get the children of a blob
-func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.BlobStatus) []*types.BlobStatus {
+func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.BlobStatus {
 	log.Debugf("getBlobChildren(%s)", blob.Sha256)
 	if blob.State < types.VERIFIED {
 		return nil
@@ -249,7 +246,7 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 		log.Infof("getBlobChildren(%s): adding manifest %s", blob.Sha256, manifest.Digest.Hex)
 		childHash := strings.ToLower(manifest.Digest.Hex)
 		//Check if childBlob already exists
-		existingChild := lookupOrCreateBlobStatus(ctx, sv, childHash)
+		existingChild := lookupOrCreateBlobStatus(ctx, childHash)
 		if existingChild == nil {
 			return []*types.BlobStatus{
 				{
@@ -283,7 +280,7 @@ func getBlobChildren(ctx *volumemgrContext, sv SignatureVerifier, blob *types.Bl
 			for _, child := range children {
 				childHash := strings.ToLower(child.Digest.Hex)
 				//Check if childBlob already exists
-				existingChild := lookupOrCreateBlobStatus(ctx, sv, childHash)
+				existingChild := lookupOrCreateBlobStatus(ctx, childHash)
 				if existingChild != nil {
 					log.Debugf("getBlobChildren(%s): child blob %s already exists.", blob.Sha256, childHash)
 					blobChildren = append(blobChildren, existingChild)
@@ -327,7 +324,7 @@ func blobsNotInList(a []*types.BlobStatus, b []string) []*types.BlobStatus {
 
 // blobsNotInStatusOrCreate find any in the slice that do not already have a BlobStatus,
 // but first check if the BlobStatus can be recreated from VerifyImageStatus
-func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, a []*types.BlobStatus) []*types.BlobStatus {
+func blobsNotInStatusOrCreate(ctx *volumemgrContext, a []*types.BlobStatus) []*types.BlobStatus {
 	// if we have none, return none
 	if len(a) < 1 {
 		return a
@@ -337,7 +334,7 @@ func blobsNotInStatusOrCreate(ctx *volumemgrContext, sv SignatureVerifier, a []*
 	ret := make([]*types.BlobStatus, 0)
 	// go through each one, and try to find or create it
 	for _, blob := range a {
-		found := lookupOrCreateBlobStatus(ctx, sv, blob.Sha256)
+		found := lookupOrCreateBlobStatus(ctx, blob.Sha256)
 		if found == nil {
 			ret = append(ret, blob)
 		}
@@ -378,7 +375,7 @@ func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 
 // lookupOrCreateBlobStatus tries to lookup a BlobStatus. If one is not found,
 // and a VerifyImageStatus exists, use that to create the BlobStatus.
-func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, blobSha string) *types.BlobStatus {
+func lookupOrCreateBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
 	log.Debugf("lookupOrCreateBlobStatus(%s)", blobSha)
 	if blobSha == "" {
 		return nil
@@ -407,7 +404,7 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, sv SignatureVerifier, blobS
 			Progress:    100,
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
-		startBlobVerification(ctx, sv, blob)
+		startBlobVerification(ctx, blob)
 		publishBlobStatus(ctx, blob)
 		return blob
 	}

@@ -32,11 +32,9 @@ type BlobStatus struct {
 	// HasVerifierRef whether or not we have started a verifier for this blob
 	HasVerifierRef bool
 	// RefCount number of consumers referring this object
-	RefCount uint
-	// WaitingForCerts waiting for certificates and so cannot continue verifying
-	WaitingForCerts bool
-	TotalSize       int64 // expected size as reported by the downloader, if any
-	CurrentSize     int64 // current total downloaded size as reported by the downloader
+	RefCount    uint
+	TotalSize   int64 // expected size as reported by the downloader, if any
+	CurrentSize int64 // current total downloaded size as reported by the downloader
 	// Progress percentage downloaded 0-100, defined by CurrentSize/TotalSize
 	Progress uint
 	// ErrorAndTimeWithSource provide common error handling capabilities

@@ -176,9 +176,6 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 			ContentSha256:     config.ContentSha256,
 			MaxDownloadSize:   config.MaxDownloadSize,
 			GenerationCounter: config.GenerationCounter,
-			ImageSignature:    config.ImageSignature,
-			SignatureKey:      config.SignatureKey,
-			CertificateChain:  config.CertificateChain,
 			DisplayName:       config.DisplayName,
 			ObjType:           objType,
 			State:             types.INITIAL,
@@ -188,12 +185,7 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 		// we only publish the BlobStatus if we have the hash for it; this
 		// might come later
 		if config.ContentSha256 != "" {
-			sv := SignatureVerifier{
-				Signature:        config.ImageSignature,
-				PublicKey:        config.SignatureKey,
-				CertificateChain: config.CertificateChain,
-			}
-			if lookupOrCreateBlobStatus(ctx, sv, config.ContentSha256) == nil {
+			if lookupOrCreateBlobStatus(ctx, config.ContentSha256) == nil {
 				// the blobType is binary unless we are dealing with OCI
 				// in reality, this is not determined by the *format* but by the source,
 				// i.e. an OCI registry may have other formats, no matter what the
