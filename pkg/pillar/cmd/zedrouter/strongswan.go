@@ -237,7 +237,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnConfig, error) {
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if logrus.GetLevel() == logrus.TraceLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
 			log.Debugf("strongSwanConfigParse(): %s\n",
 				string(bytes))
@@ -806,7 +806,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 			}
 		}
 	}
-	if logrus.GetLevel() == logrus.DebugLevel {
+	if logrus.GetLevel() == logrus.TraceLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
 			log.Debugf("strongSwanVpnConfigGet(): %s\n",
 				string(bytes))

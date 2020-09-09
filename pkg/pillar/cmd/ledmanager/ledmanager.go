@@ -180,7 +180,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	fatalFlag := *fatalPtr
 	hangFlag := *hangPtr
 	if debugOverride {
-		logger.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.TraceLevel)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}

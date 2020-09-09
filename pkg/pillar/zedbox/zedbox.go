@@ -146,8 +146,15 @@ func main() {
 	}
 
 	//Start zedbox
+	debugPtr := flag.Bool("d", false, "Debug flag")
+	flag.Parse()
+	debug := *debugPtr
 	logger, log = agentlog.Init(agentName)
-
+	if debug {
+		logger.SetLevel(logrus.TraceLevel)
+	} else {
+		logger.SetLevel(logrus.InfoLevel)
+	}
 	var sktData string
 	sktChan := make(chan string)
 	stillRunning := time.NewTicker(15 * time.Second)

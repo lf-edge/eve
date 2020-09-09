@@ -65,7 +65,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	execCtx.debug = *debugPtr
 	execCtx.debugOverride = execCtx.debug
 	if execCtx.debugOverride {
-		logger.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.TraceLevel)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}

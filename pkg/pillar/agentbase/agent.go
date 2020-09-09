@@ -54,7 +54,7 @@ func Run(agentSpecificContext AgentBase) {
 	processCLIFlags(agentSpecificContext)
 	debugOverride := ctx.CLIParams.DebugOverride
 	if debugOverride {
-		logger.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.TraceLevel)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}

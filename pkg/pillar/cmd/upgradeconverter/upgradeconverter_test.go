@@ -101,7 +101,7 @@ func checkNoDir(t *testing.T, dir string) {
 }
 
 func ucContextForTest() *ucContext {
-	//log.SetLevel(log.DebugLevel)
+	//log.SetLevel(log.TraceLevel)
 	var err error
 	ctxPtr := &ucContext{}
 	ctxPtr.persistDir, err = ioutil.TempDir(".", "PersistDir")

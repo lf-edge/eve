@@ -76,7 +76,7 @@ func (ctx *nimContext) processArgs() {
 	ctx.debugOverride = ctx.debug
 	ctx.useStdout = *stdoutPtr
 	if ctx.debugOverride {
-		logrus.SetLevel(logrus.DebugLevel)
+		logrus.SetLevel(logrus.TraceLevel)
 	} else {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
