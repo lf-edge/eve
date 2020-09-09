@@ -91,7 +91,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  usb = "off"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -350,7 +349,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  usb = "off"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -609,7 +607,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [machine]
   type = "virt"
-  usb = "off"
   dump-guest-core = "off"
   accel = "kvm:tcg"
   gic-version = "host"
@@ -903,7 +900,6 @@ func TestCreateDomConfig(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  usb = "off"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -1165,7 +1161,6 @@ func TestCreateDomConfig(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  usb = "off"
   dump-guest-core = "off"
   accel = "kvm"
   vmport = "off"
@@ -1427,7 +1422,6 @@ func TestCreateDomConfig(t *testing.T) {
 
 [machine]
   type = "virt"
-  usb = "off"
   dump-guest-core = "off"
   accel = "kvm:tcg"
   gic-version = "host"
@@ -1692,7 +1686,6 @@ func TestCreateDom(t *testing.T) {
 
 [machine]
   type = "pc-q35-3.1"
-  usb = "off"
   vmport = "off"
   dump-guest-core = "off"
 
