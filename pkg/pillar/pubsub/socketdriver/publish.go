@@ -122,6 +122,7 @@ func (s *Publisher) Start() error {
 			}
 			s.log.Infof("Creating %s at %s", "s.serveConnection", agentlog.GetMyStack())
 			go s.serveConnection(c, instance)
+			maybeLogAllocated(s.log)
 			instance++
 		}
 	}(s)
