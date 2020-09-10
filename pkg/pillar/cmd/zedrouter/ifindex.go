@@ -3,7 +3,7 @@
 
 // Track ifindex to name plus IP addresses
 
-package devicenetwork
+package zedrouter
 
 import (
 	"fmt"
@@ -17,17 +17,15 @@ import (
 // ===== map from ifindex to ifname
 
 type linkNameType struct {
-	linkName     string
-	linkType     string
-	relevantFlag bool // Set for interfaces which are deemed interesting by caller
-	upFlag       bool // last resort and up
+	linkName string
+	linkType string
 }
 
 var ifindexToName = make(map[int]linkNameType)
 
 // IfindexToNameAdd adds to the map
 // Returns true if added or if last flag changed.
-func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType string, relevantFlag bool, upFlag bool) bool {
+func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType string) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
@@ -35,10 +33,8 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 		log.Infof("IfindexToNameAdd index %d name %s type %s\n",
 			index, linkName, linkType)
 		ifindexToName[index] = linkNameType{
-			linkName:     linkName,
-			linkType:     linkType,
-			relevantFlag: relevantFlag,
-			upFlag:       upFlag,
+			linkName: linkName,
+			linkType: linkType,
 		}
 		ifindexMaybeRemoveOld(log, index, linkName)
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
@@ -49,26 +45,12 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 		log.Infof("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
 		ifindexToName[index] = linkNameType{
-			linkName:     linkName,
-			linkType:     linkType,
-			relevantFlag: relevantFlag,
-			upFlag:       upFlag,
+			linkName: linkName,
+			linkType: linkType,
 		}
 		ifindexMaybeRemoveOld(log, index, linkName)
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return false
-	} else if m.relevantFlag != relevantFlag || m.upFlag != upFlag {
-		log.Infof("IfindexToNameAdd flag(s) changed to %v/%v for %s\n",
-			relevantFlag, upFlag, linkName)
-		ifindexToName[index] = linkNameType{
-			linkName:     linkName,
-			linkType:     linkType,
-			relevantFlag: relevantFlag,
-			upFlag:       upFlag,
-		}
-		ifindexMaybeRemoveOld(log, index, linkName)
-		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
-		return true
 	} else {
 		return false
 	}
@@ -127,8 +109,7 @@ func IfindexToName(log *base.LogObject, index int) (string, string, error) {
 	linkType := link.Type()
 	log.Warnf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
-	relevantFlag, upFlag := RelevantLastResort(log, link)
-	IfindexToNameAdd(log, index, linkName, linkType, relevantFlag, upFlag)
+	IfindexToNameAdd(log, index, linkName, linkType)
 	return linkName, linkType, nil
 }
 
@@ -150,8 +131,7 @@ func IfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 	linkType := link.Type()
 	log.Warnf("IfnameToIndex(%s) fallback lookup done: %d, %s\n",
 		ifname, index, linkType)
-	relevantFlag, upFlag := RelevantLastResort(log, link)
-	IfindexToNameAdd(log, index, ifname, linkType, relevantFlag, upFlag)
+	IfindexToNameAdd(log, index, ifname, linkType)
 	return index, nil
 }
 
@@ -180,17 +160,6 @@ func RelevantLastResort(log *base.LogObject, link netlink.Link) (bool, bool) {
 	} else {
 		return false, false
 	}
-}
-
-// Return map[string] bool up
-func IfindexGetLastResortMap() map[string]bool {
-	ifs := make(map[string]bool, len(ifindexToName))
-	for _, lnt := range ifindexToName {
-		if lnt.relevantFlag {
-			ifs[lnt.linkName] = lnt.upFlag
-		}
-	}
-	return ifs
 }
 
 // ===== map from ifindex to list of IP addresses

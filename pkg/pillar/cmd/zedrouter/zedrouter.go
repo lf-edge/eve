@@ -810,13 +810,13 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 	}
 
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
-	ifindex, err := devicenetwork.IfnameToIndex(log, ifname)
+	ifindex, err := IfnameToIndex(log, ifname)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
 			status.DisplayName, ifname, err)
 		return "", errors.New(errStr)
 	}
-	addrs, err := devicenetwork.IfindexToAddrs(log, ifindex)
+	addrs, err := IfindexToAddrs(log, ifindex)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfindexToAddrs(%s, index %d) failed %s",
 			status.DisplayName, ifname, ifindex, err)

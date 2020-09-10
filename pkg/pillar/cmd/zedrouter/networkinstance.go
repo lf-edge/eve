@@ -980,12 +980,12 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 
 	// Get IP address from Logicallabel
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
-	ifindex, err := devicenetwork.IfnameToIndex(log, ifname)
+	ifindex, err := IfnameToIndex(log, ifname)
 	if err != nil {
 		return "", err
 	}
 	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := devicenetwork.IfindexToAddrs(log, ifindex)
+	addrs, err := IfindexToAddrs(log, ifindex)
 	if err != nil {
 		log.Warnf("IfIndexToAddrs failed: %s\n", err)
 		addrs = nil
@@ -1206,7 +1206,7 @@ func getIfNameListForLLOrIfname(
 			//	remove this check for ifindex here when the MakeDeviceStatus
 			//	is fixed.
 			// XXX That bug has been fixed. Retest without this code?
-			ifIndex, err := devicenetwork.IfnameToIndex(log, ifName)
+			ifIndex, err := IfnameToIndex(log, ifName)
 			if err == nil {
 				log.Infof("ifName %s, ifindex: %d added to filteredList",
 					ifName, ifIndex)
