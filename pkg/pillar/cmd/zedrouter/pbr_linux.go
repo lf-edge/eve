@@ -60,14 +60,12 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		relevantFlag, upFlag := devicenetwork.RelevantLastResort(log, change.Link)
-		added := devicenetwork.IfindexToNameAdd(log, ifindex, ifname, linkType,
-			relevantFlag, upFlag)
+		added := IfindexToNameAdd(log, ifindex, ifname, linkType)
 		if added {
 			changed = true
 		}
 	case syscall.RTM_DELLINK:
-		gone := devicenetwork.IfindexToNameDel(log, ifindex, ifname)
+		gone := IfindexToNameDel(log, ifindex, ifname)
 		if gone {
 			changed = true
 			MyTable := baseTableIndex + ifindex

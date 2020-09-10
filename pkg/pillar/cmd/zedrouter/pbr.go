@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -37,7 +36,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		return nil
 	}
 
-	ifindex, err := devicenetwork.IfnameToIndex(log, port)
+	ifindex, err := IfnameToIndex(log, port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			port, err)
@@ -51,7 +50,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		return nil
 	}
 	// Add to ifindex specific table
-	ifindex, err = devicenetwork.IfnameToIndex(log, bridgeName)
+	ifindex, err = IfnameToIndex(log, bridgeName)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			bridgeName, err)
@@ -105,7 +104,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		return nil
 	}
 
-	ifindex, err := devicenetwork.IfnameToIndex(log, port)
+	ifindex, err := IfnameToIndex(log, port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			port, err)
@@ -119,7 +118,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		return nil
 	}
 	// Remove from ifindex specific table
-	ifindex, err = devicenetwork.IfnameToIndex(log, bridgeName)
+	ifindex, err = IfnameToIndex(log, bridgeName)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
 			bridgeName, err)
@@ -162,7 +161,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
 		op = "NEWROUTE"
 	}
-	ifname, linkType, err := devicenetwork.IfindexToName(log, rt.LinkIndex)
+	ifname, linkType, err := IfindexToName(log, rt.LinkIndex)
 	if err != nil {
 		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s: route %v\n",
 			rt.LinkIndex, err, rt)
