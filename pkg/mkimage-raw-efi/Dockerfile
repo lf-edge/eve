@@ -4,7 +4,7 @@
 #   /EFI/BOOT/grub.cfg - Chainloads main bootloader
 #   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
 #
-ARG BUILDER=lfedge/eve-alpine:3e3111a703366e9ac607d9c33d5fded006fa1df3
+ARG BUILDER=lfedge/eve-alpine:ac1dc159510afa61334222cedf085c7730e4583c
 FROM ${BUILDER} as initrd
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
@@ -35,7 +35,8 @@ RUN apk add --no-cache --initdb -p /out \
   e2fsprogs=1.44.5-r1       \
   util-linux=2.33-r0        \
   squashfs-tools=4.3-r5     \
-  coreutils=8.30-r0
+  coreutils=8.30-r0         \
+  tar=1.32-r0
 
 COPY make-raw install trampoline.grub.cfg grub.cfg.in UsbInvocationScript.txt /out/
 

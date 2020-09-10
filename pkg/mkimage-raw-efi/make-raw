@@ -57,7 +57,7 @@ ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory parition size in bytes
-WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
+WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
 # installer system parition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # boot partition size

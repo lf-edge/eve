@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck shell=dash
 #
 # This script is an entry point for a standalone installer.
 # It is expected to probe for the destination installtion
@@ -17,7 +18,7 @@
 
 pause() {
    echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1"
-   exit 0
+   sh
 }
 
 bail() {
@@ -51,6 +52,20 @@ find_part() {
    for p in $PARTS ; do
       [ -f "/sys/block/$2/$p/dev" ] && echo "$p" && exit 0
    done
+}
+
+# mount_part PART_NAME DISK [mount opts]
+mount_part() {
+   local PART="$1"
+   local DISK="$2"
+   local ID
+   shift 2
+
+   ID="$(find_part "$PART" "$DISK")"
+   [ -z "$ID" ] && return 1
+
+   mkdir -p "/run/$PART"
+   mount "$@" "/dev/$ID" "/run/$PART"
 }
 
 # if we are running without a real root filesystem - we have to fake it here
@@ -107,40 +122,44 @@ mkdir -p /mnt || :
 mount -o ro /parts/rootfs.img /mnt &&
    /mnt/containers/onboot/*rngd/rootfs/sbin/rngd -1
 
-# do the install
-/make-raw "/dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
+# do the install (unless we're only here to collect the black box)
+grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
-# generate a Soft Serial Number (if there isn't one)
-# SERIAL_NUM=$(uuidgen | sed -e 's#^.*-##')
-SERIAL_NUM=$(uuidgen)
-INVENTORY_PART=$(find_part INVENTORY "$(root_dev)")
-DEST_CONF_PART=$(find_part CONFIG "$INSTALL_DEV")
+# now the disk is ready - mount partitions
+mount_part P3 "$INSTALL_DEV" 2>/dev/null
+if mount_part CONFIG "$INSTALL_DEV" -t vfat -o iocharset=iso8859-1; then
+   # uuidgen | sed -e 's#^.*-##'
+   grep -q eve_blackbox /proc/cmdline || [ -f /run/CONFIG/soft_serial ] || uuidgen > /run/CONFIG/soft_serial
+fi
 
-mkdir -p /run/conf /run/inventory && \
-  mount -t vfat -o iocharset=iso8859-1 "/dev/$INVENTORY_PART" /run/inventory && \
-  mount -t vfat -o iocharset=iso8859-1 "/dev/$DEST_CONF_PART" /run/conf  && \
-  [ -f /run/conf/soft_serial ] || echo "$SERIAL_NUM" > /run/conf/soft_serial
+# finally collect information about the node (including the blackbox if found)
+if mount_part INVENTORY "$(root_dev)" -t vfat -o iocharset=iso8859-1; then
+   REPORT="/run/INVENTORY/$(cat /run/CONFIG/soft_serial 2>/dev/null)"
+   mkdir -p "$REPORT"
 
-PILLAR=/mnt/containers/services/pillar/lower
-for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
+   # first lets look at hardware model
+   PILLAR=/mnt/containers/services/pillar/lower
+   for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
+   chroot "$PILLAR" /usr/sbin/dmidecode > "$REPORT/hardwaremodel.txt"
 
-SERIAL_NUM=$(cat /run/conf/soft_serial) && \
-  mkdir "/run/inventory/$SERIAL_NUM"
-
-chroot "$PILLAR" /opt/zededa/bin/hardwaremodel -f > "/run/inventory/$SERIAL_NUM/hwfp.json"
-chroot "$PILLAR" /opt/zededa/bin/hardwaremodel > "/run/inventory/$SERIAL_NUM/hardwaremodel.txt"
-
-# lets hope this is enough to flush the caches
-sync
-umount /run/conf
-umount /run/inventory
+   # then we can collect our black box
+   if grep -q eve_blackbox /proc/cmdline; then
+      dmesg > "$REPORT/dmesg.txt"
+      tar -C /proc -cjf "$REPORT/procfs.tar.bz2" cpuinfo meminfo
+      tar -C /sys -cjf "$REPORT/sysfs.tar.bz2" .
+      tar -C /run/P3 -cjf "$REPORT/persist.tar.bz2" status rsyslog log config checkpoint certs agentdebug
+      tar -C /run/CONFIG -cjf "$REPORT/config.tar.bz2" .
+   fi 2>/dev/null
+fi
 
 # we also maybe asked to pause after
 grep -q eve_pause_after_install /proc/cmdline && pause "before shutting the node down"
 
-sync
-sleep 5
-sync
+# lets hope this is enough to flush the caches
+sync; sleep 5; sync
+for p in CONFIG INVENTORY P3; do
+   umount "/run/$p" 2>/dev/null
+done
 
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
 cp /sbin/poweroff /bin/sleep /
