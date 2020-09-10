@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -236,12 +237,29 @@ var bufPool = &sync.Pool{
 	},
 }
 
-//getBuffer returns a buffer and a done func to call at defer.
+// Track allocations for debug
+var allocated uint32
+
+// getBuffer returns a buffer and a done func to call at defer.
 func getBuffer() ([]byte, func()) {
 	buf := bufPool.Get().([]byte)
+	atomic.AddUint32(&allocated, 1)
 	return buf, func() {
 		bufPool.Put(buf)
+		atomic.AddUint32(&allocated, ^uint32(0))
 	}
+}
+
+// logs a message if the allocation changed
+var lastLoggedAllocated uint32
+
+func maybeLogAllocated(log *base.LogObject) {
+	if lastLoggedAllocated == allocated {
+		return
+	}
+	log.Noticef("pubsub buffer allocation changed from %d to  %d",
+		lastLoggedAllocated, allocated)
+	lastLoggedAllocated = allocated
 }
 
 // check and waits till conn's fd is readable

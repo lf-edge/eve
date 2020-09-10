@@ -123,6 +123,7 @@ func (s *Subscriber) Start() error {
 func (s *Subscriber) watchSock() {
 	for {
 		msg, key, val := s.connectAndRead()
+		maybeLogAllocated(s.log)
 		switch msg {
 		case "hello":
 			// Do nothing
