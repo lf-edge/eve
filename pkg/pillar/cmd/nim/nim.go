@@ -434,6 +434,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	for nimCtx.networkFallbackAnyEth == types.TS_ENABLED &&
 		len(dnc.DevicePortConfigList.PortConfigList) == 0 {
+
+		log.Infof("Waiting for initial DevicePortConfigList from lastresort")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -442,6 +444,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subDevicePortConfigS.ProcessChange(change)
 			log.Infof("Got subDevicePortConfigS: len %d",
 				len(dnc.DevicePortConfigList.PortConfigList))
+
+		case change, ok := <-linkChanges:
+			start := time.Now()
+			if !ok {
+				log.Errorf("linkChanges closed")
+				linkChanges = devicenetwork.LinkChangeInit(log)
+				// XXX Need to discard all cached information?
+			} else {
+				ch, ifindex := devicenetwork.LinkChange(log, change)
+				if ch {
+					handleLinkChange(&nimCtx)
+					handleInterfaceChange(&nimCtx, ifindex,
+						"LinkChange", true)
+				}
+			}
+			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 			// Need StillRunning when ports yet Ethernets
