@@ -156,14 +156,8 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	sendToPeer := make(pubsub.LocalCollection)
 	sentRestarted := false
 
-	// wait for readable conn
-	if err := connReadCheck(conn); err != nil {
-		s.log.Errorf("serveConnection(%s) connReadCheck failed: %s",
-			s.name, err)
-		return
-	}
-	buf, doneFunc := getBuffer()
-	defer doneFunc()
+	// Small buffer since we only read "request <topic>"
+	buf := make([]byte, 256)
 
 	// Read request
 	res, err := conn.Read(buf)
