@@ -180,7 +180,12 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 
 	if global {
 		subFromDir = true
-		dirName = s.fixedDirName(name)
+		if persistent {
+			// Special case for /persist/config/
+			dirName = fmt.Sprintf("%s/%s", persistConfigDir, name)
+		} else {
+			dirName = s.fixedDirName(name)
+		}
 	} else if agentName == "zedclient" {
 		subFromDir = true
 		if persistent {
