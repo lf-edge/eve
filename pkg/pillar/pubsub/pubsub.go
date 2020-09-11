@@ -94,7 +94,9 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 
 	topic := TypeToName(options.TopicImpl)
 	topicType := reflect.TypeOf(options.TopicImpl)
-	changes := make(chan Change)
+	// Need some buffering to make sure that when we Close the subscription
+	// the goroutines exit
+	changes := make(chan Change, 1)
 	sub := &SubscriptionImpl{
 		C:                   changes,
 		agentName:           options.AgentName,

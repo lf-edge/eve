@@ -143,6 +143,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			return nil, errors.New(errStr)
 		}
 	}
+	doneChan := make(chan struct{})
 	return &Publisher{
 		sockName:       sockName,
 		listener:       listener,
@@ -155,6 +156,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		restarted:      restarted,
 		logger:         s.Logger,
 		log:            s.Log,
+		doneChan:       doneChan,
 	}, nil
 }
 
@@ -195,6 +197,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		subFromDir = subscribeFromDir
 		dirName = s.pubDirName(name)
 	}
+	doneChan := make(chan struct{})
 	return &Subscriber{
 		subscribeFromDir: subFromDir,
 		dirName:          dirName,
@@ -204,6 +207,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		C:                C,
 		logger:           s.Logger,
 		log:              s.Log,
+		doneChan:         doneChan,
 	}, nil
 }
 
@@ -259,4 +263,18 @@ func maybeLogAllocated(log *base.LogObject) {
 	log.Noticef("pubsub buffer allocation changed from %d to  %d",
 		lastLoggedAllocated, allocated)
 	lastLoggedAllocated = allocated
+}
+
+// Poll to check if we should go away
+func areWeDone(log *base.LogObject, doneChan <-chan struct{}) bool {
+	select {
+	case _, ok := <-doneChan:
+		if !ok {
+			return true
+		} else {
+			log.Fatal("Received message on doneChan")
+		}
+	default:
+	}
+	return false
 }

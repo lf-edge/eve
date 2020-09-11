@@ -180,6 +180,19 @@ func (pub *PublicationImpl) Iterate(function base.StrMapFunc) {
 	pub.km.key.Range(function)
 }
 
+// Close the publisher
+func (pub *PublicationImpl) Close() error {
+	items := pub.GetAll()
+	for key := range items {
+		pub.log.Infof("Close(%s) unloading key %s",
+			pub.nameString(), key)
+		pub.Unpublish(key)
+	}
+	pub.ClearRestarted()
+	pub.driver.Stop()
+	return nil
+}
+
 // methods just for this implementation of Publisher
 
 // updatersNotify send a notification to all the matching channels which does not yet

@@ -25,6 +25,8 @@ type Publication interface {
 	GetAll() map[string]interface{}
 	// Iterate - Perform some action on all items
 	Iterate(function base.StrMapFunc)
+	// Close - delete the pubisher
+	Close() error
 }
 
 // Subscription - Interface to be implemented by a Subscription
@@ -37,10 +39,14 @@ type Subscription interface {
 	Iterate(function base.StrMapFunc)
 	// Restarted report if this subscription has been marked as restarted
 	Restarted() bool
+	// Synchronized report if this subscription has received initial items
+	Synchronized() bool
 	// ProcessChange - Invoked on the string msg from Subscription Channel
 	ProcessChange(change Change)
 	// MsgChan - Message Channel for Subscription
 	MsgChan() <-chan Change
-	// Activate start the subscription
+	// Activate starts the subscription
 	Activate() error
+	// Close stops the subscription and removes the state
+	Close() error
 }

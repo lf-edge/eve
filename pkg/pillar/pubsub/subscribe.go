@@ -47,12 +47,26 @@ func (sub *SubscriptionImpl) MsgChan() <-chan Change {
 	return sub.C
 }
 
-// Activate start the subscription
+// Activate starts the subscription
 func (sub *SubscriptionImpl) Activate() error {
 	if sub.Persistent {
 		sub.populate()
 	}
 	return sub.driver.Start()
+}
+
+// Close stops the subscription and removes the content
+func (sub *SubscriptionImpl) Close() error {
+	sub.driver.Stop()
+	items := sub.GetAll()
+	for key := range items {
+		sub.log.Infof("Close(%s) unloading key %s",
+			sub.nameString(), key)
+		handleDelete(sub, key)
+	}
+	handleRestart(sub, false)
+	handleSynchronized(sub, false)
+	return nil
 }
 
 // populate is used when activating a persistent subscription to read
@@ -62,7 +76,7 @@ func (sub *SubscriptionImpl) Activate() error {
 // Note that this directly calls handleModify thus unlike subsequent
 // changes the agent's handler will be called without going through
 // a select on the MsgChan and ProcessChange call.
-// Subsequent information from the publisher will be compared in handleModify
+// Subsequent information from the publisher will be compared in handleModfy
 // to avoid spurious notifications to the agent.
 // XXX can we miss a handleDelete call if the file is deleted after we load?
 // Need for a mark and then sweep when handleSynchronized is called?
