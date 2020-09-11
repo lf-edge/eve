@@ -66,18 +66,26 @@ func watchReadDir(log *base.LogObject, configDir string, fileChanges chan<- stri
 // Generates 'M' events for all existing and all creates/modify.
 // Generates 'D' events for all deletes.
 // Generates a 'R' event when the initial directories have been processed
-func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, fileChanges chan<- string) {
+func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan <-chan struct{}, fileChanges chan<- string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err, ": NewWatcher")
 	}
 	defer w.Close()
 
-	done := make(chan bool)
+	funcDone := make(chan struct{})
 	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
-		for {
+		done := false
+		for !done {
 			select {
+			case _, ok := <-doneChan:
+				if !ok {
+					done = true
+					break
+				}
+				log.Fatal("WatchStatus func received message on doneChan")
+
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
 				// log.Debugln("WatchStatus event:", event)
@@ -103,6 +111,8 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, fileChang
 				log.Errorln("WatchStatus error:", err)
 			}
 		}
+		close(funcDone)
+		log.Warnf("WatchStatus func goroutine exiting")
 	}()
 
 	err = w.Add(statusDir)
@@ -131,11 +141,16 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, fileChang
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
-	for {
+	done := false
+	for !done {
 		select {
-		case <-done:
-			log.Errorln("WatchStatus channel done; terminating")
-			break
+		case _, ok := <-doneChan:
+			if !ok {
+				done = true
+				break
+			}
+			log.Fatal("WatchStatus received message on doneChan")
+
 		case <-ticker.C:
 			// Remove and re-add
 			// XXX do we also need to re-scan?
@@ -160,4 +175,9 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, fileChang
 			}
 		}
 	}
+	// Wait for above func to be done
+	<-funcDone
+	ticker.StopTicker()
+	close(fileChanges)
+	log.Warnf("WatchStatus goroutine exiting")
 }

@@ -34,6 +34,7 @@ type Subscriber struct {
 	C                chan<- pubsub.Change
 	logger           *logrus.Logger
 	log              *base.LogObject
+	doneChan         chan struct{}
 }
 
 // Load load entire persisted data set into a map
@@ -104,7 +105,8 @@ func (s *Subscriber) Start() error {
 		translator := make(chan string)
 		s.log.Infof("Creating %s at %s", "watch.WatchStatus",
 			agentlog.GetMyStack())
-		go watch.WatchStatus(s.log, s.dirName, true, translator)
+		go watch.WatchStatus(s.log, s.dirName, true, s.doneChan,
+			translator)
 		s.log.Infof("Creating %s at %s", "s.Translate",
 			agentlog.GetMyStack())
 		go s.translate(translator, s.C)
@@ -116,6 +118,32 @@ func (s *Subscriber) Start() error {
 		return nil
 	} else {
 		errStr := fmt.Sprintf("Subscribe(%s): failed %s", s.name, "nowhere to subscribe")
+		return errors.New(errStr)
+	}
+}
+
+// Stop the subscriber listening on the given name and topic
+func (s *Subscriber) Stop() error {
+	s.log.Infof("Stop(%s)", s.name)
+	// We handle both subscribeFromDir and subscribeFromSock
+	if s.subscribeFromDir {
+		// Tell watch.WatchStatus to finish and close the translator
+		// channel which in turn will make the translator finish.
+		close(s.doneChan)
+		return nil
+	} else if subscribeFromSock {
+		// Tell watchSock to finish
+		close(s.doneChan)
+		if s.sock != nil {
+			// Force connectAndRead to terminate
+			s.log.Warnf("Stop(%s): forcing socket closed",
+				s.name)
+			s.sock.Close()
+		}
+		return nil
+	} else {
+		errStr := fmt.Sprintf("Subscribe(%s): failed %s",
+			s.name, "nowhere to stop")
 		return errors.New(errStr)
 	}
 }
@@ -142,6 +170,9 @@ func (s *Subscriber) watchSock() {
 		case "update":
 			// XXX is size of val any issue? pointer?
 			s.C <- pubsub.Change{Operation: pubsub.Modify, Key: key, Value: val}
+		case "done":
+			s.log.Warnf("watchSock(%s) goroutine exiting", s.name)
+			return
 		}
 	}
 }
@@ -149,8 +180,21 @@ func (s *Subscriber) watchSock() {
 // Returns msg, key, val
 // key and val are base64-encoded
 func (s *Subscriber) connectAndRead() (string, string, []byte) {
+	delay := time.Duration(0)
 	// Waiting for publisher to appear; retry on error
 	for {
+		if areWeDone(s.log, s.doneChan) {
+			s.log.Infof("connectAndRead(%s) done", s.name)
+			return "done", "", nil
+		}
+		if delay != 0 {
+			time.Sleep(delay)
+			delay = time.Duration(0)
+			if areWeDone(s.log, s.doneChan) {
+				s.log.Infof("connectAndRead(%s) done", s.name)
+				return "done", "", nil
+			}
+		}
 		if s.sock == nil {
 			sock, err := net.Dial("unixpacket", s.sockName)
 			if err != nil {
@@ -160,7 +204,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				// exited we get these failures; treat
 				// as debug
 				s.log.Debugln(errStr)
-				time.Sleep(10 * time.Second)
+				delay = 10 * time.Second
 				continue
 			}
 			s.sock = sock
@@ -175,8 +219,14 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				continue
 			}
 		}
+		if areWeDone(s.log, s.doneChan) {
+			s.log.Infof("connectAndRead(%s) done", s.name)
+			return "done", "", nil
+		}
 
 		// wait for readable conn
+		// We close s.sock when we close s.doneChan to make sure
+		// ConnReadCheck unblocks
 		if err := pubsub.ConnReadCheck(s.sock); err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s) ConnReadCheck failed: %s",
 				s.name, err)
@@ -327,4 +377,6 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 			s.log.Fatal("Unknown operation from Watcher: ", operation)
 		}
 	}
+	s.log.Warnf("translate goroutine exiting")
+	close(out)
 }

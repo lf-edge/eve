@@ -36,6 +36,7 @@ type Publisher struct {
 	restarted      pubsub.Restarted
 	logger         *logrus.Logger
 	log            *base.LogObject
+	doneChan       chan struct{}
 }
 
 // Publish publish a key-value pair
@@ -114,10 +115,19 @@ func (s *Publisher) Start() error {
 	s.log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func(s *Publisher) {
 		instance := 0
-		for {
+		done := false
+		for !done {
+			if areWeDone(s.log, s.doneChan) {
+				done = true
+				continue
+			}
+			// We interrupt this accept by closing s.listener
+			// when we close s.doneChan
 			c, err := s.listener.Accept()
 			if err != nil {
 				s.log.Errorf("publisher(%s) failed %s\n", s.name, err)
+				// Assume error and bail
+				done = true
 				continue
 			}
 			s.log.Infof("Creating %s at %s", "s.serveConnection", agentlog.GetMyStack())
@@ -125,7 +135,21 @@ func (s *Publisher) Start() error {
 			maybeLogAllocated(s.log)
 			instance++
 		}
+		s.log.Warnf("Start(%s) acceptor goroutine exiting", s.name)
 	}(s)
+	return nil
+}
+
+// Stop the publisher
+func (s *Publisher) Stop() error {
+	s.log.Infof("Stop(%s)", s.name)
+	if s.listener == nil {
+		// Nothing to do
+		return nil
+	}
+	close(s.doneChan)
+	// Trigger any goroutine blocked in Accept to wake up and exit
+	s.listener.Close()
 	return nil
 }
 
@@ -216,10 +240,20 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	}
 
 	// Handle any changes
-	for {
+	done := false
+	for !done {
 		s.log.Debugf("serveConnection(%s/%d) waiting for notification\n", s.name, instance)
 		startWait := time.Now()
-		<-updater
+		select {
+		case _, ok := <-s.doneChan:
+			if !ok {
+				done = true
+				continue
+			} else {
+				s.log.Fatal("Received message on doneChan")
+			}
+		case <-updater:
+		}
 		waitTime := time.Since(startWait)
 		s.log.Debugf("serveConnection(%s/%d) received notification waited %d seconds\n", s.name, instance, waitTime/time.Second)
 
@@ -242,6 +276,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 			sentRestarted = true
 		}
 	}
+	s.log.Warnf("serveConnection(%s) goroutine exiting", s.name)
 }
 
 func (s *Publisher) serialize(sock net.Conn, keys []string,

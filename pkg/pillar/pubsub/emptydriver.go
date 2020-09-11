@@ -51,6 +51,11 @@ func (e *EmptyDriverPublisher) Restart(restarted bool) error {
 	return nil
 }
 
+// Stop function
+func (e *EmptyDriverPublisher) Stop() error {
+	return nil
+}
+
 // EmptyDriverSubscriber struct
 type EmptyDriverSubscriber struct{}
 
@@ -63,4 +68,9 @@ func (e *EmptyDriverSubscriber) Start() error {
 func (e *EmptyDriverSubscriber) Load() (map[string][]byte, bool, error) {
 	res := make(map[string][]byte)
 	return res, false, nil
+}
+
+// Stop function
+func (e *EmptyDriverSubscriber) Stop() error {
+	return nil
 }

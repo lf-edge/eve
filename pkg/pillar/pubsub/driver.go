@@ -38,6 +38,10 @@ type DriverSubscriber interface {
 	// stored: disk, databases, or vellum. All it cares about is that it gets
 	// a key-value list.
 	Load() (map[string][]byte, bool, error)
+
+	// Stop subscribing to a name and topic
+	// This is expected to return immediately.
+	Stop() error
 }
 
 // DriverPublisher interface that a driver for publishing must implement
@@ -61,6 +65,10 @@ type DriverPublisher interface {
 	// Restart set the state of the topic to restarted, or cancel the restarted
 	// state
 	Restart(restarted bool) error
+
+	// Stop publishing
+	// This is expected to return immediately.
+	Stop() error
 }
 
 // Restarted interface that lets you determine if a Publication has been restarted
