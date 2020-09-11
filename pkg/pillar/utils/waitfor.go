@@ -50,6 +50,7 @@ func WaitForVault(ps *pubsub.PubSub, agentName string, warningTime, errorTime ti
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	subVaultStatus.Close()
 	return nil
 }
 
