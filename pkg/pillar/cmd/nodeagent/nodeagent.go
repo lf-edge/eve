@@ -62,8 +62,6 @@ type nodeagentContext struct {
 	GCInitialized               bool // Received initial GlobalConfig
 	globalConfig                *types.ConfigItemValueMap
 	subGlobalConfig             pubsub.Subscription
-	onboarded                   bool
-	subOnboardStatus            pubsub.Subscription
 	subZbootStatus              pubsub.Subscription
 	subZedAgentStatus           pubsub.Subscription
 	subDomainStatus             pubsub.Subscription
@@ -201,23 +199,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	nodeagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedclient",
-		MyAgentName:   agentName,
-		CreateHandler: handleOnboardStatusModify,
-		ModifyHandler: handleOnboardStatusModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		TopicImpl:     types.OnboardingStatus{},
-		Activate:      true,
-		Persistent:    true,
-		Ctx:           &nodeagentCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	nodeagentCtx.subOnboardStatus = subOnboardStatus
-
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
 
@@ -248,9 +229,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 
@@ -259,6 +237,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
+
+	// Wait until we have been onboarded aka know our own UUID
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("Device is onboarded")
 
 	// if current partition state is not in-progress,
 	// nothing much to do. Zedcloud connectivity is tracked,
@@ -274,23 +258,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// These timer functions will be tracked using
 	// cloud connectionnectivity status.
 
-	for !nodeagentCtx.onboarded {
-		log.Infof("Waiting for onboarded aka known device UUID")
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
-		case <-nodeagentCtx.tickerTimer.C:
-			handleDeviceTimers(&nodeagentCtx)
-
-		case <-nodeagentCtx.stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Infof("Device is onboarded")
 	// Start waiting for controller connectivity
 	nodeagentCtx.lastControllerReachableTime = nodeagentCtx.timeTickCount
 	setTestStartTime(&nodeagentCtx)

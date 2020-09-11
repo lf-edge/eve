@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -80,14 +81,12 @@ type domainContext struct {
 	subDomainConfig        pubsub.Subscription
 	pubDomainStatus        pubsub.Publication
 	subGlobalConfig        pubsub.Subscription
-	subOnboardStatus       pubsub.Subscription
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
 	usbAccess              bool
 	createSema             *sema.Semaphore
-	onboarded              bool
 	GCComplete             bool
 	setInitialUsbAccess    bool
 	GCInitialized          bool
@@ -328,23 +327,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedclient",
-		MyAgentName:   agentName,
-		CreateHandler: handleOnboardStatusModify,
-		ModifyHandler: handleOnboardStatusModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		TopicImpl:     types.OnboardingStatus{},
-		Activate:      true,
-		Persistent:    true,
-		Ctx:           &domainCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.subOnboardStatus = subOnboardStatus
-
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
@@ -380,9 +362,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -404,9 +383,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -414,16 +390,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Infof("processed GlobalConfig")
 
 	// Wait until we have been onboarded aka know our own UUID
-	for !domainCtx.onboarded {
-		log.Infof("Waiting for onboarded")
-		select {
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
 	}
 	log.Infof("processed onboarded")
 

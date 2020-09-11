@@ -152,7 +152,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Infof("processed GlobalConfig")
 
-	if err := utils.WaitForVault(ps, agentName, warningTime, errorTime); err != nil {
+	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 
