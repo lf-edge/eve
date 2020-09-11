@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -7,16 +7,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -47,16 +42,16 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/reverse"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	agentName        = "zedbox"
-	agentRunBasePath = "/var/run"
-	errorTime        = 3 * time.Minute
-	warningTime      = 40 * time.Second
+	agentName   = "zedbox"
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 type zedboxInline uint8
@@ -123,265 +118,120 @@ func main() {
 				}
 			}
 		}
-		if inline {
-			log.Infof("Running inline command %s args: %+v",
-				basename, os.Args[1:])
-			ps := pubsub.New(
-				&socketdriver.SocketDriver{Logger: logger, Log: log},
-				logger, log)
-			retval := sep.f(ps, logger, log)
-			os.Exit(retval)
-		}
-		// If its a known child service, the notify zedbox binary to start that
-		sericeInitStatus := types.ServiceInitStatus{
-			ServiceName: basename,
-			CmdArgs:     os.Args,
-		}
-		log.Infof("Notifying zedbox to start service %s with args %v",
-			sericeInitStatus.ServiceName, sericeInitStatus.CmdArgs)
-		if err := publish(agentName, &sericeInitStatus); err != nil {
-			log.Fatalf(err.Error())
-		}
-		return
-	} else if basename != agentName { // If its unknown child service, check if we intend to start zedbox
-		fmt.Printf("zedbox: Unknown package: %s\n", basename)
-		os.Exit(1)
+		retval := runService(basename, sep, inline)
+		os.Exit(retval)
 	}
+	// If this zedbox?
+	if basename == agentName {
+		sep := entrypoint{f: runZedbox, inline: inlineAlways}
+		logger, log = agentlog.Init(basename)
+		inline := true
+		retval := runService(basename, sep, inline)
+		// Not likely to ever return, but for uniformity ...
+		os.Exit(retval)
+	}
+	fmt.Printf("zedbox: Unknown package: %s\n", basename)
+	os.Exit(1)
+}
 
+func runService(serviceName string, sep entrypoint, inline bool) int {
+	if inline {
+		log.Infof("Running inline command %s args: %+v",
+			serviceName, os.Args[1:])
+		ps := pubsub.New(
+			&socketdriver.SocketDriver{Logger: logger, Log: log},
+			logger, log)
+		return sep.f(ps, logger, log)
+	}
+	// Notify zedbox binary to start the agent/service
+	sericeInitStatus := types.ServiceInitStatus{
+		ServiceName: serviceName,
+		CmdArgs:     os.Args,
+	}
+	log.Infof("Notifying zedbox to start service %s with args %v",
+		sericeInitStatus.ServiceName, sericeInitStatus.CmdArgs)
+	if err := reverse.Publish(log, agentName, &sericeInitStatus); err != nil {
+		log.Fatalf(err.Error())
+	}
+	return 0
+}
+
+// runZedbox is the built-in starting of the main process
+func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) int {
 	//Start zedbox
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug := *debugPtr
-	logger, log = agentlog.Init(agentName)
 	if debug {
 		logger.SetLevel(logrus.TraceLevel)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}
-	var sktData string
-	sktChan := make(chan string)
 	stillRunning := time.NewTicker(15 * time.Second)
-	ps := pubsub.New(
-		&socketdriver.SocketDriver{Logger: logger, Log: log},
-		logger, log)
 
 	log.Infof("Starting %s", agentName)
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
 
-	go startSubscriber(agentName, types.ServiceInitStatus{}, sktChan)
+	subChan := reverse.NewSubscriber(log, agentName,
+		types.ServiceInitStatus{})
 	for {
 		select {
-		case sktData = <-sktChan:
-			sktData = strings.TrimSpace(sktData)
+		case subData := <-subChan:
+			subData = strings.TrimSpace(subData)
 			var serviceInitStatus types.ServiceInitStatus
-			if err := json.Unmarshal([]byte(sktData), &serviceInitStatus); err != nil {
+			if err := json.Unmarshal([]byte(subData), &serviceInitStatus); err != nil {
 				err := fmt.Errorf("zedbox: exception while unmarshalling data %s. %s",
-					sktData, err.Error())
+					subData, err.Error())
 				log.Errorf(err.Error())
 				break
 			}
+			// Kick off the command in a goroutine
+			handleService(serviceInitStatus.ServiceName,
+				serviceInitStatus.CmdArgs)
 
-			log.Infof("zedbox: Received command = %s args = %v",
-				serviceInitStatus.ServiceName, serviceInitStatus.CmdArgs)
-			srvLogger, srvLog := agentlog.Init(serviceInitStatus.ServiceName)
-			srvPs := pubsub.New(
-				&socketdriver.SocketDriver{
-					Logger: srvLogger,
-					Log:    srvLog,
-				},
-				srvLogger, srvLog)
-			if _, ok := entrypoints[serviceInitStatus.ServiceName]; ok {
-				log.Infof("zedbox: Starting %s", serviceInitStatus.ServiceName)
-				flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-				os.Args = serviceInitStatus.CmdArgs
-				go startAgentAndDone(serviceInitStatus.ServiceName, srvPs, srvLogger, srvLog)
-				log.Infof("zedbox: Started %s", serviceInitStatus.ServiceName)
-			} else {
-				log.Fatalf("zedbox: Unknown package: %s", serviceInitStatus.ServiceName)
-			}
 		case <-stillRunning.C:
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }
 
-//startSubscriber Creates a socket for he agent and start listening
-func startSubscriber(agent string, topic interface{}, subSkt chan string) {
-	log.Infof("startSubscriber(%s)", agent)
-	sockName := getSocketName(agent, topic)
-	dir := path.Dir(sockName)
-	if _, err := os.Stat(dir); err != nil {
-		log.Infof("startSubscriber(%s): Create %s\n", agent, dir)
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			log.Fatalf("startSubscriber(%s): Exception while creating %s. %s",
-				agent, dir, err)
-		}
+// handleService starts the service in a goroutine using a logger/log with
+// that serviceName
+func handleService(serviceName string, cmdArgs []string) {
+
+	log.Infof("zedbox: Received command = %s args = %v", serviceName, cmdArgs)
+	srvLogger, srvLog := agentlog.Init(serviceName)
+	srvPs := pubsub.New(
+		&socketdriver.SocketDriver{
+			Logger: srvLogger,
+			Log:    srvLog,
+		},
+		srvLogger, srvLog)
+	sep, ok := entrypoints[serviceName]
+	if !ok {
+		log.Fatalf("zedbox: Unknown package: %s",
+			serviceName)
 	}
-	if _, err := os.Stat(sockName); err == nil {
-		// This could either be a left-over in the filesystem
-		// or some other process (or ourselves) using the same
-		// name to publish. Try connect to see if it is the latter.
-		_, err := net.Dial("unixpacket", sockName)
-		if err == nil {
-			log.Fatalf("connectAndRead(%s): Can not publish %s since its already used",
-				agent, sockName)
-		}
-		if err := os.Remove(sockName); err != nil {
-			log.Fatalf("connectAndRead(%s): Exception while removing pre-existing sock %s. %s",
-				agent, sockName, err)
-		}
-	}
-	listener, err := net.Listen("unixpacket", sockName)
-	if err != nil {
-		log.Fatalf("connectAndRead(%s): Exception while listening at sock %s. %s",
-			agent, sockName, err)
-	}
-	defer listener.Close()
-	for {
-		c, err := listener.Accept()
-		if err != nil {
-			log.Errorf("connectAndRead(%s) failed %s\n", sockName, err)
-			continue
-		}
-		go serveConnection(c, subSkt, sockName)
-	}
+	log.Infof("zedbox: Starting %s", serviceName)
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = cmdArgs
+	go startAgentAndDone(sep, serviceName, srvPs, srvLogger, srvLog)
+	log.Infof("zedbox: Started %s",
+		serviceName)
 }
 
-//publish publishes data to an already opened socket.
-func publish(agent string, data interface{}) error {
-	log.Infof("publish(%s)", agent)
-	sockName := getSocketName(agent, data)
-
-	if _, err := os.Stat(sockName); err != nil {
-		err := fmt.Errorf("publish(%s): exception while check socket. %s", sockName, err.Error())
-		log.Errorf(err.Error())
-		return err
-	}
-
-	byteData, err := json.Marshal(data)
-	if err != nil {
-		err := fmt.Errorf("publish(%s): exception while marshalling data. %s",
-			sockName, err.Error())
-		log.Errorf(err.Error())
-		return err
-	}
-
-	conn, err := net.Dial("unixpacket", sockName)
-	if err != nil {
-		err := fmt.Errorf("publish(%s): exception while dialing socket. %s",
-			sockName, err.Error())
-		log.Errorf(err.Error())
-		return err
-	}
-	defer conn.Close()
-
-	if _, err := conn.Write(byteData); err != nil {
-		err := fmt.Errorf("publish(%s): exception while writing data to the socket. %s",
-			sockName, err.Error())
-		log.Errorf(err.Error())
-		return err
-	}
-	return nil
-}
-
-func serveConnection(conn net.Conn, retChan chan string, name string) {
-
-	for {
-		// wait for readable conn
-		if err := connReadCheck(conn); err != nil {
-			if err != io.EOF {
-				log.Errorf("serveConnection: Error on connReadCheck: %s",
-					err)
-			}
-			break
-		}
-
-		buf, doneFunc := getBuffer()
-		defer doneFunc()
-
-		count, err := conn.Read(buf)
-		if err != nil {
-			if err != io.EOF {
-				log.Errorf("serveConnection: Error on read: %s",
-					err)
-			}
-			break
-		}
-		retChan <- string(buf[:count])
-	}
-	conn.Close()
-}
-
-func getSocketName(agent string, topic interface{}) string {
-	return path.Join(agentRunBasePath, agent, fmt.Sprintf("%s.sock", pubsub.TypeToName(topic)))
-}
-
-//startAgentAndDone start the given agent. Writes the return/exit value to
+// startAgentAndDone starts the given agent. Writes the return/exit value to
 // <agentName>.done file should the agent return.
-func startAgentAndDone(agentName string, srvPs *pubsub.PubSub,
+func startAgentAndDone(sep entrypoint, agentName string, srvPs *pubsub.PubSub,
 	srvLogger *logrus.Logger, srvLog *base.LogObject) {
 
-	serviceEntrypoint, _ := entrypoints[agentName]
-	retval := serviceEntrypoint.f(srvPs, srvLogger, srvLog)
+	retval := sep.f(srvPs, srvLogger, srvLog)
 
 	ret := strconv.Itoa(retval)
 	if err := ioutil.WriteFile(fmt.Sprintf("/var/run/%s.done", agentName),
 		[]byte(ret), 0700); err != nil {
 		log.Fatalf("Error write done file: %v", err)
 	}
-}
-
-const maxsize = 2048
-
-// Use a buffer pool to minimize memory usage
-// While this isn't critical here, doing the same as in pubsub/socketdriver
-// makes it easier to test things using zedbox publish and subscribe
-var bufPool = &sync.Pool{
-	New: func() interface{} {
-		buffer := make([]byte, maxsize+1)
-		return buffer
-	},
-}
-
-//getBuffer returns a buffer and a done func to call at defer.
-func getBuffer() ([]byte, func()) {
-	buf := bufPool.Get().([]byte)
-	return buf, func() {
-		bufPool.Put(buf)
-	}
-}
-
-// check and waits till conn's fd is readable
-func connReadCheck(conn net.Conn) error {
-	var sysErr error
-
-	sysConn, ok := conn.(syscall.Conn)
-	if !ok {
-		return fmt.Errorf("Not syscall.Conn")
-	}
-	rawConn, err := sysConn.SyscallConn()
-	if err != nil {
-		return fmt.Errorf("Exception while getting rawConn: %s",
-			err)
-	}
-
-	err = rawConn.Read(func(fd uintptr) bool {
-		_, _, err := syscall.Recvfrom(int(fd), []byte{}, syscall.MSG_PEEK)
-		if err != nil {
-			if err == syscall.EAGAIN {
-				return false
-			}
-			//assign unknown error to syserr which will be handled later.
-			sysErr = fmt.Errorf("Unknown error from syscall.Recvfrom: %s",
-				err)
-		}
-		return true
-	})
-	if err != nil {
-		return fmt.Errorf("Exception from rawConn.Read: %s",
-			err)
-	}
-	return sysErr
 }
