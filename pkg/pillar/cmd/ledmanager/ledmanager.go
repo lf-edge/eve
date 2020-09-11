@@ -20,9 +20,11 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -421,10 +423,10 @@ func InitDDCmd(ledName string) {
 	diskDevice = "/dev/" + disk
 	count := 100
 	// Prime before measuring
-	doDD(count)
-	doDD(count)
+	uncachedDiskRead(count)
+	uncachedDiskRead(count)
 	start := time.Now()
-	doDD(count)
+	uncachedDiskRead(count)
 	elapsed := time.Since(start)
 	if elapsed == 0 {
 		log.Errorf("Measured 0 nanoseconds!")
@@ -447,22 +449,35 @@ func ExecuteDDCmd(ledName string) {
 		DummyCmd()
 		return
 	}
-	doDD(ddCount)
+	uncachedDiskRead(ddCount)
 }
 
-func doDD(count int) {
-	stdout, err := base.Exec(log, "dd", "if="+diskDevice, "of=/dev/null", "bs=4M",
-		fmt.Sprintf("count=%d", count), "iflag=nocache").Output()
+func uncachedDiskRead(count int) {
+	bufferLength := int64(4194304) //4M buffer length
+	offset := int64(0)
+	data := make([]byte, bufferLength) //4M buffer
+	handler, err := os.Open(diskDevice)
 	if err != nil {
-		if printOnce {
-			log.Errorln("dd error: ", err)
-			printOnce = false
-		} else {
-			log.Debugln("dd error: ", err)
-		}
+		err = fmt.Errorf("uncachedDiskRead: Failed on open: %s", err)
+		log.Error(err.Error())
 		return
 	}
-	log.Debugf("ddinfo: %s", stdout)
+	defer handler.Close()
+	for i := 0; i < count; i++ {
+		unix.Fadvise(int(handler.Fd()), offset, bufferLength, 4) // 4 == POSIX_FADV_DONTNEED
+		readBytes, err := handler.Read(data)
+		if err != nil {
+			err = fmt.Errorf("uncachedDiskRead: Failed on read: %s", err)
+			log.Error(err.Error())
+		}
+		syscall.Madvise(data, 4) // 4 == MADV_DONTNEED
+		log.Infof("uncachedDiskRead: size: %d", readBytes)
+		if int64(readBytes) < bufferLength {
+			log.Infof("uncachedDiskRead: done")
+			break
+		}
+		offset += bufferLength
+	}
 }
 
 const (
