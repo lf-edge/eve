@@ -5,8 +5,8 @@ package pubsub_test
 
 import (
 	"io/ioutil"
+	"os"
 	"runtime"
-	"syscall"
 	"testing"
 	"time"
 
@@ -26,13 +26,9 @@ type context struct {
 
 func TestUnsubscribe(t *testing.T) {
 	// Run in a unique directory
-	// XXX how can we remove it once we are done?
-	dir, err := ioutil.TempDir("", "unsubscribe_test")
+	rootPath, err := ioutil.TempDir("", "unsubscribe_test")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
-	}
-	if err = syscall.Chroot(dir); err != nil {
-		t.Fatalf("Chroot failed: %s", err)
 	}
 
 	logger := logrus.StandardLogger()
@@ -43,7 +39,11 @@ func TestUnsubscribe(t *testing.T) {
 	logger.SetFormatter(&formatter)
 	logger.SetReportCaller(true)
 	log := base.NewSourceLogObject(logger, "test", 1234)
-	driver := socketdriver.SocketDriver{Logger: logger, Log: log}
+	driver := socketdriver.SocketDriver{
+		Logger:  logger,
+		Log:     log,
+		RootDir: rootPath,
+	}
 	ps := pubsub.New(&driver, logger, log)
 
 	myCtx := context{}
@@ -146,6 +146,7 @@ func TestUnsubscribe(t *testing.T) {
 			}
 		})
 	}
+	os.RemoveAll(rootPath)
 }
 
 func getStacks(all bool) string {
