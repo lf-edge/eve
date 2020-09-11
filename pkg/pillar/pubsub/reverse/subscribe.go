@@ -27,7 +27,6 @@ func NewSubscriber(log *base.LogObject, agent string, topic interface{}) <-chan 
 }
 
 // startSubscriber Creates a socket for the agent and starts listening
-// XXX return chan?
 func startSubscriber(log *base.LogObject, agent string, topic interface{}, retChan chan<- string) {
 	log.Infof("startSubscriber(%s)", agent)
 	sockName := getSocketName(agent, topic)

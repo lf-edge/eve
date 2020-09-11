@@ -58,8 +58,9 @@ const (
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
 type SocketDriver struct {
-	Logger *logrus.Logger
-	Log    *base.LogObject
+	Logger  *logrus.Logger
+	Log     *base.LogObject
+	RootDir string // Default is "/"; tests can override
 }
 
 // Publisher return an implementation of `pubsub.DriverPublisher` for
@@ -87,7 +88,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	switch {
 	case persistent && publishToDir:
 		// Special case for /persist/config/
-		dirName = fmt.Sprintf("%s/%s", persistConfigDir, name)
+		dirName = fmt.Sprintf("%s/%s/%s", s.RootDir, persistConfigDir, name)
 	case persistent && !publishToDir:
 		dirName = s.persistentDirName(name)
 	case !persistent && publishToDir:
@@ -182,7 +183,8 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		subFromDir = true
 		if persistent {
 			// Special case for /persist/config/
-			dirName = fmt.Sprintf("%s/%s", persistConfigDir, name)
+			dirName = fmt.Sprintf("%s/%s/%s", s.RootDir,
+				persistConfigDir, name)
 		} else {
 			dirName = s.fixedDirName(name)
 		}
@@ -222,19 +224,19 @@ func (s *SocketDriver) DefaultName() string {
 }
 
 func (s *SocketDriver) sockName(name string) string {
-	return fmt.Sprintf("/var/run/%s.sock", name)
+	return fmt.Sprintf("%s/var/run/%s.sock", s.RootDir, name)
 }
 
 func (s *SocketDriver) pubDirName(name string) string {
-	return fmt.Sprintf("/var/run/%s", name)
+	return fmt.Sprintf("%s/var/run/%s", s.RootDir, name)
 }
 
 func (s *SocketDriver) fixedDirName(name string) string {
-	return fmt.Sprintf("%s/%s", fixedDir, name)
+	return fmt.Sprintf("%s/%s/%s", s.RootDir, fixedDir, name)
 }
 
 func (s *SocketDriver) persistentDirName(name string) string {
-	return fmt.Sprintf("%s/status/%s", "/persist", name)
+	return fmt.Sprintf("%s/%s/status/%s", s.RootDir, "/persist", name)
 }
 
 // Use a buffer pool to minimize memory usage
