@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -240,8 +239,8 @@ var bufPool = &sync.Pool{
 // Track allocations for debug
 var allocated uint32
 
-// getBuffer returns a buffer and a done func to call at defer.
-func getBuffer() ([]byte, func()) {
+// GetBuffer returns a buffer and a done func to call at defer.
+func GetBuffer() ([]byte, func()) {
 	buf := bufPool.Get().([]byte)
 	atomic.AddUint32(&allocated, 1)
 	return buf, func() {
@@ -260,37 +259,4 @@ func maybeLogAllocated(log *base.LogObject) {
 	log.Noticef("pubsub buffer allocation changed from %d to  %d",
 		lastLoggedAllocated, allocated)
 	lastLoggedAllocated = allocated
-}
-
-// check and waits till conn's fd is readable
-func connReadCheck(conn net.Conn) error {
-	var sysErr error
-
-	sysConn, ok := conn.(syscall.Conn)
-	if !ok {
-		return fmt.Errorf("Not syscall.Conn")
-	}
-	rawConn, err := sysConn.SyscallConn()
-	if err != nil {
-		return fmt.Errorf("Exception while getting rawConn: %s",
-			err)
-	}
-
-	err = rawConn.Read(func(fd uintptr) bool {
-		_, _, err := syscall.Recvfrom(int(fd), []byte{}, syscall.MSG_PEEK)
-		if err != nil {
-			if err == syscall.EAGAIN {
-				return false
-			}
-			//assign unknown error to syserr which will be handled later.
-			sysErr = fmt.Errorf("Unknown error from syscall.Recvfrom: %s",
-				err)
-		}
-		return true
-	})
-	if err != nil {
-		return fmt.Errorf("Exception from rawConn.Read: %s",
-			err)
-	}
-	return sysErr
 }

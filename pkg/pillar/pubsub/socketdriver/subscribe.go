@@ -177,8 +177,8 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 		}
 
 		// wait for readable conn
-		if err := connReadCheck(s.sock); err != nil {
-			errStr := fmt.Sprintf("connectAndRead(%s) connReadCheck failed: %s",
+		if err := pubsub.ConnReadCheck(s.sock); err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s) ConnReadCheck failed: %s",
 				s.name, err)
 			s.log.Errorln(errStr)
 			s.sock.Close()
@@ -198,7 +198,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 // msg is "" if there is nothing to process
 func (s *Subscriber) read() (string, string, []byte) {
 
-	buf, doneFunc := getBuffer()
+	buf, doneFunc := GetBuffer()
 	defer doneFunc()
 
 	res, err := s.sock.Read(buf)
