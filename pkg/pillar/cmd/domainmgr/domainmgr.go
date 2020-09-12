@@ -931,7 +931,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
-		IsContainer:        config.IsContainer,
+		IsContainer:        config.IsContainer(),
 	}
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
@@ -1104,15 +1104,12 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 
 	// Pre-flight checks for containers
-	if config.IsContainer {
+	if status.IsContainer {
 		if len(status.DiskStatusList) == 0 || status.DiskStatusList[0].Format != zconfig.Format_CONTAINER {
-			err := fmt.Errorf("doActivate failed: containers must have the first volume of type OCI")
-			log.Error(err.Error())
-			status.SetErrorNow(err.Error())
-			return
-		} else {
-			status.DiskStatusList[0].MountDir = "/"
+			log.Fatal("bailing because it appears that we have a container without a root OCI volume")
 		}
+
+		status.DiskStatusList[0].MountDir = "/"
 
 		if config.IsCipher || config.CloudInitUserData != nil {
 			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
