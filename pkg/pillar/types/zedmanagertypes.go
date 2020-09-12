@@ -151,9 +151,6 @@ type AppInstanceStatus struct {
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
 
-	// Container related state
-	IsContainer bool
-
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State          SwState
