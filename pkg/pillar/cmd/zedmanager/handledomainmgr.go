@@ -6,6 +6,7 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -38,7 +39,6 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
-		IsContainer:       aiStatus.IsContainer,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
@@ -66,6 +66,30 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.MountDir = vrs.MountDir
 		disk.DisplayName = vrs.DisplayName
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
+	}
+	// let's fill some of the default values (arguably we may want controller
+	// to do this for us and give us complete config, but it is easier to
+	// fudge DomainConfig for now on our side)
+	if dc.IsContainer() {
+		if dc.Kernel == "" {
+			dc.Kernel = "/hostfs/boot/kernel"
+		}
+		if dc.Ramdisk == "" {
+			dc.Ramdisk = "/usr/lib/xen/boot/runx-initrd"
+		}
+		if dc.ExtraArgs == "" {
+			dc.ExtraArgs = "console=hvc0 root=9p-xen dhcp=1"
+		}
+		if dc.BootLoader == "" {
+			if runtime.GOARCH == "amd64" {
+				dc.BootLoader = "/usr/lib/xen/boot/seabios.bin"
+			} else {
+				dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+			}
+		}
+	}
+	if dc.BootLoader == "" && dc.VirtualizationModeOrDefault() == types.FML {
+		dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
 	}
 	if ns != nil {
 		ulNum := len(ns.UnderlayNetworkList)

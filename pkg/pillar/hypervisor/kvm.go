@@ -401,21 +401,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}{ctx.devicemodel, config}
 	tmplCtx.Memory = (config.Memory + 1023) / 1024
 	tmplCtx.DisplayName = domainName
-	if config.VirtualizationMode == types.FML || config.VirtualizationMode == types.PV {
-		// FIXME XXX hack to reuce memory pressure of UEFI when we run containers on x86
-		if config.IsContainer && runtime.GOARCH == "amd64" {
-			tmplCtx.BootLoader = "/usr/lib/xen/boot/seabios.bin"
-		} else {
-			tmplCtx.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
-		}
-	} else {
-		tmplCtx.BootLoader = ""
-	}
-	if config.IsContainer {
-		tmplCtx.Kernel = "/hostfs/boot/kernel"
-		tmplCtx.Ramdisk = "/usr/lib/xen/boot/runx-initrd"
-		tmplCtx.ExtraArgs = config.ExtraArgs + " console=hvc0 root=9p-kvm dhcp=1"
-	}
 
 	// render global device model settings
 	t, _ := template.New("qemu").Parse(qemuConfTemplate)

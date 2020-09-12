@@ -5,7 +5,6 @@ package hypervisor
 
 import (
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
@@ -50,17 +49,18 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
+
+	if !status.IsContainer {
+		return logError("failed to run domain %s: not based on an OCI image", domainName)
+	}
+
 	spec, err := containerd.NewOciSpec(domainName)
 	if err != nil {
 		return logError("requesting default OCI spec for domain %s failed %v", domainName, err)
 	}
-
-	if len(diskStatusList) > 0 && diskStatusList[0].Format == zconfig.Format_CONTAINER {
-		if err := spec.UpdateFromVolume(diskStatusList[0].FileLocation); err != nil {
-			return logError("failed to update OCI spec from volume %s (%v)", diskStatusList[0].FileLocation, err)
-		}
+	if err := spec.UpdateFromVolume(diskStatusList[0].FileLocation); err != nil {
+		return logError("failed to update OCI spec from volume %s (%v)", diskStatusList[0].FileLocation, err)
 	}
-
 	spec.UpdateFromDomain(config)
 	spec.UpdateMounts(status.DiskStatusList)
 	spec.UpdateVifList(config)

@@ -322,12 +322,6 @@ func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		changed = true
 		log.Infof("VolumeRefStatus updated for %s", vrs.Key())
 	}
-	if vrs.IsContainer() && !status.IsContainer {
-		status.IsContainer = true
-		changed = true
-		log.Infof("doInstallVolumeRef: Updated IsContainer flag in app instance status to %v",
-			status.IsContainer)
-	}
 	return changed
 }
 

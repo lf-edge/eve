@@ -31,11 +31,17 @@ type DomainConfig struct {
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
-	// Container related info
-	IsContainer bool // Is this Domain for a Container?
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+}
+
+// FIXME we still have a few places where IsContainer is needed
+// however, the goal is to get rid of it completely. Before that
+// happens our heuristic is to declare any app with the first volume
+// being of a type OCI container to be a container-based app
+func (config DomainConfig) IsContainer() bool {
+	return len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER
 }
 
 func (config DomainConfig) Key() string {
