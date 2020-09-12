@@ -6,6 +6,7 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -38,11 +39,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
-		IsContainer:       aiStatus.IsContainer,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
 		CipherBlockStatus: aiConfig.CipherBlockStatus,
+		GPUConfig:         "legacy",
 	}
 
 	dc.DiskConfigList = make([]types.DiskConfig, 0, len(aiStatus.VolumeRefStatusList))
@@ -66,6 +67,41 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.MountDir = vrs.MountDir
 		disk.DisplayName = vrs.DisplayName
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
+	}
+	// let's fill some of the default values (arguably we may want controller
+	// to do this for us and give us complete config, but it is easier to
+	// fudge DomainConfig for now on our side)
+	if dc.BootLoader == "/usr/bin/pygrub" {
+		// FIXME: pygrub is deprecated but the controller keeps sending it to us
+		// This hack means that the user won't be able to set pygrub explicitly,
+		// but nobody in their right mind should do it anyway.
+		dc.BootLoader = ""
+	}
+	if dc.IsContainer() {
+		if dc.Kernel == "" {
+			dc.Kernel = "/hostfs/boot/kernel"
+		}
+		if dc.Ramdisk == "" {
+			dc.Ramdisk = "/usr/lib/xen/boot/runx-initrd"
+		}
+		if dc.ExtraArgs == "" {
+			dc.ExtraArgs = "console=hvc0 root=9p dhcp=1"
+		}
+		if dc.EnableVnc {
+			dc.ExtraArgs += " console=tty0"
+		} else {
+			dc.GPUConfig = ""
+		}
+		if dc.BootLoader == "" {
+			if runtime.GOARCH == "amd64" {
+				dc.BootLoader = "/usr/lib/xen/boot/seabios.bin"
+			} else {
+				dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+			}
+		}
+	}
+	if dc.BootLoader == "" && dc.VirtualizationModeOrDefault() == types.FML {
+		dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
 	}
 	if ns != nil {
 		ulNum := len(ns.UnderlayNetworkList)

@@ -25,17 +25,25 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
+	GPUConfig      string
 	DiskConfigList []DiskConfig
 	VifList        []VifInfo
 	IoAdapterList  []IoAdapter
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
-	// Container related info
-	IsContainer bool // Is this Domain for a Container?
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+}
+
+// IsContainer signals whether a domain happens to be based on an OCI container
+// FIXME we still have a few places where IsContainer is needed
+// however, the goal is to get rid of it completely. Before that
+// happens our heuristic is to declare any app with the first volume
+// being of a type OCI container to be a container-based app
+func (config DomainConfig) IsContainer() bool {
+	return len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER
 }
 
 func (config DomainConfig) Key() string {
