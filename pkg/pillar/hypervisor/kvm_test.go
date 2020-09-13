@@ -1,13 +1,14 @@
 package hypervisor
 
 import (
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 var kvmIntel, kvmArm kvmContext
@@ -845,6 +846,7 @@ func TestCreateDomConfig(t *testing.T) {
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},
 			{Type: types.IoCom, Name: "COM1"},
+			{Type: types.IoUSB, Name: "USB1"},
 		},
 	}
 	disks := []types.DiskStatus{
@@ -871,6 +873,13 @@ func TestCreateDomConfig(t *testing.T) {
 				Phylabel:        "COM1",
 				Ifname:          "COM1",
 				Serial:          "/dev/ttyS0",
+				UsedByUUID:      config.UUIDandVersion.UUID,
+			},
+			{
+				Type:            types.IoUSB,
+				AssignmentGroup: "USB1",
+				Phylabel:        "USB1:1",
+				UsbAddr:         "1:1",
 				UsedByUUID:      config.UUIDandVersion.UUID,
 			},
 		},
@@ -1137,6 +1146,11 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "isa-serial"
   chardev = "charserial-usr0"
+
+[device]
+  driver = "usb-host"
+  hostbus = "1"
+  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
@@ -1398,6 +1412,11 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "isa-serial"
   chardev = "charserial-usr0"
+
+[device]
+  driver = "usb-host"
+  hostbus = "1"
+  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
@@ -1639,6 +1658,11 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "isa-serial"
   chardev = "charserial-usr0"
+
+[device]
+  driver = "usb-host"
+  hostbus = "1"
+  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
