@@ -44,7 +44,7 @@ import (
 
 const (
 	agentName  = "domainmgr"
-	runDirname = "/var/run/" + agentName
+	runDirname = "/run/" + agentName
 	xenDirname = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
 	// Time limits for event loop handlers
