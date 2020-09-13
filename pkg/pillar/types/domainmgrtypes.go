@@ -132,6 +132,7 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	OomScore           int32
 }
 
 type VmMode uint8
@@ -173,6 +174,7 @@ type DomainStatus struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	OomScore           int32
 	TriedCount         int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

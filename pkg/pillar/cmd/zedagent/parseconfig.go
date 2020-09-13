@@ -456,6 +456,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
 		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
 		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
+		appInstance.FixedResources.OomScore = cfgApp.Fixedresources.OomScore
 
 		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
 			len(cfgApp.VolumeRefList))

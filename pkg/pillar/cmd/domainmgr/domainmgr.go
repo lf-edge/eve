@@ -931,6 +931,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		EnableVnc:          config.EnableVnc,
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
+		OomScore:           config.OomScore,
 		State:              types.INSTALLED,
 		IsContainer:        config.IsContainer,
 	}
