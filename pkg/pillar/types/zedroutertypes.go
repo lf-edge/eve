@@ -681,11 +681,11 @@ func (config *DevicePortConfig) CountMgmtPorts() int {
 	return count
 }
 
-// Equal compares two DevicePortConfig but skips things that are
+// MostlyEqual compares two DevicePortConfig but skips things that are
 // more of status such as the timestamps and the TestResults
 // XXX Compare Version or not?
 // We compare the Ports in array order.
-func (config *DevicePortConfig) Equal(config2 *DevicePortConfig) bool {
+func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 
 	if config.Key != config2.Key {
 		return false
@@ -867,7 +867,7 @@ type WirelessConfig struct {
 // for one IfName.
 // XXX odd to have ParseErrors and/or TestResults here but we don't have
 // a corresponding Status struct.
-// Note that if fields are added the Equal function needs to be updated.
+// Note that if fields are added the MostlyEqual function needs to be updated.
 type NetworkPortConfig struct {
 	IfName       string
 	Phylabel     string // Physical name set by controller/model
@@ -1019,9 +1019,10 @@ func (status DeviceNetworkStatus) LogKey() string {
 	return string(base.DeviceNetworkStatusLogType) + "-" + status.Key()
 }
 
-// Equal compares two DeviceNetworkStatus but skips things the test status/results aspects.
+// MostlyEqual compares two DeviceNetworkStatus but skips things the test status/results aspects.
 // We compare the Ports in array order.
-func (status DeviceNetworkStatus) Equal(status2 DeviceNetworkStatus) bool {
+// XXX State and Testing?
+func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool {
 
 	if len(status.Ports) != len(status2.Ports) {
 		return false

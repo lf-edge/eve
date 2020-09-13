@@ -471,7 +471,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify for %s", key)
 	// Ignore test status and timestamps
-	if deviceNetworkStatus.Equal(status) {
+	if deviceNetworkStatus.MostlyEqual(status) {
 		log.Infof("handleDNSModify no change")
 		return
 	}

@@ -1471,6 +1471,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
+		// XXX only do this of the cloudinit isn't already added to
+		// diskStatusList
 		if !status.IsContainer {
 			ds, err := createCloudInitISO(ctx, config)
 			if err != nil {
@@ -1808,7 +1810,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	// Ignore test status and timestamps
 	// Compare Testing to save its updated value which is used by us
-	if ctx.deviceNetworkStatus.Equal(status) &&
+	if ctx.deviceNetworkStatus.MostlyEqual(status) &&
 		ctx.deviceNetworkStatus.Testing == status.Testing {
 		log.Infof("handleDNSModify unchanged")
 		ctx.DNSinitialized = true

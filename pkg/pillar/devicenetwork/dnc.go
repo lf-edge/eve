@@ -246,7 +246,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	log.Infof("VerifyPending: No required ports missing. " +
 		"parsing device port config list")
 
-	if !pending.PendDPC.Equal(&pending.OldDPC) {
+	if !pending.PendDPC.MostlyEqual(&pending.OldDPC) {
 		log.Infof("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
 		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
@@ -709,8 +709,8 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 	}
 	for i, port := range ctx.DevicePortConfigList.PortConfigList {
 		if port.Version == portConfig.Version &&
-			port.Equal(&portConfig) {
-			log.Infof("lookupPortConfig Equal found +%v\n",
+			port.MostlyEqual(&portConfig) {
+			log.Infof("lookupPortConfig MostlyEqual found +%v\n",
 				port)
 			return &ctx.DevicePortConfigList.PortConfigList[i], i
 		}
@@ -744,13 +744,13 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		// If we modify the timestamp for other than current
 		// then treat as a change since it could have moved up
 		// in the list.
-		if oldConfig.Equal(portConfig) {
+		if oldConfig.MostlyEqual(portConfig) {
 			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
 
 			// If this is current and current is in use (index=0)
 			// then no work needed. Otherwise we reorder
-			if current != nil && current.Equal(oldConfig) &&
+			if current != nil && current.MostlyEqual(oldConfig) &&
 				currentIndex == 0 {
 
 				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as currentIndex=0")
