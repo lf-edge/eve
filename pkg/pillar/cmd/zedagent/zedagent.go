@@ -217,7 +217,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  "",
+		AgentName:  agentName,
 		TopicType:  types.ConfigItemValueMap{},
 		Persistent: true,
 	})
@@ -433,7 +433,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
+		AgentName:     agentName,
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Persistent:    true,

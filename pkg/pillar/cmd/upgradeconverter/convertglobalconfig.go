@@ -11,13 +11,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-const (
-	configItemMapDir    = types.PersistConfigDir + "/ConfigItemValueMap/"
-	newGlobalConfigFile = configItemMapDir + "global.json"
-	globalConfigDir     = types.PersistConfigDir + "/GlobalConfig"
-	oldGlobalConfigFile = globalConfigDir + "/global.json"
-)
-
 func createConfigItemMapDir(configItemMapDir string) {
 	info, err := os.Stat(configItemMapDir)
 	if err == nil {
@@ -61,8 +54,8 @@ func delOldGlobalConfigDir(ctxPtr *ucContext) error {
 }
 
 func convertGlobalConfig(ctxPtr *ucContext) error {
-	createConfigItemMapDir(ctxPtr.configItemValueMapDir())
-	newGlobalConfigFile := ctxPtr.configItemValueMapFile()
+	createConfigItemMapDir(ctxPtr.oldConfigItemValueMapDir())
+	newGlobalConfigFile := ctxPtr.oldConfigItemValueMapFile()
 	oldGlobalConfigFile := ctxPtr.globalConfigFile()
 	newExists := fileExists(newGlobalConfigFile)
 	oldExists := fileExists(oldGlobalConfigFile)
