@@ -5,17 +5,19 @@ package hypervisor
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"text/template"
+	"time"
+
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"os"
-	"runtime"
-	"strings"
-	"text/template"
-	"time"
 )
 
 //TBD: Have a better way to calculate this number.
@@ -315,6 +317,8 @@ type kvmContext struct {
 	dmArgs       []string
 	dmCPUArgs    []string
 	dmFmlCPUArgs []string
+	dmPid        int32
+	dmOomScore   int32
 }
 
 func newKvm() Hypervisor {
@@ -358,12 +362,13 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	if status.VirtualizationMode == types.NOHYPER {
 		return ctx.ctrdContext
 	} else {
-		return ctx
+		return &ctx
 	}
 }
 
-func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
+func (ctx *kvmContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
 
+	ctx.dmOomScore = config.OomScore
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 	// first lets build the domain config
@@ -584,6 +589,16 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 	log.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
 	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
 
+	qmpPid, err := getQmpPid(domainName)
+
+	if err != nil {
+		return logError("error getting qmp pid %v", err)
+	}
+
+	if err := setQmpOomScore(qmpPid, ctx.dmOomScore); err != nil {
+		logError("failed to set oom score for domain %v", err)
+	}
+
 	if err := execContinue(qmpFile); err != nil {
 		return logError("failed to start domain that is stopped %v", err)
 	}
@@ -724,6 +739,29 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	}
 
 	return nil
+}
+
+func setQmpOomScore(qmpPid int, oomScore int32) error {
+	filename := "/proc/" + strconv.Itoa(qmpPid) + "/oom_score_adj"
+	oomScoreStr := strconv.Itoa(int(oomScore))
+
+	return ioutil.WriteFile(filename, []byte(oomScoreStr), 0600)
+}
+
+func getQmpPidFile(domainName string) string {
+	return kvmStateDir + domainName + "/pid"
+}
+
+func getQmpPid(domainName string) (int, error) {
+	filename := getQmpPidFile(domainName)
+
+	pid, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Fatal(err)
+		return -1, err
+	}
+	pidStr := string(pid)
+	return strconv.Atoi(pidStr)
 }
 
 func getQmpExecutorSocket(domainName string) string {
