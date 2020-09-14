@@ -11,7 +11,7 @@ PERSIST_CERTS=$PERSISTDIR/certs
 PERSIST_AGENT_DEBUG=$PERSISTDIR/agentdebug
 BINDIR=/opt/zededa/bin
 TMPDIR=/persist/tmp
-ZTMPDIR=/var/tmp/zededa
+ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
@@ -180,8 +180,8 @@ echo "$(date -Ins -u) device-steps: upgradeconverter (pre-vault) Completed"
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
-mkdir -p /var/tmp/zededa/LedBlinkCounter/
-echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
+mkdir -p "$ZTMPDIR/LedBlinkCounter"
+echo '{"BlinkCounter": 1}' > "$ZTMPDIR/LedBlinkCounter/ledconfig.json"
 
 # If ledmanager is already running we don't have to start it.
 # TBD: Should we start it earlier before wwan and wlan services?

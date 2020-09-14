@@ -41,7 +41,7 @@ const (
 	maxRebootStackSize          = 1600
 	maxJSONAttributeSize        = maxRebootStackSize + 100
 	configDir                   = "/config"
-	tmpDirname                  = "/var/tmp/zededa"
+	tmpDirname                  = "/run/global"
 	firstbootFile               = tmpDirname + "/first-boot"
 	restartCounterFile          = configDir + "/restartcounter"
 	// Time limits for event loop handlers

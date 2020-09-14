@@ -32,8 +32,6 @@ func EnsureGCFile(log *base.LogObject) {
 // CreateSymlink - Creates Symbolic link:
 //  linkDir -->targetDir
 func CreateSymlink(log *base.LogObject, linkDir, targetDir string) {
-	// Make sure we have a correct symlink from /var/tmp/zededa so
-	// others can subscribe from there
 	log.Debugf("CreateSymlink")
 	info, err := os.Lstat(linkDir)
 	if err == nil {
