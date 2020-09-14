@@ -23,11 +23,13 @@ const (
 	EventInitialize Event = iota + 0
 	EventNonceRecvd
 	EventInternalQuoteRecvd
+	EventInternalEscrowRecvd
 	EventRetryTimerExpiry
 	EventNonceMismatch
 	EventQuoteMismatch
 	EventNoQuoteCertRecvd
 	EventAttestEscrowRecorded
+	EventNoEscrow
 	EventAttestEscrowFailed
 	EventAttestSuccessful
 	EventRestart
@@ -35,13 +37,15 @@ const (
 
 //States
 const (
-	StateNone State = iota + 0
-	StateNonceWait
-	StateInternalQuoteWait
-	StateAttestWait
-	StateAttestEscrowWait
-	StateRestartWait
-	StateComplete
+	StateNone               State = iota + 0 //State when (Re)Starting attestation
+	StateNonceWait                           //Waiting for response from Controller for Nonce request
+	StateInternalQuoteWait                   //Waiting for internal PCR quote to be published
+	StateInternalEscrowWait                  //Waiting for internal Escrow data to be published
+	StateAttestWait                          //Waiting for response from Controller for PCR quote
+	StateAttestEscrowWait                    //Waiting for response from Controller for Escrow data
+	StateRestartWait                         //Waiting for restart timer to expire, to start all over again
+	StateComplete                            //Everything w.r.t attestation is complete
+	StateAny                                 //Not a real state per se. helps defining wildcard transitions(below)
 )
 
 //String returns human readable equivalent of an Event
@@ -53,6 +57,8 @@ func (event Event) String() string {
 		return "EventNonceRecvd"
 	case EventInternalQuoteRecvd:
 		return "EventInternalQuoteRecvd"
+	case EventInternalEscrowRecvd:
+		return "EventInternalEscrowRecvd"
 	case EventRetryTimerExpiry:
 		return "EventRetryTimerExpiry"
 	case EventNonceMismatch:
@@ -65,6 +71,8 @@ func (event Event) String() string {
 		return "EventAttestEscrowRecorded"
 	case EventAttestEscrowFailed:
 		return "EventAttestEscrowFailed"
+	case EventNoEscrow:
+		return "EventNoEscrow"
 	case EventAttestSuccessful:
 		return "EventAttestSuccessful"
 	case EventRestart:
@@ -83,6 +91,8 @@ func (state State) String() string {
 		return "StateNonceWait"
 	case StateInternalQuoteWait:
 		return "StateInternalQuoteWait"
+	case StateInternalEscrowWait:
+		return "StateInternalEscrowWait"
 	case StateAttestWait:
 		return "StateAttestWait"
 	case StateAttestEscrowWait:
@@ -91,6 +101,8 @@ func (state State) String() string {
 		return "StateRestartWait"
 	case StateComplete:
 		return "StateComplete"
+	case StateAny:
+		return "StateAny"
 	default:
 		return "Unknown State"
 	}
@@ -187,26 +199,33 @@ type EventHandler func(*Context) error
 
 //the state machine
 var transitions = map[Transition]EventHandler{
-	{EventInitialize, StateNone}:                       handleInitializeAtNone,                       //goes to NonceWait
-	{EventRetryTimerExpiry, StateRestartWait}:          handleRetryTimerExpiryAtRestartWait,          //goes to NonceWait
-	{EventRestart, StateRestartWait}:                   handleRestart,                                //goes to RestartWait
-	{EventNonceRecvd, StateNonceWait}:                  handleNonceRecvdAtNonceWait,                  //goes to InternalQuoteWait
-	{EventRetryTimerExpiry, StateNonceWait}:            handleRetryTimerExpiryAtNonceWait,            //goes to InternalQuoteWait
-	{EventRestart, StateNonceWait}:                     handleRestart,                                //goes to RestartWait
-	{EventInternalQuoteRecvd, StateInternalQuoteWait}:  handleInternalQuoteRecvdAtInternalQuoteWait,  //goes to AttestWait
-	{EventRetryTimerExpiry, StateInternalQuoteWait}:    handleRetryTimerExpiryAtInternalQuoteWait,    //retries in InternalQuoteWait
-	{EventRestart, StateInternalQuoteWait}:             handleRestart,                                //goes to RestartWait
-	{EventNonceMismatch, StateAttestWait}:              handleNonceMismatchAtAttestWait,              //goes to RestartWait
-	{EventQuoteMismatch, StateAttestWait}:              handleQuoteMismatchAtAttestWait,              //goes to RestartWait
-	{EventNoQuoteCertRecvd, StateAttestWait}:           handleNoQuoteCertRcvdAtAttestWait,            //goes to RestartWait
-	{EventAttestSuccessful, StateAttestWait}:           handleAttestSuccessfulAtAttestWait,           //goes to AttestEscrowWait | RestartWait
-	{EventRetryTimerExpiry, StateAttestWait}:           handleRetryTimerExpiryAtAttestWait,           //retries in AttestWait
-	{EventRestart, StateAttestWait}:                    handleRestart,                                //goes to RestartWait
-	{EventAttestEscrowFailed, StateAttestEscrowWait}:   handleAttestEscrowFailedAtAttestEscrowWait,   //goes to RestartWait (XXX: optimise)
-	{EventAttestEscrowRecorded, StateAttestEscrowWait}: handleAttestEscrowRecordedAtAttestEscrowWait, //goes to Complete | RestartWait
-	{EventRetryTimerExpiry, StateAttestEscrowWait}:     handleRetryTimerExpiryWhileAttestEscrowWait,  //goes to Complete | RestartWait
-	{EventRestart, StateAttestEscrowWait}:              handleRestart,                                //goes to RestartWait
-	{EventRestart, StateComplete}:                      handleRestartAtStateComplete,                 //goes to RestartWait
+	{EventInitialize, StateNone}:                        handleInitializeAtNone,                        //goes to NonceWait
+	{EventRestart, StateNone}:                           handleRestartAtNone,                           //goes to NonceWait
+	{EventRetryTimerExpiry, StateRestartWait}:           handleRetryTimerExpiryAtRestartWait,           //goes to NonceWait
+	{EventRestart, StateRestartWait}:                    handleRestart,                                 //goes to RestartWait
+	{EventNonceRecvd, StateNonceWait}:                   handleNonceRecvdAtNonceWait,                   //goes to InternalQuoteWait
+	{EventRetryTimerExpiry, StateNonceWait}:             handleRetryTimerExpiryAtNonceWait,             //goes to InternalQuoteWait
+	{EventRestart, StateNonceWait}:                      handleRestart,                                 //goes to RestartWait
+	{EventInternalQuoteRecvd, StateInternalQuoteWait}:   handleInternalQuoteRecvdAtInternalQuoteWait,   //goes to AttestWait
+	{EventRetryTimerExpiry, StateInternalQuoteWait}:     handleRetryTimerExpiryAtInternalQuoteWait,     //retries in InternalQuoteWait
+	{EventRestart, StateInternalQuoteWait}:              handleRestart,                                 //goes to RestartWait
+	{EventRestart, StateInternalEscrowWait}:             handleRestart,                                 //goes to RestartWait
+	{EventInternalEscrowRecvd, StateInternalEscrowWait}: handleInternalEscrowRecvdAtInternalEscrowWait, //goes to AttestEscrowWait
+	{EventNonceMismatch, StateAttestWait}:               handleNonceMismatchAtAttestWait,               //goes to RestartWait
+	{EventQuoteMismatch, StateAttestWait}:               handleQuoteMismatchAtAttestWait,               //goes to RestartWait
+	{EventNoQuoteCertRecvd, StateAttestWait}:            handleNoQuoteCertRcvdAtAttestWait,             //goes to RestartWait
+	{EventAttestSuccessful, StateAttestWait}:            handleAttestSuccessfulAtAttestWait,            //goes to AttestEscrowWait | RestartWait
+	{EventRetryTimerExpiry, StateAttestWait}:            handleRetryTimerExpiryAtAttestWait,            //retries in AttestWait
+	{EventRestart, StateAttestWait}:                     handleRestart,                                 //goes to RestartWait
+	{EventAttestEscrowFailed, StateAttestEscrowWait}:    handleAttestEscrowFailedAtAttestEscrowWait,    //goes to RestartWait (XXX: optimise)
+	{EventNoEscrow, StateAttestEscrowWait}:              handleNoEscrowAtAttestEscrowWait,              //goes to InternalEscrowWait
+	{EventAttestEscrowRecorded, StateAttestEscrowWait}:  handleAttestEscrowRecordedAtAttestEscrowWait,  //goes to Complete | RestartWait
+	{EventRetryTimerExpiry, StateAttestEscrowWait}:      handleRetryTimerExpiryWhileAttestEscrowWait,   //goes to Complete | RestartWait
+	{EventRestart, StateAttestEscrowWait}:               handleRestart,                                 //goes to RestartWait
+	{EventRestart, StateComplete}:                       handleRestartAtStateComplete,                  //goes to RestartWait
+
+	////////////// wildcard event handlers below this///////////////////
+	{EventInternalEscrowRecvd, StateAny}: handleInternalEscrowRecvdAtAnyOther, //stays in the same state
 }
 
 //some helpers
@@ -225,6 +244,11 @@ func Kickstart(ctx *Context) {
 //InternalQuoteRecvd adds EventInternalQuoteRecvd to the fsm
 func InternalQuoteRecvd(ctx *Context) {
 	ctx.eventTrigger <- EventInternalQuoteRecvd
+}
+
+//InternalEscrowDataRecvd adds EventInternalEscrowRecvd to the fsm
+func InternalEscrowDataRecvd(ctx *Context) {
+	ctx.eventTrigger <- EventInternalEscrowRecvd
 }
 
 func startNewRetryTimer(ctx *Context) error {
@@ -260,6 +284,13 @@ func handleInitializeAtNone(ctx *Context) error {
 	default:
 		return fmt.Errorf("Unknown error %v", err)
 	}
+}
+
+func handleRestartAtNone(ctx *Context) error {
+	ctx.log.Debug("handleRestartAtNone")
+
+	//same handling as EventRestart
+	return handleInitializeAtNone(ctx)
 }
 
 func handleNonceRecvdAtNonceWait(ctx *Context) error {
@@ -318,11 +349,12 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 	}
 	ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
 	switch err {
-	case ErrControllerReqFailed, ErrNoEscrowData:
+	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
+	case ErrNoEscrowData:
+		return triggerSelfEvent(ctx, EventNoEscrow)
 	case ErrITokenMismatch:
-		ctx.state = StateRestartWait
-		startNewRetryTimer(ctx)
+		return triggerSelfEvent(ctx, EventAttestEscrowFailed)
 	case ErrNoVerifier:
 		//Verifier support is missing in Controller
 		//We should not have got here, since Nonce request
@@ -333,8 +365,6 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 	default:
 		return fmt.Errorf("Unknown error %v", err)
 	}
-	//keep the compiler happy
-	return nil
 }
 
 func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
@@ -381,6 +411,39 @@ func handleAttestEscrowFailedAtAttestEscrowWait(ctx *Context) error {
 	return startNewRetryTimer(ctx)
 }
 
+func handleInternalEscrowRecvdAtInternalEscrowWait(ctx *Context) error {
+	ctx.log.Debug("handleInternalEscrowRecvdAtInternalEscrowWait")
+	//try sending escrow data now
+	return handleAttestSuccessfulAtAttestWait(ctx)
+}
+
+//handleInternalEscrowRecvdAtAnyOther handles EventInternalEscrowRecvd
+//at any other state, other than StateInternalQuoteWait.
+//for StateInternalQuoteWait, we have handleInternalEscrowRecvdAtInternalEscrowWait
+func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
+	ctx.log.Debug("handleInternalEscrowRecvdAtAnyOther")
+	switch ctx.state {
+	case StateInternalEscrowWait:
+		//We should not have reached here since there is an explicit
+		//handler. Log an error about this, and call the actual
+		//handler. don't fatal
+		ctx.log.Errorf("[ATTEST] Unexpected wildcard handler in (%s, %s)",
+			ctx.state.String(), ctx.event.String())
+		return handleInternalEscrowRecvdAtInternalEscrowWait(ctx)
+	default:
+		//no-op, since escrow data is already saved by caller
+		//we are not waiting for escrow data
+		return nil
+	}
+}
+
+func handleNoEscrowAtAttestEscrowWait(ctx *Context) error {
+	ctx.log.Debug("handleNoEscrowAtAttestEscrowWait")
+	//Wait till we get escrow data published
+	ctx.state = StateInternalEscrowWait
+	return nil
+}
+
 func handleRetryTimerExpiryAtRestartWait(ctx *Context) error {
 	ctx.log.Debug("handleRetryTimerExpiryAtRestartWait")
 	ctx.state = StateNone
@@ -414,11 +477,18 @@ func despatchEvent(event Event, state State, ctx *Context) error {
 	elem, ok := transitions[Transition{event: event, state: state}]
 	if ok {
 		return elem(ctx)
+	}
+	//Specific handler is not found, look for a wildcard handler
+	elem, ok = transitions[Transition{event: event, state: StateAny}]
+	if ok {
+		ctx.log.Noticef("Calling wildcard handler(Event %s in State %s)",
+			event.String(), state.String())
+		return elem(ctx)
 	} else {
-		ctx.log.Fatalf("Unexpected Event %s in State %s\n",
+		ctx.log.Fatalf("Unexpected Event %s in State %s",
 			event.String(), state.String())
 		//just to keep compiler happy
-		return fmt.Errorf("Unexpected Event %s in State %s\n",
+		return fmt.Errorf("Unexpected Event %s in State %s",
 			event.String(), state.String())
 	}
 }
@@ -441,9 +511,9 @@ func (ctx *Context) EnterEventLoop() {
 
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
+		case ctx.event = <-ctx.eventTrigger:
 			ctx.log.Debug("[ATTEST] despatching event")
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				ctx.log.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:

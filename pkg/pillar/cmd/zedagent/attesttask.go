@@ -593,9 +593,14 @@ func handleEncryptedKeyFromDeviceModify(ctxArg interface{}, key string, vaultKey
 		log.Warnf("Ignoring unknown vault %s", vaultKey.Name)
 		return
 	}
-
 	attestCtx := ctx.attestCtx
 	attestCtx.EscrowData = vaultKey.EncryptedVaultKey
+
+	if attestCtx.attestFsmCtx == nil {
+		log.Fatalf("[ATTEST] Uninitialized access to attestFsmCtx")
+	}
+	//Trigger event on the state machine
+	zattest.InternalEscrowDataRecvd(attestCtx.attestFsmCtx)
 }
 
 func publishAttestNonce(ctx *attestContext) {
