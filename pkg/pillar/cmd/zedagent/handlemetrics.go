@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -21,44 +22,77 @@ import (
 	"github.com/lf-edge/eve/api/go/metrics"
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
-	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
 )
 
-// Report disk usage for these paths
-var reportDiskPaths = []string{
-	"/",
-	types.IdentityDirname,
-	types.PersistDir,
+func handleDiskMetricModify(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.DiskMetric)
+	ctx := ctxArg.(*zedagentContext)
+	ctx.iteration++
+	path := status.DiskPath
+	log.Infof("handleDiskMetricModify: %s", path)
 }
 
-// Report directory usage for these paths
-var reportDirPaths = []string{
-	types.PersistDir + "/downloads", // XXX old to be removed
-	types.PersistDir + "/img",       // XXX old to be removed
-	types.PersistDir + "/tmp",
-	types.PersistDir + "/log",
-	types.PersistDir + "/rsyslog",
-	types.PersistDir + "/config",
-	types.PersistDir + "/status",
-	types.PersistDir + "/certs",
-	types.PersistDir + "/checkpoint",
+func handleDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.DiskMetric)
+	ctx := ctxArg.(*zedagentContext)
+	ctx.iteration++
+	path := status.DiskPath
+	log.Infof("handleDiskMetricModify: %s", path)
 }
 
-// Application-related files live here
-// XXX do we need to exclude the ContentTrees used for eve image update?
-// If so how do we tell them apart
-var appPersistPaths = []string{
-	types.VolumeEncryptedDirName,
-	types.VolumeClearDirName,
-	types.SealedDirName + "/downloader",
-	types.SealedDirName + "/verifier",
+func lookupDiskMetric(ctx *zedagentContext, diskPath string) *types.DiskMetric {
+	diskPath = types.PathToKey(diskPath)
+	sub := ctx.subDiskMetric
+	m, _ := sub.Get(diskPath)
+	if m == nil {
+		return nil
+	}
+	metric := m.(types.DiskMetric)
+	return &metric
+}
+
+func getAllDiskMetrics(ctx *zedagentContext) []*types.DiskMetric {
+	var retList []*types.DiskMetric
+	log.Debugf("getAllDiskMetrics")
+	sub := ctx.subDiskMetric
+	items := sub.GetAll()
+	for _, st := range items {
+		status := st.(types.DiskMetric)
+		retList = append(retList, &status)
+	}
+	log.Debugf("getAllDiskMetrics: Done")
+	return retList
+}
+
+func handleAppDiskMetricModify(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.AppDiskMetric)
+	ctx := ctxArg.(*zedagentContext)
+	ctx.iteration++
+	log.Infof("handleAppDiskMetricModify: Received %s", status.DiskPath)
+}
+
+func handleAppDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.AppDiskMetric)
+	ctx := ctxArg.(*zedagentContext)
+	ctx.iteration++
+	log.Infof("handleAppDiskMetricDelete: %s", status.DiskPath)
+}
+
+func lookupAppDiskMetric(ctx *zedagentContext, diskPath string) *types.AppDiskMetric {
+	diskPath = types.PathToKey(diskPath)
+	sub := ctx.subAppDiskMetric
+	m, _ := sub.Get(diskPath)
+	if m == nil {
+		return nil
+	}
+	metric := m.(types.AppDiskMetric)
+	return &metric
 }
 
 func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
@@ -383,62 +417,40 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			&metric)
 	}
 
-	disks := diskmetrics.FindDisksPartitions(log)
-	for _, d := range disks {
-		size, _ := diskmetrics.PartitionSize(log, d)
-		log.Debugf("Disk/partition %s size %d", d, size)
-		size = utils.RoundToMbytes(size)
-		metric := metrics.DiskMetric{Disk: d, Total: size}
-		stat, err := disk.IOCounters(d)
-		if err == nil {
-			metric.ReadBytes = utils.RoundToMbytes(stat[d].ReadBytes)
-			metric.WriteBytes = utils.RoundToMbytes(stat[d].WriteBytes)
-			metric.ReadCount = stat[d].ReadCount
-			metric.WriteCount = stat[d].WriteCount
-		}
-		// XXX do we have a mountpath? Combine with paths below if same?
-		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-	}
-
 	var persistUsage uint64
-	for _, path := range reportDiskPaths {
-		u, err := disk.Usage(path)
-		if err != nil {
-			// Happens e.g., if we don't have a /persist
-			log.Errorf("disk.Usage: %s", err)
-			continue
+	for _, diskMetric := range getAllDiskMetrics(ctx) {
+		var diskPath, mountPath string
+		if diskMetric.IsDir {
+			mountPath = diskMetric.DiskPath
+		} else {
+			diskPath = diskMetric.DiskPath
 		}
-		// We can not run diskmetrics.SizeFromDir("/persist") below in reportDirPaths, get the usage
-		// data here for persistUsage
-		if path == types.PersistDir {
-			persistUsage = u.Used
-		}
-		log.Debugf("Path %s total %d used %d free %d",
-			path, u.Total, u.Used, u.Free)
-		metric := metrics.DiskMetric{MountPath: path,
-			Total: utils.RoundToMbytes(u.Total),
-			Used:  utils.RoundToMbytes(u.Used),
-			Free:  utils.RoundToMbytes(u.Free),
-		}
-		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-	}
-	log.Debugf("persistUsage %d, elapse sec %v", persistUsage, time.Since(startPubTime).Seconds())
-
-	for _, path := range reportDirPaths {
-		usage := diskmetrics.SizeFromDir(log, path)
-		log.Debugf("Path %s usage %d", path, usage)
-		metric := metrics.DiskMetric{MountPath: path,
-			Used: utils.RoundToMbytes(usage),
+		metric := metrics.DiskMetric{
+			Disk:       diskPath,
+			MountPath:  mountPath,
+			ReadBytes:  utils.RoundToMbytes(diskMetric.ReadBytes),
+			WriteBytes: utils.RoundToMbytes(diskMetric.WriteBytes),
+			ReadCount:  diskMetric.ReadCount,
+			WriteCount: diskMetric.WriteCount,
+			Total:      utils.RoundToMbytes(diskMetric.TotalBytes),
+			Used:       utils.RoundToMbytes(diskMetric.UsedBytes),
+			Free:       utils.RoundToMbytes(diskMetric.FreeBytes),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+		if diskMetric.DiskPath == types.PersistDir {
+			persistUsage = diskMetric.UsedBytes
+		}
 	}
 	log.Debugf("DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
 
 	// Determine how much we use in /persist and how much of it is
 	// for the benefits of applications
 	var persistAppUsage uint64
-	for _, path := range appPersistPaths {
-		persistAppUsage += diskmetrics.SizeFromDir(log, path)
+	for _, path := range types.AppPersistPaths {
+		diskMetric := lookupDiskMetric(ctx, path)
+		if diskMetric != nil {
+			persistAppUsage += diskMetric.UsedBytes
+		}
 	}
 	log.Debugf("persistAppUsage %d, elapse sec %v", persistAppUsage, time.Since(startPubTime).Seconds())
 
@@ -580,7 +592,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			if vrs.ActiveFileLocation == "" {
 				log.Infof("ActiveFileLocation is empty for %s", vrs.Key())
 			} else {
-				err := getDiskInfo(vrs, appDiskDetails)
+				err := getDiskInfo(ctx, vrs, appDiskDetails)
 				if err != nil {
 					log.Warnf("getDiskInfo(%s) failed %v",
 						vrs.ActiveFileLocation, err)
@@ -632,43 +644,50 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 
 	createNetworkInstanceMetrics(ctx, ReportMetrics)
-	createVolumeInstanceMetrics(ctx.getconfigCtx, ReportMetrics)
+	createVolumeInstanceMetrics(ctx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
 	log.Debugf("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
 }
 
-func getDiskInfo(vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
+func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
+	appDiskMetric := lookupAppDiskMetric(ctx, vrs.ActiveFileLocation)
+	if appDiskMetric == nil {
+		err := fmt.Errorf("getDiskInfo: No AppDiskMetric found for %s", vrs.ActiveFileLocation)
+		log.Error(err)
+		return err
+	}
+	appDiskDetails.Disk = vrs.ActiveFileLocation
+	appDiskDetails.Used = utils.RoundToMbytes(appDiskMetric.UsedBytes)
+	appDiskDetails.Provisioned = utils.RoundToMbytes(appDiskMetric.ProvisionedBytes)
+	appDiskDetails.DiskType = appDiskMetric.DiskType
+	appDiskDetails.Dirty = appDiskMetric.Dirty
+
 	actualSize, maxSize, err := utils.GetVolumeSize(log, vrs.ActiveFileLocation)
 	if err != nil {
 		return err
 	}
-	appDiskDetails.Disk = vrs.ActiveFileLocation
-	appDiskDetails.Used = utils.RoundToMbytes(actualSize)
-	appDiskDetails.Provisioned = utils.RoundToMbytes(maxSize)
 	if vrs.IsContainer() {
 		appDiskDetails.DiskType = "CONTAINER"
-		return nil
+		log.Infof("getDiskInfo: container app diskdetails: %s",
+			fmt.Sprintf("Disk: %s, actualSize: %d, Used: %d, maxSize: %d, Provisioned: %d",
+				appDiskDetails.Disk, actualSize, appDiskDetails.Used, maxSize, appDiskDetails.Provisioned))
 	}
-	imgInfo, err := diskmetrics.GetImgInfo(log, vrs.ActiveFileLocation)
-	if err != nil {
-		return err
-	}
-	appDiskDetails.DiskType = imgInfo.Format
-	appDiskDetails.Dirty = imgInfo.DirtyFlag
+
 	return nil
 }
 
-func getVolumeResourcesInfo(volStatus *types.VolumeStatus,
-	volumeResourcesDetails *info.VolumeResources) error {
-
-	actualSize, maxSize, err := utils.GetVolumeSize(log, volStatus.FileLocation)
-	if err != nil {
+func getVolumeResourcesInfo(ctx *zedagentContext, volStatus *types.VolumeStatus, volumeResourcesDetails *info.VolumeResources) error {
+	appDiskMetric := lookupAppDiskMetric(ctx, volStatus.FileLocation)
+	if appDiskMetric == nil {
+		err := fmt.Errorf("getVolumeResourcesInfo: No AppDiskMetric found for %s", volStatus.FileLocation)
+		log.Error(err)
 		return err
 	}
-	volumeResourcesDetails.CurSizeBytes = actualSize
-	volumeResourcesDetails.MaxSizeBytes = maxSize
+
+	volumeResourcesDetails.CurSizeBytes = appDiskMetric.UsedBytes
+	volumeResourcesDetails.MaxSizeBytes = appDiskMetric.ProvisionedBytes
 	return nil
 }
 
@@ -1037,7 +1056,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 			log.Infof("FileLocation is empty for %s", volStatus.Key())
 		} else {
 			VolumeResourcesInfo := new(info.VolumeResources)
-			err := getVolumeResourcesInfo(volStatus, VolumeResourcesInfo)
+			err := getVolumeResourcesInfo(ctx, volStatus, VolumeResourcesInfo)
 			if err != nil {
 				log.Errorf("getVolumeResourceInfo(%s) failed %v",
 					volStatus.VolumeID, err)
@@ -1221,9 +1240,9 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	return "", false, ""
 }
 
-func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.ZMetricMsg) {
+func createVolumeInstanceMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {
 	log.Debugf("Volume instance metrics started")
-	sub := ctx.subVolumeStatus
+	sub := ctx.getconfigCtx.subVolumeStatus
 	volumelist := sub.GetAll()
 	if volumelist == nil || len(volumelist) == 0 {
 		return
@@ -1236,22 +1255,23 @@ func createVolumeInstanceMetrics(ctx *getconfigContext, reportMetrics *metrics.Z
 		if volumeStatus.FileLocation == "" {
 			log.Infof("FileLocation is empty for %s", volumeStatus.Key())
 		} else {
-			getVolumeResourcesMetrics(volumeStatus.FileLocation, volumeMetric)
+			getVolumeResourcesMetrics(ctx, volumeStatus.FileLocation, volumeMetric)
 		}
 		reportMetrics.Vm = append(reportMetrics.Vm, volumeMetric)
 	}
 	log.Debugf("Volume instance metrics done: %v", reportMetrics.Vm)
 }
 
-func getVolumeResourcesMetrics(name string, volumeMetric *metrics.ZMetricVolume) error {
-
-	actualSize, maxSize, err := utils.GetVolumeSize(log, name)
-	if err != nil {
+func getVolumeResourcesMetrics(ctx *zedagentContext, name string, volumeMetric *metrics.ZMetricVolume) error {
+	appDiskMetric := lookupAppDiskMetric(ctx, name)
+	if appDiskMetric == nil {
+		err := fmt.Errorf("getVolumeResourcesMetrics: No AppDiskMetric found for %s", name)
+		log.Error(err)
 		return err
 	}
-	volumeMetric.UsedBytes = actualSize
-	volumeMetric.TotalBytes = maxSize
-	volumeMetric.FreeBytes = maxSize - actualSize
+	volumeMetric.UsedBytes = appDiskMetric.UsedBytes
+	volumeMetric.TotalBytes = appDiskMetric.ProvisionedBytes
+	volumeMetric.FreeBytes = appDiskMetric.ProvisionedBytes - appDiskMetric.UsedBytes
 	return nil
 }
 

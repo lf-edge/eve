@@ -12,16 +12,16 @@ import (
 	"os"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
-
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,6 +43,7 @@ var Version = "No version specified"
 var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
+	ps                         *pubsub.PubSub
 	subBaseOsContentTreeConfig pubsub.Subscription
 	pubBaseOsContentTreeStatus pubsub.Publication
 	subGlobalConfig            pubsub.Subscription
@@ -62,10 +63,12 @@ type volumemgrContext struct {
 	subVolumeRefConfig   pubsub.Subscription
 	pubVolumeRefStatus   pubsub.Publication
 	pubContentTreeToHash pubsub.Publication
+	pubBlobStatus        pubsub.Publication
+	pubDiskMetric        pubsub.Publication
+	pubAppDiskMetric     pubsub.Publication
 
-	pubBlobStatus pubsub.Publication
-
-	gc *time.Ticker
+	gc                      *time.Ticker
+	diskMetricsTickerHandle interface{}
 
 	worker *worker.Worker // For background work
 
@@ -111,6 +114,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
+		ps:           ps,
 		vdiskGCTime:  3600,
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
@@ -231,6 +235,28 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	ctx.pubBlobStatus = pubBlobStatus
+
+	pubDiskMetric, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DiskMetric{},
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubDiskMetric = pubDiskMetric
+
+	pubAppDiskMetric, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.AppDiskMetric{},
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppDiskMetric = pubAppDiskMetric
 
 	// Look for global config such as log levels
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -451,6 +477,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.gc.Stop()
 	gcUnusedInitObjects(&ctx)
 
+	// start the metrics reporting task
+	diskMetricsTickerHandle := make(chan interface{})
+	log.Infof("Creating %s at %s", "diskMetricsTimerTask", agentlog.GetMyStack())
+	go diskMetricsTimerTask(&ctx, diskMetricsTickerHandle)
+	ctx.diskMetricsTickerHandle = <-diskMetricsTickerHandle
+
 	for {
 		select {
 		case change := <-ctx.subGlobalConfig.MsgChan():
@@ -526,9 +558,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
-		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
-			ctx.vdiskGCTime = gcp.GlobalValueInt(types.VdiskGCTime)
-		}
+		maybeUpdateConfigItems(ctx, gcp)
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
@@ -560,5 +590,39 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 		ctx.usingConfig = true
 		duration := time.Duration(ctx.vdiskGCTime / 10)
 		ctx.gc = time.NewTicker(duration * time.Second)
+	}
+}
+
+func maybeUpdateConfigItems(ctx *volumemgrContext, newConfigItemValueMap *types.ConfigItemValueMap) {
+	log.Infof("maybeUpdateConfigItems")
+	oldConfigItemValueMap := ctx.globalConfig
+
+	if newConfigItemValueMap.GlobalValueInt(types.VdiskGCTime) != 0 &&
+		newConfigItemValueMap.GlobalValueInt(types.VdiskGCTime) !=
+			oldConfigItemValueMap.GlobalValueInt(types.VdiskGCTime) {
+		log.Infof("maybeUpdateConfigItems: Updating vdiskGCTime from %d to %d",
+			oldConfigItemValueMap.GlobalValueInt(types.VdiskGCTime),
+			newConfigItemValueMap.GlobalValueInt(types.VdiskGCTime))
+		ctx.vdiskGCTime = newConfigItemValueMap.GlobalValueInt(types.VdiskGCTime)
+	}
+
+	if newConfigItemValueMap.GlobalValueInt(types.DiskScanMetricInterval) != 0 &&
+		newConfigItemValueMap.GlobalValueInt(types.DiskScanMetricInterval) !=
+			oldConfigItemValueMap.GlobalValueInt(types.DiskScanMetricInterval) {
+		log.Infof("maybeUpdateConfigItems: Updating DiskScanMetricInterval from %d to %d",
+			oldConfigItemValueMap.GlobalValueInt(types.DiskScanMetricInterval),
+			newConfigItemValueMap.GlobalValueInt(types.DiskScanMetricInterval))
+		if ctx.diskMetricsTickerHandle == nil {
+			log.Warnf("maybeUpdateConfigItems: no diskMetricsTickerHandle yet")
+		} else {
+			diskMetricInterval := time.Duration(newConfigItemValueMap.
+				GlobalValueInt(types.DiskScanMetricInterval)) * time.Second
+			max := float64(diskMetricInterval)
+			min := max * 0.3
+			flextimer.UpdateRangeTicker(ctx.diskMetricsTickerHandle,
+				time.Duration(min), time.Duration(max))
+			// Force an immediate timout since timer could have decreased
+			flextimer.TickNow(ctx.diskMetricsTickerHandle)
+		}
 	}
 }

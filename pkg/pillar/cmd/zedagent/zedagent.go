@@ -105,6 +105,8 @@ type zedagentContext struct {
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
 	subAppContainerMetrics    pubsub.Subscription
+	subDiskMetric             pubsub.Subscription
+	subAppDiskMetric          pubsub.Subscription
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -802,6 +804,42 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subLogMetrics = subLogMetrics
 	subLogMetrics.Activate()
 
+	subDiskMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.DiskMetric{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleDiskMetricModify,
+		ModifyHandler: handleDiskMetricModify,
+		DeleteHandler: handleDiskMetricDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subDiskMetric = subDiskMetric
+	subDiskMetric.Activate()
+
+	subAppDiskMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppDiskMetric{},
+		Activate:      false,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleAppDiskMetricModify,
+		ModifyHandler: handleAppDiskMetricModify,
+		DeleteHandler: handleAppDiskMetricDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subAppDiskMetric = subAppDiskMetric
+	subAppDiskMetric.Activate()
+
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
 
@@ -1168,6 +1206,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subAppContainerMetrics.MsgChan():
 			subAppContainerMetrics.ProcessChange(change)
+
+		case change := <-subDiskMetric.MsgChan():
+			subDiskMetric.ProcessChange(change)
+
+		case change := <-subAppDiskMetric.MsgChan():
+			subAppDiskMetric.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection

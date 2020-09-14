@@ -18,7 +18,6 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
@@ -26,7 +25,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
 )
 
@@ -107,36 +105,24 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
 	// Find all disks and partitions
-	disks := diskmetrics.FindDisksPartitions(log)
-	ReportDeviceInfo.Storage = *proto.Uint64(0)
-	for _, disk := range disks {
-		size, _ := diskmetrics.PartitionSize(log, disk)
-		log.Debugf("Disk/partition %s size %d", disk, size)
-		size = utils.RoundToMbytes(size)
-		is := info.ZInfoStorage{Device: disk, Total: size}
-		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
-			&is)
-		// XXX should we report whether it is a disk or a partition?
-	}
-	for _, path := range reportDiskPaths {
-		u, err := disk.Usage(path)
-		if err != nil {
-			// Happens e.g., if we don't have a /persist
-			log.Errorf("disk.Usage: %s", err)
-			continue
+	for _, diskMetric := range getAllDiskMetrics(ctx) {
+		var diskPath, mountPath string
+		if diskMetric.IsDir {
+			mountPath = diskMetric.DiskPath
+		} else {
+			diskPath = diskMetric.DiskPath
 		}
-		log.Debugf("Path %s total %d used %d free %d",
-			path, u.Total, u.Used, u.Free)
-		size := utils.RoundToMbytes(u.Total)
-		is := info.ZInfoStorage{MountPath: path, Total: size}
-		// We know this is where we store images and keep
-		// domU virtual disks.
-		if path == types.PersistDir {
+		is := info.ZInfoStorage{
+			Device:    diskPath,
+			MountPath: mountPath,
+			Total:     utils.RoundToMbytes(diskMetric.TotalBytes),
+		}
+		if diskMetric.DiskPath == types.PersistDir {
 			is.StorageLocation = true
-			ReportDeviceInfo.Storage += *proto.Uint64(size)
+			ReportDeviceInfo.Storage += *proto.Uint64(utils.RoundToMbytes(diskMetric.TotalBytes))
 		}
-		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
-			&is)
+
+		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList, &is)
 	}
 
 	ReportDeviceManufacturerInfo := new(info.ZInfoManufacturer)

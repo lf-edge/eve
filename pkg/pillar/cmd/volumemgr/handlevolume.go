@@ -51,6 +51,9 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		}
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
+		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+			log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+		}
 		return
 	}
 	publishVolumeStatus(ctx, status)
@@ -63,6 +66,9 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)
+			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+				log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+			}
 			return
 		} else if remaining < status.MaxVolSize {
 			errStr := fmt.Sprintf("Remaining disk space %d volume needs %d\n"+
@@ -71,6 +77,9 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)
+			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+				log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+			}
 			return
 		}
 	}
@@ -78,6 +87,9 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 	if changed {
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
+	}
+	if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+		log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 	}
 	log.Infof("handleVolumeCreate(%s) Done", key)
 }
@@ -100,6 +112,9 @@ func handleVolumeModify(ctxArg interface{}, key string,
 		status.SetError(errStr, time.Now())
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
+		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+			log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
+		}
 		return
 	}
 	if config.DisplayName != status.DisplayName {
@@ -115,6 +130,9 @@ func handleVolumeModify(ctxArg interface{}, key string,
 	updateVolumeStatusRefCount(ctx, status)
 	publishVolumeStatus(ctx, status)
 	updateVolumeRefStatus(ctx, status)
+	if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+		log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
+	}
 	log.Infof("handleVolumeModify(%s) Done", key)
 }
 
@@ -174,6 +192,19 @@ func lookupVolumeStatus(ctx *volumemgrContext,
 	return &status
 }
 
+func getAllVolumeStatus(ctx *volumemgrContext) []*types.VolumeStatus {
+	var retList []*types.VolumeStatus
+	log.Debugf("getAllVolumeStatus")
+	pub := ctx.pubVolumeStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.VolumeStatus)
+		retList = append(retList, &status)
+	}
+	log.Debugf("getAllVolumeStatus: Done")
+	return retList
+}
+
 func lookupVolumeConfig(ctx *volumemgrContext,
 	key string) *types.VolumeConfig {
 
@@ -225,6 +256,9 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	}
 	publishVolumeStatus(ctx, status)
 	unpublishVolumeStatus(ctx, status)
+	if appDiskMetric := lookupAppDiskMetric(ctx, status.FileLocation); appDiskMetric != nil {
+		unpublishAppDiskMetrics(ctx, appDiskMetric)
+	}
 	log.Infof("maybeDeleteVolume for %v Done", status.Key())
 }
 
