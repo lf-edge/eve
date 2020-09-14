@@ -115,6 +115,8 @@ const (
 	ConfigInterval GlobalSettingKey = "timer.config.interval"
 	// MetricInterval global setting key
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
+	// DiskScanMetricInterval global setting key
+	DiskScanMetricInterval GlobalSettingKey = "timer.metric.diskscan.interval"
 	// ResetIfCloudGoneTime global setting key
 	ResetIfCloudGoneTime GlobalSettingKey = "timer.reboot.no.network"
 	// FallbackIfCloudGoneTime global setting key
@@ -680,7 +682,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// too long to get next config and is practically unreachable for any config
 	// changes or reboot through cloud.
 	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
-	// timer.metric.interval (seconds)
+	// timer.metric.diskscan.interval (seconds)
+	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
+	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)
+	// timer.metric.diskscan.interval (seconds)
 	// Need to be careful about max value. Controller may use metric message to
 	// update status of device (online / suspect etc ).
 	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)

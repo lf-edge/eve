@@ -5,6 +5,7 @@
 | app.allow.vnc | boolean | false | allow access to the app using the VNC tcp port |
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config |
 | timer.metric.interval  | integer in seconds | 60 | how frequently device reports metrics |
+| timer.metric.diskscan.interval  | integer in seconds | 300 | how frequently device should scan the disk for metrics |
 | timer.send.timeout | timer in seconds | 120 | time for each http/send |
 | timer.reboot.no.network | integer in seconds | 7 days | reboot after no cloud connectivity |
 | timer.update.fallback.no.network | integer in seconds | 300 | fallback after no cloud connectivity |

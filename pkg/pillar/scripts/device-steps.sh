@@ -489,6 +489,9 @@ for AGENT in $AGENTS; do
     if [ "$AGENT" = "zedagent" ]; then
        touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch" "$WATCHDOG_FILE/${AGENT}attest.touch" "$WATCHDOG_FILE/${AGENT}ccerts.touch"
     fi
+    if [ "$AGENT" = "volumemgr" ]; then
+       touch "$WATCHDOG_FILE/${AGENT}metrics.touch"
+    fi
 done
 
 blockdev --flushbufs "$CONFIGDEV"

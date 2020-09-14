@@ -208,6 +208,14 @@ func getAgentName() string {
 		default:
 			resultAgentName = "zedagent"
 		}
+	case "volumemgr":
+		switch file {
+		case "handlediskmetrics.go":
+			resultAgentName = "volumemgrmetrics"
+		default:
+			resultAgentName = "volumemgr"
+		}
+
 	default:
 		resultAgentName = agent
 	}

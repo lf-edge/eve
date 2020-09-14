@@ -148,6 +148,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		// Int Items
 		ConfigInterval,
 		MetricInterval,
+		DiskScanMetricInterval,
 		ResetIfCloudGoneTime,
 		FallbackIfCloudGoneTime,
 		MintimeUpdateSuccess,

@@ -137,6 +137,10 @@ const (
 	NetworkXObjectConfigLogType LogObjectType = "network_x_object"
 	// UUIDToNumLogType:
 	UUIDToNumLogType LogObjectType = "uuid_to_num"
+	// DiskMetricType:
+	DiskMetricType LogObjectType = "disk_metric"
+	// AppDiskMetricType:
+	AppDiskMetricType LogObjectType = "app_disk_metric"
 )
 
 // RelationObjectType :
