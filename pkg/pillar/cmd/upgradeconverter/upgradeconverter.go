@@ -44,6 +44,10 @@ var postVaultconversionHandlers = []ConversionHandler{
 		description: "Move verified files to /persist/vault/verifier/verified",
 		handlerFunc: renameVerifiedFiles,
 	},
+	{
+		description: "Move ConfigItemValueMap to /persist/status",
+		handlerFunc: moveConfigItemValueMap,
+	},
 }
 
 type ucContext struct {
@@ -54,20 +58,27 @@ type ucContext struct {
 	// FilePaths. These are defined here instead of consts for easier unit tests
 	persistDir       string
 	persistConfigDir string
+	persistStatusDir string
 	ps               *pubsub.PubSub
 }
 
-func (ctx ucContext) configItemValueMapDir() string {
+func (ctx ucContext) oldConfigItemValueMapDir() string {
 	return ctx.persistConfigDir + "/ConfigItemValueMap/"
 }
-func (ctx ucContext) configItemValueMapFile() string {
-	return ctx.configItemValueMapDir() + "/global.json"
+func (ctx ucContext) oldConfigItemValueMapFile() string {
+	return ctx.oldConfigItemValueMapDir() + "/global.json"
 }
 func (ctx ucContext) globalConfigDir() string {
 	return ctx.persistConfigDir + "/GlobalConfig"
 }
 func (ctx ucContext) globalConfigFile() string {
 	return ctx.globalConfigDir() + "/global.json"
+}
+func (ctx ucContext) newConfigItemValueMapDir() string {
+	return ctx.persistStatusDir + "/zedagent/ConfigItemValueMap/"
+}
+func (ctx ucContext) newConfigItemValueMapFile() string {
+	return ctx.newConfigItemValueMapDir() + "/global.json"
 }
 
 // Old location for volumes
@@ -112,6 +123,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx := &ucContext{agentName: "upgradeconverter",
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
+		persistStatusDir: types.PersistStatusDir,
 		ps:               ps,
 	}
 	debugPtr := flag.Bool("d", false, "Debug flag")

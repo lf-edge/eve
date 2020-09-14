@@ -306,7 +306,7 @@ func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "",
+			AgentName:     "zedagent",
 			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
 			Persistent:    true,

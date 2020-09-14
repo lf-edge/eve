@@ -25,7 +25,6 @@ The encryption key is randomly generated during first time installation, and sto
 One can use `/opt/zededa/bin/fscrypt` command to print the status of vaults on the pillar shell prompt.
 To see logs from vaultmgr, one can find recent ones with source being vaultmgr it under `/persist/rsyslog/syslog.txt` or on the controller.
 
-
 ## Future Work
 
 There is a lot of scope for further hardening of data security at rest, at the Edge. Please refer to [https://wiki.lfedge.org/display/EVE/Security+APIs](https://wiki.lfedge.org/display/EVE/Security+APIs) for future enhancements being discussed.

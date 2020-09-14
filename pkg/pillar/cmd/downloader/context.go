@@ -82,7 +82,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
+		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
