@@ -68,6 +68,9 @@ func (server *VerifierMock) SendAttestEscrow(ctx *Context) error {
 	case simulateITokenMismatch:
 		fmt.Printf("Simulating Integrity Token mismatch\n")
 		return ErrITokenMismatch
+	case simulateNoEscrowData:
+		fmt.Printf("Simulating no escrow data\n")
+		return ErrNoEscrowData
 	}
 
 	return nil
@@ -126,8 +129,8 @@ func TestGoodPath(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-stopTrigger:
@@ -153,8 +156,8 @@ func TestNonceMismatch(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
@@ -180,8 +183,8 @@ func TestQuoteMismatch(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
@@ -207,8 +210,8 @@ func TestNoCertInController(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
@@ -234,8 +237,8 @@ func TestControllerNotAvbleInNonceWait(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
@@ -258,8 +261,8 @@ func TestControllerNotAvbleInAttestWait(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
@@ -282,13 +285,64 @@ func TestControllerNotAvbleInAttestEscrowWait(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
 			if ctx.state != StateAttestEscrowWait {
 				t.Errorf("Expected %s, Got %s", StateAttestEscrowWait.String(), ctx.state.String())
+			}
+			return
+		}
+	}
+}
+
+func TestNoEscrowDataAttestEscrowWait(t *testing.T) {
+	fmt.Println("--------TestNoEscrowDataAttestEscrowWait----")
+	ctx := initTest()
+	stopTrigger := make(chan int)
+
+	go func() {
+		ctx.state = StateAttestWait
+		simulateNoEscrowData = true
+		ctx.eventTrigger <- EventAttestSuccessful
+		time.Sleep(time.Second)
+		stopTrigger <- 1
+	}()
+	for {
+		select {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
+				t.Errorf("%v", err)
+			}
+		case <-stopTrigger:
+			if ctx.state != StateInternalEscrowWait {
+				t.Errorf("Expected %s, Got %s", StateInternalEscrowWait.String(), ctx.state.String())
+			}
+			return
+		}
+	}
+}
+
+func TestItokenMismatchAttestEscrowWait(t *testing.T) {
+	fmt.Println("--------TestItokenMismatchAttestEscrowWait----")
+	ctx := initTest()
+
+	go func() {
+		ctx.state = StateAttestWait
+		simulateITokenMismatch = true
+		ctx.eventTrigger <- EventAttestSuccessful
+	}()
+	for {
+		select {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
+				t.Errorf("%v", err)
+			}
+		case <-ctx.restartTimer.C:
+			if ctx.state != StateRestartWait {
+				t.Errorf("Expected %s, Got %s", StateRestartWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -309,8 +363,8 @@ func TestNoVerifierInNonceWait(t *testing.T) {
 	}()
 	for {
 		select {
-		case trigger := <-ctx.eventTrigger:
-			if err := despatchEvent(trigger, ctx.state, ctx); err != nil {
+		case ctx.event = <-ctx.eventTrigger:
+			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				t.Errorf("%v", err)
 			}
 		case <-stopTrigger:
@@ -319,5 +373,61 @@ func TestNoVerifierInNonceWait(t *testing.T) {
 			}
 			return
 		}
+	}
+}
+
+func TestInternalEscrowRcvdAtAnyOther(t *testing.T) {
+	fmt.Println("--------TestInternalEscrowRcvdAtAnyOther----")
+	ctx := initTest()
+
+	testInternalEscrowRcvdAt := func(state State) {
+		ctx.state = state
+		stopTrigger := make(chan int)
+		go func() {
+			ctx.eventTrigger <- EventInternalEscrowRecvd
+			time.Sleep(time.Second)
+			stopTrigger <- 1
+		}()
+		for {
+			select {
+			case ctx.event = <-ctx.eventTrigger:
+				if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
+					t.Errorf("%v", err)
+				}
+			case <-stopTrigger:
+				return
+			}
+		}
+	}
+	for state := StateNone; state < StateAny; state++ {
+		testInternalEscrowRcvdAt(state)
+	}
+}
+
+func TestRestartAtEachState(t *testing.T) {
+	fmt.Println("--------TestRestartAtEachState----")
+	ctx := initTest()
+
+	testRestartEvent := func(state State) {
+		ctx.state = state
+		stopTrigger := make(chan int)
+		go func() {
+			ctx.eventTrigger <- EventRestart
+			time.Sleep(time.Second)
+			stopTrigger <- 1
+		}()
+		for {
+			select {
+			case ctx.event = <-ctx.eventTrigger:
+				if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
+					t.Errorf("%v", err)
+				}
+			case <-stopTrigger:
+				return
+			}
+		}
+	}
+	for state := StateNone; state < StateAny; state++ {
+		testRestartEvent(state)
 	}
 }
