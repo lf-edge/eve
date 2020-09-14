@@ -12,8 +12,9 @@ import (
 
 //VaultStatus represents running status of a Vault
 type VaultStatus struct {
-	Name   string
-	Status info.DataSecAtRestStatus
+	Name               string
+	Status             info.DataSecAtRestStatus
+	ConversionComplete bool
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }

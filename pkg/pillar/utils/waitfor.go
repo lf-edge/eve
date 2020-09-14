@@ -64,7 +64,7 @@ func handleVaultStatusModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*Context)
 	vault := statusArg.(types.VaultStatus)
-	if vault.Name == types.DefaultVaultName &&
+	if vault.Name == types.DefaultVaultName && vault.ConversionComplete &&
 		vault.Status != info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR {
 		ctx.Initialized = true
 	}

@@ -494,23 +494,6 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func touchFile(log *base.LogObject, filename string) {
-	_, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
-		if err != nil {
-			log.Fatalf("touchFile: Failed touching file %s with err: %s", filename, err)
-		}
-		defer file.Close()
-	} else {
-		currentTime := time.Now()
-		err = os.Chtimes(filename, currentTime, currentTime)
-		if err != nil {
-			log.Fatalf("touchFile: Failed touching file %s with err: %s", filename, err)
-		}
-	}
-}
-
 func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
 	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
 	if _, err := os.Stat(agentDebugDir); os.IsNotExist(err) {
@@ -521,7 +504,7 @@ func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
 		}
 	}
 	startTimeFile := agentDebugDir + "/starttime"
-	touchFile(log, startTimeFile)
+	base.TouchFile(log, startTimeFile)
 
 	stdOutFile := agentDebugDir + "/stdout"
 	stdOut, err := os.OpenFile(stdOutFile, os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
