@@ -286,7 +286,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_SUCCESS:
 		//Retrieve integrity token
 		storeIntegrityToken(quoteResp.GetIntegrityToken())
-		log.Infof("[ATTEST] Attestation successful, processing keys given by Controller")
+		log.Notice("[ATTEST] Attestation successful, processing keys given by Controller")
 		if encryptedKeys := quoteResp.GetKeys(); encryptedKeys != nil {
 			for _, sk := range encryptedKeys {
 				encryptedKeyType := sk.GetKeyType()
@@ -381,7 +381,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 		log.Errorf("[ATTEST] Integrity Token Mismatch")
 		return zattest.ErrITokenMismatch
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS:
-		log.Infof("[ATTEST] Escrow successful")
+		log.Notice("[ATTEST] Escrow successful")
 		return nil
 	default:
 		log.Errorf("[ATTEST] Unknown escrowRespCode %v", escrowRespCode)

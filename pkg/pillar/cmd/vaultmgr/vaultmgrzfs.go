@@ -39,7 +39,9 @@ func getKeyStatusParams(vaultPath string) []string {
 //zfs mount persist/vault
 func unlockZfsVault(vaultPath string) error {
 	//prepare key in the staging file
-	if err := stageKey(false, zfsKeyDir, zfsKeyFile); err != nil {
+	//we never unlock a deprecated vault in ZFS (we never created those)
+	//cloudKeyOnlyMode=false, useSealedKey=true
+	if err := stageKey(false, true, zfsKeyDir, zfsKeyFile); err != nil {
 		return err
 	}
 	defer unstageKey(zfsKeyDir, zfsKeyFile)
@@ -63,7 +65,9 @@ func unlockZfsVault(vaultPath string) error {
 //e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw perist/vault
 func createZfsVault(vaultPath string) error {
 	//prepare key in the staging file
-	if err := stageKey(false, zfsKeyDir, zfsKeyFile); err != nil {
+	//we never create deprecated vault on ZFS
+	//cloudKeyOnlyMode=false, useSealedKey=true
+	if err := stageKey(false, true, zfsKeyDir, zfsKeyFile); err != nil {
 		return err
 	}
 	defer unstageKey(zfsKeyDir, zfsKeyFile)

@@ -108,19 +108,19 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ctx.ps.StillRunning(diskMetricsAgentName, warningTime, errorTime)
 
 	for {
 		select {
 		case <-diskMetricTicker.C:
 			start := time.Now()
 			createOrUpdateDiskMetrics(ctx)
-			ctx.ps.CheckMaxTimeTopic(agentName+"metrics", "createOrUpdateDiskMetrics", start,
+			ctx.ps.CheckMaxTimeTopic(diskMetricsAgentName, "createOrUpdateDiskMetrics", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ctx.ps.StillRunning(diskMetricsAgentName, warningTime, errorTime)
 	}
 }
 

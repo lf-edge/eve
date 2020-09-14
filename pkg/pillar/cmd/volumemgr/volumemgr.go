@@ -27,6 +27,8 @@ import (
 
 const (
 	agentName              = "volumemgr"
+	diskMetricsAgentName   = agentName + "metrics"
+	diskMetricsWDTouchFile = types.WatchdogFileDir + "/" + diskMetricsAgentName + ".touch"
 	runDirname             = "/var/run/" + agentName
 	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
 	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
@@ -495,6 +497,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// start the metrics reporting task
 	diskMetricsTickerHandle := make(chan interface{})
 	log.Infof("Creating %s at %s", "diskMetricsTimerTask", agentlog.GetMyStack())
+
+	//Add .touch file to watchdog config
+	base.TouchFile(log, diskMetricsWDTouchFile)
+
 	go diskMetricsTimerTask(&ctx, diskMetricsTickerHandle)
 	ctx.diskMetricsTickerHandle = <-diskMetricsTickerHandle
 

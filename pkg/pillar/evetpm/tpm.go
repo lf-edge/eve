@@ -4,6 +4,7 @@
 package evetpm
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/x509"
@@ -14,12 +15,12 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"reflect"
 	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/api/go/info"
-	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -60,9 +61,26 @@ const (
 	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
 	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
 
+	//TpmSealedDiskPrivHdl is the handle for constructing disk encryption key
+	TpmSealedDiskPrivHdl tpmutil.Handle = 0x1800000
+
+	//TpmSealedDiskPubHdl is the handle for constructing disk encryption key
+	TpmSealedDiskPubHdl tpmutil.Handle = 0x1900000
+
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
+)
+
+//PCRBank256Status stores info about support for
+//SHA256 PCR bank on this device
+type PCRBank256Status uint32
+
+//Different values for PCRBank256Status
+const (
+	PCRBank256StatusUnknown PCRBank256Status = iota + 0
+	PCRBank256StatusSupported
+	PCRBank256StatusNotSupported
 )
 
 var (
@@ -70,8 +88,40 @@ var (
 	//on devices without a TPM. It is not a constant due to test usage
 	EcdhKeyFile = types.PersistConfigDir + "/ecdh.key.pem"
 
-	tpmHwInfo = ""
+	tpmHwInfo        = ""
+	pcrBank256Status = PCRBank256StatusUnknown
+
+	//DiskKeySealingPCRs represents PCRs that we use for sealing
+	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9}}
 )
+
+//SealedKeyType holds different types of sealed key
+//defined below
+type SealedKeyType uint32
+
+//Different sealed key types, for logging purposes
+const (
+	SealedKeyTypeUnknown     SealedKeyType = iota + 0 //Invalid
+	SealedKeyTypeReused                               //Sealed key is cloned from legacy key
+	SealedKeyTypeNew                                  //Sealed key is not cloned from legacy key
+	SealedKeyTypeUnprotected                          //Sealed key is not available, using legacy key
+)
+
+//String returns verbose string for SealedKeyType value
+func (s SealedKeyType) String() string {
+	switch s {
+	case SealedKeyTypeUnknown:
+		return "Unsealing failed"
+	case SealedKeyTypeReused:
+		return "Key is copied and protected using PCRs"
+	case SealedKeyTypeNew:
+		return "Key is new and protected using PCRs"
+	case SealedKeyTypeUnprotected:
+		return "Key is unprotected, because PCR-SHA256 bank is absent"
+	default:
+		return "Unknown type, this is an implementation error"
+	}
+}
 
 //TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
 type TpmPrivateKey struct {
@@ -318,42 +368,48 @@ func FetchTpmHwInfo() (string, error) {
 }
 
 //FetchVaultKey retreives TPM part of the vault key
-func FetchVaultKey(log *base.LogObject) ([]byte, error) {
+func FetchVaultKey() ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
-	key, err := readDiskKey(log)
+	key, err := readDiskKey()
 	if err != nil {
+		//
+		//Note on why we are using GetRandom here:
+		//We are using raw_key option to protect the encryption/decryption protector:
+		//https://github.com/google/fscrypt#using-a-raw-key-protector
+		//
+		//fscrypt wants a random 32-byte binary value as the raw key value. It uses
+		//it as a seed to further derive an AES key which will then protect the actual
+		//key used in encryption and decryption of the data on disk.
+		//
+		//To satisfy randomness, we are using TPM's native RNG component (preferred
+		//over /dev/urandom):
+		//https://trustedcomputinggroup.org/wp-content/uploads/TCG_TPM2_r1p59_Part1_Architecture_pub.pdf
+		//
+		//The name "key" may be confusing here, as in it is not a key per se. It is a seed value AFAIK.
+		//But that is what fscrypt uses, so I borrowed the same term for uniformity.
+		//
 		key, err = GetRandom(vaultKeyLength)
 		if err != nil {
-			log.Errorf("Error in generating random number: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("FetchVaultKey: Error in GetRandom: %v", err)
 		}
-		err = writeDiskKey(log, key)
+		err = writeDiskKey(key)
 		if err != nil {
-			log.Errorf("Writing Disk Key to TPM failed: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("FetchVaultKey: Writing Key to TPM failed: %v", err)
 		}
 	}
 	return key, nil
 }
 
-//SealVaultKey seals the given key against TPM PCRs
-func SealVaultKey(key []byte) error {
-	//XXX: fill it in with PCR Sealing code
-	return nil
-}
-
-func writeDiskKey(log *base.LogObject, key []byte) error {
+func writeDiskKey(key []byte) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
 	}
 	defer rw.Close()
 
-	if err := tpm2.NVUndefineSpace(rw, EmptyPassword,
-		tpm2.HandleOwner, TpmDiskKeyHdl,
-	); err != nil {
-		log.Debugf("NVUndefineSpace failed: %v", err)
-	}
+	//not an error if it fails
+	tpm2.NVUndefineSpace(rw, EmptyPassword,
+		tpm2.HandleOwner, TpmDiskKeyHdl)
 
 	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
 	if err := tpm2.NVDefineSpace(rw,
@@ -365,20 +421,18 @@ func writeDiskKey(log *base.LogObject, key []byte) error {
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(key)),
 	); err != nil {
-		log.Errorf("NVDefineSpace failed: %v", err)
-		return err
+		return fmt.Errorf("NVDefineSpace failed: %v", err)
 	}
 
 	// Write the data
 	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmDiskKeyHdl,
 		EmptyPassword, key, 0); err != nil {
-		log.Errorf("NVWrite failed: %v", err)
-		return err
+		return fmt.Errorf("NVWrite failed: %v", err)
 	}
 	return nil
 }
 
-func readDiskKey(log *base.LogObject) ([]byte, error) {
+func readDiskKey() ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, err
@@ -389,8 +443,337 @@ func readDiskKey(log *base.LogObject) ([]byte, error) {
 	keyBytes, err := tpm2.NVReadEx(rw, TpmDiskKeyHdl,
 		tpm2.HandleOwner, EmptyPassword, 0)
 	if err != nil {
-		log.Errorf("NVReadEx failed: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("NVReadEx failed: %v", err)
 	}
 	return keyBytes, nil
+}
+
+//FetchSealedVaultKey fetches Vault key sealed into TPM2.0
+func FetchSealedVaultKey() ([]byte, error) {
+	if !PCRBankSHA256Enabled() {
+		//On platforms without PCR Bank SHA256, we can't
+		//generate a sealed key. On those platforms,
+		//FetchSealedVaultKey becomes FetchVaultKey.
+		//Ideally we should not reach here if we are
+		//creating vault for the first time, this is to
+		//handle upgrade scenario, where vault is already
+		//present with legacy key, and we are trying to
+		//move it to a sealed one.
+		return FetchVaultKey()
+	}
+
+	//gain some knowledge about existing environment
+	sealedKeyPresent := isSealedKeyPresent()
+	legacyKeyPresent := isLegacyKeyPresent()
+
+	if !sealedKeyPresent && !legacyKeyPresent {
+		//Fresh install, generate a new key
+		//
+		//Note on why we are using GetRandom here:
+		//We are using raw_key option to protect the encryption/decryption protector:
+		//https://github.com/google/fscrypt#using-a-raw-key-protector
+		//
+		//fscrypt wants a random 32-byte binary value as the raw key value. It uses
+		//it as a seed to further derive an AES key which will then protect the actual
+		//key used in encryption and decryption of the data on disk.
+		//
+		//To satisfy randomness, we are using TPM's native RNG component (preferred
+		//over /dev/urandom):
+		//https://trustedcomputinggroup.org/wp-content/uploads/TCG_TPM2_r1p59_Part1_Architecture_pub.pdf
+		//
+		//The name "key" may be confusing here, as in it is not a key per se. It is a seed value AFAIK.
+		//But that is what fscrypt uses, so I borrowed the same term for uniformity.
+		//
+		key, err := GetRandom(vaultKeyLength)
+		if err != nil {
+			return nil, fmt.Errorf("FetchSealedVaultKey: GetRandom failed, %v", err)
+		}
+		err = SealDiskKey(key, DiskKeySealingPCRs)
+		if err != nil {
+			return nil, fmt.Errorf("FetchSealedVaultKey: Sealing failed: %v", err)
+		}
+	}
+
+	if !sealedKeyPresent && legacyKeyPresent {
+		//XXX: we need a migration path for existing installations.
+		//hence re-using the current key here. i.e. if we end up creating
+		//a new random key here, and we fail the upgrade, the fallback
+		//image will not be able to unlock the vault, and we will not be
+		//able to do any upgrade either (since the base image is downloaded
+		//to vault as well).
+		//Hence, we do it in two-steps:
+		//First clone the existing key(not sealed), and make it a sealed key.
+		//In a subsequent release, rotate the sealed key to a new one.
+		//Upgrade path will be to first upgrade to a) first release and then b)
+		key, err := readDiskKey()
+		if err != nil {
+			return nil, fmt.Errorf("Error in retrieving old key")
+		}
+		err = SealDiskKey(key, DiskKeySealingPCRs)
+		if err != nil {
+			return nil, fmt.Errorf("FetchSealedVaultKey: Sealing failed: %v", err)
+		}
+	}
+	//sealedKeyPresent && !legacyKeyPresent : unseal
+	//sealedKeyPresent && legacyKeyPresent  : unseal
+
+	//By this, we have a key sealed into TPM
+	return UnsealDiskKey(DiskKeySealingPCRs)
+}
+
+//SealDiskKey seals key into TPM2.0, with provided PCRs
+func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+
+	tpm2.NVUndefineSpace(rw, EmptyPassword,
+		tpm2.HandleOwner, TpmSealedDiskPubHdl)
+
+	tpm2.NVUndefineSpace(rw, EmptyPassword,
+		tpm2.HandleOwner, TpmSealedDiskPrivHdl)
+
+	//Note on any abrupt power failure at this point, and the result of it
+	//We should be ok, since the key supplied here can be
+	//a)
+	//  FetchSealedDiskKey(), which will again supply either same value
+	//  (if cloning it from non-sealed copy) or generate a new random value(fresh install)
+	//  both are ok, since we are yet to setup the vault in both the cases
+	//
+	//or b)
+	//  key received from Controller post attestation, in which case, we will
+	//  again get the same key back post-reboot as well
+
+	session, policy, err := PolicyPCRSession(rw, pcrSel)
+	if err != nil {
+		return fmt.Errorf("PolicyPCRSession failed: %v", err)
+	}
+
+	//Don't need the handle, we need only the policy for sealing
+	if err := tpm2.FlushContext(rw, session); err != nil {
+		return fmt.Errorf("Unable to flush session handle %v: %v", session, err)
+	}
+
+	priv, public, err := tpm2.Seal(rw, TpmSRKHdl, EmptyPassword, EmptyPassword, policy, key)
+	if err != nil {
+		return fmt.Errorf("Unable to seal key: %v", err)
+	}
+
+	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
+	if err := tpm2.NVDefineSpace(rw,
+		tpm2.HandleOwner,
+		TpmSealedDiskPrivHdl,
+		EmptyPassword,
+		EmptyPassword,
+		nil,
+		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
+		uint16(len(priv)),
+	); err != nil {
+		return fmt.Errorf("NVDefineSpace %v failed: %v", TpmSealedDiskPrivHdl, err)
+	}
+
+	// Write the private data
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPrivHdl,
+		EmptyPassword, priv, 0); err != nil {
+		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPrivHdl, err)
+	}
+
+	// Define space in NV storage
+	if err := tpm2.NVDefineSpace(rw,
+		tpm2.HandleOwner,
+		TpmSealedDiskPubHdl,
+		EmptyPassword,
+		EmptyPassword,
+		nil,
+		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
+		uint16(len(public)),
+	); err != nil {
+		return fmt.Errorf("NVDefineSpace %v failed: %v", TpmSealedDiskPubHdl, err)
+	}
+	// Write the public data
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPubHdl,
+		EmptyPassword, public, 0); err != nil {
+		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPubHdl, err)
+	}
+	return nil
+}
+
+func isSealedKeyPresent() bool {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return false
+	}
+	defer rw.Close()
+
+	_, err = tpm2.NVReadEx(rw, TpmSealedDiskPrivHdl,
+		tpm2.HandleOwner, EmptyPassword, 0)
+	return err == nil
+}
+
+func isLegacyKeyPresent() bool {
+	_, err := readDiskKey()
+	return err == nil
+}
+
+//UnsealDiskKey unseals key from TPM2.0
+func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rw.Close()
+
+	// Read all of the data with NVReadEx
+	priv, err := tpm2.NVReadEx(rw, TpmSealedDiskPrivHdl,
+		tpm2.HandleOwner, EmptyPassword, 0)
+	if err != nil {
+		return nil, fmt.Errorf("NVReadEx %v failed: %v", TpmSealedDiskPrivHdl, err)
+	}
+	// Read all of the data with NVReadEx
+	pub, err := tpm2.NVReadEx(rw, TpmSealedDiskPubHdl,
+		tpm2.HandleOwner, EmptyPassword, 0)
+	if err != nil {
+		return nil, fmt.Errorf("NVReadEx %v failed: %v", TpmSealedDiskPubHdl, err)
+	}
+
+	sealedObjHandle, _, err := tpm2.Load(rw, TpmSRKHdl, "", pub, priv)
+	if err != nil {
+		return nil, fmt.Errorf("Load failed: %v", err)
+	}
+	defer tpm2.FlushContext(rw, sealedObjHandle)
+
+	session, _, err := PolicyPCRSession(rw, pcrSel)
+	if err != nil {
+		return nil, fmt.Errorf("PolicyPCRSession failed: %v", err)
+	}
+	defer tpm2.FlushContext(rw, session)
+
+	key, err := tpm2.UnsealWithSession(rw, session, sealedObjHandle, EmptyPassword)
+	if err != nil {
+		return nil, fmt.Errorf("UnsealWithSession failed: %v", err)
+	}
+	return key, nil
+}
+
+//PolicyPCRSession prepares TPM2 Auth Policy session, with PCR as the policy
+func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.Handle, []byte, error) {
+	session, _, err := tpm2.StartAuthSession(
+		rw,
+		/*tpmkey=*/ tpm2.HandleNull,
+		/*bindkey=*/ tpm2.HandleNull,
+		/*nonceCaller=*/ make([]byte, 16),
+		/*encryptedSalt=*/ nil,
+		/*sessionType=*/ tpm2.SessionPolicy,
+		/*symmetric=*/ tpm2.AlgNull,
+		/*authHash=*/ tpm2.AlgSHA256)
+	if err != nil {
+		return tpm2.HandleNull, nil, fmt.Errorf("StartAuthSession failed: %v", err)
+	}
+	defer func() {
+		if session != tpm2.HandleNull && err != nil {
+			tpm2.FlushContext(rw, session)
+		}
+	}()
+
+	if err = tpm2.PolicyPCR(rw, session, nil, pcrSel); err != nil {
+		return session, nil, fmt.Errorf("PolicyPCR failed: %v", err)
+	}
+
+	policy, err := tpm2.PolicyGetDigest(rw, session)
+	if err != nil {
+		return session, nil, fmt.Errorf("Unable to get policy digest: %v", err)
+	}
+	return session, policy, nil
+}
+
+//TestSealUnseal tests TPM2.0 Seal and Unseal commands
+func TestSealUnseal() error {
+	dataToSeal := []byte("secret")
+	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
+		return err
+	}
+	unsealedData, err := UnsealDiskKey(DiskKeySealingPCRs)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(dataToSeal, unsealedData) {
+		return fmt.Errorf("want %v, but got %v", dataToSeal, unsealedData)
+	}
+	return nil
+}
+
+//CompareLegacyandSealedKey compares legacy and sealed keys
+//to record if we are using a new key for sealed vault
+func CompareLegacyandSealedKey() SealedKeyType {
+	if !isSealedKeyPresent() {
+		return SealedKeyTypeUnprotected
+	}
+	legacyKey, err := readDiskKey()
+	if err != nil {
+		//no cloning case, return SealedKeyTypeNew
+		return SealedKeyTypeNew
+	}
+	unsealedKey, err := UnsealDiskKey(DiskKeySealingPCRs)
+	if err != nil {
+		//key is present but can't unseal it
+		//but legacy key is present
+		//at this point, vault is probably locked up
+		return SealedKeyTypeUnknown
+	}
+	if bytes.Equal(legacyKey, unsealedKey) {
+		//Same, return SealedKeyTypeReused
+		return SealedKeyTypeReused
+	}
+	return SealedKeyTypeNew
+}
+
+//WipeOutStaleSealedKeyIfAny checks and deletes
+//sealed vault key
+func WipeOutStaleSealedKeyIfAny() error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+
+	tpm2.NVUndefineSpace(rw, EmptyPassword,
+		tpm2.HandleOwner, TpmSealedDiskPubHdl)
+
+	tpm2.NVUndefineSpace(rw, EmptyPassword,
+		tpm2.HandleOwner, TpmSealedDiskPrivHdl)
+
+	return nil
+}
+
+//PCRBankSHA256Enabled checks if SHA256 PCR Bank is
+//enabled
+func PCRBankSHA256Enabled() bool {
+	//Check if we have cached it already, if not fetch, store and return
+	if pcrBank256Status == PCRBank256StatusUnknown {
+		if pcrBankSHA256EnabledHelper() {
+			pcrBank256Status = PCRBank256StatusSupported
+		} else {
+			pcrBank256Status = PCRBank256StatusNotSupported
+		}
+	}
+	return pcrBank256Status == PCRBank256StatusSupported
+}
+
+func pcrBankSHA256EnabledHelper() bool {
+	//Fetch, cache and return
+	if !IsTpmEnabled() {
+		return false
+	}
+
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return false
+	}
+	defer rw.Close()
+
+	//test is by reading PCR index 0 from SHA256 bank
+	_, err = tpm2.ReadPCR(rw, 0, tpm2.AlgSHA256)
+	return err == nil
 }

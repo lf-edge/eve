@@ -13,11 +13,29 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var conversionHandlers = []ConversionHandler{
+//UCPhase tells us which phase we are in
+type UCPhase uint32
+
+//Different UCPhase phases we support
+const (
+	UCPhasePreVault UCPhase = iota + 0
+	UCPhasePostVault
+)
+
+//preVaultconversionHandlers run before vault is ready
+//Any handler that interacts with types.SealedDirName
+//should be in postVaultconversionHandlers
+var preVaultconversionHandlers = []ConversionHandler{
 	{
 		description: "Convert Global Settings to new format",
 		handlerFunc: convertGlobalConfig,
 	},
+}
+
+//postVaultconversionHandlers run after vault is setup
+//Any handler that is not related to types.SealedDirName
+//should be in preVaultconversionHandlers
+var postVaultconversionHandlers = []ConversionHandler{
 	{
 		description: "Move volumes to /persist/vault",
 		handlerFunc: convertPersistVolumes,
@@ -73,8 +91,8 @@ func (ctx ucContext) configCheckpointFile() string {
 	return ctx.persistDir + "/checkpoint/lastconfig"
 }
 
-func runHandlers(ctxPtr *ucContext) {
-	for _, handler := range conversionHandlers {
+func runHandlers(ctxPtr *ucContext, handlers []ConversionHandler) {
+	for _, handler := range handlers {
 		log.Infof("upgradeconverter.Run: Running Conversion handler: %s",
 			handler.description)
 		err := handler.handlerFunc(ctxPtr)
@@ -114,7 +132,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", ctx.agentName)
-	runHandlers(ctx)
+
+	phase := UCPhasePreVault
+	if len(flag.Args()) != 0 {
+		switch flag.Args()[0] {
+		case "pre-vault":
+			phase = UCPhasePreVault
+		case "post-vault":
+			phase = UCPhasePostVault
+		default:
+			log.Errorf("Unknown argument %s, running pre-vault phase", flag.Args()[0])
+		}
+	}
+	runPhase(ctx, phase)
 	return 0
 }
 
@@ -125,4 +155,62 @@ type HandlerFunc func(ctx *ucContext) error
 type ConversionHandler struct {
 	description string
 	handlerFunc HandlerFunc
+}
+
+//RunPostVaultHandlers invokes postVaultconversionHandlers
+//and notifies the caller through the provided ucChan channel
+//the channel is useful for calling from other agent modules
+//without missing watchdog, by spawning this as a task, and
+//select()ing for its completion
+func RunPostVaultHandlers(moduleName string,
+	ps *pubsub.PubSub,
+	loggerArg *logrus.Logger,
+	logArg *base.LogObject,
+	debugOverride bool, ucChan chan struct{}) {
+	logger = loggerArg
+	log = logArg
+	ctx := &ucContext{agentName: moduleName,
+		persistDir:       types.PersistDir,
+		persistConfigDir: types.PersistConfigDir,
+		varTmpDir:        "/var/tmp",
+		ps:               ps,
+	}
+	runPhase(ctx, UCPhasePostVault)
+	log.Notice("RunPostVaultHandlers completed, notifying caller")
+	ucChan <- struct{}{}
+}
+
+//RunPreVaultHandlers invokes preVaultconversionHandlers
+//and notifies the caller through the provided ucChan channel
+//the channel is useful for calling from other agent modules
+//without missing watchdog, by spawning this as a task, and
+//select()ing for its completion
+func RunPreVaultHandlers(moduleName string,
+	ps *pubsub.PubSub,
+	loggerArg *logrus.Logger,
+	logArg *base.LogObject,
+	debugOverride bool, ucChan chan struct{}) {
+	logger = loggerArg
+	log = logArg
+	ctx := &ucContext{agentName: moduleName,
+		persistDir:       types.PersistDir,
+		persistConfigDir: types.PersistConfigDir,
+		varTmpDir:        "/var/tmp",
+		ps:               ps,
+	}
+	runPhase(ctx, UCPhasePreVault)
+	log.Notice("RunPreVaultHandlers completed, notifying caller")
+	ucChan <- struct{}{}
+}
+
+//helper to invoke handlers according to the phase supplied
+func runPhase(ctx *ucContext, phase UCPhase) {
+	switch phase {
+	case UCPhasePreVault:
+		runHandlers(ctx, preVaultconversionHandlers)
+	case UCPhasePostVault:
+		runHandlers(ctx, postVaultconversionHandlers)
+	default:
+		log.Errorf("Unknown phase %d, ignoring", phase)
+	}
 }

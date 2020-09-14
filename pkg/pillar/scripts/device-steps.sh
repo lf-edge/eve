@@ -136,11 +136,6 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
     if ! $BINDIR/vaultmgr setupDeprecatedVaults; then
         echo "$(date -Ins -u) device-steps: vaultmgr setupDeprecatedVaults failed"
     fi
-else
-    if [ ! -d $PERSISTDIR/vault ]; then
-        echo "$(date -Ins -u) Creating $PERSISTDIR/vault"
-        mkdir $PERSISTDIR/vault
-    fi
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
@@ -153,14 +148,6 @@ fi
 if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
-
-echo "$(date -Ins -u) Current downloaded/verified files:"
-ls -lt $PERSISTDIR/vault/verifier/verified/
-echo
-
-echo "$(date -Ins -u) Preserved volumes:"
-ls -lt $PERSISTDIR/vault/volumes/
-echo
 
 # Copy any GlobalConfig from /config
 dir=$CONFIGDIR/GlobalConfig
@@ -181,9 +168,9 @@ if [ ! -d $PERSISTDIR/log ]; then
 fi
 
 # Run upgradeconverter
-echo "$(date -Ins -u) device-steps: Starting upgradeconverter"
-$BINDIR/upgradeconverter
-echo "$(date -Ins -u) device-steps: upgradeconverter Completed"
+echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
+$BINDIR/upgradeconverter pre-vault
+echo "$(date -Ins -u) device-steps: upgradeconverter (pre-vault) Completed"
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -488,9 +475,6 @@ for AGENT in $AGENTS; do
     touch "$WATCHDOG_FILE/$AGENT.touch"
     if [ "$AGENT" = "zedagent" ]; then
        touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch" "$WATCHDOG_FILE/${AGENT}attest.touch" "$WATCHDOG_FILE/${AGENT}ccerts.touch"
-    fi
-    if [ "$AGENT" = "volumemgr" ]; then
-       touch "$WATCHDOG_FILE/${AGENT}metrics.touch"
     fi
 done
 

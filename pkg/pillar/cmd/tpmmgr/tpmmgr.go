@@ -438,7 +438,8 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
-		return nil, nil, nil, err
+		log.Errorf("Unable to open TPM device handle (%v), returning empty quote/PCRs", err)
+		return nil, nil, nil, nil
 	}
 	defer rw.Close()
 	pcrs := make([]types.PCRValue, 0)
@@ -447,7 +448,8 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 	for i = 0; i <= maxPCRIndex; i++ {
 		pcrVal, err := tpm2.ReadPCR(rw, int(i), tpm2.AlgSHA256)
 		if err != nil {
-			return nil, nil, nil, err
+			log.Errorf("TPM ReadPCR cmd failed (%v), returning empty quote/PCRs", err)
+			return nil, nil, nil, nil
 		}
 
 		pcr := types.PCRValue{
@@ -464,7 +466,8 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 		pcrListForQuote,
 		tpm2.AlgNull)
 	if err != nil {
-		return nil, nil, nil, err
+		log.Errorf("TPM Quote cmd failed (%v), returning empty quote/PCRs", err)
+		return nil, nil, nil, nil
 	} else {
 		switch sig.Alg {
 		case tpm2.AlgECDSA:
@@ -472,11 +475,13 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 				R, S *big.Int
 			}{sig.ECC.R, sig.ECC.S})
 			if err != nil {
-				return nil, nil, nil, err
+				log.Errorf("Error in Marshaling AlgECDSA signature(%v), returning empty quote/PCRs", err)
+				return nil, nil, nil, nil
 			}
 			return attestData, signature, pcrs, nil
 		default:
-			return nil, nil, nil, fmt.Errorf("Unsupported signature type")
+			log.Errorf("Unsupported signature type %v, returning empty quote/PCRs", sig.Alg)
+			return nil, nil, nil, nil
 		}
 	}
 }
@@ -1370,22 +1375,20 @@ func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface
 	log.Infof("Received quote request from %s", nonceReq.Requester)
 	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
 	if err != nil {
-		// XXX does this need to be a fatal?
-		log.Fatalf("Error in fetching quote %v", err)
-	} else {
-		attestQuote := types.AttestQuote{
-			Nonce:     nonceReq.Nonce,
-			SigType:   types.EcdsaSha256,
-			Signature: signature,
-			Quote:     quote,
-			PCRs:      pcrs,
-		}
-		key := attestQuote.Key()
-		log.Debugf("publishing quote for nonce %x", key)
-		pub := ctx.pubAttestQuote
-		pub.Publish(key, attestQuote)
+		log.Errorf("Error in fetching quote %v", err)
 	}
-	log.Infof("handleAttestNonceModify done")
+	attestQuote := types.AttestQuote{
+		Nonce:     nonceReq.Nonce,
+		SigType:   types.EcdsaSha256,
+		Signature: signature,
+		Quote:     quote,
+		PCRs:      pcrs,
+	}
+	pubKey := attestQuote.Key()
+	log.Debugf("publishing quote for nonce %x", pubKey)
+	pub := ctx.pubAttestQuote
+	pub.Publish(pubKey, attestQuote)
+	log.Debugf("handleAttestNonceModify done")
 }
 
 func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface{}) {
