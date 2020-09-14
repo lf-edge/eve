@@ -95,6 +95,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		AgentName:     "",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Activate:      false,
 		Ctx:           &wscCtx,
 		CreateHandler: handleGlobalConfigModify,

@@ -28,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
@@ -212,11 +213,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		lastURLPurgeTime: time.Now(),
 	}
 
+	// Wait until we have been onboarded aka know our own UUID
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("processed onboarded")
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Activate:      false,
 		Ctx:           &logmanagerCtx,
 		CreateHandler: handleGlobalConfigModify,

@@ -152,8 +152,41 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	agentbase.Run(&nodeagentCtx)
 
-	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile(log)
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &nodeagentCtx,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		SyncHandler:   handleGlobalConfigSynchronized,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeagentCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !nodeagentCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
+		case <-nodeagentCtx.tickerTimer.C:
+			handleDeviceTimers(&nodeagentCtx)
+
+		case <-nodeagentCtx.stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)
@@ -196,25 +229,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubZbootConfig.ClearRestarted()
 	nodeagentCtx.pubZbootConfig = pubZbootConfig
 
-	// Look for global config such as log levels
-	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
-		MyAgentName:   agentName,
-		TopicImpl:     types.ConfigItemValueMap{},
-		Activate:      false,
-		Ctx:           &nodeagentCtx,
-		ModifyHandler: handleGlobalConfigModify,
-		DeleteHandler: handleGlobalConfigDelete,
-		SyncHandler:   handleGlobalConfigSynchronized,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	nodeagentCtx.subGlobalConfig = subGlobalConfig
-	subGlobalConfig.Activate()
-
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
 
@@ -237,22 +251,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	nodeagentCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
-
-	// Pick up debug aka log level before we start real work
-	for !nodeagentCtx.GCInitialized {
-		log.Infof("Waiting for GCInitialized")
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case <-nodeagentCtx.tickerTimer.C:
-			handleDeviceTimers(&nodeagentCtx)
-
-		case <-nodeagentCtx.stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Infof("processed GlobalConfig")
 
 	// Wait until we have been onboarded aka know our own UUID
 	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {

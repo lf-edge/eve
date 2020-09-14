@@ -176,6 +176,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ErrorTime:     errorTime,
 		Activate:      false,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Ctx:           &clientCtx,
 	})
 	if err != nil {
