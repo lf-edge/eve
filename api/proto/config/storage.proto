@@ -10,12 +10,6 @@ option java_package = "org.lfedge.eve.config";
 import "config/devcommon.proto";
 import "config/acipherinfo.proto";
 
-message SignatureInfo {
-  string intercertsurl = 1;
-  string signercerturl = 2;
-  bytes signature = 3;
-}
-
 enum DsType {
   DsUnknown = 0;
   DsHttp    = 1;
@@ -73,9 +67,6 @@ message Image {
   string sha256 = 3; // EVE will verify this sha for the content
   Format iformat = 4;
 
-  // if its signed image
-  SignatureInfo siginfo = 5;
-
   string dsId = 6; // Datastore UUID
   // sizeBytes indicates the maximum download size of an image.
   // A value of 0 will indicate the unlimited download.
@@ -130,7 +121,6 @@ message ContentTree {
   // maxSizeBytes used for capping resource consumption in EVE.
   // maxSizeBytes indicates the maximum download size of content tree.
   uint64 maxSizeBytes = 6;
-  SignatureInfo siginfo = 7;
   string displayName = 8; // Optional friendly name echo'ed in info
 
   // For container ContentTree, sha256 might not be available in config.

@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='org.lfedge.eve.config',
   syntax='proto3',
   serialized_options=_b('\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x14\x63onfig/storage.proto\x12\x15org.lfedge.eve.config\x1a\x16\x63onfig/devcommon.proto\x1a\x18\x63onfig/acipherinfo.proto\"P\n\rSignatureInfo\x12\x15\n\rintercertsurl\x18\x01 \x01(\t\x12\x15\n\rsignercerturl\x18\x02 \x01(\t\x12\x11\n\tsignature\x18\x03 \x01(\x0c\"\xd2\x01\n\x0f\x44\x61tastoreConfig\x12\n\n\x02id\x18\x64 \x01(\t\x12,\n\x05\x64Type\x18\x01 \x01(\x0e\x32\x1d.org.lfedge.eve.config.DsType\x12\x0c\n\x04\x66qdn\x18\x02 \x01(\t\x12\x0e\n\x06\x61piKey\x18\x03 \x01(\t\x12\x10\n\x08password\x18\x04 \x01(\t\x12\r\n\x05\x64path\x18\x05 \x01(\t\x12\x0e\n\x06region\x18\x06 \x01(\t\x12\x36\n\ncipherData\x18\x07 \x01(\x0b\x32\".org.lfedge.eve.config.CipherBlock\"\xec\x01\n\x05Image\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12.\n\x07iformat\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.config.Format\x12\x35\n\x07siginfo\x18\x05 \x01(\x0b\x32$.org.lfedge.eve.config.SignatureInfo\x12\x0c\n\x04\x64sId\x18\x06 \x01(\t\x12\x11\n\tsizeBytes\x18\x08 \x01(\x03\"\xd0\x01\n\x05\x44rive\x12+\n\x05image\x18\x01 \x01(\x0b\x32\x1c.org.lfedge.eve.config.Image\x12\x10\n\x08readonly\x18\x05 \x01(\x08\x12\x10\n\x08preserve\x18\x06 \x01(\x08\x12\x31\n\x07\x64rvtype\x18\x08 \x01(\x0e\x32 .org.lfedge.eve.config.DriveType\x12-\n\x06target\x18\t \x01(\x0e\x32\x1d.org.lfedge.eve.config.Target\x12\x14\n\x0cmaxsizebytes\x18\n \x01(\x03\"\xf2\x01\n\x0b\x43ontentTree\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04\x64sId\x18\x02 \x01(\t\x12\x0b\n\x03URL\x18\x03 \x01(\t\x12.\n\x07iformat\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.config.Format\x12\x0e\n\x06sha256\x18\x05 \x01(\t\x12\x14\n\x0cmaxSizeBytes\x18\x06 \x01(\x04\x12\x35\n\x07siginfo\x18\x07 \x01(\x0b\x32$.org.lfedge.eve.config.SignatureInfo\x12\x13\n\x0b\x64isplayName\x18\x08 \x01(\t\x12\x18\n\x10generation_count\x18\t \x01(\x03\"r\n\x13VolumeContentOrigin\x12<\n\x04type\x18\x01 \x01(\x0e\x32..org.lfedge.eve.config.VolumeContentOriginType\x12\x1d\n\x15\x64ownloadContentTreeID\x18\x02 \x01(\t\"\xfd\x01\n\x06Volume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12:\n\x06origin\x18\x02 \x01(\x0b\x32*.org.lfedge.eve.config.VolumeContentOrigin\x12?\n\tprotocols\x18\x03 \x03(\x0e\x32,.org.lfedge.eve.config.VolumeAccessProtocols\x12\x17\n\x0fgenerationCount\x18\x04 \x01(\x03\x12\x14\n\x0cmaxsizebytes\x18\x05 \x01(\x03\x12\x10\n\x08readonly\x18\x06 \x01(\x08\x12\x13\n\x0b\x64isplayName\x18\x07 \x01(\t\x12\x12\n\nclear_text\x18\x08 \x01(\x08*p\n\x06\x44sType\x12\r\n\tDsUnknown\x10\x00\x12\n\n\x06\x44sHttp\x10\x01\x12\x0b\n\x07\x44sHttps\x10\x02\x12\x08\n\x04\x44sS3\x10\x03\x12\n\n\x06\x44sSFTP\x10\x04\x12\x17\n\x13\x44sContainerRegistry\x10\x05\x12\x0f\n\x0b\x44sAzureBlob\x10\x06*k\n\x06\x46ormat\x12\x0e\n\nFmtUnknown\x10\x00\x12\x07\n\x03RAW\x10\x01\x12\x08\n\x04QCOW\x10\x02\x12\t\n\x05QCOW2\x10\x03\x12\x07\n\x03VHD\x10\x04\x12\x08\n\x04VMDK\x10\x05\x12\x07\n\x03OVA\x10\x06\x12\x08\n\x04VHDX\x10\x07\x12\r\n\tCONTAINER\x10\x08*G\n\x06Target\x12\x0e\n\nTgtUnknown\x10\x00\x12\x08\n\x04\x44isk\x10\x01\x12\n\n\x06Kernel\x10\x02\x12\n\n\x06Initrd\x10\x03\x12\x0b\n\x07RamDisk\x10\x04*I\n\tDriveType\x12\x10\n\x0cUnclassified\x10\x00\x12\t\n\x05\x43\x44ROM\x10\x01\x12\x07\n\x03HDD\x10\x02\x12\x07\n\x03NET\x10\x03\x12\r\n\tHDD_EMPTY\x10\x04*1\n\x15VolumeAccessProtocols\x12\x0c\n\x08VAP_NONE\x10\x00\x12\n\n\x06VAP_9P\x10\x01*N\n\x17VolumeContentOriginType\x12\x10\n\x0cVCOT_UNKNOWN\x10\x00\x12\x0e\n\nVCOT_BLANK\x10\x01\x12\x11\n\rVCOT_DOWNLOAD\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x14\x63onfig/storage.proto\x12\x15org.lfedge.eve.config\x1a\x16\x63onfig/devcommon.proto\x1a\x18\x63onfig/acipherinfo.proto\"\xd2\x01\n\x0f\x44\x61tastoreConfig\x12\n\n\x02id\x18\x64 \x01(\t\x12,\n\x05\x64Type\x18\x01 \x01(\x0e\x32\x1d.org.lfedge.eve.config.DsType\x12\x0c\n\x04\x66qdn\x18\x02 \x01(\t\x12\x0e\n\x06\x61piKey\x18\x03 \x01(\t\x12\x10\n\x08password\x18\x04 \x01(\t\x12\r\n\x05\x64path\x18\x05 \x01(\t\x12\x0e\n\x06region\x18\x06 \x01(\t\x12\x36\n\ncipherData\x18\x07 \x01(\x0b\x32\".org.lfedge.eve.config.CipherBlock\"\xb5\x01\n\x05Image\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12.\n\x07iformat\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.config.Format\x12\x0c\n\x04\x64sId\x18\x06 \x01(\t\x12\x11\n\tsizeBytes\x18\x08 \x01(\x03\"\xd0\x01\n\x05\x44rive\x12+\n\x05image\x18\x01 \x01(\x0b\x32\x1c.org.lfedge.eve.config.Image\x12\x10\n\x08readonly\x18\x05 \x01(\x08\x12\x10\n\x08preserve\x18\x06 \x01(\x08\x12\x31\n\x07\x64rvtype\x18\x08 \x01(\x0e\x32 .org.lfedge.eve.config.DriveType\x12-\n\x06target\x18\t \x01(\x0e\x32\x1d.org.lfedge.eve.config.Target\x12\x14\n\x0cmaxsizebytes\x18\n \x01(\x03\"\xbb\x01\n\x0b\x43ontentTree\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04\x64sId\x18\x02 \x01(\t\x12\x0b\n\x03URL\x18\x03 \x01(\t\x12.\n\x07iformat\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.config.Format\x12\x0e\n\x06sha256\x18\x05 \x01(\t\x12\x14\n\x0cmaxSizeBytes\x18\x06 \x01(\x04\x12\x13\n\x0b\x64isplayName\x18\x08 \x01(\t\x12\x18\n\x10generation_count\x18\t \x01(\x03\"r\n\x13VolumeContentOrigin\x12<\n\x04type\x18\x01 \x01(\x0e\x32..org.lfedge.eve.config.VolumeContentOriginType\x12\x1d\n\x15\x64ownloadContentTreeID\x18\x02 \x01(\t\"\xfd\x01\n\x06Volume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12:\n\x06origin\x18\x02 \x01(\x0b\x32*.org.lfedge.eve.config.VolumeContentOrigin\x12?\n\tprotocols\x18\x03 \x03(\x0e\x32,.org.lfedge.eve.config.VolumeAccessProtocols\x12\x17\n\x0fgenerationCount\x18\x04 \x01(\x03\x12\x14\n\x0cmaxsizebytes\x18\x05 \x01(\x03\x12\x10\n\x08readonly\x18\x06 \x01(\x08\x12\x13\n\x0b\x64isplayName\x18\x07 \x01(\t\x12\x12\n\nclear_text\x18\x08 \x01(\x08*p\n\x06\x44sType\x12\r\n\tDsUnknown\x10\x00\x12\n\n\x06\x44sHttp\x10\x01\x12\x0b\n\x07\x44sHttps\x10\x02\x12\x08\n\x04\x44sS3\x10\x03\x12\n\n\x06\x44sSFTP\x10\x04\x12\x17\n\x13\x44sContainerRegistry\x10\x05\x12\x0f\n\x0b\x44sAzureBlob\x10\x06*k\n\x06\x46ormat\x12\x0e\n\nFmtUnknown\x10\x00\x12\x07\n\x03RAW\x10\x01\x12\x08\n\x04QCOW\x10\x02\x12\t\n\x05QCOW2\x10\x03\x12\x07\n\x03VHD\x10\x04\x12\x08\n\x04VMDK\x10\x05\x12\x07\n\x03OVA\x10\x06\x12\x08\n\x04VHDX\x10\x07\x12\r\n\tCONTAINER\x10\x08*G\n\x06Target\x12\x0e\n\nTgtUnknown\x10\x00\x12\x08\n\x04\x44isk\x10\x01\x12\n\n\x06Kernel\x10\x02\x12\n\n\x06Initrd\x10\x03\x12\x0b\n\x07RamDisk\x10\x04*I\n\tDriveType\x12\x10\n\x0cUnclassified\x10\x00\x12\t\n\x05\x43\x44ROM\x10\x01\x12\x07\n\x03HDD\x10\x02\x12\x07\n\x03NET\x10\x03\x12\r\n\tHDD_EMPTY\x10\x04*1\n\x15VolumeAccessProtocols\x12\x0c\n\x08VAP_NONE\x10\x00\x12\n\n\x06VAP_9P\x10\x01*N\n\x17VolumeContentOriginType\x12\x10\n\x0cVCOT_UNKNOWN\x10\x00\x12\x0e\n\nVCOT_BLANK\x10\x01\x12\x11\n\rVCOT_DOWNLOAD\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[config_dot_devcommon__pb2.DESCRIPTOR,config_dot_acipherinfo__pb2.DESCRIPTOR,])
 
@@ -63,8 +63,8 @@ _DSTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1459,
-  serialized_end=1571,
+  serialized_start=1267,
+  serialized_end=1379,
 )
 _sym_db.RegisterEnumDescriptor(_DSTYPE)
 
@@ -114,8 +114,8 @@ _FORMAT = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1573,
-  serialized_end=1680,
+  serialized_start=1381,
+  serialized_end=1488,
 )
 _sym_db.RegisterEnumDescriptor(_FORMAT)
 
@@ -149,8 +149,8 @@ _TARGET = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1682,
-  serialized_end=1753,
+  serialized_start=1490,
+  serialized_end=1561,
 )
 _sym_db.RegisterEnumDescriptor(_TARGET)
 
@@ -184,8 +184,8 @@ _DRIVETYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1755,
-  serialized_end=1828,
+  serialized_start=1563,
+  serialized_end=1636,
 )
 _sym_db.RegisterEnumDescriptor(_DRIVETYPE)
 
@@ -207,8 +207,8 @@ _VOLUMEACCESSPROTOCOLS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1830,
-  serialized_end=1879,
+  serialized_start=1638,
+  serialized_end=1687,
 )
 _sym_db.RegisterEnumDescriptor(_VOLUMEACCESSPROTOCOLS)
 
@@ -234,8 +234,8 @@ _VOLUMECONTENTORIGINTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1881,
-  serialized_end=1959,
+  serialized_start=1689,
+  serialized_end=1767,
 )
 _sym_db.RegisterEnumDescriptor(_VOLUMECONTENTORIGINTYPE)
 
@@ -272,51 +272,6 @@ VCOT_UNKNOWN = 0
 VCOT_BLANK = 1
 VCOT_DOWNLOAD = 2
 
-
-
-_SIGNATUREINFO = _descriptor.Descriptor(
-  name='SignatureInfo',
-  full_name='org.lfedge.eve.config.SignatureInfo',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='intercertsurl', full_name='org.lfedge.eve.config.SignatureInfo.intercertsurl', index=0,
-      number=1, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='signercerturl', full_name='org.lfedge.eve.config.SignatureInfo.signercerturl', index=1,
-      number=2, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='signature', full_name='org.lfedge.eve.config.SignatureInfo.signature', index=2,
-      number=3, type=12, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b(""),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=97,
-  serialized_end=177,
-)
 
 
 _DATASTORECONFIG = _descriptor.Descriptor(
@@ -394,8 +349,8 @@ _DATASTORECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=180,
-  serialized_end=390,
+  serialized_start=98,
+  serialized_end=308,
 )
 
 
@@ -435,21 +390,14 @@ _IMAGE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='siginfo', full_name='org.lfedge.eve.config.Image.siginfo', index=4,
-      number=5, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='dsId', full_name='org.lfedge.eve.config.Image.dsId', index=5,
+      name='dsId', full_name='org.lfedge.eve.config.Image.dsId', index=4,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sizeBytes', full_name='org.lfedge.eve.config.Image.sizeBytes', index=6,
+      name='sizeBytes', full_name='org.lfedge.eve.config.Image.sizeBytes', index=5,
       number=8, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -467,8 +415,8 @@ _IMAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=393,
-  serialized_end=629,
+  serialized_start=311,
+  serialized_end=492,
 )
 
 
@@ -533,8 +481,8 @@ _DRIVE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=632,
-  serialized_end=840,
+  serialized_start=495,
+  serialized_end=703,
 )
 
 
@@ -588,21 +536,14 @@ _CONTENTTREE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='siginfo', full_name='org.lfedge.eve.config.ContentTree.siginfo', index=6,
-      number=7, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='displayName', full_name='org.lfedge.eve.config.ContentTree.displayName', index=7,
+      name='displayName', full_name='org.lfedge.eve.config.ContentTree.displayName', index=6,
       number=8, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='generation_count', full_name='org.lfedge.eve.config.ContentTree.generation_count', index=8,
+      name='generation_count', full_name='org.lfedge.eve.config.ContentTree.generation_count', index=7,
       number=9, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -620,8 +561,8 @@ _CONTENTTREE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=843,
-  serialized_end=1085,
+  serialized_start=706,
+  serialized_end=893,
 )
 
 
@@ -658,8 +599,8 @@ _VOLUMECONTENTORIGIN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1087,
-  serialized_end=1201,
+  serialized_start=895,
+  serialized_end=1009,
 )
 
 
@@ -738,24 +679,21 @@ _VOLUME = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1204,
-  serialized_end=1457,
+  serialized_start=1012,
+  serialized_end=1265,
 )
 
 _DATASTORECONFIG.fields_by_name['dType'].enum_type = _DSTYPE
 _DATASTORECONFIG.fields_by_name['cipherData'].message_type = config_dot_acipherinfo__pb2._CIPHERBLOCK
 _IMAGE.fields_by_name['uuidandversion'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION
 _IMAGE.fields_by_name['iformat'].enum_type = _FORMAT
-_IMAGE.fields_by_name['siginfo'].message_type = _SIGNATUREINFO
 _DRIVE.fields_by_name['image'].message_type = _IMAGE
 _DRIVE.fields_by_name['drvtype'].enum_type = _DRIVETYPE
 _DRIVE.fields_by_name['target'].enum_type = _TARGET
 _CONTENTTREE.fields_by_name['iformat'].enum_type = _FORMAT
-_CONTENTTREE.fields_by_name['siginfo'].message_type = _SIGNATUREINFO
 _VOLUMECONTENTORIGIN.fields_by_name['type'].enum_type = _VOLUMECONTENTORIGINTYPE
 _VOLUME.fields_by_name['origin'].message_type = _VOLUMECONTENTORIGIN
 _VOLUME.fields_by_name['protocols'].enum_type = _VOLUMEACCESSPROTOCOLS
-DESCRIPTOR.message_types_by_name['SignatureInfo'] = _SIGNATUREINFO
 DESCRIPTOR.message_types_by_name['DatastoreConfig'] = _DATASTORECONFIG
 DESCRIPTOR.message_types_by_name['Image'] = _IMAGE
 DESCRIPTOR.message_types_by_name['Drive'] = _DRIVE
@@ -769,13 +707,6 @@ DESCRIPTOR.enum_types_by_name['DriveType'] = _DRIVETYPE
 DESCRIPTOR.enum_types_by_name['VolumeAccessProtocols'] = _VOLUMEACCESSPROTOCOLS
 DESCRIPTOR.enum_types_by_name['VolumeContentOriginType'] = _VOLUMECONTENTORIGINTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
-
-SignatureInfo = _reflection.GeneratedProtocolMessageType('SignatureInfo', (_message.Message,), dict(
-  DESCRIPTOR = _SIGNATUREINFO,
-  __module__ = 'config.storage_pb2'
-  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.SignatureInfo)
-  ))
-_sym_db.RegisterMessage(SignatureInfo)
 
 DatastoreConfig = _reflection.GeneratedProtocolMessageType('DatastoreConfig', (_message.Message,), dict(
   DESCRIPTOR = _DATASTORECONFIG,
