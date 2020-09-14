@@ -32,14 +32,14 @@ func (agent Agent) LogCreate(logBase *LogObject) {
 }
 
 func (agent Agent) LogModify(old interface{}) {
-	logObject := EnsureLogObject(nil, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
+	logObject := EnsureLogObject(log, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
 	logObject.CloneAndAddField("agent_name", agent.AgentName).
 		AddField("agent_number", agent.AgentNumber).
 		AddField("agent_is_brosnan", true).AddField("agent_age", agent.AgentAge).Infof("James Bond gets old!")
 }
 
 func (agent Agent) LogDelete() {
-	logObject := EnsureLogObject(nil, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
+	logObject := EnsureLogObject(log, "secret_agent", "Pierce Brosnan", uuid.UUID{}, agent.LogKey())
 	logObject.CloneAndAddField("agent_name", agent.AgentName).
 		AddField("agent_number", agent.AgentNumber).
 		AddField("agent_is_brosnan", true).AddField("agent_age", agent.AgentAge).Infof("James Bond dies!")
