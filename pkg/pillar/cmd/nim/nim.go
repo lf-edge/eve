@@ -265,7 +265,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// We get DevicePortConfig from three sources in this priority:
 	// 1. zedagent publishing DevicePortConfig
-	// 2. override file in /var/tmp/zededa/DevicePortConfig/*.json
+	// 2. override file in /run/global/DevicePortConfig/*.json
 	// 3. "lastresort" derived from the set of network interfaces
 	subDevicePortConfigA, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",

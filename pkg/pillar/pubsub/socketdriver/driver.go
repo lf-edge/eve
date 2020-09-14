@@ -36,7 +36,7 @@ import (
 
 // We always publish to our collection.
 // We always write to a file in order to have a checkpoint on restart
-// The special agent name "" implies always reading from the /var/run/zededa/
+// The special agent name "" implies always reading from the /run/global/
 // directory.
 const (
 	publishToSock     = true  // XXX
@@ -44,9 +44,9 @@ const (
 	subscribeFromSock = true  // XXX
 
 	// For a subscription, if the agentName is empty we interpret that as
-	// being directory in /var/tmp/zededa
-	fixedName = "zededa"
-	fixedDir  = "/var/tmp/" + fixedName
+	// being directory in /run/global
+	fixedName = "global"
+	fixedDir  = "/run/" + fixedName
 	maxsize   = 65535 // Max size for json which can be read or written
 
 	// Copied from types package to avoid cycle in package dependencies
@@ -92,7 +92,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	case persistent && !publishToDir:
 		dirName = s.persistentDirName(name)
 	case !persistent && publishToDir:
-		// Special case for /var/tmp/zededa/
+		// Special case for /run/global
 		dirName = s.fixedDirName(name)
 	default:
 		dirName = s.pubDirName(name)
@@ -170,7 +170,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		subFromDir bool
 	)
 
-	// Special case for files in /var/tmp/zededa/ and also
+	// Special case for files in /run/global/ and also
 	// for zedclient going away yet metrics being read after it
 	// is gone.
 	var agentName string

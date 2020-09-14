@@ -387,7 +387,6 @@ func RemoveDirContent(dir string) error {
 }
 
 // Run this:
-//    DMDIR=/opt/zededa/bin/
 //    ${DMDIR}/dnsmasq -b -C /var/run/zedrouter/dnsmasq.${BRIDGENAME}.conf
 func startDnsmasq(bridgeName string) {
 

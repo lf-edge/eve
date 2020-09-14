@@ -4,8 +4,8 @@
 package types
 
 const (
-	// TmpDirname - temporary dir. for agents to use.
-	TmpDirname = "/var/tmp/zededa"
+	// TmpDirname - used for files fed into pubsub as global subscriptions
+	TmpDirname = "/run/global"
 
 	// PersistDir - Location to store persistent files.
 	PersistDir = "/persist"
