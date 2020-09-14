@@ -234,9 +234,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
-	// Tell ourselves to go ahead
-	// initialize the module specifig stuff
-	zedcloudCtx = handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+	initializeDirs()
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
@@ -258,11 +256,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	attestCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.attestCtx = &attestCtx
 
+	// Make sure we have a GlobalConfig file with defaults
+	// This ensures that we publish a persistent GlobalConfig for other
+	// agents to use
+	zedagentCtx.globalConfig = utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
+	log.Infof("initialized GlobalConfig")
+
+	// Wait until we have been onboarded aka know our own UUID
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("processed onboarded")
+
+	// We know our own UUID; prepare for communication with controller
+	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx)
-
-	// Make sure we have a GlobalConfig file with defaults
-	utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -426,6 +436,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		AgentName:     "",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Activate:      false,
 		Ctx:           &zedagentCtx,
 		CreateHandler: handleGlobalConfigModify,
@@ -866,7 +877,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	attestModuleInitialize(&zedagentCtx, ps)
 
 	// Pick up debug aka log level before we start real work
-
+	// Note that we use these handlers to process updates from
+	// the controller since the parser (in zedagent aka ourselves)
+	// merely publishes the GlobalConfig
 	for !zedagentCtx.GCInitialized {
 		log.Infof("Waiting for GCInitialized")
 		select {
@@ -1268,11 +1281,6 @@ func handleZbootRestarted(ctxArg interface{}, done bool) {
 	if done {
 		ctx.zbootRestarted = true
 	}
-}
-
-func handleInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
-	initializeDirs()
-	return handleConfigInit(networkSendTimeout)
 }
 
 func initializeDirs() {

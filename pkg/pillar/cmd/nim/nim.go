@@ -27,7 +27,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -119,8 +118,36 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile(log)
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &nimCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		SyncHandler:   handleGlobalConfigSynchronized,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nimCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	// Wait for initial GlobalConfig
+	for !nimCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		}
+	}
+	log.Infof("processed GlobalConfig")
 
 	pubDeviceNetworkStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -233,26 +260,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	nimCtx.deviceNetworkContext.DecryptCipherContext.SubCipherContext = subCipherContext
 	subCipherContext.Activate()
 
-	// Look for global config such as log levels
-	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
-		MyAgentName:   agentName,
-		TopicImpl:     types.ConfigItemValueMap{},
-		Activate:      false,
-		Ctx:           &nimCtx,
-		CreateHandler: handleGlobalConfigModify,
-		ModifyHandler: handleGlobalConfigModify,
-		DeleteHandler: handleGlobalConfigDelete,
-		SyncHandler:   handleGlobalConfigSynchronized,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	nimCtx.subGlobalConfig = subGlobalConfig
-	subGlobalConfig.Activate()
-
 	nimCtx.deviceNetworkContext.DevicePortConfig = &types.DevicePortConfig{}
 	nimCtx.deviceNetworkContext.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.deviceNetworkContext.PubDevicePortConfig = pubDevicePortConfig
@@ -361,16 +368,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
-
-	// Wait for initial GlobalConfig
-	for !nimCtx.GCInitialized {
-		log.Infof("Waiting for GCInitialized")
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-		}
-	}
-	log.Infof("processed GlobalConfig")
 
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, plus periodically based on this timer

@@ -15,8 +15,8 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
-AGENTS0="logmanager ledmanager nim nodeagent domainmgr"
-AGENTS1="zedmanager zedrouter downloader verifier zedagent baseosmgr wstunnelclient volumemgr"
+AGENTS0="zedagent logmanager ledmanager nim nodeagent domainmgr"
+AGENTS1="zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
@@ -176,6 +176,13 @@ fi
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
 $BINDIR/upgradeconverter pre-vault
 echo "$(date -Ins -u) device-steps: upgradeconverter (pre-vault) Completed"
+
+# Start zedagent to make sure we have a ConfigItemValueMap
+echo "$(date -Ins -u) Starting zedagent"
+$BINDIR/zedagent &
+wait_for_touch zedagent
+
+touch "$WATCHDOG_FILE/zedagent.touch"
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -451,6 +458,13 @@ else
     fi
 fi
 
+# We are onboarded so zedagent should start doing work
+touch "$WATCHDOG_FILE/zedagentconfig.touch" \
+      "$WATCHDOG_FILE/zedagentmetrics.touch" \
+      "$WATCHDOG_FILE/zedagentdevinfo.touch" \
+      "$WATCHDOG_FILE/zedagentattest.touch" \
+      "$WATCHDOG_FILE/zedagentccerts.touch"
+
 #If logmanager is already running we don't have to start it.
 if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
@@ -478,8 +492,8 @@ touch "$WATCHDOG_FILE/tpmmgr.touch"
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do
     touch "$WATCHDOG_FILE/$AGENT.touch"
-    if [ "$AGENT" = "zedagent" ]; then
-       touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch" "$WATCHDOG_FILE/${AGENT}attest.touch" "$WATCHDOG_FILE/${AGENT}ccerts.touch"
+    if [ "$AGENT" = "volumemgr" ]; then
+       touch "$WATCHDOG_FILE/${AGENT}metrics.touch"
     fi
 done
 

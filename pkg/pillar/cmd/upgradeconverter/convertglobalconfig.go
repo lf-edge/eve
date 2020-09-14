@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 )
 
 const (
@@ -107,12 +106,6 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 		log.Fatalf("Failed to Save NewConfig. err %s", err)
 	}
 	log.Infof("Saved NewConfig. data: %s", data)
-
-	// Create a symlink of one doesn't currently exist
-	symLinkPath := ctxPtr.varTmpDir + "/ConfigItemValueMap"
-	utils.CreateSymlink(log, symLinkPath, ctxPtr.configItemValueMapDir())
-	log.Debugf("Created symlink %s -> %s",
-		symLinkPath, ctxPtr.configItemValueMapDir())
 
 	// Delete the OldGlobalConfig
 	delOldGlobalConfigDir(ctxPtr)

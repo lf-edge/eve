@@ -90,6 +90,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Ctx:           ctx,
 	})
 	if err != nil {

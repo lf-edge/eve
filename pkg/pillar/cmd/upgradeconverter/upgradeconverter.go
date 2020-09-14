@@ -54,7 +54,6 @@ type ucContext struct {
 	// FilePaths. These are defined here instead of consts for easier unit tests
 	persistDir       string
 	persistConfigDir string
-	varTmpDir        string
 	ps               *pubsub.PubSub
 }
 
@@ -113,7 +112,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx := &ucContext{agentName: "upgradeconverter",
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
-		varTmpDir:        "/var/tmp",
 		ps:               ps,
 	}
 	debugPtr := flag.Bool("d", false, "Debug flag")

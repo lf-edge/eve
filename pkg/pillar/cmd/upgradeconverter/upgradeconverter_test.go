@@ -112,10 +112,6 @@ func ucContextForTest() *ucContext {
 	if err != nil {
 		log.Fatalf("Failed to create persistConfigDir. err: %s", err)
 	}
-	ctxPtr.varTmpDir, err = ioutil.TempDir(".", "ConvertvarTmp")
-	if err != nil {
-		log.Fatalf("Failed to create varTmpDir. err: %s", err)
-	}
 	return ctxPtr
 }
 
@@ -124,8 +120,6 @@ func ucContextCleanupDirs(ctxPtr *ucContext) {
 	ctxPtr.persistDir = ""
 	os.RemoveAll(ctxPtr.persistConfigDir)
 	ctxPtr.persistConfigDir = ""
-	os.RemoveAll(ctxPtr.varTmpDir)
-	ctxPtr.varTmpDir = ""
 }
 
 func runTestMatrix(t *testing.T, testMatrix map[string]testEntry) {
