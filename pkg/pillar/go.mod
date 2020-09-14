@@ -22,11 +22,12 @@ require (
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 	github.com/fsnotify/fsnotify v1.4.7
+	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/go-logfmt/logfmt v0.4.0 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/gogo/googleapis v1.3.2 // indirect
-	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
-	github.com/google/go-cmp v0.4.0
+	github.com/golang/protobuf v1.4.1
+	github.com/google/go-cmp v0.5.0
 	github.com/google/go-containerregistry v0.0.0-20200430153450-5cbd060f5c92
 	github.com/google/go-tpm v0.3.0
 	github.com/google/gopacket v1.1.17
@@ -42,10 +43,11 @@ require (
 	github.com/packetcap/go-pcap v0.0.0-20200802095634-4c3b9511add7
 	github.com/pkg/sftp v1.10.0
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
+	github.com/ramya-rao-a/go-outline v0.0.0-20200117021646-2a048b4510eb // indirect
 	github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
-	github.com/sirupsen/logrus v1.5.0
+	github.com/sirupsen/logrus v1.6.0
 	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/gocapability v0.0.0-20180916011248-d98352740cb2 // indirect
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -54,7 +56,6 @@ require (
 	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
 	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
-	google.golang.org/protobuf v1.21.0 // indirect
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
