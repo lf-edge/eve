@@ -241,6 +241,11 @@ func Kickstart(ctx *Context) {
 	ctx.eventTrigger <- EventInitialize
 }
 
+//RestartAttestation adds EventRestart event to the fsm
+func RestartAttestation(ctx *Context) {
+	ctx.eventTrigger <- EventRestart
+}
+
 //InternalQuoteRecvd adds EventInternalQuoteRecvd to the fsm
 func InternalQuoteRecvd(ctx *Context) {
 	ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -447,6 +452,7 @@ func handleNoEscrowAtAttestEscrowWait(ctx *Context) error {
 func handleRetryTimerExpiryAtRestartWait(ctx *Context) error {
 	ctx.log.Debug("handleRetryTimerExpiryAtRestartWait")
 	ctx.state = StateNone
+	ctx.restartRequestPending = false
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 

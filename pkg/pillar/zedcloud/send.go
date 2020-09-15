@@ -74,6 +74,9 @@ var nilUUID = uuid.UUID{}
 // use []byte contents return.
 // If bailOnHTTPErr is set we immediately return when we get a 4xx or 5xx error without trying the other interfaces.
 // XXX also 1010 from CloudFlare?
+// http.StatusForbidden is a special case i.e. even if bailOnHTTPErr is not set
+// we bail out, since caller needs to be notified immediately for triggering any
+// reaction based on this.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
 func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
@@ -125,6 +128,9 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 				resp.StatusCode >= 400 && resp.StatusCode < 600 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 					url, reqlen, resp.StatusCode)
+				return resp, nil, remoteTemporaryFailure, err
+			}
+			if resp.StatusCode == http.StatusForbidden {
 				return resp, nil, remoteTemporaryFailure, err
 			}
 			if err != nil {
