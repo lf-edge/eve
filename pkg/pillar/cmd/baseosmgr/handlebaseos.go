@@ -144,7 +144,11 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// Note that we don't return errors if someone tries to deactivate
 	// the running version, but we don't act on it either.
 	curPartName := zboot.GetCurrentPartition()
-	if status.BaseOsVersion == zboot.GetShortVersion(log, curPartName) {
+	shortVerCurPart, err := zboot.GetShortVersion(log, curPartName)
+	if err != nil {
+		log.Errorln(err)
+	}
+	if status.BaseOsVersion == shortVerCurPart {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in current %s",
 			config.BaseOsVersion, uuidStr, curPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, curPartName)
@@ -159,8 +163,12 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// partition; other partition could have failed so safest to
 	// re-download and overwrite.
 	otherPartName := zboot.GetOtherPartition()
+	shortVerOtherPart, err := zboot.GetShortVersion(log, otherPartName)
+	if err != nil {
+		log.Errorln(err)
+	}
 	if (status.PartitionLabel == "" || status.PartitionLabel == otherPartName) &&
-		status.BaseOsVersion == zboot.GetShortVersion(log, otherPartName) {
+		status.BaseOsVersion == shortVerOtherPart {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in other %s",
 			config.BaseOsVersion, uuidStr, otherPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, otherPartName)
@@ -663,10 +671,14 @@ func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) str
 	}
 
 	// Check the configured Image name is the same as the one just installed image
-	shortVer := zboot.GetShortVersion(log, status.PartitionLabel)
-	log.Infof("checkInstalledVersion: Cfg baseVer %s, Image shortVer %s",
-		status.BaseOsVersion, shortVer)
-	if status.BaseOsVersion != shortVer {
+	shortVer, err := zboot.GetShortVersion(log, status.PartitionLabel)
+	log.Infof("checkInstalledVersion: Cfg baseVer %s, Image shortVer %s: %v",
+		status.BaseOsVersion, shortVer, err)
+	if err != nil {
+		errString := fmt.Sprintf("checkInstalledVersion %s, %v\n",
+			status.BaseOsVersion, err)
+		return errString
+	} else if status.BaseOsVersion != shortVer {
 		errString := fmt.Sprintf("checkInstalledVersion: image name not match. config %s, image ver %s\n",
 			status.BaseOsVersion, shortVer)
 		return errString
@@ -867,6 +879,7 @@ func publishZbootPartitionStatusAll(ctx *baseOsMgrContext) {
 }
 
 func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
+	var err error
 	partName = strings.TrimSpace(partName)
 	if !isValidBaseOsPartitionLabel(partName) {
 		return
@@ -880,7 +893,10 @@ func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
 	status.PartitionLabel = partName
 	status.PartitionDevname = zboot.GetPartitionDevname(partName)
 	status.PartitionState = zboot.GetPartitionState(partName)
-	status.ShortVersion = zboot.GetShortVersion(log, partName)
+	status.ShortVersion, err = zboot.GetShortVersion(log, partName)
+	if err != nil {
+		log.Errorln(err)
+	}
 	status.LongVersion = zboot.GetLongVersion(partName)
 	status.CurrentPartition = zboot.IsCurrentPartition(partName)
 	status.TestComplete = testComplete
