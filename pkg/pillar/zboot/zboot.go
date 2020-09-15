@@ -384,9 +384,6 @@ func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 // XXX known pathnames for the version file and the zededa-tools container
 const (
 	otherPartVersionFile = "/etc/eve-release"
-	otherPrefix          = "/containers/services/pillar/lower"
-	// XXX handle baseimage-update by looking for old names
-	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
 func GetShortVersion(log *base.LogObject, partName string) (string, error) {
