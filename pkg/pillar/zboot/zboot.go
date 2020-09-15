@@ -389,9 +389,9 @@ const (
 	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
-func GetShortVersion(log *base.LogObject, partName string) string {
-	ver := getVersion(log, partName, types.EveVersionFile, false)
-	return ver
+func GetShortVersion(log *base.LogObject, partName string) (string, error) {
+	ver, err := getVersion(log, partName, types.EveVersionFile)
+	return ver, err
 }
 
 // XXX add longversion once we have a filename above
@@ -401,25 +401,27 @@ func GetLongVersion(part string) string {
 
 // XXX explore a loopback mount to be able to read version
 // from a downloaded image file
-func getVersion(log *base.LogObject, part string, verFilename string, inContainer bool) string {
+func getVersion(log *base.LogObject, part string, verFilename string) (string, error) {
 	validatePartitionName(part)
 
 	if part == GetCurrentPartition() {
 		filename := verFilename
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Errorln(err)
+			return "", err
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
 		log.Infof("%s, readCurVersion %s\n", part, versionStr)
-		return versionStr
+		return versionStr, nil
 	} else {
 		verFilename = otherPartVersionFile
 		devname := GetPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {
-			log.Fatal(err)
+			log.Errorln(err)
+			return "", err
 		}
 		defer os.RemoveAll(target)
 		// Mount failure is ok; might not have a filesystem in the
@@ -428,35 +430,21 @@ func getVersion(log *base.LogObject, part string, verFilename string, inContaine
 		mountFlags := MountFlagRDONLY
 		err = zbootMount(devname, target, "squashfs", mountFlags, "")
 		if err != nil {
-			log.Errorf("Mount of %s failed: %s\n", devname, err)
-			return ""
+			errStr := fmt.Sprintf("Mount of %s failed: %s", devname, err)
+			log.Errorln(errStr)
+			return "", errors.New(errStr)
 		}
 		defer syscall.Unmount(target, 0)
-		var filename string
-		if inContainer {
-			filename = fmt.Sprintf("%s/%s/%s",
-				target, otherPrefix, verFilename)
-		} else {
-			filename = fmt.Sprintf("%s/%s",
-				target, verFilename)
-		}
+		filename := fmt.Sprintf("%s/%s",
+			target, verFilename)
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
 			log.Warn(err)
-			if !inContainer {
-				return ""
-			}
-			filename := fmt.Sprintf("%s/%s/%s",
-				target, otherPrefixOld, verFilename)
-			version, err = ioutil.ReadFile(filename)
-			if err != nil {
-				log.Warn(err)
-				return ""
-			}
+			return "", err
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
 		log.Infof("%s, readOtherVersion %s\n", part, versionStr)
-		return versionStr
+		return versionStr, nil
 	}
 }
