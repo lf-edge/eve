@@ -485,7 +485,8 @@ type Image struct {
 	Name    string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Sha256  string `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"` // EVE will verify this sha for the content
 	Iformat Format `protobuf:"varint,4,opt,name=iformat,proto3,enum=org.lfedge.eve.config.Format" json:"iformat,omitempty"`
-	DsId    string `protobuf:"bytes,6,opt,name=dsId,proto3" json:"dsId,omitempty"` // Datastore UUID
+	// deprecated 5; SignatureInfo siginfo
+	DsId string `protobuf:"bytes,6,opt,name=dsId,proto3" json:"dsId,omitempty"` // Datastore UUID
 	// sizeBytes indicates the maximum download size of an image.
 	// A value of 0 will indicate the unlimited download.
 	SizeBytes int64 `protobuf:"varint,8,opt,name=sizeBytes,proto3" json:"sizeBytes,omitempty"`
@@ -673,7 +674,8 @@ type ContentTree struct {
 	// maxSizeBytes used for capping resource consumption in EVE.
 	// maxSizeBytes indicates the maximum download size of content tree.
 	MaxSizeBytes uint64 `protobuf:"varint,6,opt,name=maxSizeBytes,proto3" json:"maxSizeBytes,omitempty"`
-	DisplayName  string `protobuf:"bytes,8,opt,name=displayName,proto3" json:"displayName,omitempty"` // Optional friendly name echo'ed in info
+	// deprecated 7; SignatureInfo siginfo
+	DisplayName string `protobuf:"bytes,8,opt,name=displayName,proto3" json:"displayName,omitempty"` // Optional friendly name echo'ed in info
 	// For container ContentTree, sha256 might not be available in config.
 	// If the sha256 is not available then it needs to be resolved corresponding to the tag
 	// change in generation_count indicates that the resolution of tag is needed
