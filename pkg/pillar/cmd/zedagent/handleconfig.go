@@ -191,6 +191,8 @@ func getLatestConfig(url string, iteration int,
 	log.Debugf("getLatestConfig(%s, %d)", url, iteration)
 
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
+	// except http.StatusForbidden(which returns error
+	// irrespective of bailOnHTTPErr)
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest(getconfigCtx)
 	if err != nil {
@@ -256,6 +258,15 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
+	if resp.StatusCode == http.StatusForbidden {
+		log.Errorf("Config request is forbidden, triggering attestation again")
+		restartAttestation(getconfigCtx.zedagentCtx)
+		if getconfigCtx.updateInprogress {
+			log.Warnf("updateInprogress=true,resp.StatusCode=Forbidden, so marking ConfigGetTemporaryFail")
+			getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
+		}
+		return false
+	}
 	if resp.StatusCode == http.StatusNotModified {
 		log.Debugf("StatusNotModified len %d", len(contents))
 		// Inform ledmanager about config received from cloud
