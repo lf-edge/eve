@@ -30,6 +30,14 @@ var preVaultconversionHandlers = []ConversionHandler{
 		description: "Convert Global Settings to new format",
 		handlerFunc: convertGlobalConfig,
 	},
+	{
+		description: "Move ConfigItemValueMap from /persist/config to /persist/status",
+		handlerFunc: moveConfigItemValueMap,
+	},
+	{
+		description: "Apply defaults for new items in ConfigItemValueMap",
+		handlerFunc: applyDefaultConfigItem,
+	},
 }
 
 //postVaultconversionHandlers run after vault is setup
@@ -43,10 +51,6 @@ var postVaultconversionHandlers = []ConversionHandler{
 	{
 		description: "Move verified files to /persist/vault/verifier/verified",
 		handlerFunc: renameVerifiedFiles,
-	},
-	{
-		description: "Move ConfigItemValueMap to /persist/status",
-		handlerFunc: moveConfigItemValueMap,
 	},
 }
 
@@ -182,7 +186,7 @@ func RunPostVaultHandlers(moduleName string,
 	ctx := &ucContext{agentName: moduleName,
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
-		varTmpDir:        "/var/tmp",
+		persistStatusDir: types.PersistStatusDir,
 		ps:               ps,
 	}
 	runPhase(ctx, UCPhasePostVault)
@@ -205,7 +209,7 @@ func RunPreVaultHandlers(moduleName string,
 	ctx := &ucContext{agentName: moduleName,
 		persistDir:       types.PersistDir,
 		persistConfigDir: types.PersistConfigDir,
-		varTmpDir:        "/var/tmp",
+		persistStatusDir: types.PersistStatusDir,
 		ps:               ps,
 	}
 	runPhase(ctx, UCPhasePreVault)

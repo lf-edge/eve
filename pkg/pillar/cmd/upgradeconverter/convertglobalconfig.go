@@ -121,7 +121,7 @@ func newConfigFromOld(globalConfigFile string) *types.ConfigItemValueMap {
 	}
 
 	var oldGlobalConfig types.OldGlobalConfig
-	err = json.Unmarshal([]byte(byteValue), &oldGlobalConfig)
+	err = json.Unmarshal(byteValue, &oldGlobalConfig)
 	if err != nil {
 		log.Errorf("Could not unmarshall data in file %s. err: %s",
 			globalConfigFile, err)
