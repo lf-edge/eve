@@ -1,7 +1,5 @@
-// Copyright (c) 2018-2019 Zededa, Inc.
+// Copyright (c) 2018-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
-
-// Routines which operate on types.GlobalConfig
 
 package utils
 
