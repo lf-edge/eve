@@ -32,7 +32,7 @@ RUN apk add --no-cache --initdb -p /out \
   dosfstools=4.1-r1         \
   libarchive-tools=3.3.3-r1 \
   sgdisk=1.0.4-r0           \
-  e2fsprogs=1.44.5-r1       \
+  e2fsprogs=~1.44.5         \
   util-linux=2.33-r0        \
   squashfs-tools=4.3-r5     \
   coreutils=8.30-r0         \
