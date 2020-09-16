@@ -765,6 +765,23 @@ func DefaultConfigItemValueMap() *ConfigItemValueMap {
 	return valueMapPtr
 }
 
+// UpdateItemValues brings in any of the source items into the ConfigItemValueMap
+func (configPtr *ConfigItemValueMap) UpdateItemValues(source *ConfigItemValueMap) {
+
+	for key, val := range source.GlobalSettings {
+		configPtr.GlobalSettings[key] = val
+	}
+
+	for agentName, agentSettingMap := range source.AgentSettings {
+		if _, ok := configPtr.AgentSettings[agentName]; !ok {
+			configPtr.AgentSettings[agentName] = make(map[AgentSettingKey]ConfigItemValue)
+		}
+		for setting, value := range agentSettingMap {
+			configPtr.AgentSettings[agentName][setting] = value
+		}
+	}
+}
+
 func agentSettingKeyFromLegacyKey(key string) string {
 	components := strings.Split(key, ".")
 	if len(components) < 3 {

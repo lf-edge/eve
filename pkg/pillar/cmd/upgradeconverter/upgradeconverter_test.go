@@ -124,6 +124,8 @@ func ucContextCleanupDirs(ctxPtr *ucContext) {
 	ctxPtr.persistDir = ""
 	os.RemoveAll(ctxPtr.persistConfigDir)
 	ctxPtr.persistConfigDir = ""
+	os.RemoveAll(ctxPtr.persistStatusDir)
+	ctxPtr.persistStatusDir = ""
 }
 
 func runTestMatrix(t *testing.T, testMatrix map[string]testEntry) {
@@ -317,5 +319,78 @@ func Test_MoveConfigItem(t *testing.T) {
 		}
 		ucContextCleanupDirs(ctxPtr)
 	}
+}
 
+func Test_ApplyDefaultConfigItem(t *testing.T) {
+	oldConfig := newConfigItemValueMap()
+	delete(oldConfig.GlobalSettings, types.DefaultLogLevel)
+	delete(oldConfig.GlobalSettings, types.AllowNonFreeBaseImages)
+	delete(oldConfig.GlobalSettings, types.UsbAccess)
+	delete(oldConfig.GlobalSettings, types.DiskScanMetricInterval)
+	defaultConfig := types.DefaultConfigItemValueMap()
+	newConfig := types.DefaultConfigItemValueMap()
+	newConfig.UpdateItemValues(&oldConfig)
+	badConfig := types.DefaultConfigItemValueMap()
+	badConfig.UpdateItemValues(&oldConfig)
+	delete(badConfig.GlobalSettings, types.DiskScanMetricInterval)
+
+	type applyTestEntry struct {
+		// fileExists causes creation of oldConfig
+		fileExists bool
+		// newConfigPtr - If nil, verifies no NewCfgDir. If not, expect contents
+		//  to match.
+		newConfigPtr *types.ConfigItemValueMap
+		// expectDiffs: there should be diffs
+		expectDiffs bool
+	}
+
+	testMatrix := map[string]applyTestEntry{
+		"Apply:  Old Version does not exist": {
+			// Gets default
+			fileExists:   false,
+			newConfigPtr: defaultConfig,
+		},
+		"Apply: Old Version Exists": {
+			fileExists:   true,
+			newConfigPtr: newConfig,
+		},
+		"Apply: Old Version Exists but mismatch": {
+			fileExists:   true,
+			newConfigPtr: badConfig,
+			expectDiffs:  true,
+		},
+	}
+
+	logrus.SetLevel(logrus.DebugLevel)
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		ctxPtr := ucContextForTest()
+		if test.fileExists {
+			createJSONFile(oldConfig, ctxPtr.newConfigItemValueMapFile())
+		}
+		err := applyDefaultConfigItem(ctxPtr)
+		if err != nil {
+			t.Fatalf("Unexpected Failure in applyDefaultConfigItem. err: %s", err)
+		}
+		if test.newConfigPtr == nil {
+			checkNoDir(t, ctxPtr.newConfigItemValueMapDir())
+		} else {
+			newCfgFromFile := configItemValueMapFromFile(
+				ctxPtr.newConfigItemValueMapFile())
+			if !cmp.Equal(test.newConfigPtr, newCfgFromFile) {
+				msg := fmt.Sprintf("DIFF: %+v",
+					cmp.Diff(test.newConfigPtr, newCfgFromFile))
+				if test.expectDiffs {
+					t.Logf("Expected diff. Got %s", msg)
+				} else {
+					t.Fatalf("Expected newConfig != Actual newConfig.\n%s",
+						msg)
+				}
+			} else if test.expectDiffs {
+				t.Fatalf("Expected diff but got none")
+			}
+		}
+		ucContextCleanupDirs(ctxPtr)
+	}
 }
