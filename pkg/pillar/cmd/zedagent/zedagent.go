@@ -224,6 +224,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
+	// upgradeconverter ensures we have a ConfigItemValueMap so we
+	// read it to get the initial values
+	item, err := zedagentCtx.pubGlobalConfig.Get("global")
+	if err != nil {
+		log.Fatalf("ConfigItemValueMap missing: %s", err)
+	}
+	zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
+	log.Infof("initialized GlobalConfig")
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -255,12 +263,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	attestCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.attestCtx = &attestCtx
-
-	// Make sure we have a GlobalConfig file with defaults
-	// This ensures that we publish a persistent GlobalConfig for other
-	// agents to use
-	zedagentCtx.globalConfig = utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
-	log.Infof("initialized GlobalConfig")
 
 	// Wait until we have been onboarded aka know our own UUID
 	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
