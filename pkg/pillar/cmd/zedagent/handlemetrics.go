@@ -663,18 +663,6 @@ func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails
 	appDiskDetails.Provisioned = utils.RoundToMbytes(appDiskMetric.ProvisionedBytes)
 	appDiskDetails.DiskType = appDiskMetric.DiskType
 	appDiskDetails.Dirty = appDiskMetric.Dirty
-
-	actualSize, maxSize, err := utils.GetVolumeSize(log, vrs.ActiveFileLocation)
-	if err != nil {
-		return err
-	}
-	if vrs.IsContainer() {
-		appDiskDetails.DiskType = "CONTAINER"
-		log.Infof("getDiskInfo: container app diskdetails: %s",
-			fmt.Sprintf("Disk: %s, actualSize: %d, Used: %d, maxSize: %d, Provisioned: %d",
-				appDiskDetails.Disk, actualSize, appDiskDetails.Used, maxSize, appDiskDetails.Provisioned))
-	}
-
 	return nil
 }
 

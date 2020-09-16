@@ -228,7 +228,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 
 func createOrUpdateAppDiskMetrics(ctx *volumemgrContext, volumeStatus *types.VolumeStatus) error {
 	log.Infof("createOrUpdateAppDiskMetrics(%s, %s)", volumeStatus.VolumeID, volumeStatus.FileLocation)
-	actualSize, maxSize, err := utils.GetVolumeSize(log, volumeStatus.FileLocation)
+	actualSize, maxSize, diskType, dirtyFlag, err := utils.GetVolumeSize(log, volumeStatus.FileLocation)
 	if err != nil {
 		err = fmt.Errorf("createOrUpdateAppDiskMetrics(%s, %s): exception while getting volume size. %s",
 			volumeStatus.VolumeID, volumeStatus.FileLocation, err)
@@ -238,23 +238,9 @@ func createOrUpdateAppDiskMetrics(ctx *volumemgrContext, volumeStatus *types.Vol
 	appDiskMetric := types.AppDiskMetric{DiskPath: volumeStatus.FileLocation,
 		ProvisionedBytes: maxSize,
 		UsedBytes:        actualSize,
+		DiskType:         diskType,
+		Dirty:            dirtyFlag,
 	}
-
-	if volumeStatus.IsContainer() {
-		appDiskMetric.DiskType = "CONTAINER"
-		publishAppDiskMetrics(ctx, &appDiskMetric)
-		return nil
-	}
-	imgInfo, err := diskmetrics.GetImgInfo(log, volumeStatus.FileLocation)
-	if err != nil {
-		err = fmt.Errorf("createOrUpdateAppDiskMetrics(%s, %s): exception while getting image info. %s",
-			volumeStatus.VolumeID, volumeStatus.FileLocation, err)
-		log.Error(err.Error())
-		return err
-	}
-	appDiskMetric.DiskType = imgInfo.Format
-	appDiskMetric.Dirty = imgInfo.DirtyFlag
-
 	publishAppDiskMetrics(ctx, &appDiskMetric)
 	return nil
 }
