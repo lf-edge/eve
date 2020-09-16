@@ -16,7 +16,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -2026,14 +2025,13 @@ func createCloudInitISO(ctx *domainContext,
 	ds := new(types.DiskStatus)
 	ds.FileLocation = fileName
 	ds.Format = zconfig.Format_RAW
-	switch runtime.GOARCH {
-	case "arm64":
-		ds.Vdev = "xvdz"
-		ds.ReadOnly = true
-	case "amd64":
-		ds.Vdev = "hdc:cdrom"
-		ds.ReadOnly = false
-	}
+	// XXX FIXME the issue with declaring cloud init ISO xvdz is that:
+	//   1. we may have more than 26 drives (unlikely)
+	//   2. xvdz is only available via PV route
+	// Both of these don't seem to be a problem for modern Linux kernels
+	// and we can leave it be while we're looking for a more generic solution
+	ds.Vdev = "xvdz"
+	ds.ReadOnly = true
 	// Generate Devtype for hypervisor package
 	// XXX can hypervisor look at something different?
 	ds.Devtype = "cdrom"
