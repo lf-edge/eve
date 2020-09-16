@@ -54,11 +54,13 @@ func delOldGlobalConfigDir(ctxPtr *ucContext) error {
 }
 
 func convertGlobalConfig(ctxPtr *ucContext) error {
-	createConfigItemMapDir(ctxPtr.oldConfigItemValueMapDir())
-	newGlobalConfigFile := ctxPtr.oldConfigItemValueMapFile()
 	oldGlobalConfigFile := ctxPtr.globalConfigFile()
-	newExists := fileExists(newGlobalConfigFile)
 	oldExists := fileExists(oldGlobalConfigFile)
+	if oldExists {
+		createConfigItemMapDir(ctxPtr.oldConfigItemValueMapDir())
+	}
+	newGlobalConfigFile := ctxPtr.oldConfigItemValueMapFile()
+	newExists := fileExists(newGlobalConfigFile)
 
 	var newConfigPtr *types.ConfigItemValueMap
 
@@ -84,8 +86,8 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 		delOldGlobalConfigDir(ctxPtr)
 		return nil
 	} else {
-		log.Infof("Neither New Nor Old Configs Exist. Creating Default new Config")
-		newConfigPtr = types.DefaultConfigItemValueMap()
+		log.Infof("Neither New Nor Old Configs Exist. Do nothing")
+		return nil
 	}
 
 	// Save New config to file.
@@ -98,8 +100,6 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 	if err != nil {
 		log.Fatalf("Failed to Save NewConfig. err %s", err)
 	}
-	log.Infof("Saved NewConfig. data: %s", data)
-
 	// Delete the OldGlobalConfig
 	delOldGlobalConfigDir(ctxPtr)
 	log.Debugf("upgradeconverter.convertGlobalConfig done")

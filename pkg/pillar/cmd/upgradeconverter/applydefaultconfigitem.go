@@ -46,8 +46,6 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 	if err != nil {
 		log.Fatalf("Failed to Save NewConfig. err %s", err)
 	}
-	log.Infof("Saved NewConfig. data: %s", data)
-
 	log.Debugf("upgradeconverter.applyDefaultConfigItem done")
 	return nil
 }

@@ -188,10 +188,9 @@ func Test_ConvertGlobalConfig(t *testing.T) {
 
 	testMatrix := map[string]testEntry{
 		"Convert: Neither Old Version Nor New Version exist.": {
-			// Default ConfigItemValueMap gets creates
+			// Does notthing
 			oldVersionExists:  false,
 			newVersionExists:  false,
-			newConfigPtr:      types.DefaultConfigItemValueMap(),
 			expectNoOldCfgDir: true,
 		},
 		"Convert: Old Version Exists, No New Version - Normal Upgrade case": {
