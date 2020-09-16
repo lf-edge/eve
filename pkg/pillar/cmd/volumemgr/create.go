@@ -171,10 +171,6 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 	}
 	filelocation = ""
 	created = false
-	if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
-		log.Errorf("destroyVdiskVolume(%s): exception while publishing diskmetric. %s",
-			status.Key(), err.Error())
-	}
 	log.Infof("destroyVdiskVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
@@ -191,10 +187,6 @@ func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (b
 	}
 	filelocation = ""
 	created = false
-	if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
-		log.Errorf("destroyContainerVolume(%s): exception while publishing diskmetric. %s",
-			status.Key(), err.Error())
-	}
 	log.Infof("destroyContainerVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
 }
