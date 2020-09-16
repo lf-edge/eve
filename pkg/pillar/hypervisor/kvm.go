@@ -239,6 +239,8 @@ const qemuDiskTemplate = `
 [drive "drive-virtio-disk{{.DiskID}}"]
   file = "{{.FileLocation}}"
   format = "{{.Format | Fmt}}"
+  aio = "native"
+  cache = "directsync"
   if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
 [device "virtio-disk{{.DiskID}}"]
