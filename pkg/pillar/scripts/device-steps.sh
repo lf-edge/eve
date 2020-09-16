@@ -177,7 +177,7 @@ echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
 $BINDIR/upgradeconverter pre-vault
 echo "$(date -Ins -u) device-steps: upgradeconverter (pre-vault) Completed"
 
-# Start zedagent to make sure we have a ConfigItemValueMap
+# Start zedagent to make sure we have a ConfigItemValueMap publisher
 echo "$(date -Ins -u) Starting zedagent"
 $BINDIR/zedagent &
 wait_for_touch zedagent
