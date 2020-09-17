@@ -8,6 +8,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"os"
 	"time"
 
@@ -64,6 +65,11 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 	spec.UpdateFromDomain(config)
 	spec.UpdateMounts(status.DiskStatusList)
 	spec.UpdateVifList(config)
+	spec.Get().Mounts = append(spec.Get().Mounts, specs.Mount{
+		Type:        "bind",
+		Source:      "/etc/resolv.conf",
+		Destination: "/etc/resolv.conf",
+		Options:     []string{"rbind", "ro"}})
 	spec.UpdateEnvVar(status.EnvVariables)
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", domainName, config, err)
