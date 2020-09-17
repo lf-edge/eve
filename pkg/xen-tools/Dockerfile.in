@@ -34,7 +34,9 @@ RUN patch -p1 < alpine.patch
 
 ENV XEN_VERSION 4.14.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
-ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb"
+ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
+    --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
+    --enable-vhost-user"
 
 # Download and verify xen
 #TODO: verify Xen
