@@ -214,10 +214,9 @@ type MappedVirtualDiskController struct {
 
 // GuestDefinedCapabilities is part of the GuestConnectionInfo returned by a GuestConnection call on a utility VM
 type GuestDefinedCapabilities struct {
-	NamespaceAddRequestSupported  bool `json:",omitempty"`
-	SignalProcessSupported        bool `json:",omitempty"`
-	DumpStacksSupported           bool `json:",omitempty"`
-	DeleteContainerStateSupported bool `json:",omitempty"`
+	NamespaceAddRequestSupported bool `json:",omitempty"`
+	SignalProcessSupported       bool `json:",omitempty"`
+	DumpStacksSupported          bool `json:",omitempty"`
 }
 
 // GuestConnectionInfo is the structure of an iterm return by a GuestConnection call on a utility VM

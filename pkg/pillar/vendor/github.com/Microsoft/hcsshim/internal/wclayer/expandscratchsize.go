@@ -1,27 +1,32 @@
 package wclayer
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"syscall"
 	"unsafe"
 
 	"github.com/Microsoft/hcsshim/internal/hcserror"
-	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/osversion"
-	"go.opencensus.io/trace"
+	"github.com/sirupsen/logrus"
 )
 
 // ExpandScratchSize expands the size of a layer to at least size bytes.
-func ExpandScratchSize(ctx context.Context, path string, size uint64) (err error) {
+func ExpandScratchSize(path string, size uint64) (err error) {
 	title := "hcsshim::ExpandScratchSize"
-	ctx, span := trace.StartSpan(ctx, title)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(
-		trace.StringAttribute("path", path),
-		trace.Int64Attribute("size", int64(size)))
+	fields := logrus.Fields{
+		"path": path,
+		"size": size,
+	}
+	logrus.WithFields(fields).Debug(title)
+	defer func() {
+		if err != nil {
+			fields[logrus.ErrorKey] = err
+			logrus.WithFields(fields).Error(err)
+		} else {
+			logrus.WithFields(fields).Debug(title + " - succeeded")
+		}
+	}()
 
 	err = expandSandboxSize(&stdDriverInfo, path, size)
 	if err != nil {
@@ -31,7 +36,7 @@ func ExpandScratchSize(ctx context.Context, path string, size uint64) (err error
 	// Manually expand the volume now in order to work around bugs in 19H1 and
 	// prerelease versions of Vb. Remove once this is fixed in Windows.
 	if build := osversion.Get().Build; build >= osversion.V19H1 && build < 19020 {
-		err = expandSandboxVolume(ctx, path)
+		err = expandSandboxVolume(path)
 		if err != nil {
 			return err
 		}
@@ -79,7 +84,7 @@ func attachVhd(path string) (syscall.Handle, error) {
 	return handle, nil
 }
 
-func expandSandboxVolume(ctx context.Context, path string) error {
+func expandSandboxVolume(path string) error {
 	// Mount the sandbox VHD temporarily.
 	vhdPath := filepath.Join(path, "sandbox.vhdx")
 	vhd, err := attachVhd(vhdPath)
@@ -89,7 +94,7 @@ func expandSandboxVolume(ctx context.Context, path string) error {
 	defer syscall.Close(vhd)
 
 	// Open the volume.
-	volumePath, err := GetLayerMountPath(ctx, path)
+	volumePath, err := GetLayerMountPath(path)
 	if err != nil {
 		return err
 	}

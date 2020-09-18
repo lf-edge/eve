@@ -40,6 +40,7 @@ var (
 	debugOverride bool                               // From command line arg
 	retryTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
 	Version       = "No version specified"           // Set from Makefile
+	nilUUID       uuid.UUID                          // should be a const, just the default nil value of uuid.UUID
 	dHandler      = makeDownloadHandler()
 	resHandler    = makeResolveHandler()
 	logger        *logrus.Logger
@@ -413,17 +414,16 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 		return
 	}
 
-	dst, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, config.DatastoreID)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
 	if dst == nil {
 		status.RetryCount++
 		// XXX can we have a faster retry in this case?
 		// React when DatastoreConfig changes?
-		status.HandleDownloadFail(err.Error())
+		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
-		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
+		log.Errorf("doDownload(%s): deferred with %s", config.Name, errStr)
 		return
 	}
-	log.Debugf("Found datastore(%s) for %s", config.DatastoreID.String(), config.Name)
 
 	handleSyncOp(ctx, status.Key(), config, status, dst)
 }
@@ -486,4 +486,27 @@ func unpublishDownloaderStatus(ctx *downloaderContext,
 		return
 	}
 	pub.Unpublish(key)
+}
+
+// Check for nil UUID (an indication the drive was missing in parseconfig)
+// and a missing datastore id.
+func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
+	name string) (*types.DatastoreConfig, string) {
+
+	if dsID == nilUUID {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
+			dsID.String(), name)
+		log.Errorln(errStr)
+		return nil, errStr
+	}
+	cfg, err := ctx.subDatastoreConfig.Get(dsID.String())
+	if err != nil {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
+			dsID.String(), name, err)
+		log.Errorln(errStr)
+		return nil, errStr
+	}
+	log.Debugf("Found datastore(%s) for %s", dsID, name)
+	dst := cfg.(types.DatastoreConfig)
+	return &dst, ""
 }

@@ -15,7 +15,6 @@ import (
 
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
-	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/go-digest"
@@ -160,51 +159,34 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 		}
 		log.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
 		var (
-			r, contentReader io.Reader
-			err              error
-			blobFile         = blob.Path
+			r        io.Reader
+			blobFile = blob.Path
 			// the sha MUST be lower-case for it to work with the ocispec utils
 			sha = fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blob.Sha256))
 		)
 
-		//Step 1.1: Read the blob from verified dir or provided content
-		switch {
-		case blobFile == "" && len(blob.Content) == 0:
-			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent empty %s: %+s",
+		//Step 1.1: Read the blob from verified dir
+		fileReader, err := os.Open(blobFile)
+		if err != nil {
+			err = fmt.Errorf("IngestBlob(%s): could not open blob file for reading at %s: %+s",
 				blob.Sha256, blobFile, err.Error())
 			log.Errorf(err.Error())
 			return loadedBlobs, err
-		case blobFile != "" && len(blob.Content) != 0:
-			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent provided, cannot pick, %s: %+s",
-				blob.Sha256, blobFile, err.Error())
-			log.Errorf(err.Error())
-			return loadedBlobs, err
-		case blobFile != "":
-			fileReader, err := os.Open(blobFile)
-			if err != nil {
-				err = fmt.Errorf("IngestBlob(%s): could not open blob file for reading at %s: %+s",
-					blob.Sha256, blobFile, err.Error())
-				log.Errorf(err.Error())
-				return loadedBlobs, err
-			}
-			defer fileReader.Close()
-			contentReader = fileReader
-			defer fileReader.Close()
-		default:
-			contentReader = bytes.NewReader(blob.Content)
 		}
+		defer fileReader.Close()
 
 		//Step 1.2: Resolve blob type and if this is a manifest or index, we will need to process (parse) it accordingly
 		switch {
 		case blob.IsIndex():
 			// read it in so we can process it
-			data, err := ioutil.ReadAll(contentReader)
+			data, err := ioutil.ReadAll(fileReader)
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
 				log.Errorf(err.Error())
 				return loadedBlobs, err
 			}
+			fileReader.Close()
 			// create a new reader for the content.WriteBlob
 			r = bytes.NewReader(data)
 			// try to parse the index
@@ -217,13 +199,14 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 			indexHash = sha
 		case blob.IsManifest():
 			// read it in so we can process it
-			data, err := ioutil.ReadAll(contentReader)
+			data, err := ioutil.ReadAll(fileReader)
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
 				log.Errorf(err.Error())
 				return loadedBlobs, err
 			}
+			fileReader.Close()
 			// create a new reader for the content.WriteBlob
 			r = bytes.NewReader(data)
 			// try to parse the index
@@ -238,7 +221,7 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 			manifestHashes = append(manifestHashes, sha)
 		default:
 			// do nothing special, just pass it on
-			r = contentReader
+			r = fileReader
 		}
 
 		//Step 1.3: Ingest the blob into CAS
@@ -666,11 +649,6 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 		}
 	}
 	return loadedBlobs, nil
-}
-
-// Resolver get a resolver.ResolverCloser for containerd
-func (c *containerdCAS) Resolver() (resolver.ResolverCloser, error) {
-	return containerd.Resolver()
 }
 
 //CloseClient closes the containerd CAS client initialized while calling `NewCAS()`
