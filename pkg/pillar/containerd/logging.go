@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	fifoDir        string = "/var/run/tasks/fifos"
+	fifoDir        string = "/run/tasks/fifos"
 	logDumpCommand byte   = iota
 )
 

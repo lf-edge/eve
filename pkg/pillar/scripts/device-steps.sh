@@ -42,9 +42,9 @@ while [ $# != 0 ]; do
     shift
 done
 
-# Sleep for a bit until /var/run/$1.touch exists
+# Sleep for a bit until /run/$1.touch exists
 wait_for_touch() {
-    f=/var/run/"$1".touch
+    f=/run/"$1".touch
     waited=0
     while [ ! -f "$f" ] && [ "$waited" -lt 60 ]; do
             echo "$(date -Ins -u) waiting for $f"
@@ -263,7 +263,7 @@ access_usb() {
         if [ -d /mnt/dump ]; then
             echo "$(date -Ins -u) Dumping diagnostics to USB stick"
             # Check if it fits without clobbering an existing tar file
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /persist/config /var/run/ /persist/log "/persist/rsyslog"; then
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /persist/config /run/ /persist/log "/persist/rsyslog"; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar

@@ -41,7 +41,7 @@ func (p *PubSub) StillRunning(agentName string, warnTime time.Duration, errTime 
 		lockedLastStillMap.Store(agentName, time.Now())
 	}
 
-	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
+	filename := fmt.Sprintf("/run/%s.touch", agentName)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)

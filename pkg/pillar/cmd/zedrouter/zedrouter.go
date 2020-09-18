@@ -35,7 +35,7 @@ import (
 
 const (
 	agentName  = "zedrouter"
-	runDirname = "/var/run/zedrouter"
+	runDirname = "/run/zedrouter"
 	// DropMarkValue :
 	DropMarkValue = 0xFFFFFF
 	// Time limits for event loop handlers

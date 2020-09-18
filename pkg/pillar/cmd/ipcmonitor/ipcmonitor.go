@@ -6,11 +6,11 @@
 //
 // Example usage: to monitor what zedmanager publishes in DomainConfig use
 // ipcmonitor -a zedmanager -t DomainConfig
-//     That corresponds to the state in /var/run/zedmanager/DomainConfig/*.json
+//     That corresponds to the state in /run/zedmanager/DomainConfig/*.json
 //     but with ongoing updates and deletes.
 // For agents with agentScope, such as downloader and verifier, use e.g.,
 // ipcmonitor -a zedmanager -s appImg.obj -t DownloaderConfiga
-//     which corresponds to /var/run/zedmanager/appImg.obj/DownloaderConfig/
+//     which corresponds to /run/zedmanager/appImg.obj/DownloaderConfig/
 
 package ipcmonitor
 
@@ -62,7 +62,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	format := *formatPtr
 
 	name := nameString(agentName, agentScope, topic)
-	sockName := fmt.Sprintf("/var/run/%s.sock", name)
+	sockName := fmt.Sprintf("/run/%s.sock", name)
 	s, err := net.Dial("unixpacket", sockName)
 	if err != nil {
 		log.Fatal("Dial:", err)
