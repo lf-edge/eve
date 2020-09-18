@@ -56,21 +56,21 @@ type volumemgrContext struct {
 	pubVerifyImageConfig pubsub.Publication
 	subVerifyImageStatus pubsub.Subscription
 
-	subResolveStatus        pubsub.Subscription
-	pubResolveConfig        pubsub.Publication
-	subContentTreeConfig    pubsub.Subscription
-	pubContentTreeStatus    pubsub.Publication
-	subVolumeConfig         pubsub.Subscription
-	pubVolumeStatus         pubsub.Publication
-	subVolumeRefConfig      pubsub.Subscription
-	pubVolumeRefStatus      pubsub.Publication
-	pubContentTreeToHash    pubsub.Publication
-	pubBlobStatus           pubsub.Publication
-	pubDiskMetric           pubsub.Publication
-	pubAppDiskMetric        pubsub.Publication
-	subDatastoreConfig      pubsub.Subscription
-	diskMetricsTickerHandle interface{}
+	subResolveStatus     pubsub.Subscription
+	pubResolveConfig     pubsub.Publication
+	subContentTreeConfig pubsub.Subscription
+	pubContentTreeStatus pubsub.Publication
+	subVolumeConfig      pubsub.Subscription
+	pubVolumeStatus      pubsub.Publication
+	subVolumeRefConfig   pubsub.Subscription
+	pubVolumeRefStatus   pubsub.Publication
+	pubContentTreeToHash pubsub.Publication
+	pubBlobStatus        pubsub.Publication
+	pubDiskMetric        pubsub.Publication
+	pubAppDiskMetric     pubsub.Publication
+
 	gc                      *time.Ticker
+	diskMetricsTickerHandle interface{}
 
 	worker *worker.Worker // For background work
 
@@ -405,21 +405,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subBaseOsContentTreeConfig = subBaseOsContentTreeConfig
 	subBaseOsContentTreeConfig.Activate()
 
-	subDatastoreConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleDatastoreConfigModify,
-		ModifyHandler: handleDatastoreConfigModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "zedagent",
-		TopicImpl:     types.DatastoreConfig{},
-		Ctx:           &ctx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
-
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
@@ -532,9 +517,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-ctx.subBaseOsContentTreeConfig.MsgChan():
 			ctx.subBaseOsContentTreeConfig.ProcessChange(change)
-
-		case change := <-ctx.subDatastoreConfig.MsgChan():
-			ctx.subDatastoreConfig.ProcessChange(change)
 
 		case <-ctx.gc.C:
 			start := time.Now()

@@ -10,7 +10,6 @@ import (
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 )
 
 func handleContentTreeCreateAppImg(ctxArg interface{}, key string,
@@ -169,20 +168,9 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 	log.Infof("createContentTreeStatus for %v objType %s", config.ContentID, objType)
 	status := lookupContentTreeStatus(ctx, config.Key(), objType)
 	if status == nil {
-		// need to save the datastore type
-		var datastoreType string
-		datastoreConfig, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, config.DatastoreID)
-		if datastoreConfig == nil {
-			log.Errorf("createContentTreeStatus(%s): datastoreConfig for %s not found %v", config.Key(), config.DatastoreID, err)
-		} else {
-			log.Debugf("Found datastore(%s) for %s", config.DatastoreID.String(), config.Key())
-			datastoreType = datastoreConfig.DsType
-		}
-
 		status = &types.ContentTreeStatus{
 			ContentID:         config.ContentID,
 			DatastoreID:       config.DatastoreID,
-			DatastoreType:     datastoreType,
 			RelativeURL:       config.RelativeURL,
 			Format:            config.Format,
 			ContentSha256:     config.ContentSha256,

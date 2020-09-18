@@ -23,9 +23,6 @@ type BlobStatus struct {
 	// Path where this blob can be retrieved. This changes based on the state, e.g. after download
 	// in one place, after verify might be another
 	Path string
-	// Content for short blobs, the content itself may be in memory and not in a Path.
-	// Used *only* when this has data and Path is ""
-	Content []byte
 	// State of download of this blob; only supports: INITIAL, DOWNLOADING, DOWNLOADED, VERIFYING, VERIFIED
 	State SwState
 	// MediaType the actual media type string for this blob

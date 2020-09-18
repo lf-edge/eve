@@ -18,7 +18,7 @@ type ContentTreeConfig struct {
 	ContentID         uuid.UUID
 	DatastoreID       uuid.UUID
 	RelativeURL       string
-	Format            zconfig.Format // this is the format of the content tree itself, not necessarily of the datastore
+	Format            zconfig.Format
 	ContentSha256     string
 	MaxDownloadSize   uint64
 	GenerationCounter int64
@@ -101,7 +101,6 @@ func (config ContentTreeConfig) LogKey() string {
 type ContentTreeStatus struct {
 	ContentID         uuid.UUID
 	DatastoreID       uuid.UUID
-	DatastoreType     string
 	RelativeURL       string
 	Format            zconfig.Format
 	ContentSha256     string
@@ -136,14 +135,6 @@ func (status ContentTreeStatus) ResolveKey() string {
 // IsContainer will return true if content tree is of container type
 func (status ContentTreeStatus) IsContainer() bool {
 	if status.Format == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
-}
-
-// IsOCIRegistry will return true if datastore is an OCI registry
-func (status ContentTreeStatus) IsOCIRegistry() bool {
-	if status.DatastoreType == zconfig.DsType_DsContainerRegistry.String() {
 		return true
 	}
 	return false

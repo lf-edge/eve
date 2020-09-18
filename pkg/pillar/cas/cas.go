@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -114,9 +113,6 @@ type CAS interface {
 	//NOTE: This either loads all the blobs or loads nothing. In other words, in case of error,
 	// this API will GC all blobs that were loaded until that point.
 	IngestBlobsAndCreateImage(reference string, blobs ...*types.BlobStatus) ([]*types.BlobStatus, error)
-
-	// Resolver get an interface that satisfies resolver.ResolverCloser to communicate directly with a generic CAS
-	Resolver() (resolver.ResolverCloser, error)
 
 	//CloseClient closes the respective CAS client initialized while calling `NewCAS()`
 	CloseClient() error
