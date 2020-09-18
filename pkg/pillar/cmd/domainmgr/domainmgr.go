@@ -1471,19 +1471,26 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		// map from i=1 to xvdb, 2 to xvdc etc
 		ds.Vdev = "xvd" + string(int('a')+i)
 	}
-	// XXX could defer to Activate
-	if config.IsCipher || config.CloudInitUserData != nil {
-		// XXX only do this of the cloudinit isn't already added to
-		// diskStatusList
-		if !status.IsContainer {
+
+	if (config.IsCipher || config.CloudInitUserData != nil) &&
+		!status.IsContainer {
+
+		// Did we already add it and we're retrying the boot?
+		filename := cloudInitISOFileLocation(ctx, config)
+		found := false
+		for _, ds := range status.DiskStatusList {
+			if ds.FileLocation == filename {
+				found = true
+				break
+			}
+		}
+		if !found {
 			ds, err := createCloudInitISO(ctx, config)
 			if err != nil {
 				return err
 			}
-			if ds != nil {
-				status.DiskStatusList = append(status.DiskStatusList,
-					*ds)
-			}
+			status.DiskStatusList = append(status.DiskStatusList,
+				*ds)
 		}
 	}
 	if need9P {
@@ -1975,13 +1982,21 @@ func fetchEnvVariablesFromCloudInit(ctx *domainContext,
 	return envList, nil
 }
 
+func cloudInitISOFileLocation(ctx *domainContext, config types.DomainConfig) string {
+	return fmt.Sprintf("%s/%s.cidata",
+		ciDirname, config.UUIDandVersion.UUID.String())
+}
+
 // Create a isofs with user-data and meta-data and add it to DiskStatus
-// XXX this should move to volumemgr
+// We do this in domainmgr and keep it in /run (and not volumemgr and /persist)
+// since it 1) potentially contains confidential info like passwords,
+// 2) only needed if we run as a VM, and 3) the data might be changed
+// by the controller when reactivating hence
+// more short-lived than other volumes/virtual disks.
 func createCloudInitISO(ctx *domainContext,
 	config types.DomainConfig) (*types.DiskStatus, error) {
 
-	fileName := fmt.Sprintf("%s/%s.cidata",
-		ciDirname, config.UUIDandVersion.UUID.String())
+	fileName := cloudInitISOFileLocation(ctx, config)
 
 	dir, err := ioutil.TempDir("", "cloud-init")
 	if err != nil {
