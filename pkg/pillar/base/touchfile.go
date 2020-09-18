@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+const (
+	// WatchdogFileDir is the dir to add .touch files for watchdog to monitor
+	WatchdogFileDir = "/run/watchdog/file"
+	// WatchdogPidDir is the dir to add .pid files for watchdog to monitor
+	WatchdogPidDir = "/run/watchdog/pid"
+)
+
 //TouchFile touches the given file
 func TouchFile(log *LogObject, filename string) {
 	_, err := os.Stat(filename)

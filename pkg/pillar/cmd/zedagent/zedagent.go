@@ -236,11 +236,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-	ps.StillRunning(agentName+"config", warningTime, errorTime)
-	ps.StillRunning(agentName+"metrics", warningTime, errorTime)
-	ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
-	ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
-	ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
 	initializeDirs()
 
@@ -917,12 +912,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
-		// Need to tickle this since the configTimerTask is not yet started
-		ps.StillRunning(agentName+"config", warningTime, errorTime)
-		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
-		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
-		ps.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses")
@@ -972,12 +961,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
-		// Need to tickle this since the configTimerTask is not yet started
-		ps.StillRunning(agentName+"config", warningTime, errorTime)
-		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
-		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		ps.StillRunning(agentName+"attest", warningTime, errorTime)
-		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter

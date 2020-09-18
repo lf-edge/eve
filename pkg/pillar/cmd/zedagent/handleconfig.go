@@ -134,9 +134,12 @@ func configTimerTask(handleChannel chan interface{},
 	// Return handle to caller
 	handleChannel <- ticker
 
+	wdName := agentName + "config"
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
@@ -145,7 +148,7 @@ func configTimerTask(handleChannel chan interface{},
 			iteration += 1
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
-			ctx.ps.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
+			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
 
@@ -154,7 +157,7 @@ func configTimerTask(handleChannel chan interface{},
 				log.Infof("reboot flag set")
 			}
 		}
-		ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 

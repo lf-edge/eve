@@ -165,21 +165,24 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	log.Infoln("starting controller certificate fetch task")
 	getCertsFromController(ctx)
 
+	wdName := agentName + "ccerts"
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	ctx.ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
 		case <-triggerCerts:
 			start := time.Now()
 			getCertsFromController(ctx)
-			ctx.ps.CheckMaxTimeTopic(agentName+"ccerts", "publishCerts", start,
+			ctx.ps.CheckMaxTimeTopic(wdName, "publishCerts", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		ctx.ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 
@@ -252,21 +255,24 @@ func edgeNodeCertsTask(ctx *zedagentContext, triggerEdgeNodeCerts chan struct{})
 
 	publishEdgeNodeCertsToController(ctx)
 
+	wdName := agentName + "ecerts"
+
 	stillRunning := time.NewTicker(25 * time.Second)
-	ctx.ps.StillRunning(agentName+"attest", warningTime, errorTime)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
 		case <-triggerEdgeNodeCerts:
 			start := time.Now()
 			publishEdgeNodeCertsToController(ctx)
-			ctx.ps.CheckMaxTimeTopic(agentName+"attest",
+			ctx.ps.CheckMaxTimeTopic(wdName,
 				"publishEdgeNodeCertsToController", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		ctx.ps.StillRunning(agentName+"attest", warningTime, errorTime)
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 

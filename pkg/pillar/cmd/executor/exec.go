@@ -90,8 +90,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Add .pid and .touch file to watchdog config
-	base.TouchFile(log, types.WatchdogPidDir+"/"+agentName+".pid")
-	base.TouchFile(log, types.WatchdogFileDir+"/"+agentName+".touch")
+	ps.RegisterPidWatchdog(agentName)
+	ps.RegisterFileWatchdog(agentName)
 
 	pubExecStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
