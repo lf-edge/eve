@@ -8,8 +8,6 @@ package baseosmgr
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -352,15 +350,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		return changed
 	}
 
-	// Remove any old log files for a previous instance
-	logdir := fmt.Sprintf("%s/%s/log", types.PersistDir,
-		status.PartitionLabel)
-	log.Infof("Clearing old logs in %s", logdir)
-	// Clear content but not directory since logmanager expects dir
-	if err := removeContent(logdir); err != nil {
-		log.Errorln(err)
-	}
-
 	// if it is installed, flip the activated status
 	if status.State == types.INSTALLED && !status.Reboot {
 		// trigger, zedagent to start reboot process
@@ -369,22 +358,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	return changed
-}
-
-func removeContent(dirName string) error {
-	locations, err := ioutil.ReadDir(dirName)
-	if err != nil {
-		return err
-	}
-
-	for _, location := range locations {
-		filelocation := dirName + "/" + location.Name()
-		err := os.RemoveAll(filelocation)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
