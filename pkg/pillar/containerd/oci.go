@@ -53,6 +53,7 @@ type OCISpec interface {
 	UpdateMounts([]types.DiskStatus)
 	UpdateMountsNested([]types.DiskStatus)
 	UpdateEnvVar(map[string]string)
+	EnableHostNetwork()
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
@@ -310,4 +311,24 @@ func (s *ociSpec) UpdateEnvVar(envVars map[string]string) {
 	for k, v := range envVars {
 		s.Process.Env = append(s.Process.Env, fmt.Sprintf("%s=%s", k, v))
 	}
+}
+
+// EnableHostNetwork adds host network details in spec. Mounts "/etc/hosts" and "/etc/resolv.conf"
+func (s *ociSpec) EnableHostNetwork() {
+	networkMounts := []specs.Mount{}
+	networkMounts = append(networkMounts, specs.Mount{
+		Type:        "bind",
+		Source:      "/etc/hosts",
+		Destination: "/etc/hosts",
+		Options:     []string{"rbind", "ro"},
+	})
+
+	networkMounts = append(networkMounts, specs.Mount{
+		Type:        "bind",
+		Source:      "/etc/resolv.conf",
+		Destination: "/etc/resolv.conf",
+		Options:     []string{"rbind", "ro"},
+	})
+
+	s.Mounts = append(s.Mounts, networkMounts...)
 }

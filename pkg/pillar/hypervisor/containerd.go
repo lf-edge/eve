@@ -71,6 +71,7 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 		Destination: "/etc/resolv.conf",
 		Options:     []string{"rbind", "ro"}})
 	spec.UpdateEnvVar(status.EnvVariables)
+	spec.EnableHostNetwork()
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", domainName, config, err)
 	}
