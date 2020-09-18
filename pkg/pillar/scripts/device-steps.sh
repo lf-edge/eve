@@ -458,13 +458,6 @@ else
     fi
 fi
 
-# We are onboarded so zedagent should start doing work
-touch "$WATCHDOG_FILE/zedagentconfig.touch" \
-      "$WATCHDOG_FILE/zedagentmetrics.touch" \
-      "$WATCHDOG_FILE/zedagentdevinfo.touch" \
-      "$WATCHDOG_FILE/zedagentattest.touch" \
-      "$WATCHDOG_FILE/zedagentccerts.touch"
-
 #If logmanager is already running we don't have to start it.
 if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
@@ -492,9 +485,6 @@ touch "$WATCHDOG_FILE/tpmmgr.touch"
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do
     touch "$WATCHDOG_FILE/$AGENT.touch"
-    if [ "$AGENT" = "volumemgr" ]; then
-       touch "$WATCHDOG_FILE/${AGENT}metrics.touch"
-    fi
 done
 
 blockdev --flushbufs "$CONFIGDEV"

@@ -24,6 +24,10 @@ import (
 	"strings"
 )
 
+const (
+	attestWdName = agentName + "attest"
+)
+
 //TpmAgentImpl implements zattest.TpmAgent interface
 type TpmAgentImpl struct{}
 
@@ -412,7 +416,7 @@ func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error 
 //PunchWatchdog implements PunchWatchdog method of zattest.Watchdog
 func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
 	log.Debug("[ATTEST] Punching watchdog")
-	ctx.PubSub.StillRunning(agentName+"attest", warningTime, errorTime)
+	ctx.PubSub.StillRunning(attestWdName, warningTime, errorTime)
 	return nil
 }
 
@@ -499,6 +503,9 @@ func attestModuleStart(ctx *zedagentContext) error {
 		agentlog.GetMyStack())
 	go ctx.attestCtx.attestFsmCtx.EnterEventLoop()
 	zattest.Kickstart(ctx.attestCtx.attestFsmCtx)
+
+	// Add .touch file to watchdog config
+	ctx.ps.RegisterFileWatchdog(attestWdName)
 	return nil
 }
 
