@@ -143,15 +143,8 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
     fi
 fi
 
-if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
-    echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
-fi
-if [ -f $PERSISTDIR/IMGB/reboot-reason ]; then
-    echo "IMGB reboot-reason: $(cat $PERSISTDIR/IMGB/reboot-reason)"
-fi
-
 if [ -f $PERSISTDIR/reboot-reason ]; then
-    echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
+    echo "Reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
 
 # Copy any GlobalConfig from /config
