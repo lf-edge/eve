@@ -1,7 +1,7 @@
 // Copyright (c) 2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Manage pidfile in /var/run/
+// Manage pidfile in /run/
 
 package pidfile
 
@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	rundir = "/var/run"
+	rundir = "/run"
 )
 
 func writeMyPid(filename string) error {

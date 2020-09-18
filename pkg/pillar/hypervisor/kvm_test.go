@@ -144,7 +144,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
@@ -154,7 +154,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 
@@ -178,7 +178,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [chardev "charserial0"]
   backend = "socket"
   mux = "on"
-  path = "/var/run/hypervisor/kvm/test/cons"
+  path = "/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -406,7 +406,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
@@ -416,7 +416,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 
@@ -440,7 +440,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [chardev "charserial0"]
   backend = "socket"
   mux = "on"
-  path = "/var/run/hypervisor/kvm/test/cons"
+  path = "/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -643,7 +643,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
@@ -653,7 +653,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 
@@ -677,7 +677,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [chardev "charserial0"]
   backend = "socket"
   mux = "on"
-  path = "/var/run/hypervisor/kvm/test/cons"
+  path = "/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -971,7 +971,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
@@ -981,7 +981,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 
@@ -1005,7 +1005,7 @@ func TestCreateDomConfig(t *testing.T) {
 [chardev "charserial0"]
   backend = "socket"
   mux = "on"
-  path = "/var/run/hypervisor/kvm/test/cons"
+  path = "/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -1241,7 +1241,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
@@ -1251,7 +1251,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 
@@ -1275,7 +1275,7 @@ func TestCreateDomConfig(t *testing.T) {
 [chardev "charserial0"]
   backend = "socket"
   mux = "on"
-  path = "/var/run/hypervisor/kvm/test/cons"
+  path = "/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -1486,7 +1486,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
@@ -1496,7 +1496,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 
@@ -1520,7 +1520,7 @@ func TestCreateDomConfig(t *testing.T) {
 [chardev "charserial0"]
   backend = "socket"
   mux = "on"
-  path = "/var/run/hypervisor/kvm/test/cons"
+  path = "/run/hypervisor/kvm/test/cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -1766,13 +1766,13 @@ func TestCreateDom(t *testing.T) {
 
 [chardev "charmonitor"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/qmp"
+  path = "/run/hypervisor/kvm/test/qmp"
   server = "on"
   wait = "off"
 
 [chardev "charlistener"]
   backend = "socket"
-  path = "/var/run/hypervisor/kvm/test/listener.qmp"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
   server = "on"
   wait = "off"
 

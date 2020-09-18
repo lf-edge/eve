@@ -503,7 +503,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	log.Infof("IpAddress set for bridge\n")
 
 	// Create a hosts directory for the new bridge
-	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
+	// Directory is /run/zedrouter/hosts.${BRIDGENAME}
 	hostsDirpath := runDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
 	createHostsConfiglet(hostsDirpath,

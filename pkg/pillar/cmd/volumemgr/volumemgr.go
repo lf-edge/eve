@@ -27,8 +27,8 @@ import (
 
 const (
 	agentName              = "volumemgr"
-	runDirname             = "/var/run/" + agentName
-	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
+	runDirname             = "/run/" + agentName
+	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes
 	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
 	volumeClearDirName     = types.VolumeClearDirName     // We store un-encrypted VM and OCI volumes here
 	// Time limits for event loop handlers
