@@ -1,5 +1,7 @@
 package pubsub
 
+import "fmt"
+
 // Operation type for a single change operation
 type Operation byte
 
@@ -22,4 +24,20 @@ type Change struct {
 	Key string
 	// Value the value of the affected item, if any
 	Value []byte
+}
+
+// String returns string representation of Change object
+func (change Change) String() string {
+	operation := ""
+	switch change.Operation {
+	case Restart:
+		operation = "Restart"
+	case Create:
+		operation = "Create"
+	case Delete:
+		operation = "Delete"
+	case Modify:
+		operation = "Modify"
+	}
+	return fmt.Sprintf("operation %s key %s val %s", operation, change.Key, string(change.Value))
 }

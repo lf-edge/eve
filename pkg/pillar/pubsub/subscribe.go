@@ -108,7 +108,7 @@ func (sub *SubscriptionImpl) populate() {
 //   fooAll := s1.GetAll()
 func (sub *SubscriptionImpl) ProcessChange(change Change) {
 	start := time.Now()
-	sub.log.Debugf("ProcessChange agentName(%s) agentScope(%s) topic(%s): %#v", sub.agentName, sub.agentScope, sub.topic, change)
+	sub.log.Debugf("ProcessChange agentName(%s) agentScope(%s) topic(%s): %s", sub.agentName, sub.agentScope, sub.topic, change)
 
 	switch change.Operation {
 	case Restart:
