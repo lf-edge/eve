@@ -1,0 +1,117 @@
+From a8e1b68dcca2363734a34b1b8cb728faca85deea Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Sat, 19 Sep 2020 12:51:09 -0400
+Subject: [PATCH] Implement a coroutine pool
+
+Implement a pool of coroutines reusing stacks etc
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ util/qemu-coroutine.c | 74 +++++++++++--------------------------------
+ 1 file changed, 18 insertions(+), 56 deletions(-)
+
+diff --git a/util/qemu-coroutine.c b/util/qemu-coroutine.c
+index c3caa6c770..57f0edd201 100644
+--- a/tools/qemu-xen/util/qemu-coroutine.c
++++ b/tools/qemu-xen/util/qemu-coroutine.c
+@@ -21,58 +21,28 @@
+ #include "block/aio.h"
+ 
+ enum {
+-    POOL_BATCH_SIZE = 64,
++    COROUTINE_POOL_SIZE = 16,
+ };
+ 
+-/** Free list to speed up creation */
+-static QSLIST_HEAD(, Coroutine) release_pool = QSLIST_HEAD_INITIALIZER(pool);
+-static unsigned int release_pool_size;
+-static __thread QSLIST_HEAD(, Coroutine) alloc_pool = QSLIST_HEAD_INITIALIZER(pool);
+-static __thread unsigned int alloc_pool_size;
+-static __thread Notifier coroutine_pool_cleanup_notifier;
++// TODO: implement a lockless stack here
++typedef struct {
++    uint8_t total;
++    uint8_t top;
++    Coroutine *pool[COROUTINE_POOL_SIZE];
++} Coroutine_pool;
+ 
+-static void coroutine_pool_cleanup(Notifier *n, void *value)
+-{
+-    Coroutine *co;
+-    Coroutine *tmp;
+-
+-    QSLIST_FOREACH_SAFE(co, &alloc_pool, pool_next, tmp) {
+-        QSLIST_REMOVE_HEAD(&alloc_pool, pool_next);
+-        qemu_coroutine_delete(co);
+-    }
+-}
++Coroutine_pool coroutine_pool = { .total = 0, .top = 0 };
+ 
+ Coroutine *qemu_coroutine_create(CoroutineEntry *entry, void *opaque)
+ {
+     Coroutine *co = NULL;
+ 
+-    if (CONFIG_COROUTINE_POOL) {
+-        co = QSLIST_FIRST(&alloc_pool);
+-        if (!co) {
+-            if (release_pool_size > POOL_BATCH_SIZE) {
+-                /* Slow path; a good place to register the destructor, too.  */
+-                if (!coroutine_pool_cleanup_notifier.notify) {
+-                    coroutine_pool_cleanup_notifier.notify = coroutine_pool_cleanup;
+-                    qemu_thread_atexit_add(&coroutine_pool_cleanup_notifier);
+-                }
+-
+-                /* This is not exact; there could be a little skew between
+-                 * release_pool_size and the actual size of release_pool.  But
+-                 * it is just a heuristic, it does not need to be perfect.
+-                 */
+-                alloc_pool_size = atomic_xchg(&release_pool_size, 0);
+-                QSLIST_MOVE_ATOMIC(&alloc_pool, &release_pool);
+-                co = QSLIST_FIRST(&alloc_pool);
+-            }
+-        }
+-        if (co) {
+-            QSLIST_REMOVE_HEAD(&alloc_pool, pool_next);
+-            alloc_pool_size--;
+-        }
+-    }
+-
+-    if (!co) {
++    // Check for possible race
++    if (atomic_read(&coroutine_pool.top) > 0) {
++        co = coroutine_pool.pool[atomic_dec_fetch(&coroutine_pool.top)];
++    } else {
+         co = qemu_coroutine_new();
++        atomic_inc(&coroutine_pool.total);
+     }
+ 
+     co->entry = entry;
+@@ -85,20 +55,12 @@ static void coroutine_delete(Coroutine *co)
+ {
+     co->caller = NULL;
+ 
+-    if (CONFIG_COROUTINE_POOL) {
+-        if (release_pool_size < POOL_BATCH_SIZE * 2) {
+-            QSLIST_INSERT_HEAD_ATOMIC(&release_pool, co, pool_next);
+-            atomic_inc(&release_pool_size);
+-            return;
+-        }
+-        if (alloc_pool_size < POOL_BATCH_SIZE) {
+-            QSLIST_INSERT_HEAD(&alloc_pool, co, pool_next);
+-            alloc_pool_size++;
+-            return;
+-        }
++    if (atomic_read(&coroutine_pool.total) >= COROUTINE_POOL_SIZE) {
++        qemu_coroutine_delete(co);
++        atomic_dec(&coroutine_pool.total);
++    } else {
++        coroutine_pool.pool[atomic_fetch_inc(&coroutine_pool.top)] = co;
+     }
+-
+-    qemu_coroutine_delete(co);
+ }
+ 
+ void qemu_aio_coroutine_enter(AioContext *ctx, Coroutine *co)
+-- 
+2.26.2
+
