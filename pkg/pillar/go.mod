@@ -32,6 +32,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20200917143910-82eebc2ba115
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
+	github.com/onsi/gomega v1.9.0
 	github.com/opencontainers/go-digest v1.0.0-rc1
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runtime-spec v1.0.2

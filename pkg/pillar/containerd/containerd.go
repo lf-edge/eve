@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -61,6 +62,8 @@ const (
 	logReadSocket = "/var/run/memlogdq.sock"
 	// file under container's root path which stores the respective snapshotID
 	snapshotIDFile = "snapshotid.txt"
+	// OCI runtime spec label that tracks all mount points mentioned in OCI Image config
+	eveOCIMountPointsLabel = "org.lfedge.eve.blk_mounts"
 
 	//TBD: Have a better way to calculate this number.
 	//For now it is based on some trial-and-error experiments

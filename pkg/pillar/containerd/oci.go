@@ -52,8 +52,7 @@ type OCISpec interface {
 	UpdateVifList([]types.VifInfo)
 	UpdateFromDomain(*types.DomainConfig)
 	UpdateFromVolume(string) error
-	UpdateMounts([]types.DiskStatus)
-	UpdateMountsNested([]types.DiskStatus)
+	UpdateMounts([]types.DiskStatus) error
 	UpdateEnvVar(map[string]string)
 }
 
@@ -245,21 +244,40 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 	return oci.WithAdditionalGIDs("root")(ctrdCtx, CtrdClient, &dummy, &s.Spec)
 }
 
-func (s *ociSpec) updateMounts(disks []types.DiskStatus, nested bool) {
+// UpdateMounts adds volume specification mount points to the OCI runtime spec
+func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 	ociVolumeData := "rootfs"
-	root := ""
-	mounts := []specs.Mount{}
-	rootMount := specs.Mount{Type: "bind"}
+	mountDirs := []string{}
+	blkMountPoints := ""
 
-	if nested {
-		rootMount.Destination = "/mnt"
-		root = path.Join(rootMount.Destination, ociVolumeData)
-		mounts = append(mounts, specs.Mount{
-			Type:        "tmpfs",
-			Source:      "tmpfs",
-			Destination: path.Join(root, "dev"),
-			Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536"},
-		})
+	// We are prepared to deal with the first volume being declared as root,
+	// however any other volume claiming that right would be treated as it
+	// doesn't have MountDir specifies at all
+	id := 0
+	if len(disks) > 0 && disks[0].MountDir == "/" {
+		mountDirs = []string{"/"}
+		id = 1
+	}
+
+	// Validating if there are enough disks provided for the mount-points
+	if len(disks) - id < len(s.volumes) {
+		// If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
+		// won't be enough disks to satisfy required mount-points.
+		return fmt.Errorf("updateMounts: Number of volumes provided: %v is less than number of mount-points: %v",
+			len(disks), len(s.volumes))
+	} else {
+		for p := range s.volumes {
+			// if the next non-root volume has a MountDir specifies it takes precedence over OCI Image spec
+			if disks[id].MountDir != "" && disks[id].MountDir != "/" {
+				mountDirs = append(mountDirs, disks[id].MountDir)
+			} else {
+				mountDirs = append(mountDirs, p)
+			}
+			id++
+		}
+		for ; id < len(disks); id++ {
+			mountDirs = append(mountDirs, disks[id].MountDir)
+		}
 	}
 
 	for id, disk := range disks {
@@ -278,8 +296,7 @@ func (s *ociSpec) updateMounts(disks []types.DiskStatus, nested bool) {
 			continue
 		case zconfig.Format_CONTAINER:
 			if path.Clean(disk.MountDir) == "/" {
-				rootMount.Options = opts
-				rootMount.Source = src
+				// skipping root volumes for now
 				continue
 			} else {
 				src = path.Join(src, ociVolumeData)
@@ -290,41 +307,34 @@ func (s *ociSpec) updateMounts(disks []types.DiskStatus, nested bool) {
 		if disk.DisplayName != "" {
 			dests = append(dests, "/dev/eve/volumes/by-name/"+disk.DisplayName)
 		}
-		if disk.MountDir != "" {
-			dst := disk.MountDir
+		if mountDirs[id] != "" {
+			dst := mountDirs[id]
 			if disk.Format != zconfig.Format_CONTAINER {
 				// this is a bit of a hack: we assume that anything but
 				// the container image has to be a file and thus make it
 				// appear *under* destination directory as a file with ID
+				blkMountPoints = blkMountPoints + dst + "\n"
 				dst = fmt.Sprintf("%s/%d", dst, id)
+			}
+			if !strings.HasPrefix(dst, "/") {
+				return fmt.Errorf("updateMounts: targetPath %s should be absolute", dst)
 			}
 			dests = append(dests, dst)
 		}
 
 		for _, dest := range dests {
-			mounts = append(mounts, specs.Mount{
+			s.Mounts = append(s.Mounts, specs.Mount{
 				Type:        "bind",
 				Source:      src,
-				Destination: path.Join(root, dest),
+				Destination: dest,
 				Options:     opts,
 			})
 		}
 	}
 
-	if nested && rootMount.Source != "" {
-		s.Mounts = append(s.Mounts, rootMount)
-	}
-	s.Mounts = append(s.Mounts, mounts...)
-}
+	s.Annotations[eveOCIMountPointsLabel] = blkMountPoints
 
-// UpdateMounts adds volume specification mount points to the OCI runtime spec
-func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) {
-	s.updateMounts(disks, false)
-}
-
-// UpdateMountsNested adds volume specification mount points to the OCI runtime spec under a static root
-func (s *ociSpec) UpdateMountsNested(disks []types.DiskStatus) {
-	s.updateMounts(disks, true)
+	return nil
 }
 
 // UpdateEnvVar adds user specified env variables to the OCI spec.
