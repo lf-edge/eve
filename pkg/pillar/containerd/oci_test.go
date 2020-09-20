@@ -5,9 +5,11 @@ package containerd
 
 import (
 	"fmt"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os"
@@ -425,4 +427,40 @@ func TestPrepareMount(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateMounts(t *testing.T) {
+	g := NewGomegaWithT(t)
+	spec := ociSpec{
+		name: "test",
+		volumes: map[string]struct{}{"/myvol":{}, "/hisvol":{}},
+		Spec: specs.Spec{
+			Mounts: []specs.Mount{
+				{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
+			},
+			Annotations: map[string]string{},
+		},
+	}
+
+	tresAmigos := []types.DiskStatus{
+		{ MountDir: "/", Format: zconfig.Format_CONTAINER, FileLocation: "/foo/bar" },
+		{ MountDir: "", Format: zconfig.Format_CONTAINER, FileLocation: "/foo/baz"},
+		{ MountDir: "/override", Format: zconfig.Format_QCOW2, FileLocation: "/foo/bam.qcow2", ReadOnly: true},
+	}
+
+	g.Expect(spec.UpdateMounts([]types.DiskStatus{})).To(HaveOccurred())
+	g.Expect(spec.UpdateMounts([]types.DiskStatus{{MountDir: "/", Format: zconfig.Format_CONTAINER}})).To(HaveOccurred())
+
+	g.Expect(spec.UpdateMounts(tresAmigos)).ToNot(HaveOccurred())
+	g.Expect(spec.Mounts).To(Equal([]specs.Mount{
+		{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
+		{Destination: "/dev/eve/volumes/by-id/1", Type: "bind", Source: "/foo/baz/rootfs", Options: []string{"rbind", "rw"}},
+		{Destination: "/myvol", Type: "bind", Source: "/foo/baz/rootfs", Options: []string{"rbind", "rw"}},
+		{Destination: "/dev/eve/volumes/by-id/2", Type: "bind", Source: "/foo/bam.qcow2", Options: []string{"rbind", "ro"}},
+		{Destination: "/override/2", Type: "bind", Source: "/foo/bam.qcow2", Options: []string{"rbind", "ro"}},
+	}))
+	g.Expect(spec.Annotations).To(Equal(map[string]string{eveOCIMountPointsLabel: "/override\n"}))
+
+	tresAmigos[1].MountDir = "foobar"
+	g.Expect(spec.UpdateMounts(tresAmigos)).To(HaveOccurred())
 }
