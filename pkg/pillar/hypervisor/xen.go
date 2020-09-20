@@ -72,17 +72,23 @@ func (ctx xenContext) Task(status *types.DomainStatus) types.Task {
 }
 
 func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
-
-	diskStatusList := status.DiskStatusList
-	domainName := status.DomainName
 	// first lets build the domain config
-	if err := ctx.CreateDomConfig(domainName, config, diskStatusList, aa, file); err != nil {
+	if err := ctx.CreateDomConfig(status.DomainName, config, status.DiskStatusList, aa, file); err != nil {
 		return logError("failed to build domain config: %v", err)
 	}
 
-	args := []string{"/etc/xen/scripts/xen-start", domainName, file.Name()}
-	if err := ctx.ctrdClient.LKTaskPrepare(domainName, "xen-tools", &config, &status, 0, args); err != nil {
-		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
+	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	if err != nil {
+		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
+	}
+	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+		return logError("failed to add xen hypervisor loader to domain %s: %v", status.DomainName, err)
+	}
+
+	// finally we can start it up
+	spec.Get().Process.Args = []string{"/etc/xen/scripts/xen-start", status.DomainName, file.Name()}
+	if err := spec.CreateContainer(true); err != nil {
+		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
 
 	return nil

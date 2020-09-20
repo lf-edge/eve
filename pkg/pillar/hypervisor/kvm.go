@@ -413,10 +413,18 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
-	//nolint:godox // FIXME: Not passing domain config to LKTaskPrepare for disk performance improvement,
-	// revisit it later as part of resource partitioning
-	if err := ctx.ctrdClient.LKTaskPrepare(domainName, "xen-tools", nil, &status, qemuOverHead, args); err != nil {
-		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
+	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	if err != nil {
+		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
+	}
+	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
+	}
+
+	spec.AdjustMemLimit(config, qemuOverHead)
+	spec.Get().Process.Args = args
+	if err := spec.CreateContainer(true); err != nil {
+		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
 
 	return nil
