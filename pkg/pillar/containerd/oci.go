@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -48,6 +49,7 @@ type OCISpec interface {
 	Save(*os.File) error
 	Load(*os.File) error
 	CreateContainer(bool) error
+	AddLoader(string) error
 	AdjustMemLimit(types.DomainConfig, int64)
 	UpdateVifList([]types.VifInfo)
 	UpdateFromDomain(*types.DomainConfig)
@@ -74,6 +76,89 @@ func NewOciSpec(name string) (OCISpec, error) {
 	}
 	s.Root.Path = "/"
 	return s, nil
+}
+
+// AddLoader massages the spec so that entry point becomes the loader
+func (s *ociSpec) AddLoader(volume string) error {
+	spec := &ociSpec{name: s.name}
+	f, err := os.Open(filepath.Join(volume, ociRuntimeSpecFilename))
+	if err != nil {
+		return err
+	} else {
+		defer f.Close()
+	}
+	if err := spec.Load(f); err != nil {
+		return err
+	}
+
+	spec.Root = &specs.Root{Readonly: true, Path: filepath.Join(volume, "rootfs")}
+	spec.Linux = s.Linux
+
+	// massages .Mounts
+	if s.Root.Path != "/" {
+		// create full copy of our runtime spec
+		f, err := os.Create(filepath.Join(s.Root.Path, ociRuntimeSpecFilename))
+		if err != nil {
+			return err
+		} else {
+			defer f.Close()
+		}
+		if err = s.Save(f); err != nil {
+			return err
+		}
+
+		// create mountpoints manifest
+		if err := ioutil.WriteFile(filepath.Join(s.Root.Path, "mountPoints"),
+			[]byte(s.Annotations[eveOCIMountPointsLabel]), 0644); err != nil {
+			return err
+		}
+
+		// create cmdline manifest
+		// each item needs to be independently quoted for initrd
+		execpathQuoted := make([]string, 0)
+		for _, s := range s.Process.Args {
+			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
+		}
+		if err := ioutil.WriteFile(filepath.Join(s.Root.Path, "cmdline"),
+			[]byte(strings.Join(execpathQuoted, " ")), 0644); err != nil {
+			return err
+		}
+
+		// create env manifest
+		envContent := ""
+		if s.Process.Cwd != "" {
+			envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", s.Process.Cwd)
+		}
+		for _, e := range s.Process.Env {
+			keyAndValueSlice := strings.SplitN(e, "=", 2)
+			if len(keyAndValueSlice) == 2 {
+				//handles Key=Value case
+				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
+			} else {
+				//handles Key= case
+				envContent = envContent + fmt.Sprintf("export %s\n", e)
+			}
+
+		}
+		if err := ioutil.WriteFile(filepath.Join(s.Root.Path, "environment"), []byte(envContent), 0644); err != nil {
+			return err
+		}
+
+		spec.Mounts = append(spec.Mounts, specs.Mount{
+			Type:        "bind",
+			Source:      s.Root.Path,
+			Destination: "/mnt",
+			Options:     []string{"rbind", "rw"}})
+	}
+	for _, mount := range s.Mounts {
+		mount.Destination = "/mnt/rootfs" + mount.Destination
+		spec.Mounts = append(spec.Mounts, mount)
+	}
+
+	// finally do a switcheroo
+	s.Spec = spec.Spec
+
+	return nil
 }
 
 // Get simply returns an underlying OCI runtime spec
@@ -174,6 +259,8 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 		s.Linux.Resources.Memory.Limit = &m
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
+
+		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.DisplayName)
 	}
 }
 

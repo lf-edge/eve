@@ -4,19 +4,310 @@
 package containerd
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	uuid "github.com/satori/go.uuid"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	. "github.com/onsi/gomega"
+	"github.com/opencontainers/runtime-spec/specs-go"
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
+
+const loaderRuntimeSpec = `
+{
+    "ociVersion": "1.0.1",
+    "process": {
+        "user": {
+            "uid": 0,
+            "gid": 0
+        },
+        "args": [
+            "/init.sh"
+        ],
+        "env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ],
+        "cwd": "/",
+        "capabilities": {
+            "bounding": [
+                "CAP_AUDIT_CONTROL",
+                "CAP_AUDIT_READ",
+                "CAP_AUDIT_WRITE",
+                "CAP_BLOCK_SUSPEND",
+                "CAP_CHOWN",
+                "CAP_DAC_OVERRIDE",
+                "CAP_DAC_READ_SEARCH",
+                "CAP_FOWNER",
+                "CAP_FSETID",
+                "CAP_IPC_LOCK",
+                "CAP_IPC_OWNER",
+                "CAP_KILL",
+                "CAP_LEASE",
+                "CAP_LINUX_IMMUTABLE",
+                "CAP_MAC_ADMIN",
+                "CAP_MAC_OVERRIDE",
+                "CAP_MKNOD",
+                "CAP_NET_ADMIN",
+                "CAP_NET_BIND_SERVICE",
+                "CAP_NET_BROADCAST",
+                "CAP_NET_RAW",
+                "CAP_SETFCAP",
+                "CAP_SETGID",
+                "CAP_SETPCAP",
+                "CAP_SETUID",
+                "CAP_SYSLOG",
+                "CAP_SYS_ADMIN",
+                "CAP_SYS_BOOT",
+                "CAP_SYS_CHROOT",
+                "CAP_SYS_MODULE",
+                "CAP_SYS_NICE",
+                "CAP_SYS_PACCT",
+                "CAP_SYS_PTRACE",
+                "CAP_SYS_RAWIO",
+                "CAP_SYS_RESOURCE",
+                "CAP_SYS_TIME",
+                "CAP_SYS_TTY_CONFIG",
+                "CAP_WAKE_ALARM"
+            ],
+            "effective": [
+                "CAP_AUDIT_CONTROL",
+                "CAP_AUDIT_READ",
+                "CAP_AUDIT_WRITE",
+                "CAP_BLOCK_SUSPEND",
+                "CAP_CHOWN",
+                "CAP_DAC_OVERRIDE",
+                "CAP_DAC_READ_SEARCH",
+                "CAP_FOWNER",
+                "CAP_FSETID",
+                "CAP_IPC_LOCK",
+                "CAP_IPC_OWNER",
+                "CAP_KILL",
+                "CAP_LEASE",
+                "CAP_LINUX_IMMUTABLE",
+                "CAP_MAC_ADMIN",
+                "CAP_MAC_OVERRIDE",
+                "CAP_MKNOD",
+                "CAP_NET_ADMIN",
+                "CAP_NET_BIND_SERVICE",
+                "CAP_NET_BROADCAST",
+                "CAP_NET_RAW",
+                "CAP_SETFCAP",
+                "CAP_SETGID",
+                "CAP_SETPCAP",
+                "CAP_SETUID",
+                "CAP_SYSLOG",
+                "CAP_SYS_ADMIN",
+                "CAP_SYS_BOOT",
+                "CAP_SYS_CHROOT",
+                "CAP_SYS_MODULE",
+                "CAP_SYS_NICE",
+                "CAP_SYS_PACCT",
+                "CAP_SYS_PTRACE",
+                "CAP_SYS_RAWIO",
+                "CAP_SYS_RESOURCE",
+                "CAP_SYS_TIME",
+                "CAP_SYS_TTY_CONFIG",
+                "CAP_WAKE_ALARM"
+            ],
+            "inheritable": [
+                "CAP_AUDIT_CONTROL",
+                "CAP_AUDIT_READ",
+                "CAP_AUDIT_WRITE",
+                "CAP_BLOCK_SUSPEND",
+                "CAP_CHOWN",
+                "CAP_DAC_OVERRIDE",
+                "CAP_DAC_READ_SEARCH",
+                "CAP_FOWNER",
+                "CAP_FSETID",
+                "CAP_IPC_LOCK",
+                "CAP_IPC_OWNER",
+                "CAP_KILL",
+                "CAP_LEASE",
+                "CAP_LINUX_IMMUTABLE",
+                "CAP_MAC_ADMIN",
+                "CAP_MAC_OVERRIDE",
+                "CAP_MKNOD",
+                "CAP_NET_ADMIN",
+                "CAP_NET_BIND_SERVICE",
+                "CAP_NET_BROADCAST",
+                "CAP_NET_RAW",
+                "CAP_SETFCAP",
+                "CAP_SETGID",
+                "CAP_SETPCAP",
+                "CAP_SETUID",
+                "CAP_SYSLOG",
+                "CAP_SYS_ADMIN",
+                "CAP_SYS_BOOT",
+                "CAP_SYS_CHROOT",
+                "CAP_SYS_MODULE",
+                "CAP_SYS_NICE",
+                "CAP_SYS_PACCT",
+                "CAP_SYS_PTRACE",
+                "CAP_SYS_RAWIO",
+                "CAP_SYS_RESOURCE",
+                "CAP_SYS_TIME",
+                "CAP_SYS_TTY_CONFIG",
+                "CAP_WAKE_ALARM"
+            ],
+            "permitted": [
+                "CAP_AUDIT_CONTROL",
+                "CAP_AUDIT_READ",
+                "CAP_AUDIT_WRITE",
+                "CAP_BLOCK_SUSPEND",
+                "CAP_CHOWN",
+                "CAP_DAC_OVERRIDE",
+                "CAP_DAC_READ_SEARCH",
+                "CAP_FOWNER",
+                "CAP_FSETID",
+                "CAP_IPC_LOCK",
+                "CAP_IPC_OWNER",
+                "CAP_KILL",
+                "CAP_LEASE",
+                "CAP_LINUX_IMMUTABLE",
+                "CAP_MAC_ADMIN",
+                "CAP_MAC_OVERRIDE",
+                "CAP_MKNOD",
+                "CAP_NET_ADMIN",
+                "CAP_NET_BIND_SERVICE",
+                "CAP_NET_BROADCAST",
+                "CAP_NET_RAW",
+                "CAP_SETFCAP",
+                "CAP_SETGID",
+                "CAP_SETPCAP",
+                "CAP_SETUID",
+                "CAP_SYSLOG",
+                "CAP_SYS_ADMIN",
+                "CAP_SYS_BOOT",
+                "CAP_SYS_CHROOT",
+                "CAP_SYS_MODULE",
+                "CAP_SYS_NICE",
+                "CAP_SYS_PACCT",
+                "CAP_SYS_PTRACE",
+                "CAP_SYS_RAWIO",
+                "CAP_SYS_RESOURCE",
+                "CAP_SYS_TIME",
+                "CAP_SYS_TTY_CONFIG",
+                "CAP_WAKE_ALARM"
+            ]
+        }
+    },
+    "root": {
+        "path": "rootfs"
+    },
+    "mounts": [
+        {
+            "destination": "/dev",
+            "type": "bind",
+            "source": "/dev",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
+            "destination": "/dev/pts",
+            "type": "bind",
+            "source": "/dev/pts",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
+            "destination": "/etc/resolv.conf",
+            "type": "bind",
+            "source": "/etc/resolv.conf",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
+            "destination": "/hostfs",
+            "type": "bind",
+            "source": "/",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
+            "destination": "/persist",
+            "type": "bind",
+            "source": "/var/persist",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
+            "destination": "/proc",
+            "type": "proc",
+            "source": "proc",
+            "options": [
+                "nosuid",
+                "nodev",
+                "noexec",
+                "relatime"
+            ]
+        },
+        {
+            "destination": "/run",
+            "type": "bind",
+            "source": "/run",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
+            "destination": "/sys",
+            "type": "sysfs",
+            "source": "sysfs",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev"
+            ]
+        },
+        {
+            "destination": "/sys/fs/cgroup",
+            "type": "cgroup",
+            "source": "cgroup",
+            "options": [
+                "nosuid",
+                "noexec",
+                "nodev",
+                "relatime",
+                "ro"
+            ]
+        }
+    ],
+    "linux": {
+        "resources": {},
+        "cgroupsPath": "/eve/services/xen-tools",
+        "namespaces": [
+            {
+                "type": "mount"
+            }
+        ]
+    }
+}
+`
 
 const imageConfig = `
 {
@@ -183,6 +474,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	dir, _ := ioutil.TempDir("/tmp", "podfiles")
 	rootDir := path.Join(dir, "runx")
 	podPath := path.Join(dir, imageConfigFilename)
+	rsPath := path.Join(rootDir, ociRuntimeSpecFilename)
 	err := os.MkdirAll(rootDir, 0777)
 	if err != nil {
 		t.Errorf("failed to create temporary dir")
@@ -193,6 +485,10 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	// now create a fake pod file...
 	if err := ioutil.WriteFile(podPath, []byte(content), 0644); err != nil {
 		t.Errorf("failed to write to a pod file %v", err)
+	}
+	// ...and a loader runtime spec
+	if err := ioutil.WriteFile(rsPath, []byte(loaderRuntimeSpec), 0644); err != nil {
+		t.Errorf("failed to write to a runtime spec file %v", err)
 	}
 
 	_ = InitContainerdClient()
@@ -207,6 +503,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 		{FileLocation: "/foo/baz.qcow2", Format: zconfig.Format_QCOW2},
 		{FileLocation: "/foo/bar", Format: zconfig.Format_CONTAINER}})
 	spec.Get().Root.Path = rootDir
+	err = spec.AddLoader(rootDir)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
 	}
@@ -333,6 +630,10 @@ func TestPrepareMount(t *testing.T) {
 	if err := ioutil.WriteFile(filename, []byte(imageConfig), 0644); err != nil {
 		t.Errorf("TestPrepareMount: exception while saving %s: %s", filename, err.Error())
 	}
+	filename = filepath.Join(oldTempRootPath, "tmp", ociRuntimeSpecFilename)
+	if err := ioutil.WriteFile(filename, []byte(loaderRuntimeSpec), 0644); err != nil {
+		t.Errorf("TestPrepareMount: exception while saving %s: %s", filename, err.Error())
+	}
 
 	type args struct {
 		containerID   uuid.UUID
@@ -385,7 +686,7 @@ func TestPrepareMount(t *testing.T) {
 				{FileLocation: "/foo/baz.qcow2", Format: zconfig.Format_QCOW2},
 				{FileLocation: "/foo/bar", Format: zconfig.Format_CONTAINER}})
 			spec.Get().Root.Path = oldTempRootPath
-			if err := spec.UpdateFromVolume(filepath.Join(oldTempRootPath, "tmp")); err != nil || tt.wantErr != nil {
+			if err := spec.AddLoader(filepath.Join(oldTempRootPath, "tmp")); err != nil || tt.wantErr != nil {
 				if (tt.wantErr == nil) || ((err != nil) && (tt.wantErr.Error() != err.Error())) {
 					t.Errorf("PrepareMount() error = %v, wantErr %v", err, tt.wantErr)
 				}
@@ -463,4 +764,63 @@ func TestUpdateMounts(t *testing.T) {
 
 	tresAmigos[1].MountDir = "foobar"
 	g.Expect(spec.UpdateMounts(tresAmigos)).To(HaveOccurred())
+}
+
+func TestAddLoader(t *testing.T) {
+	g := NewGomegaWithT(t)
+	specTemplate := ociSpec{
+		name: "test",
+		volumes: map[string]struct{}{"/myvol":{}, "/hisvol":{}},
+		Spec: specs.Spec{
+			Process: &specs.Process{
+				Args: []string{"/bin/sh"},
+				Cwd: "/",
+				Env: []string{"FOO=foo", "BAR=bar"},
+			},
+			Root: &specs.Root{ Path: "/" },
+			Mounts: []specs.Mount{
+				{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
+			},
+			Annotations: map[string]string{},
+			Linux: &specs.Linux { CgroupsPath: "/foo/bar/baz", },
+		},
+	}
+	spec1 := deepCopy(specTemplate).(ociSpec)
+	spec2 := deepCopy(specTemplate).(ociSpec)
+
+	tmpdir, err := ioutil.TempDir("/tmp", "volume")
+	if err != nil {
+		log.Fatalf("failed to create tmpdir %v", err)
+	} else {
+		defer os.RemoveAll(tmpdir)
+	}
+	if err := ioutil.WriteFile(filepath.Join(tmpdir, ociRuntimeSpecFilename),[]byte(loaderRuntimeSpec),0666); err != nil {
+		log.Fatalf("failed to create tmpfile %v", err)
+	}
+
+	g.Expect(spec1.AddLoader("/foo/bar/baz")).To(HaveOccurred())
+
+	g.Expect(spec1.AddLoader(tmpdir)).ToNot(HaveOccurred())
+	g.Expect(spec1.Root).To(Equal(&specs.Root{Path: filepath.Join(tmpdir, "rootfs"), Readonly: true}))
+	g.Expect(spec1.Linux.CgroupsPath).To(Equal("/foo/bar/baz"))
+	g.Expect(spec1.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
+	g.Expect(spec1.Mounts[0]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
+
+	spec2.Root.Path = tmpdir
+	g.Expect(spec2.AddLoader(tmpdir)).ToNot(HaveOccurred())
+	g.Expect(spec2.Root).To(Equal(&specs.Root{Path: filepath.Join(tmpdir, "rootfs"), Readonly: true}))
+	g.Expect(spec2.Linux.CgroupsPath).To(Equal("/foo/bar/baz"))
+	g.Expect(spec2.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
+	g.Expect(spec2.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: tmpdir, Options: []string{"rbind", "rw"}}))
+	g.Expect(spec2.Mounts[0]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
+}
+
+func deepCopy(in interface{}) interface{} {
+	b, _ := json.Marshal(in)
+	p := reflect.New(reflect.TypeOf(in))
+	output := p.Interface()
+	_ = json.Unmarshal(b, output)
+	val := reflect.ValueOf(output)
+	val = val.Elem()
+	return val.Interface()
 }
