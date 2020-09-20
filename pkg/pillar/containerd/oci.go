@@ -47,8 +47,8 @@ type OCISpec interface {
 	Load(*os.File) error
 	CreateContainer(bool) error
 	AdjustMemLimit(types.DomainConfig, int64)
-	UpdateVifList(types.DomainConfig)
-	UpdateFromDomain(types.DomainConfig)
+	UpdateVifList([]types.VifInfo)
+	UpdateFromDomain(*types.DomainConfig)
 	UpdateFromVolume(string) error
 	UpdateMounts([]types.DiskStatus)
 	UpdateMountsNested([]types.DiskStatus)
@@ -67,6 +67,9 @@ func NewOciSpec(name string) (OCISpec, error) {
 	}
 	if s.Process == nil {
 		s.Process = &specs.Process{}
+	}
+	if s.Annotations == nil {
+		s.Annotations = map[string]string{}
 	}
 	s.Root.Path = "/"
 	return s, nil
@@ -97,6 +100,12 @@ func (s *ociSpec) Load(file *os.File) error {
 		return err
 	}
 	s.Spec = *ns
+	if s.Process == nil {
+		s.Process = &specs.Process{}
+	}
+	if s.Annotations == nil {
+		s.Annotations = map[string]string{}
+	}
 	return nil
 }
 
@@ -121,13 +130,13 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 }
 
 // UpdateVifList creates VIF management hooks in OCI spec
-func (s *ociSpec) UpdateVifList(dom types.DomainConfig) {
+func (s *ociSpec) UpdateVifList(vifs []types.VifInfo) {
 	// use pre-start and post-stop hooks for networking
 	if s.Hooks == nil {
 		s.Hooks = &specs.Hooks{}
 	}
 	timeout := 60
-	for _, v := range dom.VifList {
+	for _, v := range vifs {
 		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
 		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
 			Env:     vifSpec,
@@ -145,7 +154,7 @@ func (s *ociSpec) UpdateVifList(dom types.DomainConfig) {
 }
 
 // UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
-func (s *ociSpec) UpdateFromDomain(dom types.DomainConfig) {
+func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 	// update cgroup resource constraints for CPU and memory
 	if s.Linux != nil {
 		if s.Linux.Resources == nil {
