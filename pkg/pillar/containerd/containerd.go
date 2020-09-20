@@ -58,6 +58,8 @@ const (
 	logWriteSocket = "/run/linuxkit-external-logging.sock"
 	// default socket to read from memlogd
 	logReadSocket = "/run/memlogdq.sock"
+	// file under container's root path which stores the respective snapshotID
+	snapshotIDFile = "snapshotid.txt"
 
 	//TBD: Have a better way to calculate this number.
 	//For now it is based on some trial-and-error experiments
@@ -636,9 +638,12 @@ func (client *Client) LKTaskPrepare(name, linuxkit string, domSettings *types.Do
 		spec.Get().Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, name)
 	}
 	if domSettings != nil {
-		spec.UpdateFromDomain(*domSettings)
+		spec.UpdateFromDomain(domSettings)
 		if memOverhead > 0 {
 			spec.AdjustMemLimit(*domSettings, memOverhead)
+		}
+		if err = spec.UpdateMounts(domStatus.DiskStatusList); err != nil {
+			return fmt.Errorf("LKTaskLaunch: can't update spec %s with Volume mounts %v", config, err)
 		}
 	}
 
@@ -992,4 +997,55 @@ func newServiceCtxWithLease(ctrdClient *containerd.Client, namespace string) (co
 		}
 		cancel()
 	}, nil
+}
+
+// SaveSnapshotID stores snapshotID under newRootpath to handle upgrade scenario
+func SaveSnapshotID(oldRootpath, newRootpath string) error {
+	snapshotID := filepath.Base(oldRootpath)
+	filename := filepath.Join(newRootpath, snapshotIDFile)
+	if err := ioutil.WriteFile(filename, []byte(snapshotID), 0644); err != nil {
+		err = fmt.Errorf("SaveSnapshotID: Save snapshotID %s failed: %s", snapshotID, err)
+		logrus.Error(err.Error())
+		return err
+	}
+	logrus.Infof("SaveSnapshotID: Saved snapshotID %s in %s",
+		snapshotID, filename)
+	return nil
+}
+
+// GetSnapshotID handles the upgrade scenario when the snapshotID needs to be
+// extracted from a file created by upgradeconverter
+// Assumes that rootpath is a complete pathname
+func GetSnapshotID(rootpath string) string {
+	filename := filepath.Join(rootpath, snapshotIDFile)
+	if _, err := os.Stat(filename); err == nil {
+		cont, err := ioutil.ReadFile(filename)
+		if err == nil {
+			snapshotID := string(cont)
+			logrus.Infof("GetSnapshotID read %s from %s",
+				snapshotID, filename)
+			return snapshotID
+		}
+		logrus.Errorf("GetSnapshotID read %s failed: %s", filename, err)
+	}
+	snapshotID := filepath.Base(rootpath)
+	logrus.Infof("GetSnapshotID basename %s from %s", snapshotID, rootpath)
+	return snapshotID
+}
+
+//UnpackClientImage unpacks given client image into containerd.
+func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
+	logrus.Infof("UnpackClientImage: for image :%s", clientImage.Name())
+	ctrdCtx, done := client.CtrNewUserServicesCtx()
+	defer done()
+	unpacked, err := clientImage.IsUnpacked(ctrdCtx, defaultSnapshotter)
+	if err != nil {
+		return fmt.Errorf("UnpackClientImage: unable to get image metadata: %v config: %v", clientImage.Name(), err)
+	}
+	if !unpacked {
+		if err := clientImage.Unpack(ctrdCtx, defaultSnapshotter); err != nil {
+			return fmt.Errorf("UnpackClientImage: unable to unpack image: %v: %v", clientImage.Name(), err)
+		}
+	}
+	return nil
 }
