@@ -9,124 +9,110 @@
 package containerd
 
 import (
+	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 )
 
-func TestCreateMountPointExecEnvFiles(t *testing.T) {
+const (
+	oldTempBasePath = "/tmp/persist/pods/prepared"
+	newTempBasePath = "/tmp/persist/vault/volumes"
+)
 
-	content := `{
-    "created": "2020-02-05T00:52:57.387773144Z",
-    "author": "adarsh@zededa.com",
-    "architecture": "amd64",
-    "os": "linux",
-    "config": {
-        "Env": [
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        ],
-        "Cmd": [
-            "/bin/sh"
-        ],
-        "Volumes": {
-            "/myvol": {}
-        }
-    },
-    "rootfs": {
-        "type": "layers",
-        "diff_ids": [
-            "sha256:a79a1aaf8143bbbe6061bc5326a1dcc490d9b9c1ea6b9c27d14c182e15c535ee",
-            "sha256:a235ff03ae531a929c240688c52e802c4f3714b2446d1f34b1d20bfd59ce1965"
-        ]
-    },
-    "history": [
-        {
-            "created": "2019-01-30T22:20:20.383667418Z",
-            "created_by": "/bin/sh -c #(nop) ADD file:eaf29f2198d25cc0e88b84af6478f422db6a8ffb6919bf746117252cfcd88a47 in / "
-        },
-        {
-            "created": "2019-01-30T22:20:20.590559734Z",
-            "created_by": "/bin/sh -c #(nop)  CMD [\"/bin/sh\"]",
-            "empty_layer": true
-        },
-        {
-            "created": "2020-02-05T00:52:55.559839255Z",
-            "created_by": "/bin/sh -c #(nop)  MAINTAINER adarsh@zededa.com",
-            "author": "adarsh@zededa.com",
-            "empty_layer": true
-        },
-        {
-            "created": "2020-02-05T00:52:57.115531308Z",
-            "created_by": "/bin/sh -c mkdir /myvol",
-            "author": "adarsh@zededa.com"
-        },
-        {
-            "created": "2020-02-05T00:52:57.387773144Z",
-            "created_by": "/bin/sh -c #(nop)  VOLUME [/myvol]",
-            "author": "adarsh@zededa.com",
-            "empty_layer": true
-        }
-    ]
-}`
-	//create a temp dir to hold resulting files
-	dir, _ := ioutil.TempDir("/tmp", "podfiles")
-	rootDir := path.Join(dir, "runx")
-	podPath := path.Join(dir, "pod")
-	err := os.MkdirAll(rootDir, 0777)
+var (
+	containerID     = uuid.NewV4()
+	containerDir    = fmt.Sprintf("%s#0.container", containerID.String())
+	snapshotID      = containerDir
+	oldTempRootPath = path.Join(oldTempBasePath, containerDir)
+	newTempRootPath = path.Join(newTempBasePath, containerDir)
+)
+
+func TestSaveSnapshotID(t *testing.T) {
+	err := os.MkdirAll(newTempRootPath, 0777)
 	if err != nil {
-		t.Errorf("failed to create temporary dir")
+		t.Errorf("TestSaveSnapshotID: Failed to create %s: %s", newTempRootPath, err.Error())
 	} else {
-		defer os.RemoveAll(dir)
+		defer os.RemoveAll(newTempRootPath)
 	}
 
-	// now create a fake pod file
-	file, _ := os.Create(podPath)
-	_, err = file.WriteString(content)
-	if err != nil {
-		t.Errorf("failed to write to a pod file")
+	type args struct {
+		oldRootpath string
+		newRootpath string
 	}
-	execpath := []string{"/bin/sh"}
-	// the proper format for this
-	execpathStr := "\"/bin/sh\""
-	workdir := "/data"
-	mountpoints := map[string]struct{}{
-		"/myvol": {},
+	tests := []struct {
+		name    string
+		args    args
+		wantErr error
+	}{
+		{
+			name: "TestSaveSnapshotID1",
+			args: args{
+				oldRootpath: oldTempRootPath,
+				newRootpath: newTempRootPath,
+			},
+			wantErr: nil,
+		},
 	}
-	env := []string{"PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\""}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := SaveSnapshotID(tt.args.oldRootpath, tt.args.newRootpath); err != nil || tt.wantErr != nil {
+				if (tt.wantErr == nil) || ((err != nil) && (tt.wantErr.Error() != err.Error())) {
+					t.Errorf("SaveSnapshotID() error = %v, wantErr %v", err, tt.wantErr)
+				}
+			} else {
+				snapshotIDFile := path.Join(tt.args.newRootpath, snapshotIDFile)
+				expectedSnapshotID := snapshotID
+				snapshotID, err := ioutil.ReadFile(snapshotIDFile)
+				if err != nil {
+					t.Errorf("TestSaveSnapshotID: exception while reading %s file %s %v",
+						snapshotIDFile, snapshotIDFile, err)
+				}
+				if string(snapshotID) != expectedSnapshotID {
+					t.Errorf("TestSaveSnapshotID: mismatched %s file content, actual '%s' expected '%s'",
+						snapshotIDFile, string(snapshotID), expectedSnapshotID)
+				}
+			}
+		})
+	}
+}
 
-	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, 2)
+func TestGetSnapshotID(t *testing.T) {
+	err := os.MkdirAll(newTempRootPath, 0777)
 	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed %v", err)
+		t.Errorf("TestPrepareMount: Failed to create %s: %s", oldTempRootPath, err.Error())
+	} else {
+		defer os.RemoveAll(newTempRootPath)
 	}
 
-	cmdlineFile := path.Join(rootDir, "cmdline")
-	cmdline, err := ioutil.ReadFile(cmdlineFile)
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
+	filename := filepath.Join(newTempRootPath, snapshotIDFile)
+	if err := ioutil.WriteFile(filename, []byte(snapshotID), 0644); err != nil {
+		t.Errorf("TestGetSnapshotID: exception while saving %s: %s", filename, err.Error())
 	}
-	if string(cmdline) != execpathStr {
-		t.Errorf("mismatched cmdline file content, actual '%s' expected '%s'", string(cmdline), execpathStr)
+	type args struct {
+		rootpath string
 	}
-
-	mountFile := path.Join(rootDir, "mountPoints")
-	mountExpected := "/myvol" + "\n"
-	mounts, err := ioutil.ReadFile(mountFile)
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "TestGetSnapshotID1",
+			args: args{
+				rootpath: newTempRootPath,
+			},
+			want: snapshotID,
+		},
 	}
-	if string(mounts) != mountExpected {
-		t.Errorf("mismatched mountpoints file content, actual '%s' expected '%s'", string(mounts), mountExpected)
-	}
-
-	envFile := path.Join(rootDir, "environment")
-	envActual, err := ioutil.ReadFile(envFile)
-	// start with WORKDIR
-	envExpect := "export WORKDIR=\"/data\"\nexport PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n"
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
-	}
-	if string(envActual) != envExpect {
-		t.Errorf("mismatched env file content, actual '%s' expected '%s'", string(envActual), envExpect)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetSnapshotID(tt.args.rootpath); got != tt.want {
+				t.Errorf("GetSnapshotID() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
