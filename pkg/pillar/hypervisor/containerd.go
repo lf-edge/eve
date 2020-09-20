@@ -47,32 +47,39 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
-	diskStatusList := status.DiskStatusList
-	domainName := status.DomainName
-
-	if !status.IsContainer {
-		return logError("failed to run domain %s: not based on an OCI image", domainName)
-	}
-
-	spec, err := containerd.NewOciSpec(domainName)
+func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig, volume string) (containerd.OCISpec, error) {
+	spec, err := containerd.NewOciSpec(status.DomainName)
 	if err != nil {
-		return logError("requesting default OCI spec for domain %s failed %v", domainName, err)
+		return nil, err
 	}
-	if err := spec.UpdateFromVolume(diskStatusList[0].FileLocation); err != nil {
-		return logError("failed to update OCI spec from volume %s (%v)", diskStatusList[0].FileLocation, err)
+	if err := spec.UpdateFromVolume(volume); err != nil {
+		return nil, err
 	}
 	spec.UpdateFromDomain(config)
 	spec.UpdateMounts(status.DiskStatusList)
-	spec.UpdateVifList(config)
+	spec.UpdateVifList(status.VifList)
+	spec.UpdateEnvVar(status.EnvVariables)
+
+	return spec, nil
+}
+
+func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
+	if !status.IsContainer {
+		return logError("failed to run domain %s: not based on an OCI image", status.DomainName)
+	}
+
+	spec, err := ctx.setupSpec(&status, &config, status.DiskStatusList[0].FileLocation)
+	if err != nil {
+		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
+	}
 	spec.Get().Mounts = append(spec.Get().Mounts, specs.Mount{
 		Type:        "bind",
 		Source:      "/etc/resolv.conf",
 		Destination: "/etc/resolv.conf",
 		Options:     []string{"rbind", "ro"}})
-	spec.UpdateEnvVar(status.EnvVariables)
+
 	if err := spec.CreateContainer(true); err != nil {
-		return logError("Failed to create container for task %s from %v: %v", domainName, config, err)
+		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
 
 	return nil
