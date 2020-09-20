@@ -54,6 +54,8 @@ const (
 	containerdRunTime = "io.containerd.runtime.v1.linux"
 	// container config file name
 	imageConfigFilename = "image-config.json"
+	// full OCI runtime spec
+	ociRuntimeSpecFilename = "config.json"
 	// default socket to connect tasks to memlogd
 	logWriteSocket = "/run/linuxkit-external-logging.sock"
 	// default socket to read from memlogd
