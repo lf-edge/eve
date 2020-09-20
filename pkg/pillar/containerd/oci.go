@@ -22,6 +22,8 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 )
 
 const eveScript = "/bin/eve"
@@ -182,19 +184,30 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 
 // UpdateFromVolume updates values in the OCI spec based on the location
 // of an EVE volume. EVE volume's are expected to be structured as directories
-// in the filesystem with a json file containing the corresponding Image
-// manifest and a rootfs subfolder with a full rootfs filesystem
+// in the filesystem with either config.json containing the full OCI runtime
+// spec or at least image-config.json containing OCI Image manifest (full
+// OCI runtime spec takes precedence). In addition to that each volume is
+// expected to have rootfs subfolder with a full rootfs filesystem
 func (s *ociSpec) UpdateFromVolume(volume string) error {
-	imgInfo, err := getSavedImageInfo(volume)
-	if err != nil {
-		return fmt.Errorf("couldn't load saved image config from %s", volume)
+	if f, err := os.Open(filepath.Join(volume, ociRuntimeSpecFilename)); err == nil {
+		defer f.Close()
+		if err = s.Load(f); err != nil {
+			return err
+		}
+	} else {
+		imgInfo, err := getSavedImageInfo(volume)
+		if err != nil {
+			return fmt.Errorf("couldn't load saved image config from %s", volume)
+		}
+
+		if err = s.updateFromImageConfig(imgInfo.Config); err != nil {
+			return err
+		}
 	}
 
-	if err = s.updateFromImageConfig(imgInfo.Config); err == nil {
-		s.Root.Path = volume + "/rootfs"
-	}
+	s.Root.Path = volume + "/rootfs"
 
-	return err
+	return nil
 }
 
 // UpdateFromImageConfig updates values in the OCI spec based
