@@ -184,7 +184,8 @@ type DomainStatus struct {
 	ErrorAndTime
 	BootFailed     bool
 	AdaptersFailed bool
-	IsContainer    bool              // Is this Domain for a Container?
+	IsContainer    bool              // XXX: soon to be replaced by OCIConfigDir Is this Domain for a Container?
+	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string // List of environment variables to be set in container
 }
 

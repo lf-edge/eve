@@ -7,7 +7,6 @@ import (
 	"fmt"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -394,8 +393,18 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
-	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, &status, qemuOverHead, args); err != nil {
-		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
+	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	if err != nil {
+		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
+	}
+	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
+	}
+
+	spec.AdjustMemLimit(config, qemuOverHead)
+	spec.Get().Process.Args = args
+	if err := spec.CreateContainer(true); err != nil {
+		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
 
 	return nil

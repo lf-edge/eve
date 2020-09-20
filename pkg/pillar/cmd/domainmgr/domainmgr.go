@@ -1110,6 +1110,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 
 		status.DiskStatusList[0].MountDir = "/"
+		status.OCIConfigDir = status.DiskStatusList[0].FileLocation
 
 		if config.IsCipher || config.CloudInitUserData != nil {
 			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
@@ -1137,17 +1138,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
-				status.SetErrorNow(err.Error())
-				return
-			}
-
-			// XXX apparently this is under the appInstID and not under
-			// the ImageID aka VolumeID
-			if err := containerd.PrepareMount(config.UUIDandVersion.UUID,
-				ds.FileLocation, status.EnvVariables,
-				len(status.DiskStatusList)); err != nil {
-
-				log.Errorf("Failed to create ctr bundle. Error %s", err)
 				status.SetErrorNow(err.Error())
 				return
 			}
