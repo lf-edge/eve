@@ -30,7 +30,7 @@ func populateExistingVolumesFormat(dirName string) {
 		return
 	}
 	for _, location := range locations {
-		key, format, err := getVolumeKeyAndFormat(dirName, location.Name())
+		key, format, _, err := getVolumeKeyAndFormat(dirName, location.Name())
 		if err != nil {
 			log.Error(err)
 			continue
@@ -53,7 +53,7 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 	}
 	for _, location := range locations {
 		filelocation := path.Join(dirName, location.Name())
-		key, format, err := getVolumeKeyAndFormat(dirName, location.Name())
+		key, format, _, err := getVolumeKeyAndFormat(dirName, location.Name())
 		if err != nil {
 			log.Error(err)
 			deleteFile(filelocation)
@@ -72,15 +72,20 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 	log.Debugf("gcObjects(%s) Done", dirName)
 }
 
-func getVolumeKeyAndFormat(dirName, name string) (string, string, error) {
+func getVolumeKeyAndFormat(dirName, name string) (key string, format string, tmp bool, err error) {
 	filelocation := path.Join(dirName, name)
 	keyAndFormat := strings.Split(name, ".")
-	if len(keyAndFormat) != 2 {
+	switch {
+	case len(keyAndFormat) == 2:
+		key, format, tmp, err = keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), false, nil
+	case len(keyAndFormat) == 3 && keyAndFormat[2] == "tmp":
+		key, format, tmp, err = keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), true, nil
+	default:
 		errStr := fmt.Sprintf("getVolumeKeyAndFormat: Found unknown format volume %s.",
 			filelocation)
-		return "", "", errors.New(errStr)
+		key, format, tmp, err = "", "", false, errors.New(errStr)
 	}
-	return keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), nil
+	return key, format, tmp, err
 }
 
 func deleteFile(filelocation string) {

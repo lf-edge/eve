@@ -6,10 +6,10 @@ package volumemgr
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strings"
+	"path"
 
+	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -22,50 +22,81 @@ func createVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, strin
 		log.Infof("createVolume(%s) from container %s", status.Key(), status.ReferenceName)
 		return createContainerVolume(ctx, status, status.ReferenceName)
 	}
-	log.Infof("createVolume(%s) from disk %s", status.Key(), status.FileLocation)
-	return createVdiskVolume(ctx, status, status.FileLocation)
+	log.Infof("createVolume(%s) from disk %s", status.Key(), status.ReferenceName)
+	return createVdiskVolume(ctx, status, status.ReferenceName)
 }
 
 // createVdiskVolume does not update status but returns
 // new values for VolumeCreated, FileLocation, and error
 func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
-	srcLocation string) (bool, string, error) {
+	ref string) (bool, string, error) {
 
 	created := false
-	if status.ReadOnly {
-		log.Infof("createVolume(%s) ReadOnly", status.Key())
-		created = true // To make doUpdate proceed
-		return created, srcLocation, nil
-	}
 
+	// this is the target location, where we expect the volume to be
 	filelocation := status.PathName()
 	if _, err := os.Stat(filelocation); err == nil {
 		errStr := fmt.Sprintf("Can not create %s for %s: exists",
 			filelocation, status.Key())
 		log.Error(errStr)
-		return created, srcLocation, errors.New(errStr)
+		return created, "", errors.New(errStr)
 	}
-	log.Infof("Copy from %s to %s", srcLocation, filelocation)
-	created = true // So we will delete later even if partial failure
-	if err := cp(filelocation, srcLocation); err != nil {
-		errStr := fmt.Sprintf("Copy failed from %s to %s: %s\n",
-			srcLocation, filelocation, err)
-		log.Error(errStr)
-		return created, filelocation, errors.New(errStr)
+	// make a temporary directory for extraction
+	// NOTE: because it had an extra '.' in it, the volume parsing logic
+	// will treat it as an invalid directory and ignore it,
+	// and garbage collection will clean it up, which is precisely
+	// what we want.
+	tmpDir := fmt.Sprintf("%s.tmp", filelocation)
+	// just because garbage collection cleans it up, doesn't mean we shouldn't
+	// be good citizens too
+	defer os.RemoveAll(tmpDir)
+
+	// use the edge-containers library to extract the data we need
+	puller := registry.Puller{
+		Image: ref,
 	}
-	// Do we need to expand disk?
-	err := maybeResizeDisk(filelocation, status.MaxVolSize)
+	resolver, err := ctx.casClient.Resolver()
 	if err != nil {
+		errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
+		log.Error(errStr)
+		return created, "", errors.New(errStr)
+	}
+
+	_, artifact, err := puller.Pull(tmpDir, false, os.Stderr, resolver)
+	if err != nil {
+		errStr := fmt.Sprintf("error pulling %s from containerd: %v", ref, err)
+		log.Error(errStr)
+		return created, "", errors.New(errStr)
+	}
+
+	if artifact.Root == nil {
+		errStr := fmt.Sprintf("image %s has no container root: %v", ref, err)
+		log.Error(errStr)
+		return created, "", errors.New(errStr)
+	}
+
+	// now move the root disk over
+	if artifact.Root == nil || artifact.Root.Source == nil {
+		err = fmt.Errorf("createVdiskVolume(%s): could not get artifact root path from %s: %v", status.Key(), filelocation, err)
+		log.Errorf(err.Error())
+		return created, "", err
+	}
+	rootDisk := path.Join(tmpDir, artifact.Root.Source.GetPath())
+	if err := os.Rename(rootDisk, filelocation); err != nil {
+		log.Errorf("createVdiskVolume(%s): error renaming %s to %s: %v", status.Key(), rootDisk, filelocation, err)
+		return created, "", err
+	}
+
+	// Do we need to expand disk?
+	if err := maybeResizeDisk(filelocation, status.MaxVolSize); err != nil {
 		log.Error(err)
-		return created, filelocation, err
+		return created, "", err
 	}
-	if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
-		log.Errorf("createVdiskVolume(%s): exception while publishing diskmetric. %s",
-			status.Key(), err.Error())
-	}
-	log.Infof("Copy DONE from %s to %s", srcLocation, status.FileLocation)
+
+	log.Infof("Extract DONE from %s to %s", ref, filelocation)
+
 	log.Infof("createVdiskVolume(%s) DONE", status.Key())
-	return created, filelocation, nil
+	return true, filelocation, nil
 }
 
 // createContainerVolume does not update status but returns
@@ -95,13 +126,8 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
 		return created, filelocation, err
 	}
-	created = true
-	if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
-		log.Errorf("createContainerVolume(%s): exception while publishing diskmetric. %s",
-			status.Key(), err.Error())
-	}
 	log.Infof("createContainerVolume(%s) DONE", status.Key())
-	return created, filelocation, nil
+	return true, filelocation, nil
 }
 
 // destroyVolume does not update status but returns
@@ -138,7 +164,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 	created := status.VolumeCreated
 	filelocation := status.FileLocation
 	log.Infof("Delete copy at %s", filelocation)
-	if err := os.Remove(filelocation); err != nil {
+	if err := os.RemoveAll(filelocation); err != nil {
 		log.Error(err)
 		filelocation = ""
 		return created, filelocation, err
@@ -163,28 +189,6 @@ func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (b
 	created = false
 	log.Infof("destroyContainerVolume(%s) DONE", status.Key())
 	return created, filelocation, nil
-}
-
-func cp(dst, src string) error {
-	if strings.Compare(dst, src) == 0 {
-		log.Fatalf("Same src and dst: %s", src)
-	}
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	// no need to check errors on read only file, we already got everything
-	// we need from the filesystem, so nothing can go wrong now.
-	defer s.Close()
-	d, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(d, s); err != nil {
-		d.Close()
-		return err
-	}
-	return d.Close()
 }
 
 // Make sure the (virtual) size of the disk is at least maxsizebytes
