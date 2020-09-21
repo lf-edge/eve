@@ -362,7 +362,7 @@ func (status VolumeRefStatus) LogModify(old interface{}) {
 			AddField("max-vol-size-int64", status.MaxVolSize).
 			AddField("pending-add-bool", status.PendingAdd).
 			AddField("refcount-int64", oldStatus.RefCount).
-			AddField("old-state", oldStatus.State).
+			AddField("old-state", oldStatus.State.String()).
 			AddField("old-filelocation", oldStatus.ActiveFileLocation).
 			AddField("content-format", oldStatus.ContentFormat).
 			AddField("read-only-bool", oldStatus.ReadOnly).
