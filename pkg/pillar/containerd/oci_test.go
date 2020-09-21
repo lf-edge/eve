@@ -105,7 +105,7 @@ func TestOciSpec(t *testing.T) {
 	s := spec.Get()
 	assert.Equal(t, int64(1234*1024), *s.Linux.Resources.Memory.Limit)
 	assert.Equal(t, float64(4), float64(*s.Linux.Resources.CPU.Quota)/float64(*s.Linux.Resources.CPU.Period))
-	assert.Equal(t, "/var"+tmpdir+"/rootfs", s.Root.Path)
+	assert.Equal(t, tmpdir+"/rootfs", s.Root.Path)
 	assert.Equal(t, []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, s.Process.Env)
 	assert.Equal(t, []string{"/bin/sh", "-c", "/runme.sh"}, s.Process.Args)
 	assert.Equal(t, []string{"VIF_NAME=vif0", "VIF_BRIDGE=br0", "VIF_MAC=52:54:00:12:34:56"}, s.Hooks.Prestart[0].Env)
