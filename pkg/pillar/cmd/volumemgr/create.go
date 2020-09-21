@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -41,15 +40,6 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		log.Error(errStr)
 		return created, "", errors.New(errStr)
 	}
-	// make a temporary directory for extraction
-	// NOTE: because it had an extra '.' in it, the volume parsing logic
-	// will treat it as an invalid directory and ignore it,
-	// and garbage collection will clean it up, which is precisely
-	// what we want.
-	tmpDir := fmt.Sprintf("%s.tmp", filelocation)
-	// just because garbage collection cleans it up, doesn't mean we shouldn't
-	// be good citizens too
-	defer os.RemoveAll(tmpDir)
 
 	// use the edge-containers library to extract the data we need
 	puller := registry.Puller{
@@ -62,29 +52,19 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		return created, "", errors.New(errStr)
 	}
 
-	_, artifact, err := puller.Pull(tmpDir, false, os.Stderr, resolver)
+	// create a writer for the file where we want
+	f, err := os.Create(filelocation)
 	if err != nil {
+		errStr := fmt.Sprintf("error creating target file at %s: %v", filelocation, err)
+		log.Error(errStr)
+		return created, "", errors.New(errStr)
+	}
+	defer f.Close()
+
+	if _, _, err := puller.Pull(registry.FilesTarget{Root: f}, false, os.Stderr, resolver); err != nil {
 		errStr := fmt.Sprintf("error pulling %s from containerd: %v", ref, err)
 		log.Error(errStr)
 		return created, "", errors.New(errStr)
-	}
-
-	if artifact.Root == nil {
-		errStr := fmt.Sprintf("image %s has no container root: %v", ref, err)
-		log.Error(errStr)
-		return created, "", errors.New(errStr)
-	}
-
-	// now move the root disk over
-	if artifact.Root == nil || artifact.Root.Source == nil {
-		err = fmt.Errorf("createVdiskVolume(%s): could not get artifact root path from %s: %v", status.Key(), filelocation, err)
-		log.Errorf(err.Error())
-		return created, "", err
-	}
-	rootDisk := path.Join(tmpDir, artifact.Root.Source.GetPath())
-	if err := os.Rename(rootDisk, filelocation); err != nil {
-		log.Errorf("createVdiskVolume(%s): error renaming %s to %s: %v", status.Key(), rootDisk, filelocation, err)
-		return created, "", err
 	}
 
 	// Do we need to expand disk?

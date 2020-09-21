@@ -627,18 +627,18 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	return changed, del
 }
 
-func installBaseOsObject(srcFilename string, dstFilename string) error {
+func installBaseOsObject(image string, dstFilename string) error {
 
-	log.Infof("installBaseOsObject: %s to %s", srcFilename, dstFilename)
+	log.Infof("installBaseOsObject: %s to %s", image, dstFilename)
 
 	if dstFilename == "" {
 		errStr := fmt.Sprintf("installBaseOsObject: unassigned destination partition for %s",
-			srcFilename)
+			image)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
 
-	err := zboot.WriteToPartition(log, srcFilename, dstFilename)
+	err := zboot.WriteToPartition(log, image, dstFilename)
 	if err != nil {
 		errStr := fmt.Sprintf("installBaseOsObject: WriteToPartition failed %s: %s",
 			dstFilename, err)
