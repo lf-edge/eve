@@ -36,6 +36,7 @@ type DomainConfig struct {
 	CipherBlockStatus
 }
 
+// IsContainer signals whether a domain happens to be based on an OCI container
 // FIXME we still have a few places where IsContainer is needed
 // however, the goal is to get rid of it completely. Before that
 // happens our heuristic is to declare any app with the first volume

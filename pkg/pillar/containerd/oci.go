@@ -347,7 +347,7 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 	}
 
 	// Validating if there are enough disks provided for the mount-points
-	if len(disks) - id < len(s.volumes) {
+	if len(disks)-id < len(s.volumes) {
 		// If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
 		// won't be enough disks to satisfy required mount-points.
 		return fmt.Errorf("updateMounts: Number of volumes provided: %v is less than number of mount-points: %v",

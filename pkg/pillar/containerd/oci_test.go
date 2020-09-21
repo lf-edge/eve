@@ -733,8 +733,8 @@ func TestPrepareMount(t *testing.T) {
 func TestUpdateMounts(t *testing.T) {
 	g := NewGomegaWithT(t)
 	spec := ociSpec{
-		name: "test",
-		volumes: map[string]struct{}{"/myvol":{}, "/hisvol":{}},
+		name:    "test",
+		volumes: map[string]struct{}{"/myvol": {}, "/hisvol": {}},
 		Spec: specs.Spec{
 			Mounts: []specs.Mount{
 				{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
@@ -744,9 +744,9 @@ func TestUpdateMounts(t *testing.T) {
 	}
 
 	tresAmigos := []types.DiskStatus{
-		{ MountDir: "/", Format: zconfig.Format_CONTAINER, FileLocation: "/foo/bar" },
-		{ MountDir: "", Format: zconfig.Format_CONTAINER, FileLocation: "/foo/baz"},
-		{ MountDir: "/override", Format: zconfig.Format_QCOW2, FileLocation: "/foo/bam.qcow2", ReadOnly: true},
+		{MountDir: "/", Format: zconfig.Format_CONTAINER, FileLocation: "/foo/bar"},
+		{MountDir: "", Format: zconfig.Format_CONTAINER, FileLocation: "/foo/baz"},
+		{MountDir: "/override", Format: zconfig.Format_QCOW2, FileLocation: "/foo/bam.qcow2", ReadOnly: true},
 	}
 
 	g.Expect(spec.UpdateMounts([]types.DiskStatus{})).To(HaveOccurred())
@@ -769,20 +769,20 @@ func TestUpdateMounts(t *testing.T) {
 func TestAddLoader(t *testing.T) {
 	g := NewGomegaWithT(t)
 	specTemplate := ociSpec{
-		name: "test",
-		volumes: map[string]struct{}{"/myvol":{}, "/hisvol":{}},
+		name:    "test",
+		volumes: map[string]struct{}{"/myvol": {}, "/hisvol": {}},
 		Spec: specs.Spec{
 			Process: &specs.Process{
 				Args: []string{"/bin/sh"},
-				Cwd: "/",
-				Env: []string{"FOO=foo", "BAR=bar"},
+				Cwd:  "/",
+				Env:  []string{"FOO=foo", "BAR=bar"},
 			},
-			Root: &specs.Root{ Path: "/" },
+			Root: &specs.Root{Path: "/"},
 			Mounts: []specs.Mount{
 				{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
 			},
 			Annotations: map[string]string{},
-			Linux: &specs.Linux { CgroupsPath: "/foo/bar/baz", },
+			Linux:       &specs.Linux{CgroupsPath: "/foo/bar/baz"},
 		},
 	}
 	spec1 := deepCopy(specTemplate).(ociSpec)
@@ -794,7 +794,7 @@ func TestAddLoader(t *testing.T) {
 	} else {
 		defer os.RemoveAll(tmpdir)
 	}
-	if err := ioutil.WriteFile(filepath.Join(tmpdir, ociRuntimeSpecFilename),[]byte(loaderRuntimeSpec),0666); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(tmpdir, ociRuntimeSpecFilename), []byte(loaderRuntimeSpec), 0666); err != nil {
 		log.Fatalf("failed to create tmpfile %v", err)
 	}
 
