@@ -476,6 +476,8 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 		log.Errorf("populateInitBlobStatus: exception while fetching existing blobs from CAS: %v", err)
 		return
 	}
+	log.Noticef("populateInitBlobStatus got %d from CAS",
+		len(blobInfoList))
 	mediaMap, err := ctx.casClient.ListBlobsMediaTypes()
 	if err != nil {
 		log.Errorf("populateInitBlobStatus: exception while fetching existing media types from CAS: %v", err)
@@ -501,6 +503,8 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 				Progress:    100,
 			}
 			newBlobStatus = append(newBlobStatus, blobStatus)
+		} else {
+			log.Infof("populateInitBlobStatus: Found existing blob %s in CAS", blobInfo.Digest)
 		}
 	}
 	if len(newBlobStatus) > 0 {
