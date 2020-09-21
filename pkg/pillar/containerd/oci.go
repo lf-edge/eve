@@ -178,7 +178,7 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 	}
 
 	if err = s.updateFromImageConfig(imgInfo.Config); err == nil {
-		s.Root.Path = "/var" + volume + "/rootfs"
+		s.Root.Path = volume + "/rootfs"
 	}
 
 	return err
@@ -241,7 +241,7 @@ func (s *ociSpec) updateMounts(disks []types.DiskStatus, nested bool) {
 	}
 
 	for id, disk := range disks {
-		src := path.Join("/var", disk.FileLocation)
+		src := disk.FileLocation
 		opts := []string{"rbind"}
 		if disk.ReadOnly {
 			opts = append(opts, "ro")
