@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/sirupsen/logrus"
 )
 
@@ -112,7 +112,7 @@ func (s *Publisher) Start() error {
 	if s.listener == nil {
 		return nil
 	}
-	s.log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
+	s.log.Infof("Creating %s at %s", "func", logutils.GetMyStack())
 	go func(s *Publisher) {
 		instance := 0
 		done := false
@@ -130,7 +130,7 @@ func (s *Publisher) Start() error {
 				done = true
 				continue
 			}
-			s.log.Infof("Creating %s at %s", "s.serveConnection", agentlog.GetMyStack())
+			s.log.Infof("Creating %s at %s", "s.serveConnection", logutils.GetMyStack())
 			go s.serveConnection(c, instance)
 			maybeLogAllocated(s.log)
 			instance++

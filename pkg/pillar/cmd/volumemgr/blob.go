@@ -541,7 +541,7 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 	contentIDAndContentTreeStatus := getAllAppContentTreeStatus(ctx)
 	referenceMap := make(map[string]interface{})
 	for _, contentTreeStatus := range contentIDAndContentTreeStatus {
-		referenceMap[getReferenceID(contentTreeStatus.ContentID.String(), contentTreeStatus.RelativeURL)] = true
+		referenceMap[contentTreeStatus.ReferenceID()] = true
 	}
 
 	casImages, err := ctx.casClient.ListImages()

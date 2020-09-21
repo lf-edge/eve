@@ -256,7 +256,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// before we mark it as verified, load it into the CAS store
 
 		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
-		refID := getReferenceID(status.ContentID.String(), status.RelativeURL)
+		refID := status.ReferenceID()
 
 		// if we just had an image pointing to a single blob that is not index or manifest, we need
 		// to add a manifest to it.
@@ -287,12 +287,16 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
 					status.Key(), loadedBlob.Sha256)
 				MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
+				// remove the verifierref and set the path to "" as we delete the verifier path
 				loadedBlob.HasVerifierRef = false
+				loadedBlob.Path = ""
 			}
 			publishBlobStatus(ctx, loadedBlob)
 		}
 		log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
 		status.State = types.VERIFIED
+		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
+		status.FileLocation = ""
 		changed = true
 	}
 
@@ -376,7 +380,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName)
 				return changed, false
 			}
-			status.ReferenceName = getReferenceID(ctStatus.ContentID.String(), ctStatus.RelativeURL)
+			status.ReferenceName = ctStatus.ReferenceID()
 			status.ContentFormat = ctStatus.Format
 			changed = true
 			// Asynch creation; ensure we have requested it
@@ -614,10 +618,4 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	if !found {
 		log.Warnf("XXX updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
 	}
-}
-
-//getReferenceID returns a unique referenceID for a contentTree.
-//It necessary to prepend contentID as we would get same referenceID in case if 2 contentTree has same relativeURL,
-func getReferenceID(contentID, relativeURL string) string {
-	return fmt.Sprintf("%s-%s", contentID, relativeURL)
 }

@@ -285,7 +285,7 @@ func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
 	if status.Format == zconfig.Format_CONTAINER {
 		//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
-		if err := ctx.casClient.RemoveImage(getReferenceID(status.ContentID.String(), status.RelativeURL)); err != nil {
+		if err := ctx.casClient.RemoveImage(status.ReferenceID()); err != nil {
 			log.Errorf("deleteContentTree: exception while deleting image %s: %s",
 				status.RelativeURL, err.Error())
 		}

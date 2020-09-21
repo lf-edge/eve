@@ -17,7 +17,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
@@ -28,6 +30,7 @@ type MountFlags uint
 const (
 	// MountFlagRDONLY readOnly mount
 	MountFlagRDONLY MountFlags = 0x01
+	casClientType              = "containerd"
 )
 
 // mutex for zboot/dd APIs
@@ -317,7 +320,12 @@ func GetOtherPartitionDevName() string {
 	return GetPartitionDevname(partName)
 }
 
-func WriteToPartition(log *base.LogObject, srcFilename string, partName string) error {
+func WriteToPartition(log *base.LogObject, image string, partName string) error {
+
+	var (
+		casClient cas.CAS
+		err       error
+	)
 
 	if !IsOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
@@ -332,16 +340,51 @@ func WriteToPartition(log *base.LogObject, srcFilename string, partName string) 
 		return errors.New(errStr)
 	}
 
-	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
+	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, image)
 
+	// use the edge-containers library to extract the data we need
+	puller := registry.Puller{
+		Image: image,
+	}
+	if casClient, err = cas.NewCAS(casClientType); err != nil {
+		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
+		log.Fatal(err)
+	}
+
+	defer casClient.CloseClient()
+
+	resolver, err := casClient.Resolver()
+	if err != nil {
+		errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+
+	// create a writer for the file where we want
 	zbootMutex.Lock()
-	_, err := base.Exec(log, "dd", "if="+srcFilename, "of="+devName, "bs=8M").Output()
-	zbootMutex.Unlock()
+	defer zbootMutex.Unlock()
+
+	f, err := os.OpenFile(devName,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		errStr := fmt.Sprintf("error writing to partition device at %s: %v", devName, err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+	defer f.Close()
+
+	if _, _, err := puller.Pull(registry.FilesTarget{Root: f}, false, os.Stderr, resolver); err != nil {
+		errStr := fmt.Sprintf("error pulling %s from containerd: %v", image, err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+
 	if err != nil {
 		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)
 		log.Fatal(errStr)
 		return err
 	}
+	// zbootMutex automatically unlocked by the defer
 	return nil
 }
 
