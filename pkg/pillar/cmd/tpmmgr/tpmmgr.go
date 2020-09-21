@@ -1187,6 +1187,18 @@ func getEkCertMetaData() ([]types.CertMetaData, error) {
 	return EkCertMetaData, nil
 }
 
+// Write TPM vendor, firmware info to given file.
+func saveTpmInfo(filename string) error {
+	info, err := etpm.FetchTpmHwInfo()
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(filename, []byte(info), 0600)
+}
+
+// Run is the entry point for tpmmgr, from zedbox
+//nolint:funlen,gocognit,gocyclo
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
 	log = logArg
@@ -1257,6 +1269,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in generating credentials: %v", err)
 			return 1
+		}
+	case "saveTpmInfo":
+		//nolint:gomnd // very straightforward for anyone to understand why "2" is used here
+		if len(flag.Args()) != 2 {
+			log.Error("Insufficient arguments. Usage: tpmmgr saveTpmInfo filePath")
+
+			return 1
+		}
+
+		if err := saveTpmInfo(flag.Args()[1]); err != nil {
+			log.Errorf("saveTpmInfo failed: %v", err)
 		}
 	case "runAsService":
 		log.Infof("Starting %s", agentName)

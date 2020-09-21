@@ -21,6 +21,7 @@ AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
+TPMINFOTEMPFILE=/var/tmp/tpminfo.txt
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
@@ -256,7 +257,10 @@ access_usb() {
         if [ -d /mnt/dump ]; then
             echo "$(date -Ins -u) Dumping diagnostics to USB stick"
             # Check if it fits without clobbering an existing tar file
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /persist/config /run/ /persist/log "/persist/rsyslog"; then
+            if ! $BINDIR/tpmmgr saveTpmInfo $TPMINFOTEMPFILE; then
+                echo "$(date -Ins -u) saveTpmInfo failed" > $TPMINFOTEMPFILE
+            fi
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log "/persist/rsyslog" $TPMINFOTEMPFILE; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar

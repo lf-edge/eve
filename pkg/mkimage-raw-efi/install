@@ -71,6 +71,14 @@ mount_part() {
    mount "$@" "/dev/$ID" "/run/$PART"
 }
 
+#collect_tpm_info FILE_TO_DEPOSIT_TPM_INFO
+collect_tpm_info() {
+   # Link /proc/self/fd from /dev/fd
+   ln -s /proc/self/fd /dev/fd
+   PILLAR=/mnt/containers/services/pillar/lower
+   "$PILLAR"/opt/zededa/bin/tpmmgr saveTpmInfo "$1"
+}
+
 # collect_black_box FOLDER_TO_PUT_BLACK_BOX
 collect_black_box() {
    lsblk > "$1/lsblk.txt"
@@ -79,6 +87,7 @@ collect_black_box() {
    tar -C /sys -cjf "$1/sysfs.tar.bz2" .
    tar -C /run/CONFIG -cjf "$1/config.tar.bz2" .
    tar -C /run/P3 -cjf "$1/persist.tar.bz2" status rsyslog log config checkpoint certs agentdebug
+   collect_tpm_info "$1"/tpminfo.txt
 }
 
 # measure of last resort: we nuke all partition tables
