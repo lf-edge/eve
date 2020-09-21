@@ -182,6 +182,26 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		return true, remoteTemporaryFailure, intfStatusMap, nil
 	}
 
+	// For non-mgmt (i.e. app-shared) ports, the presence of a valid IP address
+	// along with DNS server and gateway is good enough for us to deem them as Success.
+	// We do not test non-mgmt ports periodically, which makes it not possible to clear
+	// any old errors on them. Here we check for presence of valid IP/DNS on non-mgmt
+	// ports and accordingly mark their status.
+	for _, port := range ctx.DeviceNetworkStatus.Ports {
+		if port.IsMgmt {
+			continue
+		}
+		foundUnicast := false
+		for _, addr := range port.AddrInfoList {
+			if !addr.Addr.IsLinkLocalUnicast() {
+				foundUnicast = true
+			}
+		}
+		if foundUnicast && len(port.DefaultRouters) > 0 && len(port.DNSServers) > 0 {
+			intfStatusMap.RecordSuccess(port.IfName)
+		}
+	}
+
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
 		if try == 0 {

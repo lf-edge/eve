@@ -39,7 +39,7 @@ func UpdateDhcpClient(log *base.LogObject, newConfig, oldConfig types.DevicePort
 		} else {
 			log.Infof("updateDhcpClient: found old %v\n",
 				oldU)
-			if !reflect.DeepEqual(newU.DhcpConfig, oldU.DhcpConfig) {
+			if !reflect.DeepEqual(newU.DhcpConfig, oldU.DhcpConfig) || oldU.HasError() {
 				log.Infof("updateDhcpClient: changed %s\n",
 					newU.IfName)
 				doDhcpClientInactivate(log, *oldU)
@@ -212,6 +212,23 @@ func doDhcpClientInactivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 	default:
 		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
+	}
+}
+
+// MaybeStartDhcpClient : Start dhcpcd if required
+func MaybeStartDhcpClient(log *base.LogObject, ifindex int, config types.DevicePortConfig) {
+	ifname, _, _ := IfindexToName(log, ifindex)
+	log.Infof("MaybeStartDhcpClient: Ifindex: %d", ifindex)
+	if ifname != "" {
+		npc := lookupOnIfname(config, ifname)
+		if npc == nil {
+			log.Infof("MaybeStartDhcpClient: ifindex (%d) is not part of current DevicePortConfig", ifindex)
+			return
+		}
+		doDhcpClientInactivate(log, *npc)
+		doDhcpClientActivate(log, *npc)
+	} else {
+		log.Infof("MaybeStartDhcpClient: ifindex (%d) is not found in kernel", ifindex)
 	}
 }
 

@@ -402,19 +402,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
-	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestBetterInterval)
-	if dnc.NetworkTestBetterInterval == 0 {
-		log.Warnln("NOT running TestBetterTimer")
-		// Dummy which is stopped needed for select loop
-		networkTestBetterTimer := time.NewTimer(time.Hour)
-		networkTestBetterTimer.Stop()
-		dnc.NetworkTestBetterTimer = networkTestBetterTimer
-	} else {
-		networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval) * time.Second
-		networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
-		dnc.NetworkTestBetterTimer = networkTestBetterTimer
-	}
-
 	// Look for address and link changes
 	routeChanges := devicenetwork.RouteChangeInit(log)
 	addrChanges := devicenetwork.AddrChangeInit(log)
@@ -597,7 +584,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			if !ok {
 				log.Infof("Network testBetterTimer stopped?")
-			} else if dnc.NextDPCIndex == 0 {
+			} else if dnc.NextDPCIndex == 0 && !dnc.DeviceNetworkStatus.HasErrors() {
 				log.Debugf("Network testBetterTimer at zero ignored")
 			} else {
 				log.Infof("Network testBetterTimer at index %d",
@@ -674,6 +661,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
 						"LinkChange", true)
+
+					// If an interface that is part of current DPC has changed (ADD/DELETE),
+					// we should re-start DNS verification to setup DHCP and get addresses if any.
+					if !nimCtx.deviceNetworkContext.Pending.Inprogress {
+						devicenetwork.MaybeStartDhcpClient(log, ifindex, *nimCtx.deviceNetworkContext.DevicePortConfig)
+					}
 				}
 			}
 			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
@@ -738,7 +731,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			if !ok {
 				log.Infof("Network testBetterTimer stopped?")
-			} else if dnc.NextDPCIndex == 0 {
+			} else if dnc.NextDPCIndex == 0 && !dnc.DeviceNetworkStatus.HasErrors() {
 				log.Debugf("Network testBetterTimer at zero ignored")
 			} else {
 				log.Infof("Network testBetterTimer at index %d",
@@ -991,7 +984,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			} else {
 				log.Infof("Starting TestBetterTimer: %d",
 					gcpNetworkTestBetterInterval)
-				networkTestBetterInterval := time.Duration(ctx.deviceNetworkContext.NetworkTestBetterInterval) * time.Second
+				networkTestBetterInterval := time.Duration(gcpNetworkTestBetterInterval) * time.Second
 				networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
 				ctx.deviceNetworkContext.NetworkTestBetterTimer = networkTestBetterTimer
 			}

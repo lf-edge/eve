@@ -246,7 +246,12 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	log.Infof("VerifyPending: No required ports missing. " +
 		"parsing device port config list")
 
-	if !pending.PendDPC.MostlyEqual(&pending.OldDPC) {
+	// When there are port level errors in DPC, we should re-test the
+	// existing DPC (even when the old and new DPC are same). There could
+	// have been a delay in the port being available in kernel or other
+	// transient errors during last test. We should re-test the DPC to see
+	// if the previous errors are gone and the setup improves.
+	if !pending.PendDPC.MostlyEqual(&pending.OldDPC) || ctx.DeviceNetworkStatus.HasErrors() {
 		log.Infof("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
 		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
 
@@ -429,7 +434,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					pending.PendDPC.Key)
 			}
 			passed = true
-			if ctx.NextDPCIndex == 0 {
+
+			// If there are port level errors in current selected DPC, we should mark it
+			// for re-test during the next TestBetterTimer innvocation.
+			if ctx.NextDPCIndex == 0 && !pending.PendDNS.HasErrors() {
 				log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
 					"at index %d in DPC list",
 					ctx.NextDPCIndex)
@@ -675,6 +683,11 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 	log.Infof("Initial DPCL %v", storedDpcl)
 	var dpcl types.DevicePortConfigList
 	for _, portConfig := range storedDpcl.PortConfigList {
+		// Clear the errors from before reboot and start fresh.
+		for i := 0; i < len(portConfig.Ports); i++ {
+			portPtr := &portConfig.Ports[i]
+			portPtr.Reset()
+		}
 		if portConfig.CountMgmtPorts() == 0 {
 			log.Warnf("Stored DevicePortConfig key %s has no management ports; ignored",
 				portConfig.Key)

@@ -584,6 +584,13 @@ func (trPtr *TestResults) Update(src TestResults) {
 	}
 }
 
+// Reset test results
+func (trPtr *TestResults) Reset() {
+	trPtr.LastFailed = time.Time{}
+	trPtr.LastSucceeded = time.Time{}
+	trPtr.LastError = ""
+}
+
 type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig method to get config pointer
@@ -1077,6 +1084,16 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		}
 	}
 	return true
+}
+
+// HasErrors - Check if there are any port errors
+func (status DeviceNetworkStatus) HasErrors() bool {
+	for _, port := range status.Ports {
+		if port.HasError() {
+			return true
+		}
+	}
+	return false
 }
 
 // EqualSubnet compares two subnets; silently assumes contigious masks
