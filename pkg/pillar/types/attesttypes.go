@@ -71,6 +71,21 @@ type CertHashType uint8
 //PCRExtendHashType carries the hash algo used in PCR Extend operation
 type PCRExtendHashType uint8
 
+//CertMetaDataType is used for telling which type of MetaData is populated
+type CertMetaDataType uint8
+
+//Different values for CertMetaDataType
+const (
+	CertMetaDataTypeNone CertMetaDataType = iota + 0
+	CertMetaDataTypeTpm2Public
+)
+
+//CertMetaData stores a pair of type and value for a MetaData
+type CertMetaData struct {
+	Type CertMetaDataType
+	Data []byte
+}
+
 //Various certificate types published by tpmmgr
 const (
 	SigAlgNone SigAlg = iota + 0
@@ -165,11 +180,12 @@ const (
 // - attest signing certificate published by tpmmgr
 // - ECDH certificate published by tpmmgr
 type EdgeNodeCert struct {
-	HashAlgo CertHashType //hash method used to arrive at certHash
-	CertID   []byte       //Hash of the cert, computed using hashAlgo
-	CertType CertType     //type of the certificate
-	Cert     []byte       //PEM encoded
-	IsTpm    bool         //TPM generated or, not
+	HashAlgo      CertHashType   //hash method used to arrive at certHash
+	CertID        []byte         //Hash of the cert, computed using hashAlgo
+	CertType      CertType       //type of the certificate
+	Cert          []byte         //PEM encoded
+	IsTpm         bool           //TPM generated or, not
+	MetaDataItems []CertMetaData //Meta data items associated with this cert(can be empty)
 }
 
 //Key uniquely identifies the certificate
