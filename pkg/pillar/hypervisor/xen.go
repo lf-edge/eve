@@ -430,7 +430,7 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 		log.Errorln("xl destroy output ", stdOut, stdErr)
 		return fmt.Errorf("xl destroy failed: %s %s", stdOut, stdErr)
 	}
-	log.Infof("xl destroy done\n")
+	log.Infof("xl destroy done %s %d\n", domainName, domainID)
 
 	// now lets take care of the task itself
 	if err := ctx.ctrdContext.Stop(domainName, domainID, true); err != nil {
