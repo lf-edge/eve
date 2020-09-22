@@ -130,7 +130,7 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 					url, reqlen, resp.StatusCode)
 				return resp, nil, remoteTemporaryFailure, err
 			}
-			if resp.StatusCode == http.StatusForbidden {
+			if resp != nil && resp.StatusCode == http.StatusForbidden {
 				return resp, nil, remoteTemporaryFailure, err
 			}
 			if err != nil {
