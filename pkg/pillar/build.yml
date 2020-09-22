@@ -11,9 +11,9 @@ config:
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
     - /run:/run
-    - /var/config:/config
+    - /config:/config
     - /:/hostfs
-    - /var/persist:/persist:rshared,rbind
+    - /persist:/persist:rshared,rbind
   net: host
   capabilities:
     - all

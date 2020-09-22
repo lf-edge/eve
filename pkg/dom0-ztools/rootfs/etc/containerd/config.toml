@@ -1,5 +1,5 @@
 state = "/run/containerd"
-root = "/var/persist/containerd"
+root = "/persist/containerd"
 disabled_plugins = ["cri", "btrfs", "aufs"]
 
 [grpc]
@@ -19,4 +19,4 @@ disabled_plugins = ["cri", "btrfs", "aufs"]
 
 # [plugins]
 #  [plugins.content]
-#    root = "/var/persist/vault/content"
+#    root = "/persist/vault/content"
