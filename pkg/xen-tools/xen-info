@@ -1,8 +1,42 @@
 #!/bin/sh
 
+UnknownStateThreshold=10
 bail() {
    echo "$@"
    exit 1
+}
+
+handleUnknownState() {
+  # checking if we have unknownStateCounter, if not initializing it.
+  if [ ! -e /dev/unknownStateCounter ]; then
+    echo 0 > /dev/unknownStateCounter
+  fi
+
+  unknownStateCounter=$(cat /dev/unknownStateCounter)
+
+  if [ "$unknownStateCounter" -ge "$UnknownStateThreshold" ]; then
+    # Number of times we got unknown state is > UnknownStateThreshold, so declaring the state as broken
+    echo broken > /dev/status
+  else
+    # Number of times we got unknown state is <= UnknownStateThreshold, so declaring the state as running
+    echo running > /dev/status
+  fi
+
+  unknownStateCounter=$((unknownStateCounter + 1))
+  echo $unknownStateCounter > /dev/unknownStateCounter
+}
+
+handleKnownState() {
+  # resetting unknownStateCounter
+  echo 0 > /dev/unknownStateCounter
+  echo "$1" > /dev/status
+
+  # an additional check we do for running domains is to make sure device model is still around
+  if [ "$1" = running ] &&
+     DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid") &&
+     ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
+     echo broken > /dev/status
+  fi
 }
 
 # pre-flight checks
@@ -15,29 +49,24 @@ waited=0
 ID=$(xl domid "$1" 2>/dev/null)
 while [ -z "$ID" ] && [ "$waited" -lt 60 ]; do
         ID=$(xl domid "$1" 2>/dev/null)
-        sleep 3
-        waited=$((waited + 3))
+        if [ -z "$ID" ]; then
+          sleep 3
+          waited=$((waited + 3))
+        fi
 done
 [ -z "$ID" ] && bail "Couldn't find domain ID for domain $1"
 
 # we expect to get rbpscd where every letter can also be a dash (-)
 # Name    ID    Mem    VCPUs    State    Time(s)
 case $(xl list "$ID" | awk '{st=$5;} END {print st;}') in
-   *d) STATUS=halting ;;
-  *c*) STATUS=broken  ;;
-  *s*) STATUS=halting ;;
-  *p*) STATUS=paused  ;;
-  *b*) STATUS=running ;;
-   r*) STATUS=running ;;
-    *) STATUS=$(cat /dev/status) ;;
+   *d) handleKnownState halting ;;
+  *c*) handleKnownState broken  ;;
+  *s*) handleKnownState halting ;;
+  *p*) handleKnownState paused  ;;
+  *b*) handleKnownState running ;;
+   r*) handleKnownState running ;;
+    *) handleUnknownState ;;
 esac
 
-# an additional check we do for running domains is to make sure device model is still around
-if [ "$STATUS" = running ] &&
-   DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid") &&
-   ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
-   STATUS=broken
-fi
-
-# finally deposit the current status
-echo "$STATUS" | tee /dev/status
+# finally print the current status
+cat /dev/status
