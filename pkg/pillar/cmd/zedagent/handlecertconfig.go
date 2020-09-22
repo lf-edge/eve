@@ -305,6 +305,12 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 			Cert:     config.Cert,
 			CertHash: config.CertID,
 		}
+		for _, metaData := range config.MetaDataItems {
+			certMetaData := new(zcert.ZCertMetaData)
+			certMetaData.Type = convertLocalToAPICertMetaDataType(metaData.Type)
+			certMetaData.MetaData = metaData.Data
+			certMsg.MetaDataItems = append(certMsg.MetaDataItems, certMetaData)
+		}
 		attestReq.Certs = append(attestReq.Certs, &certMsg)
 	}
 
@@ -439,5 +445,15 @@ func convertLocalToApiCertType(certType types.CertType) zcert.ZCertType {
 		errStr := fmt.Sprintf("convertLocalToApiCertType(): unknown certificate type: %v", certType)
 		log.Fatal(errStr)
 		return zcert.ZCertType_CERT_TYPE_CONTROLLER_NONE
+	}
+}
+
+func convertLocalToAPICertMetaDataType(metaDataType types.CertMetaDataType) zcert.ZCertMetaDataType {
+	switch metaDataType {
+	case types.CertMetaDataTypeTpm2Public:
+		return zcert.ZCertMetaDataType_Z_CERT_META_DATA_TYPE_TPM2_PUBLIC
+	default:
+		log.Errorf("convertLocalToAPICertMetaDataType: unknown type %v", metaDataType)
+		return zcert.ZCertMetaDataType_Z_CERT_META_DATA_TYPE_INVALID
 	}
 }
