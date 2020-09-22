@@ -191,13 +191,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		if port.IsMgmt {
 			continue
 		}
-		foundUnicast := false
-		for _, addr := range port.AddrInfoList {
-			if !addr.Addr.IsLinkLocalUnicast() {
-				foundUnicast = true
-			}
-		}
-		if foundUnicast && len(port.DefaultRouters) > 0 && len(port.DNSServers) > 0 {
+		if port.HasIPAndDNS() {
 			intfStatusMap.RecordSuccess(port.IfName)
 		}
 	}

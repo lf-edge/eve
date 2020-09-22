@@ -686,7 +686,7 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 		// Clear the errors from before reboot and start fresh.
 		for i := 0; i < len(portConfig.Ports); i++ {
 			portPtr := &portConfig.Ports[i]
-			portPtr.Reset()
+			portPtr.Clear()
 		}
 		if portConfig.CountMgmtPorts() == 0 {
 			log.Warnf("Stored DevicePortConfig key %s has no management ports; ignored",
