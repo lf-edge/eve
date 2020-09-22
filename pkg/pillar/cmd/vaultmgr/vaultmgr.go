@@ -411,6 +411,13 @@ func createVault(vaultPath string) error {
 	return linkKeyrings()
 }
 
+//Is fscrypt saying that this folder is encrypted?
+func isFscryptEnabled(vaultPath string) bool {
+	args := getStatusParams(vaultPath)
+	_, _, err := execCmd(vault.FscryptPath, args...)
+	return err == nil
+}
+
 //if deprecated is set, only unlock will be attempted, and creation of the vault will be skipped
 func setupVault(vaultPath string, deprecated bool) error {
 	_, err := os.Stat(vaultPath)
@@ -604,7 +611,17 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 	if !etpm.IsTpmEnabled() {
 		_, err := os.Stat(defaultVault)
 		if os.IsNotExist(err) {
+			//No TPM or TPM lacks required features
+			//Vault is just a plain folder in those cases
 			return os.MkdirAll(defaultVault, 755)
+		}
+		if err == nil && isFscryptEnabled(defaultVault) {
+			//old versions of EVE created vault on TPM platforms
+			//irrespective of their PCR/ECDSA capabilities
+			//which is a bug. At the very best, we can just unlock it
+			//just to keep the encryption ON. No sealing/attestation support
+			//in these cases
+			return setupVault(defaultVault, true)
 		}
 		return err
 	}
