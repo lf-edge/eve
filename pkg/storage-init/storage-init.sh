@@ -3,13 +3,12 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-PERSISTDIR=/var/persist
-CONFIGDIR=/var/config
+PERSISTDIR=/persist
+CONFIGDIR=/config
 
-mkdir -p $PERSISTDIR
-chmod 700 $PERSISTDIR
-mkdir -p $CONFIGDIR
-chmod 700 $CONFIGDIR
+# the following is here just for compatibility reasons and it should go away soon
+ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
+ln -s "$PERSISTDIR" "/var/$PERSISTDIR"
 
 if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
@@ -96,10 +95,10 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
         # zero out the request (regardless of whether we can convert to zfs)
         dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
-        chroot /hostfs zpool create -f -m /var/persist -o feature@encryption=enabled persist "$P3"
+        chroot /hostfs zpool create -f -m "$PERSISTDIR" -o feature@encryption=enabled persist "$P3"
         # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
         #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
-        chroot /hostfs zfs create -p -o mountpoint=/var/persist/containerd/io.containerd.snapshotter.v1.zfs persist/snapshots
+        chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
         P3_FS_TYPE=zfs_member
     fi
 

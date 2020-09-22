@@ -7,7 +7,7 @@ config:
     - /dev:/dev
     - /dev/pts:/dev/pts
     - /etc/resolv.conf:/etc/resolv.conf
-    - /var/persist:/persist
+    - /persist:/persist
     - /:/hostfs
   net: host
   capabilities:

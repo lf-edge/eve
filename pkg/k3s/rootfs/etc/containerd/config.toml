@@ -1,6 +1,6 @@
 state = "/run/containerd"
-root = "/var/lib/containerd"
-disabled_plugins = ["cri"]
+root = "/persist/containerd"
+disabled_plugins = ["cri", "btrfs", "aufs"]
 
 [grpc]
   address = "/run/containerd/containerd.sock"
@@ -13,3 +13,10 @@ disabled_plugins = ["cri"]
 
 [metrics]
   address = ""
+
+[cgroup]
+  path = "/eve/containerd"
+
+# [plugins]
+#  [plugins.content]
+#    root = "/persist/vault/content"

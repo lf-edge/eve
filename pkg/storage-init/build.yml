@@ -11,7 +11,9 @@ config:
     - /lib/modules:/lib/modules
     - /dev:/dev
     - /run:/run
-    - /var:/var:rshared,rbind
+    - /var:/var
+    - /persist:/persist:rshared,rbind
+    - /config:/config:rshared,rbind
     - /containers:/containers:rshared,rbind
   rootfsPropagation: shared
   capabilities:

@@ -5,7 +5,7 @@ config:
   binds:
     - /dev:/dev
     - /run:/run
-    - /var/config:/config
+    - /config:/config
   net: host
   capabilities:
     - all
