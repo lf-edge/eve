@@ -188,9 +188,17 @@ func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, over
 	}
 	defer rw.Close()
 	if !overwrite {
-		//don't overwrite if key already exists
-		if _, _, _, err := tpm2.ReadPublic(rw, keyHandle); err == nil {
+		//don't overwrite if key already exists, and if the attributes match up
+		pub, _, _, err := tpm2.ReadPublic(rw, keyHandle)
+		if err == nil && pub.Attributes == template.Attributes {
+			log.Noticef("Attributes match up, not re-creating 0x%X", keyHandle)
 			return nil
+		} else if err == nil {
+			//key is present, but attributes not matching
+			log.Noticef("Attribute mismatch, re-creating 0x%X", keyHandle)
+		} else {
+			//key is not present
+			log.Noticef("key is not present, re-creating 0x%X", keyHandle)
 		}
 	}
 	handle, _, err := tpm2.CreatePrimary(rw,
