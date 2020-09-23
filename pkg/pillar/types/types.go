@@ -30,6 +30,7 @@ const (
 	DOWNLOADED
 	VERIFYING
 	VERIFIED
+	LOADING
 	LOADED
 	CREATING_VOLUME // Volume create in progress
 	CREATED_VOLUME  // Volume create done or failed
@@ -64,6 +65,8 @@ func (state SwState) String() string {
 		return "VERIFYING"
 	case VERIFIED:
 		return "VERIFIED"
+	case LOADING:
+		return "LOADING"
 	case LOADED:
 		return "LOADED"
 	case CREATING_VOLUME:
@@ -110,7 +113,7 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_DOWNLOAD_STARTED
 	case DOWNLOADED, VERIFYING:
 		return info.ZSwState_DOWNLOADED
-	case VERIFIED, LOADED:
+	case VERIFIED, LOADING, LOADED:
 		return info.ZSwState_DELIVERED
 	case CREATING_VOLUME:
 		return info.ZSwState_CREATING_VOLUME
