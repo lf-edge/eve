@@ -270,7 +270,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			// if we have any, append them
 			if len(blobs) > 0 {
 				publishBlobStatus(ctx, blobs...)
-				// order is important
+				// order is important; prepend to existing
 				blobStatuses = append(blobs, blobStatuses...)
 
 				// we changed it, so update the ContentTreeStatus
@@ -279,6 +279,16 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					blobHashes = append(blobHashes, b.Sha256)
 				}
 				status.Blobs = blobHashes
+				// Adding a blob to ContentTreeStatus and incrementing the refcount of that blob should be atomic as
+				// we would depend on that while we remove a blob from ContentTreeStatus and decrement
+				// the RefCount of that blob. In case if the blobs in a ContentTreeStatus in not in sync with the
+				// corresponding Blob's Refcount, then that would lead to Fatal error.
+				// If the same sha appears in multiple places in the ContentTree we intentionally add it twice to the list of
+				// Blobs so that we can have two reference counts on that blob.
+				// Add for the new ones
+				for _, b := range blobs {
+					AddRefToBlobStatus(ctx, b)
+				}
 			}
 		}
 
