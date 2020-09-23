@@ -107,7 +107,7 @@ func installDownloadedObjects(uuidStr, finalObjDir string,
 	for i := range *status {
 		ctsPtr := &(*status)[i]
 
-		if ctsPtr.State == types.VERIFIED {
+		if ctsPtr.State == types.LOADED {
 			err := installDownloadedObject(ctsPtr.ContentID,
 				finalObjDir, ctsPtr)
 			if err != nil {
@@ -136,15 +136,15 @@ func installDownloadedObject(contentID uuid.UUID, finalObjDir string,
 	log.Infof("installDownloadedObject(%s, %v)",
 		contentID, ctsPtr.State)
 
-	if ctsPtr.State != types.VERIFIED {
+	if ctsPtr.State != types.LOADED {
 		return nil
 	}
 	refID = ctsPtr.ReferenceID()
 	if refID == "" {
-		log.Fatalf("XXX no image ID for VERIFIED %s",
+		log.Fatalf("XXX no image ID for LOADED %s",
 			contentID)
 	}
-	log.Infof("For %s reference ID for VERIFIED: %s",
+	log.Infof("For %s reference ID for LOADED: %s",
 		contentID, refID)
 
 	// Move to final installation point
