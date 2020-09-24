@@ -279,7 +279,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
-	if installDownloadedObjects(uuidStr, status.PartitionLabel,
+	if installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
 		&status.ContentTreeStatusList) {
 
 		changed = true
@@ -633,27 +633,6 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	del = true
 	log.Infof("doBaseOsUninstall(%s), Done", status.BaseOsVersion)
 	return changed, del
-}
-
-func installBaseOsObject(image string, dstFilename string) error {
-
-	log.Infof("installBaseOsObject: %s to %s", image, dstFilename)
-
-	if dstFilename == "" {
-		errStr := fmt.Sprintf("installBaseOsObject: unassigned destination partition for %s",
-			image)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-
-	err := zboot.WriteToPartition(log, image, dstFilename)
-	if err != nil {
-		errStr := fmt.Sprintf("installBaseOsObject: WriteToPartition failed %s: %s",
-			dstFilename, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	return nil
 }
 
 // validate whether the image version matches with

@@ -4,7 +4,6 @@
 package baseosmgr
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -98,7 +97,7 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 }
 
 // Note: can not do this in volumemgr since it is triggered by Activate=true
-func installDownloadedObjects(uuidStr, finalObjDir string,
+func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string,
 	status *[]types.ContentTreeStatus) bool {
 
 	ret := true
@@ -108,10 +107,13 @@ func installDownloadedObjects(uuidStr, finalObjDir string,
 		ctsPtr := &(*status)[i]
 
 		if ctsPtr.State == types.LOADED {
-			err := installDownloadedObject(ctsPtr.ContentID,
+			ready, err := installDownloadedObject(ctx, ctsPtr.ContentID,
 				finalObjDir, ctsPtr)
 			if err != nil {
 				log.Error(err)
+			}
+			if !ready {
+				ret = false
 			}
 		}
 		// if something is still not installed, mark accordingly
@@ -125,11 +127,11 @@ func installDownloadedObjects(uuidStr, finalObjDir string,
 }
 
 // If the final installation directory is known, move the object there
-func installDownloadedObject(contentID uuid.UUID, finalObjDir string,
-	ctsPtr *types.ContentTreeStatus) error {
+// returns an error, and if ready
+func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalObjDir string,
+	ctsPtr *types.ContentTreeStatus) (bool, error) {
 
 	var (
-		ret   error
 		refID string
 	)
 
@@ -137,7 +139,7 @@ func installDownloadedObject(contentID uuid.UUID, finalObjDir string,
 		contentID, ctsPtr.State)
 
 	if ctsPtr.State != types.LOADED {
-		return nil
+		return false, nil
 	}
 	refID = ctsPtr.ReferenceID()
 	if refID == "" {
@@ -147,22 +149,35 @@ func installDownloadedObject(contentID uuid.UUID, finalObjDir string,
 	log.Infof("For %s reference ID for LOADED: %s",
 		contentID, refID)
 
-	// Move to final installation point
-	if finalObjDir != "" {
-		ret = installBaseOsObject(refID, finalObjDir)
-	} else {
+	// make sure we have a proper final destination point
+	if finalObjDir == "" {
 		errStr := fmt.Sprintf("installDownloadedObject %s, final dir not set",
 			contentID)
 		log.Errorln(errStr)
-		ret = errors.New(errStr)
+		ctsPtr.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
+		return false, fmt.Errorf(errStr)
 	}
 
-	if ret == nil {
+	// check if we have a result
+	wres := lookupInstallWorkResult(contentID.String())
+	if wres != nil {
+		log.Infof("installDownloadedObject(%s): InstallWorkResult found", contentID)
+		DeleteWorkInstall(contentID.String())
+		if wres.Error != nil {
+			err := fmt.Errorf("installDownloadedObject(%s): InstallWorkResult error, exception while installing: %v", contentID, wres.Error)
+			log.Errorf(err.Error())
+			return false, err
+		}
+		// if we made it here, we successfully completed the job
 		ctsPtr.State = types.INSTALLED
-		log.Infof("installDownloadedObject(%s) done", contentID)
-	} else {
-		errStr := fmt.Sprintf("installDownloadedObject: %s", ret)
-		ctsPtr.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
+		return true, nil
 	}
-	return ret
+
+	// if we made it here, there was no work result, so try to add it
+
+	// Move to final installation point
+	// do this as a background task
+	AddWorkInstall(ctx, contentID.String(), refID, finalObjDir)
+	log.Infof("installDownloadedObject(%s) worker started", contentID)
+	return false, nil
 }
