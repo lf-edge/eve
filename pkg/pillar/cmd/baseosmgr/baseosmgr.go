@@ -101,8 +101,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// publish initial zboot partition status
 	updateAndPublishZbootStatusAll(&ctx)
 
-	// for background work
-	ctx.worker = worker.NewWorker(log, WorkerHandler, ctx, 5)
+	ctx.worker = worker.NewWorker(log, &ctx, 5, map[string]worker.Handler{
+		workInstall: {Request: installWorker, Response: processInstallWorkResult},
+	})
 
 	// report other agents, about, zboot status availability
 	ctx.pubZbootStatus.SignalRestarted()
@@ -138,7 +139,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ctx.subNodeAgentStatus.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
-			HandleWorkResult(&ctx, ctx.worker.Process(res))
+			res.Process(&ctx, true)
 
 		case <-stillRunning.C:
 		}

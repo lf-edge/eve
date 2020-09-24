@@ -11,6 +11,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
+const (
+	workInstall = "install"
+)
+
 // installWorkDescription install work we feed into the worker go routine
 type installWorkDescription struct {
 	contentID string
@@ -18,97 +22,16 @@ type installWorkDescription struct {
 	target    string
 }
 
-// installWorkResult result of sending to a partition
-type installWorkResult struct {
-	worker.WorkResult // Error etc
-}
-
-var pendingInstallMap = make(map[string]bool)
-var installWorkResultMap = make(map[string]installWorkResult)
-
-func lookupPendingInstall(key string) bool {
-	res, ok := pendingInstallMap[key]
-	return ok && res
-}
-
-func addPendingInstall(key string) {
-	pendingInstallMap[key] = true
-}
-
-func deletePendingInstall(key string) {
-	delete(pendingInstallMap, key)
-}
-
-// AddWorkInstall checks if the Key is in the map of pending work
-// and if not kicks of a worker and adds it
+// AddWorkInstall create a Work job to install the provided image to the target path
 func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) {
-	log.Infof("AddWorkInstall(%s)", key)
-	if lookupPendingInstall(key) {
-		log.Infof("AddWorkInstall(%s) found", key)
-		return
-	}
 	d := installWorkDescription{
 		contentID: key,
 		ref:       ref,
 		target:    target,
 	}
-	w := worker.Work{Key: key, Description: d}
-	ctx.worker.Submit(w)
-	addPendingInstall(key)
+	// we do not care about the errors much
+	_ = ctx.worker.Submit(worker.Work{Key: key, Kind: workInstall, Description: d})
 	log.Infof("AddWorkInstall(%s) done", key)
-}
-
-// DeleteWorkInstall is called by user when work is done
-func DeleteWorkInstall(key string) {
-	log.Infof("DeleteWorkInstall(%s)", key)
-	if !lookupPendingInstall(key) {
-		log.Infof("DeleteWorkInstall(%s) NOT found", key)
-		return
-	}
-	deletePendingInstall(key)
-	log.Infof("DeleteWorkInstall(%s) done", key)
-}
-
-func lookupInstallWorkResult(key string) *installWorkResult {
-	if res, ok := installWorkResultMap[key]; ok {
-		return &res
-	}
-	return nil
-}
-
-func addInstallWorkResult(key string, res installWorkResult) {
-	installWorkResultMap[key] = res
-}
-
-func deleteInstallWorkResult(key string) {
-	delete(installWorkResultMap, key)
-}
-
-// HandleWorkResult processes what comes out of the select loop
-func HandleWorkResult(ctx *baseOsMgrContext, res worker.WorkResult) {
-	// we do not really need a switch here, but we might have more types in the future
-	switch res.Description.(type) {
-	case installWorkDescription:
-		processInstallWorkResult(ctx, res)
-	default:
-		log.Fatalf("received unknown work description type %T", res.Description)
-	}
-}
-
-// WorkerHandler worker switchboard for different types of workers
-func WorkerHandler(ctxPtr interface{}, w worker.Work) worker.WorkResult {
-	// we do not really need a switch here, but we might have more types in the future
-	switch t := w.Description.(type) {
-	case installWorkDescription:
-		return installWorker(ctxPtr, w)
-	default:
-		return worker.WorkResult{
-			Key:         w.Key,
-			Description: w.Description,
-			Error:       fmt.Errorf("unknown work description type %v", t),
-			ErrorTime:   time.Now(),
-		}
-	}
 }
 
 // installWorker implementation of work.WorkFunction that installs an image to a particular location
@@ -139,27 +62,9 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 }
 
 // processInstallWorkResult handle the work result that was an installation
-func processInstallWorkResult(ctx *baseOsMgrContext, res worker.WorkResult) {
+func processInstallWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
+	ctx := ctxPtr.(*baseOsMgrContext)
 	d := res.Description.(installWorkDescription)
-	log.Infof("XXX processInstallWorkResult")
-	wres := installWorkResult{
-		WorkResult: res,
-	}
-	addInstallWorkResult(res.Key, wres)
-	config := lookupBaseOsConfig(ctx, d.contentID)
-	if config == nil {
-		log.Errorf("processInstallWorkResult(%s) not found",
-			d.contentID)
-		return
-	}
-	status := lookupBaseOsStatus(ctx, d.contentID)
-	if status == nil {
-		log.Errorf("processInstallWorkResult(%s) no status",
-			d.contentID)
-		return
-	}
-	log.Infof("processInstallWorkResult(%s)", d.contentID)
-
-	// handle the change event for this base os config
-	baseOsHandleStatusUpdate(ctx, config, status)
+	baseOsHandleStatusUpdateUUID(ctx, d.contentID)
+	return nil
 }

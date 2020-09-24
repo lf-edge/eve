@@ -6,101 +6,16 @@ package volumemgr
 // Interface to worker to run the create and destroy in separate goroutines
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 )
 
-// InitHandleWork returns an object with a MsgChan to be used in the main select loop
-// When something is received on that channel the select loop should call HandleWorkResult
-func InitHandleWork(ctx *volumemgrContext) *worker.Worker {
-	// A small channel depth; work will be processed as FIFO
-	// XXX a worker pool might make sense to avoid smaller jobs blocked
-	// behind larger jobs
-	worker := worker.NewWorker(log, volumemgrWorker, ctx, 5)
-	return worker
-}
-
-// HandleWorkResult processes what comes out of the select loop
-func HandleWorkResult(ctx *volumemgrContext, res worker.WorkResult) {
-	d := res.Description
-	switch d.(type) {
-	case volumeWorkDescription:
-		processVolumeWorkResult(ctx, res)
-	case casIngestWorkDescription:
-		processcasIngestWorkResult(ctx, res)
-	}
-}
-
-// processVolumeWorkResult handle the work result that was a volume action
-func processVolumeWorkResult(ctx *volumemgrContext, res worker.WorkResult) {
-	d := res.Description.(volumeWorkDescription)
-	vres := volumeWorkResult{
-		WorkResult:    res,
-		FileLocation:  d.FileLocation,
-		VolumeCreated: d.VolumeCreated,
-	}
-	addVolumeWorkResult(ctx, res.Key, vres)
-	updateVolumeStatus(ctx, d.status.VolumeID)
-}
-
-// processcasIngestWorkResult handle the work result that was a cas ingestion
-func processcasIngestWorkResult(ctx *volumemgrContext, res worker.WorkResult) {
-	d := res.Description.(casIngestWorkDescription)
-	wres := casIngestWorkResult{
-		WorkResult: res,
-		loaded:     d.loaded,
-	}
-	addCasIngestWorkResult(ctx, res.Key, wres)
-	// this might have changed, so we want to be careful about passing it; always look it up
-	updateContentTreeByID(ctx, d.status.Key())
-}
-
-// Map of pending work for create and destroy, respectively
-var pendingCreateMap = make(map[string]bool)
-var pendingDestroyMap = make(map[string]bool)
-var pendingLoadMap = make(map[string]bool)
-
-func lookupPendingCreate(ctx *volumemgrContext, key string) bool {
-	res, ok := pendingCreateMap[key]
-	return ok && res
-}
-
-func addPendingCreate(ctx *volumemgrContext, key string) {
-	pendingCreateMap[key] = true
-}
-
-func deletePendingCreate(ctx *volumemgrContext, key string) {
-	delete(pendingCreateMap, key)
-}
-
-func lookupPendingDestroy(ctx *volumemgrContext, key string) bool {
-	res, ok := pendingDestroyMap[key]
-	return ok && res
-}
-
-func addPendingDestroy(ctx *volumemgrContext, key string) {
-	pendingDestroyMap[key] = true
-}
-
-func deletePendingDestroy(ctx *volumemgrContext, key string) {
-	delete(pendingDestroyMap, key)
-}
-
-func lookupPendingLoad(ctx *volumemgrContext, key string) bool {
-	res, ok := pendingLoadMap[key]
-	return ok && res
-}
-
-func addPendingLoad(ctx *volumemgrContext, key string) {
-	pendingLoadMap[key] = true
-}
-
-func deletePendingLoad(ctx *volumemgrContext, key string) {
-	delete(pendingLoadMap, key)
-}
+const (
+	workCreate = "create"
+	workIngest = "ingest"
+)
 
 // volumeWorkDescription volume creation/deletion work we feed into the worker go routine.
 // Only one of create and destroy is set
@@ -134,155 +49,51 @@ type casIngestWorkResult struct {
 	loaded            []string
 }
 
-// Map with the result
-// Caller needs to do a delete after the lookup
-var volumeWorkResultMap = make(map[string]volumeWorkResult)
-var casIngestWorkResultMap = make(map[string]casIngestWorkResult)
-
-func lookupVolumeWorkResult(ctx *volumemgrContext, key string) *volumeWorkResult {
-	res, ok := volumeWorkResultMap[key]
-	if ok {
-		return &res
-	} else {
-		return nil
-	}
-}
-
-func addVolumeWorkResult(ctx *volumemgrContext, key string, res volumeWorkResult) {
-	volumeWorkResultMap[key] = res
-}
-
-func deleteVolumeWorkResult(ctx *volumemgrContext, key string) {
-	delete(volumeWorkResultMap, key)
-}
-
-func lookupCasIngestWorkResult(ctx *volumemgrContext, key string) *casIngestWorkResult {
-	if res, ok := casIngestWorkResultMap[key]; ok {
-		return &res
-	}
-	return nil
-}
-
-func addCasIngestWorkResult(ctx *volumemgrContext, key string, res casIngestWorkResult) {
-	casIngestWorkResultMap[key] = res
-}
-
-func deleteCasIngestWorkResult(ctx *volumemgrContext, key string) {
-	delete(casIngestWorkResultMap, key)
-}
-
-// MaybeAddWorkCreate checks if the Key is in the map of pending work
-// and if not kicks of a worker and adds it
-// XXX defer if busy?
-func MaybeAddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
-	log.Infof("MaybeAddWorkCreate(%s)", status.Key())
-	if lookupPendingCreate(ctx, status.Key()) {
-		log.Infof("MaybeAddWorkCreate(%s) found", status.Key())
-		return
-	}
+// AddWorkCreate adds a Work job to create a volume
+func AddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
 	d := volumeWorkDescription{
 		create: true,
 		status: *status,
 	}
-	w := worker.Work{Key: status.Key(), Description: d}
+	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
 	// XXX could check a return and not add...
 	ctx.worker.Submit(w)
-	// XXX success - add
-	addPendingCreate(ctx, status.Key())
-	log.Infof("MaybeAddWorkCreate(%s) done", status.Key())
 }
 
-// MaybeAddWorkLoad checks if the Key is in the map of pending work
-// and if not kicks of a worker and adds it
-// XXX defer if busy?
-func MaybeAddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) {
-	key := status.Key()
-	log.Infof("MaybeAddWorkLoad(%s)", key)
-	if lookupPendingLoad(ctx, key) {
-		log.Infof("MaybeAddWorkLoad(%s) found", key)
-		return
-	}
+// AddWorkLoad adds a Work job to load an image and blobs into CAS
+func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	d := casIngestWorkDescription{
 		status: *status,
 	}
-	w := worker.Work{Key: key, Description: d}
+	w := worker.Work{Kind: workIngest, Key: status.Key(), Description: d}
 	// XXX could check a return and not add...
 	ctx.worker.Submit(w)
-	// XXX success - add
-	addPendingLoad(ctx, key)
-	log.Infof("MaybeAddWorkLoad(%s) done", key)
 }
 
 // DeleteWorkCreate is called by user when work is done
 func DeleteWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
-	log.Infof("DeleteWorkCreate(%s)", status.Key())
-	if !lookupPendingCreate(ctx, status.Key()) {
-		log.Infof("DeleteWorkCreate(%s) NOT found", status.Key())
-		return
-	}
-	deletePendingCreate(ctx, status.Key())
-	log.Infof("DeleteWorkCreate(%s) done", status.Key())
+	ctx.worker.Cancel(status.Key())
 }
 
 // DeleteWorkLoad is called by user when work is done
 func DeleteWorkLoad(ctx *volumemgrContext, key string) {
-	log.Infof("DeleteWorkLoad(%s)", key)
-	if !lookupPendingLoad(ctx, key) {
-		log.Infof("DeleteWorkLoad(%s) NOT found", key)
-		return
-	}
-	deletePendingLoad(ctx, key)
-	log.Infof("DeleteWorkLoad(%s) done", key)
+	ctx.worker.Cancel(key)
 }
 
-// MaybeAddWorkDestroy checks if the Key is in the map of pending work
-// and if not kicks of a worker and adds it
-// XXX defer if busy?
-func MaybeAddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
-	log.Infof("MaybeAddWorkDestroy(%s)", status.Key())
-	if lookupPendingDestroy(ctx, status.Key()) {
-		log.Infof("MaybeAddWorkDestroy(%s) found", status.Key())
-		return
-	}
+// AddWorkDestroy adds a Work job to destroy a volume
+func AddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
 	d := volumeWorkDescription{
 		destroy: true,
 		status:  *status,
 	}
-	w := worker.Work{Key: status.Key(), Description: d}
+	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
 	// XXX could check a return and not add...
 	ctx.worker.Submit(w)
-	// XXX success - add
-	addPendingDestroy(ctx, status.Key())
-	log.Infof("MaybeAddWorkDestroy(%s) done", status.Key())
 }
 
-// DeleteWorkDestroy is called by user when work is done
+// DeleteWorkDestroy cancels a job to destroy a volume
 func DeleteWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
-	log.Infof("DeleteWorkDestroy(%s)", status.Key())
-	if !lookupPendingDestroy(ctx, status.Key()) {
-		log.Infof("DeleteWorkDestroy(%s) NOT found", status.Key())
-		return
-	}
-	deletePendingDestroy(ctx, status.Key())
-	log.Infof("DeleteWorkDestroy(%s) done", status.Key())
-}
-
-// volumemgrWorker worker switchboard for different types of workers in volumemgr
-func volumemgrWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
-	d := w.Description
-	switch t := d.(type) {
-	case volumeWorkDescription:
-		return volumeWorker(ctxPtr, w)
-	case casIngestWorkDescription:
-		return casIngestWorker(ctxPtr, w)
-	default:
-		return worker.WorkResult{
-			Key:         w.Key,
-			Description: d,
-			Error:       fmt.Errorf("unknown work description type %v", t),
-			ErrorTime:   time.Now(),
-		}
-	}
+	ctx.worker.Cancel(status.Key())
 }
 
 // volumeWorker implementation of work.WorkFunction that create or deletes a volume
@@ -366,4 +177,48 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 		result.ErrorTime = time.Now()
 	}
 	return result
+}
+
+// processVolumeWorkResult handle the work result that was a volume action
+func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
+	ctx := ctxPtr.(*volumemgrContext)
+	d := res.Description.(volumeWorkDescription)
+	updateVolumeStatus(ctx, d.status.VolumeID)
+	return nil
+}
+
+// processCasIngestWorkResult handle the work result that was a cas ingestion
+func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
+	ctx := ctxPtr.(*volumemgrContext)
+	d := res.Description.(casIngestWorkDescription)
+	// this might have changed, so we want to be careful about passing it; always look it up
+	updateContentTreeByID(ctx, d.status.Key())
+	return nil
+}
+
+// popasIngestWorkResult get the result exactly once
+func popCasIngestWorkResult(ctx *volumemgrContext, key string) *casIngestWorkResult {
+	res := ctx.worker.Pop(key)
+	if res == nil {
+		return nil
+	}
+	d := res.Description.(casIngestWorkDescription)
+	return &casIngestWorkResult{
+		WorkResult: *res,
+		loaded:     d.loaded,
+	}
+}
+
+// popVolumeWorkResult get the result exactly once
+func popVolumeWorkResult(ctx *volumemgrContext, key string) *volumeWorkResult {
+	res := ctx.worker.Pop(key)
+	if res == nil {
+		return nil
+	}
+	d := res.Description.(volumeWorkDescription)
+	return &volumeWorkResult{
+		WorkResult:    *res,
+		FileLocation:  d.FileLocation,
+		VolumeCreated: d.VolumeCreated,
+	}
 }

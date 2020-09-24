@@ -235,12 +235,11 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 	}
 	if status.VolumeCreated {
 		// Asynch destruction; make sure we have a request for the work
-		MaybeAddWorkDestroy(ctx, status)
-		vr := lookupVolumeWorkResult(ctx, status.Key())
+		AddWorkDestroy(ctx, status)
+		vr := popVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
 			log.Infof("VolumeWorkResult(%s) location %s, created %t",
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
-			deleteVolumeWorkResult(ctx, status.Key())
 			status.VolumeCreated = vr.VolumeCreated
 			status.FileLocation = vr.FileLocation
 			if vr.Error != nil {
