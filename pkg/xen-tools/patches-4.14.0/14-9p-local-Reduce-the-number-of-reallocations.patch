@@ -1,0 +1,59 @@
+From de5814b9f389e7542e5e4e8148c1ce649ccdbe30 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Thu, 24 Sep 2020 19:00:51 +0300
+Subject: [PATCH] 9p-local: Reduce the number of string reallocations
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ tools/qemu-xen/hw/9pfs/9p-local.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/tools/qemu-xen/hw/9pfs/9p-local.c b/tools/qemu-xen/hw/9pfs/9p-local.c
+index 3107637209..7f0dfc2318 100644
+--- a/tools/qemu-xen/hw/9pfs/9p-local.c
++++ b/tools/qemu-xen/hw/9pfs/9p-local.c
+@@ -55,33 +55,37 @@ int local_open_nofollow(FsContext *fs_ctx, const char *path, int flags,
+ {
+     LocalData *data = fs_ctx->private;
+     int fd = data->mountfd;
++    char *s_path = g_strdup(path);
++    char *head = s_path;
+ 
+     while (*path && fd != -1) {
+         const char *c;
+         int next_fd;
+-        char *head;
+ 
+         /* Only relative paths without consecutive slashes */
+         assert(*path != '/');
+ 
+-        head = g_strdup(path);
+         c = qemu_strchrnul(path, '/');
+         if (*c) {
+             /* Intermediate path element */
+             head[c - path] = 0;
+-            path = c + 1;
+             next_fd = openat_dir(fd, head);
++            head += c - path + 1;
++            path = c + 1;
++ 
+         } else {
+             /* Rightmost path element */
+             next_fd = openat_file(fd, head, flags, mode);
++            head += c - path;
+             path = c;
+         }
+-        g_free(head);
++
+         if (fd != data->mountfd) {
+             close_preserve_errno(fd);
+         }
+         fd = next_fd;
+     }
++    g_free(s_path);
+ 
+     assert(fd != data->mountfd);
+     return fd;
+-- 
+2.26.2
+
