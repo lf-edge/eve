@@ -1,0 +1,47 @@
+From edb00384bc746ad376741d88f20b7ca492b6685d Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Sun, 20 Sep 2020 02:24:36 +0300
+Subject: [PATCH 1/2] oslib: Use the minimum stack size per thread
+
+Use the minimum stack size per thread with growsdown mapping
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ util/oslib-posix.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/util/oslib-posix.c b/util/oslib-posix.c
+index ad8001a4ad..6fdb05952e 100644
+--- a/tools/qenu-xen/util/oslib-posix.c
++++ b/tools/qemu-xen/util/oslib-posix.c
+@@ -701,7 +701,7 @@ void *qemu_alloc_stack(size_t *sz)
+ #ifdef _SC_THREAD_STACK_MIN
+     /* avoid stacks smaller than _SC_THREAD_STACK_MIN */
+     long min_stack_sz = sysconf(_SC_THREAD_STACK_MIN);
+-    *sz = MAX(MAX(min_stack_sz, 0), *sz);
++    *sz = MIN(MAX(min_stack_sz, 0), *sz);
+ #endif
+     /* adjust stack size to a multiple of the page size */
+     *sz = ROUND_UP(*sz, pagesz);
+@@ -719,6 +719,10 @@ void *qemu_alloc_stack(size_t *sz)
+     flags |= MAP_STACK;
+ #endif
+ 
++#if defined(__linux__)
++    flags |= MAP_GROWSDOWN;
++#endif
++
+     ptr = mmap(NULL, *sz, PROT_READ | PROT_WRITE, flags, -1, 0);
+     if (ptr == MAP_FAILED) {
+         perror("failed to allocate memory for stack");
+@@ -735,6 +739,7 @@ void *qemu_alloc_stack(size_t *sz)
+     /* stack grows down */
+     guardpage = ptr;
+ #endif
++
+     if (mprotect(guardpage, pagesz, PROT_NONE) != 0) {
+         perror("failed to set up stack guard page");
+         abort();
+-- 
+2.26.2
+
