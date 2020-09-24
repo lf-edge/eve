@@ -282,9 +282,10 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		status.SetErrorNow(err.Error())
 		changed = true
 		return changed
-	} else if proceed {
+	}
+	if proceed {
 		changed = true
-		// Match the version string inside image?
+		// Match the version string inside image
 		if errString := checkInstalledVersion(ctx, *status); errString != "" {
 			log.Error(errString)
 			status.SetErrorNow(errString)
@@ -304,6 +305,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			status.PartitionLabel)
 		publishBaseOsStatus(ctx, status)
 	} else {
+		log.Infof("Waiting for image to be mounted")
 		return changed
 	}
 
