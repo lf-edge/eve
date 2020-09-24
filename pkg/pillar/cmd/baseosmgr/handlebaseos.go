@@ -227,10 +227,14 @@ func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
 func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
+	var (
+		changed bool
+		proceed bool
+		err     error
+	)
 	log.Infof("doBaseOsActivate(%s) uuid %s",
 		config.BaseOsVersion, uuidStr)
 
-	changed := false
 	if status.PartitionLabel == "" {
 		log.Infof("doBaseOsActivate(%s) for %s, unassigned partition",
 			config.BaseOsVersion, uuidStr)
@@ -239,9 +243,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 
 	// Sanity check the partition label of the current root and
 	// the partition state
-	// We've already dd'ed the new image into the partition
-	// hence can't compare versions here. Version check was done when
-	// processing the baseOsConfig.
 
 	if !zboot.IsOtherPartition(status.PartitionLabel) {
 		return changed
@@ -273,15 +274,15 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	log.Infof("doBaseOsActivate: %s activating", uuidStr)
-	zboot.SetOtherPartitionStateUpdating(log)
-	publishZbootPartitionStatus(ctx, status.PartitionLabel)
-	baseOsSetPartitionInfoInStatus(ctx, status, status.PartitionLabel)
-	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
-	if installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
-		&status.ContentTreeStatusList) {
-
+	changed, proceed, err = installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
+		&status.ContentTreeStatusList)
+	if err != nil {
+		status.SetErrorNow(err.Error())
+		changed = true
+		return changed
+	} else if proceed {
 		changed = true
 		// Match the version string inside image?
 		if errString := checkInstalledVersion(ctx, *status); errString != "" {
@@ -295,12 +296,15 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			publishBaseOsStatus(ctx, status)
 			return changed
 		}
+		zboot.SetOtherPartitionStateUpdating(log)
 		// move the state from VERIFIED to INSTALLED
 		setProgressDone(status, types.INSTALLED)
 		publishZbootPartitionStatus(ctx, status.PartitionLabel)
 		baseOsSetPartitionInfoInStatus(ctx, status,
 			status.PartitionLabel)
 		publishBaseOsStatus(ctx, status)
+	} else {
+		return changed
 	}
 
 	// Remove any old log files for a previous instance
