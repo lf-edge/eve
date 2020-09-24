@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,6 +48,8 @@ type baseOsMgrContext struct {
 	rebootReason         string    // From last reboot
 	rebootTime           time.Time // From last reboot
 	rebootImage          string    // Image from which the last reboot happened
+
+	worker *worker.Worker // For background work
 }
 
 var debug = false
@@ -98,6 +101,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// publish zboot partition status
 	publishZbootPartitionStatusAll(&ctx)
 
+	// for background work
+	ctx.worker = worker.NewWorker(log, WorkerHandler, ctx, 5)
+
 	// report other agents, about, zboot status availability
 	ctx.pubZbootStatus.SignalRestarted()
 
@@ -130,6 +136,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
+
+		case res := <-ctx.worker.MsgChan():
+			HandleWorkResult(&ctx, ctx.worker.Process(res))
 
 		case <-stillRunning.C:
 		}
