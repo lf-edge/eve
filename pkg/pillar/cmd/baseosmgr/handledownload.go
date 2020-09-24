@@ -98,32 +98,32 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 
 // Note: can not do this in volumemgr since it is triggered by Activate=true
 func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string,
-	status *[]types.ContentTreeStatus) bool {
+	status *[]types.ContentTreeStatus) (bool, bool, error) {
 
-	ret := true
+	var (
+		changed bool
+		proceed bool
+		err     error
+	)
 	log.Infof("installDownloadedObjects(%s)", uuidStr)
 
 	for i := range *status {
 		ctsPtr := &(*status)[i]
 
 		if ctsPtr.State == types.LOADED {
-			ready, err := installDownloadedObject(ctx, ctsPtr.ContentID,
+			changed, err = installDownloadedObject(ctx, ctsPtr.ContentID,
 				finalObjDir, ctsPtr)
 			if err != nil {
 				log.Error(err)
-			}
-			if !ready {
-				ret = false
+				return changed, proceed, err
 			}
 		}
-		// if something is still not installed, mark accordingly
-		if ctsPtr.State != types.INSTALLED {
-			ret = false
+		if ctsPtr.State == types.INSTALLED {
+			proceed = true
 		}
 	}
-
-	log.Infof("installDownloadedObjects(%s) done %v", uuidStr, ret)
-	return ret
+	log.Infof("installDownloadedObjects(%s) done %v", uuidStr, proceed)
+	return changed, proceed, nil
 }
 
 // If the final installation directory is known, move the object there
