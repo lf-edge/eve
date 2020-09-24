@@ -122,6 +122,7 @@ func RemoveRefFromBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobSta
 			log.Infof("RemoveRefFromBlobStatus: unpublishing Blob %s since no object is referring it.",
 				blob.Sha256)
 			unpublishBlobStatus(ctx, blob)
+			// blob potentially deleted
 			continue
 		}
 		publishBlobStatus(ctx, blob)
@@ -448,13 +449,18 @@ func publishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	}
 }
 
+// unpublishBlobStatus removes any outbound refcounts on Downloader and Verifier
+// and gets rid of the blobStatus. Thus the callers must not reuse the blobs
 func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	errs := []error{}
 	for _, blob := range blobs {
 		key := blob.Sha256
 		log.Infof("unpublishBlobStatus(%s)", key)
 
-		// drop references
+		// Drop references. Note that we never publish the resulting
+		// BlobStatus since we unpublish it below.
+		// But the BlobStatus pointer might appear several times in
+		// the list hence we better clear the Has*Ref
 		if blob.HasDownloaderRef {
 			MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
 			blob.HasDownloaderRef = false
