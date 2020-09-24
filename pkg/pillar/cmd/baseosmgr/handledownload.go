@@ -37,6 +37,7 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 		if cts.State == types.INSTALLED {
 			ret.MinState = cts.State
 			cts.Progress = 100
+			// XXX TotalSize and CurrentSize?
 			ret.Changed = true
 			log.Infof("checkContentTreeStatus %s is already installed",
 				contentID)
@@ -74,6 +75,14 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 
 		if contentStatus.Progress != cts.Progress {
 			cts.Progress = contentStatus.Progress
+			ret.Changed = true
+		}
+		if contentStatus.TotalSize != cts.TotalSize {
+			cts.TotalSize = contentStatus.TotalSize
+			ret.Changed = true
+		}
+		if contentStatus.CurrentSize != cts.CurrentSize {
+			cts.CurrentSize = contentStatus.CurrentSize
 			ret.Changed = true
 		}
 		if contentStatus.HasError() {
@@ -177,6 +186,7 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 
 	// Move to final installation point
 	// do this as a background task
+	// XXX called twice!
 	AddWorkInstall(ctx, contentID.String(), refID, finalObjDir)
 	log.Infof("installDownloadedObject(%s) worker started", contentID)
 	return false, nil

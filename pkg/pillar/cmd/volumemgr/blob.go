@@ -59,7 +59,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus)
 		blob.TotalSize = ds.TotalSize
 		blob.CurrentSize = ds.CurrentSize
 		if blob.TotalSize > 0 {
-			blob.Progress = uint(blob.CurrentSize / blob.TotalSize * 100)
+			blob.Progress = uint(100 * blob.CurrentSize / blob.TotalSize)
 		}
 		changed = true
 	}
