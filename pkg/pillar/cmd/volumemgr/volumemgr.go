@@ -148,7 +148,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig.Activate()
 
 	// Create the background worker
-	ctx.worker = InitHandleWork(&ctx)
+	ctx.worker = worker.NewWorker(log, &ctx, 5, map[string]worker.Handler{
+		workCreate: {Request: volumeWorker, Response: processVolumeWorkResult},
+		workIngest: {Request: casIngestWorker, Response: processCasIngestWorkResult},
+	})
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubDownloaderConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -474,7 +477,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ctx.subContentTreeConfig.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
-			HandleWorkResult(&ctx, ctx.worker.Process(res))
+			res.Process(&ctx, true)
 
 		case <-stillRunning.C:
 		}
@@ -548,7 +551,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				warningTime, errorTime)
 
 		case res := <-ctx.worker.MsgChan():
-			HandleWorkResult(&ctx, ctx.worker.Process(res))
+			res.Process(&ctx, true)
 
 		case <-stillRunning.C:
 		}

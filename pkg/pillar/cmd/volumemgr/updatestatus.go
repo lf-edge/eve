@@ -310,7 +310,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		status.State = types.LOADING
 		publishContentTreeStatus(ctx, status)
 
-		MaybeAddWorkLoad(ctx, status)
+		AddWorkLoad(ctx, status)
 
 		return changed, false
 	}
@@ -319,10 +319,9 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	if status.State == types.LOADING {
 		log.Infof("doUpdateContentTree(%s): ContentTree status is LOADING", status.Key())
 		// get the work result - see if it succeeded
-		wres := lookupCasIngestWorkResult(ctx, status.Key())
+		wres := popCasIngestWorkResult(ctx, status.Key())
 		if wres != nil {
 			log.Infof("doUpdateContentTree(%s): IngestWorkResult found", status.Key())
-			DeleteWorkLoad(ctx, status.Key())
 			if wres.Error != nil {
 				err := fmt.Errorf("doUpdateContentTree(%s): IngestWorkResult error, exception while loading blobs into CAS: %v", status.Key(), wres.Error)
 				log.Errorf(err.Error())
@@ -454,7 +453,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.ContentFormat = ctStatus.Format
 			changed = true
 			// Asynch creation; ensure we have requested it
-			MaybeAddWorkCreate(ctx, status)
+			AddWorkCreate(ctx, status)
 		}
 		if status.IsErrorSource(types.ContentTreeStatus{}) {
 			log.Infof("doUpdate: Clearing volume error %s", status.Error)
@@ -462,11 +461,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			changed = true
 		}
 		if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
-			vr := lookupVolumeWorkResult(ctx, status.Key())
+			vr := popVolumeWorkResult(ctx, status.Key())
 			if vr != nil {
 				log.Infof("doUpdateVol: VolumeWorkResult(%s) location %s, created %t",
 					status.Key(), vr.FileLocation, vr.VolumeCreated)
-				deleteVolumeWorkResult(ctx, status.Key())
 				if status.VolumeCreated != vr.VolumeCreated {
 					log.Infof("From vr set VolumeCreated to %s for %s",
 						vr.FileLocation, status.VolumeID)
