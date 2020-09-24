@@ -128,6 +128,8 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 
 	log.Infof("installWorker to install %s to %s", d.ref, d.target)
 	err := zboot.WriteToPartition(log, d.ref, d.target)
+	log.Infof("installWorker DONE install %s to %s: err %s",
+		d.ref, d.target, err)
 
 	if err != nil {
 		result.Error = err
@@ -139,9 +141,25 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 // processInstallWorkResult handle the work result that was an installation
 func processInstallWorkResult(ctx *baseOsMgrContext, res worker.WorkResult) {
 	d := res.Description.(installWorkDescription)
+	log.Infof("XXX processInstallWorkResult")
 	wres := installWorkResult{
 		WorkResult: res,
 	}
 	addInstallWorkResult(res.Key, wres)
-	baseOsHandleStatusUpdateImageSha(ctx, d.contentID)
+	config := lookupBaseOsConfig(ctx, d.contentID)
+	if config == nil {
+		log.Errorf("processInstallWorkResult(%s) not found",
+			d.contentID)
+		return
+	}
+	status := lookupBaseOsStatus(ctx, d.contentID)
+	if status == nil {
+		log.Errorf("processInstallWorkResult(%s) no status",
+			d.contentID)
+		return
+	}
+	log.Infof("processInstallWorkResult(%s)", d.contentID)
+
+	// handle the change event for this base os config
+	baseOsHandleStatusUpdate(ctx, config, status)
 }

@@ -376,7 +376,7 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 
 	// XXX can we check the version before installing to the partition?
 	// XXX requires loopback mounting the image; not part of syscall.Mount
-	// Note that we dd as part of the installDownloadedObjects call
+	// Note that we XXX dd as part of the installDownloadedObjects call
 	// in doBaseOsActivate
 	log.Infof("doBaseOsInstall(%s), Done", config.BaseOsVersion)
 	return changed, true
@@ -494,7 +494,7 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 		return ret.Changed, false
 	}
 
-	if ret.MinState < types.VERIFIED {
+	if ret.MinState < types.LOADED {
 		log.Infof("checkBaseOsVolumeStatus(%s) for %s, Waiting for volumemgr",
 			config.BaseOsVersion, uuidStr)
 		return ret.Changed, false
