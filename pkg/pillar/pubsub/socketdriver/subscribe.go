@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/lf-edge/eve/pkg/pillar/watch"
 	"github.com/sirupsen/logrus"
 )
@@ -104,16 +104,16 @@ func (s *Subscriber) Start() error {
 		// we pass it through a translator
 		translator := make(chan string)
 		s.log.Infof("Creating %s at %s", "watch.WatchStatus",
-			agentlog.GetMyStack())
+			logutils.GetMyStack())
 		go watch.WatchStatus(s.log, s.dirName, true, s.doneChan,
 			translator)
 		s.log.Infof("Creating %s at %s", "s.Translate",
-			agentlog.GetMyStack())
+			logutils.GetMyStack())
 		go s.translate(translator, s.C)
 		return nil
 	} else if subscribeFromSock {
 		s.log.Infof("Creating %s at %s", "s.watchSock",
-			agentlog.GetMyStack())
+			logutils.GetMyStack())
 		go s.watchSock()
 		return nil
 	} else {

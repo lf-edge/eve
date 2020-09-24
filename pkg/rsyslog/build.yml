@@ -6,7 +6,7 @@ config:
     - /run:/run
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
-    - /var/persist:/persist
+    - /persist:/persist
   net: host
   capabilities:
     - all

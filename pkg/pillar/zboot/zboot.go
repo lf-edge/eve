@@ -17,7 +17,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
@@ -28,6 +30,7 @@ type MountFlags uint
 const (
 	// MountFlagRDONLY readOnly mount
 	MountFlagRDONLY MountFlags = 0x01
+	casClientType              = "containerd"
 )
 
 // mutex for zboot/dd APIs
@@ -317,7 +320,12 @@ func GetOtherPartitionDevName() string {
 	return GetPartitionDevname(partName)
 }
 
-func WriteToPartition(log *base.LogObject, srcFilename string, partName string) error {
+func WriteToPartition(log *base.LogObject, image string, partName string) error {
+
+	var (
+		casClient cas.CAS
+		err       error
+	)
 
 	if !IsOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
@@ -332,16 +340,51 @@ func WriteToPartition(log *base.LogObject, srcFilename string, partName string) 
 		return errors.New(errStr)
 	}
 
-	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
+	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, image)
 
+	// use the edge-containers library to extract the data we need
+	puller := registry.Puller{
+		Image: image,
+	}
+	if casClient, err = cas.NewCAS(casClientType); err != nil {
+		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
+		log.Fatal(err)
+	}
+
+	defer casClient.CloseClient()
+
+	resolver, err := casClient.Resolver()
+	if err != nil {
+		errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+
+	// create a writer for the file where we want
 	zbootMutex.Lock()
-	_, err := base.Exec(log, "dd", "if="+srcFilename, "of="+devName, "bs=8M").Output()
-	zbootMutex.Unlock()
+	defer zbootMutex.Unlock()
+
+	f, err := os.OpenFile(devName,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		errStr := fmt.Sprintf("error writing to partition device at %s: %v", devName, err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+	defer f.Close()
+
+	if _, _, err := puller.Pull(registry.FilesTarget{Root: f}, false, os.Stderr, resolver); err != nil {
+		errStr := fmt.Sprintf("error pulling %s from containerd: %v", image, err)
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+
 	if err != nil {
 		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)
 		log.Fatal(errStr)
 		return err
 	}
+	// zbootMutex automatically unlocked by the defer
 	return nil
 }
 
@@ -384,14 +427,11 @@ func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 // XXX known pathnames for the version file and the zededa-tools container
 const (
 	otherPartVersionFile = "/etc/eve-release"
-	otherPrefix          = "/containers/services/pillar/lower"
-	// XXX handle baseimage-update by looking for old names
-	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
-func GetShortVersion(log *base.LogObject, partName string) string {
-	ver := getVersion(log, partName, types.EveVersionFile, false)
-	return ver
+func GetShortVersion(log *base.LogObject, partName string) (string, error) {
+	ver, err := getVersion(log, partName, types.EveVersionFile)
+	return ver, err
 }
 
 // XXX add longversion once we have a filename above
@@ -401,25 +441,27 @@ func GetLongVersion(part string) string {
 
 // XXX explore a loopback mount to be able to read version
 // from a downloaded image file
-func getVersion(log *base.LogObject, part string, verFilename string, inContainer bool) string {
+func getVersion(log *base.LogObject, part string, verFilename string) (string, error) {
 	validatePartitionName(part)
 
 	if part == GetCurrentPartition() {
 		filename := verFilename
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Errorln(err)
+			return "", err
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
 		log.Infof("%s, readCurVersion %s\n", part, versionStr)
-		return versionStr
+		return versionStr, nil
 	} else {
 		verFilename = otherPartVersionFile
 		devname := GetPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {
-			log.Fatal(err)
+			log.Errorln(err)
+			return "", err
 		}
 		defer os.RemoveAll(target)
 		// Mount failure is ok; might not have a filesystem in the
@@ -428,35 +470,21 @@ func getVersion(log *base.LogObject, part string, verFilename string, inContaine
 		mountFlags := MountFlagRDONLY
 		err = zbootMount(devname, target, "squashfs", mountFlags, "")
 		if err != nil {
-			log.Errorf("Mount of %s failed: %s\n", devname, err)
-			return ""
+			errStr := fmt.Sprintf("Mount of %s failed: %s", devname, err)
+			log.Errorln(errStr)
+			return "", errors.New(errStr)
 		}
 		defer syscall.Unmount(target, 0)
-		var filename string
-		if inContainer {
-			filename = fmt.Sprintf("%s/%s/%s",
-				target, otherPrefix, verFilename)
-		} else {
-			filename = fmt.Sprintf("%s/%s",
-				target, verFilename)
-		}
+		filename := fmt.Sprintf("%s/%s",
+			target, verFilename)
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
 			log.Warn(err)
-			if !inContainer {
-				return ""
-			}
-			filename := fmt.Sprintf("%s/%s/%s",
-				target, otherPrefixOld, verFilename)
-			version, err = ioutil.ReadFile(filename)
-			if err != nil {
-				log.Warn(err)
-				return ""
-			}
+			return "", err
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
 		log.Infof("%s, readOtherVersion %s\n", part, versionStr)
-		return versionStr
+		return versionStr, nil
 	}
 }

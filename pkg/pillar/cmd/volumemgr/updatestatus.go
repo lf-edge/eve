@@ -252,14 +252,12 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			return true, false
 		}
 
-		// if we made it this far, the entire tree has been verified
-		// before we mark it as verified, load it into the CAS store
-
 		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
-		refID := getReferenceID(status.ContentID.String(), status.RelativeURL)
+		refID := status.ReferenceID()
 
 		// if we just had an image pointing to a single blob that is not index or manifest, we need
 		// to add a manifest to it.
+		log.Infof("doUpdateContentTree(%s) checking if we need to add a manifest, have %d blobs", status.Key(), len(blobStatuses))
 		if len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex() {
 			blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
 			if err != nil {
@@ -269,34 +267,115 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
 				return changed, false
 			}
-			// order is important
-			blobStatuses = append(blobs, blobStatuses...)
+			// if we have any, append them
+			if len(blobs) > 0 {
+				publishBlobStatus(ctx, blobs...)
+				// order is important; prepend to existing
+				blobStatuses = append(blobs, blobStatuses...)
+
+				// we changed it, so update the ContentTreeStatus
+				blobHashes := []string{}
+				for _, b := range blobStatuses {
+					blobHashes = append(blobHashes, b.Sha256)
+				}
+				status.Blobs = blobHashes
+				// Adding a blob to ContentTreeStatus and incrementing the refcount of that blob should be atomic as
+				// we would depend on that while we remove a blob from ContentTreeStatus and decrement
+				// the RefCount of that blob. In case if the blobs in a ContentTreeStatus in not in sync with the
+				// corresponding Blob's Refcount, then that would lead to Fatal error.
+				// If the same sha appears in multiple places in the ContentTree we intentionally add it twice to the list of
+				// Blobs so that we can have two reference counts on that blob.
+				// Add for the new ones
+				for _, b := range blobs {
+					AddRefToBlobStatus(ctx, b)
+				}
+			}
 		}
 
-		loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(refID, blobStatuses...)
-		if err != nil {
-			err = fmt.Errorf("doUpdateContentTree(%s): Exception while loading blobs into CAS: %s",
-				status.ContentID, err.Error())
-			log.Errorf(err.Error())
-			status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
+		// if we made it this far, the entire tree has been verified
+		// we can mark the tree as verified, but still have to load it into the CAS store
+		log.Infof("doUpdateContentTree(%s): all blobs verified %v, setting ContentTree state to VERIFIED", status.Key(), status.Blobs)
+		status.State = types.VERIFIED
+		publishContentTreeStatus(ctx, status)
+	}
+
+	// at this point, the image is VERIFIED or higher
+	if status.State == types.VERIFIED {
+		log.Infof("doUpdateContentTree(%s): ContentTree state is VERIFIED, starting LOADING", status.Key())
+
+		// now we start loading
+		// it is a bit silly to publish twice, but it is important that we keep the audit
+		// trail that the image was verified, and now is loading
+		status.State = types.LOADING
+		publishContentTreeStatus(ctx, status)
+
+		MaybeAddWorkLoad(ctx, status)
+
+		return changed, false
+	}
+
+	// if it is LOADING, check each blob until all are loaded
+	if status.State == types.LOADING {
+		log.Infof("doUpdateContentTree(%s): ContentTree status is LOADING", status.Key())
+		// get the work result - see if it succeeded
+		wres := lookupCasIngestWorkResult(ctx, status.Key())
+		if wres != nil {
+			log.Infof("doUpdateContentTree(%s): IngestWorkResult found", status.Key())
+			DeleteWorkLoad(ctx, status.Key())
+			if wres.Error != nil {
+				err := fmt.Errorf("doUpdateContentTree(%s): IngestWorkResult error, exception while loading blobs into CAS: %v", status.Key(), wres.Error)
+				log.Errorf(err.Error())
+				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, wres.ErrorTime)
+				changed = true
+				return changed, false
+			}
+			// find any blob statuses and update them to LOADED
+			blobStatuses := lookupBlobStatuses(ctx, wres.loaded...)
+			for _, blob := range blobStatuses {
+				if blob.State < types.LOADED {
+					blob.State = types.LOADED
+					publishBlobStatus(ctx, blob)
+				}
+			}
+		}
+
+		leftToProcess := 0
+		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
+		for _, blob := range blobStatuses {
+			// if the blob was not yet loaded, we ignore it
+			if blob.State != types.LOADED {
+				log.Infof("doUpdateContentTree(%s): blob %s not yet loaded", status.Key(), blob.Sha256)
+				leftToProcess++
+				continue
+			}
+
+			log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), blob.Sha256)
+			if blob.HasVerifierRef {
+				log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
+					status.Key(), blob.Sha256)
+				MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
+				// remove the verifierref and set the path to "" as we delete the verifier path
+				blob.HasVerifierRef = false
+				blob.Path = ""
+			}
+			publishBlobStatus(ctx, blob)
+		}
+		if leftToProcess > 0 {
+			log.Infof("doUpdateContentTree(%s): Still have %d blobs left to load", status.Key(), leftToProcess)
 			return changed, false
 		}
-		for _, loadedBlob := range loadedBlobs {
-			log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), loadedBlob.Sha256)
-			if loadedBlob.State == types.LOADED && loadedBlob.HasVerifierRef {
-				log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
-					status.Key(), loadedBlob.Sha256)
-				MaybeRemoveVerifyImageConfig(ctx, loadedBlob.Sha256)
-				loadedBlob.HasVerifierRef = false
-			}
-			publishBlobStatus(ctx, loadedBlob)
-		}
+		log.Infof("doUpdateContentTree(%s): all blobs LOADED", status.Key())
+
+		// if we made it here, then all blobs were loaded
 		log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
-		status.State = types.VERIFIED
+		status.State = types.LOADED
+		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
+		status.FileLocation = ""
+
 		changed = true
 	}
 
-	return changed, status.State == types.VERIFIED
+	return changed, status.State == types.LOADED
 }
 
 // Returns changed
@@ -350,7 +429,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.State = ctStatus.State
 			changed = true
 		}
-		if ctStatus.State < types.VERIFIED {
+		if ctStatus.State < types.LOADED {
 			// Waiting for content tree to be processed
 			if ctStatus.HasError() {
 				log.Errorf("doUpdateVol(%s) name %s: content tree status has following error %v",
@@ -361,11 +440,11 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				changed = true
 				return changed, false
 			}
-			log.Infof("doUpdateVol(%s) name %s: waiting for content tree status %v to be verified",
+			log.Infof("doUpdateVol(%s) name %s: waiting for content tree status %v to be LOADED",
 				status.Key(), status.DisplayName, ctStatus.DisplayName)
 			return changed, false
 		}
-		if ctStatus.State == types.VERIFIED &&
+		if ctStatus.State == types.LOADED &&
 			status.State != types.CREATING_VOLUME &&
 			!status.VolumeCreated {
 
@@ -376,7 +455,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName)
 				return changed, false
 			}
-			status.ReferenceName = getReferenceID(ctStatus.ContentID.String(), ctStatus.RelativeURL)
+			status.ReferenceName = ctStatus.ReferenceID()
 			status.ContentFormat = ctStatus.Format
 			changed = true
 			// Asynch creation; ensure we have requested it
@@ -614,10 +693,4 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	if !found {
 		log.Warnf("XXX updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
 	}
-}
-
-//getReferenceID returns a unique referenceID for a contentTree.
-//It necessary to prepend contentID as we would get same referenceID in case if 2 contentTree has same relativeURL,
-func getReferenceID(contentID, relativeURL string) string {
-	return fmt.Sprintf("%s-%s", contentID, relativeURL)
 }

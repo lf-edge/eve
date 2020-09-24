@@ -6,11 +6,10 @@ package baseosmgr
 import (
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Really a constant
@@ -108,7 +107,7 @@ func installDownloadedObjects(uuidStr, finalObjDir string,
 	for i := range *status {
 		ctsPtr := &(*status)[i]
 
-		if ctsPtr.State == types.VERIFIED {
+		if ctsPtr.State == types.LOADED {
 			err := installDownloadedObject(ctsPtr.ContentID,
 				finalObjDir, ctsPtr)
 			if err != nil {
@@ -129,31 +128,28 @@ func installDownloadedObjects(uuidStr, finalObjDir string,
 func installDownloadedObject(contentID uuid.UUID, finalObjDir string,
 	ctsPtr *types.ContentTreeStatus) error {
 
-	var ret error
-	var srcFilename string
+	var (
+		ret   error
+		refID string
+	)
 
 	log.Infof("installDownloadedObject(%s, %v)",
 		contentID, ctsPtr.State)
 
-	if ctsPtr.State != types.VERIFIED {
+	if ctsPtr.State != types.LOADED {
 		return nil
 	}
-	srcFilename = ctsPtr.FileLocation
-	if srcFilename == "" {
-		log.Fatalf("XXX no FileLocation for VERIFIED %s",
+	refID = ctsPtr.ReferenceID()
+	if refID == "" {
+		log.Fatalf("XXX no image ID for LOADED %s",
 			contentID)
 	}
-	log.Infof("For %s FileLocation for VERIFIED: %s",
-		contentID, srcFilename)
-
-	// ensure the file is present
-	if _, err := os.Stat(srcFilename); err != nil {
-		log.Fatal(err)
-	}
+	log.Infof("For %s reference ID for LOADED: %s",
+		contentID, refID)
 
 	// Move to final installation point
 	if finalObjDir != "" {
-		ret = installBaseOsObject(srcFilename, finalObjDir)
+		ret = installBaseOsObject(refID, finalObjDir)
 	} else {
 		errStr := fmt.Sprintf("installDownloadedObject %s, final dir not set",
 			contentID)

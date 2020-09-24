@@ -666,3 +666,17 @@ func storeIntegrityToken(token []byte) {
 func readIntegrityToken() ([]byte, error) {
 	return ioutil.ReadFile(types.ITokenFile)
 }
+
+//trigger restart event in attesation FSM
+func restartAttestation(zedagentCtx *zedagentContext) error {
+	if zedagentCtx.attestCtx == nil {
+		log.Fatalf("[ATTEST] Uninitialized access to attestCtx")
+	}
+	attestCtx := zedagentCtx.attestCtx
+	if attestCtx.attestFsmCtx == nil {
+		log.Fatalf("[ATTEST] Uninitialized access to attestFsmCtx")
+	}
+	//Trigger event on the state machine
+	zattest.RestartAttestation(attestCtx.attestFsmCtx)
+	return nil
+}

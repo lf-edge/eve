@@ -294,7 +294,7 @@ github.com/jmespath/go-jmespath
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kr/fs v0.1.0
 github.com/kr/fs
-# github.com/lf-edge/edge-containers v0.0.0-20200917143910-82eebc2ba115
+# github.com/lf-edge/edge-containers v0.0.0-20200921124327-cb84b924624b
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/store

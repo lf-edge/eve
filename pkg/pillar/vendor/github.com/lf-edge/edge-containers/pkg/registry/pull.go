@@ -30,7 +30,7 @@ type Puller struct {
 //
 // The resolver provides the channel to connect to the target type. resolver.Registry just uses the default registry,
 // while resolver.Directory uses a local directory, etc.
-func (p *Puller) Pull(dir string, verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *Artifact, error) {
+func (p *Puller) Pull(target Target, verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *Artifact, error) {
 	// must have valid image ref
 	if p.Image == "" {
 		return nil, nil, fmt.Errorf("must have valid image ref")
@@ -50,9 +50,9 @@ func (p *Puller) Pull(dir string, verbose bool, writer io.Writer, resolver ecres
 	}
 	pullOpts := []oras.PullOpt{}
 
-	fileStore := content.NewFileStore(dir)
-	defer fileStore.Close()
-	decompressStore := store.NewDecompressStore(fileStore)
+	targetStore := target.Ingester()
+	defer targetStore.Close()
+	decompressStore := store.NewDecompressStore(targetStore)
 
 	allowedMediaTypes := AllMimeTypes()
 
@@ -88,7 +88,7 @@ func (p *Puller) Pull(dir string, verbose bool, writer io.Writer, resolver ecres
 				Source: &FileSource{Path: filepath},
 				Type:   MimeToType[mediaType],
 			}
-		case AnnotationMediaType:
+		case RoleAdditionalDisk:
 			artifact.Disks = append(artifact.Disks, &Disk{
 				Source: &FileSource{Path: filepath},
 				Type:   MimeToType[mediaType],

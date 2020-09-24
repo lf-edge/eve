@@ -149,6 +149,11 @@ func (status ContentTreeStatus) IsOCIRegistry() bool {
 	return false
 }
 
+// ReferenceID get the image reference ID
+func (status ContentTreeStatus) ReferenceID() string {
+	return fmt.Sprintf("%s-%s", status.ContentID.String(), status.RelativeURL)
+}
+
 // UpdateFromContentTreeConfig sets up ContentTreeStatus based on ContentTreeConfig struct
 func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeConfig) {
 	status.ContentID = config.ContentID
