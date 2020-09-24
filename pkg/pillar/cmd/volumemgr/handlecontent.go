@@ -265,6 +265,7 @@ func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.Co
 			continue
 		}
 		RemoveRefFromBlobStatus(ctx, blobStatus)
+		blobStatus = nil // Potentially deleted
 	}
 	status.Blobs = make([]string, 0)
 }
