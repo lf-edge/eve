@@ -415,13 +415,26 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, blobSha string) *types.Blob
 	return nil
 }
 
+// lookupBlobStatuses returns a list of pointers.
+// It takes care to return the same pointer in the case that a sha is repeated
 func lookupBlobStatuses(ctx *volumemgrContext, shas ...string) []*types.BlobStatus {
 	ret := []*types.BlobStatus{}
 	all := ctx.pubBlobStatus.GetAll()
+	// Get BlobStatus pointers for all we care about
+	blobPtrs := make(map[string]*types.BlobStatus)
+	for _, blobInt := range all {
+		blob := blobInt.(types.BlobStatus)
+		for _, sha := range shas {
+			if sha == blob.Sha256 {
+				blobPtrs[blob.Sha256] = &blob
+				break
+			}
+		}
+	}
+	// Return in order of the input shas
 	for _, sha := range shas {
-		if blobInt, ok := all[sha]; ok {
-			blob := blobInt.(types.BlobStatus)
-			ret = append(ret, &blob)
+		if blobPtr, ok := blobPtrs[sha]; ok {
+			ret = append(ret, blobPtr)
 		}
 	}
 	return ret
