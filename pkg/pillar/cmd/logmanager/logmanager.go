@@ -675,13 +675,17 @@ func processEvents(image string, logChan <-chan logEntry,
 	}
 }
 
+var metricsLock sync.Mutex
+
 func publishLogMetrics(ctx *logmanagerContext, outMetrics *types.LogMetrics) {
+	metricsLock.Lock()
 	outMetrics.TotalDeviceLogInput = ctx.inputMetrics.totalDeviceLogInput
 	outMetrics.TotalAppLogInput = ctx.inputMetrics.totalAppLogInput
 	outMetrics.DeviceLogInput = make(map[string]uint64)
 	for s, c := range ctx.inputMetrics.deviceLogInput {
 		outMetrics.DeviceLogInput[s] = c
 	}
+	metricsLock.Unlock()
 	ctx.metricsPub.Publish("global", *outMetrics)
 }
 

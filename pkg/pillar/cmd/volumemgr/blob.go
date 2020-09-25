@@ -59,7 +59,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus)
 		blob.TotalSize = ds.TotalSize
 		blob.CurrentSize = ds.CurrentSize
 		if blob.TotalSize > 0 {
-			blob.Progress = uint(blob.CurrentSize / blob.TotalSize * 100)
+			blob.Progress = uint(100 * blob.CurrentSize / blob.TotalSize)
 		}
 		changed = true
 	}
@@ -90,10 +90,6 @@ func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus)
 	case types.DOWNLOADING:
 		// Nothing to do
 	case types.DOWNLOADED:
-		// save the blob type
-		if setBlobTypeFromContentType(blob, ds.ContentType) {
-			changed = true
-		}
 		// signal verifier to start if it hasn't already; add RefCount
 		if verifyBlob(ctx, blob) {
 			changed = true
@@ -173,6 +169,14 @@ func updateBlobFromVerifyImageStatus(vs *types.VerifyImageStatus, blob *types.Bl
 // returns if the BlobStatus was changed, and thus woudl require publishing
 func verifyBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 	changed := false
+
+	// save the blob type if needed
+	if blob.MediaType == "" {
+		ds := lookupDownloaderStatus(ctx, blob.Sha256)
+		if ds != nil && setBlobTypeFromContentType(blob, ds.ContentType) {
+			changed = true
+		}
+	}
 
 	// A: try to use an existing VerifyImageStatus
 	vs := lookupVerifyImageStatus(ctx, blob.Sha256)

@@ -227,10 +227,14 @@ func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
 func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
+	var (
+		changed bool
+		proceed bool
+		err     error
+	)
 	log.Infof("doBaseOsActivate(%s) uuid %s",
 		config.BaseOsVersion, uuidStr)
 
-	changed := false
 	if status.PartitionLabel == "" {
 		log.Infof("doBaseOsActivate(%s) for %s, unassigned partition",
 			config.BaseOsVersion, uuidStr)
@@ -239,9 +243,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 
 	// Sanity check the partition label of the current root and
 	// the partition state
-	// We've already dd'ed the new image into the partition
-	// hence can't compare versions here. Version check was done when
-	// processing the baseOsConfig.
 
 	if !zboot.IsOtherPartition(status.PartitionLabel) {
 		return changed
@@ -273,17 +274,18 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	log.Infof("doBaseOsActivate: %s activating", uuidStr)
-	zboot.SetOtherPartitionStateUpdating(log)
-	publishZbootPartitionStatus(ctx, status.PartitionLabel)
-	baseOsSetPartitionInfoInStatus(ctx, status, status.PartitionLabel)
-	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
-	if installDownloadedObjects(uuidStr, status.PartitionLabel,
-		&status.ContentTreeStatusList) {
-
+	changed, proceed, err = installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
+		&status.ContentTreeStatusList)
+	if err != nil {
+		status.SetErrorNow(err.Error())
 		changed = true
-		// Match the version string inside image?
+		return changed
+	}
+	if proceed {
+		changed = true
+		// Match the version string inside image
 		if errString := checkInstalledVersion(ctx, *status); errString != "" {
 			log.Error(errString)
 			status.SetErrorNow(errString)
@@ -295,12 +297,16 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			publishBaseOsStatus(ctx, status)
 			return changed
 		}
+		zboot.SetOtherPartitionStateUpdating(log)
 		// move the state from VERIFIED to INSTALLED
 		setProgressDone(status, types.INSTALLED)
 		publishZbootPartitionStatus(ctx, status.PartitionLabel)
 		baseOsSetPartitionInfoInStatus(ctx, status,
 			status.PartitionLabel)
 		publishBaseOsStatus(ctx, status)
+	} else {
+		log.Infof("Waiting for image to be mounted")
+		return changed
 	}
 
 	// Remove any old log files for a previous instance
@@ -376,7 +382,7 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 
 	// XXX can we check the version before installing to the partition?
 	// XXX requires loopback mounting the image; not part of syscall.Mount
-	// Note that we dd as part of the installDownloadedObjects call
+	// Note that we XXX dd as part of the installDownloadedObjects call
 	// in doBaseOsActivate
 	log.Infof("doBaseOsInstall(%s), Done", config.BaseOsVersion)
 	return changed, true
@@ -494,7 +500,7 @@ func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
 		return ret.Changed, false
 	}
 
-	if ret.MinState < types.VERIFIED {
+	if ret.MinState < types.LOADED {
 		log.Infof("checkBaseOsVolumeStatus(%s) for %s, Waiting for volumemgr",
 			config.BaseOsVersion, uuidStr)
 		return ret.Changed, false
@@ -633,27 +639,6 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	del = true
 	log.Infof("doBaseOsUninstall(%s), Done", status.BaseOsVersion)
 	return changed, del
-}
-
-func installBaseOsObject(image string, dstFilename string) error {
-
-	log.Infof("installBaseOsObject: %s to %s", image, dstFilename)
-
-	if dstFilename == "" {
-		errStr := fmt.Sprintf("installBaseOsObject: unassigned destination partition for %s",
-			image)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-
-	err := zboot.WriteToPartition(log, image, dstFilename)
-	if err != nil {
-		errStr := fmt.Sprintf("installBaseOsObject: WriteToPartition failed %s: %s",
-			dstFilename, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	return nil
 }
 
 // validate whether the image version matches with

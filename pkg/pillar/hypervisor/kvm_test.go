@@ -685,10 +685,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 #  bus = "pcie.0"
 #  addr = "0x1"
 [device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
-  bus = "pcie.0"
-  addr = "0x1"
+  driver = "ramfb"
 
 [device "pci.2"]
   driver = "pcie-root-port"
@@ -1530,10 +1527,7 @@ func TestCreateDomConfig(t *testing.T) {
 #  bus = "pcie.0"
 #  addr = "0x1"
 [device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
-  bus = "pcie.0"
-  addr = "0x1"
+  driver = "ramfb"
 
 [device "pci.2"]
   driver = "pcie-root-port"
