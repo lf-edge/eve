@@ -281,8 +281,15 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 		var blobChildren []*types.BlobStatus
 		if len(children) > 0 {
 			blobChildren = make([]*types.BlobStatus, 0)
+		childrenLoop:
 			for _, child := range children {
 				childHash := strings.ToLower(child.Digest.Hex)
+				for _, existingChild := range blobChildren {
+					if existingChild.Sha256 == childHash {
+						log.Debugf("getBlobChildren(%s): child blob %s has already been added.", blob.Sha256, childHash)
+						continue childrenLoop
+					}
+				}
 				//Check if childBlob already exists
 				existingChild := lookupOrCreateBlobStatus(ctx, childHash)
 				if existingChild != nil {
