@@ -1,3 +1,6 @@
+// Copyright (c) 2019,2020 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package utils
 
 import (
@@ -6,6 +9,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
 // WriteRename write data to a fmpfile and then rename it to a desired name
@@ -37,4 +42,9 @@ func WriteRename(fileName string, b []byte) error {
 		return errors.New(errStr)
 	}
 	return nil
+}
+
+// Writable checks if the directory is writable
+func Writable(dir string) bool {
+	return unix.Access(dir, unix.W_OK) == nil
 }
