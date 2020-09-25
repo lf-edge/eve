@@ -34,7 +34,9 @@ func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	if err != nil {
 		errStr := fmt.Sprintf("iptables command %s failed %s output %s",
 			args, err, out)
-		log.Errorln(errStr)
+		if log != nil {
+			log.Errorln(errStr)
+		}
 		return "", errors.New(errStr)
 	}
 	return string(out), nil
@@ -66,7 +68,9 @@ func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	if err != nil {
 		errStr := fmt.Sprintf("ip6tables command %s failed %s output %s",
 			args, err, out)
-		log.Errorln(errStr)
+		if log != nil {
+			log.Errorln(errStr)
+		}
 		return "", errors.New(errStr)
 	}
 	return string(out), nil
