@@ -950,9 +950,6 @@ func TestCreateDomConfig(t *testing.T) {
   base = "localtime"
   driftfix = "slew"
 
-[device]
-  driver = "intel-iommu"
-  caching-mode = "on"
 
 [realtime]
   mlock = "off"
@@ -1220,9 +1217,6 @@ func TestCreateDomConfig(t *testing.T) {
   base = "localtime"
   driftfix = "slew"
 
-[device]
-  driver = "intel-iommu"
-  caching-mode = "on"
 
 [realtime]
   mlock = "off"

@@ -132,6 +132,7 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	IoMmu              bool
 }
 
 type VmMode uint8
