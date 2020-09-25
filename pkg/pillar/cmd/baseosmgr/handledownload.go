@@ -120,7 +120,7 @@ func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string
 		ctsPtr := &(*status)[i]
 
 		if ctsPtr.State == types.LOADED {
-			changed, err = installDownloadedObject(ctx, ctsPtr.ContentID,
+			changed, proceed, err = installDownloadedObject(ctx, ctsPtr.ContentID,
 				finalObjDir, ctsPtr)
 			if err != nil {
 				log.Error(err)
@@ -138,17 +138,19 @@ func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string
 // If the final installation directory is known, move the object there
 // returns an error, and if ready
 func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalObjDir string,
-	ctsPtr *types.ContentTreeStatus) (bool, error) {
+	ctsPtr *types.ContentTreeStatus) (bool, bool, error) {
 
 	var (
-		refID string
+		refID   string
+		changed bool
+		proceed bool
 	)
 
 	log.Infof("installDownloadedObject(%s, %v)",
 		contentID, ctsPtr.State)
 
 	if ctsPtr.State != types.LOADED {
-		return false, nil
+		return changed, proceed, nil
 	}
 	refID = ctsPtr.ReferenceID()
 	if refID == "" {
@@ -160,11 +162,12 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 
 	// make sure we have a proper final destination point
 	if finalObjDir == "" {
+		changed = true
 		errStr := fmt.Sprintf("installDownloadedObject %s, final dir not set",
 			contentID)
 		log.Errorln(errStr)
 		ctsPtr.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
-		return false, fmt.Errorf(errStr)
+		return changed, proceed, fmt.Errorf(errStr)
 	}
 
 	// check if we have a result
@@ -175,11 +178,13 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 		if wres.Error != nil {
 			err := fmt.Errorf("installDownloadedObject(%s): InstallWorkResult error, exception while installing: %v", contentID, wres.Error)
 			log.Errorf(err.Error())
-			return false, err
+			return changed, proceed, err
 		}
+		changed = true
+		proceed = true
 		// if we made it here, we successfully completed the job
 		ctsPtr.State = types.INSTALLED
-		return true, nil
+		return changed, proceed, nil
 	}
 
 	// if we made it here, there was no work result, so try to add it
@@ -189,5 +194,5 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 	// XXX called twice!
 	AddWorkInstall(ctx, contentID.String(), refID, finalObjDir)
 	log.Infof("installDownloadedObject(%s) worker started", contentID)
-	return false, nil
+	return changed, proceed, nil
 }
