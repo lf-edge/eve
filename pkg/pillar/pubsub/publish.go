@@ -88,7 +88,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 
 		loggable, ok := newItem.(base.LoggableObject)
 		if ok {
-			loggable.LogModify(m)
+			loggable.LogModify(pub.log, m)
 		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
@@ -121,7 +121,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 		pub.log.Debugf("Unpublish(%s/%s) removing Item", name, key)
 		loggable, ok := m.(base.LoggableObject)
 		if ok {
-			loggable.LogDelete()
+			loggable.LogDelete(pub.log)
 		}
 	} else {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): key does not exist",

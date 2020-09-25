@@ -5,6 +5,7 @@ package base
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -163,6 +164,8 @@ type LogObject struct {
 }
 
 // logObjectMap tracks objects for NewLogObject
+// Needs to be a unique object for every thing which wants a unique
+// source/pid or other field set in LogObject
 var logObjectMap = NewLockedStringMap()
 
 // logSourceObjectMap tracks objects for NewSourceLogObject
@@ -172,8 +175,15 @@ var logSourceObjectMap = NewLockedStringMap()
 type LoggableObject interface {
 	LogKey() string
 	LogCreate(logBase *LogObject)
-	LogModify(old interface{})
-	LogDelete()
+	LogModify(logBase *LogObject, old interface{})
+	LogDelete(logBase *LogObject)
+}
+
+// Make sure we have a separate object for each agent aka log context.
+// This is critical to keep e.g., the subscribers and publishers for the same
+// objects apart when those subscribers and publishers run in the same process
+func (object *LogObject) mapKey(key string) string {
+	return fmt.Sprintf("%s:%p", key, object)
 }
 
 // NewLogObject :
@@ -184,12 +194,16 @@ type LoggableObject interface {
 // would return. LogObject craeted here and the corresponding LoggableObject are linked using this key.
 // objType and objName are mandatory parameters
 func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
+	if logBase == nil {
+		logrus.Fatalf("No logBase for %s/%s/%s/%s", string(objType),
+			objName, objUUID.String(), key)
+	}
 	if objType == UnknownLogType || len(key) == 0 {
 		logrus.Fatal("NewLogObject: objType and key parameters mandatory")
 	}
 	// Check if we already have an object with the given key
 	var object *LogObject
-	value, ok := logObjectMap.Load(key)
+	value, ok := logObjectMap.Load(logBase.mapKey(key))
 	if ok {
 		object, ok = value.(*LogObject)
 		if ok {
@@ -206,6 +220,10 @@ func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, obj
 
 // InitLogObject : Initialize an already allocated LogObject
 func InitLogObject(logBase *LogObject, object *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) {
+	if logBase == nil {
+		logrus.Fatalf("No logBase for %s/%s/%s/%s", string(objType),
+			objName, objUUID.String(), key)
+	}
 	if objType == UnknownLogType || len(key) == 0 {
 		logrus.Fatal("InitLogObject: objType and key parameters mandatory")
 	}
@@ -223,17 +241,10 @@ func InitLogObject(logBase *LogObject, object *LogObject, objType LogObjectType,
 		fields["obj_uuid"] = objUUID.String()
 	}
 	object.Fields = fields
-	if logBase == nil {
-		// Happens if we see a delete for something we don't have
-		// created
-		// XXX add logbase to all the LogModify and LogDelete functions
-		object.logger = logrus.StandardLogger()
-	} else {
-		object.logger = logBase.logger
-		object.Merge(logBase)
-	}
+	object.logger = logBase.logger
+	object.Merge(logBase)
 	object.Initialized = true
-	logObjectMap.Store(key, object)
+	logObjectMap.Store(logBase.mapKey(key), object)
 }
 
 // NewSourceLogObject : create an object with agentName and agentPid
@@ -301,9 +312,9 @@ func NewRelationObject(logBase *LogObject, relationObjectType RelationObjectType
 }
 
 // LookupLogObject :
-func LookupLogObject(key string) *LogObject {
+func LookupLogObject(mapKey string) *LogObject {
 	var object *LogObject
-	value, ok := logObjectMap.Load(key)
+	value, ok := logObjectMap.Load(mapKey)
 	if !ok {
 		return nil
 	}
@@ -316,7 +327,11 @@ func LookupLogObject(key string) *LogObject {
 
 // EnsureLogObject : Look for log object with given key or create new if we do not already have one.
 func EnsureLogObject(logBase *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
-	logObject := LookupLogObject(key)
+	if logBase == nil {
+		logrus.Fatalf("No logBase for %s/%s/%s/%s", string(objType),
+			objName, objUUID.String(), key)
+	}
+	logObject := LookupLogObject(logBase.mapKey(key))
 	if logObject == nil {
 		logObject = NewLogObject(logBase, objType, objName, objUUID, key)
 	}
@@ -324,13 +339,17 @@ func EnsureLogObject(logBase *LogObject, objType LogObjectType, objName string, 
 }
 
 // DeleteLogObject :
-func DeleteLogObject(key string) {
-	_, ok := logObjectMap.Load(key)
+func DeleteLogObject(logBase *LogObject, key string) {
+	if logBase == nil {
+		logrus.Fatalf("No logBase for %s", key)
+	}
+	mapKey := logBase.mapKey(key)
+	_, ok := logObjectMap.Load(mapKey)
 	if !ok {
-		logrus.Errorf("DeleteLogObject: LogObject with key %s not found in internal map", key)
+		logrus.Errorf("DeleteLogObject: LogObject with mapKey %s not found in internal map", mapKey)
 		return
 	}
-	logObjectMap.Delete(key)
+	logObjectMap.Delete(mapKey)
 }
 
 // AddField : Add a key value pair to be logged
