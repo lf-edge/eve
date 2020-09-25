@@ -44,8 +44,8 @@ func (config AppNetworkConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config AppNetworkConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppNetworkConfigLogType, config.DisplayName,
+func (config AppNetworkConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppNetworkConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(AppNetworkConfig)
@@ -65,13 +65,13 @@ func (config AppNetworkConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config AppNetworkConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppNetworkConfigLogType, config.DisplayName,
+func (config AppNetworkConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppNetworkConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		Noticef("App network config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -137,8 +137,8 @@ func (status AppNetworkStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status AppNetworkStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppNetworkStatusLogType, status.DisplayName,
+func (status AppNetworkStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppNetworkStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(AppNetworkStatus)
@@ -166,13 +166,13 @@ func (status AppNetworkStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status AppNetworkStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppNetworkStatusLogType, status.DisplayName,
+func (status AppNetworkStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppNetworkStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("activated", status.Activated).
 		Noticef("App network status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -224,8 +224,8 @@ func (acMetric AppContainerMetrics) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (acMetric AppContainerMetrics) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppContainerMetricsLogType, "",
+func (acMetric AppContainerMetrics) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppContainerMetricsLogType, "",
 		acMetric.UUIDandVersion.UUID, acMetric.LogKey())
 
 	oldAcMetric, ok := old.(AppContainerMetrics)
@@ -238,12 +238,12 @@ func (acMetric AppContainerMetrics) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (acMetric AppContainerMetrics) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppContainerMetricsLogType, "",
+func (acMetric AppContainerMetrics) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppContainerMetricsLogType, "",
 		acMetric.UUIDandVersion.UUID, acMetric.LogKey())
 	logObject.Metricf("App container metric delete")
 
-	base.DeleteLogObject(acMetric.LogKey())
+	base.DeleteLogObject(logBase, acMetric.LogKey())
 }
 
 // LogKey :
@@ -331,8 +331,8 @@ func (config DevicePortConfigList) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config DevicePortConfigList) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DevicePortConfigListLogType, "",
+func (config DevicePortConfigList) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DevicePortConfigList)
@@ -357,14 +357,14 @@ func (config DevicePortConfigList) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config DevicePortConfigList) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DevicePortConfigListLogType, "",
+func (config DevicePortConfigList) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigListLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("current-index-int64", config.CurrentIndex).
 		AddField("num-portconfig-int64", len(config.PortConfigList)).
 		Noticef("DevicePortConfigList delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -455,8 +455,8 @@ func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config DevicePortConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DevicePortConfigLogType, "",
+func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DevicePortConfig)
@@ -509,8 +509,8 @@ func (config DevicePortConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config DevicePortConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DevicePortConfigLogType, "",
+func (config DevicePortConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DevicePortConfigLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 		AddField("last-failed", config.LastFailed).
@@ -527,7 +527,7 @@ func (config DevicePortConfig) LogDelete() {
 			Noticef("DevicePortConfig port delete")
 	}
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -947,8 +947,8 @@ func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status DeviceNetworkStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DeviceNetworkStatusLogType, "",
+func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(DeviceNetworkStatus)
@@ -995,8 +995,8 @@ func (status DeviceNetworkStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status DeviceNetworkStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DeviceNetworkStatusLogType, "",
+func (status DeviceNetworkStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DeviceNetworkStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
@@ -1011,7 +1011,7 @@ func (status DeviceNetworkStatus) LogDelete() {
 			Noticef("DeviceNetworkStatus port delete")
 	}
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -1750,8 +1750,8 @@ func (config NetworkXObjectConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config NetworkXObjectConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.NetworkXObjectConfigLogType, "",
+func (config NetworkXObjectConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkXObjectConfigLogType, "",
 		config.UUID, config.LogKey())
 
 	oldConfig, ok := old.(NetworkXObjectConfig)
@@ -1764,12 +1764,12 @@ func (config NetworkXObjectConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config NetworkXObjectConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.NetworkXObjectConfigLogType, "",
+func (config NetworkXObjectConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkXObjectConfigLogType, "",
 		config.UUID, config.LogKey())
 	logObject.Noticef("NetworkXObject config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -1915,8 +1915,8 @@ func (metrics NetworkInstanceMetrics) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (metrics NetworkInstanceMetrics) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.NetworkInstanceMetricsLogType, "",
+func (metrics NetworkInstanceMetrics) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceMetricsLogType, "",
 		metrics.UUIDandVersion.UUID, metrics.LogKey())
 
 	oldMetrics, ok := old.(NetworkInstanceMetrics)
@@ -1929,12 +1929,12 @@ func (metrics NetworkInstanceMetrics) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (metrics NetworkInstanceMetrics) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.NetworkInstanceMetricsLogType, "",
+func (metrics NetworkInstanceMetrics) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceMetricsLogType, "",
 		metrics.UUIDandVersion.UUID, metrics.LogKey())
 	logObject.Metricf("Network instance metrics delete")
 
-	base.DeleteLogObject(metrics.LogKey())
+	base.DeleteLogObject(logBase, metrics.LogKey())
 }
 
 // LogKey :
@@ -1964,8 +1964,8 @@ func (nms NetworkMetrics) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (nms NetworkMetrics) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.NetworkMetricsLogType, "",
+func (nms NetworkMetrics) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkMetricsLogType, "",
 		nilUUID, nms.LogKey())
 
 	oldNms, ok := old.(NetworkMetrics)
@@ -1978,12 +1978,12 @@ func (nms NetworkMetrics) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (nms NetworkMetrics) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.NetworkMetricsLogType, "",
+func (nms NetworkMetrics) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkMetricsLogType, "",
 		nilUUID, nms.LogKey())
 	logObject.Metricf("Network metrics delete")
 
-	base.DeleteLogObject(nms.LogKey())
+	base.DeleteLogObject(logBase, nms.LogKey())
 }
 
 // LogKey :
@@ -2087,8 +2087,8 @@ func (config NetworkInstanceConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config NetworkInstanceConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.NetworkInstanceConfigLogType, "",
+func (config NetworkInstanceConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceConfigLogType, "",
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(NetworkInstanceConfig)
@@ -2101,12 +2101,12 @@ func (config NetworkInstanceConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config NetworkInstanceConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.NetworkInstanceConfigLogType, "",
+func (config NetworkInstanceConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceConfigLogType, "",
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.Metricf("Network instance config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -2164,8 +2164,8 @@ func (status NetworkInstanceStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status NetworkInstanceStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.NetworkInstanceStatusLogType, "",
+func (status NetworkInstanceStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceStatusLogType, "",
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(NetworkInstanceStatus)
@@ -2178,12 +2178,12 @@ func (status NetworkInstanceStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status NetworkInstanceStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.NetworkInstanceStatusLogType, "",
+func (status NetworkInstanceStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceStatusLogType, "",
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.Metricf("Network instance status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -2614,8 +2614,8 @@ func (flows IPFlow) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (flows IPFlow) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.IPFlowLogType, "",
+func (flows IPFlow) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.IPFlowLogType, "",
 		flows.DevID, flows.LogKey())
 
 	oldFlows, ok := old.(IPFlow)
@@ -2628,12 +2628,12 @@ func (flows IPFlow) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (flows IPFlow) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.IPFlowLogType, "",
+func (flows IPFlow) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.IPFlowLogType, "",
 		flows.DevID, flows.LogKey())
 	logObject.Metricf("IP flow delete")
 
-	base.DeleteLogObject(flows.LogKey())
+	base.DeleteLogObject(logBase, flows.LogKey())
 }
 
 // LogKey :
@@ -2663,8 +2663,8 @@ func (vifIP VifIPTrig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (vifIP VifIPTrig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.VifIPTrigLogType, "",
+func (vifIP VifIPTrig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
 		nilUUID, vifIP.LogKey())
 
 	oldVifIP, ok := old.(VifIPTrig)
@@ -2677,12 +2677,12 @@ func (vifIP VifIPTrig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (vifIP VifIPTrig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.VifIPTrigLogType, "",
+func (vifIP VifIPTrig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
 		nilUUID, vifIP.LogKey())
 	logObject.Metricf("Vif IP trig delete")
 
-	base.DeleteLogObject(vifIP.LogKey())
+	base.DeleteLogObject(logBase, vifIP.LogKey())
 }
 
 // LogKey :
@@ -2711,8 +2711,8 @@ func (status OnboardingStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status OnboardingStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.OnboardingStatusLogType, "",
+func (status OnboardingStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.OnboardingStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(OnboardingStatus)
@@ -2725,12 +2725,12 @@ func (status OnboardingStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status OnboardingStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.OnboardingStatusLogType, "",
+func (status OnboardingStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.OnboardingStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.Metricf("Onboarding status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

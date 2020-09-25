@@ -32,8 +32,8 @@ func (config ZbootConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config ZbootConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ZbootConfigLogType, "",
+func (config ZbootConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ZbootConfigLogType, "",
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(ZbootConfig)
@@ -53,13 +53,13 @@ func (config ZbootConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config ZbootConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ZbootConfigLogType, "",
+func (config ZbootConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ZbootConfigLogType, "",
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("test-complete-bool", config.TestComplete).
 		Noticef("Zboot config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey : XXX note that this only the IMGx, while Status includes ShortVersion for logs
@@ -95,8 +95,8 @@ func (status ZbootStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status ZbootStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ZbootStatusLogType, "",
+func (status ZbootStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ZbootStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(ZbootStatus)
@@ -122,15 +122,15 @@ func (status ZbootStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status ZbootStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ZbootStatusLogType, "",
+func (status ZbootStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ZbootStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("partition-state", status.PartitionState).
 		AddField("current-partition-bool", status.CurrentPartition).
 		AddField("test-complete-bool", status.TestComplete).
 		Noticef("Zboot status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey : XXX note that this includes the ShortVersion, while Status only the PartitionLabel

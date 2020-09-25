@@ -78,8 +78,8 @@ func (status DiskMetric) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status DiskMetric) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DiskMetricType, status.DiskPath, nilUUID, status.LogKey())
+func (status DiskMetric) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DiskMetricType, status.DiskPath, nilUUID, status.LogKey())
 
 	if _, ok := old.(DiskMetric); !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DiskMetric type")
@@ -97,8 +97,8 @@ func (status DiskMetric) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status DiskMetric) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DiskMetricType, status.DiskPath, nilUUID, status.LogKey())
+func (status DiskMetric) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DiskMetricType, status.DiskPath, nilUUID, status.LogKey())
 	logObject.CloneAndAddField("diskpath", status.DiskPath).
 		AddField("totalbytes-int64", status.TotalBytes).
 		AddField("userbytes-int64", status.UsedBytes).
@@ -106,7 +106,7 @@ func (status DiskMetric) LogDelete() {
 		AddField("isdor", status.IsDir).
 		Metricf("DiskMetric status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -143,8 +143,8 @@ func (status AppDiskMetric) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status AppDiskMetric) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppDiskMetricType, status.DiskPath, nilUUID, status.LogKey())
+func (status AppDiskMetric) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppDiskMetricType, status.DiskPath, nilUUID, status.LogKey())
 
 	if _, ok := old.(AppDiskMetric); !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppDiskMetric type")
@@ -158,15 +158,15 @@ func (status AppDiskMetric) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status AppDiskMetric) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppDiskMetricType, status.DiskPath, nilUUID, status.LogKey())
+func (status AppDiskMetric) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppDiskMetricType, status.DiskPath, nilUUID, status.LogKey())
 	logObject.CloneAndAddField("diskpath", status.DiskPath).
 		AddField("provisionedbytes-int64", status.ProvisionedBytes).
 		AddField("disktype", status.DiskType).
 		AddField("dirty", status.Dirty).
 		Metricf("AppDiskMetric status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

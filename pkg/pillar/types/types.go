@@ -188,8 +188,8 @@ func (info UuidToNum) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (info UuidToNum) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.UUIDToNumLogType, "",
+func (info UuidToNum) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.UUIDToNumLogType, "",
 		info.UUID, info.LogKey())
 
 	oldInfo, ok := old.(UuidToNum)
@@ -202,12 +202,12 @@ func (info UuidToNum) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (info UuidToNum) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.UUIDToNumLogType, "",
+func (info UuidToNum) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.UUIDToNumLogType, "",
 		info.UUID, info.LogKey())
 	logObject.Noticef("UuidToNum info delete")
 
-	base.DeleteLogObject(info.LogKey())
+	base.DeleteLogObject(logBase, info.LogKey())
 }
 
 // LogKey :

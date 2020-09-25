@@ -30,8 +30,8 @@ func (s ServiceInitStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (s ServiceInitStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ServiceInitLogType, s.ServiceName, nilUUID, s.LogKey())
+func (s ServiceInitStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ServiceInitLogType, s.ServiceName, nilUUID, s.LogKey())
 
 	if _, ok := old.(ServiceInitStatus); !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ServiceInitStatus type")
@@ -43,13 +43,13 @@ func (s ServiceInitStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (s ServiceInitStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ServiceInitLogType, s.ServiceName, nilUUID, s.LogKey())
+func (s ServiceInitStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ServiceInitLogType, s.ServiceName, nilUUID, s.LogKey())
 	logObject.CloneAndAddField("servicename", s.ServiceName).
 		AddField("cmdargs", s.CmdArgs).
 		Noticef("ServiceInitStatus modify")
 
-	base.DeleteLogObject(s.LogKey())
+	base.DeleteLogObject(logBase, s.LogKey())
 }
 
 // LogKey :

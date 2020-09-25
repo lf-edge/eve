@@ -85,8 +85,8 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status BlobStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.BlobStatusLogType, status.RelativeURL,
+func (status BlobStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.BlobStatusLogType, status.RelativeURL,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(BlobStatus)
@@ -119,15 +119,15 @@ func (status BlobStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status BlobStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.BlobStatusLogType, status.RelativeURL,
+func (status BlobStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.BlobStatusLogType, status.RelativeURL,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
 		Noticef("Blob status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

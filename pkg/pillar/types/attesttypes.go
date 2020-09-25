@@ -32,8 +32,8 @@ func (nonce AttestNonce) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (nonce AttestNonce) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AttestNonceLogType, "",
+func (nonce AttestNonce) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AttestNonceLogType, "",
 		nilUUID, nonce.LogKey())
 
 	oldNonce, ok := old.(AttestNonce)
@@ -46,12 +46,12 @@ func (nonce AttestNonce) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (nonce AttestNonce) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AttestNonceLogType, "",
+func (nonce AttestNonce) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AttestNonceLogType, "",
 		nilUUID, nonce.LogKey())
 	logObject.Noticef("Attest nonce delete")
 
-	base.DeleteLogObject(nonce.LogKey())
+	base.DeleteLogObject(logBase, nonce.LogKey())
 }
 
 // LogKey :
@@ -127,8 +127,8 @@ func (quote AttestQuote) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (quote AttestQuote) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AttestQuoteLogType, "",
+func (quote AttestQuote) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AttestQuoteLogType, "",
 		nilUUID, quote.LogKey())
 
 	oldQuote, ok := old.(AttestQuote)
@@ -141,12 +141,12 @@ func (quote AttestQuote) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (quote AttestQuote) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AttestQuoteLogType, "",
+func (quote AttestQuote) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AttestQuoteLogType, "",
 		nilUUID, quote.LogKey())
 	logObject.Noticef("Attest quote delete")
 
-	base.DeleteLogObject(quote.LogKey())
+	base.DeleteLogObject(logBase, quote.LogKey())
 }
 
 // LogKey :
@@ -188,8 +188,8 @@ func (cert EdgeNodeCert) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (cert EdgeNodeCert) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.EdgeNodeCertLogType, "",
+func (cert EdgeNodeCert) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.EdgeNodeCertLogType, "",
 		nilUUID, cert.LogKey())
 
 	oldCert, ok := old.(EdgeNodeCert)
@@ -202,12 +202,12 @@ func (cert EdgeNodeCert) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (cert EdgeNodeCert) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.EdgeNodeCertLogType, "",
+func (cert EdgeNodeCert) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.EdgeNodeCertLogType, "",
 		nilUUID, cert.LogKey())
 	logObject.Noticef("Edge node cert delete")
 
-	base.DeleteLogObject(cert.LogKey())
+	base.DeleteLogObject(logBase, cert.LogKey())
 }
 
 // LogKey :

@@ -47,8 +47,8 @@ func (config VolumeConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config VolumeConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.VolumeConfigLogType, config.DisplayName,
+func (config VolumeConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 
 	oldConfig, ok := old.(VolumeConfig)
@@ -77,8 +77,8 @@ func (config VolumeConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config VolumeConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.VolumeConfigLogType, config.DisplayName,
+func (config VolumeConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeConfigLogType, config.DisplayName,
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("content-id", config.ContentID).
 		AddField("max-vol-size-int64", config.MaxVolSize).
@@ -86,7 +86,7 @@ func (config VolumeConfig) LogDelete() {
 		AddField("generation-counter-int64", config.GenerationCounter).
 		Noticef("Volume config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -156,8 +156,8 @@ func (status VolumeStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status VolumeStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.VolumeStatusLogType, status.DisplayName,
+func (status VolumeStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 
 	oldStatus, ok := old.(VolumeStatus)
@@ -192,8 +192,8 @@ func (status VolumeStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status VolumeStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.VolumeStatusLogType, status.DisplayName,
+func (status VolumeStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 	logObject.CloneAndAddField("content-id", status.ContentID).
 		AddField("max-vol-size-int64", status.MaxVolSize).
@@ -203,7 +203,7 @@ func (status VolumeStatus) LogDelete() {
 		AddField("filelocation", status.FileLocation).
 		Noticef("Volume status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -244,8 +244,8 @@ func (config VolumeRefConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config VolumeRefConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.VolumeRefConfigLogType, "",
+func (config VolumeRefConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeRefConfigLogType, "",
 		config.VolumeID, config.LogKey())
 
 	oldConfig, ok := old.(VolumeRefConfig)
@@ -264,13 +264,13 @@ func (config VolumeRefConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config VolumeRefConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.VolumeRefConfigLogType, "",
+func (config VolumeRefConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeRefConfigLogType, "",
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		Noticef("Volume ref config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -336,8 +336,8 @@ func (status VolumeRefStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status VolumeRefStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.VolumeRefStatusLogType, status.DisplayName,
+func (status VolumeRefStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeRefStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 
 	oldStatus, ok := old.(VolumeRefStatus)
@@ -374,8 +374,8 @@ func (status VolumeRefStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status VolumeRefStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.VolumeRefStatusLogType, status.DisplayName,
+func (status VolumeRefStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeRefStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
 	logObject.CloneAndAddField("refcount-int64", status.RefCount).
 		AddField("generation-counter-int64", status.GenerationCounter).
@@ -388,7 +388,7 @@ func (status VolumeRefStatus) LogDelete() {
 		AddField("pending-add-bool", status.PendingAdd).
 		Noticef("Volume ref status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

@@ -35,8 +35,8 @@ func (status VaultStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status VaultStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.VaultStatusLogType, status.Name,
+func (status VaultStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VaultStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(VaultStatus)
@@ -55,12 +55,12 @@ func (status VaultStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status VaultStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.VaultStatusLogType, status.Name,
+func (status VaultStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VaultStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.Noticef("Vault status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
