@@ -174,15 +174,19 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	}
 
 	for _, id := range ids {
-		var usedMem, availMem uint32
+		var usedMem, availMem, totalMem uint32
 		var usedMemPerc float64
 		var cpuTotal uint64
 
 		if metric, err := containerd.CtrGetContainerMetrics(id); err == nil {
 			usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
-			availMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
-			if availMem != 0 {
-				usedMemPerc = float64(100 * float32(usedMem) / float32(availMem))
+			totalMem = uint32(roundFromBytesToMbytes(metric.Memory.HierarchicalMemoryLimit))
+			availMem = 0
+			if totalMem > usedMem {
+				availMem = totalMem - usedMem
+			}
+			if totalMem != 0 {
+				usedMemPerc = float64(100 * float32(usedMem) / float32(totalMem))
 			} else {
 				usedMemPerc = 0
 			}
