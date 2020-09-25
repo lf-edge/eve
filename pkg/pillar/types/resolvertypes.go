@@ -39,8 +39,8 @@ func (config ResolveConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config ResolveConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
+func (config ResolveConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
 
 	oldConfig, ok := old.(ResolveConfig)
@@ -53,12 +53,12 @@ func (config ResolveConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config ResolveConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ResolveConfigLogType, config.Name,
+func (config ResolveConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ResolveConfigLogType, config.Name,
 		config.DatastoreID, config.LogKey())
 	logObject.Noticef("Resolve config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -98,8 +98,8 @@ func (status ResolveStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status ResolveStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ResolveStatusLogType, status.Name,
+func (status ResolveStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ResolveStatusLogType, status.Name,
 		status.DatastoreID, status.LogKey())
 
 	oldStatus, ok := old.(ResolveStatus)
@@ -131,14 +131,14 @@ func (status ResolveStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status ResolveStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ResolveStatusLogType, status.Name,
+func (status ResolveStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ResolveStatusLogType, status.Name,
 		status.DatastoreID, status.LogKey())
 	logObject.CloneAndAddField("image-sha256", status.ImageSha256).
 		AddField("retry-count-int64", status.RetryCount).
 		Noticef("Resolve status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

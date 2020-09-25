@@ -96,8 +96,8 @@ func (config AppInstanceConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config AppInstanceConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppInstanceConfigLogType, config.DisplayName,
+func (config AppInstanceConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppInstanceConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(AppInstanceConfig)
@@ -120,14 +120,14 @@ func (config AppInstanceConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config AppInstanceConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppInstanceConfigLogType, config.DisplayName,
+func (config AppInstanceConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppInstanceConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("remote-console", config.RemoteConsole).
 		Noticef("App instance config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -185,8 +185,8 @@ func (status AppInstanceStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status AppInstanceStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppInstanceStatusLogType, status.DisplayName,
+func (status AppInstanceStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppInstanceStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(AppInstanceStatus)
@@ -222,15 +222,15 @@ func (status AppInstanceStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status AppInstanceStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppInstanceStatusLogType, status.DisplayName,
+func (status AppInstanceStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppInstanceStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("restart-in-progress", status.RestartInprogress).
 		AddField("purge-in-progress", status.PurgeInprogress).
 		Noticef("App instance status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -313,8 +313,8 @@ func (aih AppAndImageToHash) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (aih AppAndImageToHash) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AppAndImageToHashLogType, "",
+func (aih AppAndImageToHash) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppAndImageToHashLogType, "",
 		aih.AppUUID, aih.LogKey())
 
 	oldAih, ok := old.(AppAndImageToHash)
@@ -339,15 +339,15 @@ func (aih AppAndImageToHash) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (aih AppAndImageToHash) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AppAndImageToHashLogType, "",
+func (aih AppAndImageToHash) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppAndImageToHashLogType, "",
 		aih.AppUUID, aih.LogKey())
 	logObject.CloneAndAddField("purge-counter-int64", aih.PurgeCounter).
 		AddField("image-id", aih.ImageID.String()).
 		AddField("hash", aih.Hash).
 		Noticef("App and image to hash delete")
 
-	base.DeleteLogObject(aih.LogKey())
+	base.DeleteLogObject(logBase, aih.LogKey())
 }
 
 // LogKey :

@@ -37,8 +37,8 @@ func (cert ControllerCert) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (cert ControllerCert) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ControllerCertLogType, "",
+func (cert ControllerCert) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ControllerCertLogType, "",
 		nilUUID, cert.LogKey())
 
 	oldCert, ok := old.(ControllerCert)
@@ -51,12 +51,12 @@ func (cert ControllerCert) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (cert ControllerCert) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ControllerCertLogType, "",
+func (cert ControllerCert) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ControllerCertLogType, "",
 		nilUUID, cert.LogKey())
 	logObject.Noticef("Controller cert delete")
 
-	base.DeleteLogObject(cert.LogKey())
+	base.DeleteLogObject(logBase, cert.LogKey())
 }
 
 // LogKey :

@@ -65,8 +65,8 @@ func (config DomainConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config DomainConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DomainConfigLogType, config.DisplayName,
+func (config DomainConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DomainConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(DomainConfig)
@@ -89,14 +89,14 @@ func (config DomainConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config DomainConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DomainConfigLogType, config.DisplayName,
+func (config DomainConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DomainConfigLogType, config.DisplayName,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
 		Noticef("domain config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -214,8 +214,8 @@ func (status DomainStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status DomainStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DomainStatusLogType, status.DisplayName,
+func (status DomainStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DomainStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(DomainStatus)
@@ -247,14 +247,14 @@ func (status DomainStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status DomainStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DomainStatusLogType, status.DisplayName,
+func (status DomainStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DomainStatusLogType, status.DisplayName,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("activated", status.Activated).
 		Noticef("domain status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -317,8 +317,8 @@ func (metric DomainMetric) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (metric DomainMetric) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DomainMetricLogType, "",
+func (metric DomainMetric) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DomainMetricLogType, "",
 		metric.UUIDandVersion.UUID, metric.LogKey())
 
 	oldMetric, ok := old.(DomainMetric)
@@ -331,12 +331,12 @@ func (metric DomainMetric) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (metric DomainMetric) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DomainMetricLogType, "",
+func (metric DomainMetric) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DomainMetricLogType, "",
 		metric.UUIDandVersion.UUID, metric.LogKey())
 	logObject.Metricf("Domain metric delete")
 
-	base.DeleteLogObject(metric.LogKey())
+	base.DeleteLogObject(logBase, metric.LogKey())
 }
 
 // LogKey :
@@ -369,8 +369,8 @@ func (hm HostMemory) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (hm HostMemory) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.HostMemoryLogType, "",
+func (hm HostMemory) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.HostMemoryLogType, "",
 		nilUUID, hm.LogKey())
 
 	oldHm, ok := old.(HostMemory)
@@ -383,12 +383,12 @@ func (hm HostMemory) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (hm HostMemory) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.HostMemoryLogType, "",
+func (hm HostMemory) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.HostMemoryLogType, "",
 		nilUUID, hm.LogKey())
 	logObject.Metricf("Host memory delete")
 
-	base.DeleteLogObject(hm.LogKey())
+	base.DeleteLogObject(logBase, hm.LogKey())
 }
 
 // LogKey :
