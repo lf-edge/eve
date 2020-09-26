@@ -4,19 +4,35 @@
 package diskmetrics
 
 import (
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-// SizeFromDir performs a du -s
+// SizeFromDir performs a du -s equivalent operation.
+// Didn't use ioutil.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
+// which is an unnecessary costly operation.
 func SizeFromDir(log *base.LogObject, dirname string) uint64 {
 	var totalUsed uint64
-	locations, err := ioutil.ReadDir(dirname)
+	fileInfo, err := os.Stat(dirname)
 	if err != nil {
-		//log.Debugf("Dir %s is missing. Set the size to zero\n", dirname)
+		log.Errorf("File not found %s. %s. Set the size to zero\n", err.Error(), dirname)
+		return totalUsed
+	}
+	if !fileInfo.IsDir() {
+		return uint64(fileInfo.Size())
+	}
+	f, err := os.Open(dirname)
+	if err != nil {
+		log.Errorf("Exception while opening %s. %s. Set the size to zero\n", err.Error(), dirname)
+		return totalUsed
+	}
+	locations, err := f.Readdir(-1)
+	f.Close()
+	if err != nil {
+		//log.Debugf("Exception while reading dirs %s. Set the size to zero\n", err.Error(), dirname)
 		return totalUsed
 	}
 	for _, location := range locations {
