@@ -221,7 +221,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 			name, key)
 		loggable, ok := item.(base.LoggableObject)
 		if ok {
-			loggable.LogModify(m)
+			loggable.LogModify(sub.log, m)
 		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
@@ -260,7 +260,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	}
 	loggable, ok := m.(base.LoggableObject)
 	if ok {
-		loggable.LogDelete()
+		loggable.LogDelete(sub.log)
 	}
 	// DO NOT log Values. They may contain sensitive information.
 	sub.log.Debugf("pubsub.handleDelete(%s) key %s", name, key)

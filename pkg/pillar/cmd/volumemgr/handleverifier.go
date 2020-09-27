@@ -57,12 +57,20 @@ func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus)
 		log.Infof("MaybeAddVerifyImageConfigBlob: refcnt to %d for %s",
 			vic.RefCount, blob.Sha256)
 	} else {
+		// If Expired this will overwrite the VerifyImageConfig
+		// cancelling the expiration. Preserve any refcount if
+		// multiple such cancellations.
+		var refcount uint
+		if vic != nil {
+			refcount = vic.RefCount
+		}
+		refcount++
 		log.Infof("MaybeAddVerifyImageConfigBlob: add for %s", blob.Sha256)
 		vic = &types.VerifyImageConfig{
 			FileLocation: blob.Path,   // the source of the file to verify
 			ImageSha256:  blob.Sha256, // the sha to verify
 			Name:         blob.Sha256, // we are just going to use the sha for the verifier display
-			RefCount:     1,
+			RefCount:     refcount,
 		}
 		log.Debugf("MaybeAddVerifyImageConfigBlob - config: %+v", vic)
 	}
@@ -72,8 +80,11 @@ func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus)
 }
 
 // MaybeRemoveVerifyImageConfig decreases the refcount
-// The object is not deleted until MaybeDeleteVerifyImageConfig is called
-// Thus MaybeAddVerifyImageConfig can be called to increment the refcount
+// The object deletion handshake doesn't start until deleteVerifyImageConfig
+// is called which we do when the refcount reaches zero.
+// However, MaybeAddVerifyImageConfig can be called to increment the refcount
+// since the handshake with the verifier will not conclude until the
+// VerifyImageConfig is unpublished
 func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
 
 	log.Infof("MaybeRemoveVerifyImageConfig(%s)", imageSha)
@@ -86,29 +97,29 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
 	}
 	if m.RefCount == 0 {
 		log.Fatalf("MaybeRemoveVerifyImageConfig: Attempting to reduce "+
-			"0 RefCount. Image Details - Name: %s, "+
-			"ImageSha256:%s", m.Name, m.ImageSha256)
+			"0 RefCount. ImageSha256: %s", m.ImageSha256)
 	}
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s",
 		m.RefCount, imageSha)
-	publishVerifyImageConfig(ctx, m)
 
 	if m.RefCount == 0 {
 		log.Infof("MaybeRemoveVerifyImageConfig(%s): marking VerifyImageConfig as expired", imageSha)
-		MaybeDeleteVerifyImageConfig(ctx, imageSha)
+		deleteVerifyImageConfig(ctx, m)
+	} else {
+		publishVerifyImageConfig(ctx, m)
 	}
 	log.Infof("MaybeRemoveVerifyImageConfig done for %s", imageSha)
 }
 
-// MaybeDeleteVerifyImageConfig checks the refcount and if it is zero it
+// deleteVerifyImageConfig checks the refcount and if it is zero it
 // initiates the delete handshake with the verifier. That handshake occurs
 // after a MaybeRemoveVerifyImageConfig has dropped the refcount to zero
 // thus after:
 // 1. volumemgr publishes the VIC with RefCount=0
 // 2. verifier publishes the VIS with RefCount=0
 // At that point in time MaybeAddVerifyImageConfig can be called to increment
-// the refcount, but if MaybeDeleteVerifyImageConfig is called we proceed with
+// the refcount, but if deleteVerifyImageConfig is called we proceed with
 // 3. volumemgr publishes the VIC with Expired=true (RefCount=0)
 // 4. verifier publishes the VIS with Expired=true (RefCount=0) in response
 // 5. handleVerifyImageStatusModify will check if a new VIC has been created
@@ -122,30 +133,21 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
 // 6. upon seeing the unpublish of the VIC the verifier deletes file and unpublishes the VIS
 // at this point in time verifier might see a new VIC from volumemgr if it recreated it
 // 7. handleVerifyImageStatusDelete will the unpublish the VIC if it has Expired set (if it was recreated it will not have Expired set)
-func MaybeDeleteVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
+func deleteVerifyImageConfig(ctx *volumemgrContext, config *types.VerifyImageConfig) {
 
-	log.Infof("MaybeDeleteVerifyImageConfig(%s)", imageSha)
-	m := lookupVerifyImageConfig(ctx, imageSha)
-	if m == nil {
-		log.Infof("MaybeDeleteVerifyImageConfig: config missing for %s",
-			imageSha)
-		return
+	log.Infof("deleteVerifyImageConfig(%s)", config.ImageSha256)
+	if config.Expired {
+		log.Fatalf("deleteVerifyImageConfig: already Expired for %s",
+			config.ImageSha256)
 	}
-	if m.Expired {
-		log.Warnf("MaybeDeleteVerifyImageConfig: already Expired for %s",
-			imageSha)
-		return
+	if config.RefCount != 0 {
+		log.Fatalf("deleteVerifyImageConfig: Attempting to delete but not zero "+
+			"RefCount %d, sha:%s",
+			config.RefCount, config.ImageSha256)
 	}
-	if m.RefCount != 0 {
-		log.Warnf("MaybeDeleteVerifyImageConfig: Attempting to delete but not zero "+
-			"RefCount %d. Image Details - Name: %s, "+
-			"ImageSha256:%s",
-			m.RefCount, m.Name, m.ImageSha256)
-		return
-	}
-	m.Expired = true
-	publishVerifyImageConfig(ctx, m)
-	log.Infof("MaybeDeleteVerifyImageConfig done for %s", imageSha)
+	config.Expired = true
+	publishVerifyImageConfig(ctx, config)
+	log.Infof("deleteVerifyImageConfig done for %s", config.ImageSha256)
 }
 
 func handleVerifyImageStatusModify(ctxArg interface{}, key string,
@@ -234,9 +236,9 @@ func gcVerifyImageConfig(ctx *volumemgrContext) {
 
 	for _, verifyImageConfigIntf := range verifyImageConfigMap {
 		verifyImageConfig := verifyImageConfigIntf.(types.VerifyImageConfig)
-		if verifyImageConfig.RefCount == 0 {
+		if verifyImageConfig.RefCount == 0 && !verifyImageConfig.Expired {
 			log.Infof("gcVerifyImageConfig(%s): marking VerifyImageConfig as expired", verifyImageConfig.Key())
-			MaybeDeleteVerifyImageConfig(ctx, verifyImageConfig.Key())
+			deleteVerifyImageConfig(ctx, &verifyImageConfig)
 		}
 	}
 }

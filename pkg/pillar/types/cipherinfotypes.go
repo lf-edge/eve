@@ -52,8 +52,8 @@ func (status CipherContext) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status CipherContext) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.CipherContextLogType, "",
+func (status CipherContext) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.CipherContextLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(CipherContext)
@@ -66,12 +66,12 @@ func (status CipherContext) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status CipherContext) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.CipherContextLogType, "",
+func (status CipherContext) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.CipherContextLogType, "",
 		nilUUID, status.LogKey())
 	logObject.Noticef("Cipher block status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -107,8 +107,8 @@ func (status CipherBlockStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status CipherBlockStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.CipherBlockStatusLogType, "",
+func (status CipherBlockStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.CipherBlockStatusLogType, "",
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(CipherBlockStatus)
@@ -121,12 +121,12 @@ func (status CipherBlockStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status CipherBlockStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.CipherBlockStatusLogType, "",
+func (status CipherBlockStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.CipherBlockStatusLogType, "",
 		nilUUID, status.LogKey())
 	logObject.Noticef("Cipher block status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

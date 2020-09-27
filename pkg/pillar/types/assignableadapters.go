@@ -219,8 +219,8 @@ func (aa AssignableAdapters) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (aa AssignableAdapters) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.AssignableAdaptersLogType, "",
+func (aa AssignableAdapters) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AssignableAdaptersLogType, "",
 		nilUUID, aa.LogKey())
 
 	oldAa, ok := old.(AssignableAdapters)
@@ -233,12 +233,12 @@ func (aa AssignableAdapters) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (aa AssignableAdapters) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.AssignableAdaptersLogType, "",
+func (aa AssignableAdapters) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AssignableAdaptersLogType, "",
 		nilUUID, aa.LogKey())
 	logObject.Noticef("Assignable adapters delete")
 
-	base.DeleteLogObject(aa.LogKey())
+	base.DeleteLogObject(logBase, aa.LogKey())
 }
 
 // LogKey :

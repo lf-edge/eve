@@ -532,6 +532,15 @@ func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
 
 // Init provides both a logger and a logObject
 func Init(agentName string) (*logrus.Logger, *base.LogObject) {
+	return initImpl(agentName, true)
+}
+
+// InitNoRedirect provides both a logger and a logObject; does not redirect stdout
+func InitNoRedirect(agentName string) (*logrus.Logger, *base.LogObject) {
+	return initImpl(agentName, false)
+}
+
+func initImpl(agentName string, redirect bool) (*logrus.Logger, *base.LogObject) {
 	agentPid := os.Getpid()
 	logger := logrus.New()
 	// Report nano timestamps
@@ -541,22 +550,37 @@ func Init(agentName string) (*logrus.Logger, *base.LogObject) {
 	logger.SetFormatter(&formatter)
 	logger.SetReportCaller(true)
 	log := base.NewSourceLogObject(logger, agentName, agentPid)
-	hook := new(FatalHook)
-	hook.agentName = agentName
-	hook.agentPid = agentPid
-	logger.AddHook(hook)
-	hook2 := new(SourceHook)
-	hook2.agentName = agentName
-	hook2.agentPid = agentPid
-	logger.AddHook(hook2)
-	hook3 := new(SkipCallerHook)
-	logger.AddHook(hook3)
+
+	fatalHook := new(FatalHook)
+	fatalHook.agentName = agentName
+	fatalHook.agentPid = agentPid
+	logger.AddHook(fatalHook)
+
+	sourceHook := new(SourceHook)
+	sourceHook.agentName = agentName
+	sourceHook.agentPid = agentPid
+	logger.AddHook(sourceHook)
+
+	skipHook := new(SkipCallerHook)
+	logger.AddHook(skipHook)
 	// For every separate process we set up output redirection
 	// to /persist/agentdebug (while keeping logs on stdout) and
 	// signal handlers
 	if once() {
-		originalStdout := spoofStdFDs(log, agentName)
-		logger.SetOutput(originalStdout)
+		if redirect {
+			originalStdout := spoofStdFDs(log, agentName)
+			logger.SetOutput(originalStdout)
+			logrus.SetOutput(originalStdout)
+		}
+
+		// XXX Some code such as containerd and hypervisor still use
+		// logrus directly. Set up the formatter and hooks for them
+		// to point at zedbox as agentname
+		logrus.SetFormatter(&formatter)
+		logrus.SetReportCaller(true)
+		logrus.AddHook(fatalHook)
+		logrus.AddHook(sourceHook)
+		logrus.AddHook(skipHook)
 
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)

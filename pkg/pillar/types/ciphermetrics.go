@@ -58,8 +58,8 @@ func (cipherMetric CipherMetrics) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (cipherMetric CipherMetrics) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.CipherMetricsLogType, "",
+func (cipherMetric CipherMetrics) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.CipherMetricsLogType, "",
 		nilUUID, cipherMetric.LogKey())
 
 	oldAcMetric, ok := old.(CipherMetrics)
@@ -72,12 +72,12 @@ func (cipherMetric CipherMetrics) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (cipherMetric CipherMetrics) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.CipherMetricsLogType, "",
+func (cipherMetric CipherMetrics) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.CipherMetricsLogType, "",
 		nilUUID, cipherMetric.LogKey())
 	logObject.Metricf("Cipher metric delete")
 
-	base.DeleteLogObject(cipherMetric.LogKey())
+	base.DeleteLogObject(logBase, cipherMetric.LogKey())
 }
 
 // LogKey :

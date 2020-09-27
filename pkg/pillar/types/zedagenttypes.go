@@ -49,8 +49,8 @@ func (config BaseOsConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config BaseOsConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.BaseOsConfigLogType, config.BaseOsVersion,
+func (config BaseOsConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 
 	oldConfig, ok := old.(BaseOsConfig)
@@ -71,13 +71,13 @@ func (config BaseOsConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config BaseOsConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.BaseOsConfigLogType, config.BaseOsVersion,
+func (config BaseOsConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.BaseOsConfigLogType, config.BaseOsVersion,
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		Noticef("BaseOs config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -123,8 +123,8 @@ func (status BaseOsStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status BaseOsStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.BaseOsStatusLogType, status.BaseOsVersion,
+func (status BaseOsStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 
 	oldStatus, ok := old.(BaseOsStatus)
@@ -152,13 +152,13 @@ func (status BaseOsStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status BaseOsStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.BaseOsStatusLogType, status.BaseOsVersion,
+func (status BaseOsStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.BaseOsStatusLogType, status.BaseOsVersion,
 		status.UUIDandVersion.UUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		Noticef("BaseOs status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -227,8 +227,8 @@ func (config DatastoreConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config DatastoreConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DatastoreConfigLogType, "",
+func (config DatastoreConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DatastoreConfigLogType, "",
 		config.UUID, config.LogKey())
 
 	oldConfig, ok := old.(DatastoreConfig)
@@ -241,12 +241,12 @@ func (config DatastoreConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config DatastoreConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DatastoreConfigLogType, "",
+func (config DatastoreConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DatastoreConfigLogType, "",
 		config.UUID, config.LogKey())
 	logObject.Noticef("Datastore config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -284,8 +284,8 @@ func (status NodeAgentStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status NodeAgentStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.NodeAgentStatusLogType, status.Name,
+func (status NodeAgentStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.NodeAgentStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(NodeAgentStatus)
@@ -298,12 +298,12 @@ func (status NodeAgentStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status NodeAgentStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.NodeAgentStatusLogType, status.Name,
+func (status NodeAgentStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.NodeAgentStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.Noticef("Nodeagent status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
@@ -346,8 +346,8 @@ func (status ZedAgentStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status ZedAgentStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.ZedAgentStatusLogType, status.Name,
+func (status ZedAgentStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.ZedAgentStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(ZedAgentStatus)
@@ -360,12 +360,12 @@ func (status ZedAgentStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status ZedAgentStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.ZedAgentStatusLogType, status.Name,
+func (status ZedAgentStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.ZedAgentStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.Noticef("Zedagent status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

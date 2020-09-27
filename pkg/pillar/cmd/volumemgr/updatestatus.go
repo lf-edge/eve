@@ -351,11 +351,17 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			}
 
 			log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), blob.Sha256)
+			if blob.HasDownloaderRef {
+				log.Infof("doUpdateContentTree(%s): removing downloaderRef from Blob %s",
+					status.Key(), blob.Sha256)
+				MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
+				blob.HasDownloaderRef = false
+			}
 			if blob.HasVerifierRef {
 				log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
 					status.Key(), blob.Sha256)
 				MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
-				// remove the verifierref and set the path to "" as we delete the verifier path
+				// Set the path to "" as we delete the verifier path
 				blob.HasVerifierRef = false
 				blob.Path = ""
 			}
@@ -402,7 +408,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		changed = true
 		return changed, false
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
-		// XXX why do we need to hard-code AppImgObj?
+		// XXX why do we need to hard-code AppImgObj? Iterate over ctObjTypes
 		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
 		if ctStatus == nil {
 			// Content tree not available

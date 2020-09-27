@@ -379,11 +379,6 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		return errors.New(errStr)
 	}
 
-	if err != nil {
-		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)
-		log.Fatal(errStr)
-		return err
-	}
 	// zbootMutex automatically unlocked by the defer
 	return nil
 }

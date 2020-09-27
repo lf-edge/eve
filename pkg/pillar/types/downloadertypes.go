@@ -44,8 +44,8 @@ func (config DownloaderConfig) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (config DownloaderConfig) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DownloaderConfigLogType, config.Name,
+func (config DownloaderConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(DownloaderConfig)
@@ -74,8 +74,8 @@ func (config DownloaderConfig) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (config DownloaderConfig) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DownloaderConfigLogType, config.Name,
+func (config DownloaderConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("target", config.Target).
 		AddField("datastore-id", config.DatastoreID).
@@ -83,7 +83,7 @@ func (config DownloaderConfig) LogDelete() {
 		AddField("size-int64", config.Size).
 		Noticef("Download config delete")
 
-	base.DeleteLogObject(config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
@@ -156,8 +156,8 @@ func (status DownloaderStatus) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (status DownloaderStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.DownloaderStatusLogType, status.Name,
+func (status DownloaderStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.DownloaderStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(DownloaderStatus)
@@ -191,15 +191,15 @@ func (status DownloaderStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status DownloaderStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.DownloaderStatusLogType, status.Name,
+func (status DownloaderStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.DownloaderStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
 		Noticef("Download status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

@@ -81,8 +81,8 @@ func (ioAdapterList PhysicalIOAdapterList) LogCreate(logBase *base.LogObject) {
 }
 
 // LogModify :
-func (ioAdapterList PhysicalIOAdapterList) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.PhysicalIOAdapterListLogType, "",
+func (ioAdapterList PhysicalIOAdapterList) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.PhysicalIOAdapterListLogType, "",
 		nilUUID, ioAdapterList.LogKey())
 
 	oldIoAdapterList, ok := old.(PhysicalIOAdapterList)
@@ -95,12 +95,12 @@ func (ioAdapterList PhysicalIOAdapterList) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (ioAdapterList PhysicalIOAdapterList) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.PhysicalIOAdapterListLogType, "",
+func (ioAdapterList PhysicalIOAdapterList) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.PhysicalIOAdapterListLogType, "",
 		nilUUID, ioAdapterList.LogKey())
 	logObject.Metricf("Onboarding ioAdapterList delete")
 
-	base.DeleteLogObject(ioAdapterList.LogKey())
+	base.DeleteLogObject(logBase, ioAdapterList.LogKey())
 }
 
 // LogKey :

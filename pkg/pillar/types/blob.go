@@ -81,12 +81,14 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 		AddField("size-int64", status.Size).
 		AddField("blobtype-string", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
+		AddField("has-verifier-ref-bool", status.HasVerifierRef).
+		AddField("has-downloader-ref-bool", status.HasDownloaderRef).
 		Noticef("Blob status create")
 }
 
 // LogModify :
-func (status BlobStatus) LogModify(old interface{}) {
-	logObject := base.EnsureLogObject(nil, base.BlobStatusLogType, status.RelativeURL,
+func (status BlobStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.BlobStatusLogType, status.RelativeURL,
 		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(BlobStatus)
@@ -100,9 +102,13 @@ func (status BlobStatus) LogModify(old interface{}) {
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("refcount-int64", status.RefCount).
 			AddField("size-int64", status.Size).
+			AddField("has-verifier-ref-bool", status.HasVerifierRef).
+			AddField("has-downloader-ref-bool", status.HasDownloaderRef).
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-refcount-int64", oldStatus.RefCount).
 			AddField("old-size-int64", oldStatus.Size).
+			AddField("old-has-verifier-ref-bool", oldStatus.HasVerifierRef).
+			AddField("old-has-downloader-ref-bool", oldStatus.HasDownloaderRef).
 			Noticef("Blob status modify")
 	} else {
 		// XXX remove?
@@ -119,15 +125,17 @@ func (status BlobStatus) LogModify(old interface{}) {
 }
 
 // LogDelete :
-func (status BlobStatus) LogDelete() {
-	logObject := base.EnsureLogObject(nil, base.BlobStatusLogType, status.RelativeURL,
+func (status BlobStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.BlobStatusLogType, status.RelativeURL,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
+		AddField("has-verifier-ref-bool", status.HasVerifierRef).
+		AddField("has-downloader-ref-bool", status.HasDownloaderRef).
 		Noticef("Blob status delete")
 
-	base.DeleteLogObject(status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :
