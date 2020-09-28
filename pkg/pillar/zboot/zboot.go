@@ -360,10 +360,15 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		return errors.New(errStr)
 	}
 
+	// Make sure we have nothing mounted on the target
+	for {
+		if err := syscall.Unmount(devName, 0); err != nil {
+			break
+		}
+		log.Warnf("Successfully umounted %s", devName)
+	}
 	// create a writer for the file where we want
-	zbootMutex.Lock()
-	defer zbootMutex.Unlock()
-
+	// Avoid holding the lock since this can take a long time.
 	f, err := os.OpenFile(devName,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -378,8 +383,6 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		log.Error(errStr)
 		return errors.New(errStr)
 	}
-
-	// zbootMutex automatically unlocked by the defer
 	return nil
 }
 
@@ -453,12 +456,17 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 	} else {
 		verFilename = otherPartVersionFile
 		devname := GetPartitionDevname(part)
-		target, err := ioutil.TempDir("/var/run", "tmpmnt")
+		target, err := ioutil.TempDir("/run/baseosmgr", "tmpmnt")
 		if err != nil {
 			log.Errorln(err)
 			return "", err
 		}
-		defer os.RemoveAll(target)
+		defer func() {
+			log.Noticef("Remove(%s)", target)
+			if err := os.Remove(target); err != nil {
+				log.Errorf("Remove(%s) failed %s", target, err)
+			}
+		}()
 		// Mount failure is ok; might not have a filesystem in the
 		// other partition
 		// XXX hardcoded file system type squashfs
@@ -469,7 +477,34 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 			log.Errorln(errStr)
 			return "", errors.New(errStr)
 		}
-		defer syscall.Unmount(target, 0)
+		log.Noticef("Mounted %s on %s", devname, target)
+		defer func() {
+			log.Noticef("Unmount(%s)", target)
+			err := syscall.Unmount(target, 0)
+			if err != nil {
+				errStr := fmt.Sprintf("Unmount of %s failed: %s", target, err)
+				logrus.Error(errStr)
+				log.Noticef("Unmount(%s)", devname)
+				err := syscall.Unmount(devname, 0)
+				if err != nil {
+					errStr := fmt.Sprintf("Unmount of %s failed: %s", devname, err)
+					logrus.Error(errStr)
+					time.Sleep(10 * time.Second)
+					log.Noticef("Unmount(%s) again", devname)
+					err := syscall.Unmount(devname, 0)
+					if err != nil {
+						errStr := fmt.Sprintf("Unmount of %s failed: %s", devname, err)
+						logrus.Error(errStr)
+					} else {
+						log.Noticef("Unmounted %s", devname)
+					}
+				} else {
+					log.Noticef("Unmounted %s", devname)
+				}
+			} else {
+				log.Noticef("Unmounted %s", target)
+			}
+		}()
 		filename := fmt.Sprintf("%s/%s",
 			target, verFilename)
 		version, err := ioutil.ReadFile(filename)
