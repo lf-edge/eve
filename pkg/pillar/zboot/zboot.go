@@ -339,6 +339,12 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		log.Errorf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
+	err := syscall.Unmount(devName, syscall.MNT_FORCE)
+	for err != nil {
+		errStr := fmt.Sprintf("Unmount of %s failed: %s", devname, err)
+		log.Errorf(errStr)
+		err := syscall.Unmount(devName, syscall.MNT_FORCE)
+	}
 
 	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, image)
 
@@ -453,7 +459,6 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 	} else {
 		verFilename = otherPartVersionFile
 		devname := GetPartitionDevname(part)
-		syscall.Unmount(devname, syscall.MNT_FORCE)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {
 			log.Errorln(err)
