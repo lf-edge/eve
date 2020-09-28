@@ -290,7 +290,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-ticker.C:
 			if clientCtx.networkState != types.DPC_SUCCESS &&
-				clientCtx.networkState != types.DPC_FAIL_WITH_IPANDDNS {
+				clientCtx.networkState != types.DPC_FAIL_WITH_IPANDDNS &&
+				clientCtx.networkState != types.DPC_REMOTE_WAIT {
 				log.Infof("ticker and networkState %s usableAddressCount %d",
 					clientCtx.networkState.String(),
 					clientCtx.usableAddressCount)
