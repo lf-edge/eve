@@ -169,7 +169,6 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	status := types.BaseOsStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
-		ConfigSha256:   config.ConfigSha256,
 	}
 
 	status.ContentTreeStatusList = make([]types.ContentTreeStatus,

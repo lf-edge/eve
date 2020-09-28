@@ -147,20 +147,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 		baseOs.UUIDandVersion.UUID, _ = uuid.FromString(cfgOs.Uuidandversion.Uuid)
 		baseOs.UUIDandVersion.Version = cfgOs.Uuidandversion.Version
-
 		baseOs.Activate = cfgOs.GetActivate()
 		baseOs.BaseOsVersion = cfgOs.GetBaseOSVersion()
-
-		cfgOsDetails := cfgOs.GetBaseOSDetails()
-		cfgOsParamList := cfgOsDetails.GetBaseOSParams()
-
-		for jdx, cfgOsDetail := range cfgOsParamList {
-			param := new(types.OsVerParams)
-			param.OSVerKey = cfgOsDetail.GetOSVerKey()
-			param.OSVerValue = cfgOsDetail.GetOSVerValue()
-			baseOs.OsParams[jdx] = *param
-		}
-
 		baseOs.ContentTreeConfigList = make([]types.ContentTreeConfig,
 			len(cfgOs.Drives))
 		parseContentTreeConfigList(baseOs.ContentTreeConfigList, cfgOs.Drives)
