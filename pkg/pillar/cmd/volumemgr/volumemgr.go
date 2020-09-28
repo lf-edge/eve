@@ -78,6 +78,7 @@ type volumemgrContext struct {
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
 	usingConfig          bool // From zedagent
 	gcRunning            bool
+	initGced             bool // Will be marked true after initObjects are garbage collected
 
 	globalConfig  *types.ConfigItemValueMap
 	GCInitialized bool
@@ -492,7 +493,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	duration := time.Duration(ctx.vdiskGCTime / 10)
 	ctx.gc = time.NewTicker(duration * time.Second)
 	ctx.gc.Stop()
-	gcUnusedInitObjects(&ctx)
 
 	// start the metrics reporting task
 	diskMetricsTickerHandle := make(chan interface{})
@@ -540,6 +540,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			gcObjects(&ctx, volumeEncryptedDirName)
 			gcObjects(&ctx, volumeClearDirName)
+			if !ctx.initGced {
+				gcUnusedInitObjects(&ctx)
+				ctx.initGced = true
+			}
 			ps.CheckMaxTimeTopic(agentName, "gc", start,
 				warningTime, errorTime)
 
