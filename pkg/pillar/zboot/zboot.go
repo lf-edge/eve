@@ -339,6 +339,7 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		log.Errorf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
+	syscall.Unmount(devName, 0)
 
 	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, image)
 
