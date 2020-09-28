@@ -11,11 +11,6 @@ import (
 	"github.com/satori/go.uuid"
 )
 
-type OsVerParams struct {
-	OSVerKey   string
-	OSVerValue string
-}
-
 // This is what we assume will come from the ZedControl for base OS.
 // Note that we can have different versions  configured for the
 // same UUID, hence the key is the UUIDandVersion  We assume the
@@ -25,9 +20,6 @@ type OsVerParams struct {
 type BaseOsConfig struct {
 	UUIDandVersion        UUIDandVersion
 	BaseOsVersion         string // From GetShortVersion
-	ConfigSha256          string
-	ConfigSignature       string
-	OsParams              []OsVerParams // From GetLongVersion
 	ContentTreeConfigList []ContentTreeConfig
 	RetryCount            int32
 	Activate              bool
@@ -89,16 +81,13 @@ func (config BaseOsConfig) LogKey() string {
 type BaseOsStatus struct {
 	UUIDandVersion        UUIDandVersion
 	BaseOsVersion         string
-	ConfigSha256          string
 	Activated             bool
 	Reboot                bool
 	TooEarly              bool // Failed since previous was inprogress/test
-	OsParams              []OsVerParams
 	ContentTreeStatusList []ContentTreeStatus
 	PartitionLabel        string
 	PartitionDevice       string // From zboot
 	PartitionState        string // From zboot
-
 	// Mininum state across all steps/StorageStatus.
 	// Error* set implies error.
 	State SwState
