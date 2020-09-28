@@ -163,7 +163,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 		baseOs.ContentTreeConfigList = make([]types.ContentTreeConfig,
 			len(cfgOs.Drives))
-		parseContentTreeConfigList(baseOs.ContentTreeConfigList, cfgOs.Drives)
+		parseContentTreeConfigList(baseOs, cfgOs.Drives)
 
 		log.Debugf("parseBaseOsConfig publishing %v",
 			baseOs)
@@ -921,7 +921,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 	}
 }
 
-func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drives []*zconfig.Drive) {
+func parseContentTreeConfigList(baseOS *types.BaseOsConfig, drives []*zconfig.Drive) {
 
 	var idx int = 0
 
@@ -933,7 +933,7 @@ func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drive
 			// Pass on for error reporting
 			contentTree.ContentID = nilUUID
 		} else {
-			contentTree.ContentID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
+			contentTree.ContentID = baseOS.UUIDandVersion.UUID
 			contentTree.DatastoreID, _ = uuid.FromString(drive.Image.DsId)
 			contentTree.RelativeURL = drive.Image.Name
 			contentTree.Format = drive.Image.Iformat
@@ -941,7 +941,7 @@ func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drive
 			contentTree.MaxDownloadSize = uint64(drive.Image.SizeBytes)
 			contentTree.DisplayName = drive.Image.Name
 		}
-		contentTreeList[idx] = *contentTree
+		baseOS.ContentTreeConfigList[idx] = *contentTree
 		idx++
 	}
 }
