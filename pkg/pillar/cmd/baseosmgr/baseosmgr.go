@@ -98,8 +98,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	initializeZedagentHandles(ps, &ctx)
 	initializeVolumemgrHandles(ps, &ctx)
 
-	// publish zboot partition status
-	publishZbootPartitionStatusAll(&ctx)
+	// publish initial zboot partition status
+	updateAndPublishZbootStatusAll(&ctx)
 
 	// for background work
 	ctx.worker = worker.NewWorker(log, WorkerHandler, ctx, 5)
