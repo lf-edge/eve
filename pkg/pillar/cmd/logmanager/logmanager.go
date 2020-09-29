@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"regexp"
 	dbg "runtime/debug"
 	"strings"
 	"sync"
@@ -49,6 +50,8 @@ const (
 	successCount uint = 1
 	// Timeout when we check whether deferred messages should be retried
 	sendTimeoutInSecs uint32 = 15
+	// Purge URL metrics every 10 minutes
+	appURLMetricsPurgeInterval = 600
 )
 
 var (
@@ -74,13 +77,15 @@ type logDirModifyHandler func(ctx interface{}, logFileName string, source string
 type logDirDeleteHandler func(ctx interface{}, logFileName string, source string)
 
 type logmanagerContext struct {
-	subGlobalConfig pubsub.Subscription
-	globalConfig    *types.ConfigItemValueMap
-	subDomainStatus pubsub.Subscription
-	GCInitialized   bool
-	metricsPub      pubsub.Publication
-	inputMetrics    *inputLogMetrics
+	subGlobalConfig      pubsub.Subscription
+	subAppInstanceStatus pubsub.Subscription
+	globalConfig         *types.ConfigItemValueMap
+	subDomainStatus      pubsub.Subscription
+	GCInitialized        bool
+	metricsPub           pubsub.Publication
+	inputMetrics         *inputLogMetrics
 	sync.RWMutex
+	lastURLPurgeTime time.Time
 }
 
 // Version is set from Makefile
@@ -201,9 +206,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	logmanagerCtx := logmanagerContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
-		metricsPub:   metricsPub,
-		inputMetrics: &inputMetrics,
+		globalConfig:     types.DefaultConfigItemValueMap(),
+		metricsPub:       metricsPub,
+		inputMetrics:     &inputMetrics,
+		lastURLPurgeTime: time.Now(),
 	}
 
 	// Look for global config such as log levels
@@ -243,6 +249,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	logmanagerCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
+
+	// Get AppInstanceStatus from zedmanager
+	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppInstanceStatus{},
+		Activate:    true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	logmanagerCtx.subAppInstanceStatus = subAppInstanceStatus
 
 	// Wait until we have at least one useable address?
 	DNSctx := DNSContext{}
@@ -344,10 +362,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
+		case change := <-subAppInstanceStatus.MsgChan():
+			subAppInstanceStatus.ProcessChange(change)
+
 		case <-publishTimer.C:
 			start := time.Now()
 			log.Debugln("publishTimer at", time.Now())
-			err := pub.Publish("global", zedcloud.GetCloudMetrics(log))
+			metrics := zedcloud.GetCloudMetrics(log)
+			metrics = purgeAppURLMetrics(&logmanagerCtx, metrics)
+			err := pub.Publish("global", metrics)
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -384,6 +407,83 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
+}
+
+// Application UUID is part of the URL used for sending application logs.
+// When there is a long running device with several applications added and deleted on it,
+// we accumulate a bunch of application logs URL metrics corresponding to applications that
+// no longer exist. We should periodically purge such URL metrics.
+func purgeAppURLMetrics(ctx *logmanagerContext, metrics types.MetricsMap) types.MetricsMap {
+	// convert time difference in nano seconds to seconds
+	timeDiff := time.Since(ctx.lastURLPurgeTime) / time.Second
+	if timeDiff < appURLMetricsPurgeInterval {
+		return metrics
+	}
+
+	appInstMap := make(map[string]bool)
+	// Make of map of all application instances that are currently configured on this device.
+	items := ctx.subAppInstanceStatus.GetAll()
+	for _, item := range items {
+		status := item.(types.AppInstanceStatus)
+		appUUID := status.UUIDandVersion.UUID.String()
+		appInstMap[appUUID] = true
+	}
+
+	for intf, metric := range metrics {
+		metric = purgeMetric(metric, appInstMap)
+		metrics[intf] = metric
+	}
+	ctx.lastURLPurgeTime = time.Now()
+	return metrics
+}
+
+func getAppUUIDFromURL(url string, expr1 *regexp.Regexp, expr2 *regexp.Regexp) string {
+	// Sample URL:
+	// https://zedcloud.alpha.zededa.net/api/v2/edgedevice/id/ad7c3958-287c-4707-b552-496276f1f6a5/apps/instanceid/bc05fb3c-4d03-4cd4-b383-7b55ff6f12b8/logs
+	//
+	// Gets split into [ https://zedcloud.alpha.zededa.net/api/v2/edgedevice/id/ad7c3958-287c-4707-b552-496276f1f6a5/, bc05fb3c-4d03-4cd4-b383-7b55ff6f12b8/logs ]
+	pieces := expr1.Split(url, -1)
+	if len(pieces) != 2 {
+		return ""
+	}
+	// bc05fb3c-4d03-4cd4-b383-7b55ff6f12b8/logs
+	// gets split into [ bc05fb3c-4d03-4cd4-b383-7b55ff6f12b8, ""]
+	pieces = expr2.Split(pieces[1], -1)
+	if len(pieces) > 0 {
+		return pieces[0]
+	}
+	return ""
+}
+
+func purgeMetric(metric types.ZedcloudMetric, appInstMap map[string]bool) types.ZedcloudMetric {
+	expr1, err := regexp.Compile("apps/instanceid/")
+	if err != nil {
+		log.Errorf("purgeMetric: Compiling regular expression failed: %s", err)
+		return metric
+	}
+	expr2, err := regexp.Compile("/logs")
+	if err != nil {
+		log.Errorf("purgeMetric: Compiling regular expression failed: %s", err)
+		return metric
+	}
+	countersMap := make(map[string]types.UrlcloudMetrics)
+	for url, counters := range metric.URLCounters {
+		appUUID := getAppUUIDFromURL(url, expr1, expr2)
+		if appUUID == "" {
+			countersMap[url] = counters
+			continue
+		}
+
+		_, ok := appInstMap[appUUID]
+		if !ok {
+			// This application is no longer configured to be running on this device
+			continue
+		}
+		countersMap[url] = counters
+	}
+	metric.URLCounters = countersMap
+
+	return metric
 }
 
 func parseAndSendSyslogEntries(ctx *loggerContext) {

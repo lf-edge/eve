@@ -98,8 +98,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	initializeZedagentHandles(ps, &ctx)
 	initializeVolumemgrHandles(ps, &ctx)
 
-	// publish zboot partition status
-	publishZbootPartitionStatusAll(&ctx)
+	// publish initial zboot partition status
+	updateAndPublishZbootStatusAll(&ctx)
 
 	// for background work
 	ctx.worker = worker.NewWorker(log, WorkerHandler, ctx, 5)
@@ -169,7 +169,6 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	status := types.BaseOsStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
-		ConfigSha256:   config.ConfigSha256,
 	}
 
 	status.ContentTreeStatusList = make([]types.ContentTreeStatus,

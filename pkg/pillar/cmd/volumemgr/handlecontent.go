@@ -294,12 +294,10 @@ func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	log.Infof("deleteContentTree for %v", status.ContentID)
 	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
-	if status.Format == zconfig.Format_CONTAINER {
-		//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
-		if err := ctx.casClient.RemoveImage(status.ReferenceID()); err != nil {
-			log.Errorf("deleteContentTree: exception while deleting image %s: %s",
-				status.RelativeURL, err.Error())
-		}
+	//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
+	if err := ctx.casClient.RemoveImage(status.ReferenceID()); err != nil {
+		log.Errorf("deleteContentTree: exception while deleting image %s: %s",
+			status.RelativeURL, err.Error())
 	}
 	unpublishContentTreeStatus(ctx, status)
 	deleteLatchContentTreeHash(ctx, status.ContentID, uint32(status.GenerationCounter))

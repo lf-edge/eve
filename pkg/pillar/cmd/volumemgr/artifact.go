@@ -11,13 +11,14 @@ import (
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	digest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/go-digest"
 )
 
 // getManifestsForBareBlob either retrieve the manifests for an existing
 // image name that wraps the blob, or create one
 func getManifestsForBareBlob(ctx *volumemgrContext, image, rootHash string, size int64) ([]*types.BlobStatus, error) {
 	// at least one decriptor must match ours
+	log.Infof("getManifestsForBareBlob(%s, %s, %d)", image, rootHash, size)
 	rootHashFull := fmt.Sprintf("%s:%s", "sha256", rootHash)
 	artifact := &registry.Artifact{
 		Root: &registry.Disk{
@@ -51,6 +52,14 @@ func getManifestsForBareBlob(ctx *volumemgrContext, image, rootHash string, size
 		// we could not read that blob, so create a new one
 		return createManifestsForBareBlob(artifact)
 	}
+
+	//Adding config blob to blobStatuses list
+	configBlobStatus := lookupBlobStatus(ctx,
+		strings.Replace(desc[0].Digest.String(), "sha256:", "", 1))
+	if configBlobStatus != nil {
+		blobStatuses = append(blobStatuses, configBlobStatus)
+	}
+
 	for _, d := range desc {
 		// we found it, so it is good
 		if d.Digest.String() == rootHashFull {
