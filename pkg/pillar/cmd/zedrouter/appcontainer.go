@@ -71,7 +71,7 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 				return
 			}
 
-			var acNum int
+			var acNum, numlogs int
 			collectTime := time.Now() // all apps collection assign the same timestamp
 			for _, st := range items {
 				status := st.(types.AppNetworkStatus)
@@ -94,11 +94,11 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 					}
 
 					// collect container logs and send through the logging system
-					getAppContainerLogs(status, lastLogTime, cli, containers)
+					numlogs += getAppContainerLogs(status, lastLogTime, cli, containers)
 				}
 			}
 			// log output every 5 min, see this goroutine running status and number of containers from App
-			log.Infof("appStatsAndLogCollect: containerStats, %d processed. reset timer", acNum)
+			log.Infof("appStatsAndLogCollect: containerStats, %d processed. total log entries %d, reset timer", acNum, numlogs)
 
 			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 		}
@@ -245,8 +245,9 @@ func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkC
 	}
 }
 
-func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Time, cli *client.Client, containers []apitypes.Container) {
+func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Time, cli *client.Client, containers []apitypes.Container) int {
 	var buf bytes.Buffer
+	var numlogs int
 
 	for _, container := range containers {
 		var lasttime, newtime, message string
@@ -267,6 +268,7 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Tim
 
 		stdcopy.StdCopy(&buf, &buf, io.LimitReader(out, 100000))
 		logLines := strings.Split(buf.String(), "\n")
+		numlogs += len(logLines)
 		log.Debugf("getAppContainerLogs: container %s, lasttime %s, lines %d", containerName, lasttime, len(logLines))
 		for _, line := range logLines {
 			sline := strings.SplitN(line, " ", 2)
@@ -285,7 +287,7 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Tim
 				log.CloneAndAddField("appuuid", status.UUIDandVersion.UUID.String()).
 					AddField("containername", containerName).
 					AddField("eventtime", time).
-					Infof("%s", message)
+					Noticef("%s", message)
 			}
 		}
 		// remember the last entry time by a container
@@ -313,6 +315,7 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Tim
 			delete(last, key)
 		}
 	}
+	return numlogs
 }
 
 func getAppContainers(status types.AppNetworkStatus) (*client.Client, []apitypes.Container, error) {
