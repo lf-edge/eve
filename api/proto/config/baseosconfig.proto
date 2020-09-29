@@ -12,13 +12,13 @@ import "config/storage.proto";
 
 // OS version key and value pair
 message OSKeyTags {
-  string OSVerKey = 1;
-  string OSVerValue = 2;
+  // deprecated 1; string OSVerKey
+  // deprecated 2; string OSVerValue
 }
 
 // repeated key value tags compromising
 message OSVerDetails {
-  repeated OSKeyTags baseOSParams = 12;
+  // deprecated 12; repeated OSKeyTags baseOSParams
 }
 
 message BaseOSConfig {
@@ -27,5 +27,5 @@ message BaseOSConfig {
   bool activate = 4;
 
   string baseOSVersion = 10;
-  OSVerDetails baseOSDetails = 11;
+  // deprecated 11; OSVerDetails baseOSDetails
 }
