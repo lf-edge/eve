@@ -50,8 +50,8 @@ const (
 	successCount uint = 1
 	// Timeout when we check whether deferred messages should be retried
 	sendTimeoutInSecs uint32 = 15
-	// Wait for atleast 10 minutes before purging app url metrics
-	appURLMetricsPurgeTimeout = 600
+	// Purge URL metrics every 10 minutes
+	appURLMetricsPurgeInterval = 600
 )
 
 var (
@@ -410,13 +410,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 }
 
 // Application UUID is part of the URL used for sending application logs.
-// When there is a long running device with several application added and deleted on it,
+// When there is a long running device with several applications added and deleted on it,
 // we accumulate a bunch of application logs URL metrics corresponding to applications that
 // no longer exist. We should periodically purge such URL metrics.
 func purgeAppURLMetrics(ctx *logmanagerContext, metrics types.MetricsMap) types.MetricsMap {
 	// convert time difference in nano seconds to seconds
 	timeDiff := time.Since(ctx.lastURLPurgeTime) / time.Second
-	if timeDiff < appURLMetricsPurgeTimeout {
+	if timeDiff < appURLMetricsPurgeInterval {
 		return metrics
 	}
 
