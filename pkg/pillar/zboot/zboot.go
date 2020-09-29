@@ -484,23 +484,6 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 			if err != nil {
 				errStr := fmt.Sprintf("Unmount of %s failed: %s", target, err)
 				logrus.Error(errStr)
-				log.Noticef("Unmount(%s)", devname)
-				err := syscall.Unmount(devname, 0)
-				if err != nil {
-					errStr := fmt.Sprintf("Unmount of %s failed: %s", devname, err)
-					logrus.Error(errStr)
-					time.Sleep(10 * time.Second)
-					log.Noticef("Unmount(%s) again", devname)
-					err := syscall.Unmount(devname, 0)
-					if err != nil {
-						errStr := fmt.Sprintf("Unmount of %s failed: %s", devname, err)
-						logrus.Error(errStr)
-					} else {
-						log.Noticef("Unmounted %s", devname)
-					}
-				} else {
-					log.Noticef("Unmounted %s", devname)
-				}
 			} else {
 				log.Noticef("Unmounted %s", target)
 			}
