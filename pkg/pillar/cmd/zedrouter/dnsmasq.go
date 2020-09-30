@@ -313,9 +313,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 	log.Infof("removehostDnsmasq(%s, %s, %s)\n",
 		bridgeName, appMac, appIPAddr)
-	if dnsmasqStopStart {
-		stopDnsmasq(bridgeName, true, false)
-	}
+	stopDnsmasq(bridgeName, true, false)
 	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
 		log.Fatalf("removehostDnsmasq failed to parse IP %s", appIPAddr)
@@ -339,9 +337,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 			log.Errorln(errStr)
 		}
 	}
-	if dnsmasqStopStart {
-		startDnsmasq(bridgeName)
-	}
+	startDnsmasq(bridgeName)
 }
 
 func deleteDnsmasqConfiglet(bridgeName string) {
@@ -370,7 +366,7 @@ func RemoveDirContent(dir string) error {
 	}
 	for _, file := range files {
 		filename := dir + "/" + file.Name()
-		log.Infoln("RemoveDirConent found ", filename)
+		log.Infoln("RemoveDirContent found ", filename)
 		err = os.RemoveAll(filename)
 		if err != nil {
 			return err
