@@ -285,9 +285,9 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		changed = true
 		return changed
 	}
-	// Update version etc
-	updateAndPublishZbootStatus(ctx, status.PartitionLabel, true)
 	if proceed {
+		// Update version etc
+		updateAndPublishZbootStatus(ctx, status.PartitionLabel, true)
 		changed = true
 		// Match the version string inside image
 		if errString := checkInstalledVersion(ctx, *status); errString != "" {
