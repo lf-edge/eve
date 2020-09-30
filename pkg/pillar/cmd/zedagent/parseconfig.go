@@ -1612,26 +1612,28 @@ func parseOpCmds(config *zconfig.EdgeDevConfig,
 	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
-func readRebootConfig() types.DeviceOpsCmd {
+// Returns the cmd and a bool indicating the file already existed
+func readRebootConfig() (types.DeviceOpsCmd, bool) {
 	rebootConfig := types.DeviceOpsCmd{}
 
 	log.Debugf("readRebootConfigCounter - reading %s", rebootConfigFilename)
-
+	found := false
+	// Check if the file exists - if not, create one with
+	// default rebootConfig
 	bytes, err := ioutil.ReadFile(rebootConfigFilename)
 	if err == nil {
 		err = json.Unmarshal(bytes, &rebootConfig)
 		if err != nil {
 			log.Fatal(err)
 		}
+		found = true
 	} else {
-		// Check if the file exists - if not, create one with
-		// default rebootConfig
 		log.Infof("readRebootConfigCounter - %s doesn't exist. Creating it. "+
 			"rebootConfig.Counter: %d",
 			rebootConfigFilename, rebootConfig.Counter)
 		saveRebootConfig(rebootConfig)
 	}
-	return rebootConfig
+	return rebootConfig, found
 }
 
 func saveRebootConfig(reboot types.DeviceOpsCmd) {
@@ -1668,12 +1670,14 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	}
 
 	log.Infof("scheduleReboot: Applying updated config %v", reboot)
-	rebootConfig := readRebootConfig()
+	rebootConfig, found := readRebootConfig()
 	log.Infof("scheduleReboot - CurrentRebootConfig %v", rebootConfig)
-
-	// If counter value has changed it means new reboot event
+	// If counter value has changed or first time, then update
+	if rebootConfig.Counter == reboot.Counter && found {
+		rebootPrevReturn = false
+		return false
+	}
 	if rebootConfig.Counter != reboot.Counter {
-
 		log.Infof("scheduleReboot: old %d new %d",
 			rebootConfig.Counter, reboot.Counter)
 		// store current config, persistently
@@ -1684,29 +1688,32 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		}
 		saveRebootConfig(rebootCmd)
 		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
-
-		// if device reboot is set, ignore op-command
-		if getconfigCtx.zedagentCtx.deviceReboot {
-			log.Warnf("device reboot is set")
-			return false
-		}
-
-		// Defer if inprogress by returning
-		ctx := getconfigCtx.zedagentCtx
-		if getconfigCtx.updateInprogress {
-			// Wait until TestComplete
-			log.Warnf("Rebooting even though testing inprogress; defer")
-			ctx.rebootCmdDeferred = true
-			return false
-		}
-
-		infoStr := "NORMAL: handleReboot rebooting"
-		handleRebootCmd(ctx, infoStr)
-		rebootPrevReturn = true
-		return true
 	}
-	rebootPrevReturn = false
-	return false
+	if !found {
+		// First boot - skip the reboot
+		rebootPrevReturn = false
+		return false
+	}
+
+	// if device reboot is set, ignore op-command
+	if getconfigCtx.zedagentCtx.deviceReboot {
+		log.Warnf("device reboot is set")
+		return false
+	}
+
+	// Defer if inprogress by returning
+	ctx := getconfigCtx.zedagentCtx
+	if getconfigCtx.updateInprogress {
+		// Wait until TestComplete
+		log.Warnf("Rebooting even though testing inprogress; defer")
+		ctx.rebootCmdDeferred = true
+		return false
+	}
+
+	infoStr := "NORMAL: handleReboot rebooting"
+	handleRebootCmd(ctx, infoStr)
+	rebootPrevReturn = true
+	return true
 }
 
 var backupPrevConfigHash []byte
