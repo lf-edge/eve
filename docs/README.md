@@ -249,7 +249,7 @@ EVE will have created the following entries in the GPT.
 * CONFIG (vfat formatted read-only filesystem that contains Edge Node Identity specific configuration)
 * P3 (read-write filesystem that extends to the rest of the available storage medium)
 
-The partitioning scheme is similar to how [CoreOS does its paritioning](https://coreos.com/os/docs/latest/sdk-disk-partitions.html).
+The partitioning scheme is similar to how [CoreOS does its partitioning](https://coreos.com/os/docs/latest/sdk-disk-partitions.html).
 EVE does, indeed, leveraging the good work that CoreOS folks have done so much so
 that we're using their patches for the GRUB bootloader to provide rootfs upgrade
 functionality between IMGA and IMGB root filesystems. Unlike CoreOS, though, EVE
@@ -296,7 +296,7 @@ and do all the necessary steps to boot EVE residing in an active partition.
 
 Because of how heterogenous all these initial boot environments are,
 EVE uses a number of techniques to maintain a single image that can
-be booted in a variety of different scenarious. You can read about this
+be booted in a variety of different scenarios. You can read about this
 in greater details in the [booting EVE](BOOTING.md) section of our docs.
 
 Regardless of the initial boot environment, though, after GRUB is done

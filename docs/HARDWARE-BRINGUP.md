@@ -48,7 +48,7 @@ One word of caution: a lot of ARM board (like the ever popular Raspberry Pi) act
 
 ### Console in QEMU/ARM64
 
-There are two subtle points when it comes to getting reliable console with QEMU/ARM64 emulation. First of all, QEMU only emulates pl011 UART (which means that things like earlyprintk on UART8250 as was described above won't wokr). Second point is that it is rather [futile](https://unix.stackexchange.com/questions/479085/can-qemu-m-virt-on-arm-aarch64-have-multiple-serial-ttys-like-such-as-pl011-t) to look for more than one pl011 UART with QEMU.
+There are two subtle points when it comes to getting reliable console with QEMU/ARM64 emulation. First of all, QEMU only emulates pl011 UART (which means that things like earlyprintk on UART8250 as was described above won't work). Second point is that it is rather [futile](https://unix.stackexchange.com/questions/479085/can-qemu-m-virt-on-arm-aarch64-have-multiple-serial-ttys-like-such-as-pl011-t) to look for more than one pl011 UART with QEMU.
 
 ## Appendix
 

@@ -17,7 +17,7 @@ Whenever a task gets isolated into a standalone domain, for performance or secur
 
 The difficult (or at least much more involved part) is how to present a series of devices (network, disk, GPU, console) to the task in such a way as to allow them to be multiplexed to the actual physical devices available on the host. This is know as providing a "device model" to the domain and it is where the art of virtualization really begins.
 
-All domains get presented with a "device model" that consists of a virtual set of buses and virtual devices attached to those busses. Domains can initiate I/O to any of these busses/devices and that I/O gets routed by the hypervisor to the outside of the domain. Servicing that I/O on the host side can then be done either by:
+All domains get presented with a "device model" that consists of a virtual set of buses and virtual devices attached to those buses. Domains can initiate I/O to any of these buses/devices and that I/O gets routed by the hypervisor to the outside of the domain. Servicing that I/O on the host side can then be done either by:
 
 1. Host Linux kernel directly
 2. A user-space program
@@ -46,7 +46,7 @@ Obviously, every time we have a choice (e.g. we have full control over the devic
 |Crypto devices        | TCG_XEN                     | [CRYPTO_DEV_VIRTIO](http://events17.linuxfoundation.org/sites/events/files/slides/Introduction%20of%20virtio%20crypto%20device.pdf), HW_RANDOM_VIRTIO        |
 |X-domain comms        | XEN_DEV_EVTCHN, XEN_PVCALLS_BACKEND,FRONTEND | VHOST_RING, VHOST_VSOCK, VIRTIO_VSOCKETS |
 
-As a general rule of thumb, Xen uses [xenbus](https://wiki.xen.org/wiki/XenBus) and Front/Back paravirtualizaed device drivers. KVM uses [VirtIO framework](https://wiki.osdev.org/Virtio) that relies on a standard PCI bus interface with virtulized devices having VirtIO specific PCI VendorID and DeviceID.
+As a general rule of thumb, Xen uses [xenbus](https://wiki.xen.org/wiki/XenBus) and Front/Back paravirtualized device drivers. KVM uses [VirtIO framework](https://wiki.osdev.org/Virtio) that relies on a standard PCI bus interface with virtualized devices having VirtIO specific PCI VendorID and DeviceID.
 
 Using QEMU as example: it emulates the control plane of virtio PCI device like device status, feature bits and device configuration space, while the implementation of virtqueue backend data plane has three options as of this writing:
 

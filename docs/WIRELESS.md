@@ -7,7 +7,7 @@ Given that the biggest use case for EVE is in Edge Computing and IoT it is no su
 
 This dependency on a controller creates a bit of a chicken-and-an-egg problem when the wireless connectivity itself happens to be the only means of reaching the controller. In those cases EVE uses pre-loaded controller configuration to bootstrap the entire process.
 
-The rest of this document will be focused on details of wireless support in EVE. It must be noted that currently we're relying on a patchwork of different open source projects to do that, but we're also looking at things like [oFono](https://en.wikipedia.org/wiki/OFono) and [Android's RIL](https://en.wikipedia.org/wiki/Radio_Interface_Layer) for a more hollistic support.
+The rest of this document will be focused on details of wireless support in EVE. It must be noted that currently we're relying on a patchwork of different open source projects to do that, but we're also looking at things like [oFono](https://en.wikipedia.org/wiki/OFono) and [Android's RIL](https://en.wikipedia.org/wiki/Radio_Interface_Layer) for a more holistic support.
 
 ## WiFi
 
@@ -17,7 +17,7 @@ In general, WiFi support in EVE is pretty straightforward and largely depends on
 
 Compared to WiFi, cellular GSM modems present a major challenge. This is partially understandable, since radio regulations in different countries tend to be partially incompatible and at times [simply insane](https://www.afcea.org/content/disruptive-design-have-you-seen-flurry-acts-5g-security). All of this conspires to create a technology landscape where modem manufacturers are forced to produce highly capable and highly configurable units that take onto very different personalities when loaded with firmware and given their final configuration.
 
-Given the complexity of the task that a GSM modem has to perform, it is no wonder that they evolved to be self-contained computers with very sophisticated internal state. This comparison with remote computers/servers is especially apt, since the way you can interact with this device is very API-driven with pretty much zero offloading to ther host Linux kernel. Just like you would talk to a remote cloud service using a REST API you would talk to a GSM Modem using: AT commands, MBIM or QMI API.
+Given the complexity of the task that a GSM modem has to perform, it is no wonder that they evolved to be self-contained computers with very sophisticated internal state. This comparison with remote computers/servers is especially apt, since the way you can interact with this device is very API-driven with pretty much zero offloading to the host Linux kernel. Just like you would talk to a remote cloud service using a REST API you would talk to a GSM Modem using: AT commands, MBIM or QMI API.
 
 Currently, EVE stays away from managing GSM modem's firmware and expects a modem unit to be fully configured by a hardware manufacturer to provide a [QMI interface](https://en.wikipedia.org/wiki/Qualcomm_MSM_Interface).
 
@@ -25,7 +25,7 @@ Currently, EVE stays away from managing GSM modem's firmware and expects a modem
 
 As with any hardware, you will typically go through the following steps:
 
-1. making sure that the modem device is connected to the host edge node through one of the common busses (this doesn't guarantee that the host can communicate with the device, but at least you should see it registered on the bus)
+1. making sure that the modem device is connected to the host edge node through one of the common buses (this doesn't guarantee that the host can communicate with the device, but at least you should see it registered on the bus)
 2. making sure that the modem is configured in such a way that you can actually communicate with it
 3. making sure that you can drive the modem and instruct it to connect to the wireless provider
 4. making sure that a modem connected to the wireless provider can establish a data connection and reflect it back to the host as a network interface (typically `wwanX`)
@@ -83,7 +83,7 @@ Regardless of how you arrive at the desired USB composition, make sure to reboot
 * `/dev/ttyUSBX` and qcserial and option (yes somebody had enough sense of humor to call a driver option)
 * `/dev/cdc-wdm0` and either qmi_wwan or cdc_mbim drivers for QMI and MBIM endpoints
 
-Even though MBIM is more of a standard EVE preferes QMI over it simply because QMI uses a more reliable NCM protocol underneath (after all MBIM is just the NCM protocol + a signaling channel and QMI is just the ECM protocol + a signaling channel). ECM is the Ethernet Control Model and NCM is the Network Control Model. ECM is an earlier standard and has some issues with latency while NCM resolves those issues and is designed for high speed operation. You can read more [here](https://en.wikipedia.org/wiki/Ethernet_over_USB#Protocols).
+Even though MBIM is more of a standard EVE prefers QMI over it simply because QMI uses a more reliable NCM protocol underneath (after all MBIM is just the NCM protocol + a signaling channel and QMI is just the ECM protocol + a signaling channel). ECM is the Ethernet Control Model and NCM is the Network Control Model. ECM is an earlier standard and has some issues with latency while NCM resolves those issues and is designed for high speed operation. You can read more [here](https://en.wikipedia.org/wiki/Ethernet_over_USB#Protocols).
 
 #### 3. Connecting to the wireless provider
 
@@ -96,7 +96,7 @@ When it comes to controlling GSM modems via AT commands, there's not much of a s
 * `AT!RESET` and `AT+CFUN=0` followed by `AT+CFUN=1,1` for resetting the modem
 * `AT!ENTERCND="A710"` enter super user mode
 * `AT+CPIN?` for working with SIM (make sure SIM is ready to use)
-* `AT+CREG?` for figuring out network registration (make sure you are registred in the home network)
+* `AT+CREG?` for figuring out network registration (make sure you are registered in the home network)
 * `AT+COPS=?` for showing available networks and `AT+COPS=0` for triggering the network registration or `AT+COPS=1,2,"xxxxx",7` to manually connect to a given provider
 * `AT+CSQ` (and especially `+WIND:`) for finding out signal quality and the connections
 * `AT+CGATT=1` for attaching to the service
@@ -125,7 +125,7 @@ at!reset
 
 #### 4. Establishing a data connection
 
-Once your modem reliably connects to your desired wireless provider, the final step is making sure that you can request a data connection. Data connection is layered on top of the basic GSM connectivity and requires you knowing a recommended APN and credentials that are needed to connect to it (both can be set dynamically by EVE's controller). Managing that data connection is the job of EVE's [wwan](../pkg/wwan) package and that is all that it does (e.g. it does NOT manage firmware or basic GSM connectvity). `wwan` package uses `uqmi` utility to talk to the QMI-enabled USB endpoint (typically `/dev/cdc-wdmX`) and goes through the following stages:
+Once your modem reliably connects to your desired wireless provider, the final step is making sure that you can request a data connection. Data connection is layered on top of the basic GSM connectivity and requires you knowing a recommended APN and credentials that are needed to connect to it (both can be set dynamically by EVE's controller). Managing that data connection is the job of EVE's [wwan](../pkg/wwan) package and that is all that it does (e.g. it does NOT manage firmware or basic GSM connectivity). `wwan` package uses `uqmi` utility to talk to the QMI-enabled USB endpoint (typically `/dev/cdc-wdmX`) and goes through the following stages:
 
 ```bash
 # wait for modem to register with the network

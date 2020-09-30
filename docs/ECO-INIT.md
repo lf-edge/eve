@@ -116,7 +116,7 @@ The list of subscriptions relevant to ECO initialization is as follows.
 "Downloading images" means the following:
 
 1. Reserve space on the device's disk for artifacts
-1. Retrive artifacts from remote locations
+1. Retrieve artifacts from remote locations
 1. Place the artifacts in the reserved space
 
 Artifacts may be one or more of:
