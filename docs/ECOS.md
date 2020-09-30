@@ -59,7 +59,7 @@ Currently we support the following states for the ECOs:
 
 ### Controller config ECO schema
 
-As part of a regular config that EVE recieves from its controller, each ECO gets configured by an entry in an array having:
+As part of a regular config that EVE receives from its controller, each ECO gets configured by an entry in an array having:
 
 * displayname
 * uuidandversion
@@ -125,7 +125,7 @@ The controller drives the ECO state transitions via the configuration. These sta
   * EVE performs the operation if the 'activate' flag is set to 'true' in the configuration.
 
 * Stop an ECO
-  * An ECO which is either running or transitioning to running state will be stopped. However, the mutated run time state is preserved. At the end of this stage, ECO will transiton to Stopped state. A subsequent start of the ECO will start the ECO with the previously mutated runtime state.
+  * An ECO which is either running or transitioning to running state will be stopped. However, the mutated run time state is preserved. At the end of this stage, ECO will transition to Stopped state. A subsequent start of the ECO will start the ECO with the previously mutated runtime state.
   * EVE performs the operation if the 'activate' flag is set to 'false' in the configuration.
 
 * Purge an ECO
@@ -138,7 +138,7 @@ The controller drives the ECO state transitions via the configuration. These sta
 
 * Delete an ECO
   * An ECO will be deleted. The resources previously reserved for the ECO are released. The storage for the ECI may or may not be released depending on whether there are other ECO's referencing it. If there is no ECO referencing the ECI, the storage is released as part of periodic garbage collection.
-  * EVE performs this operation if there is an entry for an ECO was present in the previous configutation and absent in the new configuration.
+  * EVE performs this operation if there is an entry for an ECO was present in the previous configuration and absent in the new configuration.
 
 ## Edge Container Image Format
 
@@ -148,7 +148,7 @@ This specification defines an ECI, consisting of a:
 * a set of binary layers
 * a configuration
 
-Both binary layers and configuration are represented as opaque binary blobs and referenced in a [CAS manner](https://en.wikipedia.org/wiki/Content-addressable_storage) by a ``<algo>:<content hash value>``. This allows us to have a structure similar to a [Merkle tree](https://en.wikipedia.org/wiki/Merkle_tree) with every element in the structure (starting from leaves) presumed immutable. The root of this tree is always a configuration object that in turn references other components of the tree. Binary content of the ECI, then, becomes synomynous with the ``<algo>:<content hash value>`` handle for the configuration object and thus is presumed to be immutable and content addressable.
+Both binary layers and configuration are represented as opaque binary blobs and referenced in a [CAS manner](https://en.wikipedia.org/wiki/Content-addressable_storage) by a ``<algo>:<content hash value>``. This allows us to have a structure similar to a [Merkle tree](https://en.wikipedia.org/wiki/Merkle_tree) with every element in the structure (starting from leaves) presumed immutable. The root of this tree is always a configuration object that in turn references other components of the tree. Binary content of the ECI, then, becomes synonymous with the ``<algo>:<content hash value>`` handle for the configuration object and thus is presumed to be immutable and content addressable.
 
 You can always reference an ECI by ``<algo>:<content hash>`` handle. Human readable names are possible by binding ``<ECI repository>/<ECI name>:<ECI tag>`` strings to ``<algo>:<content hash value>``. Those symbolic names are then presumed to be mutable (you can freely change the target ``<algo>:<content hash value>``) and they are maintained at the level of ECI Distribution Specification. This later point means that whenever you encounter a self-contained, binary ECI file you never know all the symbolic names that may be associated with it. There may be a few of those symbolic names stashed away in the repositories.json file, but this is by now means an exhaustive nor a complete list. In fact, you can provide your own symbolic name to the ECI file when you make it available via various transport mechanisms.
 

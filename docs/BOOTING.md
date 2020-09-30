@@ -68,10 +68,10 @@ scheme and we can use the MBR boot sector to boostrap the entire sequence.
 Thus, in addition to creating a UEFI compatible `EFI System` partition every disk with EVE also gets:
 
 * an MBR boot sector with GRUB's [stage1 one bootblock code](https://thestarman.pcministry.com/asm/mbr/GRUB.htm)
-* an MBR parition table (last 64 bytes of the MBR sector) with the following two partitions specified:
-   1. Bootable MS DOS parition that points at exactly the same bytes on disk occupied by the content of `EFI System` partition
+* an MBR partition table (last 64 bytes of the MBR sector) with the following two partitions specified:
+   1. Bootable MS DOS partition that points at exactly the same bytes on disk occupied by the content of `EFI System` partition
    2. [Protective MBR partition](https://www.rodsbooks.com/gdisk/hybrid.html)
-* a stage2 GRUB bootloader embedded into the gap between the end of the GPT and the start of the `EFI System` parition (roughly 2Mb worth of space)
+* a stage2 GRUB bootloader embedded into the gap between the end of the GPT and the start of the `EFI System` partition (roughly 2Mb worth of space)
 
 Note that when it comes to functionality the PC BIOS stage2 GRUB is identical to its UEFI payload sibling
 from the previous section. Or to put it differently -- it is exactly the same source just built as a
@@ -88,7 +88,7 @@ go through a very different boot sequence:
 5. stage2 GRUB will start by executing [embedded configuration file](../pkg/grub/embedded.cfg) script - this will set things up for serial console and also load up a normal configuration file from either IMGA or IMGB
 
 You may notice that legacy GRUB is basically playing the role of the first GRUB instance in the UEFI booting sequence.
-However, instead of chainloading the GRUB from IMGA/IMGB parition in the legacy BIOS boot case, we just start interpreting
+However, instead of chainloading the GRUB from IMGA/IMGB partition in the legacy BIOS boot case, we just start interpreting
 the configuration file from IMGA/IMGB partition. This is done to simplify the initial implementation (you can't easily
 chainload legacy GRUB images the way you can chainload UEFI payloads) but comes at a cost of NOT being able to upgrade
 the GRUB code itself.
@@ -143,7 +143,7 @@ With these artifacts in place, both ARM boards we support go through the followi
 
 One final note on our use of u-boot: as was mentioned before, u-boot is commonly used on ARM to provide both firmware and bootloader
 services (thus eliminating or at least subsuming the need for opaque binary blobs like `fixup4.dat` and `start4.elf`). We may, at some point,
-decide to implement IMGA/IMGB parition selection directly in u-boot to support an ecosystem of various ARM boards directly. However,
+decide to implement IMGA/IMGB partition selection directly in u-boot to support an ecosystem of various ARM boards directly. However,
 up until this point, it seems that all the boards that are modern enough to support EVE's virtualization requirements are also modern
 enough to support UEFI environment directly (even for HiKey where we're currently using u-boot as a stop gap measure the proper
 [UEFI implementation](https://github.com/pftf/RPi4) is very much in the works).

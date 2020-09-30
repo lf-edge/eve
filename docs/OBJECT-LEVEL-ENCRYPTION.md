@@ -116,7 +116,7 @@ Zedagent fetches the controller certificates at boot using the `ControllerCerts`
 
 There are two ways to get updated certificates:
 
-1. We can include hashes of the certificates on the top level of the device configuration itself. With the help of it, we can parse the certificates from the the device configuration in zedagent and will fetch the certificates if changed.
-2. If we don’t want to add the hashes of certificates in the the device configuration then we can add a decryption retry mechanism in the cipher package. So if decryption fails because of a certificate not found error, we will identify that the certificate required for the decryption is not available in the device and will fetch the controller certificates and trigger the decryption retry mechanism.
+1. We can include hashes of the certificates on the top level of the device configuration itself. With the help of it, we can parse the certificates from the device configuration in zedagent and will fetch the certificates if changed.
+2. If we don’t want to add the hashes of certificates in the device configuration then we can add a decryption retry mechanism in the cipher package. So if decryption fails because of a certificate not found error, we will identify that the certificate required for the decryption is not available in the device and will fetch the controller certificates and trigger the decryption retry mechanism.
 
 Second approach is more complex because the decryption is done in different EVE microservices.
