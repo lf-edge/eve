@@ -1612,28 +1612,22 @@ func parseOpCmds(config *zconfig.EdgeDevConfig,
 	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
-// Returns the cmd and a bool indicating the file already existed
-func readRebootConfig() (types.DeviceOpsCmd, bool) {
-	rebootConfig := types.DeviceOpsCmd{}
-
+// Returns the cmd if the file exists
+func readRebootConfig() *types.DeviceOpsCmd {
 	log.Debugf("readRebootConfigCounter - reading %s", rebootConfigFilename)
-	found := false
-	// Check if the file exists - if not, create one with
-	// default rebootConfig
+
 	bytes, err := ioutil.ReadFile(rebootConfigFilename)
 	if err == nil {
+		rebootConfig := types.DeviceOpsCmd{}
 		err = json.Unmarshal(bytes, &rebootConfig)
 		if err != nil {
 			log.Fatal(err)
 		}
-		found = true
-	} else {
-		log.Infof("readRebootConfigCounter - %s doesn't exist. Creating it. "+
-			"rebootConfig.Counter: %d",
-			rebootConfigFilename, rebootConfig.Counter)
-		saveRebootConfig(rebootConfig)
+		return &rebootConfig
 	}
-	return rebootConfig, found
+	log.Infof("readRebootConfigCounter - %s doesn't exist",
+		rebootConfigFilename)
+	return nil
 }
 
 func saveRebootConfig(reboot types.DeviceOpsCmd) {
@@ -1670,16 +1664,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	}
 
 	log.Infof("scheduleReboot: Applying updated config %v", reboot)
-	rebootConfig, found := readRebootConfig()
-	log.Infof("scheduleReboot - CurrentRebootConfig %v", rebootConfig)
-	// If counter value has changed or first time, then update
-	if rebootConfig.Counter == reboot.Counter && found {
+	rebootConfig := readRebootConfig()
+	if rebootConfig != nil && rebootConfig.Counter == reboot.Counter {
 		rebootPrevReturn = false
 		return false
 	}
-	if rebootConfig.Counter != reboot.Counter {
-		log.Infof("scheduleReboot: old %d new %d",
-			rebootConfig.Counter, reboot.Counter)
+	if rebootConfig == nil || rebootConfig.Counter != reboot.Counter {
 		// store current config, persistently
 		rebootCmd := types.DeviceOpsCmd{
 			Counter:      reboot.Counter,
@@ -1689,8 +1679,9 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		saveRebootConfig(rebootCmd)
 		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
 	}
-	if !found {
-		// First boot - skip the reboot
+	if rebootConfig == nil {
+		// First boot - skip the reboot but report to cloud
+		triggerPublishDevInfo(getconfigCtx.zedagentCtx)
 		rebootPrevReturn = false
 		return false
 	}
