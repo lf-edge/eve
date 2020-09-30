@@ -2,6 +2,7 @@ package cas
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -137,10 +138,11 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 
 // IngestBlob: parses the given one or more `blobs` (BlobStatus) and for each blob reads the blob data from
 // BlobStatus.Path and ingests it into CAS's blob store.
+// Accepts a custom context. If ctx is nil, then default context will be used.
 // Returns a list of loaded BlobStatus and an error is thrown if the read blob's hash does not match with the
 // respective BlobStatus.Sha256 or if there is an exception while reading the blob data.
 // In case of exception, the returned list of loaded blobs will contain all the blob that were loaded until that point.
-func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobStatus, error) {
+func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...*types.BlobStatus) ([]*types.BlobStatus, error) {
 	var (
 		index          *ocispec.Index
 		indexHash      string
@@ -242,7 +244,7 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 		}
 
 		//Step 1.3: Ingest the blob into CAS
-		if err := containerd.CtrWriteBlob(sha, blob.Size, r); err != nil {
+		if err := containerd.CtrWriteBlob(ctx, sha, blob.Size, r); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not load blob file into containerd at %s: %+s",
 				blob.Sha256, blobFile, err.Error())
 			log.Errorf(err.Error())
@@ -629,7 +631,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 			c.RemoveBlob(blob.Sha256)
 		}
 	}
-	deleteLease, err := containerd.CtrCreateLease()
+	newCtxWithLease, deleteLease, err := containerd.CtrCreateCtxWithLease()
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Unable load blobs for reference %s. "+
 			"Exception while creating lease: %v", reference, err.Error())
@@ -637,7 +639,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, blobs ...*ty
 		return nil, err
 	}
 	defer deleteLease()
-	loadedBlobs, err = c.IngestBlob(blobs...)
+	loadedBlobs, err = c.IngestBlob(newCtxWithLease, blobs...)
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Exception while loading blobs into CAS: %v", err.Error())
 		log.Errorf(err.Error())
