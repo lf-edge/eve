@@ -17,6 +17,16 @@ message ZControllerCert {
   repeated ZCert certs = 1;  //list of certificates sent by controller
 }
 
+enum ZCertMetaDataType {
+  Z_CERT_META_DATA_TYPE_INVALID = 0;
+  Z_CERT_META_DATA_TYPE_TPM2_PUBLIC = 1; //TPM2_PUBLIC blob from TPM2.0
+}
+
+message ZCertMetaData {
+  ZCertMetaDataType type = 1;  //meta-data type
+  bytes meta_data = 2;         //blob for the meta data
+}
+
 // ZCert is used for both controller certificates and edge-node certificates
 message ZCert {
   org.lfedge.eve.common.HashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
@@ -24,6 +34,7 @@ message ZCert {
   ZCertType type = 3;             //what kind of certificate(to identify the target use case)
   bytes cert = 4;                 //X509 cert in .PEM format
   ZCertAttr attributes = 5;       //properties of this certificate
+  repeated ZCertMetaData meta_data_items = 6; //Any meta-data associated with this certificate
 }
 
 message ZCertAttr {
