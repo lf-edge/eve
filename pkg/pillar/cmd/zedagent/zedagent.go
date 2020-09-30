@@ -205,6 +205,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.globalStatus.UnknownConfigItems = make(
 		map[string]types.ConfigItemStatus)
 
+	rebootConfig := readRebootConfig()
+	if rebootConfig != nil {
+		zedagentCtx.rebootConfigCounter = rebootConfig.Counter
+		log.Infof("Zedagent Run - rebootConfigCounter at init is %d",
+			zedagentCtx.rebootConfigCounter)
+	}
+
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
