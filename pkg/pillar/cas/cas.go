@@ -1,6 +1,7 @@
 package cas
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -38,10 +39,11 @@ type CAS interface {
 	ListBlobsMediaTypes() (map[string]string, error)
 	// IngestBlob: parses the given one or more `blobs` (BlobStatus) and for each blob reads the blob data from
 	// BlobStatus.Path and ingests it into CAS's blob store.
+	// Accepts a custom context. If ctx is nil, then default context will be used.
 	// Returns a list of loaded BlobStatus and an error is thrown if the read blob's hash does not match with the
 	// respective BlobStatus.Sha256 or if there is an exception while reading the blob data.
 	// In case of exception, the returned list of loaded blob will contain all the blob that were loaded until that point.
-	IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobStatus, error)
+	IngestBlob(ctx context.Context, blobs ...*types.BlobStatus) ([]*types.BlobStatus, error)
 	//UpdateBlobInfo updates BlobInfo of a blob in CAS.
 	//Arg is BlobInfo type struct in which BlobInfo.Digest is mandatory, and other field to be fill only if need to be updated
 	//Returns error is no blob is found match blobInfo.Digest

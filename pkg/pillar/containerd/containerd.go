@@ -122,13 +122,24 @@ func CloseClient() error {
 }
 
 //CtrWriteBlob reads the blob as raw data from `reader` and writes it into containerd.
-func CtrWriteBlob(blobHash string, expectedSize uint64, reader io.Reader) error {
-	if err := verifyCtr(); err != nil {
-		return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s", err.Error())
+// Accepts a custom context. If ctx is nil, then default context will be used.
+func CtrWriteBlob(ctx context.Context, blobHash string, expectedSize uint64, reader io.Reader) error {
+	if ctx == nil {
+		log.Infof("CtrWriteBlob: No ctx passed. Using default ctrdCtx")
+		if err := verifyCtr(); err != nil {
+			return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s", err.Error())
+		}
+		ctx = ctrdCtx
+	} else {
+		if CtrdClient == nil {
+			return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s",
+				"Container client is nil")
+		}
 	}
-	// Check if ctrdCtx has a lease before writing a blob to make sure that it doesn't get GCed
-	leaseID, _ := leases.FromContext(ctrdCtx)
-	leaseList, _ := CtrdClient.LeasesService().List(ctrdCtx, fmt.Sprintf("id==%s", leaseID))
+
+	// Check if ctx has a lease before writing a blob to make sure that it doesn't get GCed
+	leaseID, _ := leases.FromContext(ctx)
+	leaseList, _ := CtrdClient.LeasesService().List(ctx, fmt.Sprintf("id==%s", leaseID))
 	if len(leaseList) < 1 {
 		return fmt.Errorf("CtrWriteBlob: could not find lease: %s", leaseID)
 	}
@@ -137,7 +148,7 @@ func CtrWriteBlob(blobHash string, expectedSize uint64, reader io.Reader) error 
 	if err := expectedDigest.Validate(); err != nil {
 		return fmt.Errorf("CtrWriteBlob: exception while validating hash format of %s. %v", blobHash, err)
 	}
-	if err := content.WriteBlob(ctrdCtx, contentStore, blobHash, reader,
+	if err := content.WriteBlob(ctx, contentStore, blobHash, reader,
 		spec.Descriptor{Digest: expectedDigest, Size: int64(expectedSize)}); err != nil {
 		return fmt.Errorf("CtrWriteBlob: Exception while writing blob: %s. %s", blobHash, err.Error())
 	}
@@ -672,26 +683,27 @@ func LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, domSt
 	return spec.CreateContainer(true)
 }
 
-//CtrCreateLease created a 24 hrs lease for a containerd context.
-//Returns a func to delete the lease after use.
-func CtrCreateLease() (func() error, error) {
-	if err := verifyCtr(); err != nil {
-		return nil, fmt.Errorf("CtrCreateLease: exception while verifying ctrd client: %s", err.Error())
+//CtrCreateCtxWithLease returns a new containerd context with a 24 hrs lease and a func to delete the lease after use.
+func CtrCreateCtxWithLease() (context.Context, func() error, error) {
+	if CtrdClient == nil {
+		return nil, nil, fmt.Errorf("CtrCreateCtxWithLease: exception while verifying ctrd client: " +
+			"Container client is nil")
 	}
 	var (
 		err  error
 		done func(context.Context) error
 	)
-	ctrdCtx, done, err = CtrdClient.WithLease(ctrdCtx)
+	newCtrdCtx := namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
+	newCtrdCtx, done, err = CtrdClient.WithLease(newCtrdCtx)
 	if err != nil {
-		return nil, fmt.Errorf("CtrCreateLease: exception while creating lease: %s", err.Error())
+		return nil, nil, fmt.Errorf("CtrCreateCtxWithLease: exception while creating lease: %s", err.Error())
 	}
-	return func() error {
-		if err := done(ctrdCtx); err != nil {
+	return newCtrdCtx, func() error {
+		if err := done(newCtrdCtx); err != nil {
+			err = fmt.Errorf("CtrCreateCtxWithLease: exception while deleting newCtrdCtx: %s", err.Error())
+			log.Errorf(err.Error())
 			return err
 		}
-		//Reinitializing context to get rid of leaseID
-		ctrdCtx = namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
 		return nil
 	}, nil
 }
