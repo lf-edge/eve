@@ -38,13 +38,32 @@ func lookupBaseOsImageSha(ctx *baseOsMgrContext, imageSha string) *types.BaseOsC
 	return nil
 }
 
+func lookupBaseOsStatusImageSha(ctx *baseOsMgrContext, imageSha string) *types.BaseOsStatus {
+	items := ctx.pubBaseOsStatus.GetAll()
+	for _, c := range items {
+		status := c.(types.BaseOsStatus)
+		for _, ctc := range status.ContentTreeStatusList {
+			if ctc.ContentSha256 == imageSha {
+				return &status
+			}
+		}
+	}
+	return nil
+}
+
 func baseOsHandleStatusUpdateImageSha(ctx *baseOsMgrContext, imageSha string) {
 
 	log.Infof("baseOsHandleStatusUpdateImageSha for %s", imageSha)
 	config := lookupBaseOsImageSha(ctx, imageSha)
 	if config == nil {
-		log.Infof("baseOsHandleStatusUpdateImageSha(%s) not found",
+		log.Infof("baseOsHandleStatusUpdateImageSha(%s) config not found",
 			imageSha)
+		status := lookupBaseOsStatusImageSha(ctx, imageSha)
+		if status != nil {
+			log.Infof("baseOsHandleStatusUpdateImageSha(%s) found status",
+				imageSha)
+			removeBaseOsStatus(ctx, status.Key())
+		}
 		return
 	}
 	uuidStr := config.Key()
