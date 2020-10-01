@@ -151,14 +151,6 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 
 	//Step 1: Load blobs into CAS
 	for _, blob := range blobs {
-		log.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
-		//Process the blob only if its not loaded already
-		if blob.State == types.LOADED {
-			log.Infof("IngestBlob(%s): Not loading blob as it is already loaded", blob.Sha256)
-			loadedBlobs = append(loadedBlobs, blob)
-			continue
-		}
-		log.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
 		var (
 			r, contentReader io.Reader
 			err              error
@@ -166,6 +158,23 @@ func (c *containerdCAS) IngestBlob(blobs ...*types.BlobStatus) ([]*types.BlobSta
 			// the sha MUST be lower-case for it to work with the ocispec utils
 			sha = fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blob.Sha256))
 		)
+
+		log.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
+		// Process the blob only if its not in a loaded status already
+		if blob.State == types.LOADED {
+			log.Infof("IngestBlob(%s): Not loading blob as it is already marked as loaded", blob.Sha256)
+			loadedBlobs = append(loadedBlobs, blob)
+			continue
+		}
+
+		// Process the blob only if it isn't already loaded. It might be loaded but not
+		// yet marked in the blobstatus
+		if info, err := containerd.CtrGetBlobInfo(sha); err != nil && info.Digest.String() == sha {
+			log.Infof("IngestBlob(%s): Not loading blob as it is already loaded in storage", blob.Sha256)
+			loadedBlobs = append(loadedBlobs, blob)
+			continue
+		}
+		log.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
 
 		//Step 1.1: Read the blob from verified dir or provided content
 		switch {
