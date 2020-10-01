@@ -475,6 +475,20 @@ func setupFscryptEnv() error {
 	return nil
 }
 
+func publishUnknownVaultStatus(ctx *vaultMgrContext, vaultName string) {
+
+	status := types.VaultStatus{}
+	status.Name = vaultName
+	status.ConversionComplete = ctx.vaultUCDone
+	status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
+	status.SetErrorNow("Unsupported filesystem")
+
+	key := status.Key()
+	log.Debugf("Publishing VaultStatus %s\n", key)
+	pub := ctx.pubVaultStatus
+	pub.Publish(key, status)
+}
+
 func publishFscryptVaultStatus(ctx *vaultMgrContext,
 	vaultName string, vaultPath string,
 	fscryptStatus info.DataSecAtRestStatus,
@@ -631,7 +645,6 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		if err := setupDefaultVaultOnExt4(); err != nil {
 			return err
 		}
-		ctx.defaultVaultUnlocked = true
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
 			etpm.CompareLegacyandSealedKey().String())
@@ -639,7 +652,6 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		if err := setupDefaultVaultOnZfs(); err != nil {
 			return err
 		}
-		ctx.defaultVaultUnlocked = true
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
 			etpm.CompareLegacyandSealedKey().String())
@@ -647,6 +659,7 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		log.Noticef("unsupported %s filesystem, ignoring vault setup",
 			persistFsType)
 	}
+	ctx.defaultVaultUnlocked = true
 	return nil
 }
 
@@ -700,6 +713,7 @@ func publishVaultStatus(ctx *vaultMgrContext) {
 		publishAllZfsVaultStatus(ctx)
 	default:
 		log.Warnf("Ignoring unknown filesystem type %s", persistFsType)
+		publishUnknownVaultStatus(ctx, types.DefaultVaultName)
 	}
 }
 
