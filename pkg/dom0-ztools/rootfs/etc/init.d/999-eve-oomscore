@@ -1,0 +1,8 @@
+#!/bin/sh
+
+for p in /proc/*/exe; do
+   case "$(ls -l "$p" 2>/dev/null)" in
+     *memlogd|*containerd) echo -999 > "${p/exe/oom_score_adj}"
+                           ;;
+   esac
+done
