@@ -341,6 +341,14 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 	}
 	if dnsmasqStopStart {
 		startDnsmasq(bridgeName)
+	} else {
+		// Force removing of old leases which might have conflicting
+		// IP addresses. dnsmasq doesn't handle deletes from the
+		// directory
+		pidfile := fmt.Sprintf("/var/run/dnsmasq.%s.pid", bridgeName)
+		if _, err := signalPidfile(pidfile, syscall.SIGHUP); err != nil {
+			log.Error(err)
+		}
 	}
 }
 
@@ -402,27 +410,16 @@ func startDnsmasq(bridgeName string) {
 	}
 }
 
-//    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
+// Kill the process with SIGTERM and wait for it to be gone.
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	pidfile := fmt.Sprintf("/var/run/dnsmasq.%s.pid", bridgeName)
-	pidByte, err := ioutil.ReadFile(pidfile)
+	pid, err := signalPidfile(pidfile, syscall.SIGTERM)
 	if err != nil {
-		log.Errorf("stopDnsmasq: pid file read error %v\n", err)
+		log.Error(err)
 		return
 	}
-	pidStr := string(pidByte)
-	pidStr = strings.TrimSuffix(pidStr, "\n")
-	pidStr = strings.TrimSpace(pidStr)
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		log.Errorf("stopDnsmasq: pid convert error %v\n", err)
-		return
-	}
-
-	cfgFilename := dnsmasqConfigFile(bridgeName)
-	pkillUserArgs("root", cfgFilename, printOnError)
 
 	startCheckTime := time.Now()
 	// check and wait until the process is gone or maximum of 60 seconds is reached
@@ -431,18 +428,20 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 		if err == nil {
 			err = p.Signal(syscall.Signal(0))
 			if err != nil {
-				log.Infof("stopDnsmasq: kill process done for %d\n", pid)
+				log.Infof("stopDnsmasq: kill process done for %d",
+					pid)
 				break
-			} else {
-				log.Infof("stopDnsmasq: wait for %d to finish\n", pid)
 			}
+			log.Infof("stopDnsmasq: wait for %d to finish", pid)
 			if time.Since(startCheckTime).Seconds() > 60 {
-				log.Errorf("stopDnsmasq: kill dnsmasq on %s pid %d not finish in 60 seconds\n", bridgeName, pid)
+				log.Errorf("stopDnsmasq: kill dnsmasq on %s pid %d not finish in 60 seconds",
+					bridgeName, pid)
 				break
 			}
 			time.Sleep(1 * time.Second)
 		} else {
-			log.Infof("stopDnsmasq: find dnsmasq process %s error %v\n", pidStr, err)
+			log.Infof("stopDnsmasq: find dnsmasq process %d error %s",
+				pid, err)
 			break
 		}
 	}
@@ -455,6 +454,36 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 	if delConfiglet {
 		deleteDnsmasqConfiglet(bridgeName)
 	}
+}
+
+// signalPidfile sends the signal and returns the pid
+func signalPidfile(pidfile string, signal syscall.Signal) (int, error) {
+	pid := 0
+	pidByte, err := ioutil.ReadFile(pidfile)
+	if err != nil {
+		return pid, fmt.Errorf("signalDnsmasq: pid file read error %s",
+			err)
+	}
+	pidStr := string(pidByte)
+	pidStr = strings.TrimSuffix(pidStr, "\n")
+	pidStr = strings.TrimSpace(pidStr)
+	pid, err = strconv.Atoi(pidStr)
+	if err != nil {
+		return pid, fmt.Errorf("signalDnsmasq: pid convert error %s",
+			err)
+	}
+
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return pid, fmt.Errorf("signalDnsmasq: find dnsmasq process %d error %s",
+			pid, err)
+	}
+	err = p.Signal(syscall.Signal(signal))
+	if err != nil {
+		return pid, fmt.Errorf("signalDnsmasq: Signal %d failed for %d error %v",
+			signal, pid, err)
+	}
+	return pid, nil
 }
 
 // checkAndPublishDhcpLeases needs to be called periodically since it
