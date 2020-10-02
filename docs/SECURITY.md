@@ -84,7 +84,7 @@ The device certificates are currently self-signed by the device with a long life
 
 But in the future EVE can send Certificate Signing Requests over the EVE API to have the controller ask some backend CA to sign the device certificates in the cases where that facilitates managing the devices.
 
-The device generates additional key pairs and certificates, since different keys are required to have different usage. This includes an ECDH certificate used for object encryptiong (to minimize exposure of secrets in the configuration) which is generated using the TPM is available, otherwise stored as a file in the config partition. In the future there will also be a device attestation certificate (with the appropriate key usage settings to perform remote attestation from the TPM). Both the ECDH and attestation certificates are signed using the device certificate. Collectively we call these additional device-side certificates EdgeNode certificates.
+The device generates additional key pairs and certificates, since different keys are required to have different usage. This includes an ECDH certificate used for object encryption (to minimize exposure of secrets in the configuration) which is generated using the TPM is available, otherwise stored as a file in the config partition. In the future there will also be a device attestation certificate (with the appropriate key usage settings to perform remote attestation from the TPM). Both the ECDH and attestation certificates are signed using the device certificate. Collectively we call these additional device-side certificates EdgeNode certificates.
 
 ### Controller trusting EVE
 
@@ -120,6 +120,6 @@ EVE provides a secure overlay network for ECOS for cases when east-west communic
 
 Each ECO has a unique certificate and private key generated when the ECO is deployed, and the LISP endpoint identifier contains a hash of that public key. This enables secure authenticated registrations with the LISP map server since the device can prove that it owns the private key whose hash is in the EID as part of the LISP register message.
 
-Two ECOs communicating using the overlay will get an secure channel since LISP will perform a kay exchange using the pair of public keys (which are bound to the EIDs per above).
+Two ECOs communicating using the overlay will get an secure channel since LISP will perform a key exchange using the pair of public keys (which are bound to the EIDs per above).
 
 In addition, the LISP map server can provide ability to limit access to the mappings for certain EIDs based on the EID which is trying to look them up.

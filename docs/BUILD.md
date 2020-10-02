@@ -74,7 +74,7 @@ Since an installer is many-use, potentially across many sites, the small amount 
 
 EVE uses several build tools, some of which are prerequisites, while others are installed as needed.
 
-### Prerequisities
+### Prerequisites
 
 You must have the following installed in order to build EVE:
 
@@ -280,7 +280,7 @@ To build `installer.raw`:
     4. Populates the embedded boot partition with the grub `*.EFI` binary and `grub.cfg` file
     5. Validates the image.
 
-Note that once you flash `installer.raw` on the installer media, such as USB drive or SD card, since the `conf_win` partition is a Windows Data partition, most operating systems will recognize it and allow you to mount it. This allows you to update configuration on the the installer media between installs.
+Note that once you flash `installer.raw` on the installer media, such as USB drive or SD card, since the `conf_win` partition is a Windows Data partition, most operating systems will recognize it and allow you to mount it. This allows you to update configuration on the installer media between installs.
 
 ## Generating yml
 

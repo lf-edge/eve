@@ -24,40 +24,43 @@ func GetGlobalConfig(log *base.LogObject, sub pubsub.Subscription) *types.Config
 
 // Returns (value, ok)
 func GetLogLevel(log *base.LogObject, sub pubsub.Subscription, agentName string) (string, bool) {
-	return getLogLevelImpl(log, sub, agentName, true)
+	val, ok, _ := getLogLevelImpl(log, sub, agentName, true)
+	return val, ok
 }
 
 func GetLogLevelNoDefault(log *base.LogObject, sub pubsub.Subscription, agentName string) (string, bool) {
-	return getLogLevelImpl(log, sub, agentName, false)
+	val, ok, _ := getLogLevelImpl(log, sub, agentName, false)
+	return val, ok
 }
 
+// Returns a level string, true if found, and true if it was from the default
 func getLogLevelImpl(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	allowDefault bool) (string, bool) {
+	allowDefault bool) (string, bool, bool) {
 
 	m, err := sub.Get("global")
 	if err != nil {
 		log.Errorf("GetLogLevel- failed to get global. Err: %s", err)
-		return "", false
+		return "", false, false
 	}
 	gc := m.(types.ConfigItemValueMap)
 	// Do we have an entry for this agent?
 	loglevel := gc.AgentSettingStringValue(agentName, types.LogLevel)
 	if loglevel != "" {
 		log.Debugf("getLogLevelImpl: loglevel=%s", loglevel)
-		return loglevel, true
+		return loglevel, true, false
 	}
 	if !allowDefault {
 		log.Debugf("getLogLevelImpl: loglevel not found. allowDefault False")
-		return "", false
+		return "", false, false
 	}
 	// Agent specific setting  not available. Get it from Global Setting
 	loglevel = gc.GlobalValueString(types.DefaultLogLevel)
 	if loglevel != "" {
 		log.Debugf("getLogLevelImpl: returning DefaultLogLevel (%s)", loglevel)
-		return loglevel, true
+		return loglevel, true, true
 	}
 	log.Errorf("***getLogLevelImpl: DefaultLogLevel not found. returning info")
-	return "info", false
+	return "info", false, false
 }
 
 // Returns (value, ok)
@@ -143,7 +146,7 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 		debug = true
 		level = logrus.TraceLevel
 		log.Infof("handleGlobalConfigImpl: debugOverride set. set loglevel to debug")
-	} else if loglevel, ok := getLogLevelImpl(log, sub, agentName, allowDefault); ok {
+	} else if loglevel, ok, def := getLogLevelImpl(log, sub, agentName, allowDefault); ok {
 		l, err := logrus.ParseLevel(loglevel)
 		if err != nil {
 			log.Errorf("***ParseLevel %s failed: %s\n", loglevel, err)
@@ -154,6 +157,10 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 		}
 		if level == logrus.TraceLevel {
 			debug = true
+		}
+		if def {
+			// XXX hack to set default logger
+			logrus.SetLevel(level)
 		}
 	} else {
 		log.Errorf("***handleGlobalConfigImpl: Failed to get loglevel")

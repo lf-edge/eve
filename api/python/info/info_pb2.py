@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='org.lfedge.eve.info',
   syntax='proto3',
   serialized_options=_b('\n\023org.lfedge.eve.infoZ\"github.com/lf-edge/eve/api/go/info'),
-  serialized_pb=_b('\n\x0finfo/info.proto\x12\x13org.lfedge.eve.info\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"\xdc\x01\n\x14\x64\x65precatedMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.org.lfedge.eve.info.DepMetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\xa5\x02\n\tZioBundle\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\x12\x37\n\rioAddressList\x18\x06 \x03(\x0b\x32 .org.lfedge.eve.info.IoAddresses\x12\x36\n\x05usage\x18\x07 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12+\n\x03\x65rr\x18\x08 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"!\n\x0bIoAddresses\x12\x12\n\nmacAddress\x18\x01 \x01(\t\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xd7\x02\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\r\n\x05\x61lias\x18( \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12*\n\x03\x64ns\x18\x07 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12-\n\x08location\x18\t \x01(\x0b\x32\x1b.org.lfedge.eve.info.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x32\n\nnetworkErr\x18\x0b \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\x12/\n\x05proxy\x18\r \x01(\x0b\x32 .org.lfedge.eve.info.ProxyStatus\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"\xa5\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12,\n\x05state\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x85\x01\n\tVaultInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x38\n\x06status\x18\x02 \x01(\x0e\x32(.org.lfedge.eve.info.DataSecAtRestStatus\x12\x30\n\x08vaultErr\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"\x8a\x01\n\rDataSecAtRest\x12\x38\n\x06status\x18\x01 \x01(\x0e\x32(.org.lfedge.eve.info.DataSecAtRestStatus\x12\x0c\n\x04info\x18\x02 \x01(\t\x12\x31\n\tvaultList\x18\x03 \x03(\x0b\x32\x1e.org.lfedge.eve.info.VaultInfo\"<\n\x0cSecurityInfo\x12\x13\n\x0bsha_root_ca\x18\x01 \x01(\x0c\x12\x17\n\x0fsha_tls_root_ca\x18\x02 \x01(\x0c\"/\n\x0fZInfoConfigItem\x12\r\n\x05value\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\x84\x03\n\x15ZInfoConfigItemStatus\x12P\n\x0b\x63onfigItems\x18\x01 \x03(\x0b\x32;.org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry\x12^\n\x12unknownConfigItems\x18\x02 \x03(\x0b\x32\x42.org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry\x1aX\n\x10\x43onfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.info.ZInfoConfigItem:\x02\x38\x01\x1a_\n\x17UnknownConfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.info.ZInfoConfigItem:\x02\x38\x01\"B\n\x10ZInfoAppInstance\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\ndomainName\x18\x03 \x01(\t\"\xd3\x08\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12\x35\n\x05minfo\x18\x0b \x01(\x0b\x32&.org.lfedge.eve.info.ZInfoManufacturer\x12\x32\n\x07network\x18\r \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoNetwork\x12:\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12*\n\x03\x64ns\x18\x10 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\x36\n\x0bstorageList\x18\x11 \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x06swList\x18\x13 \x03(\x0b\x32\x1f.org.lfedge.eve.info.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12>\n\x0bmetricItems\x18\x15 \x03(\x0b\x32).org.lfedge.eve.info.deprecatedMetricItem\x12\x18\n\x10lastRebootReason\x18\x16 \x01(\t\x12\x32\n\x0elastRebootTime\x18\x17 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12=\n\rsystemAdapter\x18\x18 \x01(\x0b\x32&.org.lfedge.eve.info.SystemAdapterInfo\x12\x16\n\x0erestartCounter\x18\x19 \x01(\r\x12>\n\tHSMStatus\x18\x1a \x01(\x0e\x32+.org.lfedge.eve.info.HwSecurityModuleStatus\x12\x0f\n\x07HSMInfo\x18\x1b \x01(\t\x12\x17\n\x0flastRebootStack\x18\x1c \x01(\t\x12=\n\x11\x64\x61taSecAtRestInfo\x18\x1d \x01(\x0b\x32\".org.lfedge.eve.info.DataSecAtRest\x12\x33\n\x08sec_info\x18\x1e \x01(\x0b\x32!.org.lfedge.eve.info.SecurityInfo\x12\x44\n\x10\x63onfigItemStatus\x18\x1f \x01(\x0b\x32*.org.lfedge.eve.info.ZInfoConfigItemStatus\x12;\n\x0c\x61ppInstances\x18  \x03(\x0b\x32%.org.lfedge.eve.info.ZInfoAppInstance\x12\x1b\n\x13rebootConfigCounter\x18! \x01(\r\"`\n\x11SystemAdapterInfo\x12\x14\n\x0c\x63urrentIndex\x18\x01 \x01(\r\x12\x35\n\x06status\x18\x02 \x03(\x0b\x32%.org.lfedge.eve.info.DevicePortStatus\"\x88\x02\n\x10\x44\x65vicePortStatus\x12\x0f\n\x07version\x18\x01 \x01(\r\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\x30\n\x0ctimePriority\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nlastFailed\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\rlastSucceeded\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\x05ports\x18\x06 \x03(\x0b\x32\x1f.org.lfedge.eve.info.DevicePort\x12\x11\n\tlastError\x18\x07 \x01(\t\"\xaf\x04\n\nDevicePort\x12\x0e\n\x06ifname\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06isMgmt\x18\x03 \x01(\x08\x12\x0c\n\x04\x66ree\x18\x04 \x01(\x08\x12\x10\n\x08\x64hcpType\x18\x0b \x01(\r\x12\x0e\n\x06subnet\x18\x0c \x01(\t\x12\x0f\n\x07gateway\x18\r \x01(\t\x12\x12\n\ndomainname\x18\x0e \x01(\t\x12\x11\n\tntpServer\x18\x0f \x01(\t\x12\x12\n\ndnsServers\x18\x10 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\x11 \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\x12 \x01(\t\x12/\n\x05proxy\x18\x15 \x01(\x0b\x32 .org.lfedge.eve.info.ProxyStatus\x12\x0f\n\x07macAddr\x18\x16 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x17 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x18 \x03(\t\x12*\n\x03\x64ns\x18\x19 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\n\n\x02up\x18\x1a \x01(\x08\x12-\n\x08location\x18\x1b \x01(\x0b\x32\x1b.org.lfedge.eve.info.GeoLoc\x12+\n\x03\x65rr\x18\x1d \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x36\n\x05usage\x18\x1e \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12\x13\n\x0bnetworkUUID\x18\x1f \x01(\t\"\xaa\x01\n\x0bProxyStatus\x12\x30\n\x07proxies\x18\x01 \x03(\x0b\x32\x1f.org.lfedge.eve.info.ProxyEntry\x12\x12\n\nexceptions\x18\x02 \x01(\t\x12\x0f\n\x07pacfile\x18\x03 \x01(\t\x12\x1a\n\x12networkProxyEnable\x18\x04 \x01(\x08\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x0f\n\x07wpadURL\x18\x06 \x01(\t\"8\n\nProxyEntry\x12\x0c\n\x04type\x18\x01 \x01(\r\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xac\x03\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12-\n\x06status\x18\x06 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12-\n\x05swErr\x18\t \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\x12\x35\n\nuserStatus\x18\x0b \x01(\x0e\x32!.org.lfedge.eve.info.BaseOsStatus\x12\x14\n\x0csubStatusStr\x18\x0c \x01(\t\x12\x37\n\tsubStatus\x18\r \x01(\x0e\x32$.org.lfedge.eve.info.BaseOsSubStatus\x12\x19\n\x11subStatusProgress\x18\x0e \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x93\x03\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x32\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x1c.org.lfedge.eve.info.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12.\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x0f \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x32\n\x07network\x18\x10 \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoNetwork\x12\x12\n\nvolumeRefs\x18\x11 \x03(\t\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xf9\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x31\n\x05state\x18\x06 \x01(\x0e\x32\".org.lfedge.eve.info.ZInfoVpnState\x12\x34\n\x05lInfo\x18\n \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnLinkInfo\x12\x34\n\x05rInfo\x18\x0b \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xa9\x02\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x31\n\x05state\x18\x06 \x01(\x0e\x32\".org.lfedge.eve.info.ZInfoVpnState\x12\x34\n\x05lInfo\x18\x07 \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnEndPoint\x12\x34\n\x05rInfo\x18\x08 \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnEndPoint\x12\x30\n\x05links\x18\n \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoVpnLink\"z\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12/\n\x04\x63onn\x18\n \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoVpnConn\"\x9b\x05\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x0csoftwareList\x18\t \x01(\x0b\x32\x1c.org.lfedge.eve.info.ZInfoSW\x12\x19\n\x11\x43urrentUplinkIntf\x18\n \x01(\t\x12\x1a\n\x12\x43urrentUplinkAlias\x18\x0b \x01(\t\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12\x41\n\ripAssignments\x18\x17 \x03(\x0b\x32*.org.lfedge.eve.info.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12.\n\x04vifs\x18\x19 \x03(\x0b\x32 .org.lfedge.eve.info.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12\x38\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12.\n\x05vinfo\x18\x1f \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoVpnH\x00\x12\x32\n\nnetworkErr\x18( \x03(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfoB\r\n\x0bInfoContent\"\x89\x01\n\tUsageInfo\x12.\n\ncreateTime\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08refCount\x18\x02 \x01(\r\x12:\n\x16lastRefcountChangeTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"=\n\x0fVolumeResources\x12\x14\n\x0cmaxSizeBytes\x18\x01 \x01(\x04\x12\x14\n\x0c\x63urSizeBytes\x18\x02 \x01(\x04\"\xaf\x02\n\x0bZInfoVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12-\n\x05usage\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12\x37\n\tresources\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.info.VolumeResources\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x06 \x01(\r\x12\x31\n\tvolumeErr\x18\x07 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10generation_count\x18\x08 \x01(\x03\"(\n\x10\x43ontentResources\x12\x14\n\x0c\x63urSizeBytes\x18\x01 \x01(\x04\"\xd9\x02\n\x10ZInfoContentTree\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12\x38\n\tresources\x18\x04 \x01(\x0b\x32%.org.lfedge.eve.info.ContentResources\x12-\n\x05usage\x18\x05 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12,\n\x05state\x18\x06 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x07 \x01(\r\x12+\n\x03\x65rr\x18\x08 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10\x63omponentShaList\x18\t \x03(\t\x12\x18\n\x10generation_count\x18\n \x01(\x03\"\xfb\x01\n\tZInfoBlob\x12\x0e\n\x06sha256\x18\x01 \x01(\t\x12\x38\n\tresources\x18\x02 \x01(\x0b\x32%.org.lfedge.eve.info.ContentResources\x12-\n\x05usage\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12,\n\x05state\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x05 \x01(\r\x12+\n\x03\x65rr\x18\x06 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"=\n\rZInfoBlobList\x12,\n\x04\x62lob\x18\x01 \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZInfoBlob\"\xc9\x03\n\x08ZInfoMsg\x12.\n\x05ztype\x18\x01 \x01(\x0e\x32\x1f.org.lfedge.eve.info.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x31\n\x05\x64info\x18\x03 \x01(\x0b\x32 .org.lfedge.eve.info.ZInfoDeviceH\x00\x12.\n\x05\x61info\x18\x05 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoAppH\x00\x12;\n\x06niinfo\x18\x0c \x01(\x0b\x32).org.lfedge.eve.info.ZInfoNetworkInstanceH\x00\x12\x31\n\x05vinfo\x18\r \x01(\x0b\x32 .org.lfedge.eve.info.ZInfoVolumeH\x00\x12\x36\n\x05\x63info\x18\x0e \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoContentTreeH\x00\x12\x33\n\x05\x62info\x18\x0f \x01(\x0b\x32\".org.lfedge.eve.info.ZInfoBlobListH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent*u\n\x11\x44\x65pMetricItemType\x12\x16\n\x12\x44\x65pMetricItemOther\x10\x00\x12\x16\n\x12\x44\x65pMetricItemGauge\x10\x01\x12\x18\n\x14\x44\x65pMetricItemCounter\x10\x02\x12\x16\n\x12\x44\x65pMetricItemState\x10\x03*x\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\x15\n\x11ZiNetworkInstance\x10\x06\x12\x0c\n\x08ZiVolume\x10\x07\x12\x11\n\rZiContentTree\x10\x08\x12\x0e\n\nZiBlobList\x10\t*\x86\x02\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b\x12\x11\n\rRESOLVING_TAG\x10\x0c\x12\x10\n\x0cRESOLVED_TAG\x10\r\x12\x13\n\x0f\x43REATING_VOLUME\x10\x0e\x12\x12\n\x0e\x43REATED_VOLUME\x10\x0f*N\n\x16HwSecurityModuleStatus\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0c\n\x08NOTFOUND\x10\x01\x12\x0c\n\x08\x44ISABLED\x10\x02\x12\x0b\n\x07\x45NABLED\x10\x03*\x88\x01\n\x13\x44\x61taSecAtRestStatus\x12\x1b\n\x17\x44\x41TASEC_AT_REST_UNKNOWN\x10\x00\x12\x1c\n\x18\x44\x41TASEC_AT_REST_DISABLED\x10\x01\x12\x1b\n\x17\x44\x41TASEC_AT_REST_ENABLED\x10\x02\x12\x19\n\x15\x44\x41TASEC_AT_REST_ERROR\x10\x04*q\n\x0c\x42\x61seOsStatus\x12\x08\n\x04NONE\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\x11\n\rDOWNLOAD_DONE\x10\x02\x12\x0c\n\x08UPDATING\x10\x03\x12\x0b\n\x07UPDATED\x10\x04\x12\x0c\n\x08\x46\x41LLBACK\x10\x05\x12\n\n\x06\x46\x41ILED\x10\x06*\xb6\x01\n\x0f\x42\x61seOsSubStatus\x12\x12\n\x0eNONE_SUBSTATUS\x10\x00\x12\x17\n\x13\x44OWNLOAD_INPROGRESS\x10\x01\x12\x15\n\x11VERIFY_INPROGRESS\x10\x02\x12\x17\n\x13UPDATE_INITIALIZING\x10\x03\x12\x14\n\x10UPDATE_REBOOTING\x10\x04\x12\x12\n\x0eUPDATE_TESTING\x10\x05\x12\x1c\n\x18UPDATE_NEED_TEST_CONFIRM\x10\x06*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\nB9\n\x13org.lfedge.eve.infoZ\"github.com/lf-edge/eve/api/go/infob\x06proto3')
+  serialized_pb=_b('\n\x0finfo/info.proto\x12\x13org.lfedge.eve.info\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1e\x65vecommon/devmodelcommon.proto\"\xdc\x01\n\x14\x64\x65precatedMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.org.lfedge.eve.info.DepMetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\xa5\x02\n\tZioBundle\x12.\n\x04type\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\x12\x37\n\rioAddressList\x18\x06 \x03(\x0b\x32 .org.lfedge.eve.info.IoAddresses\x12\x36\n\x05usage\x18\x07 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12+\n\x03\x65rr\x18\x08 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"!\n\x0bIoAddresses\x12\x12\n\nmacAddress\x18\x01 \x01(\t\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xf2\x02\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\r\n\x05\x61lias\x18( \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12*\n\x03\x64ns\x18\x07 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12-\n\x08location\x18\t \x01(\x0b\x32\x1b.org.lfedge.eve.info.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x32\n\nnetworkErr\x18\x0b \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\x12/\n\x05proxy\x18\r \x01(\x0b\x32 .org.lfedge.eve.info.ProxyStatus\x12\x19\n\x11ip_addr_mis_match\x18\x0e \x01(\x08\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"\xa5\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12,\n\x05state\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x85\x01\n\tVaultInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x38\n\x06status\x18\x02 \x01(\x0e\x32(.org.lfedge.eve.info.DataSecAtRestStatus\x12\x30\n\x08vaultErr\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"\x8a\x01\n\rDataSecAtRest\x12\x38\n\x06status\x18\x01 \x01(\x0e\x32(.org.lfedge.eve.info.DataSecAtRestStatus\x12\x0c\n\x04info\x18\x02 \x01(\t\x12\x31\n\tvaultList\x18\x03 \x03(\x0b\x32\x1e.org.lfedge.eve.info.VaultInfo\"<\n\x0cSecurityInfo\x12\x13\n\x0bsha_root_ca\x18\x01 \x01(\x0c\x12\x17\n\x0fsha_tls_root_ca\x18\x02 \x01(\x0c\"/\n\x0fZInfoConfigItem\x12\r\n\x05value\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\x84\x03\n\x15ZInfoConfigItemStatus\x12P\n\x0b\x63onfigItems\x18\x01 \x03(\x0b\x32;.org.lfedge.eve.info.ZInfoConfigItemStatus.ConfigItemsEntry\x12^\n\x12unknownConfigItems\x18\x02 \x03(\x0b\x32\x42.org.lfedge.eve.info.ZInfoConfigItemStatus.UnknownConfigItemsEntry\x1aX\n\x10\x43onfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.info.ZInfoConfigItem:\x02\x38\x01\x1a_\n\x17UnknownConfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.info.ZInfoConfigItem:\x02\x38\x01\"B\n\x10ZInfoAppInstance\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\ndomainName\x18\x03 \x01(\t\"\xd3\x08\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12\x35\n\x05minfo\x18\x0b \x01(\x0b\x32&.org.lfedge.eve.info.ZInfoManufacturer\x12\x32\n\x07network\x18\r \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoNetwork\x12:\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12*\n\x03\x64ns\x18\x10 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\x36\n\x0bstorageList\x18\x11 \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x06swList\x18\x13 \x03(\x0b\x32\x1f.org.lfedge.eve.info.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12>\n\x0bmetricItems\x18\x15 \x03(\x0b\x32).org.lfedge.eve.info.deprecatedMetricItem\x12\x18\n\x10lastRebootReason\x18\x16 \x01(\t\x12\x32\n\x0elastRebootTime\x18\x17 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12=\n\rsystemAdapter\x18\x18 \x01(\x0b\x32&.org.lfedge.eve.info.SystemAdapterInfo\x12\x16\n\x0erestartCounter\x18\x19 \x01(\r\x12>\n\tHSMStatus\x18\x1a \x01(\x0e\x32+.org.lfedge.eve.info.HwSecurityModuleStatus\x12\x0f\n\x07HSMInfo\x18\x1b \x01(\t\x12\x17\n\x0flastRebootStack\x18\x1c \x01(\t\x12=\n\x11\x64\x61taSecAtRestInfo\x18\x1d \x01(\x0b\x32\".org.lfedge.eve.info.DataSecAtRest\x12\x33\n\x08sec_info\x18\x1e \x01(\x0b\x32!.org.lfedge.eve.info.SecurityInfo\x12\x44\n\x10\x63onfigItemStatus\x18\x1f \x01(\x0b\x32*.org.lfedge.eve.info.ZInfoConfigItemStatus\x12;\n\x0c\x61ppInstances\x18  \x03(\x0b\x32%.org.lfedge.eve.info.ZInfoAppInstance\x12\x1b\n\x13rebootConfigCounter\x18! \x01(\r\"`\n\x11SystemAdapterInfo\x12\x14\n\x0c\x63urrentIndex\x18\x01 \x01(\r\x12\x35\n\x06status\x18\x02 \x03(\x0b\x32%.org.lfedge.eve.info.DevicePortStatus\"\x88\x02\n\x10\x44\x65vicePortStatus\x12\x0f\n\x07version\x18\x01 \x01(\r\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\x30\n\x0ctimePriority\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nlastFailed\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\rlastSucceeded\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\x05ports\x18\x06 \x03(\x0b\x32\x1f.org.lfedge.eve.info.DevicePort\x12\x11\n\tlastError\x18\x07 \x01(\t\"\xaf\x04\n\nDevicePort\x12\x0e\n\x06ifname\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06isMgmt\x18\x03 \x01(\x08\x12\x0c\n\x04\x66ree\x18\x04 \x01(\x08\x12\x10\n\x08\x64hcpType\x18\x0b \x01(\r\x12\x0e\n\x06subnet\x18\x0c \x01(\t\x12\x0f\n\x07gateway\x18\r \x01(\t\x12\x12\n\ndomainname\x18\x0e \x01(\t\x12\x11\n\tntpServer\x18\x0f \x01(\t\x12\x12\n\ndnsServers\x18\x10 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\x11 \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\x12 \x01(\t\x12/\n\x05proxy\x18\x15 \x01(\x0b\x32 .org.lfedge.eve.info.ProxyStatus\x12\x0f\n\x07macAddr\x18\x16 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x17 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x18 \x03(\t\x12*\n\x03\x64ns\x18\x19 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoDNS\x12\n\n\x02up\x18\x1a \x01(\x08\x12-\n\x08location\x18\x1b \x01(\x0b\x32\x1b.org.lfedge.eve.info.GeoLoc\x12+\n\x03\x65rr\x18\x1d \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x36\n\x05usage\x18\x1e \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12\x13\n\x0bnetworkUUID\x18\x1f \x01(\t\"\xaa\x01\n\x0bProxyStatus\x12\x30\n\x07proxies\x18\x01 \x03(\x0b\x32\x1f.org.lfedge.eve.info.ProxyEntry\x12\x12\n\nexceptions\x18\x02 \x01(\t\x12\x0f\n\x07pacfile\x18\x03 \x01(\t\x12\x1a\n\x12networkProxyEnable\x18\x04 \x01(\x08\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x0f\n\x07wpadURL\x18\x06 \x01(\t\"8\n\nProxyEntry\x12\x0c\n\x04type\x18\x01 \x01(\r\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xac\x03\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12-\n\x06status\x18\x06 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12-\n\x05swErr\x18\t \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\x12\x35\n\nuserStatus\x18\x0b \x01(\x0e\x32!.org.lfedge.eve.info.BaseOsStatus\x12\x14\n\x0csubStatusStr\x18\x0c \x01(\t\x12\x37\n\tsubStatus\x18\r \x01(\x0e\x32$.org.lfedge.eve.info.BaseOsSubStatus\x12\x19\n\x11subStatusProgress\x18\x0e \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x93\x03\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x32\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x1c.org.lfedge.eve.info.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12.\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x0f \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x32\n\x07network\x18\x10 \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoNetwork\x12\x12\n\nvolumeRefs\x18\x11 \x03(\t\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xf9\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x31\n\x05state\x18\x06 \x01(\x0e\x32\".org.lfedge.eve.info.ZInfoVpnState\x12\x34\n\x05lInfo\x18\n \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnLinkInfo\x12\x34\n\x05rInfo\x18\x0b \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xa9\x02\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x31\n\x05state\x18\x06 \x01(\x0e\x32\".org.lfedge.eve.info.ZInfoVpnState\x12\x34\n\x05lInfo\x18\x07 \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnEndPoint\x12\x34\n\x05rInfo\x18\x08 \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoVpnEndPoint\x12\x30\n\x05links\x18\n \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoVpnLink\"z\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12/\n\x04\x63onn\x18\n \x03(\x0b\x32!.org.lfedge.eve.info.ZInfoVpnConn\"\x9b\x05\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x0csoftwareList\x18\t \x01(\x0b\x32\x1c.org.lfedge.eve.info.ZInfoSW\x12\x19\n\x11\x43urrentUplinkIntf\x18\n \x01(\t\x12\x1a\n\x12\x43urrentUplinkAlias\x18\x0b \x01(\t\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12\x41\n\ripAssignments\x18\x17 \x03(\x0b\x32*.org.lfedge.eve.info.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12.\n\x04vifs\x18\x19 \x03(\x0b\x32 .org.lfedge.eve.info.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12\x38\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZioBundle\x12.\n\x05vinfo\x18\x1f \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoVpnH\x00\x12\x32\n\nnetworkErr\x18( \x03(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfoB\r\n\x0bInfoContent\"\x89\x01\n\tUsageInfo\x12.\n\ncreateTime\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08refCount\x18\x02 \x01(\r\x12:\n\x16lastRefcountChangeTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"=\n\x0fVolumeResources\x12\x14\n\x0cmaxSizeBytes\x18\x01 \x01(\x04\x12\x14\n\x0c\x63urSizeBytes\x18\x02 \x01(\x04\"\xaf\x02\n\x0bZInfoVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12-\n\x05usage\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12\x37\n\tresources\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.info.VolumeResources\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x06 \x01(\r\x12\x31\n\tvolumeErr\x18\x07 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10generation_count\x18\x08 \x01(\x03\"(\n\x10\x43ontentResources\x12\x14\n\x0c\x63urSizeBytes\x18\x01 \x01(\x04\"\xd9\x02\n\x10ZInfoContentTree\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12\x38\n\tresources\x18\x04 \x01(\x0b\x32%.org.lfedge.eve.info.ContentResources\x12-\n\x05usage\x18\x05 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12,\n\x05state\x18\x06 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x07 \x01(\r\x12+\n\x03\x65rr\x18\x08 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12\x18\n\x10\x63omponentShaList\x18\t \x03(\t\x12\x18\n\x10generation_count\x18\n \x01(\x03\"\xfb\x01\n\tZInfoBlob\x12\x0e\n\x06sha256\x18\x01 \x01(\t\x12\x38\n\tresources\x18\x02 \x01(\x0b\x32%.org.lfedge.eve.info.ContentResources\x12-\n\x05usage\x18\x03 \x01(\x0b\x32\x1e.org.lfedge.eve.info.UsageInfo\x12,\n\x05state\x18\x04 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12progressPercentage\x18\x05 \x01(\r\x12+\n\x03\x65rr\x18\x06 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\"=\n\rZInfoBlobList\x12,\n\x04\x62lob\x18\x01 \x03(\x0b\x32\x1e.org.lfedge.eve.info.ZInfoBlob\"\xc9\x03\n\x08ZInfoMsg\x12.\n\x05ztype\x18\x01 \x01(\x0e\x32\x1f.org.lfedge.eve.info.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x31\n\x05\x64info\x18\x03 \x01(\x0b\x32 .org.lfedge.eve.info.ZInfoDeviceH\x00\x12.\n\x05\x61info\x18\x05 \x01(\x0b\x32\x1d.org.lfedge.eve.info.ZInfoAppH\x00\x12;\n\x06niinfo\x18\x0c \x01(\x0b\x32).org.lfedge.eve.info.ZInfoNetworkInstanceH\x00\x12\x31\n\x05vinfo\x18\r \x01(\x0b\x32 .org.lfedge.eve.info.ZInfoVolumeH\x00\x12\x36\n\x05\x63info\x18\x0e \x01(\x0b\x32%.org.lfedge.eve.info.ZInfoContentTreeH\x00\x12\x33\n\x05\x62info\x18\x0f \x01(\x0b\x32\".org.lfedge.eve.info.ZInfoBlobListH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent*u\n\x11\x44\x65pMetricItemType\x12\x16\n\x12\x44\x65pMetricItemOther\x10\x00\x12\x16\n\x12\x44\x65pMetricItemGauge\x10\x01\x12\x18\n\x14\x44\x65pMetricItemCounter\x10\x02\x12\x16\n\x12\x44\x65pMetricItemState\x10\x03*x\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\x15\n\x11ZiNetworkInstance\x10\x06\x12\x0c\n\x08ZiVolume\x10\x07\x12\x11\n\rZiContentTree\x10\x08\x12\x0e\n\nZiBlobList\x10\t*\x86\x02\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b\x12\x11\n\rRESOLVING_TAG\x10\x0c\x12\x10\n\x0cRESOLVED_TAG\x10\r\x12\x13\n\x0f\x43REATING_VOLUME\x10\x0e\x12\x12\n\x0e\x43REATED_VOLUME\x10\x0f*N\n\x16HwSecurityModuleStatus\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0c\n\x08NOTFOUND\x10\x01\x12\x0c\n\x08\x44ISABLED\x10\x02\x12\x0b\n\x07\x45NABLED\x10\x03*\x88\x01\n\x13\x44\x61taSecAtRestStatus\x12\x1b\n\x17\x44\x41TASEC_AT_REST_UNKNOWN\x10\x00\x12\x1c\n\x18\x44\x41TASEC_AT_REST_DISABLED\x10\x01\x12\x1b\n\x17\x44\x41TASEC_AT_REST_ENABLED\x10\x02\x12\x19\n\x15\x44\x41TASEC_AT_REST_ERROR\x10\x04*q\n\x0c\x42\x61seOsStatus\x12\x08\n\x04NONE\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\x11\n\rDOWNLOAD_DONE\x10\x02\x12\x0c\n\x08UPDATING\x10\x03\x12\x0b\n\x07UPDATED\x10\x04\x12\x0c\n\x08\x46\x41LLBACK\x10\x05\x12\n\n\x06\x46\x41ILED\x10\x06*\xb6\x01\n\x0f\x42\x61seOsSubStatus\x12\x12\n\x0eNONE_SUBSTATUS\x10\x00\x12\x17\n\x13\x44OWNLOAD_INPROGRESS\x10\x01\x12\x15\n\x11VERIFY_INPROGRESS\x10\x02\x12\x17\n\x13UPDATE_INITIALIZING\x10\x03\x12\x14\n\x10UPDATE_REBOOTING\x10\x04\x12\x12\n\x0eUPDATE_TESTING\x10\x05\x12\x1c\n\x18UPDATE_NEED_TEST_CONFIRM\x10\x06*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\nB9\n\x13org.lfedge.eve.infoZ\"github.com/lf-edge/eve/api/go/infob\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
@@ -51,8 +51,8 @@ _DEPMETRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=8994,
-  serialized_end=9111,
+  serialized_start=9021,
+  serialized_end=9138,
 )
 _sym_db.RegisterEnumDescriptor(_DEPMETRICITEMTYPE)
 
@@ -94,8 +94,8 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9113,
-  serialized_end=9233,
+  serialized_start=9140,
+  serialized_end=9260,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
@@ -173,8 +173,8 @@ _ZSWSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9236,
-  serialized_end=9498,
+  serialized_start=9263,
+  serialized_end=9525,
 )
 _sym_db.RegisterEnumDescriptor(_ZSWSTATE)
 
@@ -204,8 +204,8 @@ _HWSECURITYMODULESTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9500,
-  serialized_end=9578,
+  serialized_start=9527,
+  serialized_end=9605,
 )
 _sym_db.RegisterEnumDescriptor(_HWSECURITYMODULESTATUS)
 
@@ -235,8 +235,8 @@ _DATASECATRESTSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9581,
-  serialized_end=9717,
+  serialized_start=9608,
+  serialized_end=9744,
 )
 _sym_db.RegisterEnumDescriptor(_DATASECATRESTSTATUS)
 
@@ -278,8 +278,8 @@ _BASEOSSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9719,
-  serialized_end=9832,
+  serialized_start=9746,
+  serialized_end=9859,
 )
 _sym_db.RegisterEnumDescriptor(_BASEOSSTATUS)
 
@@ -321,8 +321,8 @@ _BASEOSSUBSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9835,
-  serialized_end=10017,
+  serialized_start=9862,
+  serialized_end=10044,
 )
 _sym_db.RegisterEnumDescriptor(_BASEOSSUBSTATUS)
 
@@ -364,8 +364,8 @@ _ZINFOVPNSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=10020,
-  serialized_end=10163,
+  serialized_start=10047,
+  serialized_end=10190,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOVPNSTATE)
 
@@ -877,6 +877,13 @@ _ZINFONETWORK = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='ip_addr_mis_match', full_name='org.lfedge.eve.info.ZInfoNetwork.ip_addr_mis_match', index=12,
+      number=14, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -890,7 +897,7 @@ _ZINFONETWORK = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=995,
-  serialized_end=1338,
+  serialized_end=1365,
 )
 
 
@@ -969,8 +976,8 @@ _GEOLOC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1341,
-  serialized_end=1476,
+  serialized_start=1368,
+  serialized_end=1503,
 )
 
 
@@ -1014,8 +1021,8 @@ _ZINFODNS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1478,
-  serialized_end=1546,
+  serialized_start=1505,
+  serialized_end=1573,
 )
 
 
@@ -1087,8 +1094,8 @@ _ZINFOSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1549,
-  serialized_end=1714,
+  serialized_start=1576,
+  serialized_end=1741,
 )
 
 
@@ -1125,8 +1132,8 @@ _ERRORINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1716,
-  serialized_end=1795,
+  serialized_start=1743,
+  serialized_end=1822,
 )
 
 
@@ -1170,8 +1177,8 @@ _VAULTINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1798,
-  serialized_end=1931,
+  serialized_start=1825,
+  serialized_end=1958,
 )
 
 
@@ -1215,8 +1222,8 @@ _DATASECATREST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1934,
-  serialized_end=2072,
+  serialized_start=1961,
+  serialized_end=2099,
 )
 
 
@@ -1253,8 +1260,8 @@ _SECURITYINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2074,
-  serialized_end=2134,
+  serialized_start=2101,
+  serialized_end=2161,
 )
 
 
@@ -1291,8 +1298,8 @@ _ZINFOCONFIGITEM = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2136,
-  serialized_end=2183,
+  serialized_start=2163,
+  serialized_end=2210,
 )
 
 
@@ -1329,8 +1336,8 @@ _ZINFOCONFIGITEMSTATUS_CONFIGITEMSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2389,
-  serialized_end=2477,
+  serialized_start=2416,
+  serialized_end=2504,
 )
 
 _ZINFOCONFIGITEMSTATUS_UNKNOWNCONFIGITEMSENTRY = _descriptor.Descriptor(
@@ -1366,8 +1373,8 @@ _ZINFOCONFIGITEMSTATUS_UNKNOWNCONFIGITEMSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2479,
-  serialized_end=2574,
+  serialized_start=2506,
+  serialized_end=2601,
 )
 
 _ZINFOCONFIGITEMSTATUS = _descriptor.Descriptor(
@@ -1403,8 +1410,8 @@ _ZINFOCONFIGITEMSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2186,
-  serialized_end=2574,
+  serialized_start=2213,
+  serialized_end=2601,
 )
 
 
@@ -1448,8 +1455,8 @@ _ZINFOAPPINSTANCE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2576,
-  serialized_end=2642,
+  serialized_start=2603,
+  serialized_end=2669,
 )
 
 
@@ -1661,8 +1668,8 @@ _ZINFODEVICE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2645,
-  serialized_end=3752,
+  serialized_start=2672,
+  serialized_end=3779,
 )
 
 
@@ -1699,8 +1706,8 @@ _SYSTEMADAPTERINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3754,
-  serialized_end=3850,
+  serialized_start=3781,
+  serialized_end=3877,
 )
 
 
@@ -1772,8 +1779,8 @@ _DEVICEPORTSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3853,
-  serialized_end=4117,
+  serialized_start=3880,
+  serialized_end=4144,
 )
 
 
@@ -1950,8 +1957,8 @@ _DEVICEPORT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4120,
-  serialized_end=4679,
+  serialized_start=4147,
+  serialized_end=4706,
 )
 
 
@@ -2016,8 +2023,8 @@ _PROXYSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4682,
-  serialized_end=4852,
+  serialized_start=4709,
+  serialized_end=4879,
 )
 
 
@@ -2061,8 +2068,8 @@ _PROXYENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4854,
-  serialized_end=4910,
+  serialized_start=4881,
+  serialized_end=4937,
 )
 
 
@@ -2176,8 +2183,8 @@ _ZINFODEVSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4913,
-  serialized_end=5341,
+  serialized_start=4940,
+  serialized_end=5368,
 )
 
 
@@ -2228,8 +2235,8 @@ _ZINFOSTORAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5343,
-  serialized_end=5432,
+  serialized_start=5370,
+  serialized_end=5459,
 )
 
 
@@ -2329,8 +2336,8 @@ _ZINFOAPP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5435,
-  serialized_end=5838,
+  serialized_start=5462,
+  serialized_end=5865,
 )
 
 
@@ -2374,8 +2381,8 @@ _ZINFOVPNLINKINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5840,
-  serialized_end=5908,
+  serialized_start=5867,
+  serialized_end=5935,
 )
 
 
@@ -2454,8 +2461,8 @@ _ZINFOVPNLINK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5911,
-  serialized_end=6160,
+  serialized_start=5938,
+  serialized_end=6187,
 )
 
 
@@ -2499,8 +2506,8 @@ _ZINFOVPNENDPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6162,
-  serialized_end=6222,
+  serialized_start=6189,
+  serialized_end=6249,
 )
 
 
@@ -2586,8 +2593,8 @@ _ZINFOVPNCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6225,
-  serialized_end=6522,
+  serialized_start=6252,
+  serialized_end=6549,
 )
 
 
@@ -2638,8 +2645,8 @@ _ZINFOVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6524,
-  serialized_end=6646,
+  serialized_start=6551,
+  serialized_end=6673,
 )
 
 
@@ -2798,8 +2805,8 @@ _ZINFONETWORKINSTANCE = _descriptor.Descriptor(
       name='InfoContent', full_name='org.lfedge.eve.info.ZInfoNetworkInstance.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=6649,
-  serialized_end=7316,
+  serialized_start=6676,
+  serialized_end=7343,
 )
 
 
@@ -2843,8 +2850,8 @@ _USAGEINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7319,
-  serialized_end=7456,
+  serialized_start=7346,
+  serialized_end=7483,
 )
 
 
@@ -2881,8 +2888,8 @@ _VOLUMERESOURCES = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7458,
-  serialized_end=7519,
+  serialized_start=7485,
+  serialized_end=7546,
 )
 
 
@@ -2961,8 +2968,8 @@ _ZINFOVOLUME = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7522,
-  serialized_end=7825,
+  serialized_start=7549,
+  serialized_end=7852,
 )
 
 
@@ -2992,8 +2999,8 @@ _CONTENTRESOURCES = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7827,
-  serialized_end=7867,
+  serialized_start=7854,
+  serialized_end=7894,
 )
 
 
@@ -3086,8 +3093,8 @@ _ZINFOCONTENTTREE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7870,
-  serialized_end=8215,
+  serialized_start=7897,
+  serialized_end=8242,
 )
 
 
@@ -3152,8 +3159,8 @@ _ZINFOBLOB = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=8218,
-  serialized_end=8469,
+  serialized_start=8245,
+  serialized_end=8496,
 )
 
 
@@ -3183,8 +3190,8 @@ _ZINFOBLOBLIST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=8471,
-  serialized_end=8532,
+  serialized_start=8498,
+  serialized_end=8559,
 )
 
 
@@ -3273,8 +3280,8 @@ _ZINFOMSG = _descriptor.Descriptor(
       name='InfoContent', full_name='org.lfedge.eve.info.ZInfoMsg.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=8535,
-  serialized_end=8992,
+  serialized_start=8562,
+  serialized_end=9019,
 )
 
 _DEPRECATEDMETRICITEM.fields_by_name['type'].enum_type = _DEPMETRICITEMTYPE

@@ -18,7 +18,7 @@ cp -r /containers/services/pillar/lower /persist/service/pillar
 
 ## Keyboard/console access
 
-For security reasons the USB ports are disabled by default. The only exception is during hardware onboarding when an override file might be needed from a USB stick to do the initial network configuration as specified in in [DEVICE-CONNECTIVITY](DEVICE-CONNECTIVITY.md). During that onboarding USB keyboard access is currently also allowed. However, the USB access does not start until the pillar comntainer is started.
+For security reasons the USB ports are disabled by default. The only exception is during hardware onboarding when an override file might be needed from a USB stick to do the initial network configuration as specified in in [DEVICE-CONNECTIVITY](DEVICE-CONNECTIVITY.md). During that onboarding USB keyboard access is currently also allowed. However, the USB access does not start until the pillar container is started.
 If during hardware or software bringup it is desirable to have USB access during testing it is possible to build an image which modloads the usbhid, usbkbd, usbmouse, and usb-storage driver by adding them in [the modprobe list](../images/rootfs.yml.in).
 
 To enable USB keyboard and/or storage access post onboarding it is necessary to set debug.enable.usb to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts.

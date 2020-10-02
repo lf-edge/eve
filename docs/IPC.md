@@ -4,7 +4,7 @@ EVE's control plane is composed of several independent processes: `zedmanager`, 
 
 In addition, each process needs to track and know its current state.
 
-While each process could simply send a local RPC call of some kind or another, that would tie up many threads for a long time in a synchronous backlog, as well as eliminating much flexiiblity. In addition, it would require each process to know all of its downstream clients.
+While each process could simply send a local RPC call of some kind or another, that would tie up many threads for a long time in a synchronous backlog, as well as eliminating much flexibility. In addition, it would require each process to know all of its downstream clients.
 
 EVE uses a custom library called `pubsub` - for "publish subscribe" - to solve all of these problems:
 

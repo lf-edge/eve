@@ -119,6 +119,9 @@ message ZInfoNetwork {
   string localName = 12;
 
   ProxyStatus proxy = 13;
+
+  // IP address leased by dnsmasq to app does not match the IP address allocated by zedrouter
+  bool ip_addr_mis_match = 14;
 }
 
 // From an IP address-based geolocation service

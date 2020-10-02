@@ -330,14 +330,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				changed = true
 				return changed, false
 			}
-			// find any blob statuses and update them to LOADED
-			blobStatuses := lookupBlobStatuses(ctx, wres.loaded...)
-			for _, blob := range blobStatuses {
-				if blob.State < types.LOADED {
-					blob.State = types.LOADED
-					publishBlobStatus(ctx, blob)
-				}
-			}
 		}
 
 		leftToProcess := 0

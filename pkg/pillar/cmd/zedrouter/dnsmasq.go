@@ -313,9 +313,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 	log.Infof("removehostDnsmasq(%s, %s, %s)\n",
 		bridgeName, appMac, appIPAddr)
-	if dnsmasqStopStart {
-		stopDnsmasq(bridgeName, true, false)
-	}
+	stopDnsmasq(bridgeName, true, false)
 	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
 		log.Fatalf("removehostDnsmasq failed to parse IP %s", appIPAddr)
@@ -339,9 +337,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 			log.Errorln(errStr)
 		}
 	}
-	if dnsmasqStopStart {
-		startDnsmasq(bridgeName)
-	}
+	startDnsmasq(bridgeName)
 }
 
 func deleteDnsmasqConfiglet(bridgeName string) {
@@ -370,7 +366,7 @@ func RemoveDirContent(dir string) error {
 	}
 	for _, file := range files {
 		filename := dir + "/" + file.Name()
-		log.Infoln("RemoveDirConent found ", filename)
+		log.Infoln("RemoveDirContent found ", filename)
 		err = os.RemoveAll(filename)
 		if err != nil {
 			return err
@@ -479,6 +475,21 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					status.Key(), status.DisplayName,
 					ulStatus.Mac, assigned)
 				ulStatus.Assigned = assigned
+				leasedIP := net.ParseIP(l.IPAddr)
+				assignedIP := net.ParseIP(ulStatus.AllocatedIPAddr)
+				if !assignedIP.Equal(leasedIP) {
+					log.Errorf("IP address mismatch found - App: %s, Mac: %s, Allocated IP: %s, Leased IP: %s",
+						status.DisplayName, ulStatus.Mac, ulStatus.AllocatedIPAddr, l.IPAddr)
+					ulStatus.IPAddrMisMatch = true
+					// XXX Should we do the following at this point?
+					// 1) Stop dnsmasq corresponding to this network instance
+					// 2) Remove the leases file
+					// 3) Start dnsmasq again.
+					// App will get the correct IP address atleast in the next DHCP cycle.
+					// XXX Should we send the leased IP also as part of app status to cloud?
+				} else {
+					ulStatus.IPAddrMisMatch = false
+				}
 				changed = true
 			}
 		}

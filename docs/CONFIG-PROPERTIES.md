@@ -33,7 +33,7 @@
 
 
 In addition, there can be per-agent settings.
-The Per-agent settings begin with "agent.*agentame*.*setting*"
+The Per-agent settings begin with "agent.*agentname*.*setting*"
 The following per-agent settings override the corresponding default ones:
 
 | Name | Type | Description |

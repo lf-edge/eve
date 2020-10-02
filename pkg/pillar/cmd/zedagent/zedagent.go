@@ -206,9 +206,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		map[string]types.ConfigItemStatus)
 
 	rebootConfig := readRebootConfig()
-	zedagentCtx.rebootConfigCounter = rebootConfig.Counter
-	log.Infof("Zedagent Run - rebootConfigCounter at init is %d",
-		zedagentCtx.rebootConfigCounter)
+	if rebootConfig != nil {
+		zedagentCtx.rebootConfigCounter = rebootConfig.Counter
+		log.Infof("Zedagent Run - rebootConfigCounter at init is %d",
+			zedagentCtx.rebootConfigCounter)
+	}
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 

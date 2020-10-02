@@ -30,7 +30,7 @@ When the device boots the first time it determines the set of potentially usable
 That default configuration can be overridden by an optional file in
 /config which is added when the image is built/installed.
 That file is /config/DevicePortConfig/override.json
-And futher it can be overridden by a USB memory stick plugged in when the device is powered
+And further it can be overridden by a USB memory stick plugged in when the device is powered
 on. The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can be used to create a
 USB stick with a json file specifying the device connectivity based on the
 examples below.
