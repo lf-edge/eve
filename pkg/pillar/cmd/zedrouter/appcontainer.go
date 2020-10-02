@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/sirupsen/logrus"
 )
 
 // DOCKERAPIPORT - constant define of docker API TCP port value
@@ -94,7 +95,7 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 					}
 
 					// collect container logs and send through the logging system
-					numlogs += getAppContainerLogs(status, lastLogTime, cli, containers)
+					numlogs += getAppContainerLogs(ctx, status, lastLogTime, cli, containers)
 				}
 			}
 			// log output every 5 min, see this goroutine running status and number of containers from App
@@ -245,7 +246,7 @@ func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkC
 	}
 }
 
-func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Time, cli *client.Client, containers []apitypes.Container) int {
+func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, last map[string]time.Time, cli *client.Client, containers []apitypes.Container) int {
 	var buf bytes.Buffer
 	var numlogs int
 
@@ -284,10 +285,13 @@ func getAppContainerLogs(status types.AppNetworkStatus, last map[string]time.Tim
 					message = msg[0]
 				}
 				// insert container-name, app-UUID and module timestamp in log to be processed by logmanager
-				log.CloneAndAddField("appuuid", status.UUIDandVersion.UUID.String()).
-					AddField("containername", containerName).
-					AddField("eventtime", time).
-					Noticef("%s", message)
+				// use customized aclog independent of pillar logger
+				aclogger := ctx.aclog.WithFields(logrus.Fields{
+					"appuuid":       status.UUIDandVersion.UUID.String(),
+					"containername": containerName,
+					"eventtime":     time,
+				})
+				aclogger.Infof("%s", message)
 			}
 		}
 		// remember the last entry time by a container

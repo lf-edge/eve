@@ -606,3 +606,14 @@ func getOtherIMGdir(inprogressCheck bool) string {
 	otherIMGdir = fmt.Sprintf("%s/%s", types.PersistDir, partName)
 	return otherIMGdir
 }
+
+// CustomLogInit - allow pillar services and containers to use customized logging
+func CustomLogInit(level logrus.Level) *logrus.Logger {
+	logger := logrus.New()
+	formatter := logrus.JSONFormatter{
+		TimestampFormat: time.RFC3339Nano,
+	}
+	logger.SetFormatter(&formatter)
+	logger.SetLevel(level)
+	return logger
+}
