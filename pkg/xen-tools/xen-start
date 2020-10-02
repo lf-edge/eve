@@ -1,36 +1,57 @@
 #!/bin/sh
-set -ex
 
 bail() {
    echo "$@"
    exit 1
 }
 
+domID() {
+   # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
+   # shellcheck disable=SC2034
+   for i in 1 2 3; do
+     ID=$(xl domid "$1")
+     sleep 8
+     [ -z "$ID" ] || break
+   done >/dev/null 2>&1
+
+   if [ -z "$ID" ]; then
+      bail "Couldn't find domain $1"
+   else
+      echo "$ID"
+   fi
+}
+
 # pre-flight checks
 [ $# -ne 2 ] && bail "Usage: $0 <domain name> <domain config>"
 
+# declare the status as running
+mkdir -p /run/tasks >/dev/null 2>&1
+echo running > "/run/tasks/$1"
+
 # FIXME: this really needs to be managed by runc
-keyctl link @u @s || :
+keyctl link @u @s
 
 # create domain in a paused state
-xl create "$2" -p
+xl create "$2" -p || bail "xl created failed"
 
 # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
-for i in 1 2 3; do
-  ID=$(xl domid "$1" 2>/dev/null)
-  sleep 8
-  [ -z "$ID" ] || break
-done
-[ -z "$ID" ] && bail "Couldn't find domain $1"
+ID=$(domID "$1")
 
 # finally unpause the domain
-xl unpause "$ID"
+xl unpause "$ID" || bail "xl unpause failed"
 
-# declare the status as running
-echo running > /dev/status
-
-# initialize unknownStateCounter
+# now star polling for domain status (11 sec interval) in the background
+# (note our use of mv to make sure file reads on the other side are atomic)
 echo 0 > /dev/unknownStateCounter
+(while true; do
+   sleep 11
+   /etc/xen/scripts/xen-info "$1" > "/run/tasks/$1.tmp"
+   mv "/run/tasks/$1.tmp" "/run/tasks/$1"
+done) &
 
-# and start watching over the console
-exec xl console "$ID" < /dev/null
+# and start watching over the console (note that we loop forever
+# in anticipation of potential domain reboots)
+while true; do
+   ID=$(domID "$1")
+   xl console "$ID" < /dev/null
+done
