@@ -11,6 +11,7 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"os"
 	"regexp"
 	"strconv"
@@ -450,16 +451,11 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	// if task is alive, we augment task status with finer grained details from xl info
 	log.Debugf("xlStatus %s %d\n", domainName, domainID)
 
-	stdOut, stdErr, err := containerd.CtrExec(domainName,
-		[]string{"/etc/xen/scripts/xen-info", domainName})
+	status, err := ioutil.ReadFile("/run/tasks/" + domainName)
 	if err != nil {
-		log.Errorln("xen-info ", err)
-		log.Errorln("xen-info output ", stdOut, stdErr)
-		// XXX this likely means domain has died, we need to fetch its final note
-		// and augment error reported back with it:
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("xen-info failed: %s", err)
+		log.Errorf("couldn't read task status file: %v", err)
 	}
-	log.Debugf("xen-info done. Result %s\n", stdOut)
+	log.Debugf("task %s has status %v\n", domainName, status)
 
 	stateMap := map[string]types.SwState{
 		"running": types.RUNNING,
@@ -467,10 +463,10 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 		"halting": types.HALTING,
 		"broken":  types.BROKEN,
 	}
-	effectiveDomainState, matched := stateMap[strings.TrimSpace(stdOut)]
+	effectiveDomainState, matched := stateMap[strings.TrimSpace(string(status))]
 	if !matched {
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %s",
-			domainName, stdOut)
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %v",
+			domainName, status)
 	}
 
 	return effectiveDomainID, effectiveDomainState, nil
