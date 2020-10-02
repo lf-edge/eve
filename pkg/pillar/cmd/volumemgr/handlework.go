@@ -319,9 +319,43 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	log.Infof("casIngestWorker has blobs: %v", status.Blobs)
 	blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
 
-	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(status.ReferenceID(), blobStatuses...)
-	for _, b := range loadedBlobs {
-		d.loaded = append(d.loaded, b.Sha256)
+	// find the blobs we need to load and indicate that they are being loaded
+	// The order here is important. As a safety check, IngestBlobsAndCreateImage
+	// will not load any blobs that are of state LOADED or LOADING. If we set it to LOADING,
+	// we will prevent it from being loaded. But we need to indicate to the rest of the world
+	// that this blob is being loaded. So we do the following:
+	//
+	// 1. duplicate the BlobStatus to pass to IngestBlobsAndCreateImage
+	// 2. update the original BlobStatus state and publish
+	// 3. When we get the response, update the originals and publish
+
+	// also keep track so we do not try to load duplicates
+	found := map[string]bool{}
+	loadBlobs := []types.BlobStatus{}
+	root := blobStatuses[0]
+	for _, blob := range blobStatuses {
+		// be careful not to load the same Sha256 twice
+		if _, ok := found[blob.Sha256]; ok {
+			continue
+		}
+		found[blob.Sha256] = true
+		if blob.State < types.LOADING {
+			// Pay close attention: we copy the blob *before* changing it to loading.
+			// We want everything else to know that it is LOADING, but not the routine to
+			// ingest that we are about to call.
+			loadBlobs = append(loadBlobs, *blob)
+			blob.State = types.LOADING
+			publishBlobStatus(ctx, blob)
+		}
+	}
+
+	// load the blobs
+	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(status.ReferenceID(), *root, loadBlobs...)
+	// loadedBlobs are BlobStatus for the ones we loaded; publicize their new states.
+	for _, blob := range loadedBlobs {
+		blob.State = types.LOADED
+		publishBlobStatus(ctx, &blob)
+		d.loaded = append(d.loaded, blob.Sha256)
 	}
 	result := worker.WorkResult{
 		Key:         w.Key,
