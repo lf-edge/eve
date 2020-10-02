@@ -687,6 +687,8 @@ func processEvents(image string, logChan <-chan logEntry,
 							image, event.source)
 						break
 					}
+				} else {
+					appUUID = event.appUUID
 				}
 				var ok bool
 				appLogBundle, ok = appLogBundles[appUUID]
