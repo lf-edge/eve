@@ -479,6 +479,21 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					status.Key(), status.DisplayName,
 					ulStatus.Mac, assigned)
 				ulStatus.Assigned = assigned
+				leasedIP := net.ParseIP(l.IPAddr)
+				assignedIP := net.ParseIP(ulStatus.AllocatedIPAddr)
+				if !assignedIP.Equal(leasedIP) {
+					log.Errorf("IP address mismatch found - App: %s, Mac: %s, Allocated IP: %s, Leased IP: %s",
+						status.DisplayName, ulStatus.Mac, ulStatus.AllocatedIPAddr, l.IPAddr)
+					ulStatus.IPAddrMisMatch = true
+					// XXX Should we do the following at this point?
+					// 1) Stop dnsmasq corresponding to this network instance
+					// 2) Remove the leases file
+					// 3) Start dnsmasq again.
+					// App will get the correct IP address atleast in the next DHCP cycle.
+					// XXX Should we send the leased IP also as part of app status to cloud?
+				} else {
+					ulStatus.IPAddrMisMatch = false
+				}
 				changed = true
 			}
 		}

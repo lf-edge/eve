@@ -1692,6 +1692,7 @@ type UnderlayNetworkStatus struct {
 	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter
 	AllocatedIPAddr string // Assigned to domU
 	Assigned        bool   // Set to true once DHCP has assigned it to domU
+	IPAddrMisMatch  bool
 	HostName        string
 	ACLRules        IPTablesRuleList
 }
