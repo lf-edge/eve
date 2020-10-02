@@ -889,12 +889,13 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		for _, ifname := range ifNames {
 			networkInfo := new(info.ZInfoNetwork)
 			networkInfo.LocalName = *proto.String(ifname)
-			ip, allocated, macAddr := getAppIP(ctx, aiStatus,
+			ip, allocated, macAddr, ipAddrMismatch := getAppIP(ctx, aiStatus,
 				ifname)
 			networkInfo.IPAddrs = make([]string, 1)
 			networkInfo.IPAddrs[0] = *proto.String(ip)
 			networkInfo.MacAddr = *proto.String(macAddr)
 			networkInfo.Up = allocated
+			networkInfo.IpAddrMisMatch = ipAddrMismatch
 			name := appIfnameToName(aiStatus, ifname)
 			log.Debugf("app %s/%s localName %s devName %s",
 				aiStatus.Key(), aiStatus.DisplayName,
@@ -1214,7 +1215,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 // Use the ifname/vifname to find the underlay status
 // and from there the (ip, allocated, mac) addresses for the app
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
-	vifname string) (string, bool, string) {
+	vifname string) (string, bool, string, bool) {
 
 	log.Debugf("getAppIP(%s, %s)", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
@@ -1223,9 +1224,9 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 		}
 		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s",
 			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
-		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
+		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac, ulStatus.IPAddrMisMatch
 	}
-	return "", false, ""
+	return "", false, "", false
 }
 
 func createVolumeInstanceMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {
