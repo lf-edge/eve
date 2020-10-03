@@ -486,6 +486,11 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					status.Key(), status.DisplayName,
 					ulStatus.Mac, assigned)
 				ulStatus.Assigned = assigned
+				if !assigned {
+					ulStatus.IPAddrMisMatch = true
+					changed = true
+					continue
+				}
 				leasedIP := net.ParseIP(l.IPAddr)
 				assignedIP := net.ParseIP(ulStatus.AllocatedIPAddr)
 				if !assignedIP.Equal(leasedIP) {
