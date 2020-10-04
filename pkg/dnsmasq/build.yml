@@ -1,2 +1,3 @@
 image: eve-dnsmasq
 org: lfedge
+network: yes

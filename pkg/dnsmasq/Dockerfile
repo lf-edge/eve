@@ -1,10 +1,14 @@
 # derived from Alpine 3.8
 FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
 
-ENV DNSMASQ_VERSION 2.78
+ENV DNSMASQ_VERSION 2.82
 
 RUN apk add --no-cache \
+    bash \
+    build-base \
+    curl \
     gcc \
+    git \
     make \
     patch \
     libc-dev \
@@ -12,11 +16,10 @@ RUN apk add --no-cache \
     tar
 
 RUN mkdir -p /dnsmasq/patches
-
-COPY dnsmasq-${DNSMASQ_VERSION}.tar.gz /dnsmasq
 COPY patches/* /dnsmasq/patches/
 
 WORKDIR /dnsmasq
+RUN curl -fsSLO "http://www.thekelleys.org.uk/dnsmasq/dnsmasq-${DNSMASQ_VERSION}.tar.gz"
 RUN tar xvzf dnsmasq-${DNSMASQ_VERSION}.tar.gz
 
 WORKDIR /dnsmasq/dnsmasq-${DNSMASQ_VERSION}
