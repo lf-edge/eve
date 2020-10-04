@@ -4,10 +4,69 @@ on:
     branches: [ master ]
 
 jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Test
+        run: |
+          make test
+      - name: Report test results as Annotations
+        if: ${{ always() }}
+        uses: guyarb/golang-test-annoations@v0.1
+        with:
+          test-results: dist/amd64/results.json
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: 'test-report'
+          path: ${{ github.workspace }}/dist
+
+  yetus:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: src
+          fetch-depth: 0
+
+      - name: Yetus
+        uses: apache/yetus-test-patch-action@main
+        with:
+          basedir: ./src
+          patchdir: ./out
+          buildtool: nobuild
+          continuousimprovement: true
+
+      - name: Store Yetus artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: apacheyetuspatchdir
+          path: ${{ github.workspace }}/out
+
   build:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
+
+      - name: Build packages
+        run: |
+          make pkgs
+      - name: Build EVE
+        run: |
+          make eve
+      - name: Build KVM rootfs
+        run: |
+          make HV=kvm rootfs
+      - name: Store rootfs
+        uses: actions/upload-artifact@v2
+        with:
+          name: rootfs
+          path: ${{ github.workspace }}/dist/*/installer/rootfs-*.squash
 
 # If all else fails, you may find solace here
 #  https://docs.github.com/en/free-pro-team@latest/actions/reference/context-and-expression-syntax-for-github-actions

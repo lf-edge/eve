@@ -195,7 +195,7 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
+	@$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
 itest: $(GOBUILDER) run-proxy | $(DIST)
 	@echo Running integration tests
