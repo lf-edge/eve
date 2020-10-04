@@ -1,0 +1,26 @@
+From d3c9073362c48ba57ea61af014bf375eaaccd220 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Fri, 9 Oct 2020 10:22:03 -0400
+Subject: [PATCH 6/9] rfc2131: Fix context comparison loop
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ src/rfc2131.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rfc2131.c b/src/rfc2131.c
+index fc54aab..f2b8f51 100644
+--- a/src/rfc2131.c
++++ b/src/rfc2131.c
+@@ -1092,7 +1092,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+ 		{
+ 		  struct dhcp_context *tmp;
+ 		  for (tmp = context; tmp; tmp = tmp->current)
+-		    if (context->router.s_addr == config->addr.s_addr)
++		    if (tmp->router.s_addr == config->addr.s_addr)
+ 		      break;
+ 		  if (tmp)
+ 		    my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it is in use by the server or relay"), addrs);
+-- 
+2.26.2
+

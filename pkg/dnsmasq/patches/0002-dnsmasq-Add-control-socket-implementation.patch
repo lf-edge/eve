@@ -1,0 +1,257 @@
+From 32fe8482073c7d6aaba00aac2f640c687e9176ac Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 5 Oct 2020 14:12:35 -0400
+Subject: [PATCH 2/9] dnsmasq: Add control socket implementation
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ Makefile      |  3 +-
+ src/config.h  |  2 ++
+ src/dnsmasq.c | 10 +++++-
+ src/dnsmasq.h |  7 ++++
+ src/option.c  |  9 ++++-
+ src/sock.c    | 97 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 125 insertions(+), 3 deletions(-)
+ create mode 100644 src/sock.c
+
+diff --git a/Makefile b/Makefile
+index 78e25f0..e0e55a9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -77,7 +77,8 @@ objs = cache.o rfc1035.o util.o option.o forward.o network.o \
+        helper.o tftp.o log.o conntrack.o dhcp6.o rfc3315.o \
+        dhcp-common.o outpacket.o radv.o slaac.o auth.o ipset.o \
+        domain.o dnssec.o blockdata.o tables.o loop.o inotify.o \
+-       poll.o rrfilter.o edns0.o arp.o crypto.o dump.o ubus.o metrics.o
++       poll.o rrfilter.o edns0.o arp.o crypto.o dump.o ubus.o \
++       metrics.o sock.o
+ 
+ hdrs = dnsmasq.h config.h dhcp-protocol.h dhcp6-protocol.h \
+        dns-protocol.h radv-protocol.h ip6addr.h metrics.h
+diff --git a/src/config.h b/src/config.h
+index 7187ffa..4d72a08 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -228,6 +228,8 @@ RESOLVFILE
+ #    endif
+ #endif
+ 
++#define CTRLSOCK "/var/run/dnsmasq.sock"
++
+ /* platform dependent options: these are determined automatically below
+ 
+ HAVE_LINUX_NETWORK
+diff --git a/src/dnsmasq.c b/src/dnsmasq.c
+index 2306c48..58f8404 100644
+--- a/src/dnsmasq.c
++++ b/src/dnsmasq.c
+@@ -410,7 +410,9 @@ int main (int argc, char **argv)
+ #else
+   die(_("Packet dumps not available: set HAVE_DUMP in src/config.h"), NULL, EC_BADCONF);
+ #endif
+-  
++
++  daemon->ctrlsockfd = ctrl_socket_init();
++
+   if (option_bool(OPT_DBUS))
+ #ifdef HAVE_DBUS
+     {
+@@ -1075,6 +1077,9 @@ int main (int argc, char **argv)
+ 	poll_listen(daemon->inotifyfd, POLLIN);
+ #endif
+ 
++      if (daemon->ctrlsockfd != -1)
++        poll_listen(daemon->ctrlsockfd, POLLIN);
++
+ #if defined(HAVE_LINUX_NETWORK)
+       poll_listen(daemon->netlinkfd, POLLIN);
+ #elif defined(HAVE_BSD_NETWORK)
+@@ -1167,6 +1172,9 @@ int main (int argc, char **argv)
+ 	}
+ #endif
+ 
++      if (daemon->ctrlsockfd != -1 && poll_check(daemon->ctrlsockfd, POLLIN))
++        ctrl_socket_check(now);
++
+       if (poll_check(piperead, POLLIN))
+ 	async_event(piperead, now);
+       
+diff --git a/src/dnsmasq.h b/src/dnsmasq.h
+index ce87612..de2b681 100644
+--- a/src/dnsmasq.h
++++ b/src/dnsmasq.h
+@@ -156,6 +156,7 @@ extern int capget(cap_user_header_t header, cap_user_data_t data);
+ #define LINUX_CAPABILITY_VERSION_3  0x20080522
+ 
+ #include <sys/prctl.h>
++#include "dnsmasq.h"
+ #elif defined(HAVE_SOLARIS_NETWORK)
+ #include <priv.h>
+ #endif
+@@ -1114,6 +1115,8 @@ extern struct daemon {
+ #ifdef HAVE_INOTIFY
+   int inotifyfd;
+ #endif
++  char *ctrlsock;
++  int ctrlsockfd;
+ #if defined(HAVE_LINUX_NETWORK)
+   int netlinkfd, kernel_version;
+ #elif defined(HAVE_BSD_NETWORK)
+@@ -1630,6 +1633,10 @@ int inotify_check(time_t now);
+ void set_dynamic_inotify(int flag, int total_size, struct crec **rhash, int revhashsz);
+ #endif
+ 
++/* sock.c */
++int ctrl_socket_init(void);
++int ctrl_socket_check(time_t now);
++
+ /* poll.c */
+ void poll_reset(void);
+ int poll_check(int fd, short event);
+diff --git a/src/option.c b/src/option.c
+index dbe5f90..ea2c175 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -167,6 +167,7 @@ struct myoption {
+ #define LOPT_IGNORE_CLID   358
+ #define LOPT_SINGLE_PORT   359
+ #define LOPT_SCRIPT_TIME   360
++#define LOPT_CTRL_SOCK     361
+  
+ #ifdef HAVE_GETOPT_LONG
+ static const struct option opts[] =  
+@@ -339,6 +340,7 @@ static const struct myoption opts[] =
+     { "dumpfile", 1, 0, LOPT_DUMPFILE },
+     { "dumpmask", 1, 0, LOPT_DUMPMASK },
+     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
++    { "ctrl-socket", 1, 0, LOPT_CTRL_SOCK },
+     { NULL, 0, 0, 0 }
+   };
+ 
+@@ -518,6 +520,7 @@ static struct {
+   { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
+   { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
+   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
++  { LOPT_CTRL_SOCK, ARG_DUP, "<path>", gettext_noop("Control socket name (defaults to %s)."), CTRLSOCK },
+   { 0, 0, NULL, NULL, NULL }
+ }; 
+ 
+@@ -1988,7 +1991,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
+     case LOPT_DUMPMASK:  /* --dumpmask */
+       daemon->dump_mask = strtol(arg, NULL, 0);
+       break;
+-      
++
++    case LOPT_CTRL_SOCK: /* --ctrl-socket */
++      daemon->ctrlsock = opt_string_alloc(arg);
++      break;
++
+ #ifdef HAVE_DHCP      
+     case 'l':  /* --dhcp-leasefile */
+       daemon->lease_file = opt_string_alloc(arg);
+diff --git a/src/sock.c b/src/sock.c
+new file mode 100644
+index 0000000..e6fa3b4
+--- /dev/null
++++ b/src/sock.c
+@@ -0,0 +1,97 @@
++/* Copyright (c) 2020 Sergey Temerkhanov
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; version 2 dated June, 1991, or
++ * (at your option) version 3 dated 29 June, 2007.
++ * 
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ * .....
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ * */
++
++#include "dnsmasq.h"
++#include <unistd.h>
++#include <sys/types.h> 
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <string.h>
++
++#define MAX_MSGSIZE 4096
++#define MAX_CMDLEN  20
++#define BACKLOG     5
++
++int ctrl_socket_init()
++{
++  int sockfd;
++  int ret;
++  struct sockaddr_un sa;
++
++
++  memset(&sa, 0, sizeof(sa));
++
++  sockfd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
++  if (sockfd < 0) {
++    return sockfd;
++  }
++
++  sa.sun_family = AF_UNIX;
++  strncpy(sa.sun_path, daemon->ctrlsock, strnlen(daemon->ctrlsock, sizeof(sa.sun_path)));
++
++  ret = bind(sockfd, (struct sockaddr *)&sa, sizeof(struct sockaddr_un));
++  if (ret < 0) {
++    close(sockfd);
++    return ret;
++  }
++
++  ret = listen(sockfd, BACKLOG);
++  if (ret < 0) {
++    close(sockfd);
++  }
++
++  return sockfd;
++}
++
++struct command {
++  char* cmd;
++  int (*handler)(char *args, time_t now);
++};
++
++static const struct command handlers[] = {
++  {.cmd = NULL, .handler = NULL},
++};
++
++int ctrl_socket_check(time_t now)
++{
++  struct command const *handler = handlers;
++  char msg[MAX_MSGSIZE];
++  int sockfd, ret;
++  size_t offs = 0;
++  struct sockaddr fsin;
++  socklen_t slen = sizeof(fsin);
++
++  while (((sockfd = accept(daemon->ctrlsockfd, &fsin, &slen)) < 0) && (errno == EINTR));
++
++  do {
++    ret = read(sockfd, msg + offs, sizeof(msg));
++    offs += ret > 0 ? ret : 0;
++  } while ((ret > 0) || (errno == EINTR));
++
++  msg[offs] = '\0';
++
++  close(sockfd);
++
++  while (handler->cmd != NULL) {
++    if (!strncmp(msg, handler->cmd, strlen(handler->cmd))) {
++      return handler->handler(msg + strlen(handler->cmd) + 1, now);
++    }
++
++    handler++;
++  }
++
++  return -ENOENT;
++}
+-- 
+2.26.2
+

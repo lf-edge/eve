@@ -1,0 +1,43 @@
+From 7ca3e4fbe16a47d4d77e3964dc3acb77e4362f57 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Fri, 9 Oct 2020 15:26:38 -0400
+Subject: [PATCH 7/9] option: Export dhcp_config_free()
+
+Export dhcp_config_free()
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ src/dnsmasq.h | 3 +++
+ src/option.c  | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/dnsmasq.h b/src/dnsmasq.h
+index de2b681..f28f801 100644
+--- a/src/dnsmasq.h
++++ b/src/dnsmasq.h
+@@ -1591,6 +1591,9 @@ void log_context(int family, struct dhcp_context *context);
+ void log_relay(int family, struct dhcp_relay *relay);
+ #endif
+ 
++/* option.c */
++void dhcp_config_free(struct dhcp_config *config);
++
+ /* outpacket.c */
+ #ifdef HAVE_DHCP6
+ void end_opt6(int container);
+diff --git a/src/option.c b/src/option.c
+index ea2c175..ae92c99 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -1020,7 +1020,7 @@ static void dhcp_netid_list_free(struct dhcp_netid_list *netid)
+     }
+ }
+ 
+-static void dhcp_config_free(struct dhcp_config *config)
++void dhcp_config_free(struct dhcp_config *config)
+ {
+   if (config)
+     {
+-- 
+2.26.2
+

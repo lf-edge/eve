@@ -1,0 +1,117 @@
+From 3895d3b67d809b966ddc0d51e6bcdcb96b084b36 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Fri, 9 Oct 2020 16:21:35 -0400
+Subject: [PATCH 9/9] sock.c: Add sock_add_host() implementation
+
+Support static DHCP entry addition over control socket comms
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ src/sock.c | 84 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 84 insertions(+)
+
+diff --git a/src/sock.c b/src/sock.c
+index c8b166f..e67301d 100644
+--- a/src/sock.c
++++ b/src/sock.c
+@@ -154,6 +154,88 @@ static int sock_add_lease(char *args, time_t now)
+   return ret;
+ }
+ 
++static int sock_add_host(char *args, time_t now)
++{
++  (void)now;
++  char *str = strdupa(args);
++  union all_addr addr;
++  struct dhcp_config *config, *configs;
++
++  char *ipaddr = strtok_r(str, " ", &str);
++  char *hwaddr = strtok_r(str, " ", &str);
++  char *hostname = strtok_r(str, " ", &str);
++
++  if (!ipaddr || !hwaddr) {
++    my_syslog(LOG_INFO, _("Invalid parameters for adding a lease"));
++    return -ENOENT;
++  }
++
++  if (inet_pton(AF_INET, ipaddr, &addr.addr4))
++    {
++      config = safe_malloc(sizeof(struct dhcp_config));
++
++      config->next = daemon->dhcp_conf;
++      config->flags = CONFIG_ADDR;
++      config->hwaddr = NULL;
++      config->netid = NULL;
++      config->filter = NULL;
++      config->clid = NULL;
++      config->addr = addr.addr4;
++#ifdef HAVE_DHCP6
++      config->addr6 = NULL;
++#endif
++      config->lease_time = 0xffffffff;
++      config->flags |= CONFIG_TIME;
++    }
++  else
++    return -EINVAL;
++
++  /* If the same IP appears in more than one host config, then DISCOVER
++      for one of the hosts will get the address, but REQUEST will be NAKed,
++      since the address is reserved by the other one -> protocol loop. */
++  for (configs = daemon->dhcp_conf; configs; configs = configs->next)
++    if ((configs->flags & CONFIG_ADDR) &&
++        configs->addr.s_addr == addr.addr4.s_addr)
++      {
++	print_mac(daemon->namebuff, configs->hwaddr->hwaddr, configs->hwaddr->hwaddr_len);
++	my_syslog(LOG_INFO, _("Host entry for address %s : %s : %s is already present"),
++		  inet_ntoa(configs->addr), daemon->namebuff, hostname);
++	free(config);
++	return -EINVAL;
++      }
++
++  struct hwaddr_config *newhw = safe_malloc(sizeof(struct hwaddr_config));
++  if ((newhw->hwaddr_len = parse_hex(hwaddr, newhw->hwaddr, DHCP_CHADDR_MAX,
++				     &newhw->wildcard_mask, &newhw->hwaddr_type)) == -1)
++    {
++      free(newhw);
++      free(config);
++      return -EINVAL;
++    }
++  else
++    {
++      newhw->next = config->hwaddr;
++      config->hwaddr = newhw;
++    }
++
++  if (hostname &&
++      legal_hostname(hostname))
++    {
++      config->hostname = safe_malloc(strlen(hostname) + 1);
++      safe_strncpy(config->hostname, hostname, strlen(hostname));
++
++      config->flags |= CONFIG_NAME;
++      config->domain = strip_hostname(config->hostname);
++    }
++
++  print_mac(daemon->namebuff, config->hwaddr->hwaddr, config->hwaddr->hwaddr_len);
++  my_syslog(LOG_INFO, _("Adding host entry for address %s : %s : %s"),
++	    inet_ntoa(config->addr), daemon->namebuff, config->hostname);
++  daemon->dhcp_conf = config;
++
++  return 0;
++}
++
+ static int sock_del_host(char *args, time_t now)
+ {
+   (void)now;
+@@ -210,6 +292,8 @@ static const struct command handlers[] = {
+   /* del_lease <IP address> */
+   {.cmd = "add_lease", .handler = sock_add_lease},
+   /* add_lease <IP address> <hw address> <hostname>*/
++  {.cmd = "add_host", .handler = sock_add_host},
++  /* add_host <IP address> <hw address> <hostname>*/
+   {.cmd = "del_host", .handler = sock_del_host},
+   /* del_host <IP address>*/
+ 
+-- 
+2.26.2
+
