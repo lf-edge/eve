@@ -100,6 +100,11 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 	return dhcphostsDir
 }
 
+func dnsmasqCtrlSocketPath(bridgeName string) string {
+	ctrlSocketname := runDirname + "/dnsmasq." + bridgeName + ".sock"
+	return ctrlSocketname
+}
+
 // createDnsmasqConfiglet
 // When we create a linux bridge we set this up
 // Also called when we need to update the ipsets
@@ -285,70 +290,42 @@ func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 
 	log.Infof("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
 		appIPAddr, hostname)
-	if dnsmasqStopStart {
-		stopDnsmasq(bridgeName, true, false)
-	}
-	ip := net.ParseIP(appIPAddr)
-	if ip == nil {
-		log.Fatalf("addhostDnsmasq failed to parse IP %s", appIPAddr)
-	}
-	isIPv6 := (ip.To4() == nil)
-	suffix := ".inet"
-	if isIPv6 {
-		suffix += "6"
-	}
 
-	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
-	ensureDir(dhcphostsDir)
-	cfgPathname := dhcphostsDir + "/" + appMac + suffix
-
-	file, err := os.Create(cfgPathname)
+	ctrlSocketname := dnsmasqCtrlSocketPath(bridgeName)
+	conn, err := net.Dial("unix", ctrlSocketname)
 	if err != nil {
-		log.Fatal("addhostDnsmasq failed ", err)
+		errStr := fmt.Sprintf("removehostDnsmasq %v", err)
+		log.Errorln(errStr)
+		return
 	}
-	defer file.Close()
-	if isIPv6 {
-		file.WriteString(fmt.Sprintf("%s,[%s],%s\n",
-			appMac, appIPAddr, hostname))
-	} else {
-		file.WriteString(fmt.Sprintf("%s,id:*,%s,%s\n",
-			appMac, appIPAddr, hostname))
+
+	_, err = conn.Write([]byte("add " + appIPAddr + " " + appMac + " " + hostname))
+	if err != nil {
+		errStr := fmt.Sprintf("removehostDnsmasq %v", err)
+		log.Errorln(errStr)
+		conn.Close()
+		return
 	}
-	file.Close()
-	if dnsmasqStopStart {
-		startDnsmasq(bridgeName)
-	}
+	conn.Close()
+}
+
+func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
+	hostname string) {
+
+	log.Infof("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
+		appIPAddr, hostname)
+
+	sendDnsmasqCmd(bridgeName, "add_host "+appIPAddr+" "+appMac+" "+hostname)
+	sendDnsmasqCmd(bridgeName, "add_lease "+appIPAddr+" "+appMac+" "+hostname)
 }
 
 func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 	log.Infof("removehostDnsmasq(%s, %s, %s)\n",
 		bridgeName, appMac, appIPAddr)
-	stopDnsmasq(bridgeName, true, false)
-	ip := net.ParseIP(appIPAddr)
-	if ip == nil {
-		log.Fatalf("removehostDnsmasq failed to parse IP %s", appIPAddr)
-	}
-	isIPv6 := (ip.To4() == nil)
-	suffix := ".inet"
-	if isIPv6 {
-		suffix += "6"
-	}
 
-	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
-	ensureDir(dhcphostsDir)
-
-	cfgPathname := dhcphostsDir + "/" + appMac + suffix
-	if _, err := os.Stat(cfgPathname); err != nil {
-		log.Infof("removehostDnsmasq(%s, %s) failed: %s\n",
-			bridgeName, appMac, err)
-	} else {
-		if err := os.Remove(cfgPathname); err != nil {
-			errStr := fmt.Sprintf("removehostDnsmasq %v", err)
-			log.Errorln(errStr)
-		}
-	}
-	startDnsmasq(bridgeName)
+	sendDnsmasqCmd(bridgeName, "del_host "+appIPAddr)
+	sendDnsmasqCmd(bridgeName, "del_lease "+appIPAddr)
 }
 
 func deleteDnsmasqConfiglet(bridgeName string) {
@@ -393,11 +370,14 @@ func startDnsmasq(bridgeName string) {
 
 	log.Infof("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
+	ctrlSocket := dnsmasqCtrlSocketPath(bridgeName)
 	name := "nohup"
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
 		"-C",
 		cfgPathname,
+		"--ctrl-socket",
+		ctrlSocket,
 	}
 	log.Infof("Calling command %s %v\n", name, args)
 	out, err := base.Exec(log, name, args...).CombinedOutput()
