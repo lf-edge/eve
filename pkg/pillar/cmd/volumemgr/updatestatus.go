@@ -400,18 +400,14 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		changed = true
 		return changed, false
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
-		// XXX why do we need to hard-code AppImgObj? Iterate over ctObjTypes
-		ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
+		ctStatus := lookupContentTreeStatusAny(ctx, status.ContentID.String())
 		if ctStatus == nil {
-			// Content tree not available
+			// Content tree not yet available
 			log.Errorf("doUpdateVol(%s) name %s: waiting for content tree status %v",
 				status.Key(), status.DisplayName, status.ContentID)
-			errStr := fmt.Sprintf("ContentTreeStatus(%s) attached to volume %s is nil",
-				status.ContentID.String(), status.DisplayName)
-			status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
-			changed = true
 			return changed, false
-		} else if status.IsErrorSource(types.ContentTreeStatus{}) {
+		}
+		if status.IsErrorSource(types.ContentTreeStatus{}) {
 			log.Infof("doUpdate: Clearing volume error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
