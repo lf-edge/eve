@@ -1,13 +1,13 @@
 # NOTE that this is the only workflow that requires access to the
-# GitHub token. However, it is safe since in EVE repo itself we 
+# GitHub token. However, it is safe since in EVE repo itself we
 # only trigger this workflow on pull requests and as such making
 # it effectively read-only.
 #   https://docs.github.com/en/free-pro-team@latest/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
-
+---
 name: Apache Yetus
 on:
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   yetus:
