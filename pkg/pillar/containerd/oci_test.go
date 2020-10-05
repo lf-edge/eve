@@ -57,11 +57,14 @@ const imageConfig = `
 `
 
 func TestOciSpec(t *testing.T) {
-	if err := InitContainerdClient(); err != nil {
-		t.Logf("failed to init containerd client %v", err)
+	// Do not create a client since containerd isn't running for test
+	client, err := NewContainerdClient(false)
+	if err != nil {
+		t.Errorf("failed to create containerd client %v", err)
+		return
 	}
 
-	spec, err := NewOciSpec("test")
+	spec, err := client.NewOciSpec("test")
 	if err != nil {
 		t.Errorf("failed to create default OCI spec %v", err)
 	}
