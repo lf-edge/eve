@@ -7,27 +7,41 @@ import (
 	"testing"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
 
 var kvmIntel, kvmArm kvmContext
+var ctrdClient *containerd.Client
 
-func init() {
-	// these ones are very much handcrafted just for the tests
+// these ones are very much handcrafted just for the tests
+func initTest(t *testing.T) {
+
+	if ctrdClient != nil {
+		return
+	}
+	var err error
+	ctrdClient, err = containerd.NewContainerdClient(true)
+	if err != nil {
+		t.Skipf("test must be run on a system with a functional containerd")
+	}
 	kvmIntel = kvmContext{
 		devicemodel: "pc-q35-3.1",
 		dmExec:      "",
 		dmArgs:      []string{},
 	}
+	kvmIntel.ctrdClient = ctrdClient
 	kvmArm = kvmContext{
 		devicemodel: "virt",
 		dmExec:      "",
 		dmArgs:      []string{},
 	}
+	kvmArm.ctrdClient = ctrdClient
 }
 
 func TestCreateDomConfigOnlyCom1(t *testing.T) {
+	initTest(t)
 	config := types.DomainConfig{
 		UUIDandVersion: types.UUIDandVersion{UUID: uuid.NewV4(), Version: "1.0"},
 		VmConfig: types.VmConfig{
@@ -837,6 +851,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	})
 }
 func TestCreateDomConfig(t *testing.T) {
+	initTest(t)
 	config := types.DomainConfig{
 		UUIDandVersion: types.UUIDandVersion{UUID: uuid.NewV4(), Version: "1.0"},
 		VmConfig: types.VmConfig{
@@ -1688,6 +1703,7 @@ func TestCreateDomConfig(t *testing.T) {
 }
 
 func TestCreateDom(t *testing.T) {
+	initTest(t)
 	if exec.Command("qemu-system-x86_64", "--version").Run() != nil {
 		// skipping this test since we're clearly not in a presence of qemu
 		return

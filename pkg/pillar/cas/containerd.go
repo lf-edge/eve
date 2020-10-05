@@ -41,11 +41,12 @@ const (
 )
 
 type containerdCAS struct {
+	ctrdClient *containerd.Client
 }
 
 //CheckBlobExists: returns true if the blob exists. Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) CheckBlobExists(blobHash string) bool {
-	_, err := containerd.CtrGetBlobInfo(blobHash)
+	_, err := c.ctrdClient.CtrGetBlobInfo(blobHash)
 	return err == nil
 }
 
@@ -53,7 +54,7 @@ func (c *containerdCAS) CheckBlobExists(blobHash string) bool {
 // Arg 'blobHash' should be of format sha256:<hash>.
 //Returns error if no blob is found for the given 'blobHash'.
 func (c *containerdCAS) GetBlobInfo(blobHash string) (*BlobInfo, error) {
-	info, err := containerd.CtrGetBlobInfo(blobHash)
+	info, err := c.ctrdClient.CtrGetBlobInfo(blobHash)
 	if err != nil {
 		return nil, fmt.Errorf("GetBlobInfo: Exception while getting size of blob: %s. %s", blobHash, err.Error())
 	}
@@ -67,7 +68,7 @@ func (c *containerdCAS) GetBlobInfo(blobHash string) (*BlobInfo, error) {
 
 //ListBlobInfo: returns list of BlobInfo for all the blob present in CAS
 func (c *containerdCAS) ListBlobInfo() ([]*BlobInfo, error) {
-	infos, err := containerd.CtrListBlobInfo()
+	infos, err := c.ctrdClient.CtrListBlobInfo()
 	if err != nil {
 		return nil, fmt.Errorf("ListBlobInfo: Exception while getting blob list. %s", err.Error())
 	}
@@ -89,7 +90,7 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 	hashMap := map[string]string{}
 
 	// start with all of the images
-	imageObjectList, err := containerd.CtrListImages()
+	imageObjectList, err := c.ctrdClient.CtrListImages()
 	if err != nil {
 		return nil, fmt.Errorf("ListBlobsMediaTypes: Exception while getting image list. %s", err.Error())
 	}
@@ -252,7 +253,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		}
 
 		//Step 1.3: Ingest the blob into CAS
-		if err := containerd.CtrWriteBlob(ctx, sha, blob.Size, r); err != nil {
+		if err := c.ctrdClient.CtrWriteBlob(ctx, sha, blob.Size, r); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not load blob file into containerd at %s: %+s",
 				blob.Sha256, blobFile, err.Error())
 			log.Errorf(err.Error())
@@ -336,7 +337,7 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 	}
 
 	if changed {
-		if err := containerd.CtrUpdateBlobInfo(updatedContentInfo, updatedFields); err != nil {
+		if err := c.ctrdClient.CtrUpdateBlobInfo(updatedContentInfo, updatedFields); err != nil {
 			err = fmt.Errorf("UpdateBlobInfo: Exception while updating blobInfo of %s: %s",
 				blobInfo.Digest, err.Error())
 			log.Error(err.Error())
@@ -350,7 +351,7 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 //Returns error if no blob is found for the given 'blobHash'.
 //Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) ReadBlob(blobHash string) (io.Reader, error) {
-	reader, err := containerd.CtrReadBlob(blobHash)
+	reader, err := c.ctrdClient.CtrReadBlob(blobHash)
 	if err != nil {
 		log.Errorf("ReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
 		return nil, err
@@ -362,7 +363,7 @@ func (c *containerdCAS) ReadBlob(blobHash string) (io.Reader, error) {
 //To keep this method idempotent, no error is returned if the given arg 'blobHash' does not match any blob.
 //Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) RemoveBlob(blobHash string) error {
-	if err := containerd.CtrDeleteBlob(blobHash); err != nil && !isNotFoundError(err) {
+	if err := c.ctrdClient.CtrDeleteBlob(blobHash); err != nil && !isNotFoundError(err) {
 		return fmt.Errorf("RemoveBlob: Exception while removing blob: %s. %s", blobHash, err.Error())
 	}
 	return nil
@@ -413,7 +414,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Time{},
 	}
-	_, err = containerd.CtrCreateImage(image)
+	_, err = c.ctrdClient.CtrCreateImage(image)
 	if err != nil {
 		return fmt.Errorf("CreateImage: Exception while creating reference: %s. %s", reference, err.Error())
 	}
@@ -423,7 +424,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 //GetImageHash: returns a blob hash of format sha256:<hash> which the given 'reference' is pointing to.
 // Returns error if the given 'reference' is not found.
 func (c *containerdCAS) GetImageHash(reference string) (string, error) {
-	image, err := containerd.CtrGetImage(reference)
+	image, err := c.ctrdClient.CtrGetImage(reference)
 	if err != nil {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
@@ -432,7 +433,7 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 
 //ListImages: returns a list of references
 func (c *containerdCAS) ListImages() ([]string, error) {
-	imageObjectList, err := containerd.CtrListImages()
+	imageObjectList, err := c.ctrdClient.CtrListImages()
 	if err != nil {
 		return nil, fmt.Errorf("ListImages: Exception while getting image list. %s", err.Error())
 	}
@@ -446,7 +447,7 @@ func (c *containerdCAS) ListImages() ([]string, error) {
 //RemoveImage removes an reference from CAS
 //To keep this method idempotent, no error  is returned if the given 'reference' is not found.
 func (c *containerdCAS) RemoveImage(reference string) error {
-	if err := containerd.CtrDeleteImage(reference); err != nil {
+	if err := c.ctrdClient.CtrDeleteImage(reference); err != nil {
 		return fmt.Errorf("RemoveImage: Exception while removing image. %s", err.Error())
 	}
 	return nil
@@ -470,7 +471,7 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 			Size:      size,
 		},
 	}
-	if _, err := containerd.CtrUpdateImage(image, "target"); err != nil {
+	if _, err := c.ctrdClient.CtrUpdateImage(image, "target"); err != nil {
 		return fmt.Errorf("ReplaceImage: Exception while updating reference: %s. %s", reference, err.Error())
 	}
 	return nil
@@ -479,18 +480,18 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 //CreateSnapshotForImage: creates an snapshot with the given snapshotID for the given 'reference'
 //Arg 'snapshotID' should be of format sha256:<hash>.
 func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) error {
-	clientImageObj, err := containerd.CtrGetImage(reference)
+	clientImageObj, err := c.ctrdClient.CtrGetImage(reference)
 	if err != nil {
 		return fmt.Errorf("CreateSnapshotForImage: Exception while getting clientImageObj: %s. %s", reference, err.Error())
 	}
-	if err := containerd.UnpackClientImage(clientImageObj); err != nil {
+	if err := c.ctrdClient.UnpackClientImage(clientImageObj); err != nil {
 		err = fmt.Errorf("CreateSnapshotForImage: could not unpack clientImageObj %s: %+s",
 			clientImageObj.Name(), err.Error())
 		log.Errorf(err.Error())
 		return err
 	}
 
-	if _, err := containerd.CtrPrepareSnapshot(snapshotID, clientImageObj); err != nil {
+	if _, err := c.ctrdClient.CtrPrepareSnapshot(snapshotID, clientImageObj); err != nil {
 		return fmt.Errorf("CreateSnapshotForImage: Exception while creating snapshot: %s. %s", snapshotID, err.Error())
 	}
 	return nil
@@ -499,7 +500,7 @@ func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) err
 //MountSnapshot: mounts the snapshot on the given target path
 //Arg 'snapshotID' should be of format sha256:<hash>.
 func (c *containerdCAS) MountSnapshot(snapshotID, targetPath string) error {
-	if err := containerd.CtrMountSnapshot(snapshotID, targetPath); err != nil {
+	if err := c.ctrdClient.CtrMountSnapshot(snapshotID, targetPath); err != nil {
 		return fmt.Errorf("MountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
 	}
 	return nil
@@ -507,7 +508,7 @@ func (c *containerdCAS) MountSnapshot(snapshotID, targetPath string) error {
 
 //ListSnapshots: returns a list of snapshotIDs where each entry is of format sha256:<hash>.
 func (c *containerdCAS) ListSnapshots() ([]string, error) {
-	snapshotInfoList, err := containerd.CtrListSnapshotInfo()
+	snapshotInfoList, err := c.ctrdClient.CtrListSnapshotInfo()
 	if err != nil {
 		return nil, fmt.Errorf("ListSnapshots: unable to get snapshot info list: %s", err.Error())
 	}
@@ -522,7 +523,7 @@ func (c *containerdCAS) ListSnapshots() ([]string, error) {
 //Arg 'snapshotID' should be of format sha256:<hash>.
 //To keep this method idempotent, no error  is returned if the given 'snapshotID' is not found.
 func (c *containerdCAS) RemoveSnapshot(snapshotID string) error {
-	if err := containerd.CtrRemoveSnapshot(snapshotID); err != nil && !isNotFoundError(err) {
+	if err := c.ctrdClient.CtrRemoveSnapshot(snapshotID); err != nil && !isNotFoundError(err) {
 		return fmt.Errorf("RemoveSnapshot: Exception while removing snapshot: %s. %s", snapshotID, err.Error())
 	}
 	return nil
@@ -635,7 +636,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 
 	log.Infof("IngestBlobsAndCreateImage: Attempting to Ingest %d blobs and add reference: %s", len(blobs), reference)
 	loadedBlobs := make([]types.BlobStatus, 0)
-	newCtxWithLease, deleteLease, err := containerd.CtrCreateCtxWithLease()
+	newCtxWithLease, deleteLease, err := c.ctrdClient.CtrCreateCtxWithLease()
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Unable load blobs for reference %s. "+
 			"Exception while creating lease: %v", reference, err.Error())
@@ -675,25 +676,27 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 
 // Resolver get a resolver.ResolverCloser for containerd
 func (c *containerdCAS) Resolver() (resolver.ResolverCloser, error) {
-	return containerd.Resolver()
+	return c.ctrdClient.Resolver()
 }
 
 //CloseClient closes the containerd CAS client initialized while calling `NewCAS()`
 func (c *containerdCAS) CloseClient() error {
-	if err := containerd.CloseClient(); err != nil {
+	if err := c.ctrdClient.CloseClient(); err != nil {
 		err = fmt.Errorf("CloseClient: Exception while closinn %s CAS client: %s", casClientType, err.Error())
 		log.Error(err.Error())
 		return err
 	}
+	c.ctrdClient = nil
 	return nil
 }
 
 //newContainerdCAS: constructor for containerd CAS
 func newContainerdCAS() CAS {
-	if err := containerd.InitContainerdClient(); err != nil {
-		log.Fatalf("newContainerdCAS: excpetion while initializing containerd client: %s", err.Error())
+	ctrdClient, err := containerd.NewContainerdClient(true)
+	if err != nil {
+		log.Fatalf("newContainerdCAS: exception while creating containerd client: %s", err.Error())
 	}
-	return &containerdCAS{}
+	return &containerdCAS{ctrdClient: ctrdClient}
 }
 
 //getIndexManifest: returns a indexManifest by parsing the given blobSha256

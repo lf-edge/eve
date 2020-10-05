@@ -7,7 +7,6 @@ import (
 	"fmt"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -330,7 +329,7 @@ type kvmContext struct {
 }
 
 func newKvm() Hypervisor {
-	ctrdCtx, err := initContainerd()
+	ctrdCtx, err := initContainerd(true)
 	if err != nil {
 		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above
@@ -398,7 +397,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
-	if err := containerd.LKTaskPrepare(domainName, "xen-tools", &config, &status, qemuOverHead, args); err != nil {
+	if err := ctx.ctrdClient.LKTaskPrepare(domainName, "xen-tools", &config, &status, qemuOverHead, args); err != nil {
 		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
 	}
 
