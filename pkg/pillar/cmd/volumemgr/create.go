@@ -87,7 +87,7 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	created := false
 
 	filelocation := status.PathName()
-	ctStatus := lookupContentTreeStatus(ctx, status.ContentID.String(), types.AppImgObj)
+	ctStatus := lookupContentTreeStatusAny(ctx, status.ContentID.String())
 	if ctStatus == nil {
 		err := fmt.Errorf("createContainerVolume: Unable to find contentTreeStatus %s for Volume %s",
 			status.ContentID.String(), status.VolumeID)

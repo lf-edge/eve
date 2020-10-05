@@ -190,7 +190,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
-		AgentScope: types.AppImgObj, // XXX remove? subscribers?
+		AgentScope: types.AppImgObj,
 		TopicType:  types.VolumeStatus{},
 	})
 	if err != nil {
