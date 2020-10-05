@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/lf-edge/edge-containers/pkg/registry"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -45,7 +46,15 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	puller := registry.Puller{
 		Image: ref,
 	}
-	resolver, err := ctx.casClient.Resolver()
+	// XXX try with a local casClient for this call
+	casClient, err := cas.NewCAS(casClientType)
+	if err != nil {
+		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
+		return created, "", err
+	}
+	defer casClient.CloseClient()
+
+	resolver, err := casClient.Resolver()
 	if err != nil {
 		errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
 		log.Error(errStr)
