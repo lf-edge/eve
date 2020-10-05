@@ -228,6 +228,10 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 
 func createOrUpdateAppDiskMetrics(ctx *volumemgrContext, volumeStatus *types.VolumeStatus) error {
 	log.Infof("createOrUpdateAppDiskMetrics(%s, %s)", volumeStatus.VolumeID, volumeStatus.FileLocation)
+	if volumeStatus.FileLocation == "" {
+		// Nothing we can do? XXX can we retrieve size from CAS?
+		return nil
+	}
 	actualSize, maxSize, diskType, dirtyFlag, err := utils.GetVolumeSize(log, volumeStatus.FileLocation)
 	if err != nil {
 		err = fmt.Errorf("createOrUpdateAppDiskMetrics(%s, %s): exception while getting volume size. %s",
