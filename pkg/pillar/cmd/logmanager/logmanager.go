@@ -549,6 +549,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		if appLog {
 			ctx.inputMetrics.totalAppLogInput++
 		} else {
+			metricsLock.Lock()
 			ctx.inputMetrics.totalDeviceLogInput++
 			c, ok := ctx.inputMetrics.deviceLogInput[logSource]
 			if !ok {
@@ -556,6 +557,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			}
 			c++
 			ctx.inputMetrics.deviceLogInput[logSource] = c
+			metricsLock.Unlock()
 		}
 	}
 }
