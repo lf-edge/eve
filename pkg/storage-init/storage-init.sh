@@ -95,7 +95,8 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
         # zero out the request (regardless of whether we can convert to zfs)
         dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
-        chroot /hostfs zpool create -f -m "$PERSISTDIR" -o feature@encryption=enabled persist "$P3"
+        chroot /hostfs zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist "$P3"
+	chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist
         # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
         #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
         chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
