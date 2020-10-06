@@ -309,6 +309,25 @@ type DevicePortConfigList struct {
 	PortConfigList []DevicePortConfig
 }
 
+// MostlyEqual - Equal if everything else other than timestamps is equal.
+func (config DevicePortConfigList) MostlyEqual(config2 DevicePortConfigList) bool {
+
+	if len(config.PortConfigList) != len(config2.PortConfigList) {
+		return false
+	}
+	if config.CurrentIndex != config2.CurrentIndex {
+		return false
+	}
+	for i, c1 := range config.PortConfigList {
+		c2 := config2.PortConfigList[i]
+
+		if !c1.MostlyEqual(&c2) {
+			return false
+		}
+	}
+	return true
+}
+
 // PubKey is used for pubsub
 func (config DevicePortConfigList) PubKey() string {
 	if config.Key == "" {
