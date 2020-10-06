@@ -238,7 +238,7 @@ do_persist() {
            --typecode=$NUM_PART:5f24425a-2dfa-11e8-a270-7b663faccc2c \
            --change-name=$NUM_PART:'P3' $IMGFILE
 
-    dd if=$PERSIST_FILE of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+    dd if="$PERSIST_FILE" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
     
     eval $1=0
 }
