@@ -321,7 +321,7 @@ func (config DevicePortConfigList) MostlyEqual(config2 DevicePortConfigList) boo
 	for i, c1 := range config.PortConfigList {
 		c2 := config2.PortConfigList[i]
 
-		if !c1.MostlyEqual(&c2) {
+		if !c1.MostlyEqual(&c2) || c1.State != c2.State {
 			return false
 		}
 	}
