@@ -343,7 +343,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify for %s", key)
 	// Since we report test status we compare all fields
-	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
+	if ctx.DeviceNetworkStatus.MostlyEqual(status) {
 		log.Infof("handleDNSModify unchanged")
 		return
 	}
@@ -365,7 +365,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
-	// XXX can we limit to interfaces which changed?
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
@@ -409,14 +408,12 @@ func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDPCModify for %s", key)
-	if cmp.Equal(ctx.DevicePortConfigList, status) {
+	if ctx.DevicePortConfigList.MostlyEqual(status) {
 		return
 	}
 	log.Infof("handleDPCModify: changed %v",
 		cmp.Diff(ctx.DevicePortConfigList, status))
 	*ctx.DevicePortConfigList = status
-	// XXX can we limit to interfaces which changed?
-	// XXX exclude if only timestamps changed?
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
