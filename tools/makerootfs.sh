@@ -1,9 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 # Usage:
 #
 #     ./makerootfs.sh <image.yml> <output rootfs image>  [<fs>]
 
 set -e
+set -o pipefail
 
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
