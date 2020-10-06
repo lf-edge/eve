@@ -1526,7 +1526,8 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 			if ibp == nil {
 				continue
 			}
-			if ibp.UsedByUUID != nilUUID {
+			if ibp.UsedByUUID != config.UUIDandVersion.UUID &&
+				ibp.UsedByUUID != nilUUID {
 				return fmt.Errorf("adapter %d %s used by %s",
 					adapter.Type, adapter.Name, ibp.UsedByUUID)
 			}
