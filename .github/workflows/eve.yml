@@ -39,11 +39,6 @@ jobs:
       - name: Build KVM rootfs
         run: |
           make HV=kvm rootfs
-      - name: Store rootfs
-        uses: actions/upload-artifact@v2
-        with:
-          name: rootfs
-          path: ${{ github.workspace }}/dist/*/installer/rootfs-*.squash
 
 # If all else fails, you may find solace here
 #  https://docs.github.com/en/free-pro-team@latest/actions/reference/context-and-expression-syntax-for-github-actions

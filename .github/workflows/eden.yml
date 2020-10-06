@@ -29,6 +29,7 @@ jobs:
           path: 'eve'
       - name: build eve
         run: |
+          make -C eve pkgs
           make -C eve HV=kvm eve
       - name: run
         run: |
