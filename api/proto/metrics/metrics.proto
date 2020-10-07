@@ -352,6 +352,23 @@ message ZMetricVolume {
   uint64 freeBytes = 9;
 }
 
+// metrics for a single process
+message ZMetricProcess {
+  int32 pid = 1;
+  string name = 2;
+  bool user_process = 3;
+  bool watched = 4;
+  int32 num_fds = 5;
+  int32 num_threads = 6;
+  double user_time = 7;
+  double system_time = 8;
+  double cpu_percent = 9;
+  google.protobuf.Timestamp create_time = 10;
+  uint64 vm_bytes = 11;
+  uint64 rss_bytes = 12;
+  float memory_percent = 13;
+}
+
 // This is the request payload for POST /api/v1/edgeDevice/metrics
 // ZMetricMsg carries periodic metrics; typically one message is sent for
 // all of the objects on a device (the device itself plus all of the app instances
@@ -373,4 +390,6 @@ message ZMetricMsg {
   repeated ZMetricNetworkInstance nm = 7;
 
   repeated ZMetricVolume vm = 8;
+
+  repeated ZMetricProcess pr = 9;
 }
