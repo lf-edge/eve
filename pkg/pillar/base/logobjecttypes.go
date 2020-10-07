@@ -142,6 +142,8 @@ const (
 	DiskMetricType LogObjectType = "disk_metric"
 	// AppDiskMetricType:
 	AppDiskMetricType LogObjectType = "app_disk_metric"
+	// ProcessMetricLogType:
+	ProcessMetricLogType LogObjectType = "process_metric"
 )
 
 // RelationObjectType :
