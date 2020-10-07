@@ -83,6 +83,7 @@ type domainContext struct {
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
+	pubProcessMetric       pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
 	usbAccess              bool
 	createSema             *sema.Semaphore
@@ -91,7 +92,7 @@ type domainContext struct {
 	GCInitialized          bool
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
-
+	pids                   map[int32]bool
 	// Common CAS client which can be used by multiple routines.
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
@@ -185,6 +186,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps:                  ps,
 		usbAccess:           true,
 		domainBootRetryTime: 600,
+		pids:                make(map[int32]bool),
 	}
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
@@ -223,6 +225,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	domainCtx.pubDomainMetric = pubDomainMetric
+
+	pubProcessMetric, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ProcessMetric{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubProcessMetric = pubProcessMetric
 
 	pubHostMemory, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -506,6 +518,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorln(err)
 			}
 			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
+			start = time.Now()
+			metrics, pids := gatherProcessMetricList(&domainCtx)
+			for _, m := range metrics {
+				publishProcessMetric(&domainCtx, &m)
+			}
+			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
+			domainCtx.pids = pids
+			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
