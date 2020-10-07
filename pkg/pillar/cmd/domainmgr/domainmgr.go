@@ -528,6 +528,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			domainCtx.pids = pids
 			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
 				warningTime, errorTime)
+			// XXX temporary until controller reports metrics
+			switch logger.GetLevel() {
+			case logrus.TraceLevel, logrus.DebugLevel:
+				dumpProcessMetricList(metrics)
+			}
 
 		case <-stillRunning.C:
 		}

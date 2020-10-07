@@ -7,7 +7,10 @@ package domainmgr
 // and their memory, thread, FD, etc usage
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -163,4 +166,26 @@ func unpublishProcessMetric(ctx *domainContext, pid uint32) {
 	log.Debugf("unpublishProcessMetric(%s)", key)
 	pub := ctx.pubProcessMetric
 	pub.Unpublish(key)
+}
+
+// XXX temporary until we have controller handle ProcessMetric
+func dumpProcessMetricList(metrics []types.ProcessMetric) {
+	const dumpFile = "/persist/log/ProcessMetrics.log"
+	file, err := os.OpenFile(dumpFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE,
+		0600)
+	if err != nil {
+		log.Errorf("dumpProcessMetricList failed: %s", err)
+		return
+	}
+	defer file.Close()
+
+	dateStr := time.Now().Format(time.RFC3339Nano)
+	file.WriteString(fmt.Sprintf("{\"time\": \"%s\"}\n", dateStr))
+	for _, m := range metrics {
+		b, err := json.Marshal(m)
+		if err != nil {
+			log.Fatal("json Marshal", err)
+		}
+		file.WriteString(fmt.Sprintf("%s\n", string(b)))
+	}
 }
