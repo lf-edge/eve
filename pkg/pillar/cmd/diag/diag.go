@@ -343,7 +343,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify for %s", key)
 	// Since we report test status we compare all fields
-	if ctx.DeviceNetworkStatus.MostlyEqual(status) {
+	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
 		log.Infof("handleDNSModify unchanged")
 		return
 	}
@@ -365,6 +365,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
+	// XXX can we limit to interfaces which changed?
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
