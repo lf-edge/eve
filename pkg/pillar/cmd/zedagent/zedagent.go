@@ -583,6 +583,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	getconfigCtx.subDomainMetric = subDomainMetric
 
+	// Look for ProcessMetric from domainmgr
+	subProcessMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.ProcessMetric{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.subProcessMetric = subProcessMetric
+
 	subHostMemory, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
@@ -1070,6 +1085,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDomainMetric.MsgChan():
 			subDomainMetric.ProcessChange(change)
+
+		case change := <-subProcessMetric.MsgChan():
+			subProcessMetric.ProcessChange(change)
 
 		case change := <-subHostMemory.MsgChan():
 			subHostMemory.ProcessChange(change)

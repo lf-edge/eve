@@ -645,6 +645,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	createNetworkInstanceMetrics(ctx, ReportMetrics)
 	createVolumeInstanceMetrics(ctx, ReportMetrics)
+	createProcessMetrics(ctx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
@@ -1262,6 +1263,34 @@ func getVolumeResourcesMetrics(ctx *zedagentContext, name string, volumeMetric *
 	volumeMetric.TotalBytes = appDiskMetric.ProvisionedBytes
 	volumeMetric.FreeBytes = appDiskMetric.ProvisionedBytes - appDiskMetric.UsedBytes
 	return nil
+}
+
+func createProcessMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {
+	log.Debugf("Process metrics started")
+	sub := ctx.getconfigCtx.subProcessMetric
+	items := sub.GetAll()
+	for _, item := range items {
+		p := item.(types.ProcessMetric)
+		processMetric := new(metrics.ZMetricProcess)
+		processMetric.Pid = p.Pid
+		processMetric.Name = p.Name
+		processMetric.UserProcess = p.UserProcess
+		processMetric.Watched = p.Watched
+		processMetric.NumFds = p.NumFDs
+		processMetric.NumThreads = p.NumThreads
+		processMetric.UserTime = p.UserTime
+		processMetric.SystemTime = p.SystemTime
+		processMetric.CpuPercent = p.CPUPercent
+		protoTime, err := ptypes.TimestampProto(p.CreateTime)
+		if err == nil {
+			processMetric.CreateTime = protoTime
+		}
+		processMetric.VmBytes = p.VMBytes
+		processMetric.RssBytes = p.RssBytes
+		processMetric.MemoryPercent = p.MemoryPercent
+		reportMetrics.Pr = append(reportMetrics.Pr, processMetric)
+	}
+	log.Debugf("Process metrics done: %v", reportMetrics.Pr)
 }
 
 func createNetworkInstanceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetricMsg) {
