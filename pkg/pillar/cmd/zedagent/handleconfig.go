@@ -43,6 +43,7 @@ type getconfigContext struct {
 	pubNetworkXObjectConfig  pubsub.Publication
 	subAppInstanceStatus     pubsub.Subscription
 	subDomainMetric          pubsub.Subscription
+	subProcessMetric         pubsub.Subscription
 	subHostMemory            pubsub.Subscription
 	subNodeAgentStatus       pubsub.Subscription
 	pubZedAgentStatus        pubsub.Publication
