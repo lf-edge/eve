@@ -17,7 +17,7 @@ import (
 func GetVolumeSize(log *base.LogObject, name string) (uint64, uint64, string, bool, error) {
 	info, err := os.Stat(name)
 	if err != nil {
-		errStr := fmt.Sprintf("GetVolumeMaxSize failed for %s: %v",
+		errStr := fmt.Sprintf("GetVolumeSize failed for %s: %v",
 			name, err)
 		return 0, 0, "", false, errors.New(errStr)
 	}
@@ -28,7 +28,7 @@ func GetVolumeSize(log *base.LogObject, name string) (uint64, uint64, string, bo
 	}
 	imgInfo, err := diskmetrics.GetImgInfo(log, name)
 	if err != nil {
-		errStr := fmt.Sprintf("GetVolumeMaxSize/GetImgInfo failed for %s: %v",
+		errStr := fmt.Sprintf("GetVolumeSize/GetImgInfo failed for %s: %v",
 			name, err)
 		return 0, 0, "", false, errors.New(errStr)
 	}

@@ -1,0 +1,47 @@
+---
+name: Eden
+on:
+  pull_request_review:
+    branches: [master]
+    types: [submitted]
+
+jobs:
+  integration:
+    runs-on: ubuntu-20.04
+    if: ${{ github.event.review.state == 'approved' }}
+    steps:
+      - name: setup
+        run: |
+          sudo apt update
+          sudo apt install -y qemu-utils qemu-system-x86
+      - name: get eden
+        uses: actions/checkout@v2
+        with:
+          repository: 'lf-edge/eden'
+      - name: build eden
+        run: |
+          make clean
+          make build
+          make build-tests
+      - name: get eve
+        uses: actions/checkout@v2
+        with:
+          path: 'eve'
+      - name: build eve
+        run: |
+          make -C eve pkgs
+          make -C eve HV=kvm eve
+      - name: run
+        run: |
+          ./eden config add default
+          ./eden config set default --key eve.tag --value=$(make -C eve version)
+          ./eden config set default --key=eve.accel --value=false
+          echo > tests/workflow/testdata/eden_stop.txt
+          ./eden test ./tests/workflow
+          ./eden log --format json > trace.log
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: 'eden-report'
+          path: ${{ github.workspace }}/trace.log

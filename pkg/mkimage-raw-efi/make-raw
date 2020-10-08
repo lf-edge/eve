@@ -148,7 +148,7 @@ do_boot() {
 
 do_installer() {
   mkefifs
-  cp "$INITRD_IMG" "$ROOTFS_IMG" /UsbInvocationScript.txt /efifs
+  cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" /UsbInvocationScript.txt /efifs
   do_system_vfat_part "$1" "$INSTALLER_SYS_PART_SIZE"
 }
 
@@ -238,7 +238,7 @@ do_persist() {
            --typecode=$NUM_PART:5f24425a-2dfa-11e8-a270-7b663faccc2c \
            --change-name=$NUM_PART:'P3' $IMGFILE
 
-    [ -e $PERSIST_FILE ] && dd if=$PERSIST_FILE of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+    dd if="$PERSIST_FILE" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
     
     eval $1=0
 }

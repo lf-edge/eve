@@ -135,6 +135,19 @@ func lookupContentTreeStatus(ctx *volumemgrContext,
 	return &status
 }
 
+// lookupContentTreeStatusAny assumes there is one CT with the key and looks
+// for all objTypes
+func lookupContentTreeStatusAny(ctx *volumemgrContext, key string) *types.ContentTreeStatus {
+
+	for _, objType := range ctObjTypes {
+		status := lookupContentTreeStatus(ctx, key, objType)
+		if status != nil {
+			return status
+		}
+	}
+	return nil
+}
+
 func getAllAppContentTreeStatus(ctx *volumemgrContext) map[string]*types.ContentTreeStatus {
 	log.Debugf("getAllAppContentTreeStatus")
 	pub := ctx.publication(types.ContentTreeStatus{}, types.AppImgObj)

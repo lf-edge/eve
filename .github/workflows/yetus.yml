@@ -1,0 +1,36 @@
+# NOTE that this is the only workflow that requires access to the
+# GitHub token. However, it is safe since in EVE repo itself we
+# only trigger this workflow on pull requests and as such making
+# it effectively read-only.
+#   https://docs.github.com/en/free-pro-team@latest/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
+---
+name: Apache Yetus
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  yetus:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: src
+          fetch-depth: 0
+
+      - name: Yetus
+        uses: apache/yetus-test-patch-action@main
+        with:
+          basedir: ./src
+          patchdir: ./out
+          buildtool: nobuild
+          continuousimprovement: true
+          githubtoken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Store Yetus artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: 'yetus-scan'
+          path: ${{ github.workspace }}/out

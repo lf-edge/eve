@@ -60,6 +60,10 @@ EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG),$(REPO_TAG))
 
+# just reports the version, without appending qualifies like HVM or such
+version:
+	@echo $(ROOTFS_VERSION)
+
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
@@ -92,6 +96,7 @@ ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
 ROOTFS_IMG=$(ROOTFS).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
+PERSIST_IMG=$(INSTALLER)/persist.img
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 
@@ -191,7 +196,7 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
+	@$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
 itest: $(GOBUILDER) run-proxy | $(DIST)
 	@echo Running integration tests
@@ -300,19 +305,23 @@ $(SSH_KEY):
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ $(CONF_FILES)
 
+$(PERSIST_IMG): | $(INSTALLER)
+	# 1M of zeroes should be enough to trigger filesystem wipe on first boot
+	dd if=/dev/zero of=$(PERSIST_IMG) bs=1048576 count=1
+
 $(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 	@rm -f $@ && ln -s $(notdir $<) $@
 
 $(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 	@rm -f $@ && ln -s $(notdir $<) $@
 
-$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) | $(INSTALLER)
+$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 
-$(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
+$(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 
-$(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
+$(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeiso.sh $| $@
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
@@ -332,7 +341,7 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring rpi,$(HV)),$(BOOT_PART)) | $(DIST)
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring rpi,$(HV)),$(BOOT_PART)) | $(DIST)
 	cp pkg/eve/build.yml pkg/eve/runme.sh images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|

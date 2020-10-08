@@ -84,6 +84,7 @@ type zedrouterContext struct {
 	appCollectStatsRunning    bool
 	appStatsMutex             sync.Mutex // to protect the changing appNetworkStatus & appCollectStatsRunning
 	appStatsInterval          uint32
+	aclog                     *logrus.Logger // App Container logger
 }
 
 var debug = false
@@ -152,6 +153,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		assignableAdapters: &aa,
 		agentStartTime:     time.Now(),
 		dnsServers:         make(map[string][]net.IP),
+		aclog:              agentlog.CustomLogInit(logrus.InfoLevel),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)

@@ -409,14 +409,12 @@ func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDPCModify for %s", key)
-	if cmp.Equal(ctx.DevicePortConfigList, status) {
+	if ctx.DevicePortConfigList.MostlyEqual(status) {
 		return
 	}
 	log.Infof("handleDPCModify: changed %v",
 		cmp.Diff(ctx.DevicePortConfigList, status))
 	*ctx.DevicePortConfigList = status
-	// XXX can we limit to interfaces which changed?
-	// XXX exclude if only timestamps changed?
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)

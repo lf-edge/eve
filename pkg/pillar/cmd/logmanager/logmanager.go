@@ -549,6 +549,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		if appLog {
 			ctx.inputMetrics.totalAppLogInput++
 		} else {
+			metricsLock.Lock()
 			ctx.inputMetrics.totalDeviceLogInput++
 			c, ok := ctx.inputMetrics.deviceLogInput[logSource]
 			if !ok {
@@ -556,6 +557,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			}
 			c++
 			ctx.inputMetrics.deviceLogInput[logSource] = c
+			metricsLock.Unlock()
 		}
 	}
 }
@@ -685,6 +687,8 @@ func processEvents(image string, logChan <-chan logEntry,
 							image, event.source)
 						break
 					}
+				} else {
+					appUUID = event.appUUID
 				}
 				var ok bool
 				appLogBundle, ok = appLogBundles[appUUID]

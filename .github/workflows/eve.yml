@@ -1,0 +1,58 @@
+---
+name: EVE
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Test
+        run: |
+          make test
+      - name: Report test results as Annotations
+        if: ${{ always() }}
+        uses: guyarb/golang-test-annoations@v0.1
+        with:
+          test-results: dist/amd64/results.json
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: 'test-report'
+          path: ${{ github.workspace }}/dist
+
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build packages
+        run: |
+          make pkgs
+      - name: Build EVE
+        run: |
+          make eve
+      - name: Build KVM rootfs
+        run: |
+          make HV=kvm rootfs
+
+# If all else fails, you may find solace here
+#  https://docs.github.com/en/free-pro-team@latest/actions/reference/context-and-expression-syntax-for-github-actions
+#  https://docs.github.com/en/free-pro-team@latest/actions/reference/events-that-trigger-workflows
+#
+#  echo "::error file=${file},line=${linenum},col=${column}::${plugin}:${text}"
+#  echo "::error file=${file},line=${linenum}::${plugin}:${text}"
+#
+#  dump:
+#      runs-on: ubuntu-latest
+#      steps:
+#        - name: Dump GitHub context
+#          env:
+#            GITHUB_CONTEXT: ${{ toJson(github) }}
+#          run: |
+#            echo "$GITHUB_CONTEXT"
+#            echo ${{ github.event.pull_request.title }}
