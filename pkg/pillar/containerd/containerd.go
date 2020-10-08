@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/connectivity"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/api/services/tasks/v1"
@@ -89,10 +90,8 @@ func once() bool {
 
 // Client is the handle we return to the caller
 type Client struct {
-	ctrdClient    *containerd.Client
-	ctrdCtx       context.Context
-	ctrdSystemCtx context.Context
-	contentStore  content.Store
+	ctrdClient   *containerd.Client
+	contentStore content.Store
 }
 
 // NewContainerdClient returns a *Client
@@ -108,8 +107,6 @@ func NewContainerdClient(createClient bool) (*Client, error) {
 			defaultSnapshotter = "zfs"
 		}
 	}
-	ctrdCtx := namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
-	ctrdSystemCtx := namespaces.WithNamespace(context.Background(), ctrdSystemServicesNamespace)
 
 	var (
 		ctrdClient   *containerd.Client
@@ -125,12 +122,10 @@ func NewContainerdClient(createClient bool) (*Client, error) {
 		contentStore = ctrdClient.ContentStore()
 	}
 	c := Client{
-		ctrdClient:    ctrdClient,
-		ctrdCtx:       ctrdCtx,
-		ctrdSystemCtx: ctrdSystemCtx,
-		contentStore:  contentStore,
+		ctrdClient:   ctrdClient,
+		contentStore: contentStore,
 	}
-	if err := c.verifyCtr(); err != nil {
+	if err := c.verifyCtr(nil, false); err != nil {
 		return nil, fmt.Errorf("NewContainerdClient: exception while verifying ctrd client: %s", err.Error())
 	}
 	return &c, nil
@@ -138,7 +133,7 @@ func NewContainerdClient(createClient bool) (*Client, error) {
 
 //CloseClient closes containerd client
 func (client *Client) CloseClient() error {
-	if err := client.verifyCtr(); err != nil {
+	if err := client.verifyCtr(nil, false); err != nil {
 		return fmt.Errorf("CloseClient: exception while verifying ctrd client: %s", err.Error())
 	}
 	if err := client.ctrdClient.Close(); err != nil {
@@ -153,17 +148,8 @@ func (client *Client) CloseClient() error {
 //CtrWriteBlob reads the blob as raw data from `reader` and writes it into containerd.
 // Accepts a custom context. If ctx is nil, then default context will be used.
 func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expectedSize uint64, reader io.Reader) error {
-	if ctx == nil {
-		log.Infof("CtrWriteBlob: No ctx passed. Using default ctrdCtx")
-		if err := client.verifyCtr(); err != nil {
-			return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s", err.Error())
-		}
-		ctx = client.ctrdCtx
-	} else {
-		if client.ctrdClient == nil {
-			return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s",
-				"Container client is nil")
-		}
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return fmt.Errorf("CtrWriteBlob: exception while verifying ctrd client: %s", err.Error())
 	}
 
 	// Check if ctx has a lease before writing a blob to make sure that it doesn't get GCed
@@ -185,8 +171,11 @@ func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expecte
 }
 
 //CtrUpdateBlobInfo updates blobs info
-func (client *Client) CtrUpdateBlobInfo(updatedContentInfo content.Info, updatedFields []string) error {
-	if _, err := client.contentStore.Update(client.ctrdCtx, updatedContentInfo, updatedFields...); err != nil {
+func (client *Client) CtrUpdateBlobInfo(ctx context.Context, updatedContentInfo content.Info, updatedFields []string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return fmt.Errorf("CtrUpdateBlobInfo: exception while verifying ctrd client: %s", err.Error())
+	}
+	if _, err := client.contentStore.Update(ctx, updatedContentInfo, updatedFields...); err != nil {
 		return fmt.Errorf("CtrUpdateBlobInfo: exception while update blobInfo of %s: %s",
 			updatedContentInfo.Digest.String(), err.Error())
 	}
@@ -194,16 +183,16 @@ func (client *Client) CtrUpdateBlobInfo(updatedContentInfo content.Info, updated
 }
 
 //CtrReadBlob return a reader for the blob with given blobHash. Error is returned if no blob is found for the blobHash
-func (client *Client) CtrReadBlob(blobHash string) (io.Reader, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrReadBlob(ctx context.Context, blobHash string) (io.Reader, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrReadBlob: exception while verifying ctrd client: %s", err.Error())
 	}
 	shaDigest := digest.Digest(blobHash)
-	_, err := client.contentStore.Info(client.ctrdCtx, shaDigest)
+	_, err := client.contentStore.Info(ctx, shaDigest)
 	if err != nil {
 		return nil, fmt.Errorf("CtrReadBlob: Exception getting info of blob: %s. %s", blobHash, err.Error())
 	}
-	readerAt, err := client.contentStore.ReaderAt(client.ctrdCtx, spec.Descriptor{Digest: shaDigest})
+	readerAt, err := client.contentStore.ReaderAt(ctx, spec.Descriptor{Digest: shaDigest})
 	if err != nil {
 		return nil, fmt.Errorf("CtrReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
 	}
@@ -211,16 +200,16 @@ func (client *Client) CtrReadBlob(blobHash string) (io.Reader, error) {
 }
 
 //CtrGetBlobInfo returns a bolb's info as content.Info
-func (client *Client) CtrGetBlobInfo(blobHash string) (content.Info, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrGetBlobInfo(ctx context.Context, blobHash string) (content.Info, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return content.Info{}, fmt.Errorf("CtrReadBlob: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.contentStore.Info(client.ctrdCtx, digest.Digest(blobHash))
+	return client.contentStore.Info(ctx, digest.Digest(blobHash))
 }
 
 //CtrListBlobInfo returns a list of blob infos as []content.Info
-func (client *Client) CtrListBlobInfo() ([]content.Info, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrListBlobInfo(ctx context.Context) ([]content.Info, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListBlobInfo: exception while verifying ctrd client: %s", err.Error())
 	}
 	infos := make([]content.Info, 0)
@@ -228,31 +217,31 @@ func (client *Client) CtrListBlobInfo() ([]content.Info, error) {
 		infos = append(infos, info)
 		return nil
 	}
-	if err := client.contentStore.Walk(client.ctrdCtx, walkFn); err != nil {
+	if err := client.contentStore.Walk(ctx, walkFn); err != nil {
 		return nil, fmt.Errorf("CtrListBlobInfo: Exception while getting content list. %s", err.Error())
 	}
 	return infos, nil
 }
 
 //CtrDeleteBlob deletes blob with the given blobHash
-func (client *Client) CtrDeleteBlob(blobHash string) error {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrDeleteBlob(ctx context.Context, blobHash string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrDeleteBlob: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.contentStore.Delete(client.ctrdCtx, digest.Digest(blobHash))
+	return client.contentStore.Delete(ctx, digest.Digest(blobHash))
 }
 
 //CtrCreateImage create an image in containerd's image store
-func (client *Client) CtrCreateImage(image images.Image) (images.Image, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrCreateImage(ctx context.Context, image images.Image) (images.Image, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return images.Image{}, fmt.Errorf("CtrCreateImage: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.ctrdClient.ImageService().Create(client.ctrdCtx, image)
+	return client.ctrdClient.ImageService().Create(ctx, image)
 }
 
 //CtrLoadImage reads image as raw data from `reader` and loads it into containerd
 func (client *Client) CtrLoadImage(ctx context.Context, reader *os.File) ([]images.Image, error) {
-	if err := client.verifyCtr(); err != nil {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrLoadImage: exception while verifying ctrd client: %s", err.Error())
 	}
 	imgs, err := client.ctrdClient.Import(ctx, reader)
@@ -264,11 +253,11 @@ func (client *Client) CtrLoadImage(ctx context.Context, reader *os.File) ([]imag
 }
 
 //CtrGetImage returns image object for the reference. Returns error if no image is found for the reference.
-func (client *Client) CtrGetImage(reference string) (containerd.Image, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrGetImage(ctx context.Context, reference string) (containerd.Image, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrGetImage: exception while verifying ctrd client: %s", err.Error())
 	}
-	image, err := client.ctrdClient.GetImage(client.ctrdCtx, reference)
+	image, err := client.ctrdClient.GetImage(ctx, reference)
 	if err != nil {
 		log.Errorf("CtrGetImage: could not get image %s from containerd: %+s", reference, err.Error())
 		return nil, err
@@ -277,36 +266,36 @@ func (client *Client) CtrGetImage(reference string) (containerd.Image, error) {
 }
 
 //CtrListImages returns a list of images object from ontainerd's image store
-func (client *Client) CtrListImages() ([]images.Image, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrListImages(ctx context.Context) ([]images.Image, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListImages: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.ctrdClient.ImageService().List(client.ctrdCtx)
+	return client.ctrdClient.ImageService().List(ctx)
 }
 
 //CtrUpdateImage updates the files provided in fieldpaths of the image in containerd'd image store
-func (client *Client) CtrUpdateImage(image images.Image, fieldpaths ...string) (images.Image, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrUpdateImage(ctx context.Context, image images.Image, fieldpaths ...string) (images.Image, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return images.Image{}, fmt.Errorf("CtrUpdateImage: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.ctrdClient.ImageService().Update(client.ctrdCtx, image, fieldpaths...)
+	return client.ctrdClient.ImageService().Update(ctx, image, fieldpaths...)
 }
 
 //CtrDeleteImage deletes an image with the given reference
-func (client *Client) CtrDeleteImage(reference string) error {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrDeleteImage(ctx context.Context, reference string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrDeleteImage: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.ctrdClient.ImageService().Delete(client.ctrdCtx, reference)
+	return client.ctrdClient.ImageService().Delete(ctx, reference)
 }
 
 //CtrPrepareSnapshot creates snapshot for the given image
-func (client *Client) CtrPrepareSnapshot(snapshotID string, image containerd.Image) ([]mount.Mount, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrPrepareSnapshot(ctx context.Context, snapshotID string, image containerd.Image) ([]mount.Mount, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrPrepareSnapshot: exception while verifying ctrd client: %s", err.Error())
 	}
 	// use rootfs unpacked image to create a writable snapshot with default snapshotter
-	diffIDs, err := image.RootFS(client.ctrdCtx)
+	diffIDs, err := image.RootFS(ctx)
 	if err != nil {
 		err = fmt.Errorf("CtrPrepareSnapshot: Could not load rootfs of image: %v. %v", image.Name(), err)
 		return nil, err
@@ -315,16 +304,16 @@ func (client *Client) CtrPrepareSnapshot(snapshotID string, image containerd.Ima
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
 	parent := identity.ChainID(diffIDs).String()
 	labels := map[string]string{"containerd.io/gc.root": time.Now().UTC().Format(time.RFC3339)}
-	return snapshotter.Prepare(client.ctrdCtx, snapshotID, parent, snapshots.WithLabels(labels))
+	return snapshotter.Prepare(ctx, snapshotID, parent, snapshots.WithLabels(labels))
 }
 
 //CtrMountSnapshot mounts the snapshot with snapshotID on the given targetPath.
-func (client *Client) CtrMountSnapshot(snapshotID, targetPath string) error {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrMountSnapshot(ctx context.Context, snapshotID, targetPath string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrMountSnapshot: exception while verifying ctrd client: %s", err.Error())
 	}
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
-	mounts, err := snapshotter.Mounts(client.ctrdCtx, snapshotID)
+	mounts, err := snapshotter.Mounts(ctx, snapshotID)
 	if err != nil {
 		return fmt.Errorf("CtrMountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
 	}
@@ -335,13 +324,13 @@ func (client *Client) CtrMountSnapshot(snapshotID, targetPath string) error {
 }
 
 //CtrListSnapshotInfo returns a list of all snapshot's info present in containerd's snapshot store.
-func (client *Client) CtrListSnapshotInfo() ([]snapshots.Info, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrListSnapshotInfo(ctx context.Context) ([]snapshots.Info, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListSnapshotInfo: exception while verifying ctrd client: %s", err.Error())
 	}
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
 	snapshotInfoList := make([]snapshots.Info, 0)
-	if err := snapshotter.Walk(client.ctrdCtx, func(i context.Context, info snapshots.Info) error {
+	if err := snapshotter.Walk(ctx, func(i context.Context, info snapshots.Info) error {
 		snapshotInfoList = append(snapshotInfoList, info)
 		return nil
 	}); err != nil {
@@ -351,12 +340,12 @@ func (client *Client) CtrListSnapshotInfo() ([]snapshots.Info, error) {
 }
 
 //CtrRemoveSnapshot removed snapshot by ID from containerd
-func (client *Client) CtrRemoveSnapshot(snapshotID string) error {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrRemoveSnapshot: exception while verifying ctrd client: %s", err.Error())
 	}
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
-	if err := snapshotter.Remove(client.ctrdCtx, snapshotID); err != nil {
+	if err := snapshotter.Remove(ctx, snapshotID); err != nil {
 		log.Errorf("CtrRemoveSnapshot: unable to remove snapshot: %v. %v", snapshotID, err)
 		return err
 	}
@@ -364,11 +353,11 @@ func (client *Client) CtrRemoveSnapshot(snapshotID string) error {
 }
 
 //CtrLoadContainer returns conatiner with the given `containerID`. Error is returned if there no container is found.
-func (client *Client) CtrLoadContainer(containerID string) (containerd.Container, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrLoadContainer(ctx context.Context, containerID string) (containerd.Container, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrLoadContainer: exception while verifying ctrd client: %s", err.Error())
 	}
-	container, err := client.ctrdClient.LoadContainer(client.ctrdCtx, containerID)
+	container, err := client.ctrdClient.LoadContainer(ctx, containerID)
 	if err != nil {
 		err = fmt.Errorf("CtrLoadContainer: Exception while loading container: %v", err)
 	}
@@ -376,12 +365,12 @@ func (client *Client) CtrLoadContainer(containerID string) (containerd.Container
 }
 
 //CtrListContainerIds returns a list of all known container IDs
-func (client *Client) CtrListContainerIds() ([]string, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrListContainerIds(ctx context.Context) ([]string, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListContainerIds: exception while verifying ctrd client: %s", err.Error())
 	}
 	res := []string{}
-	ctrs, err := client.CtrListContainer()
+	ctrs, err := client.CtrListContainer(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -392,29 +381,29 @@ func (client *Client) CtrListContainerIds() ([]string, error) {
 }
 
 //CtrListContainer returns a list of containerd.Container ibjects
-func (client *Client) CtrListContainer() ([]containerd.Container, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrListContainer(ctx context.Context) ([]containerd.Container, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListContainer: exception while verifying ctrd client: %s", err.Error())
 	}
-	return client.ctrdClient.Containers(client.ctrdCtx)
+	return client.ctrdClient.Containers(ctx)
 }
 
 // CtrGetContainerMetrics returns all runtime metrics associated with a container ID
-func (client *Client) CtrGetContainerMetrics(containerID string) (*v1stat.Metrics, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID string) (*v1stat.Metrics, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrGetContainerMetrics: exception while verifying ctrd client: %s", err.Error())
 	}
-	c, err := client.CtrLoadContainer(containerID)
+	c, err := client.CtrLoadContainer(ctx, containerID)
 	if err != nil {
 		return nil, err
 	}
 
-	t, err := c.Task(client.ctrdCtx, nil)
+	t, err := c.Task(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	m, err := t.Metrics(client.ctrdCtx)
+	m, err := t.Metrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -437,22 +426,22 @@ func (client *Client) CtrGetContainerMetrics(containerID string) (*v1stat.Metric
 // For tasks that are in the running, pausing or paused state the PID is also provided
 // and the exit code is set to 0. For tasks in the stopped state, exit code is provided
 // and the PID is set to 0.
-func (client *Client) CtrContainerInfo(name string) (int, int, string, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrContainerInfo(ctx context.Context, name string) (int, int, string, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return 0, 0, "", fmt.Errorf("CtrContainerInfo: exception while verifying ctrd client: %s", err.Error())
 	}
 
-	c, err := client.CtrLoadContainer(name)
+	c, err := client.CtrLoadContainer(ctx, name)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't load container %s: %v", name, err)
 	}
 
-	t, err := c.Task(client.ctrdCtx, nil)
+	t, err := c.Task(ctx, nil)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't load task for container %s: %v", name, err)
 	}
 
-	stat, err := t.Status(client.ctrdCtx)
+	stat, err := t.Status(ctx)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
 	}
@@ -461,11 +450,11 @@ func (client *Client) CtrContainerInfo(name string) (int, int, string, error) {
 }
 
 // CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
-func (client *Client) CtrCreateTask(domainName string) (int, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrCreateTask(ctx context.Context, domainName string) (int, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return 0, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
 	}
-	ctr, err := client.CtrLoadContainer(domainName)
+	ctr, err := client.CtrLoadContainer(ctx, domainName)
 	if err != nil {
 		return 0, err
 	}
@@ -484,7 +473,7 @@ func (client *Client) CtrCreateTask(domainName string) (int, error) {
 			},
 		}, nil
 	}
-	task, err := ctr.NewTask(client.ctrdCtx, io)
+	task, err := ctr.NewTask(ctx, io)
 	if err != nil {
 		return 0, err
 	}
@@ -493,12 +482,12 @@ func (client *Client) CtrCreateTask(domainName string) (int, error) {
 }
 
 // CtrListTaskIds returns a list of all known tasks
-func (client *Client) CtrListTaskIds() ([]string, error) {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrListTaskIds(ctx context.Context) ([]string, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListContainerIds: exception while verifying ctrd client: %s", err.Error())
 	}
 
-	tasks, err := client.ctrdClient.TaskService().List(client.ctrdCtx, &tasks.ListTasksRequest{})
+	tasks, err := client.ctrdClient.TaskService().List(ctx, &tasks.ListTasksRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -511,16 +500,16 @@ func (client *Client) CtrListTaskIds() ([]string, error) {
 }
 
 // CtrStartTask starts the default task in a pre-existing container that was prepared by CtrCreateTask
-func (client *Client) CtrStartTask(domainName string) error {
-	if err := client.verifyCtr(); err != nil {
+func (client *Client) CtrStartTask(ctx context.Context, domainName string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
 	}
-	ctr, err := client.CtrLoadContainer(domainName)
+	ctr, err := client.CtrLoadContainer(ctx, domainName)
 	if err != nil {
 		return err
 	}
 
-	task, err := ctr.Task(client.ctrdCtx, nil)
+	task, err := ctr.Task(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -529,12 +518,162 @@ func (client *Client) CtrStartTask(domainName string) error {
 		return err
 	}
 
-	return task.Start(client.ctrdCtx)
+	return task.Start(ctx)
 }
+
+// CtrExec starts the executable in a running user container
+func (client *Client) CtrExec(ctx context.Context, domainName string, args []string) (string, string, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return "", "", fmt.Errorf("CtrExec: exception while verifying ctrd client: %s", err.Error())
+	}
+	return client.ctrExec(ctx, domainName, args)
+}
+
+// CtrSystemExec starts the executable in a running system (EVE's) container
+func (client *Client) CtrSystemExec(ctx context.Context, domainName string, args []string) (string, string, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return "", "", fmt.Errorf("CtrSystemExec: exception while verifying ctrd client: %s", err.Error())
+	}
+	return client.ctrExec(ctx, domainName, args)
+}
+
+// CtrStopContainer stops (kills) the main task in the container
+func (client *Client) CtrStopContainer(ctx context.Context, containerID string, force bool) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return fmt.Errorf("CtrStopContainer: exception while verifying ctrd client: %s", err.Error())
+	}
+	ctr, err := client.CtrLoadContainer(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("can't find cotainer %s (%v)", containerID, err)
+	}
+
+	signal, err := containerd.ParseSignal(defaultSignal)
+	if err != nil {
+		return err
+	}
+	if signal, err = containerd.GetStopSignal(ctx, ctr, signal); err != nil {
+		return err
+	}
+
+	task, err := ctr.Task(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// it is unclear whether we have to wait after this or proceed
+	// straight away. It is also unclear whether paying any attention
+	// to the err returned is worth anything at this point
+	_ = task.Kill(ctx, signal, containerd.WithKillAll)
+
+	if force {
+		_, err = task.Delete(ctx, containerd.WithProcessKill)
+	} else {
+		_, err = task.Delete(ctx)
+	}
+
+	return err
+}
+
+// CtrDeleteContainer is a simple wrapper around container.Delete()
+func (client *Client) CtrDeleteContainer(ctx context.Context, containerID string) error {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return fmt.Errorf("CtrDeleteContainer: exception while verifying ctrd client: %s", err.Error())
+	}
+	ctr, err := client.CtrLoadContainer(ctx, containerID)
+	if err != nil {
+		return err
+	}
+
+	// do this just in case
+	_ = client.CtrStopContainer(ctx, containerID, true)
+
+	return ctr.Delete(ctx)
+}
+
+// Resolver return a resolver.ResolverCloser that can read from containerd
+func (client *Client) Resolver(ctx context.Context) (resolver.ResolverCloser, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return nil, fmt.Errorf("Resolver: exception while verifying ctrd client: %s", err.Error())
+	}
+	_, res, err := resolver.NewContainerdWithClient(ctx,
+		client.ctrdClient)
+	return res, err
+}
+
+// LKTaskPrepare creates a new containter based on linuxkit /container/services runtime
+// OCI spec file and optional bundle of DomainConfig settings and command line options.
+// Because we're expecting a linuxkit produced filesystem layout we expect R/O portion of the
+// filesystem to be available under `dirname specFile`/lower and we will be mounting
+// it R/O into the container. On top of that we expect the usual suspects of /run,
+// /persist and /config to be taken care of by the OCI config that lk produced.
+func (client *Client) LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, domStatus *types.DomainStatus, memOverhead int64, args []string) error {
+	config := "/containers/services/" + linuxkit + "/config.json"
+	rootfs := "/containers/services/" + linuxkit + "/rootfs"
+
+	log.Infof("Starting LKTaskLaunch for %s", linuxkit)
+	f, err := os.Open("/hostfs" + config)
+	if err != nil {
+		return fmt.Errorf("LKTaskLaunch: can't open spec file %s %v", config, err)
+	}
+	defer f.Close()
+
+	spec, err := client.NewOciSpec(name)
+	if err != nil {
+		return fmt.Errorf("LKTaskLaunch: NewOciSpec failed with error %v", err)
+	}
+	if err = spec.Load(f); err != nil {
+		return fmt.Errorf("LKTaskLaunch: can't load spec file from %s %v", config, err)
+	}
+
+	spec.Get().Root.Path = rootfs
+	spec.Get().Root.Readonly = true
+	if spec.Get().Linux != nil {
+		spec.Get().Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, name)
+	}
+	if domSettings != nil {
+		spec.UpdateFromDomain(*domSettings)
+		if memOverhead > 0 {
+			spec.AdjustMemLimit(*domSettings, memOverhead)
+		}
+		spec.UpdateMountsNested(domStatus.DiskStatusList)
+	}
+
+	if args != nil {
+		spec.Get().Process.Args = args
+	}
+
+	return spec.CreateContainer(true)
+}
+
+// CtrNewUserServicesCtx returns a new user service containerd context
+// and a done func to cancel the context after use.
+func (client *Client) CtrNewUserServicesCtx() (context.Context, context.CancelFunc) {
+	return newServiceCtx(ctrdServicesNamespace)
+}
+
+// CtrNewSystemServicesCtx returns a new system service containerd context
+// and a done func to cancel the context after use.
+func (client *Client) CtrNewSystemServicesCtx() (context.Context, context.CancelFunc) {
+	return newServiceCtx(ctrdSystemServicesNamespace)
+}
+
+// CtrNewUserServicesCtxWithLease returns a new user service containerd context with a 24 hrs lease
+// and a done func to delete the lease and cancel the context after use.
+func (client *Client) CtrNewUserServicesCtxWithLease() (context.Context, context.CancelFunc, error) {
+	return newServiceCtxWithLease(client.ctrdClient, ctrdServicesNamespace)
+}
+
+// CtrNewSystemServicesCtxWithLease returns a new system service containerd context with a 24 hrs lease
+// and a done func to delete the lease and cancel the context after use.
+func (client *Client) CtrNewSystemServicesCtxWithLease() (context.Context, context.CancelFunc, error) {
+	return newServiceCtxWithLease(client.ctrdClient, ctrdSystemServicesNamespace)
+}
+
+// Util methods
 
 // ctrExec starts the executable in a running container and attaches its logging to memlogd
 func (client *Client) ctrExec(ctx context.Context, domainName string, args []string) (string, string, error) {
-	if err := client.verifyCtr(); err != nil {
+	if err := client.verifyCtr(ctx, true); err != nil {
 		return "", "", fmt.Errorf("ctrExec: exception while verifying ctrd client: %s", err.Error())
 	}
 	ctr, err := client.ctrdClient.LoadContainer(ctx, domainName)
@@ -597,148 +736,6 @@ func (client *Client) ctrExec(ctx context.Context, domainName string, args []str
 	log.Debugf("ctrExec process exited with: %v %v %d %d %d %d", st, ee, stdOut.Cap(), stdOut.Len(), stdErr.Cap(), stdErr.Len())
 	return stdOut.String(), stdErr.String(), err
 }
-
-// CtrExec starts the executable in a running user container
-func (client *Client) CtrExec(domainName string, args []string) (string, string, error) {
-	return client.ctrExec(client.ctrdCtx, domainName, args)
-}
-
-// CtrSystemExec starts the executable in a running system (EVE's) container
-func (client *Client) CtrSystemExec(domainName string, args []string) (string, string, error) {
-	return client.ctrExec(client.ctrdSystemCtx, domainName, args)
-}
-
-// CtrStopContainer stops (kills) the main task in the container
-func (client *Client) CtrStopContainer(containerID string, force bool) error {
-	if err := client.verifyCtr(); err != nil {
-		return fmt.Errorf("CtrStopContainer: exception while verifying ctrd client: %s", err.Error())
-	}
-	ctr, err := client.CtrLoadContainer(containerID)
-	if err != nil {
-		return fmt.Errorf("can't find cotainer %s (%v)", containerID, err)
-	}
-
-	signal, err := containerd.ParseSignal(defaultSignal)
-	if err != nil {
-		return err
-	}
-	if signal, err = containerd.GetStopSignal(client.ctrdCtx, ctr, signal); err != nil {
-		return err
-	}
-
-	task, err := ctr.Task(client.ctrdCtx, nil)
-	if err != nil {
-		return err
-	}
-
-	// it is unclear whether we have to wait after this or proceed
-	// straight away. It is also unclear whether paying any attention
-	// to the err returned is worth anything at this point
-	_ = task.Kill(client.ctrdCtx, signal, containerd.WithKillAll)
-
-	if force {
-		_, err = task.Delete(client.ctrdCtx, containerd.WithProcessKill)
-	} else {
-		_, err = task.Delete(client.ctrdCtx)
-	}
-
-	return err
-}
-
-// CtrDeleteContainer is a simple wrapper around container.Delete()
-func (client *Client) CtrDeleteContainer(containerID string) error {
-	if err := client.verifyCtr(); err != nil {
-		return fmt.Errorf("CtrDeleteContainer: exception while verifying ctrd client: %s", err.Error())
-	}
-	ctr, err := client.CtrLoadContainer(containerID)
-	if err != nil {
-		return err
-	}
-
-	// do this just in case
-	_ = client.CtrStopContainer(containerID, true)
-
-	return ctr.Delete(client.ctrdCtx)
-}
-
-// Resolver return a resolver.ResolverCloser that can read from containerd
-func (client *Client) Resolver() (resolver.ResolverCloser, error) {
-	_, res, err := resolver.NewContainerdWithClient(client.ctrdCtx,
-		client.ctrdClient)
-	return res, err
-}
-
-// LKTaskPrepare creates a new containter based on linuxkit /container/services runtime
-// OCI spec file and optional bundle of DomainConfig settings and command line options.
-// Because we're expecting a linuxkit produced filesystem layout we expect R/O portion of the
-// filesystem to be available under `dirname specFile`/lower and we will be mounting
-// it R/O into the container. On top of that we expect the usual suspects of /run,
-// /persist and /config to be taken care of by the OCI config that lk produced.
-func (client *Client) LKTaskPrepare(name, linuxkit string, domSettings *types.DomainConfig, domStatus *types.DomainStatus, memOverhead int64, args []string) error {
-	config := "/containers/services/" + linuxkit + "/config.json"
-	rootfs := "/containers/services/" + linuxkit + "/rootfs"
-
-	log.Infof("Starting LKTaskLaunch for %s", linuxkit)
-	f, err := os.Open("/hostfs" + config)
-	if err != nil {
-		return fmt.Errorf("LKTaskLaunch: can't open spec file %s %v", config, err)
-	}
-	defer f.Close()
-
-	spec, err := client.NewOciSpec(name)
-	if err != nil {
-		return fmt.Errorf("LKTaskLaunch: NewOciSpec failed with error %v", err)
-	}
-	if err = spec.Load(f); err != nil {
-		return fmt.Errorf("LKTaskLaunch: can't load spec file from %s %v", config, err)
-	}
-
-	spec.Get().Root.Path = rootfs
-	spec.Get().Root.Readonly = true
-	if spec.Get().Linux != nil {
-		spec.Get().Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, name)
-	}
-	if domSettings != nil {
-		spec.UpdateFromDomain(*domSettings)
-		if memOverhead > 0 {
-			spec.AdjustMemLimit(*domSettings, memOverhead)
-		}
-		spec.UpdateMountsNested(domStatus.DiskStatusList)
-	}
-
-	if args != nil {
-		spec.Get().Process.Args = args
-	}
-
-	return spec.CreateContainer(true)
-}
-
-//CtrCreateCtxWithLease returns a new containerd context with a 24 hrs lease and a func to delete the lease after use.
-func (client *Client) CtrCreateCtxWithLease() (context.Context, func() error, error) {
-	if client.ctrdClient == nil {
-		return nil, nil, fmt.Errorf("CtrCreateCtxWithLease: exception while verifying ctrd client: " +
-			"Container client is nil")
-	}
-	var (
-		err  error
-		done func(context.Context) error
-	)
-	newCtrdCtx := namespaces.WithNamespace(context.Background(), ctrdServicesNamespace)
-	newCtrdCtx, done, err = client.ctrdClient.WithLease(newCtrdCtx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("CtrCreateCtxWithLease: exception while creating lease: %s", err.Error())
-	}
-	return newCtrdCtx, func() error {
-		if err := done(newCtrdCtx); err != nil {
-			err = fmt.Errorf("CtrCreateCtxWithLease: exception while deleting newCtrdCtx: %s", err.Error())
-			log.Errorf(err.Error())
-			return err
-		}
-		return nil
-	}, nil
-}
-
-// Util methods
 
 // FIXME: once we move to runX this function is going to go away
 func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]struct{}, execpath []string, workdir string, env []string, noOfDisks int) error {
@@ -910,10 +907,24 @@ func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
 	return image, nil
 }
 
-//verifyCtr verifies is containerd client and context.
-func (client *Client) verifyCtr() error {
-	if client.ctrdCtx == nil {
-		return fmt.Errorf("verifyCtr: Container context is nil")
+//verifyCtr verifies is containerd client and context(if verifyCtx is true) .
+func (client *Client) verifyCtr(ctx context.Context, verifyCtx bool) error {
+	if client.ctrdClient == nil {
+		return fmt.Errorf("verifyCtr: Containerd client is nil")
+	}
+
+	if client.ctrdClient.Conn().GetState() == connectivity.Shutdown {
+		return fmt.Errorf("verifyCtr: Containerd client is closed")
+	}
+
+	if verifyCtx {
+		if ctx == nil {
+			return fmt.Errorf("verifyCtr: Containerd context is nil")
+		}
+
+		if ctx.Err() == context.Canceled {
+			return fmt.Errorf("verifyCtr: Containerd context is calcelled")
+		}
 	}
 	return nil
 }
@@ -939,4 +950,29 @@ func bindNS(ns string, path string, pid int) error {
 		return fmt.Errorf("bindNS: Failed to bind %s namespace at %s: %v", ns, path, err)
 	}
 	return nil
+}
+
+func newServiceCtx(namespace string) (context.Context, context.CancelFunc) {
+	return context.WithCancel(namespaces.WithNamespace(context.Background(), namespace))
+}
+
+func newServiceCtxWithLease(ctrdClient *containerd.Client, namespace string) (context.Context, context.CancelFunc, error) {
+	if ctrdClient == nil {
+		return nil, nil, fmt.Errorf("newServiceCtxWithLease(%s): exception while verifying ctrd client: "+
+			namespace, "Container client is nil")
+	}
+	ctx, cancel := newServiceCtx(namespace)
+	ctx, done, err := ctrdClient.WithLease(ctx)
+	if err != nil {
+		cancel()
+		return nil, nil, fmt.Errorf("CtrCreateCtxWithLease: exception while creating lease: %s", err.Error())
+	}
+
+	return ctx, func() {
+		if err := done(ctx); err != nil {
+			log.Errorf("newServiceCtxWithLease(%s): exception while deleting newCtrdCtx: %s",
+				namespace, err.Error())
+		}
+		cancel()
+	}, nil
 }

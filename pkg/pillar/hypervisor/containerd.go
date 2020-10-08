@@ -86,20 +86,24 @@ func (ctx ctrdContext) Create(domainName string, cfgFilename string, config *typ
 	// we are ignoring error here since it is cheaper to always call this as opposed
 	// to figure out if there's a wedged task (IOW, error could simply mean there was
 	// nothing to kill)
-	_ = ctx.ctrdClient.CtrStopContainer(domainName, true)
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	_ = ctx.ctrdClient.CtrStopContainer(ctrdCtx, domainName, true)
 
-	return ctx.ctrdClient.CtrCreateTask(domainName)
+	return ctx.ctrdClient.CtrCreateTask(ctrdCtx, domainName)
 }
 
 func (ctx ctrdContext) Start(domainName string, domainID int) error {
-	err := ctx.ctrdClient.CtrStartTask(domainName)
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	err := ctx.ctrdClient.CtrStartTask(ctrdCtx, domainName)
 	if err != nil {
 		return err
 	}
 
 	// now lets wait for task to reach a steady state or for >10sec to elapse
 	for i := 0; i < 10; i++ {
-		_, _, status, err := ctx.ctrdClient.CtrContainerInfo(domainName)
+		_, _, status, err := ctx.ctrdClient.CtrContainerInfo(ctrdCtx, domainName)
 		if err == nil && (status == "running" || status == "stopped" || status == "paused") {
 			return nil
 		}
@@ -110,15 +114,21 @@ func (ctx ctrdContext) Start(domainName string, domainID int) error {
 }
 
 func (ctx ctrdContext) Stop(domainName string, domainID int, force bool) error {
-	return ctx.ctrdClient.CtrStopContainer(domainName, force)
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	return ctx.ctrdClient.CtrStopContainer(ctrdCtx, domainName, force)
 }
 
 func (ctx ctrdContext) Delete(domainName string, domainID int) error {
-	return ctx.ctrdClient.CtrDeleteContainer(domainName)
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	return ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName)
 }
 
 func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
-	effectiveDomainID, exit, status, err := ctx.ctrdClient.CtrContainerInfo(domainName)
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	effectiveDomainID, exit, status, err := ctx.ctrdClient.CtrContainerInfo(ctrdCtx, domainName)
 	if err != nil {
 		return domainID, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
 	}
@@ -171,7 +181,10 @@ func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 
 func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	res := map[string]types.DomainMetric{}
-	ids, err := ctx.ctrdClient.CtrListTaskIds()
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+
+	ids, err := ctx.ctrdClient.CtrListTaskIds(ctrdCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +194,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 		var usedMemPerc float64
 		var cpuTotal uint64
 
-		if metric, err := ctx.ctrdClient.CtrGetContainerMetrics(id); err == nil {
+		if metric, err := ctx.ctrdClient.CtrGetContainerMetrics(ctrdCtx, id); err == nil {
 			usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
 			totalMem = uint32(roundFromBytesToMbytes(metric.Memory.HierarchicalMemoryLimit))
 			availMem = 0

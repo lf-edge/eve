@@ -21,7 +21,8 @@ type BlobInfo struct {
 	Labels map[string]string
 }
 
-//CAS  provides methods to interact with CAS clients
+// CAS provides methods to interact with CAS clients
+// Context handling should be taken care by the underlying implementor.
 type CAS interface {
 	//Blob APIs
 	//CheckBlobExists: returns true if the blob exists.
@@ -120,7 +121,7 @@ type CAS interface {
 	// Resolver get an interface that satisfies resolver.ResolverCloser to communicate directly with a generic CAS
 	Resolver() (resolver.ResolverCloser, error)
 
-	//CloseClient closes the respective CAS client initialized while calling `NewCAS()`
+	// CloseClient closes (only) the respective CAS client initialized while calling `NewCAS()`.
 	CloseClient() error
 }
 
@@ -132,7 +133,8 @@ var knownCASHandlers = map[string]casDesc{
 	"containerd": {constructor: newContainerdCAS},
 }
 
-//NewCAS  returns selectedCAS object
+// NewCAS returns new CAS object with a new client of underlying implementor(selectedCAS).
+// It's the caller/user's responsibility to close the respective client after use by calling CAS.CloseClient().
 func NewCAS(selectedCAS string) (CAS, error) {
 	if _, found := knownCASHandlers[selectedCAS]; !found {
 		return nil, fmt.Errorf("Unknown CAS handler %s", selectedCAS)
