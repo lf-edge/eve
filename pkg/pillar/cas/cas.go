@@ -52,7 +52,7 @@ type CAS interface {
 	//ReadBlob: returns a reader to consume the raw data of the blob which matches the given arg 'blobHash'.
 	//Returns error if no blob is found for the given 'blobHash'.
 	//Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
-	ReadBlob(blobHash string) (io.Reader, error)
+	ReadBlob(ctx context.Context, blobHash string) (io.Reader, error)
 	//RemoveBlob: removes a blob which matches the given arg 'blobHash'.
 	//To keep this method idempotent, no error is returned if the given arg 'blobHash' does not match any blob.
 	//Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
@@ -119,7 +119,10 @@ type CAS interface {
 	IngestBlobsAndCreateImage(reference string, root types.BlobStatus, blobs ...types.BlobStatus) ([]types.BlobStatus, error)
 
 	// Resolver get an interface that satisfies resolver.ResolverCloser to communicate directly with a generic CAS
-	Resolver() (resolver.ResolverCloser, error)
+	Resolver(ctx context.Context) (resolver.ResolverCloser, error)
+
+	// CtrNewUserServicesCtx() returns a context and a cancel function
+	CtrNewUserServicesCtx() (context.Context, context.CancelFunc)
 
 	// CloseClient closes (only) the respective CAS client initialized while calling `NewCAS()`.
 	CloseClient() error

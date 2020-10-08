@@ -16,12 +16,15 @@ import (
 
 // resolveIndex get the manifest for our platform from the index
 func resolveIndex(ctx *volumemgrContext, blob *types.BlobStatus) (*v1.Descriptor, error) {
+	ctrdCtx, done := ctx.casClient.CtrNewUserServicesCtx()
+	defer done()
+
 	var index *v1.IndexManifest
 	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
 	if blob.State == types.LOADED {
 		blobHash := checkAndCorrectBlobHash(blob.Sha256)
 		// try it as an index and as a straight manifest
-		reader, err := ctx.casClient.ReadBlob(blobHash)
+		reader, err := ctx.casClient.ReadBlob(ctrdCtx, blobHash)
 		if err != nil {
 			err = fmt.Errorf("resolveIndex(%s): Exception while reading blob: %v", blob.Sha256, err)
 			log.Errorf(err.Error())
@@ -66,11 +69,14 @@ func resolveIndex(ctx *volumemgrContext, blob *types.BlobStatus) (*v1.Descriptor
 func resolveManifestChildren(ctx *volumemgrContext, blob *types.BlobStatus) (int64, []v1.Descriptor, error) {
 	var manifest *v1.Manifest
 
+	ctrdCtx, done := ctx.casClient.CtrNewUserServicesCtx()
+	defer done()
+
 	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
 	if blob.State == types.LOADED {
 		blobHash := checkAndCorrectBlobHash(blob.Sha256)
 		// try it as an index and as a straight manifest
-		reader, err := ctx.casClient.ReadBlob(blobHash)
+		reader, err := ctx.casClient.ReadBlob(ctrdCtx, blobHash)
 		if err != nil {
 			err = fmt.Errorf("resolveManifestChildren(%s): Exception while reading blob: %v", blob.Sha256, err)
 			log.Errorf(err.Error())
