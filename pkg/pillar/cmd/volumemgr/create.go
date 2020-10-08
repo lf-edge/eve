@@ -53,8 +53,10 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		return created, "", err
 	}
 	defer casClient.CloseClient()
+	ctrdCtx, done := casClient.CtrNewUserServicesCtx()
+	defer done()
 
-	resolver, err := casClient.Resolver()
+	resolver, err := casClient.Resolver(ctrdCtx)
 	if err != nil {
 		errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
 		log.Error(errStr)
