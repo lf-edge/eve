@@ -411,7 +411,9 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 	if force {
 		args = append(args, "-F")
 	}
-	stdOut, stdErr, err := ctx.ctrdClient.CtrExec(domainName, args)
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	stdOut, stdErr, err := ctx.ctrdClient.CtrExec(ctrdCtx, domainName, args)
 	if err != nil {
 		log.Errorln("xl shutdown failed ", err)
 		log.Errorln("xl shutdown output ", stdOut, stdErr)
@@ -423,7 +425,9 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 
 func (ctx xenContext) Delete(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
-	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec("xen-tools",
+	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "destroy", domainName})
 	if err != nil {
 		log.Errorln("xl destroy failed ", err)
@@ -473,7 +477,9 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 
 func (ctx xenContext) PCIReserve(long string) error {
 	log.Infof("pciAssignableAdd %s\n", long)
-	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec("xen-tools",
+	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "pci-assignable-add", long})
 	if err != nil {
 		errStr := fmt.Sprintf("xl pci-assignable-add failed: %s %s", stdOut, stdErr)
@@ -486,7 +492,9 @@ func (ctx xenContext) PCIReserve(long string) error {
 
 func (ctx xenContext) PCIRelease(long string) error {
 	log.Infof("pciAssignableRemove %s\n", long)
-	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec("xen-tools",
+	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "pci-assignable-rem", "-r", long})
 	if err != nil {
 		errStr := fmt.Sprintf("xl pci-assignable-rem failed: %s %s", stdOut, stdErr)
@@ -498,7 +506,9 @@ func (ctx xenContext) PCIRelease(long string) error {
 }
 
 func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
-	xlInfo, stderr, err := ctx.ctrdClient.CtrSystemExec("xen-tools",
+	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	xlInfo, stderr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "info"})
 	if err != nil {
 		log.Errorf("xl info failed %s %s falling back on Dom0 stats: %v", xlInfo, stderr, err)
@@ -548,7 +558,9 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	count := 0
 	counter := 0
-	xentopInfo, _, _ := ctx.ctrdClient.CtrSystemExec("xen-tools",
+	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	xentopInfo, _, _ := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xentop", "-b", "-d", "1", "-i", "2", "-f"})
 
 	splitXentopInfo := strings.Split(xentopInfo, "\n")
