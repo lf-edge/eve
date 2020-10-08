@@ -951,23 +951,23 @@ func appNetworkDoActivateUnderlayNetwork(
 	if appIPAddr != "" {
 		// XXX clobber any IPv6 EID entry since same name
 		// but that's probably OK since we're doing IPv4 EIDs
+		removehostDnsmasq(bridgeName, appMac, appIPAddr)
 		addhostDnsmasq(bridgeName, appMac, appIPAddr,
 			config.UUIDandVersion.UUID.String())
 	}
 
 	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+	newIpsets, staleIpsets, reloadDnsmasq := diffIpsets(ipsets,
 		networkInstanceInfo.BridgeIPSets)
 
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true, false)
+	if reloadDnsmasq && ulStatus.BridgeIPAddr != "" {
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
 			newIpsets, false, netInstStatus.CurrentUplinkIntf,
 			dnsServers)
-		startDnsmasq(bridgeName)
+		doreloadDnsmasq(bridgeName)
 	}
 	networkInstanceInfo.AddVif(log, vifName, appMac,
 		config.UUIDandVersion.UUID)
@@ -1330,18 +1330,17 @@ func doAppNetworkModifyUnderlayNetwork(
 	}
 	ulStatus.ACLRules = ruleList
 
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+	newIpsets, staleIpsets, reloadDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
 
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+	if reloadDnsmasq && ulStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
-		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
-		startDnsmasq(bridgeName)
+		doreloadDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
@@ -1496,17 +1495,16 @@ func appNetworkDoInactivateUnderlayNetwork(
 	removeFromHostsConfiglet(hostsDirpath,
 		status.DisplayName)
 	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+	newIpsets, staleIpsets, reloadDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
 
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true, false)
+	if reloadDnsmasq && ulStatus.BridgeIPAddr != "" {
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
-		startDnsmasq(bridgeName)
+		doreloadDnsmasq(bridgeName)
 	}
 	netstatus.RemoveVif(log, ulStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets

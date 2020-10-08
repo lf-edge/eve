@@ -285,23 +285,20 @@ func createDnsmasqConfiglet(
 	}
 }
 
-func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
-	hostname string) {
-
-	log.Infof("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
-		appIPAddr, hostname)
+func sendDnsmasqCmd(bridgeName string, cmd string) {
+	log.Infof("sendDnsmasqCmd(%s)\n", bridgeName)
 
 	ctrlSocketname := dnsmasqCtrlSocketPath(bridgeName)
 	conn, err := net.Dial("unix", ctrlSocketname)
 	if err != nil {
-		errStr := fmt.Sprintf("removehostDnsmasq %v", err)
+		errStr := fmt.Sprintf("sendDnsmasqCmd %v", err)
 		log.Errorln(errStr)
 		return
 	}
 
-	_, err = conn.Write([]byte("add " + appIPAddr + " " + appMac + " " + hostname))
+	_, err = conn.Write([]byte(cmd))
 	if err != nil {
-		errStr := fmt.Sprintf("removehostDnsmasq %v", err)
+		errStr := fmt.Sprintf("sendDnsmasqCmd %v", err)
 		log.Errorln(errStr)
 		conn.Close()
 		return
@@ -326,6 +323,13 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 	sendDnsmasqCmd(bridgeName, "del_host "+appIPAddr)
 	sendDnsmasqCmd(bridgeName, "del_lease "+appIPAddr)
+}
+
+func doreloadDnsmasq(bridgeName string) {
+
+	log.Infof("doreloadDnsmasq(%s)\n", bridgeName)
+
+	sendDnsmasqCmd(bridgeName, "reload")
 }
 
 func deleteDnsmasqConfiglet(bridgeName string) {
