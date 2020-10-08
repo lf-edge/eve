@@ -680,6 +680,7 @@ func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
 func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 	status := types.VaultStatus{}
 	status.Name = vaultName
+	status.ConversionComplete = ctx.vaultUCDone
 	zfsEncryptStatus, zfsEncryptError := vault.GetOperInfo(log)
 	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = zfsEncryptStatus
