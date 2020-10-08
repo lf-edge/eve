@@ -511,7 +511,9 @@ func findLease(ctx *zedrouterContext, hostname string, mac string, ignoreExpired
 		if l.MacAddr != mac {
 			continue
 		}
-		if ignoreExpired && l.LeaseTime.Before(time.Now()) {
+		if ignoreExpired &&
+			l.LeaseTime.Before(time.Now()) &&
+			l.LeaseTime != time.Unix(0, 0) {
 			log.Warnf("Ignoring expired lease: %v", *l)
 			return nil
 		}
