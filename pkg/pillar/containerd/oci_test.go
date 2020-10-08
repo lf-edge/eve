@@ -60,8 +60,7 @@ func TestOciSpec(t *testing.T) {
 	// Do not create a client since containerd isn't running for test
 	client, err := NewContainerdClient(false)
 	if err != nil {
-		t.Errorf("failed to create containerd client %v", err)
-		return
+		t.Skipf("test must be run on a system with a functional containerd")
 	}
 
 	spec, err := client.NewOciSpec("test")
