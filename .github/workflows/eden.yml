@@ -37,10 +37,11 @@ jobs:
           ./eden config set default --key eve.tag --value=$(make -s -C eve version)
           ./eden config set default --key=eve.accel --value=false
           echo > tests/workflow/testdata/eden_stop.txt
-          ./eden test ./tests/workflow -v debug 
+          ./eden test ./tests/workflow -v debug
       - name: Collect logs
-         if: ${{ always() }}
-         run: ./eden log --format json > trace.log
+        if: ${{ always() }}
+        run: |
+          ./eden log --format json > trace.log
       - name: Store raw test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
