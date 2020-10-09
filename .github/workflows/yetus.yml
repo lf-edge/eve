@@ -30,7 +30,7 @@ jobs:
           continuousimprovement: true
           githubtoken: ${{ secrets.GITHUB_TOKEN }}
           patchdir: ./out
-          revive-config: .revive.toml
+          reviveconfig: .revive.toml
 
       - name: Store Yetus artifacts
         if: ${{ always() }}
