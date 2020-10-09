@@ -22,8 +22,8 @@ type ctrdContext struct {
 	ctrdClient *containerd.Client
 }
 
-func initContainerd(createClient bool) (*ctrdContext, error) {
-	ctrdClient, err := containerd.NewContainerdClient(createClient)
+func initContainerd() (*ctrdContext, error) {
+	ctrdClient, err := containerd.NewContainerdClient()
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func initContainerd(createClient bool) (*ctrdContext, error) {
 }
 
 func newContainerd() Hypervisor {
-	if ret, err := initContainerd(true); err != nil {
+	if ret, err := initContainerd(); err != nil {
 		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above
 	} else {

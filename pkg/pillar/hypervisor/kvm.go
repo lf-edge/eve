@@ -329,7 +329,7 @@ type kvmContext struct {
 }
 
 func newKvm() Hypervisor {
-	ctrdCtx, err := initContainerd(true)
+	ctrdCtx, err := initContainerd()
 	if err != nil {
 		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above

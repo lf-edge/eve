@@ -22,7 +22,7 @@ func initTest(t *testing.T) {
 		return
 	}
 	var err error
-	ctrdClient, err = containerd.NewContainerdClient(true)
+	ctrdClient, err = containerd.NewContainerdClient()
 	if err != nil {
 		t.Skipf("test must be run on a system with a functional containerd")
 	}

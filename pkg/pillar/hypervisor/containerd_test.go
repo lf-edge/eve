@@ -5,7 +5,7 @@ import (
 )
 
 func TestGetDomsCPUMem(t *testing.T) {
-	ctx, err := initContainerd(true)
+	ctx, err := initContainerd()
 	if err != nil {
 		t.Skipf("test must be run on a system with a functional containerd")
 	}
