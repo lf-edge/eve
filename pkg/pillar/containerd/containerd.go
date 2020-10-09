@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -73,58 +72,43 @@ var (
 	defaultSnapshotter = "overlayfs"
 )
 
-var onceLock = &sync.Mutex{}
-var onceVal bool
-
-// once returns true the first time and then false
-func once() bool {
-	onceLock.Lock()
-	defer onceLock.Unlock()
-	if onceVal {
-		return false
-	} else {
-		onceVal = true
-		return true
-	}
-}
-
 // Client is the handle we return to the caller
 type Client struct {
 	ctrdClient   *containerd.Client
 	contentStore content.Store
 }
 
+func init() {
+	log.Info("Containerd Init")
+	// see if we need to fine-tune default snapshotter based on what flavor of storage persist partition is
+	persistType, err := ioutil.ReadFile(eveStorageTypeFile)
+	if err == nil && strings.TrimSpace(string(persistType)) == "zfs" {
+		defaultSnapshotter = "zfs"
+	}
+}
+
 // NewContainerdClient returns a *Client
 // Callable from multiple go-routines.
-// createClient=false is used by tests where we just need the contexts etc
-func NewContainerdClient(createClient bool) (*Client, error) {
+func NewContainerdClient() (*Client, error) {
 	log.Infof("NewContainerdClient")
-	var err error
-	if once() {
-		// see if we need to fine-tune default snapshotter based on what flavor of storage persist partition is
-		persistType, err := ioutil.ReadFile(eveStorageTypeFile)
-		if err == nil && strings.TrimSpace(string(persistType)) == "zfs" {
-			defaultSnapshotter = "zfs"
-		}
-	}
-
 	var (
+		err          error
 		ctrdClient   *containerd.Client
 		contentStore content.Store
 	)
 
-	if createClient {
-		ctrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
-		if err != nil {
-			log.Errorf("NewContainerdClient: could not create containerd client. %v", err.Error())
-			return nil, fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
-		}
-		contentStore = ctrdClient.ContentStore()
+	ctrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
+	if err != nil {
+		log.Errorf("NewContainerdClient: could not create containerd client. %v", err.Error())
+		return nil, fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
 	}
+
+	contentStore = ctrdClient.ContentStore()
 	c := Client{
 		ctrdClient:   ctrdClient,
 		contentStore: contentStore,
 	}
+
 	if err := c.verifyCtr(nil, false); err != nil {
 		return nil, fmt.Errorf("NewContainerdClient: exception while verifying ctrd client: %s", err.Error())
 	}
@@ -961,6 +945,9 @@ func newServiceCtxWithLease(ctrdClient *containerd.Client, namespace string) (co
 		return nil, nil, fmt.Errorf("newServiceCtxWithLease(%s): exception while verifying ctrd client: "+
 			namespace, "Container client is nil")
 	}
+
+	//We need to cancel the context separately other that calling the done() returned from `ctrdClient.WithLease(ctx)`
+	//because done() only deletes the lease associated with the context.
 	ctx, cancel := newServiceCtx(namespace)
 	ctx, done, err := ctrdClient.WithLease(ctx)
 	if err != nil {
@@ -968,6 +955,7 @@ func newServiceCtxWithLease(ctrdClient *containerd.Client, namespace string) (co
 		return nil, nil, fmt.Errorf("CtrCreateCtxWithLease: exception while creating lease: %s", err.Error())
 	}
 
+	//Returning a single method which calls both done() (to delete the lease) and cancel() (to cancel the context).
 	return ctx, func() {
 		if err := done(ctx); err != nil {
 			log.Errorf("newServiceCtxWithLease(%s): exception while deleting newCtrdCtx: %s",

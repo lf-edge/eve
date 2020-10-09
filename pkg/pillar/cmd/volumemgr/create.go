@@ -46,7 +46,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	puller := registry.Puller{
 		Image: ref,
 	}
-	// XXX try with a local casClient for this call
+
 	casClient, err := cas.NewCAS(casClientType)
 	if err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())

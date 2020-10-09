@@ -57,12 +57,8 @@ const imageConfig = `
 `
 
 func TestOciSpec(t *testing.T) {
-	// Do not create a client since containerd isn't running for test
-	client, err := NewContainerdClient(false)
-	if err != nil {
-		t.Skipf("test must be run on a system with a functional containerd")
-	}
 
+	client := &Client{}
 	spec, err := client.NewOciSpec("test")
 	if err != nil {
 		t.Errorf("failed to create default OCI spec %v", err)
@@ -74,12 +70,14 @@ func TestOciSpec(t *testing.T) {
 	} else {
 		defer os.Remove(tmpfile.Name())
 	}
+
 	tmpdir, err := ioutil.TempDir("/tmp", "volume")
 	if err != nil {
 		t.Errorf("failed to create tmpdir %v", err)
 	} else {
 		defer os.RemoveAll(tmpdir)
 	}
+
 	if ioutil.WriteFile(tmpdir+"/image-config.json", []byte(imageConfig), 0777) != nil {
 		t.Errorf("failed to write to temp file %s", tmpdir+"/image-config.json")
 	}

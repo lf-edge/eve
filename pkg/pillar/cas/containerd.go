@@ -319,6 +319,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
+
 	existingBlobIfo, err := c.GetBlobInfo(blobInfo.Digest)
 	if err != nil {
 		err = fmt.Errorf("UpdateBlobInfo: Exception while fetching existing blobInfo of %s: %s", blobInfo.Digest, err.Error())
@@ -361,8 +362,6 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 //Returns error if no blob is found for the given 'blobHash'.
 //Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) ReadBlob(ctrdCtx context.Context, blobHash string) (io.Reader, error) {
-	// XXX FIXME
-	// ctrdCtx, _ := c.ctrdClient.CtrNewUserServicesCtx()
 	reader, err := c.ctrdClient.CtrReadBlob(ctrdCtx, blobHash)
 	if err != nil {
 		log.Errorf("ReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
@@ -377,6 +376,7 @@ func (c *containerdCAS) ReadBlob(ctrdCtx context.Context, blobHash string) (io.R
 func (c *containerdCAS) RemoveBlob(blobHash string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
+
 	if err := c.ctrdClient.CtrDeleteBlob(ctrdCtx, blobHash); err != nil && !isNotFoundError(err) {
 		return fmt.Errorf("RemoveBlob: Exception while removing blob: %s. %s", blobHash, err.Error())
 	}
@@ -418,10 +418,12 @@ func (c *containerdCAS) Children(blobHash string) ([]string, error) {
 func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
+
 	size, err := getBlobSize(c, blobHash)
 	if err != nil {
 		return fmt.Errorf("CreateImage: exception while parsing blob %s: %s", blobHash, err.Error())
 	}
+
 	image := images.Image{
 		Name:   reference,
 		Labels: nil,
@@ -433,6 +435,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Time{},
 	}
+
 	_, err = c.ctrdClient.CtrCreateImage(ctrdCtx, image)
 	if err != nil {
 		return fmt.Errorf("CreateImage: Exception while creating reference: %s. %s", reference, err.Error())
@@ -445,6 +448,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
+
 	image, err := c.ctrdClient.CtrGetImage(ctrdCtx, reference)
 	if err != nil {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
@@ -456,10 +460,12 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 func (c *containerdCAS) ListImages() ([]string, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
+
 	imageObjectList, err := c.ctrdClient.CtrListImages(ctrdCtx)
 	if err != nil {
 		return nil, fmt.Errorf("ListImages: Exception while getting image list. %s", err.Error())
 	}
+
 	imageNameList := make([]string, 0)
 	for _, image := range imageObjectList {
 		imageNameList = append(imageNameList, image.Name)
@@ -472,6 +478,7 @@ func (c *containerdCAS) ListImages() ([]string, error) {
 func (c *containerdCAS) RemoveImage(reference string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
+
 	if err := c.ctrdClient.CtrDeleteImage(ctrdCtx, reference); err != nil {
 		return fmt.Errorf("RemoveImage: Exception while removing image. %s", err.Error())
 	}
@@ -712,7 +719,6 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 
 // Resolver get a resolver.ResolverCloser for containerd
 func (c *containerdCAS) Resolver(ctrdCtx context.Context) (resolver.ResolverCloser, error) {
-	// FIXME XXX ctrdCtx, _ := c.ctrdClient.CtrNewUserServicesCtx()
 	return c.ctrdClient.Resolver(ctrdCtx)
 }
 
@@ -734,7 +740,7 @@ func (c *containerdCAS) CtrNewUserServicesCtx() (context.Context, context.Cancel
 
 //newContainerdCAS: constructor for containerd CAS
 func newContainerdCAS() CAS {
-	ctrdClient, err := containerd.NewContainerdClient(true)
+	ctrdClient, err := containerd.NewContainerdClient()
 	if err != nil {
 		log.Fatalf("newContainerdCAS: exception while creating containerd client: %s", err.Error())
 	}
