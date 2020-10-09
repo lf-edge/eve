@@ -55,7 +55,10 @@ func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus)
 		blob.State = ds.State
 		changed = true
 	}
-	if blob.TotalSize != ds.TotalSize || blob.CurrentSize != ds.CurrentSize {
+	if blob.TotalSize != ds.TotalSize ||
+		blob.CurrentSize != ds.CurrentSize ||
+		blob.Size != ds.Size {
+		blob.Size = ds.Size
 		blob.TotalSize = ds.TotalSize
 		blob.CurrentSize = ds.CurrentSize
 		if blob.TotalSize > 0 {
