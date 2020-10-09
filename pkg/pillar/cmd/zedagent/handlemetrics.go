@@ -964,6 +964,9 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if ctStatus != nil {
 		ReportContentInfo.DisplayName = ctStatus.DisplayName
 		ReportContentInfo.State = ctStatus.State.ZSwState()
+		if ctStatus.Error != "" && ctStatus.State == types.LOADING {
+			ReportContentInfo.State = info.ZSwState_DOWNLOADED
+		}
 
 		if !ctStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
