@@ -373,6 +373,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
+		case <-publishTimer.C:
+			start := time.Now()
+			metrics, pids := gatherProcessMetricList(&domainCtx)
+			for _, m := range metrics {
+				publishProcessMetric(&domainCtx, &m)
+			}
+			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
+			domainCtx.pids = pids
+			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
+				warningTime, errorTime)
+			// XXX temporary until controller reports metrics
+			switch logger.GetLevel() {
+			case logrus.TraceLevel, logrus.DebugLevel:
+				dumpProcessMetricList(metrics)
+			}
+
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -393,6 +409,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case <-publishTimer.C:
+			start := time.Now()
+			metrics, pids := gatherProcessMetricList(&domainCtx)
+			for _, m := range metrics {
+				publishProcessMetric(&domainCtx, &m)
+			}
+			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
+			domainCtx.pids = pids
+			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
+				warningTime, errorTime)
+			// XXX temporary until controller reports metrics
+			switch logger.GetLevel() {
+			case logrus.TraceLevel, logrus.DebugLevel:
+				dumpProcessMetricList(metrics)
+			}
 
 		case <-stillRunning.C:
 		}
@@ -420,6 +452,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case <-publishTimer.C:
+			start := time.Now()
+			metrics, pids := gatherProcessMetricList(&domainCtx)
+			for _, m := range metrics {
+				publishProcessMetric(&domainCtx, &m)
+			}
+			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
+			domainCtx.pids = pids
+			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
+				warningTime, errorTime)
+			// XXX temporary until controller reports metrics
+			switch logger.GetLevel() {
+			case logrus.TraceLevel, logrus.DebugLevel:
+				dumpProcessMetricList(metrics)
+			}
 
 		case <-stillRunning.C:
 		}
@@ -458,6 +506,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
+
+		case <-publishTimer.C:
+			start := time.Now()
+			metrics, pids := gatherProcessMetricList(&domainCtx)
+			for _, m := range metrics {
+				publishProcessMetric(&domainCtx, &m)
+			}
+			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
+			domainCtx.pids = pids
+			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
+				warningTime, errorTime)
+			// XXX temporary until controller reports metrics
+			switch logger.GetLevel() {
+			case logrus.TraceLevel, logrus.DebugLevel:
+				dumpProcessMetricList(metrics)
+			}
 
 		// Run stillRunning since we waiting for zedagent to deliver
 		// PhysicalIO which depends on cloud connectivity
