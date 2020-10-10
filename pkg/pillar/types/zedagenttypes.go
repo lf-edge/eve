@@ -302,6 +302,42 @@ func (br BootReason) String() string {
 	}
 }
 
+// StartWithSavedConfig indicates a normal reboot where we should immediately
+// start the applications.
+// Note that on most platforms we get Unknown for a power cycle
+func (br BootReason) StartWithSavedConfig() bool {
+	switch br {
+	case BootReasonNone:
+		return false
+	case BootReasonFirst:
+		return false
+	case BootReasonRebootCmd:
+		return true
+	case BootReasonUpdate:
+		return true
+	case BootReasonFallback:
+		return false
+	case BootReasonDisconnect:
+		return true
+	case BootReasonFatal:
+		return false
+	case BootReasonOOM:
+		return false
+	case BootReasonWatchdogHung:
+		return false
+	case BootReasonWatchdogPid:
+		return false
+	case BootReasonKernel:
+		return false
+	case BootReasonPowerFail:
+		return true
+	case BootReasonUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // BootReasonFromString parses what above String produced
 // Empty string is returned as None
 func BootReasonFromString(str string) BootReason {
