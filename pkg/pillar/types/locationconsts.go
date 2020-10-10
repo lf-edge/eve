@@ -68,4 +68,6 @@ const (
 	DefaultVaultName = "Application Data Store"
 	//WatchdogFileDir is the dir to add .touch files for watchdog to monitor
 	WatchdogFileDir = "/run/watchdog/file"
+	//WatchdogPidDir is the dir to add .pid files for watchdog to monitor
+	WatchdogPidDir = "/run/watchdog/pid"
 )
