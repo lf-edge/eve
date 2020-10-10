@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	reasonFile  = "reboot-reason"
-	stackFile   = "reboot-stack"
-	rebootImage = "reboot-image"
+	reasonFile     = "reboot-reason"
+	stackFile      = "reboot-stack"
+	rebootImage    = "reboot-image"
+	bootReasonFile = "boot-reason"
 )
 
 var savedRebootReason = "unknown"
@@ -55,7 +56,8 @@ func (hook *FatalHook) Fire(entry *logrus.Entry) error {
 	reason := fmt.Sprintf("fatal: agent %s[%d]: %s", hook.agentName,
 		hook.agentPid, entry.Message)
 	savedRebootReason = reason
-	RebootReason(reason, hook.agentName, hook.agentPid, false)
+	RebootReason(reason, types.BootReasonFatal, hook.agentName,
+		hook.agentPid, false)
 	return nil
 }
 
@@ -199,20 +201,24 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 func printStack(log *base.LogObject, agentName string, agentPid int) {
 	stacks := getStacks(false)
 	stackArray := strings.Split(stacks, "\n\n")
-	log.Errorf("Fatal stack trace due to %s with %d stack traces", savedRebootReason, len(stackArray))
+	log.Errorf("Fatal stack trace due to %s with %d stack traces",
+		savedRebootReason, len(stackArray))
 	for _, stack := range stackArray {
 		log.Errorf("%v", stack)
 	}
 	log.Errorf("Fatal: end of stacks")
-	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", agentName, agentPid),
-		agentName, agentPid, false)
 	RebootStack(log, stacks, agentName, agentPid)
 }
 
 // RebootReason writes a reason string in /persist/reboot-reason, including agentName and date
 // It also appends to /persist/log/reboot-reason.log
+// If the bootReasonFile is not present it will write the bootReason enum
+// there as a string. That ensures that if we have a e.g., a log.Fatal followed
+// by watchdog we retain the fatal.
 // NOTE: can not use log here since we are called from a log hook!
-func RebootReason(reason string, agentName string, agentPid int, normal bool) {
+func RebootReason(reason string, bootReason types.BootReason, agentName string,
+	agentPid int, normal bool) {
+
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
@@ -255,6 +261,23 @@ func RebootReason(reason string, agentName string, agentPid int, normal bool) {
 		fmt.Printf("overWriteFile failed %s\n", err)
 	}
 	syscall.Sync()
+
+	if bootReason != types.BootReasonNone {
+		filename = "/persist/" + bootReasonFile
+		brString := bootReason.String()
+		cur, _ := statAndRead(nil, filename)
+		if cur != "" {
+			// Note: can not use log here since we are called from a log hook!
+			fmt.Printf("not replacing BootReason %s with %s\n",
+				cur, brString)
+		} else {
+			err = overWriteFile(filename, brString)
+			if err != nil {
+				// Note: can not use log here since we are called from a log hook!
+				fmt.Printf("overwriteFile failed %s\n", err)
+			}
+		}
+	}
 }
 
 // RebootStack writes stack in /persist/reboot-stack
@@ -292,6 +315,13 @@ func GetRebootReason(log *base.LogObject) (string, time.Time, string) {
 	return reason, ts, stack
 }
 
+// GetBootReason returns the BootReason enum, which is stored as a string in /persist, together with its timestamp
+func GetBootReason(log *base.LogObject) (types.BootReason, time.Time) {
+	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, bootReasonFile)
+	reason, ts := statAndRead(log, reasonFilename)
+	return types.BootReasonFromString(reason), ts
+}
+
 // GetRebootImage : Image from which the reboot happened
 func GetRebootImage(log *base.LogObject) string {
 	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
@@ -321,7 +351,9 @@ func statAndRead(log *base.LogObject, filename string) (string, time.Time) {
 	content := make([]byte, maxReadSize)
 	n, err := r.Read(content)
 	if err != nil {
-		log.Errorf("statAndRead failed %s", err)
+		if log != nil {
+			log.Errorf("statAndRead failed %s", err)
+		}
 		return "", fi.ModTime()
 	}
 	return string(content[0:n]), fi.ModTime()
@@ -368,6 +400,15 @@ func DiscardRebootReason(log *base.LogObject) {
 		if err := os.Remove(stackFilename); err != nil {
 			log.Errorf("DiscardRebootReason failed %s\n", err)
 		}
+	}
+}
+
+// DiscardBootReason removes the BootReason file
+func DiscardBootReason(log *base.LogObject) {
+	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, bootReasonFile)
+	if err := os.Remove(reasonFilename); err != nil {
+		// Might not have existed
+		log.Warnf("DiscardBootReason failed %s\n", err)
 	}
 }
 

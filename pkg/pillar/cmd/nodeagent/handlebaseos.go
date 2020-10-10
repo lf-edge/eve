@@ -23,7 +23,7 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.deviceReboot {
 		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) reboot", key)
 		log.Infof(infoStr)
-		scheduleNodeReboot(ctxPtr, infoStr)
+		scheduleNodeReboot(ctxPtr, infoStr, types.BootReasonUpdate)
 	}
 }
 
