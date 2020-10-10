@@ -110,10 +110,12 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
-	currentRebootReason       string    // Set by zedagent
-	rebootReason              string    // Previous reboot from nodeagent
-	rebootStack               string    // Previous reboot from nodeagent
-	rebootTime                time.Time // Previous reboot from nodeagent
+	currentRebootReason       string           // Set by zedagent
+	currentBootReason         types.BootReason // Set by zedagent
+	rebootReason              string           // Previous reboot from nodeagent
+	bootReason                types.BootReason // Previous reboot from nodeagent
+	rebootStack               string           // Previous reboot from nodeagent
+	rebootTime                time.Time        // Previous reboot from nodeagent
 	// restartCounter - counts number of reboots of the device by Eve
 	restartCounter uint32
 	// rebootConfigCounter - reboot counter sent by the cloud in its config.
@@ -1558,8 +1560,9 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 
 	getconfigCtx := ctxArg.(*getconfigContext)
 	status := statusArg.(types.NodeAgentStatus)
-	log.Infof("handleNodeAgentStatusModify: updateInProgress %t rebootReason %s",
-		status.UpdateInprogress, status.RebootReason)
+	log.Infof("handleNodeAgentStatusModify: updateInProgress %t rebootReason %s bootReason %s",
+		status.UpdateInprogress, status.RebootReason,
+		status.BootReason.String())
 	updateInprogress := getconfigCtx.updateInprogress
 	ctx := getconfigCtx.zedagentCtx
 	ctx.remainingTestTime = status.RemainingTestTime
@@ -1567,6 +1570,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	ctx.rebootTime = status.RebootTime
 	ctx.rebootStack = status.RebootStack
 	ctx.rebootReason = status.RebootReason
+	ctx.bootReason = status.BootReason
 	ctx.restartCounter = status.RestartCounter
 	// if config reboot command was initiated and
 	// was deferred, and the device is not in inprogress

@@ -4,6 +4,8 @@
 package types
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -243,6 +245,100 @@ func (config DatastoreConfig) LogKey() string {
 	return string(base.DatastoreConfigLogType) + "-" + config.Key()
 }
 
+// BootReason captures our best guess of why the device (re)booted
+type BootReason uint8
+
+// BootReasonNone is the initial value, followed by three normal reasons
+// to boot/reboot, and then different error reasons
+const (
+	BootReasonNone BootReason = iota
+
+	BootReasonFirst              // Normal - was not yet onboarded
+	BootReasonRebootCmd          // Normal - result of a reboot command in the API
+	BootReasonUpdate             // Normal - from an EVE image update in the API
+	BootReasonFallback           // Fallback from a failed EVE image update
+	BootReasonDisconnect         // Disconnected from controller for too long
+	BootReasonFatal              // Fatal error causing log.Fatal
+	BootReasonOOM                // OOM causing process to be killed
+	BootReasonWatchdogHung       // Software watchdog due stuck agent
+	BootReasonWatchdogPid        // Software watchdog due to e.g., golang panic
+	BootReasonKernel             // TBD how we detect this
+	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
+	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
+	BootReasonParseFail    = 255 // BootReasonFromString didn't find match
+)
+
+// String returns the string name
+func (br BootReason) String() string {
+	switch br {
+	case BootReasonNone:
+		return "BootReasonNone"
+	case BootReasonFirst:
+		return "BootReasonFirst"
+	case BootReasonRebootCmd:
+		return "BootReasonRebootCmd"
+	case BootReasonUpdate:
+		return "BootReasonUpdate"
+	case BootReasonFallback:
+		return "BootReasonFallback"
+	case BootReasonDisconnect:
+		return "BootReasonDisconnect"
+	case BootReasonFatal:
+		return "BootReasonFatal"
+	case BootReasonOOM:
+		return "BootReasonOOM"
+	case BootReasonWatchdogHung:
+		return "BootReasonWatchdogHung"
+	case BootReasonWatchdogPid:
+		return "BootReasonWatchdogPid"
+	case BootReasonKernel:
+		return "BootReasonKernel"
+	case BootReasonPowerFail:
+		return "BootReasonPowerFail"
+	case BootReasonUnknown:
+		return "BootReasonUnknown"
+	default:
+		return fmt.Sprintf("Unknown BootReason %d", br)
+	}
+}
+
+// BootReasonFromString parses what above String produced
+// Empty string is returned as None
+func BootReasonFromString(str string) BootReason {
+	str = strings.TrimSuffix(str, "\n")
+	str = strings.TrimSpace(str)
+	switch str {
+	case "", "BootReasonNone":
+		return BootReasonNone
+	case "BootReasonFirst":
+		return BootReasonFirst
+	case "BootReasonRebootCmd":
+		return BootReasonRebootCmd
+	case "BootReasonUpdate":
+		return BootReasonUpdate
+	case "BootReasonFallback":
+		return BootReasonFallback
+	case "BootReasonDisconnect":
+		return BootReasonDisconnect
+	case "BootReasonFatal":
+		return BootReasonFatal
+	case "BootReasonOOM":
+		return BootReasonOOM
+	case "BootReasonWatchdogHung":
+		return BootReasonWatchdogHung
+	case "BootReasonWatchdogPid":
+		return BootReasonWatchdogPid
+	case "BootReasonKernel":
+		return BootReasonKernel
+	case "BootReasonPowerFail":
+		return BootReasonPowerFail
+	case "BootReasonUnknown":
+		return BootReasonUnknown
+	default:
+		return BootReasonParseFail
+	}
+}
+
 // NodeAgentStatus :
 type NodeAgentStatus struct {
 	Name              string
@@ -250,9 +346,10 @@ type NodeAgentStatus struct {
 	UpdateInprogress  bool
 	RemainingTestTime time.Duration
 	DeviceReboot      bool
-	RebootReason      string    // From last reboot
-	RebootStack       string    // From last reboot
-	RebootTime        time.Time // From last reboot
+	RebootReason      string     // From last reboot
+	BootReason        BootReason // From last reboot
+	RebootStack       string     // From last reboot
+	RebootTime        time.Time  // From last reboot
 	RestartCounter    uint32
 	RebootImage       string
 }
@@ -316,7 +413,8 @@ type ZedAgentStatus struct {
 	Name            string
 	ConfigGetStatus ConfigGetStatus
 	RebootCmd       bool
-	RebootReason    string // Current reason to reboot
+	RebootReason    string     // Current reason to reboot
+	BootReason      BootReason // Current reason to reboot
 }
 
 // Key :

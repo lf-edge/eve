@@ -82,11 +82,13 @@ type nodeagentContext struct {
 	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
 	rebootCmd                   bool   // Are we rebooting?
 	deviceReboot                bool
-	currentRebootReason         string    // Reason we are rebooting
-	rebootReason                string    // From last reboot
-	rebootImage                 string    // Image from which the last reboot happened
-	rebootStack                 string    // From last reboot
-	rebootTime                  time.Time // From last reboot
+	currentRebootReason         string // Reason we are rebooting
+	currentBootReason           types.BootReason
+	rebootReason                string           // From last reboot
+	bootReason                  types.BootReason // From last reboot
+	rebootImage                 string           // Image from which the last reboot happened
+	rebootStack                 string           // From last reboot
+	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
 
 	// Some contants.. Declared here as variables to enable unit tests
@@ -427,6 +429,14 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 			ctx.rebootReason)
 		agentlog.DiscardRebootReason(log)
 	}
+	// We override ctx.rebootTime since if known this is when things
+	// started going down
+	bootReason, ts := agentlog.GetBootReason(log)
+	if bootReason != types.BootReasonNone {
+		ctx.rebootTime = ts
+	}
+
+	agentlog.DiscardBootReason(log)
 	// still nothing, fillup the default
 	if ctx.rebootReason == "" {
 		ctx.rebootTime = time.Now()
@@ -435,9 +445,11 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		if fileExists(firstbootFile) {
 			reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
 				dateStr)
+			bootReason = types.BootReasonFirst
 		} else {
 			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
 				dateStr)
+			bootReason = types.BootReasonUnknown
 		}
 		log.Warnf("Default RebootReason: %s", reason)
 		ctx.rebootReason = reason
@@ -448,6 +460,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if fileExists(firstbootFile) {
 		os.Remove(firstbootFile)
 	}
+	ctx.bootReason = bootReason
 
 	// if reboot stack size crosses max size, truncate
 	if len(rebootStack) > maxJSONAttributeSize {
@@ -509,6 +522,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		UpdateInprogress:  ctxPtr.updateInprogress,
 		DeviceReboot:      ctxPtr.deviceReboot,
 		RebootReason:      ctxPtr.rebootReason,
+		BootReason:        ctxPtr.bootReason,
 		RebootStack:       ctxPtr.rebootStack,
 		RebootTime:        ctxPtr.rebootTime,
 		RebootImage:       ctxPtr.rebootImage,
