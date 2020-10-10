@@ -18,7 +18,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/sirupsen/logrus"
 )
 
@@ -282,22 +281,10 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 	syscall.Sync()
 }
 
-func GetOtherRebootReason(log *base.LogObject) (string, time.Time, string) {
-	dirname := getOtherIMGdir(false)
-	if dirname == "" {
-		return "", time.Time{}, ""
-	}
-	reasonFilename := fmt.Sprintf("%s/%s", dirname, reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", dirname, stackFile)
-	reason, ts := statAndRead(log, reasonFilename)
-	stack, _ := statAndRead(log, stackFilename)
-	return reason, ts, stack
-}
-
-// GetCommonRebootReason returns the RebootReason string together with
+// GetRebootReason returns the RebootReason string together with
 // its timestamp plus the reboot stack
 // We limit the size we read to 16k for both of those.
-func GetCommonRebootReason(log *base.LogObject) (string, time.Time, string) {
+func GetRebootReason(log *base.LogObject) (string, time.Time, string) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	reason, ts := statAndRead(log, reasonFilename)
@@ -369,36 +356,17 @@ func overWriteFile(filename string, str string) error {
 	return nil
 }
 
-// DiscardOtherRebootReason removes any reason from the other dir
-func DiscardOtherRebootReason(log *base.LogObject) {
-	dirname := getOtherIMGdir(false)
-	if dirname == "" {
-		return
-	}
-	reasonFilename := fmt.Sprintf("%s/%s", dirname, reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", dirname, stackFile)
-	if err := os.Remove(reasonFilename); err != nil {
-		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
-	}
-	_, err := os.Stat(stackFilename)
-	if err == nil {
-		if err := os.Remove(stackFilename); err != nil {
-			log.Errorf("DiscardOtherRebootReason failed %s\n", err)
-		}
-	}
-}
-
-// DiscardCommonRebootReason removes any reason and stack from /persist/
-func DiscardCommonRebootReason(log *base.LogObject) {
+// DiscardRebootReason removes any reason and stack from /persist/
+func DiscardRebootReason(log *base.LogObject) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	if err := os.Remove(reasonFilename); err != nil {
-		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
+		log.Errorf("DiscardRebootReason failed %s\n", err)
 	}
 	_, err := os.Stat(stackFilename)
 	if err == nil {
 		if err := os.Remove(stackFilename); err != nil {
-			log.Errorf("DiscardCommonRebootReason failed %s\n", err)
+			log.Errorf("DiscardRebootReason failed %s\n", err)
 		}
 	}
 }
@@ -605,20 +573,6 @@ func initImpl(agentName string, redirect bool) (*logrus.Logger, *base.LogObject)
 		logrus.RegisterExitHandler(eh)
 	}
 	return logger, log
-}
-
-var otherIMGdir = ""
-
-func getOtherIMGdir(inprogressCheck bool) string {
-	if otherIMGdir != "" {
-		return otherIMGdir
-	}
-	if inprogressCheck && !zboot.IsOtherPartitionStateInProgress() {
-		return ""
-	}
-	partName := zboot.GetOtherPartition()
-	otherIMGdir = fmt.Sprintf("%s/%s", types.PersistDir, partName)
-	return otherIMGdir
 }
 
 // CustomLogInit - allow pillar services and containers to use customized logging
