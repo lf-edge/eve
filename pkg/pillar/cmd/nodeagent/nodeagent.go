@@ -421,32 +421,12 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// until after truncation.
 	var rebootStack = ""
 	ctx.rebootReason, ctx.rebootTime, rebootStack =
-		agentlog.GetCommonRebootReason(log)
+		agentlog.GetRebootReason(log)
 	if ctx.rebootReason != "" {
 		log.Warnf("Current partition RebootReason: %s",
 			ctx.rebootReason)
-		agentlog.DiscardCommonRebootReason(log)
+		agentlog.DiscardRebootReason(log)
 	}
-	// XXX We'll retain this block of code for some time to support having older
-	// versions of code in the other partition.
-	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason(log)
-	if otherRebootReason != "" {
-		log.Warnf("Other partition RebootReason: %s",
-			otherRebootReason)
-		// if other partition state is "inprogress"
-		// do not erase the reboot reason, going to
-		// be used for baseos error status, across reboot
-		if !zboot.IsOtherPartitionStateInProgress() {
-			agentlog.DiscardOtherRebootReason(log)
-		}
-	}
-	// first, pick up from other partition
-	if ctx.rebootReason == "" {
-		ctx.rebootReason = otherRebootReason
-		ctx.rebootTime = otherRebootTime
-		rebootStack = otherRebootStack
-	}
-
 	// still nothing, fillup the default
 	if ctx.rebootReason == "" {
 		ctx.rebootTime = time.Now()
