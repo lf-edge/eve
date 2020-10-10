@@ -414,7 +414,7 @@ func InitDellCmd(ledName string) {
 
 // Keep avoid allocation and GC by keeping one buffer
 var (
-	bufferLength = int64(4194304) //4M buffer length
+	bufferLength = int64(256 * 1024) //256k buffer length
 	readBuffer   []byte
 )
 
@@ -428,7 +428,7 @@ func InitDDCmd(ledName string) {
 	log.Infof("InitDDCmd using disk %s", disk)
 	readBuffer = make([]byte, bufferLength)
 	diskDevice = "/dev/" + disk
-	count := 100
+	count := 100 * 16
 	// Prime before measuring
 	uncachedDiskRead(count)
 	uncachedDiskRead(count)
@@ -445,7 +445,7 @@ func InitDDCmd(ledName string) {
 	if count == 0 {
 		count = 1
 	}
-	log.Infof("Measured %v; count %d", elapsed, count)
+	log.Noticef("Measured %v; count %d", elapsed, count)
 	ddCount = count
 }
 
