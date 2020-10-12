@@ -184,8 +184,8 @@ func createDnsmasqConfiglet(
 	} else {
 		// XXX error if there is no bridgeIPAddr?
 	}
-	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
-	file.WriteString(fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
+	//file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
+	//file.WriteString(fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
 
 	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
 	dhcpRange := bridgeIPAddr      // Default unless there is a DhcpRange
