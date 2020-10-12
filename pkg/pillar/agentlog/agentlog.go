@@ -175,9 +175,6 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 					log.Warnf("%v", stack)
 				}
 				log.Warnf("SIGUSR1: end of stacks")
-				// Could result in a watchdog reboot hence
-				// we save it as a reboot-stack
-				RebootStack(log, stacks, agentName, agentPid)
 			case syscall.SIGUSR2:
 				log.Warnf("SIGUSR2 triggered memory info:\n")
 				sigUsr2File, err := os.OpenFile(sigUsr2FileName,
@@ -231,6 +228,7 @@ func RebootReason(reason string, agentName string, agentPid int, normal bool) {
 		// Note: can not use log here since we are called from a log hook!
 		fmt.Printf("printToFile failed %s\n", err)
 	}
+	// Append to the log file
 	filename = "/persist/log/" + reasonFile + ".log"
 	err = printToFile(filename, reason)
 	if err != nil {
@@ -246,28 +244,29 @@ func RebootReason(reason string, agentName string, agentPid int, normal bool) {
 		err = overWriteFile(agentFatalReasonFilename, reason)
 		if err != nil {
 			// Note: can not use log here since we are called from a log hook!
-			fmt.Printf("printToFile failed %s\n", err)
+			fmt.Printf("overWriteFile failed %s\n", err)
 		}
 	}
 
 	filename = "/persist/" + rebootImage
 	curPart := EveCurrentPartition()
-	err = printToFile(filename, curPart)
+	err = overWriteFile(filename, curPart)
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!
-		fmt.Printf("printToFile failed %s\n", err)
+		fmt.Printf("overWriteFile failed %s\n", err)
 	}
 	syscall.Sync()
 }
 
 // RebootStack writes stack in /persist/reboot-stack
 // and appends to /persist/log/reboot-stack.log
+// XXX remove latter? Can grow unbounded.
 func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid int) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	log.Warnf("RebootStack to %s", filename)
-	err := printToFile(filename, fmt.Sprintf("%v\n", stacks))
+	err := overWriteFile(filename, fmt.Sprintf("%v\n", stacks))
 	if err != nil {
-		log.Errorf("printToFile failed %s\n", err)
+		log.Errorf("overWriteFile failed %s\n", err)
 	}
 	filename = "/persist/log/" + stackFile + ".log"
 	err = printToFile(filename, fmt.Sprintf("%v\n", stacks))
@@ -278,7 +277,7 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 	agentStackTraceFile := agentDebugDir + "/fatal-stack"
 	err = overWriteFile(agentStackTraceFile, fmt.Sprintf("%v\n", stacks))
 	if err != nil {
-		log.Errorf("printToFile failed %s\n", err)
+		log.Errorf("overWriteFile failed %s\n", err)
 	}
 	syscall.Sync()
 }
