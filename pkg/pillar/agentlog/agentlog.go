@@ -4,8 +4,8 @@
 package agentlog
 
 import (
+	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
@@ -294,7 +294,9 @@ func GetOtherRebootReason(log *base.LogObject) (string, time.Time, string) {
 	return reason, ts, stack
 }
 
-// Used for failures/hangs when zboot curpart hangs
+// GetCommonRebootReason returns the RebootReason string together with
+// its timestamp plus the reboot stack
+// We limit the size we read to 16k for both of those.
 func GetCommonRebootReason(log *base.LogObject) (string, time.Time, string) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
@@ -310,19 +312,32 @@ func GetRebootImage(log *base.LogObject) string {
 	return image
 }
 
+const maxReadSize = 16384
+
 // Returns content and Modtime
+// We limit the size we read to 16k
 func statAndRead(log *base.LogObject, filename string) (string, time.Time) {
 	fi, err := os.Stat(filename)
 	if err != nil {
 		// File doesn't exist
 		return "", time.Time{}
 	}
-	content, err := ioutil.ReadFile(filename)
+	f, err := os.Open(filename)
+	if err != nil {
+		if log != nil {
+			log.Errorf("statAndRead failed %s", err)
+		}
+		return "", fi.ModTime()
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	content := make([]byte, maxReadSize)
+	n, err := r.Read(content)
 	if err != nil {
 		log.Errorf("statAndRead failed %s", err)
 		return "", fi.ModTime()
 	}
-	return string(content), fi.ModTime()
+	return string(content[0:n]), fi.ModTime()
 }
 
 // Append if file exists.
