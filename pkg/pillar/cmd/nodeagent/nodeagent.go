@@ -158,6 +158,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)
 
+	// Fault injection; if /persist/fault-injection/readfile exists we read it
+	// which will use memory
+	fileToRead := "/persist/fault-injection/readfile"
+	if _, err := os.Stat(fileToRead); err == nil {
+		log.Warnf("Reading %s", fileToRead)
+		content, err := ioutil.ReadFile(fileToRead)
+		if err != nil {
+			log.Error(err)
+		} else {
+			log.Noticef("Read %d bytes from %s",
+				len(content), fileToRead)
+		}
+	}
+
 	// publisher of NodeAgent Status
 	pubNodeAgentStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
