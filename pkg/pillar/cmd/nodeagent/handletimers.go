@@ -21,6 +21,7 @@ func handleDeviceTimers(ctxPtr *nodeagentContext) {
 	updateTickerTime(ctxPtr)
 
 	handleFallbackOnCloudDisconnect(ctxPtr)
+	handleRebootOnVaultLocked(ctxPtr)
 	handleResetOnCloudDisconnect(ctxPtr)
 	handleUpgradeTestValidation(ctxPtr)
 }
@@ -98,6 +99,25 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		resetTestStartTime(ctxPtr)
 		initiateBaseOsZedCloudTestComplete(ctxPtr)
 		publishNodeAgentStatus(ctxPtr)
+	}
+}
+
+// when baseos upgrade is inprogress,
+// check if vault is accessible, and if not reset the node
+func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
+	if ctxPtr.vaultOperational {
+		return
+	}
+	vaultCutOffTime := ctxPtr.globalConfig.GlobalValueInt(types.VaultReadyCutOffTime)
+	timePassed := ctxPtr.timeTickCount
+	if timePassed > vaultCutOffTime {
+		errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds, rebooting",
+			vaultCutOffTime, timePassed-vaultCutOffTime)
+		log.Errorf(errStr)
+		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonVaultFailure)
+	} else {
+		log.Infof("handleRebootOnVaultLocked %d seconds remaining",
+			vaultCutOffTime-timePassed)
 	}
 }
 
