@@ -152,6 +152,8 @@ const (
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
+	// VaultReadyCutOffTime global setting key
+	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
 
 	// Bool Items
 	// UsbAccess global setting key
@@ -708,6 +710,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 300, 60, 0xFFFFFFFF)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)

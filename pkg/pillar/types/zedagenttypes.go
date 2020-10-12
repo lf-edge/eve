@@ -266,6 +266,7 @@ const (
 	BootReasonKernel             // TBD how we detect this
 	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
 	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
+	BootReasonVaultFailure       // Vault was not ready within the expected time
 	BootReasonParseFail    = 255 // BootReasonFromString didn't find match
 )
 
@@ -298,6 +299,8 @@ func (br BootReason) String() string {
 		return "BootReasonPowerFail"
 	case BootReasonUnknown:
 		return "BootReasonUnknown"
+	case BootReasonVaultFailure:
+		return "BootReasonVaultFailure"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -334,6 +337,8 @@ func (br BootReason) StartWithSavedConfig() bool {
 		return true
 	case BootReasonUnknown:
 		return true
+	case BootReasonVaultFailure:
+		return false
 	default:
 		return false
 	}
@@ -371,6 +376,8 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonPowerFail
 	case "BootReasonUnknown":
 		return BootReasonUnknown
+	case "BootReasonVaultFailure":
+		return BootReasonVaultFailure
 	default:
 		return BootReasonParseFail
 	}

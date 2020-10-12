@@ -165,6 +165,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetworkSendTimeout,
 		Dom0MinDiskUsagePercent,
 		AppContainerStatsInterval,
+		VaultReadyCutOffTime,
 		Dom0DiskUsageMaxBytes,
 		// Bool Items
 		UsbAccess,

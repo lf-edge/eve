@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	info "github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -65,6 +66,7 @@ type nodeagentContext struct {
 	subZbootStatus              pubsub.Subscription
 	subZedAgentStatus           pubsub.Subscription
 	subDomainStatus             pubsub.Subscription
+	subVaultStatus              pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -90,6 +92,7 @@ type nodeagentContext struct {
 	rebootStack                 string           // From last reboot
 	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
+	vaultOperational            bool
 
 	// Some contants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -229,6 +232,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubZbootConfig.ClearRestarted()
 	nodeagentCtx.pubZbootConfig = pubZbootConfig
 
+	// Look for vault status
+	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "vaultmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VaultStatus{},
+		Activate:      false,
+		Ctx:           &nodeagentCtx,
+		CreateHandler: handleVaultStatusModify,
+		ModifyHandler: handleVaultStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeagentCtx.subVaultStatus = subVaultStatus
+	subVaultStatus.Activate()
+
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
 
@@ -329,6 +350,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
+
+		case change := <-subVaultStatus.MsgChan():
+			subVaultStatus.ProcessChange(change)
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
@@ -541,4 +565,15 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		RestartCounter:    ctxPtr.restartCounter,
 	}
 	pub.Publish(agentName, status)
+}
+
+func handleVaultStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*nodeagentContext)
+	vault := statusArg.(types.VaultStatus)
+	if vault.Name == types.DefaultVaultName && vault.ConversionComplete &&
+		vault.Status != info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR {
+		ctx.vaultOperational = true
+	}
 }
