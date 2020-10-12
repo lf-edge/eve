@@ -228,10 +228,23 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 		reason = fmt.Sprintf("%s EVE version %s at %s\n",
 			reason, EveVersion(), dateStr)
 	}
-	err := printToFile(filename, reason)
+	// If we already wrote a bootReason file we append to
+	// the rebootReason file otherwise we truncate and write.
+	_, err := os.Stat("/persist/" + bootReasonFile)
 	if err != nil {
-		// Note: can not use log here since we are called from a log hook!
-		fmt.Printf("printToFile failed %s\n", err)
+		// Already failed; append subsequent info to rebootReason
+		err = printToFile(filename, reason)
+		if err != nil {
+			// Note: can not use log here since we are called from a log hook!
+			fmt.Printf("printToFile failed %s\n", err)
+		}
+	} else {
+		// First call hence a new failure
+		err = overWriteFile(filename, reason)
+		if err != nil {
+			// Note: can not use log here since we are called from a log hook!
+			fmt.Printf("overWriteFile failed %s\n", err)
+		}
 	}
 	// Append to the log file
 	filename = "/persist/log/" + reasonFile + ".log"
