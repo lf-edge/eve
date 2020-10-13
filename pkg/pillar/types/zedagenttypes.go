@@ -250,6 +250,7 @@ type BootReason uint8
 
 // BootReasonNone is the initial value, followed by three normal reasons
 // to boot/reboot, and then different error reasons
+// Must match the values in api/proto/info/info.proto.BootReason
 const (
 	BootReasonNone BootReason = iota
 
