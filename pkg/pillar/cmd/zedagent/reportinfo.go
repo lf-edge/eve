@@ -350,10 +350,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
-	// XXX add enum	ReportDeviceInfo.LastBootReason = ctx.bootReason
+	ReportDeviceInfo.LastBootReason = info.BootReason(ctx.bootReason)
 	if ctx.bootReason != types.BootReasonNone {
-		log.Warnf("Would have reported BootReason %s", ctx.bootReason.String())
-		log.Warnf("Reporting RebootReason %s", ctx.rebootReason)
+		// XXX Remove?
+		log.Debugf("Reporting BootReason %s", ctx.bootReason.String())
+		log.Debugf("Reporting RebootReason %s", ctx.rebootReason)
 	}
 
 	ReportDeviceInfo.LastRebootStack = ctx.rebootStack
