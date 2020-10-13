@@ -2,10 +2,12 @@
 # GitHub token. However, it is safe since in EVE repo itself we
 # only trigger this workflow on pull requests and as such making
 # it effectively read-only.
+# yamllint disable rule:line-length
 #   https://docs.github.com/en/free-pro-team@latest/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
+# yamllint enable rule:line-length
 ---
 name: Apache Yetus
-on:
+on:  # yamllint disable-line rule:truthy
   pull_request:
     branches: [master]
 
@@ -23,10 +25,12 @@ jobs:
         uses: apache/yetus-test-patch-action@main
         with:
           basedir: ./src
-          patchdir: ./out
+          bufbasedir: api/proto
           buildtool: nobuild
           continuousimprovement: true
           githubtoken: ${{ secrets.GITHUB_TOKEN }}
+          patchdir: ./out
+          reviveconfig: .revive.toml
 
       - name: Store Yetus artifacts
         if: ${{ always() }}

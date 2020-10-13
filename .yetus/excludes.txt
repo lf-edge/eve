@@ -1,0 +1,17 @@
+^tests/integration/config.yml
+^pkg/mkimage-raw-efi/initramfs-init
+^pkg/mkimage-raw-efi/nlplug-findfs.c
+^pkg/pillar/rootfs/fscrypt.conf
+^pkg/fw/
+^build-tools/src/linuxkit/
+^build-tools/src/manifest-tool/
+^pkg/pillar/zedpac/
+^api/python/
+^api/go/
+^api/images/
+^.+\.patch
+^.+\.diff
+^.+build.yml
+^.+go.mod
+^.+go.sum
+^.+/vendor/.+

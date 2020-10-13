@@ -111,9 +111,9 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_RESOLVED_TAG
 	case DOWNLOADING:
 		return info.ZSwState_DOWNLOAD_STARTED
-	case DOWNLOADED, VERIFYING:
+	case DOWNLOADED, VERIFYING, VERIFIED, LOADING:
 		return info.ZSwState_DOWNLOADED
-	case VERIFIED, LOADING, LOADED:
+	case LOADED:
 		return info.ZSwState_DELIVERED
 	case CREATING_VOLUME:
 		return info.ZSwState_CREATING_VOLUME

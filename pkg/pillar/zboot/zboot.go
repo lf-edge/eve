@@ -353,7 +353,10 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 
 	defer casClient.CloseClient()
 
-	resolver, err := casClient.Resolver()
+	ctrdCtx, done := casClient.CtrNewUserServicesCtx()
+	defer done()
+
+	resolver, err := casClient.Resolver(ctrdCtx)
 	if err != nil {
 		errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
 		log.Error(errStr)

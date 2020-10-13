@@ -21,7 +21,8 @@ type BlobInfo struct {
 	Labels map[string]string
 }
 
-//CAS  provides methods to interact with CAS clients
+// CAS provides methods to interact with CAS clients
+// Context handling should be taken care by the underlying implementor.
 type CAS interface {
 	//Blob APIs
 	//CheckBlobExists: returns true if the blob exists.
@@ -51,7 +52,7 @@ type CAS interface {
 	//ReadBlob: returns a reader to consume the raw data of the blob which matches the given arg 'blobHash'.
 	//Returns error if no blob is found for the given 'blobHash'.
 	//Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
-	ReadBlob(blobHash string) (io.Reader, error)
+	ReadBlob(ctx context.Context, blobHash string) (io.Reader, error)
 	//RemoveBlob: removes a blob which matches the given arg 'blobHash'.
 	//To keep this method idempotent, no error is returned if the given arg 'blobHash' does not match any blob.
 	//Arg 'blobHash' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
@@ -118,9 +119,12 @@ type CAS interface {
 	IngestBlobsAndCreateImage(reference string, root types.BlobStatus, blobs ...types.BlobStatus) ([]types.BlobStatus, error)
 
 	// Resolver get an interface that satisfies resolver.ResolverCloser to communicate directly with a generic CAS
-	Resolver() (resolver.ResolverCloser, error)
+	Resolver(ctx context.Context) (resolver.ResolverCloser, error)
 
-	//CloseClient closes the respective CAS client initialized while calling `NewCAS()`
+	// CtrNewUserServicesCtx() returns a context and a cancel function
+	CtrNewUserServicesCtx() (context.Context, context.CancelFunc)
+
+	// CloseClient closes (only) the respective CAS client initialized while calling `NewCAS()`.
 	CloseClient() error
 }
 
@@ -132,7 +136,8 @@ var knownCASHandlers = map[string]casDesc{
 	"containerd": {constructor: newContainerdCAS},
 }
 
-//NewCAS  returns selectedCAS object
+// NewCAS returns new CAS object with a new client of underlying implementor(selectedCAS).
+// It's the caller/user's responsibility to close the respective client after use by calling CAS.CloseClient().
 func NewCAS(selectedCAS string) (CAS, error) {
 	if _, found := knownCASHandlers[selectedCAS]; !found {
 		return nil, fmt.Errorf("Unknown CAS handler %s", selectedCAS)

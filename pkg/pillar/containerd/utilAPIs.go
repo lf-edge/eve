@@ -80,8 +80,10 @@ func GetSnapshotID(rootpath string) string {
 }
 
 //UnpackClientImage unpacks given client image into containerd.
-func UnpackClientImage(clientImage containerd.Image) error {
+func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
 	log.Infof("UnpackClientImage: for image :%s", clientImage.Name())
+	ctrdCtx, done := client.CtrNewUserServicesCtx()
+	defer done()
 	unpacked, err := clientImage.IsUnpacked(ctrdCtx, defaultSnapshotter)
 	if err != nil {
 		return fmt.Errorf("UnpackClientImage: unable to get image metadata: %v config: %v", clientImage.Name(), err)
