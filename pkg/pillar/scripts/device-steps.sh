@@ -75,7 +75,12 @@ if ! mount -t securityfs securityfs "$SECURITYFSPATH"; then
     echo "$(date -Ins -u) mounting securityfs failed"
 fi
 
-DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
+DIRS="$CONFIGDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
+
+# If /persist didn't exist or was removed treat this as a first boot
+if [ ! -d $PERSIST_CERTS ]; then
+    touch $FIRSTBOOTFILE # For nodeagent
+fi
 
 for d in $DIRS; do
     d1=$(dirname "$d")
