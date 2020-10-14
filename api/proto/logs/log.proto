@@ -39,3 +39,9 @@ message AppInstanceLogBundle {
   repeated LogEntry log = 1; // Log entries
   google.protobuf.Timestamp timestamp = 2; // upload timestamp
 }
+
+// This is the reply payload for device log processing from controller
+message ServerMetrics {
+  float  cpu_percentage = 1;         // controller CPU usage in percentage
+  uint32 log_process_delay_msec = 2; // log messages processing delay in msec
+}
