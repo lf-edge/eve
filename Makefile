@@ -60,10 +60,6 @@ EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG),$(REPO_TAG))
 
-# just reports the version, without appending qualifies like HVM or such
-version:
-	@echo $(ROOTFS_VERSION)
-
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
@@ -193,6 +189,10 @@ PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
 # Top-level targets
 
 all: help
+
+# just reports the version, without appending qualifies like HVM or such
+version:
+	@echo $(ROOTFS_VERSION)
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
