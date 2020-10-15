@@ -30,6 +30,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/remotes"
+	remoteserrors "github.com/containerd/containerd/remotes/errors"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -44,7 +45,7 @@ type dockerPusher struct {
 }
 
 func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (content.Writer, error) {
-	ctx, err := contextWithRepositoryScope(ctx, p.refspec, true)
+	ctx, err := ContextWithRepositoryScope(ctx, p.refspec, true)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +87,7 @@ func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (conten
 
 	resp, err := req.doWithRetries(ctx, nil)
 	if err != nil {
-		if errors.Cause(err) != ErrInvalidAuthorization {
+		if !errors.Is(err, ErrInvalidAuthorization) {
 			return nil, err
 		}
 		log.G(ctx).WithError(err).Debugf("Unable to check existence, continuing with push")
@@ -112,8 +113,9 @@ func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (conten
 				return nil, errors.Wrapf(errdefs.ErrAlreadyExists, "content %v on remote", desc.Digest)
 			}
 		} else if resp.StatusCode != http.StatusNotFound {
-			// TODO: log error
-			return nil, errors.Errorf("unexpected response: %s", resp.Status)
+			err := remoteserrors.NewUnexpectedStatusErr(resp)
+			log.G(ctx).WithField("resp", resp).WithField("body", string(err.(remoteserrors.ErrUnexpectedStatus).Body)).Debug("unexpected response")
+			return nil, err
 		}
 	}
 
@@ -128,7 +130,7 @@ func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (conten
 		var resp *http.Response
 		if fromRepo := selectRepositoryMountCandidate(p.refspec, desc.Annotations); fromRepo != "" {
 			preq := requestWithMountFrom(req, desc.Digest.String(), fromRepo)
-			pctx := contextWithAppendPullRepositoryScope(ctx, fromRepo)
+			pctx := ContextWithAppendPullRepositoryScope(ctx, fromRepo)
 
 			// NOTE: the fromRepo might be private repo and
 			// auth service still can grant token without error.
@@ -166,8 +168,9 @@ func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (conten
 			})
 			return nil, errors.Wrapf(errdefs.ErrAlreadyExists, "content %v on remote", desc.Digest)
 		default:
-			// TODO: log error
-			return nil, errors.Errorf("unexpected response: %s", resp.Status)
+			err := remoteserrors.NewUnexpectedStatusErr(resp)
+			log.G(ctx).WithField("resp", resp).WithField("body", string(err.(remoteserrors.ErrUnexpectedStatus).Body)).Debug("unexpected response")
+			return nil, err
 		}
 
 		var (
@@ -235,7 +238,7 @@ func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (conten
 
 	go func() {
 		defer close(respC)
-		resp, err = req.do(ctx)
+		resp, err := req.do(ctx)
 		if err != nil {
 			pr.CloseWithError(err)
 			return
@@ -244,8 +247,9 @@ func (p dockerPusher) Push(ctx context.Context, desc ocispec.Descriptor) (conten
 		switch resp.StatusCode {
 		case http.StatusOK, http.StatusCreated, http.StatusNoContent:
 		default:
-			// TODO: log error
-			pr.CloseWithError(errors.Errorf("unexpected response: %s", resp.Status))
+			err := remoteserrors.NewUnexpectedStatusErr(resp)
+			log.G(ctx).WithField("resp", resp).WithField("body", string(err.(remoteserrors.ErrUnexpectedStatus).Body)).Debug("unexpected response")
+			pr.CloseWithError(err)
 		}
 		respC <- resp
 	}()
@@ -340,9 +344,9 @@ func (pw *pushWriter) Commit(ctx context.Context, size int64, expected digest.Di
 	}
 
 	// 201 is specified return status, some registries return
-	// 200 or 204.
+	// 200, 202 or 204.
 	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
+	case http.StatusOK, http.StatusCreated, http.StatusNoContent, http.StatusAccepted:
 	default:
 		return errors.Errorf("unexpected status: %s", resp.Status)
 	}
