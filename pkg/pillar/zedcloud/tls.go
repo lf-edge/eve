@@ -16,6 +16,7 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"os"
@@ -62,19 +63,61 @@ func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert
 	return nil
 }
 
+const (
+	serverFileName         = types.IdentityDirname + "/server"
+	overrideServerFileName = types.IdentityDirname + "/server.override"
+)
+
+// GetServerNameAndPort reads the configured server name, which might include
+// a :<port>
+// This has support for reading /config/server.override if it exists
+func GetServerNameAndPort(log *base.LogObject) (string, error) {
+
+	bytes, err := ioutil.ReadFile(overrideServerFileName)
+	if err == nil {
+		snp := strings.TrimSpace(string(bytes))
+		if snp != "" {
+			log.Noticef("Using override server %s", snp)
+			return snp, nil
+		}
+	}
+	bytes, err = ioutil.ReadFile(serverFileName)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(bytes)), nil
+}
+
+// CommitServerNameAndPort check if we have a non-empty /config/server.override
+// and commits to that by renaming it to /config/server
+func CommitServerNameAndPort(log *base.LogObject) {
+	bytes, err := ioutil.ReadFile(overrideServerFileName)
+	if err != nil {
+		return
+	}
+	snp := strings.TrimSpace(string(bytes))
+	if snp == "" {
+		return
+	}
+	log.Noticef("Committing to override server %s", snp)
+	if err := os.Rename(overrideServerFileName, serverFileName); err != nil {
+		log.Fatal(err)
+	}
+}
+
 // GetTlsConfig creates and returns a TlsConfig based on current root CA certificates
 // If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
-// XXX why would ctx be nil??
 func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert *tls.Certificate, ctx *ZedCloudContext) (*tls.Config, error) {
+	if ctx == nil {
+		logrus.Fatalf("nil ctx")
+	}
 	if serverName == "" {
-		// get the server name
-		bytes, err := ioutil.ReadFile(types.ServerFileName)
+		snp, err := GetServerNameAndPort(ctx.log)
 		if err != nil {
 			return nil, err
 		}
-		strTrim := strings.TrimSpace(string(bytes))
-		serverName = strings.Split(strTrim, ":")[0]
+		serverName = strings.Split(snp, ":")[0]
 	}
 	if clientCert == nil {
 		deviceTLSCert, err := GetClientCert()
@@ -98,7 +141,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 	// and only V2 includes proxy Cert CA
 	caCertPool := x509.NewCertPool()
 
-	if ctx != nil && ctx.V2API {
+	if ctx.V2API {
 		log := ctx.log
 		// Load the well-known CAs
 		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)

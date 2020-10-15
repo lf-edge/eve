@@ -96,11 +96,10 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, status types.DeviceNetworkSt
 	// Map of per-interface errors
 	intfStatusMap := *types.NewIntfStatusMap()
 
-	server, err := ioutil.ReadFile(types.ServerFileName)
+	serverNameAndPort, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{

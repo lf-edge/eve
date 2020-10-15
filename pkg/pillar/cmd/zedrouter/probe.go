@@ -8,7 +8,6 @@ package zedrouter
 import (
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"strings"
 	"sync"
@@ -591,10 +590,7 @@ func infoUpCount(info types.ProbeInfo) int {
 func getSystemURL() string {
 	var remoteURL string
 	if serverNameAndPort == "" {
-		server, err := ioutil.ReadFile(types.ServerFileName)
-		if err == nil {
-			serverNameAndPort = strings.TrimSpace(string(server))
-		}
+		serverNameAndPort, _ = zedcloud.GetServerNameAndPort(log)
 	}
 	if serverNameAndPort != "" {
 		remoteURL = serverNameAndPort

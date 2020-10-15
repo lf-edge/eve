@@ -30,8 +30,6 @@ const (
 	IdentityDirname = "/config"
 	// SelfRegFile - name of self-register-filed file
 	SelfRegFile = IdentityDirname + "/self-register-failed"
-	// ServerFileName - server file
-	ServerFileName = IdentityDirname + "/server"
 	// DeviceCertName - device certificate
 	DeviceCertName = IdentityDirname + "/device.cert.pem"
 	// DeviceKeyName - device private key (if not in TPM)

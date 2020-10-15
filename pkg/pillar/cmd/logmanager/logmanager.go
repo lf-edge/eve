@@ -1017,13 +1017,10 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		appLogURL = fmt.Sprintf("apps/instances/id/%s/logs", appUUID)
 	}
 	//get server name
-	serverBytes, err := ioutil.ReadFile(types.ServerFileName)
+	serverNameAndPort, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
-		log.Fatalf("Failed to read ServerFileName (%s). Err: %s",
-			types.ServerFileName, err)
+		log.Fatal(err)
 	}
-	// Preserve port
-	serverNameAndPort := strings.TrimSpace(string(serverBytes))
 	appLogsURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, appLogURL)
 
@@ -1084,14 +1081,10 @@ func isResp4xx(code int) bool {
 }
 
 func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
-	//get server name
-	bytes, err := ioutil.ReadFile(types.ServerFileName)
+	serverNameAndPort, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
-		log.Fatalf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
-			types.ServerFileName, err)
+		log.Fatalf("sendCtxInit: %s", err)
 	}
-	// Preserve port
-	serverNameAndPort := strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url

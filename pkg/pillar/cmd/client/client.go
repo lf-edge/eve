@@ -226,11 +226,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0.0)
 
 	// XXX redo in ticker case to handle change to servername?
-	server, err := ioutil.ReadFile(types.ServerFileName)
+	snp, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverNameAndPort = strings.TrimSpace(string(server))
+	serverNameAndPort = snp
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
 	var onboardCert tls.Certificate

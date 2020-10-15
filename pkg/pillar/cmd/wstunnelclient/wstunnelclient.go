@@ -146,12 +146,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
 
-	//get server name
-	bytes, err := ioutil.ReadFile(types.ServerFileName)
+	snp, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
 		log.Fatal(err)
 	}
-	wscCtx.serverNameAndPort = strings.TrimSpace(string(bytes))
+	wscCtx.serverNameAndPort = snp
 
 	subAppInstanceConfig.Activate()
 

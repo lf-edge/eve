@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"mime"
 	"net"
 	"net/http"
@@ -145,11 +144,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	server, err := ioutil.ReadFile(types.ServerFileName)
+	snp, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.serverNameAndPort = strings.TrimSpace(string(server))
+	ctx.serverNameAndPort = snp
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{

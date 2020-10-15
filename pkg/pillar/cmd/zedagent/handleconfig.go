@@ -73,11 +73,11 @@ var nilUUID uuid.UUID
 func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 
 	// get the server name
-	bytes, err := ioutil.ReadFile(types.ServerFileName)
+	snp, err := zedcloud.GetServerNameAndPort(log)
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverNameAndPort = strings.TrimSpace(string(bytes))
+	serverNameAndPort = snp
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
