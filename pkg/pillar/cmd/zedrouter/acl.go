@@ -1108,7 +1108,7 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 
 	staleIpsets := []string{}
 	newIpsetMap := make(map[string]bool)
-	reloadDnsMasq := false
+	reloadDNSMasq := false
 
 	// Add all new ipsets in a map
 	for _, ipset := range newIpsets {
@@ -1130,11 +1130,11 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	// In case if the ipset has changed but the lengh remained same, there
 	// will atleast be one stale entry in the old ipset that needs to be removed.
 	if (len(newIpsets) != len(oldIpsets)) || (len(staleIpsets) != 0) {
-		reloadDnsMasq = true
+		reloadDNSMasq = true
 	}
 	log.Infof("diffIpsets: reload %v, new %v, stale %v",
-		reloadDnsMasq, newIpsets, staleIpsets)
-	return newIpsets, staleIpsets, reloadDnsMasq
+		reloadDNSMasq, newIpsets, staleIpsets)
+	return newIpsets, staleIpsets, reloadDNSMasq
 }
 
 // it will be difficult the maintain the precedence/order of the iptables
