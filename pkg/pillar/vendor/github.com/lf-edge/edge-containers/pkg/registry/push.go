@@ -7,17 +7,14 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
-	"sync"
 	"time"
 
 	ecresolver "github.com/lf-edge/edge-containers/pkg/resolver"
 
 	ctrcontent "github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/remotes"
-	"github.com/deislabs/oras/pkg/content"
 	"github.com/deislabs/oras/pkg/oras"
 
-	"github.com/containerd/containerd/images"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -92,7 +89,7 @@ func (p Pusher) Push(format Format, verbose bool, writer io.Writer, configOpts C
 	pushOpts = append(pushOpts, oras.WithConfig(manifest.Config))
 
 	if verbose {
-		pushOpts = append(pushOpts, oras.WithPushBaseHandler(pushStatusTrack(writer)))
+		pushOpts = append(pushOpts, oras.WithPushStatusTrack(writer))
 	}
 
 	// push the data
@@ -104,16 +101,4 @@ func (p Pusher) Push(format Format, verbose bool, writer io.Writer, configOpts C
 		return desc.Digest.String(), fmt.Errorf("failed to finalize: %v", err)
 	}
 	return desc.Digest.String(), nil
-}
-
-func pushStatusTrack(writer io.Writer) images.Handler {
-	var printLock sync.Mutex
-	return images.HandlerFunc(func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
-		if name, ok := content.ResolveName(desc); ok {
-			printLock.Lock()
-			defer printLock.Unlock()
-			writer.Write([]byte(fmt.Sprintf("Uploading %s %s\n", desc.Digest.Encoded()[:12], name)))
-		}
-		return nil, nil
-	})
 }
