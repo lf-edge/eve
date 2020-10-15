@@ -221,8 +221,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk0"]
@@ -255,8 +255,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk2"]
@@ -483,8 +483,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk0"]
@@ -517,8 +517,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk2"]
@@ -722,8 +722,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk0"]
@@ -756,8 +756,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk2"]
@@ -1047,8 +1047,8 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk0"]
@@ -1081,8 +1081,8 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk2"]
@@ -1317,8 +1317,8 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk0"]
@@ -1351,8 +1351,8 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk2"]
@@ -1564,8 +1564,8 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk0"]
@@ -1598,8 +1598,8 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "native"
-  cache = "directsync"
+  aio = "threads"
+  cache = "writeback"
   if = "none"
 
 [device "virtio-disk2"]
