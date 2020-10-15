@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.12
+go 1.13
 
 require (
 	github.com/Azure/azure-sdk-for-go v38.0.0+incompatible
