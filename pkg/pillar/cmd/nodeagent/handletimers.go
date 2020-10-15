@@ -12,6 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 // node health timer funcions
@@ -63,6 +64,8 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
 		log.Errorf(errStr)
+		// In case we were using an override server file, abandon it
+		zedcloud.AbandonServerNameAndPort(log)
 		scheduleNodeReboot(ctxPtr, errStr)
 	} else {
 		log.Infof("handleFallbackOnCloudDisconnect %d seconds remaining",

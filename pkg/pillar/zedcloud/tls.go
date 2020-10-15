@@ -105,6 +105,12 @@ func CommitServerNameAndPort(log *base.LogObject) {
 	}
 }
 
+// AbandonServerNameAndPort checks if we have a /config/server.override
+// and deletes it so it doesn't cause confusion down the road
+func AbandonServerNameAndPort(log *base.LogObject) {
+	os.Remove(overrideServerFileName)
+}
+
 // GetTlsConfig creates and returns a TlsConfig based on current root CA certificates
 // If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
