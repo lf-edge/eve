@@ -86,7 +86,7 @@ func (d *Containerd) Resolve(ctx context.Context, ref string) (name string, desc
 }
 
 func (d Containerd) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
-	return containerdFetcher{ref, d.client}, nil
+	return containerdFetcher{ref, d.client.ContentStore()}, nil
 }
 
 func (d *Containerd) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
@@ -107,34 +107,30 @@ func (d *Containerd) Context() context.Context {
 }
 
 type containerdFetcher struct {
-	ref    string
-	client *containerd.Client
+	ref string
+	cs  content.Store
 }
 
 func (d containerdFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
-	cs := d.client.ContentStore()
-	reader, err := cs.ReaderAt(ctx, desc)
+	reader, err := d.cs.ReaderAt(ctx, desc)
 	if err != nil {
 		return nil, err
 	}
 	return &containerdReader{
-		reader: reader,
+		reader: content.NewReader(reader),
 	}, nil
 }
 
 type containerdReader struct {
-	reader content.ReaderAt
-	offset int64
+	reader io.Reader
 }
 
 func (c *containerdReader) Close() error {
-	return c.reader.Close()
+	return nil
 }
 
 func (c *containerdReader) Read(p []byte) (n int, err error) {
-	n, err = c.reader.ReadAt(p, c.offset)
-	c.offset += int64(n)
-	return n, err
+	return c.reader.Read(p)
 }
 
 type containerdPusher struct {

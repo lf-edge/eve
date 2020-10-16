@@ -412,6 +412,12 @@ func InitDellCmd(ledName string) {
 	log.Warnf("Failed to enable Dell Cloud LED: %v", err)
 }
 
+// Keep avoid allocation and GC by keeping one buffer
+var (
+	bufferLength = int64(256 * 1024) //256k buffer length
+	readBuffer   []byte
+)
+
 // InitDDCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
 func InitDDCmd(ledName string) {
@@ -420,8 +426,9 @@ func InitDDCmd(ledName string) {
 		return
 	}
 	log.Infof("InitDDCmd using disk %s", disk)
+	readBuffer = make([]byte, bufferLength)
 	diskDevice = "/dev/" + disk
-	count := 100
+	count := 100 * 16
 	// Prime before measuring
 	uncachedDiskRead(count)
 	uncachedDiskRead(count)
@@ -438,7 +445,7 @@ func InitDDCmd(ledName string) {
 	if count == 0 {
 		count = 1
 	}
-	log.Infof("Measured %v; count %d", elapsed, count)
+	log.Noticef("Measured %v; count %d", elapsed, count)
 	ddCount = count
 }
 
@@ -453,9 +460,7 @@ func ExecuteDDCmd(ledName string) {
 }
 
 func uncachedDiskRead(count int) {
-	bufferLength := int64(4194304) //4M buffer length
 	offset := int64(0)
-	data := make([]byte, bufferLength) //4M buffer
 	handler, err := os.Open(diskDevice)
 	if err != nil {
 		err = fmt.Errorf("uncachedDiskRead: Failed on open: %s", err)
@@ -465,12 +470,12 @@ func uncachedDiskRead(count int) {
 	defer handler.Close()
 	for i := 0; i < count; i++ {
 		unix.Fadvise(int(handler.Fd()), offset, bufferLength, 4) // 4 == POSIX_FADV_DONTNEED
-		readBytes, err := handler.Read(data)
+		readBytes, err := handler.Read(readBuffer)
 		if err != nil {
 			err = fmt.Errorf("uncachedDiskRead: Failed on read: %s", err)
 			log.Error(err.Error())
 		}
-		syscall.Madvise(data, 4) // 4 == MADV_DONTNEED
+		syscall.Madvise(readBuffer, 4) // 4 == MADV_DONTNEED
 		log.Debugf("uncachedDiskRead: size: %d", readBytes)
 		if int64(readBytes) < bufferLength {
 			log.Debugf("uncachedDiskRead: done")
