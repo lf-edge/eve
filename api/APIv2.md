@@ -433,6 +433,64 @@ Response:
 
 The response MUST contain no body content.
 
+### newlogs
+
+Send Device logs to Controller
+
+   POST /api/v2/edgeDevice/id/{uuid}/newlogs
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
+
+Request:
+
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type AuthContainer where the AuthBody is a gzip binary message. The binary message is the compressed data and it contains one or more entries, separated by newline '\n' character, of type [log.LogEntry](./go/logs/log.pb.go) in JSON format. Gzip message has the 'header' structure which contains 'Comment', 'Name' strings, and 'ModTime' encoded with golang time.Time format directly. The 'Comment' field is used to encode 'devID', 'image' and 'eveVersion' of the 'LogBundle' [log.LogBundle](./go/logs/log.pb.go) message in JSON format, and the 'ModTime' field is used for the gzip file creation time. The 'Name' field is not used.
+
+A binary Gzip message MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that.
+
+Response:
+
+The response MAY contain zero or one message of type [log.ServerMetrics](./go/logs/log.pb.go) in JSON format, which comprises the controller CPU usage in percentage, and the controller log message processing time delay in milliseconds.
+
+### Application Instance newlogs
+
+Send Application logs to Controller
+
+   POST api/v2/edgeDevice/apps/instanceid/{app-instance-uuid}/newlogs
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Application Instance: `400`
+* Missing or unprocessable body: `422`
+* Controller is unavailable e.g., being upgraded: `503`
+
+Request:
+
+The request MUST use the Device certificate to sign the protectedPayload in the AuthContainer. The senderCerthash MUST be set to the hash of the Device certificate.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type AuthContainer where the AuthBody is a gzip binary message. The binary message is the compressed data and it contains one or more entries, separated by newline '\n' character, of type [log.LogEntry](./go/logs/log.pb.go) in JSON format. Gzip message has the 'header' structure which contains 'Comment' and 'Name' strings, and 'ModTime' encoded with golang time.Time format directly. The 'Name' field is used to encode the 'Application Name' string, and the 'ModTime' field is used the gzip file creation time. The 'Comment' field is not used.
+
+A binary Gzip message MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that.
+
+Response:
+
+The response MUST contain no body content.
+
 ### flowlog
 
 The flowlog API is used by the device to send network flow statistics (TCP and UDP

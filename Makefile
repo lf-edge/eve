@@ -3,7 +3,7 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
-GOVER ?= 1.12.4
+GOVER ?= 1.15.3
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
@@ -59,10 +59,6 @@ REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG),$(REPO_TAG))
-
-# just reports the version, without appending qualifies like HVM or such
-version:
-	@echo $(ROOTFS_VERSION)
 
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
@@ -167,9 +163,13 @@ endif
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; shift ; docker export $$C | tar -xf - "$$@" ; docker rm $$C ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.go/bin ; \
-    docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
+    docker_go_line="docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
-    -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c "$$1" ; } ; _
+    -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c" ; \
+    verbose=$(V) ;\
+    verbose=$${verbose:-0} ;\
+    [ $$verbose -ge 1 ] && echo $$docker_go_line "\"$$1\""; \
+    $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(CURDIR)/build-tools/bin/linuxkit
@@ -193,6 +193,10 @@ PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
 # Top-level targets
 
 all: help
+
+# just reports the version, without appending qualifies like HVM or such
+version:
+	@echo $(ROOTFS_VERSION)
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -394,10 +398,10 @@ $(LINUXKIT): CGO_ENABLED=0
 $(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
 $(LINUXKIT): $(CURDIR)/build-tools/src/linuxkit/Gopkg.lock $(CURDIR)/build-tools/bin/manifest-tool | $(GOBUILDER)
 	@$(DOCKER_GO) "unset GOFLAGS ; unset GO111MODULE ; go build -ldflags '-X version.GitCommit=$(EVE_TREE_TAG)' -o /go/bin/linuxkit \
-                          vendor/github.com/linuxkit/linuxkit/src/cmd/linuxkit" $(dir $<) / $(dir $@)
+                          ./vendor/github.com/linuxkit/linuxkit/src/cmd/linuxkit" $(dir $<) /linuxkit $(dir $@)
 $(CURDIR)/build-tools/bin/manifest-tool: $(CURDIR)/build-tools/src/manifest-tool/Gopkg.lock | $(GOBUILDER)
 	@$(DOCKER_GO) "unset GOFLAGS ; unset GO111MODULE ; go build -ldflags '-X main.gitCommit=$(EVE_TREE_TAG)' -o /go/bin/manifest-tool \
-                          vendor/github.com/estesp/manifest-tool" $(dir $<) / $(dir $@)
+                          ./vendor/github.com/estesp/manifest-tool" $(dir $<) /manifest-tool $(dir $@)
 
 $(GOBUILDER):
 ifneq ($(BUILD),local)

@@ -1559,7 +1559,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			ds.Devtype = "hdd"
 		}
 		// map from i=1 to xvdb, 2 to xvdc etc
-		ds.Vdev = "xvd" + string(int('a')+i)
+		ds.Vdev = fmt.Sprintf("xvd%c", int('a')+i)
 	}
 
 	if (config.IsCipher || config.CloudInitUserData != nil) &&

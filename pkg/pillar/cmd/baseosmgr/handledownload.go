@@ -171,10 +171,9 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 	}
 
 	// check if we have a result
-	wres := lookupInstallWorkResult(contentID.String())
+	wres := ctx.worker.Pop(contentID.String())
 	if wres != nil {
 		log.Infof("installDownloadedObject(%s): InstallWorkResult found", contentID)
-		DeleteWorkInstall(contentID.String())
 		if wres.Error != nil {
 			err := fmt.Errorf("installDownloadedObject(%s): InstallWorkResult error, exception while installing: %v", contentID, wres.Error)
 			log.Errorf(err.Error())

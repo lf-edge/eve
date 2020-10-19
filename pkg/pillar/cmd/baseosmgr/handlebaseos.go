@@ -51,6 +51,8 @@ func lookupBaseOsStatusImageSha(ctx *baseOsMgrContext, imageSha string) *types.B
 	return nil
 }
 
+// baseOsHandleStatusUpdateImageSha find the config based on the sha,
+// and then call baseOsHandleStatusUpdate. Just a convenience function.
 func baseOsHandleStatusUpdateImageSha(ctx *baseOsMgrContext, imageSha string) {
 
 	log.Infof("baseOsHandleStatusUpdateImageSha for %s", imageSha)
@@ -75,6 +77,25 @@ func baseOsHandleStatusUpdateImageSha(ctx *baseOsMgrContext, imageSha string) {
 	}
 	log.Infof("baseOsHandleStatusUpdateImageSha(%s) found %s",
 		imageSha, uuidStr)
+
+	// handle the change event for this base os config
+	baseOsHandleStatusUpdate(ctx, config, status)
+}
+
+// baseOsHandleStatusUpdateUUID find the config based on the UUID,
+// and then call baseOsHandleStatusUpdate. Just a convenience function.
+func baseOsHandleStatusUpdateUUID(ctx *baseOsMgrContext, id string) {
+	log.Infof("baseOsHandleStatusUpdateUUID for %s", id)
+	config := lookupBaseOsConfig(ctx, id)
+	if config == nil {
+		log.Errorf("baseOsHandleStatusUpdateUUID(%s) config not found", id)
+		return
+	}
+	status := lookupBaseOsStatus(ctx, id)
+	if status == nil {
+		log.Infof("baseOsHandleStatusUpdateUUID(%s) status not found", id)
+		return
+	}
 
 	// handle the change event for this base os config
 	baseOsHandleStatusUpdate(ctx, config, status)
