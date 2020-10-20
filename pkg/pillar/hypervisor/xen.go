@@ -120,6 +120,9 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	}
 
 	if config.IsContainer {
+		if config.VirtualizationMode == types.PV {
+			xen_type = "pv"
+		}
 		kernel = "/hostfs/boot/kernel"
 		ramdisk = "/usr/lib/xen/boot/runx-initrd"
 		extra = extra + " root=9p-xen dhcp=1"
