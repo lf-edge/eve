@@ -1,0 +1,49 @@
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index e0200406765c3..de4f7b3a0d789 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -339,7 +339,7 @@ struct io_kiocb {
+ 	u64			user_data;
+ 	u32			result;
+ 	u32			sequence;
+-	struct task_struct	*task;
++	struct files_struct	*files;
+ 
+ 	struct fs_struct	*fs;
+ 
+@@ -513,7 +513,7 @@ static inline void io_queue_async_work(struct io_ring_ctx *ctx,
+ 		}
+ 	}
+ 
+-	req->task = current;
++	req->files = current->files;
+ 
+ 	spin_lock_irqsave(&ctx->task_lock, flags);
+ 	list_add(&req->task_list, &ctx->task_list);
+@@ -3708,7 +3708,7 @@ static int io_uring_fasync(int fd, struct file *file, int on)
+ }
+ 
+ static void io_cancel_async_work(struct io_ring_ctx *ctx,
+-				 struct task_struct *task)
++				 struct files_struct *files)
+ {
+ 	if (list_empty(&ctx->task_list))
+ 		return;
+@@ -3720,7 +3720,7 @@ static void io_cancel_async_work(struct io_ring_ctx *ctx,
+ 		req = list_first_entry(&ctx->task_list, struct io_kiocb, task_list);
+ 		list_del_init(&req->task_list);
+ 		req->flags |= REQ_F_CANCEL;
+-		if (req->work_task && (!task || req->task == task))
++		if (req->work_task && (!files || req->files == files))
+ 			send_sig(SIGINT, req->work_task, 1);
+ 	}
+ 	spin_unlock_irq(&ctx->task_lock);
+@@ -3745,7 +3745,7 @@ static int io_uring_flush(struct file *file, void *data)
+ 	struct io_ring_ctx *ctx = file->private_data;
+ 
+ 	if (fatal_signal_pending(current) || (current->flags & PF_EXITING))
+-		io_cancel_async_work(ctx, current);
++		io_cancel_async_work(ctx, data);
+ 
+ 	return 0;
+ }
