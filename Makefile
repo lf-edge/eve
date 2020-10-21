@@ -356,12 +356,19 @@ proto-vendor:
 proto-diagram: $(GOBUILDER)
 	@$(DOCKER_GO) "/usr/local/bin/protodot -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
+.PHONY: proto-api-%
+
 proto: $(GOBUILDER) api/go api/python proto-diagram
 	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
 
-api/%: $(GOBUILDER)
-	rm -rf $@/*/; mkdir -p $@ # building $@
-	@$(DOCKER_GO) "protoc -I./proto --$(@F)_out=paths=source_relative:./$(@F) \
+api/go: PROTOC_OUT_OPTS=paths=source_relative:
+api/go: proto-api-go
+
+api/python: proto-api-python
+
+proto-api-%: $(GOBUILDER)
+	rm -rf api/$*/*/; mkdir -p api/$* # building $@
+	@$(DOCKER_GO) "protoc -I./proto --$(*)_out=$(PROTOC_OUT_OPTS)./$* \
 		proto/*/*.proto" $(CURDIR)/api api
 
 patch:
