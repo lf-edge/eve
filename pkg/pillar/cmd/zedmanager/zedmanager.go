@@ -419,6 +419,7 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs.RefCount = vrc.RefCount
 		vrs.MountDir = vrc.MountDir
 		vrs.PendingAdd = true
+		vrs.State = types.INITIAL
 	}
 
 	allErrors := ""
