@@ -89,12 +89,12 @@ func (state SwState) String() string {
 		return "HALTED"
 	case RESTARTING:
 		return "RESTARTING"
+	case PURGING:
+		return "PURGING"
 	case BROKEN:
 		return "BROKEN"
 	case UNKNOWN:
 		return "UNKNOWN"
-	case PURGING:
-		return "PURGING"
 	default:
 		return fmt.Sprintf("Unknown state %d", state)
 	}
@@ -123,12 +123,6 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_CREATED_VOLUME
 	case INSTALLED:
 		return info.ZSwState_INSTALLED
-	// for now we're treating PAUSED as a subset
-	// of INSTALLED simply because controllers don't
-	// support resumable paused tasks just yet (see
-	// how PAUSING maps to RUNNING below)
-	case PAUSED:
-		return info.ZSwState_INSTALLED
 	case BOOTING:
 		return info.ZSwState_BOOTING
 	case RUNNING:
@@ -138,12 +132,13 @@ func (state SwState) ZSwState() info.ZSwState {
 	// paused tasks yet
 	case PAUSING:
 		return info.ZSwState_RUNNING
+	// for now we're treating PAUSED as a subset
+	// of INSTALLED simply because controllers don't
+	// support resumable paused tasks just yet (see
+	// how PAUSING maps to RUNNING below)
+	case PAUSED:
+		return info.ZSwState_INSTALLED
 	case HALTING:
-		return info.ZSwState_HALTING
-	// we map BROKEN to HALTING to indicate that EVE has an active
-	// role in reaping BROKEN domains and transitioning them to
-	// a final HALTED state
-	case BROKEN:
 		return info.ZSwState_HALTING
 	case HALTED:
 		return info.ZSwState_HALTED
@@ -151,6 +146,15 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_RESTARTING
 	case PURGING:
 		return info.ZSwState_PURGING
+	// we map BROKEN to HALTING to indicate that EVE has an active
+	// role in reaping BROKEN domains and transitioning them to
+	// a final HALTED state
+	case BROKEN:
+		return info.ZSwState_HALTING
+	// If we ever see UNKNOWN we return RUNNING assuming the state will change to something
+	// known soon.
+	case UNKNOWN:
+		return info.ZSwState_RUNNING
 	default:
 		logrus.Fatalf("Unknown state %d", state)
 	}
