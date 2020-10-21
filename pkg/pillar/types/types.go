@@ -83,6 +83,8 @@ func (state SwState) String() string {
 		return "PAUSING"
 	case PAUSED:
 		return "PAUSED"
+	case HALTING:
+		return "HALTING"
 	case HALTED:
 		return "HALTED"
 	case RESTARTING:
