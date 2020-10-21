@@ -161,12 +161,6 @@ func (state SwState) ZSwState() info.ZSwState {
 	return info.ZSwState_INITIAL
 }
 
-// NoHash should XXX deprecate?
-const (
-	// NoHash constant to indicate that we have no real hash
-	NoHash = "sha"
-)
-
 // Used to retain UUID to integer maps across reboots.
 // Used for appNum and bridgeNum
 type UuidToNum struct {
