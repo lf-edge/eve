@@ -147,7 +147,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig.Activate()
 
 	// Create the background worker
-	ctx.worker = worker.NewWorker(log, &ctx, 5, map[string]worker.Handler{
+	ctx.worker = worker.NewWorker(log, &ctx, 20, map[string]worker.Handler{
 		workCreate: {Request: volumeWorker, Response: processVolumeWorkResult},
 		workIngest: {Request: casIngestWorker, Response: processCasIngestWorkResult},
 	})
