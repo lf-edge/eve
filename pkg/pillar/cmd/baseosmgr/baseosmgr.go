@@ -101,7 +101,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// publish initial zboot partition status
 	updateAndPublishZbootStatusAll(&ctx)
 
-	ctx.worker = worker.NewWorker(log, &ctx, 5, map[string]worker.Handler{
+	ctx.worker = worker.NewWorker(log, &ctx, 20, map[string]worker.Handler{
 		workInstall: {Request: installWorker, Response: processInstallWorkResult},
 	})
 
