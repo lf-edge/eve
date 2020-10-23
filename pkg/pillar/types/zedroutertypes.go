@@ -103,6 +103,10 @@ func (status AppNetworkStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+func (status AppNetworkStatus) AwaitingNetwork() bool {
+	return status.AwaitNetwork
+}
+
 // Indexed by UUID
 type AppNetworkStatus struct {
 	UUIDandVersion UUIDandVersion
@@ -111,6 +115,7 @@ type AppNetworkStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
+	AwaitNetwork   bool
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr      net.IP
