@@ -28,6 +28,7 @@ type Worker struct {
 	workMap      map[string]bool
 	resultMap    map[string]WorkResult
 	handlers     map[string]Handler
+	log          Logger
 }
 
 // Work is one work item
@@ -93,6 +94,7 @@ func NewWorker(log Logger, ctx interface{}, length int, handlers map[string]Hand
 		workMap:     map[string]bool{},
 		resultMap:   map[string]WorkResult{},
 		handlers:    handlers,
+		log:         log,
 	}
 
 	log.Debugf("Creating %s at %s", "w.processWork", agentlog.GetMyStack())
@@ -138,8 +140,6 @@ func (w *Worker) processWork(log Logger, ctx interface{}, requestChan <-chan Wor
 		// no longer pending
 		w.deletePending(work.Key)
 	}
-	// XXX if we ever want multiple goroutines for one Worker we
-	// can't close here; would need some wait for all to finish
 	close(resultChan)
 	log.Debugf("processWork done for context %T", ctx)
 }
@@ -156,28 +156,55 @@ func (w *Worker) C() <-chan Processor {
 }
 
 // Submit will pass work to the worker.
-// Note that this will wait if channel is busy, hence
-// user has to pick an appropriate length of the channel and use.
+// Note that this will wait if the channel is busy hence
+// the user has to pick an appropriate length of the channel for NewWorker
+// Use worker.Pool to avoid such blocking.
 // returns nil if the new job was submitted, JobInProgressError if a job with that
 // key already ins progress, and other errors if it cannot proceed.
 func (w *Worker) Submit(work Work) error {
+	_, err := w.submitImpl(work, true)
+	return err
+}
+
+// TrySubmit will pass work to the worker if the channel/queue is not full.
+// Returns true if work was submitted, otherwise false.
+// returns JobInProgressError if a job with that key already ins progress
+func (w *Worker) TrySubmit(work Work) (bool, error) {
+	return w.submitImpl(work, false)
+}
+
+func (w *Worker) submitImpl(work Work, wait bool) (bool, error) {
+	done := false
 	// if this Key already exists and is being processed, do nothing
 	if work.Key != "" && w.lookupPending(work.Key) {
-		return &JobInProgressError{s: work.Key}
+		return done, &JobInProgressError{s: work.Key}
 	}
 	// Kind must be set to be handleable
 	if work.Kind == "" {
-		return fmt.Errorf("cannot process a job with a blank Kind")
+		return done, fmt.Errorf("cannot process a job with a blank Kind")
 	}
 	if _, ok := w.handlers[work.Kind]; !ok {
-		return fmt.Errorf("no registered handlers for a job of Kind '%s'", work.Kind)
+		return done, fmt.Errorf("no registered handlers for a job of Kind '%s'",
+			work.Kind)
 	}
-	w.requestChan <- work
-	w.requestCount++
-	if work.Key != "" {
-		w.addPending(work.Key)
+	if wait {
+		w.requestChan <- work
+		done = true
+	} else {
+		select {
+		case w.requestChan <- work:
+			done = true
+		default:
+			// Do nothing
+		}
 	}
-	return nil
+	if done {
+		w.requestCount++
+		if work.Key != "" {
+			w.addPending(work.Key)
+		}
+	}
+	return done, nil
 }
 
 // Cancel cancels a pending job.

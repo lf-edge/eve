@@ -29,9 +29,15 @@ func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) {
 		ref:       ref,
 		target:    target,
 	}
-	// Don't check errors to make idempotent (Submit returns an error if
+	// Don't fail on errors to make idempotent (Submit returns an error if
 	// the work was already submitted)
-	_ = ctx.worker.Submit(worker.Work{Key: key, Kind: workInstall, Description: d})
+	done, err := ctx.worker.TrySubmit(worker.Work{Key: key, Kind: workInstall,
+		Description: d})
+	if err != nil {
+		log.Errorf("TrySubmit %s failed: %s", key, err)
+	} else if !done {
+		log.Fatalf("Failed to submit work due to queue length for %s", key)
+	}
 	log.Infof("AddWorkInstall(%s) done", key)
 }
 
