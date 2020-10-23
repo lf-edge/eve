@@ -130,7 +130,8 @@ func TestLength(t *testing.T) {
 	w1 := Work{Kind: "test", Key: testname + "1", Description: sleep1}
 	timestamp = time.Now() // In case we ask for sleep
 	submit1start := timestamp
-	worker.Submit(w1)
+	done, _ := worker.TrySubmit(w1)
+	assert.True(t, done)
 	assert.Equal(t, worker.NumPending(), 1)
 	submit1time := time.Since(submit1start)
 	log.Printf("Submit1 took %v", submit1time)
@@ -160,6 +161,10 @@ func TestLength(t *testing.T) {
 	minDuration -= 100 * time.Millisecond
 	assert.GreaterOrEqual(t, int64(submit3time), int64(minDuration))
 	assert.Less(t, int64(submit3time), int64(maxDuration))
+
+	w4 := Work{Kind: "test", Key: testname + "4", Description: sleep3}
+	done, _ = worker.TrySubmit(w4)
+	assert.False(t, done)
 
 	proc1 := <-worker.MsgChan()
 	proc1.Process(ctx, true)
@@ -207,7 +212,7 @@ func TestLength(t *testing.T) {
 	assert.Equal(t, worker.NumPending(), 0)
 	worker.Done()
 	_, ok := <-worker.MsgChan()
-	done := !ok
+	done = !ok
 	assert.True(t, done)
 }
 
