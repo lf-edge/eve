@@ -27,15 +27,25 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: 'eve'
-      - name: build eve
+      - name: fetch or build eve
+        env:
+          TAG: 0.0.0-pr-${{ github.event.pull_request.number }}
+          CACHE: evebuild/danger
         run: |
-          make -C eve pkgs
-          make -C eve HV=kvm eve
+          if docker pull "$CACHE:$TAG-kvm"; then
+             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
+             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
+          else
+             make -C eve pkgs
+             make -C eve ROOTFS_VERSION="$TAG" HV=kvm eve
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
       - name: run
         run: |
           ./eden config add default
-          ./eden config set default --key eve.tag --value=$(make -s -C eve version)
+          ./eden config set default --key eve.tag --value="$TAG"
           ./eden config set default --key=eve.accel --value=false
+          EDITOR=cat ./eden config edit default
           echo > tests/workflow/testdata/eden_stop.txt
           ./eden test ./tests/workflow -v debug
       - name: Collect logs
