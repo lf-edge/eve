@@ -60,7 +60,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
+	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
+	panicPtr := flag.Bool("P", false, "Cause golang panic fault injection")
+	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
 	flag.Parse()
+	fatalFlag := *fatalPtr
+	panicFlag := *panicPtr
+	hangFlag := *hangPtr
 	execCtx := executorContext{}
 	execCtx.debug = *debugPtr
 	execCtx.debugOverride = execCtx.debug
@@ -83,6 +89,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
+	// Add .pid and .touch file to watchdog config
+	ps.RegisterPidWatchdog(agentName)
+	ps.RegisterFileWatchdog(agentName)
+
 	pubExecStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.ExecStatus{},
@@ -94,9 +104,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
+		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Ctx:           &execCtx,
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
@@ -205,8 +216,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			execCtx.subDomainConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			} else if panicFlag {
+				log.Warnf("Requested fault injection panic to cause watchdog")
+				var panicBuf []int
+				panicBuf[99] = 1
+			}
 		}
-		ps.StillRunning(agentName, warningTime, errorTime)
+		if hangFlag {
+			log.Warnf("Requested to not touch to cause watchdog")
+		} else {
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
 	}
 }
 

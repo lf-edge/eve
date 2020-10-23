@@ -30,7 +30,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -54,6 +53,7 @@ type diagContext struct {
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
 	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.ConfigItemValueMap
+	GCInitialized           bool // Received initial GlobalConfig
 	subLedBlinkCounter      pubsub.Subscription
 	subDeviceNetworkStatus  pubsub.Subscription
 	subDevicePortConfigList pubsub.Subscription
@@ -122,15 +122,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
-	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile(log)
-
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "",
+			AgentName:     "zedagent",
 			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
+			Persistent:    true,
 			Activate:      false,
 			Ctx:           &ctx,
 			CreateHandler: handleGlobalConfigModify,
@@ -144,6 +142,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+
+	// Wait for initial GlobalConfig
+	for !ctx.GCInitialized {
+		log.Infof("Waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		}
+	}
+	log.Infof("processed GlobalConfig")
 
 	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
@@ -1097,6 +1105,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	if gcp != nil {
 		ctx.globalConfig = gcp
 	}
+	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 

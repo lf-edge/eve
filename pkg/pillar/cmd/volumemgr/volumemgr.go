@@ -27,10 +27,8 @@ import (
 
 const (
 	agentName              = "volumemgr"
-	diskMetricsAgentName   = agentName + "metrics"
-	diskMetricsWDTouchFile = types.WatchdogFileDir + "/" + diskMetricsAgentName + ".touch"
-	runDirname             = "/var/run/" + agentName
-	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes XXX change?
+	runDirname             = "/run/" + agentName
+	ciDirname              = runDirname + "/cloudinit"    // For cloud-init volumes
 	volumeEncryptedDirName = types.VolumeEncryptedDirName // We store encrypted VM and OCI volumes here
 	volumeClearDirName     = types.VolumeClearDirName     // We store un-encrypted VM and OCI volumes here
 	// Time limits for event loop handlers
@@ -130,9 +128,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
+		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Activate:      false,
 		Ctx:           &ctx,
 		CreateHandler: handleGlobalConfigModify,
@@ -148,7 +147,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig.Activate()
 
 	// Create the background worker
-	ctx.worker = worker.NewWorker(log, &ctx, 5, map[string]worker.Handler{
+	ctx.worker = worker.NewWorker(log, &ctx, 20, map[string]worker.Handler{
 		workCreate: {Request: volumeWorker, Response: processVolumeWorkResult},
 		workIngest: {Request: casIngestWorker, Response: processCasIngestWorkResult},
 	})
@@ -500,9 +499,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// start the metrics reporting task
 	diskMetricsTickerHandle := make(chan interface{})
 	log.Infof("Creating %s at %s", "diskMetricsTimerTask", agentlog.GetMyStack())
-
-	//Add .touch file to watchdog config
-	base.TouchFile(log, diskMetricsWDTouchFile)
 
 	go diskMetricsTimerTask(&ctx, diskMetricsTickerHandle)
 	ctx.diskMetricsTickerHandle = <-diskMetricsTickerHandle

@@ -12,6 +12,7 @@
 DATE=$(date -Is)
 CURPART=$(cat /run/eve.id)
 EVE_VERSION=$(cat /run/eve-release)
+bootReason=""
 echo "Watchdog report for $CURPART EVE version $EVE_VERSION at $DATE: $*" >>/persist/reboot-reason
 echo "$CURPART" > /persist/reboot-image
 sync
@@ -20,6 +21,7 @@ sync
 if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/run/.*\.touch' | sed 's,/run/\(.*\)\.touch,\1,')
     if [ -n "$agent" ]; then
+        bootReason="BootReasonWatchdogHung" # Must match string in types package
         echo "Watchdog report for $agent" >> /persist/log/watchdog.log
         echo "pkill -USR1 /opt/zededa/bin/zedbox"
         pkill -USR1 /opt/zededa/bin/zedbox
@@ -37,6 +39,7 @@ agent=""
 if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/run/.*\.pid' | sed 's,/run/\(.*\)\.pid,\1,')
     if [ -n "$agent" ]; then
+        bootReason="BootReasonWatchdogPid" # Must match string in types package
         oom=$(dmesg | grep oom_reaper | grep "$agent")
     fi
 fi
@@ -49,16 +52,35 @@ if [ -z "$oom" ]; then
     oom=$(dmesg | grep "Out of memory")
 fi
 if [ -n "$oom" ]; then
-   echo "$oom" >>/persist/reboot-reason
+    echo "$oom" >>/persist/reboot-reason
+    bootReason="BootReasonOOM" # Must match string in types package
 fi
 if [ -n "$agent" ]; then
+    # This assumes that the panic message and stack trace has 1) made it to
+    # syslog.txt and 2) has not yet been sent to controller and removed.
+    # Former is less likely if debug is enabled.
     echo "$agent crashed" >>/persist/reboot-reason
     panic=$(grep panic /persist/rsyslog/syslog.txt | tail -1)
     if [ -n "$panic" ]; then
         echo "$panic" >>/persist/reboot-reason
-        # Note that panic stack trace might exist tagged with e.g. pillar.err
-        # in /persist/rsyslog/syslog.txt but can't extract from other .err
-        # files.
+        # Note that panic stack trace might exist tagged with e.g. pillar.out
+        # in /persist/rsyslog/syslog.txt but can't extract from other container's
+        # files. Try to extract here
+        stack=$(awk '/pillar.out;panic/ {p=1} {if ($3 != "pillar.out") { p=0 }; if (p==1) {print}}' /persist/rsyslog/syslog.txt)
+        if [ -n "$stack" ]; then
+            echo "$stack" >>/persist/reboot-stack
+        fi
+    fi
+fi
+
+if [ -n "$bootReason" ]; then
+    # Do not overwrite an existing file since it is likely to be more
+    # specific like Fatal
+    if [ -f /persist/boot-reason ]; then
+        echo "Watchdog report not replacing $(cat /persist/boot-reason) with $bootReason" >>/persist/log/watchdog.log
+    else
+        echo $bootReason > /persist/boot-reason
+        echo "Watchdog report saved $bootReason" >>/persist/log/watchdog.log
     fi
 fi
 

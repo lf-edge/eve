@@ -8,13 +8,10 @@ package baseosmgr
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	uuid "github.com/satori/go.uuid"
@@ -300,7 +297,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("Installing %s over unused",
 			config.BaseOsVersion)
 	case "inprogress":
-		agentlog.DiscardOtherRebootReason(log)
 		log.Infof("Installing %s over inprogress",
 			config.BaseOsVersion)
 	case "updating":
@@ -354,15 +350,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		return changed
 	}
 
-	// Remove any old log files for a previous instance
-	logdir := fmt.Sprintf("%s/%s/log", types.PersistDir,
-		status.PartitionLabel)
-	log.Infof("Clearing old logs in %s", logdir)
-	// Clear content but not directory since logmanager expects dir
-	if err := removeContent(logdir); err != nil {
-		log.Errorln(err)
-	}
-
 	// if it is installed, flip the activated status
 	if status.State == types.INSTALLED && !status.Reboot {
 		// trigger, zedagent to start reboot process
@@ -371,22 +358,6 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	return changed
-}
-
-func removeContent(dirName string) error {
-	locations, err := ioutil.ReadDir(dirName)
-	if err != nil {
-		return err
-	}
-
-	for _, location := range locations {
-		filelocation := dirName + "/" + location.Name()
-		err := os.RemoveAll(filelocation)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
@@ -640,10 +611,6 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				zboot.GetCurrentPartition())
 			if curPartState == "active" {
 				log.Infof("Mark other partition %s, unused", partName)
-				// we will erase the older reboot reason
-				if zboot.IsOtherPartitionStateInProgress() {
-					agentlog.DiscardOtherRebootReason(log)
-				}
 				zboot.SetOtherPartitionStateUnused(log)
 				updateAndPublishZbootStatus(ctx,
 					status.PartitionLabel, false)

@@ -282,6 +282,26 @@ message ZInfoDevice {
   // rebootConfigCounter - reboot command counter from config last processed by
   // eve
   uint32 rebootConfigCounter = 33;
+  BootReason   last_boot_reason = 34;
+}
+
+// Different reasons for a boot/reboot
+// Must match the values in pkg/pillar/types.BootReason
+enum BootReason {
+  BOOT_REASON_UNSPECIFIED = 0;
+  BOOT_REASON_FIRST = 1;
+  BOOT_REASON_REBOOT_CMD = 2;
+  BOOT_REASON_UPDATE = 3;
+  BOOT_REASON_FALLBACK = 4;
+  BOOT_REASON_DISCONNECT = 5;
+  BOOT_REASON_FATAL = 6;
+  BOOT_REASON_OOM = 7;
+  BOOT_REASON_WATCHDOG_HUNG = 8;
+  BOOT_REASON_WATCHDOG_PID = 9;
+  BOOT_REASON_KERNEL = 10;
+  BOOT_REASON_POWER_FAIL = 11;
+  BOOT_REASON_UNKNOWN = 12;
+  BOOT_REASON_PARSE_FAIL = 255;
 }
 
 // The current and fallback system adapter information

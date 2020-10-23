@@ -1,4 +1,4 @@
-// Copyright (c) 2017,2018 Zededa, Inc.
+// Copyright (c) 2017,2018,2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Provide for a pubsub mechanism for config and status which is
@@ -41,7 +41,7 @@ func (p *PubSub) StillRunning(agentName string, warnTime time.Duration, errTime 
 		lockedLastStillMap.Store(agentName, time.Now())
 	}
 
-	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
+	filename := fmt.Sprintf("/run/%s.touch", agentName)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)
@@ -77,4 +77,18 @@ func (p *PubSub) CheckMaxTimeTopic(agentName string, topic string, start time.Ti
 		p.log.Warnf("%s handler in %s took a long time: %d",
 			topic, agentName, elapsed/time.Second)
 	}
+}
+
+// RegisterFileWatchdog tells the watchdog about the touch file
+func (p *PubSub) RegisterFileWatchdog(agentName string) {
+	p.log.Noticef("RegisterFileWatchdog(%s)", agentName)
+	wdFile := fmt.Sprintf("%s/%s.touch", base.WatchdogFileDir, agentName)
+	base.TouchFile(p.log, wdFile)
+}
+
+// RegisterPidWatchdog tells the watchdog about the pid file
+func (p *PubSub) RegisterPidWatchdog(agentName string) {
+	p.log.Noticef("RegisterPidWatchdog(%s)", agentName)
+	wdFile := fmt.Sprintf("%s/%s.pid", base.WatchdogPidDir, agentName)
+	base.TouchFile(p.log, wdFile)
 }

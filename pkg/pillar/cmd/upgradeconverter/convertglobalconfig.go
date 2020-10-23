@@ -9,14 +9,6 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
-)
-
-const (
-	configItemMapDir    = types.PersistConfigDir + "/ConfigItemValueMap/"
-	newGlobalConfigFile = configItemMapDir + "global.json"
-	globalConfigDir     = types.PersistConfigDir + "/GlobalConfig"
-	oldGlobalConfigFile = globalConfigDir + "/global.json"
 )
 
 func createConfigItemMapDir(configItemMapDir string) {
@@ -62,11 +54,13 @@ func delOldGlobalConfigDir(ctxPtr *ucContext) error {
 }
 
 func convertGlobalConfig(ctxPtr *ucContext) error {
-	createConfigItemMapDir(ctxPtr.configItemValueMapDir())
-	newGlobalConfigFile := ctxPtr.configItemValueMapFile()
 	oldGlobalConfigFile := ctxPtr.globalConfigFile()
-	newExists := fileExists(newGlobalConfigFile)
 	oldExists := fileExists(oldGlobalConfigFile)
+	if oldExists {
+		createConfigItemMapDir(ctxPtr.oldConfigItemValueMapDir())
+	}
+	newGlobalConfigFile := ctxPtr.oldConfigItemValueMapFile()
+	newExists := fileExists(newGlobalConfigFile)
 
 	var newConfigPtr *types.ConfigItemValueMap
 
@@ -92,8 +86,8 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 		delOldGlobalConfigDir(ctxPtr)
 		return nil
 	} else {
-		log.Infof("Neither New Nor Old Configs Exist. Creating Default new Config")
-		newConfigPtr = types.DefaultConfigItemValueMap()
+		log.Infof("Neither New Nor Old Configs Exist. Do nothing")
+		return nil
 	}
 
 	// Save New config to file.
@@ -106,14 +100,6 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 	if err != nil {
 		log.Fatalf("Failed to Save NewConfig. err %s", err)
 	}
-	log.Infof("Saved NewConfig. data: %s", data)
-
-	// Create a symlink of one doesn't currently exist
-	symLinkPath := ctxPtr.varTmpDir + "/ConfigItemValueMap"
-	utils.CreateSymlink(log, symLinkPath, ctxPtr.configItemValueMapDir())
-	log.Debugf("Created symlink %s -> %s",
-		symLinkPath, ctxPtr.configItemValueMapDir())
-
 	// Delete the OldGlobalConfig
 	delOldGlobalConfigDir(ctxPtr)
 	log.Debugf("upgradeconverter.convertGlobalConfig done")
@@ -135,7 +121,7 @@ func newConfigFromOld(globalConfigFile string) *types.ConfigItemValueMap {
 	}
 
 	var oldGlobalConfig types.OldGlobalConfig
-	err = json.Unmarshal([]byte(byteValue), &oldGlobalConfig)
+	err = json.Unmarshal(byteValue, &oldGlobalConfig)
 	if err != nil {
 		log.Errorf("Could not unmarshall data in file %s. err: %s",
 			globalConfigFile, err)

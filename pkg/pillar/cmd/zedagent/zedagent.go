@@ -110,10 +110,12 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
-	currentRebootReason       string    // Set by zedagent
-	rebootReason              string    // Previous reboot from nodeagent
-	rebootStack               string    // Previous reboot from nodeagent
-	rebootTime                time.Time // Previous reboot from nodeagent
+	currentRebootReason       string           // Set by zedagent
+	currentBootReason         types.BootReason // Set by zedagent
+	rebootReason              string           // Previous reboot from nodeagent
+	bootReason                types.BootReason // Previous reboot from nodeagent
+	rebootStack               string           // Previous reboot from nodeagent
+	rebootTime                time.Time        // Previous reboot from nodeagent
 	// restartCounter - counts number of reboots of the device by Eve
 	restartCounter uint32
 	// rebootConfigCounter - reboot counter sent by the cloud in its config.
@@ -215,26 +217,27 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  "",
+		AgentName:  agentName,
 		TopicType:  types.ConfigItemValueMap{},
 		Persistent: true,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+	// upgradeconverter ensures we have a ConfigItemValueMap so we
+	// read it to get the initial values
+	item, err := zedagentCtx.pubGlobalConfig.Get("global")
+	if err != nil {
+		log.Fatalf("ConfigItemValueMap missing: %s", err)
+	}
+	zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
+	log.Infof("initialized GlobalConfig")
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-	ps.StillRunning(agentName+"config", warningTime, errorTime)
-	ps.StillRunning(agentName+"metrics", warningTime, errorTime)
-	ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
-	ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
-	ps.StillRunning(agentName+"attest", warningTime, errorTime)
 
-	// Tell ourselves to go ahead
-	// initialize the module specifig stuff
-	zedcloudCtx = handleInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+	initializeDirs()
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
@@ -256,11 +259,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	attestCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.attestCtx = &attestCtx
 
+	// Wait until we have been onboarded aka know our own UUID
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("processed onboarded")
+
+	// We know our own UUID; prepare for communication with controller
+	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx)
-
-	// Make sure we have a GlobalConfig file with defaults
-	utils.ReadAndUpdateGCFile(log, zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -421,9 +430,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
+		AgentName:     agentName,
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
 		Activate:      false,
 		Ctx:           &zedagentCtx,
 		CreateHandler: handleGlobalConfigModify,
@@ -864,7 +874,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	attestModuleInitialize(&zedagentCtx, ps)
 
 	// Pick up debug aka log level before we start real work
-
+	// Note that we use these handlers to process updates from
+	// the controller since the parser (in zedagent aka ourselves)
+	// merely publishes the GlobalConfig
 	for !zedagentCtx.GCInitialized {
 		log.Infof("Waiting for GCInitialized")
 		select {
@@ -900,12 +912,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
-		// Need to tickle this since the configTimerTask is not yet started
-		ps.StillRunning(agentName+"config", warningTime, errorTime)
-		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
-		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
-		ps.StillRunning(agentName+"attest", warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses")
@@ -955,12 +961,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
-		// Need to tickle this since the configTimerTask is not yet started
-		ps.StillRunning(agentName+"config", warningTime, errorTime)
-		ps.StillRunning(agentName+"metrics", warningTime, errorTime)
-		ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
-		ps.StillRunning(agentName+"attest", warningTime, errorTime)
-		ps.StillRunning(agentName+"ccerts", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -1268,11 +1268,6 @@ func handleZbootRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-func handleInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
-	initializeDirs()
-	return handleConfigInit(networkSendTimeout)
-}
-
 func initializeDirs() {
 
 	// create persistent holder directory
@@ -1558,8 +1553,9 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 
 	getconfigCtx := ctxArg.(*getconfigContext)
 	status := statusArg.(types.NodeAgentStatus)
-	log.Infof("handleNodeAgentStatusModify: updateInProgress %t rebootReason %s",
-		status.UpdateInprogress, status.RebootReason)
+	log.Infof("handleNodeAgentStatusModify: updateInProgress %t rebootReason %s bootReason %s",
+		status.UpdateInprogress, status.RebootReason,
+		status.BootReason.String())
 	updateInprogress := getconfigCtx.updateInprogress
 	ctx := getconfigCtx.zedagentCtx
 	ctx.remainingTestTime = status.RemainingTestTime
@@ -1567,6 +1563,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	ctx.rebootTime = status.RebootTime
 	ctx.rebootStack = status.RebootStack
 	ctx.rebootReason = status.RebootReason
+	ctx.bootReason = status.BootReason
 	ctx.restartCounter = status.RestartCounter
 	// if config reboot command was initiated and
 	// was deferred, and the device is not in inprogress

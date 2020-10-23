@@ -29,7 +29,8 @@ func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) {
 		ref:       ref,
 		target:    target,
 	}
-	// we do not care about the errors much
+	// Don't check errors to make idempotent (Submit returns an error if
+	// the work was already submitted)
 	_ = ctx.worker.Submit(worker.Work{Key: key, Kind: workInstall, Description: d})
 	log.Infof("AddWorkInstall(%s) done", key)
 }

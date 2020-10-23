@@ -34,7 +34,7 @@ type getconfigContext struct {
 	configReceived           bool
 	configGetStatus          types.ConfigGetStatus
 	updateInprogress         bool
-	readSavedConfig          bool
+	readSavedConfig          bool // Did we already read it?
 	configTickerHandle       interface{}
 	metricsTickerHandle      interface{}
 	pubDevicePortConfig      pubsub.Publication
@@ -125,7 +125,7 @@ func configTimerTask(handleChannel chan interface{},
 		getconfigCtx)
 	publishZedAgentStatus(getconfigCtx)
 
-	configInterval := getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.ConfigInterval)
+	configInterval := ctx.globalConfig.GlobalValueInt(types.ConfigInterval)
 	interval := time.Duration(configInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
@@ -134,9 +134,12 @@ func configTimerTask(handleChannel chan interface{},
 	// Return handle to caller
 	handleChannel <- ticker
 
+	wdName := agentName + "config"
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
@@ -145,7 +148,7 @@ func configTimerTask(handleChannel chan interface{},
 			iteration += 1
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
-			ctx.ps.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
+			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
 
@@ -154,7 +157,7 @@ func configTimerTask(handleChannel chan interface{},
 				log.Infof("reboot flag set")
 			}
 		}
-		ctx.ps.StillRunning(agentName+"config", warningTime, errorTime)
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 
@@ -190,7 +193,7 @@ func getLatestConfig(url string, iteration int,
 	getconfigCtx *getconfigContext) bool {
 
 	log.Debugf("getLatestConfig(%s, %d)", url, iteration)
-
+	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 	// except http.StatusForbidden(which returns error
 	// irrespective of bailOnHTTPErr)
@@ -227,7 +230,7 @@ func getLatestConfig(url string, iteration int,
 			}
 		case types.SenderStatusCertMiss:
 			// trigger to acquire new controller certs from cloud
-			triggerControllerCertEvent(getconfigCtx.zedagentCtx)
+			triggerControllerCertEvent(ctx)
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
@@ -236,12 +239,14 @@ func getLatestConfig(url string, iteration int,
 		}
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
-		// XXX different policy if updateInProgress? No fallback for now
-		if !getconfigCtx.updateInprogress &&
+		// If we crashed we wait until we connect to zedcloud so that
+		// keyboard can be enabled and things can be debugged and not
+		// have e.g., an OOM reboot loop
+		if ctx.bootReason.StartWithSavedConfig() &&
 			!getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
 
 			config, err := readSavedProtoMessage(
-				getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
+				ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 				checkpointDirname+"/lastconfig", false)
 			if err != nil {
 				log.Errorf("getconfig: %v", err)
@@ -261,7 +266,7 @@ func getLatestConfig(url string, iteration int,
 
 	if resp.StatusCode == http.StatusForbidden {
 		log.Errorf("Config request is forbidden, triggering attestation again")
-		restartAttestation(getconfigCtx.zedagentCtx)
+		restartAttestation(ctx)
 		if getconfigCtx.updateInprogress {
 			log.Warnf("updateInprogress=true,resp.StatusCode=Forbidden, so marking ConfigGetTemporaryFail")
 			getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
@@ -520,6 +525,7 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		ConfigGetStatus: getconfigCtx.configGetStatus,
 		RebootCmd:       ctx.rebootCmd,
 		RebootReason:    ctx.currentRebootReason,
+		BootReason:      ctx.currentBootReason,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)

@@ -41,7 +41,7 @@ const (
 	maxRebootStackSize          = 1600
 	maxJSONAttributeSize        = maxRebootStackSize + 100
 	configDir                   = "/config"
-	tmpDirname                  = "/var/tmp/zededa"
+	tmpDirname                  = "/run/global"
 	firstbootFile               = tmpDirname + "/first-boot"
 	restartCounterFile          = configDir + "/restartcounter"
 	// Time limits for event loop handlers
@@ -82,11 +82,13 @@ type nodeagentContext struct {
 	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
 	rebootCmd                   bool   // Are we rebooting?
 	deviceReboot                bool
-	currentRebootReason         string    // Reason we are rebooting
-	rebootReason                string    // From last reboot
-	rebootImage                 string    // Image from which the last reboot happened
-	rebootStack                 string    // From last reboot
-	rebootTime                  time.Time // From last reboot
+	currentRebootReason         string // Reason we are rebooting
+	currentBootReason           types.BootReason
+	rebootReason                string           // From last reboot
+	bootReason                  types.BootReason // From last reboot
+	rebootImage                 string           // Image from which the last reboot happened
+	rebootStack                 string           // From last reboot
+	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
 
 	// Some contants.. Declared here as variables to enable unit tests
@@ -150,11 +152,58 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	agentbase.Run(&nodeagentCtx)
 
-	// Make sure we have a GlobalConfig file with defaults
-	utils.EnsureGCFile(log)
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &nodeagentCtx,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		SyncHandler:   handleGlobalConfigSynchronized,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeagentCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !nodeagentCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
+		case <-nodeagentCtx.tickerTimer.C:
+			handleDeviceTimers(&nodeagentCtx)
+
+		case <-nodeagentCtx.stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)
+
+	// Fault injection; if /persist/fault-injection/readfile exists we read it
+	// which will use memory
+	fileToRead := "/persist/fault-injection/readfile"
+	if _, err := os.Stat(fileToRead); err == nil {
+		log.Warnf("Reading %s", fileToRead)
+		content, err := ioutil.ReadFile(fileToRead)
+		if err != nil {
+			log.Error(err)
+		} else {
+			log.Noticef("Read %d bytes from %s",
+				len(content), fileToRead)
+		}
+	}
 
 	// publisher of NodeAgent Status
 	pubNodeAgentStatus, err := ps.NewPublication(
@@ -180,25 +229,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubZbootConfig.ClearRestarted()
 	nodeagentCtx.pubZbootConfig = pubZbootConfig
 
-	// Look for global config such as log levels
-	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "",
-		MyAgentName:   agentName,
-		TopicImpl:     types.ConfigItemValueMap{},
-		Activate:      false,
-		Ctx:           &nodeagentCtx,
-		ModifyHandler: handleGlobalConfigModify,
-		DeleteHandler: handleGlobalConfigDelete,
-		SyncHandler:   handleGlobalConfigSynchronized,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	nodeagentCtx.subGlobalConfig = subGlobalConfig
-	subGlobalConfig.Activate()
-
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
 
@@ -221,22 +251,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	nodeagentCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
-
-	// Pick up debug aka log level before we start real work
-	for !nodeagentCtx.GCInitialized {
-		log.Infof("Waiting for GCInitialized")
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case <-nodeagentCtx.tickerTimer.C:
-			handleDeviceTimers(&nodeagentCtx)
-
-		case <-nodeagentCtx.stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Infof("processed GlobalConfig")
 
 	// Wait until we have been onboarded aka know our own UUID
 	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
@@ -421,32 +435,20 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// until after truncation.
 	var rebootStack = ""
 	ctx.rebootReason, ctx.rebootTime, rebootStack =
-		agentlog.GetCommonRebootReason(log)
+		agentlog.GetRebootReason(log)
 	if ctx.rebootReason != "" {
 		log.Warnf("Current partition RebootReason: %s",
 			ctx.rebootReason)
-		agentlog.DiscardCommonRebootReason(log)
+		agentlog.DiscardRebootReason(log)
 	}
-	// XXX We'll retain this block of code for some time to support having older
-	// versions of code in the other partition.
-	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason(log)
-	if otherRebootReason != "" {
-		log.Warnf("Other partition RebootReason: %s",
-			otherRebootReason)
-		// if other partition state is "inprogress"
-		// do not erase the reboot reason, going to
-		// be used for baseos error status, across reboot
-		if !zboot.IsOtherPartitionStateInProgress() {
-			agentlog.DiscardOtherRebootReason(log)
-		}
-	}
-	// first, pick up from other partition
-	if ctx.rebootReason == "" {
-		ctx.rebootReason = otherRebootReason
-		ctx.rebootTime = otherRebootTime
-		rebootStack = otherRebootStack
+	// We override ctx.rebootTime since if known this is when things
+	// started going down
+	bootReason, ts := agentlog.GetBootReason(log)
+	if bootReason != types.BootReasonNone {
+		ctx.rebootTime = ts
 	}
 
+	agentlog.DiscardBootReason(log)
 	// still nothing, fillup the default
 	if ctx.rebootReason == "" {
 		ctx.rebootTime = time.Now()
@@ -455,9 +457,11 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		if fileExists(firstbootFile) {
 			reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
 				dateStr)
+			bootReason = types.BootReasonFirst
 		} else {
 			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
 				dateStr)
+			bootReason = types.BootReasonUnknown
 		}
 		log.Warnf("Default RebootReason: %s", reason)
 		ctx.rebootReason = reason
@@ -468,6 +472,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if fileExists(firstbootFile) {
 		os.Remove(firstbootFile)
 	}
+	ctx.bootReason = bootReason
 
 	// if reboot stack size crosses max size, truncate
 	if len(rebootStack) > maxJSONAttributeSize {
@@ -529,6 +534,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		UpdateInprogress:  ctxPtr.updateInprogress,
 		DeviceReboot:      ctxPtr.deviceReboot,
 		RebootReason:      ctxPtr.rebootReason,
+		BootReason:        ctxPtr.bootReason,
 		RebootStack:       ctxPtr.rebootStack,
 		RebootTime:        ctxPtr.rebootTime,
 		RebootImage:       ctxPtr.rebootImage,

@@ -63,7 +63,7 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
 		log.Errorf(errStr)
-		scheduleNodeReboot(ctxPtr, errStr)
+		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonFallback)
 	} else {
 		log.Infof("handleFallbackOnCloudDisconnect %d seconds remaining",
 			fallbackLimit-timePassed)
@@ -79,7 +79,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
 			resetLimit, timePassed-resetLimit)
 		log.Errorf(errStr)
-		scheduleNodeReboot(ctxPtr, errStr)
+		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonDisconnect)
 	} else {
 		log.Debugf("handleResetOnCloudDisconnect %d seconds remaining",
 			resetLimit-timePassed)
@@ -186,17 +186,19 @@ func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
 	if !status.RebootCmd || ctxPtr.rebootCmd {
 		return
 	}
-	log.Infof("handleRebootCmd reason %s", status.RebootReason)
+	log.Infof("handleRebootCmd reason %s bootReason %s",
+		status.RebootReason, status.BootReason.String())
 	ctxPtr.rebootCmd = true
-	scheduleNodeReboot(ctxPtr, status.RebootReason)
+	scheduleNodeReboot(ctxPtr, status.RebootReason, status.BootReason)
 }
 
-func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
+func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string, bootReason types.BootReason) {
 	if ctxPtr.deviceReboot {
 		log.Infof("reboot flag is already set")
 		return
 	}
-	log.Infof("scheduleNodeReboot(): current RebootReason: %s", reasonStr)
+	log.Infof("scheduleNodeReboot(): current RebootReason: %s BootReason %s",
+		reasonStr, bootReason.String())
 
 	// publish, for zedagent to pick up the reboot event
 	// TBD:XXX, all other agents can subscribe to nodeagent or,
@@ -205,12 +207,13 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	// and clean up its temporary states etc.
 	ctxPtr.deviceReboot = true
 	ctxPtr.currentRebootReason = reasonStr
+	ctxPtr.currentBootReason = bootReason
 	publishNodeAgentStatus(ctxPtr)
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
 	log.Infof("Creating %s at %s", "handleNodeReboot", agentlog.GetMyStack())
-	go handleNodeReboot(ctxPtr, reasonStr)
+	go handleNodeReboot(ctxPtr)
 }
 
 func allDomainsHalted(ctxPtr *nodeagentContext) bool {
@@ -254,7 +257,7 @@ func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 		"with reboot", totalWaitTime, maxDomainHaltTime)
 }
 
-func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
+func handleNodeReboot(ctxPtr *nodeagentContext) {
 	// Wait for MinRebootDelay time
 	duration := time.Second * time.Duration(minRebootDelay)
 	rebootTimer := time.NewTimer(duration)
@@ -263,8 +266,8 @@ func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	<-rebootTimer.C
 
 	// set the reboot reason
-	agentlog.RebootReason(ctxPtr.currentRebootReason, agentName,
-		os.Getpid(), true)
+	agentlog.RebootReason(ctxPtr.currentRebootReason,
+		ctxPtr.currentBootReason, agentName, os.Getpid(), true)
 
 	// Wait for All Domains Halted
 	waitForAllDomainsHalted(ctxPtr)

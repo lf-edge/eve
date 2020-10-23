@@ -131,7 +131,7 @@ func Exec(log *LogObject, command string, arg ...string) *Command {
 	}
 }
 
-//updateAgentTouchFile updates agent's touch file under /var/run/
+//updateAgentTouchFile updates agent's touch file under /run/
 func updateAgentTouchFile(log *LogObject, agentName string) {
 	if agentName == "" {
 		if log != nil {
@@ -139,7 +139,7 @@ func updateAgentTouchFile(log *LogObject, agentName string) {
 		}
 		return
 	}
-	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
+	filename := fmt.Sprintf("/run/%s.touch", agentName)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)

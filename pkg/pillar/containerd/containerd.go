@@ -55,9 +55,9 @@ const (
 	// container config file name
 	imageConfigFilename = "image-config.json"
 	// default socket to connect tasks to memlogd
-	logWriteSocket = "/var/run/linuxkit-external-logging.sock"
+	logWriteSocket = "/run/linuxkit-external-logging.sock"
 	// default socket to read from memlogd
-	logReadSocket = "/var/run/memlogdq.sock"
+	logReadSocket = "/run/memlogdq.sock"
 
 	//TBD: Have a better way to calculate this number.
 	//For now it is based on some trial-and-error experiments

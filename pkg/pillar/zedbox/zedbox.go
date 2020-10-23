@@ -230,7 +230,7 @@ func startAgentAndDone(sep entrypoint, agentName string, srvPs *pubsub.PubSub,
 	retval := sep.f(srvPs, srvLogger, srvLog)
 
 	ret := strconv.Itoa(retval)
-	if err := ioutil.WriteFile(fmt.Sprintf("/var/run/%s.done", agentName),
+	if err := ioutil.WriteFile(fmt.Sprintf("/run/%s.done", agentName),
 		[]byte(ret), 0700); err != nil {
 		log.Fatalf("Error write done file: %v", err)
 	}

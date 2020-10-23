@@ -101,7 +101,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// publish initial zboot partition status
 	updateAndPublishZbootStatusAll(&ctx)
 
-	ctx.worker = worker.NewWorker(log, &ctx, 5, map[string]worker.Handler{
+	ctx.worker = worker.NewWorker(log, &ctx, 20, map[string]worker.Handler{
 		workInstall: {Request: installWorker, Response: processInstallWorkResult},
 	})
 
@@ -306,9 +306,10 @@ func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "",
+			AgentName:     "zedagent",
 			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
+			Persistent:    true,
 			Activate:      false,
 			Ctx:           ctx,
 			CreateHandler: handleGlobalConfigModify,

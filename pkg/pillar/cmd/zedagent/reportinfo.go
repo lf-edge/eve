@@ -8,7 +8,6 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/base"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
@@ -33,9 +33,12 @@ var (
 )
 
 func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) {
+	wdName := agentName + "devinfo"
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
+	ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
+	ctxPtr.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
@@ -46,11 +49,11 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 			PublishDeviceInfoToZedCloud(ctxPtr)
 			ctxPtr.iteration++
 			log.Info("deviceInfoTask done with message")
-			ctxPtr.ps.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
+			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishDeviceInfo", start,
 				warningTime, errorTime)
 		case <-stillRunning.C:
 		}
-		ctxPtr.ps.StillRunning(agentName+"devinfo", warningTime, errorTime)
+		ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 
@@ -350,6 +353,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
+	ReportDeviceInfo.LastBootReason = info.BootReason(ctx.bootReason)
+	if ctx.bootReason != types.BootReasonNone {
+		// XXX Remove?
+		log.Debugf("Reporting BootReason %s", ctx.bootReason.String())
+		log.Debugf("Reporting RebootReason %s", ctx.rebootReason)
+	}
+
 	ReportDeviceInfo.LastRebootStack = ctx.rebootStack
 	if !ctx.rebootTime.IsZero() {
 		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)

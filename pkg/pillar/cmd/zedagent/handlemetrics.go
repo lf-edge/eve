@@ -148,9 +148,12 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	// Return handle to caller
 	handleChannel <- ticker
 
+	wdName := agentName + "metrics"
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
@@ -158,12 +161,12 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 			start := time.Now()
 			iteration++
 			publishMetrics(ctx, iteration)
-			ctx.ps.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
+			ctx.ps.CheckMaxTimeTopic(wdName, "publishMetrics", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 

@@ -242,7 +242,7 @@ const qemuDiskTemplate = `
 [drive "drive-virtio-disk{{.DiskID}}"]
   file = "{{.FileLocation}}"
   format = "{{.Format | Fmt}}"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
@@ -303,7 +303,7 @@ const qemuUsbHostTemplate = `
   hostaddr = "{{.UsbDevAddr}}"
 `
 
-const kvmStateDir = "/var/run/hypervisor/kvm/"
+const kvmStateDir = "/run/hypervisor/kvm/"
 const sysfsPciDevices = "/sys/bus/pci/devices/"
 const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
@@ -311,7 +311,7 @@ const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 
 // KVM domains map 1-1 to anchor device model UNIX processes (qemu or firecracker)
 // For every anchor process we maintain the following entry points in the
-// /var/run/hypervisor/kvm/DOMAIN_NAME:
+// /run/hypervisor/kvm/DOMAIN_NAME:
 //    pid - contains PID of the anchor process
 //    qmp - UNIX domain socket that allows us to talk to anchor process
 //   cons - symlink to /dev/pts/X that allows us to talk to the serial console of the domain

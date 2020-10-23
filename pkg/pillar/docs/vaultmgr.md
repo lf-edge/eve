@@ -22,7 +22,8 @@ The encryption key is randomly generated during first time installation, and sto
 
 ## Troubleshooting
 
-`/persist/IMGX/log/vaultmgr.log` has logs from vaultmgr. One can also use `/opt/zededa/bin/fscrypt` command to print the status of vaults on the pillar shell prompt.
+One can use `/opt/zededa/bin/fscrypt` command to print the status of vaults on the pillar shell prompt.
+To see logs from vaultmgr, one can find recent ones with source being vaultmgr it under `/persist/rsyslog/syslog.txt` or on the controller.
 
 ## Future Work
 

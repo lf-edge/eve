@@ -163,7 +163,7 @@ func createDnsmasqConfiglet(
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
 			ipset, ipset, ipset))
 	}
-	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
+	file.WriteString(fmt.Sprintf("pid-file=/run/dnsmasq.%s.pid\n",
 		bridgeName))
 	file.WriteString(fmt.Sprintf("interface=%s\n", bridgeName))
 	isIPv6 := false
@@ -387,8 +387,7 @@ func RemoveDirContent(dir string) error {
 }
 
 // Run this:
-//    DMDIR=/opt/zededa/bin/
-//    ${DMDIR}/dnsmasq -b -C /var/run/zedrouter/dnsmasq.${BRIDGENAME}.conf
+//    ${DMDIR}/dnsmasq -b -C /run/zedrouter/dnsmasq.${BRIDGENAME}.conf
 func startDnsmasq(bridgeName string) {
 
 	log.Infof("startDnsmasq(%s)\n", bridgeName)
@@ -413,7 +412,7 @@ func startDnsmasq(bridgeName string) {
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
-	pidfile := fmt.Sprintf("/var/run/dnsmasq.%s.pid", bridgeName)
+	pidfile := fmt.Sprintf("/run/dnsmasq.%s.pid", bridgeName)
 	pidByte, err := ioutil.ReadFile(pidfile)
 	if err != nil {
 		log.Errorf("stopDnsmasq: pid file read error %v\n", err)
