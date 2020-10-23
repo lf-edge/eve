@@ -1,0 +1,59 @@
+---
+language: bash
+dist: bionic
+env:
+  - HV=xen
+  - HV=kvm
+branches:
+  only:
+    - master
+cache:
+  directories:
+    - $HOME/.cache/go-build
+    - $HOME/gopath/pkg/mod
+install:
+  - >
+    sudo apt-get -yq --no-install-suggests
+    --no-install-recommends install
+    qemu-utils make curl telnet ninja-build
+  - sudo modprobe kvm-intel nested=1
+  - sudo chown $USER /dev/kvm
+  - free
+  - lscpu
+  - >
+    eval "$(curl -sL
+    https://raw.githubusercontent.com/travis-ci/gimme/master/gimme
+    | GIMME_GO_VERSION=1.12 bash)"
+  - go version
+  - sudo apt-get -yq build-dep qemu
+  - QEMU_VERSION=4.2.1
+  - wget https://download.qemu.org/qemu-$QEMU_VERSION.tar.xz
+  - tar xJf qemu-$QEMU_VERSION.tar.xz
+  - cd qemu-$QEMU_VERSION
+  - ./configure --target-list=x86_64-softmmu
+  - make -j2
+  - sudo make install
+  - cd ..
+  - qemu-system-x86_64 --version
+script:
+  - make HV=$HV pkgs
+  - make HV=$HV eve
+  - git clone https://github.com/lf-edge/eden.git --single-branch
+  - cd eden
+  - make build
+  - ./eden config add default
+  - ./eden config set default --key=eve.hv --value=$HV
+  - ./eden config set default --key=eve.tag --value=$(make -s -C .. version)
+  - make build-tests
+  - ./eden setup
+  - ./eden start
+  - ./eden eve onboard
+  - >
+    ./eden test tests/vnc -r TestVNCVMStart
+    -a '-name vncapp -timewait 1000' -v debug
+after_script:
+  - ./eden pod logs --format=json vncapp
+  - ./eden log --format=json
+  - >
+    ./eden test tests/vnc -r TestVNCVMDelete
+    -a '-name vncapp -timewait 1000' -v debug
