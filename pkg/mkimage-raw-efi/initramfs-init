@@ -309,7 +309,8 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 # mounting the devtmpfs will create it implicitly as an file with the "2>" redirection.
 # The -c check is required to deal with initramfs with pre-seeded device nodes without
 # error message.
-[ -c /dev/null ] || mknod -m 666 /dev/null c 1 3
+umask 0000
+[ -c /dev/null ] || mknod /dev/null c 1 3
 
 mount -t proc -o noexec,nosuid,nodev proc /proc
 mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
@@ -473,24 +474,33 @@ ln -s /proc/mounts /etc/mtab
 # check if setup_loops=... was set
 if [ -n "$KOPT_setup_loops" ]; then
 	# locate boot media and mount it
-	ebegin "Mounting boot media"
-	nlplug-findfs $cryptopts -p /sbin/mdev ${KOPT_debug_init:+-d} \
-		${KOPT_usbdelay:+-t $(( $KOPT_usbdelay * 1000 ))} \
-		-n -r /tmp/rootfs
-	eend $?
+	# NOTE that we may require up to 3 tries with
+	# 30 seconds pauses between them to accomodate
+	# really slow controllers (such as bad USB sticks)
+	for i in 1 2 3; do
+           ebegin "Attempt $i to find and mount boot media"
+           nlplug-findfs $cryptopts -p /sbin/mdev ${KOPT_debug_init:+-d} \
+                ${KOPT_usbdelay:+-t $(( $KOPT_usbdelay * 1000 ))} \
+                -n -r /tmp/rootfs
+	   eend $?
+	   for i in $(cat /tmp/rootfs 2>/dev/null); do
+              if grep -q "$KOPT_setup_loops" "${i%/*}/installer.uid"; then
+                 LOOP_IMG="$i"
+	         break 2
+	      fi
+           done
+	   sleep 30
+        done
 
-        # see if we found anything
-        if [ ! -e /tmp/rootfs ]; then
-           echo "Failed to find rootfs (which is weird). Try to re-run nlplug-findfs manually to see what's wrong:"
+        # now add loop
+	ebegin "Setting up loopback block device"
+        if losetup -r -f "$LOOP_IMG"; then
+           ln -s "${LOOP_IMG%/*}" /media/boot
+        else
+           echo "Failed to find rootfs from boot media. Try to re-run nlplug-findfs manually to see what's wrong:"
            echo "  nlplug-findfs -p /sbin/mdev -d -t 30000 -n -r /tmp/rootfs.txt ; cat /tmp/rootfs.txt"
            sh
         fi
-
-        # now add loops
-	ebegin "Setting up loopback block devices"
-	for l in $(cat /tmp/rootfs); do
-		losetup -r -f "$l"
-	done
 	eend $?
 fi
 
