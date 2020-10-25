@@ -49,6 +49,7 @@ COPY --from=build /out/ /
 COPY --from=initrd /initrd.gz /
 COPY grub.stage1 /usr/lib/grub/i386-pc/boot.img
 RUN gzip -d < /initrd.gz | cpio -id && \
+    rm /etc/mtab /dev/null && \
     find . -xdev | grep -v initrd.gz | sort | cpio --quiet -o -H newc | gzip > /initrd.gz && \
     mv /initrd.gz /initrd.img
 

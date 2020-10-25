@@ -149,6 +149,7 @@ do_boot() {
 do_installer() {
   mkefifs
   cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" /UsbInvocationScript.txt /efifs
+  od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/installer.uid
   do_system_vfat_part "$1" "$INSTALLER_SYS_PART_SIZE"
 }
 
