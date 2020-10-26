@@ -405,8 +405,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
 		return changed
 	}
-	status.AwaitNetwork = ns.AwaitNetwork
-	if ns.AwaitingNetwork() {
+	if ns.MissingNetwork {
 		log.Infof("Waiting for required network instances to arrive for %s", uuidStr)
 		status.State = types.AWAITNETWORK
 		changed = true
