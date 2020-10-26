@@ -145,8 +145,7 @@ type AppInstanceStatus struct {
 	DisplayName         string
 	DomainName          string // Once booted
 	Activated           bool
-	ActivateInprogress  bool // Needed for cleanup after failure
-	AwaitNetwork        bool
+	ActivateInprogress  bool     // Needed for cleanup after failure
 	FixedResources      VmConfig // CPU etc
 	VolumeRefStatusList []VolumeRefStatus
 	EIDList             []EIDStatusDetails
