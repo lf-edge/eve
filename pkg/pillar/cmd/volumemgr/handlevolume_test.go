@@ -3,8 +3,6 @@
 
 package volumemgr
 
-// Interface to worker to run the create and destroy in separate goroutines
-
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
