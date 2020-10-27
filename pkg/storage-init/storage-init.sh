@@ -21,8 +21,11 @@ else
     echo "$(date -Ins -u) No separate $CONFIGDIR partition"
 fi
 
-P3_FS_TYPE="ext3"
-FSCK_FAILED=0
+INIT_FS=0
+P3_FS_TYPE_DEFAULT=ext4
+if grep zfs /hostfs/etc/eve-release; then
+   P3_FS_TYPE_DEFAULT=zfs
+fi
 
 # First lets see if we're running with the disk that hasn't been properly
 # initialized. This could happen when we run in a virtualized cloud
@@ -82,72 +85,56 @@ fi
 # We support P3 partition either formatted as ext3/4 or as part of ZFS pool
 # Priorities are: ext3, ext4, zfs
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
-    P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
-    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
-
     # Loading zfs modules to see if we have any zpools attached to the system
     # We will unload them later (if they do unload it meands we didn't find zpools)
     modprobe zfs
 
-    # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
-    # Note that for whatever reason, it appears that blkid can only identify zfs after it has
-    # been populated with some data (not just initialized). Hence this block is AFTER blkid above
-    if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
-        # zero out the request (regardless of whether we can convert to zfs)
-        dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
-        chroot /hostfs zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist "$P3"
-        chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist
-        # we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
-        #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
-        chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
-        P3_FS_TYPE=zfs_member
-    fi
+    P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
+    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
-    case "$P3_FS_TYPE" in
-         ext3|ext4) if ! "fsck.$P3_FS_TYPE" -y "$P3"; then
-                        FSCK_FAILED=1
-                    fi
-                    ;;
-        zfs_member) P3_FS_TYPE=zfs
-                    if ! chroot /hostfs zpool import -f persist; then
-                        FSCK_FAILED=1
-                    fi
-                    ;;
-                 *) echo "P3 partition $P3 appears to have unrecognized type $P3_FS_TYPE"
-                    FSCK_FAILED=1
-                    ;;
-    esac
+    # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
+    # for now we are using first block in the device to flip into zfs on demand
+    if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
+       # zero out the request (regardless of whether we can convert to zfs)
+       dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
+
+       P3_FS_TYPE=zfs
+    fi
 
     #For systems with ext3 filesystem, try not to change to ext4, since it will brick
     #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
     #when we do usb install, this way the transition is more controlled.
     #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
-    if [ $FSCK_FAILED = 1 ]; then
-        echo "$(date -Ins -u) mkfs.ext4 on $P3 for $PERSISTDIR"
-        #Use -F option twice, to avoid any user confirmation in mkfs
-        if ! mkfs -t ext4 -v -F -F -O encrypt "$P3"; then
-            echo "$(date -Ins -u) mkfs.ext4 $P3 failed"
-        else
-            echo "$(date -Ins -u) mkfs.ext4 $P3 successful"
-            P3_FS_TYPE="ext4"
-        fi
+    if { [ "$P3_FS_TYPE" != ext3 ] && [ "$P3_FS_TYPE" != ext4 ]; } || ! "fsck.$P3_FS_TYPE" -y "$P3" ; then
+       echo "P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
+       INIT_FS=1
+       P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
     fi
 
-    if [ "$P3_FS_TYPE" = "ext3" ]; then
-        if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
-            echo "$(date -Ins -u) mount $P3 failed"
-        fi
-    fi
-    #On ext4, enable encryption support before mounting.
-    if [ "$P3_FS_TYPE" = "ext4" ]; then
-        tune2fs -O encrypt "$P3"
-        if ! mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR; then
-            echo "$(date -Ins -u) mount $P3 failed"
-        fi
-    fi
+    case "$P3_FS_TYPE" in
+             ext3) mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR
+                   ;;
+             ext4) #Use -F option twice, to avoid any user confirmation in mkfs
+                   if [ "$INIT_FS" = 1 ]; then
+                      mkfs -t ext4 -v -F -F -O encrypt "$P3"
+                   fi
+                   tune2fs -O encrypt "$P3" && \
+                   mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR
+                   ;;
+             zfs*) if [ "$INIT_FS" = 1 ]; then
+                      # note that we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
+                      #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
+                      chroot /hostfs zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist "$P3" && \
+                      chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist                                          && \
+                      chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
+                   fi
+                   chroot /hostfs zpool import -f persist
+                   ;;
+    esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
 
     # deposit fs type into /run
     echo "$P3_FS_TYPE" > /run/eve.persist_type
+
     # this is safe, since if the mount fails the following will fail too
     # shellcheck disable=SC2046
     rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
