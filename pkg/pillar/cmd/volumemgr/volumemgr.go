@@ -70,7 +70,7 @@ type volumemgrContext struct {
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
 
-	worker *worker.Worker // For background work
+	worker *worker.Pool // For background work
 
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
@@ -147,7 +147,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig.Activate()
 
 	// Create the background worker
-	ctx.worker = worker.NewWorker(log, &ctx, 20, map[string]worker.Handler{
+	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
 		workCreate: {Request: volumeWorker, Response: processVolumeWorkResult},
 		workIngest: {Request: casIngestWorker, Response: processCasIngestWorkResult},
 	})
