@@ -310,8 +310,9 @@ $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ "$(ROOTFS_VERSION)" $(CONF_FILES)
 
 $(PERSIST_IMG): | $(INSTALLER)
+	$(if $(findstring zfs,$(HV)),echo 'eve<3zfs' > $@)
 	# 1M of zeroes should be enough to trigger filesystem wipe on first boot
-	dd if=/dev/zero of=$(PERSIST_IMG) bs=1048576 count=1
+	dd if=/dev/zero bs=1048576 count=1 >> $@
 
 $(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 	@rm -f $@ && ln -s $(notdir $<) $@
