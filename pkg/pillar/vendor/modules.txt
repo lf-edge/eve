@@ -319,6 +319,8 @@ github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/register
+# github.com/mackerelio/go-osstat v0.1.0
+github.com/mackerelio/go-osstat/cpu
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/morikuni/aec v1.0.0
