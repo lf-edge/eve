@@ -126,6 +126,11 @@ message deviceMetric {
   memoryMetric systemServicesMemoryMB = 11;  // In MB
   logMetric log = 12;
   repeated CipherMetric cipher = 13;  // Object decryption
+  AclMetric acl = 14;
+}
+
+message AclMetric {
+  uint64 total_rule_count = 1; // Total number of rules found in filter (FORWARD), raw (PREROUTING) tables
 }
 
 message appContainerMetric {
