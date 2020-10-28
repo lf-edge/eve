@@ -17,6 +17,7 @@ mkdir -p /mnt/rootfs/etc
 CFG="/mnt/rootfs/etc/udhcpc.${interface}.cfg"
 
 RESOLV_CONF='/mnt/rootfs/etc/resolv.conf'
+RESOLV_OPTIONS="rotate timeout:10 attempts:5"
 
 # interface for which DNS is to be configured
 PEERDNS_IF=eth0
@@ -84,10 +85,13 @@ case "$1" in
     [ -n "$router" ] && [ -n "$staticroutes" ] && install_classless_routes $staticroutes
     # setup dns
     if [ "$interface" == "$PEERDNS_IF" ] ; then
+      # remove previous dns
+      rm -f $RESOLV_CONF
       [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
       for i in $dns ; do
         echo nameserver $i >> $RESOLV_CONF
       done
+      echo "options ${RESOLV_OPTIONS}" >> $RESOLV_CONF
     fi
     update_hosts
     ;;
@@ -134,6 +138,7 @@ case "$1" in
       for i in $dns ; do
         echo nameserver $i >> $RESOLV_CONF
       done
+      echo "options ${RESOLV_OPTIONS}" >> $RESOLV_CONF
     fi
     if [ -n "$REDO_HOSTNAME" ]; then
       update_hosts

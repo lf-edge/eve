@@ -469,7 +469,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	effectiveDomainState, matched := stateMap[strings.TrimSpace(string(status))]
 	if !matched {
 		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %v",
-			domainName, status)
+			domainName, string(status))
 	}
 
 	return effectiveDomainID, effectiveDomainState, nil

@@ -168,6 +168,11 @@ enum ZSwState {
   // Prior to INSTALLED we go through these:
   CREATING_VOLUME       = 14;   // Volume create in progress
   CREATED_VOLUME        = 15;   // Volume create done/failed
+  VERIFYING             = 16;   // Verification in-progress
+  VERIFIED              = 17;   // Verification completed
+  LOADING               = 18;   // Loading blob in CAS
+  LOADED                = 19;   // Loaded blob in CAS
+  AWAITNETWORKINSTANCE  = 20;   // Wait for network instance
 }
 
 // SW Info for Apps

@@ -35,6 +35,7 @@ const (
 	CREATING_VOLUME // Volume create in progress
 	CREATED_VOLUME  // Volume create done or failed
 	INSTALLED       // Available to be activated
+	AWAITNETWORKINSTANCE
 	BOOTING
 	RUNNING
 	PAUSING
@@ -75,6 +76,8 @@ func (state SwState) String() string {
 		return "CREATED_VOLUME"
 	case INSTALLED:
 		return "INSTALLED"
+	case AWAITNETWORKINSTANCE:
+		return "AWAITNETWORKINSTANCE"
 	case BOOTING:
 		return "BOOTING"
 	case RUNNING:
@@ -122,6 +125,9 @@ func (state SwState) ZSwState() info.ZSwState {
 	case CREATED_VOLUME:
 		return info.ZSwState_CREATED_VOLUME
 	case INSTALLED:
+		return info.ZSwState_INSTALLED
+	// XXX We should later have a new proto state that we can map AWAITNETWORK to
+	case AWAITNETWORKINSTANCE:
 		return info.ZSwState_INSTALLED
 	case BOOTING:
 		return info.ZSwState_BOOTING

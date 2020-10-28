@@ -1,8 +1,8 @@
-FROM alpine:3.8
+FROM alpine:3.12
 ENTRYPOINT []
 WORKDIR /
 
-RUN apk add --no-cache pciutils usbutils vim tcpdump gdb util-linux
+RUN apk add --no-cache pciutils usbutils vim tcpdump gdb valgrind perf util-linux
 
 COPY debug-spin.sh /
 

@@ -752,15 +752,18 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		config.DisplayName, config.UUIDandVersion)
 
 	// Check that Network exists for all underlays.
-	// We look for MissingNetwork when a NetworkInstance is added
+	// We look for AwaitNetworkInstance when a NetworkInstance is added
 	allNetworksExist := appNetworkCheckAllNetworksExist(ctx, config, status)
 	if !allNetworksExist {
 		// XXX error or not?
-		status.MissingNetwork = true
+		status.AwaitNetworkInstance = true
 		log.Infof("doActivate(%v) for %s: missing networks\n",
 			config.UUIDandVersion, config.DisplayName)
 		publishAppNetworkStatus(ctx, status)
 		return
+	} else if status.AwaitNetworkInstance {
+		status.AwaitNetworkInstance = false
+		publishAppNetworkStatus(ctx, status)
 	}
 	appNetworkDoCopyNetworksToStatus(ctx, config, status)
 	if !validateAppNetworkConfig(ctx, config, status) {
@@ -1019,16 +1022,26 @@ func appNetworkCheckAllNetworksExist(
 		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
 			ulConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
+		log.Errorf(errStr)
 		log.Infof("doActivate failed: %s\n", errStr)
-		addError(ctx, status, "doActivate underlay",
-			errors.New(errStr))
+
+		// App network configuration that has underlays pointing to non-existant
+		// network instances is invalid. Such, configuration should never come to
+		// device from cloud.
+		// But, on the device sometimes, zedrouter sees the app network configuration
+		// before seeing the required network instance configuration. This is transient
+		// and zedrouter re-creates the app network when the corresponding network instance
+		// configuration finally arrives.
+		// In such cases it is less confusing to put the app network in network wait state
+		// rather than in error state.
+		// We use the AwaitNetworkInstance in AppNetworkStatus that is already present.
 		return false
 	}
 	return true
 }
 
 // Called when a NetworkInstance is added
-// Walk all AppNetworkStatus looking for MissingNetwork, then
+// Walk all AppNetworkStatus looking for AwaitNetworkInstance, then
 // check if network UUID is there.
 func checkAndRecreateAppNetwork(
 	ctx *zedrouterContext, network uuid.UUID) {
@@ -1038,7 +1051,7 @@ func checkAndRecreateAppNetwork(
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
-		if !status.MissingNetwork {
+		if !status.AwaitNetworkInstance {
 			continue
 		}
 		log.Infof("checkAndRecreateAppNetwork(%s) missing for %s\n",
@@ -1252,6 +1265,12 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 			config.UUIDandVersion)
 		addError(ctx, status, "handleModify", errors.New(errStr))
 		log.Infof("handleModify done for %s\n", config.DisplayName)
+		return false
+	}
+	// Wait for all network instances to arrive if they have not already.
+	if status.AwaitNetworkInstance {
+		log.Errorf("Still waiting for all network instances to arrive for %s",
+			config.UUIDandVersion)
 		return false
 	}
 	for i := range config.UnderlayNetworkList {

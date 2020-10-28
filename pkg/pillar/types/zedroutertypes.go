@@ -103,6 +103,11 @@ func (status AppNetworkStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+// AwaitingNetwork - Is the app waiting for network?
+func (status AppNetworkStatus) AwaitingNetwork() bool {
+	return status.AwaitNetworkInstance
+}
+
 // Indexed by UUID
 type AppNetworkStatus struct {
 	UUIDandVersion UUIDandVersion
@@ -113,9 +118,9 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
-	GetStatsIPAddr      net.IP
-	UnderlayNetworkList []UnderlayNetworkStatus
-	MissingNetwork      bool // If any Missing flag is set in the networks
+	GetStatsIPAddr       net.IP
+	UnderlayNetworkList  []UnderlayNetworkStatus
+	AwaitNetworkInstance bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -1965,7 +1970,8 @@ func (metrics NetworkInstanceMetrics) LogKey() string {
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
-	MetricList []NetworkMetric
+	MetricList     []NetworkMetric
+	TotalRuleCount uint64
 }
 
 // Key is used for pubsub

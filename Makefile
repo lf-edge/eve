@@ -307,7 +307,7 @@ $(SSH_KEY):
 	mv $@.pub $(CONF_DIR)/authorized_keys
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
-	./tools/makeconfig.sh $@ $(CONF_FILES)
+	./tools/makeconfig.sh $@ "$(ROOTFS_VERSION)" $(CONF_FILES)
 
 $(PERSIST_IMG): | $(INSTALLER)
 	# 1M of zeroes should be enough to trigger filesystem wipe on first boot

@@ -405,6 +405,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
 		return changed
 	}
+	if ns.AwaitNetworkInstance {
+		log.Infof("Waiting for required network instances to arrive for %s", uuidStr)
+		status.State = types.AWAITNETWORKINSTANCE
+		changed = true
+		return changed
+	}
 	if ns.HasError() {
 		log.Errorf("Received error from zedrouter for %s: %s",
 			uuidStr, ns.Error)

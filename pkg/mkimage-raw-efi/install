@@ -22,6 +22,9 @@ pause() {
 }
 
 bail() {
+   if mount_part INVENTORY "$(root_dev)" -t vfat -o iocharset=iso8859-1; then
+      collect_black_box /run/INVENTORY 2>/dev/null
+   fi
    echo "$*"
    exit 1
 }
@@ -43,7 +46,7 @@ root_dev() {
       MINOR=$(( 0x$(stat -c '%T' $DEV) + 0 ))
    fi
    DEV_MM="$MAJOR:$MINOR"
-   echo $(grep -l '^'$DEV_MM'$' /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
+   echo $(grep -l '^'$DEV_MM'$' /sys/block/*/dev /sys/block/*/*/dev 2>/dev/null | cut -f4 -d/)
 }
 
 # find_part LABEL BLOCK_DEV
@@ -68,13 +71,51 @@ mount_part() {
    mount "$@" "/dev/$ID" "/run/$PART"
 }
 
+# collect_black_box FOLDER_TO_PUT_BLACK_BOX
+collect_black_box() {
+   lsblk > "$1/lsblk.txt"
+   dmesg > "$1/dmesg.txt"
+   tar -C /proc -cjf "$1/procfs.tar.bz2" cpuinfo meminfo
+   tar -C /sys -cjf "$1/sysfs.tar.bz2" .
+   tar -C /run/CONFIG -cjf "$1/config.tar.bz2" .
+   tar -C /run/P3 -cjf "$1/persist.tar.bz2" status rsyslog log config checkpoint certs agentdebug
+}
+
+# measure of last resort: we nuke all partition tables
+# so that we can get to a blank state. NOTE that this
+# may damage installer image itself, but we don't really
+# care since that is trivial to re-create
+if grep -q eve_nuke_all_disks /proc/cmdline; then
+   echo -n "Nuking partition tables on:"
+   for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}'); do
+      echo -n " $i"
+      dd if=/dev/zero of="/dev/$i" bs=512 count=34 >/dev/null 2>&1
+   done
+   sync; sleep 5; sync
+   echo " done!"
+   poweroff -f
+fi
+
 # if we are running without a real root filesystem - we have to fake it here
 if [ ! -e /dev/root ]; then
    # we are running off of an initrd or initramfs
    # relying on init setting up mount points for us under /media
-   DEV_INIT="$(cd /media || exit 1 ; echo */rootfs.img | sed -e 's#/.*$##')"
-   ln -s "/media/$DEV_INIT" /bits
-   ln -s "/dev/$DEV_INIT" /dev/root
+   [ -d /media/boot ] || bail "FATAL: can't find installation artifacts"
+
+   ln -s /media/boot /bits
+   ln -s "/dev/$(basename "$(readlink /media/boot)")" /dev/root
+
+   # FIXME: we need to run one thing from the install image to seed
+   # the random generator for sgdisk invocatin via make-raw. We also
+   # use this opportunity to make sure that USB keyboard is functional
+   # for any kind of debugging we may need to do. This needs to go away
+   # soon as part of the overall restructuring of
+   # /install vs. make-raw vs. /init
+   mkdir -p /mnt || :
+   mount -o ro /bits/rootfs.img /mnt &&
+      /mnt/containers/onboot/*rngd/rootfs/sbin/rngd -1
+   mount --bind /mnt/lib/modules /lib/modules &&
+      modprobe usbhid && modprobe usbkbd
 fi
 
 # lets see if we're told on which disk to install...
@@ -113,14 +154,6 @@ grep -q eve_install_skip_config /proc/cmdline && trunc /parts/persist.img
 # we may be asked to pause before install procedure
 grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
 
-# FIXME: we need to run one thing from the install image to seed
-# the random generator for sgdisk invocatin via make-raw. This
-# needs to go away soon as part of the overall restructuring of
-# /install vs. make-raw vs. /init
-mkdir -p /mnt || :
-mount -o ro /parts/rootfs.img /mnt &&
-   /mnt/containers/onboot/*rngd/rootfs/sbin/rngd -1
-
 # do the install (unless we're only here to collect the black box)
 grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
@@ -142,13 +175,7 @@ if mount_part INVENTORY "$(root_dev)" -t vfat -o iocharset=iso8859-1; then
    chroot "$PILLAR" /usr/sbin/dmidecode > "$REPORT/hardwaremodel.txt"
 
    # then we can collect our black box
-   if grep -q eve_blackbox /proc/cmdline; then
-      dmesg > "$REPORT/dmesg.txt"
-      tar -C /proc -cjf "$REPORT/procfs.tar.bz2" cpuinfo meminfo
-      tar -C /sys -cjf "$REPORT/sysfs.tar.bz2" .
-      tar -C /run/P3 -cjf "$REPORT/persist.tar.bz2" status rsyslog log config checkpoint certs agentdebug
-      tar -C /run/CONFIG -cjf "$REPORT/config.tar.bz2" .
-   fi 2>/dev/null
+   grep -q eve_blackbox /proc/cmdline && collect_black_box "$REPORT" 2>/dev/null
 fi
 
 # we also maybe asked to pause after

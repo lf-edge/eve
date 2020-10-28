@@ -13,6 +13,9 @@ CONFIG_SIZE_KB=1024
 # Traverse /conf to a point where we either see multiple files or no subdirectories
 (cd /conf; while cd "$(echo ./*)" >/dev/null 2>&1 ; do true ; done ; cp -r ./* /conf ; rm -rf /conf/raw)
 
+# Add a version ID
+touch "/conf/origin.$(date +'%Y-%m-%d').$ROOTFS_VERSION"
+
 #
 # Create Config image
 #
