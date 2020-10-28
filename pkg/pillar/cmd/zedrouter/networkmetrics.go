@@ -90,5 +90,5 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			bridgeName, vifName, ipVer, !inout)
 		metrics = append(metrics, metric)
 	}
-	return types.NetworkMetrics{MetricList: metrics}
+	return types.NetworkMetrics{MetricList: metrics, TotalRuleCount: uint64(len(ac))}
 }

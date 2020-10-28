@@ -305,6 +305,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			networkDetails)
 	}
 
+	aclMetric := new(metrics.AclMetric)
+	aclMetric.TotalRuleCount = networkMetrics.TotalRuleCount
+	ReportDeviceMetric.Acl = aclMetric
+
 	lm, _ := ctx.subLogMetrics.Get("global")
 	if lm != nil {
 		logMetrics := lm.(types.LogMetrics)

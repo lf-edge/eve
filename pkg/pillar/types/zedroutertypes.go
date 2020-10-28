@@ -1970,7 +1970,8 @@ func (metrics NetworkInstanceMetrics) LogKey() string {
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
-	MetricList []NetworkMetric
+	MetricList     []NetworkMetric
+	TotalRuleCount uint64
 }
 
 // Key is used for pubsub
