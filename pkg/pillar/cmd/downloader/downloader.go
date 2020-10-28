@@ -370,6 +370,8 @@ func handleModify(ctx *downloaderContext, key string,
 		log.Infof("handleModify installing %s", config.Name)
 		handleCreate(ctx, config, status, key)
 	} else if status.RefCount != config.RefCount {
+		log.Infof("handleModify RefCount change %s from %d to %d",
+			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 	}
 	status.LastUse = time.Now()

@@ -66,6 +66,19 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 	log.Infof("AddOrRefcountDownloaderConfig done for %s", blob.Sha256)
 }
 
+// MaybeRemoveDownloaderConfig decrements Refcount of the given DownloaderConfig.
+// If the Refcount of a DownloaderConfig reaches zero, the following sequence of handshake is performed
+// before deleting DownloaderConfig:
+// 1. volumeMgr publishes DownloaderConfig with Refcount = 0.
+// 2. Downloader replies with a expired DownloaderStatus (RefCount = 0).
+// 3. volumeMgr deletes the respective DownloaderConfig after receiving expired DownloaderStatus.
+// 4. Downloader receives the delete notification and deletes DownloaderStatus along with the downloaded file.
+//
+// Note:
+// > If download was in progress after #1, then the download progress notification for the DownloaderStatus will be
+// ignored silently.
+// > If DownloaderConfig's Refcount was incremented before #3, then expired notification from the
+// Downloader will be ignored silently.
 func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
 	log.Infof("MaybeRemoveDownloaderConfig(%s)", imageSha)
 
@@ -83,11 +96,8 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s",
 		m.RefCount, imageSha)
-	if m.RefCount == 0 {
-		unpublishDownloaderConfig(ctx, m)
-	} else {
-		publishDownloaderConfig(ctx, m)
-	}
+
+	publishDownloaderConfig(ctx, m)
 	log.Infof("MaybeRemoveDownloaderConfig done for %s", imageSha)
 }
 
@@ -140,6 +150,9 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 		unpublishDownloaderConfig(ctx, config)
 
 		return
+	} else if status.Expired {
+		log.Infof("handleDownloaderStatusModify ignore expired DownloaderStatus; "+
+			"config still has reference for %s", key)
 	}
 
 	// Normal update case
