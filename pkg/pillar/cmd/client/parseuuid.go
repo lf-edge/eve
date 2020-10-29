@@ -11,7 +11,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
+	"github.com/lf-edge/eve/api/go/eveuuid"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/satori/go.uuid"
 )
