@@ -1,0 +1,39 @@
+From 1f1182bf84ec7a6d1ec74c56fccd66ff013077af Mon Sep 17 00:00:00 2001
+From: Stefano Stabellini <stefano.stabellini@xilinx.com>
+Date: Wed, 20 May 2020 16:43:08 -0700
+Subject: [PATCH 11/11] xen/arm: call dma_to_phys on the dma_addr_t parameter
+ of dma_cache_maint
+
+Add a struct device* parameter to dma_cache_maint.
+
+Translate the dma_addr_t parameter of dma_cache_maint by calling
+dma_to_phys. Do it for the first page and all the following pages, in
+case of multipage handling.
+
+Signed-off-by: Stefano Stabellini <stefano.stabellini@xilinx.com>
+---
+ include/xen/arm/page-coherent.h | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/xen/mm.c b/arch/arm/xen/mm.c
+index 7639251bcc79..6ddf3b3c1ab5 100644
+--- a/include/xen/arm/page-coherent.h	2020-05-20 06:22:38.000000000 +0000
++++ b/include/xen/arm/page-coherent.h	2020-05-29 00:37:15.604981421 +0000
+@@ -8,12 +8,17 @@
+ static inline void *xen_alloc_coherent_pages(struct device *hwdev, size_t size,
+ 		dma_addr_t *dma_handle, gfp_t flags, unsigned long attrs)
+ {
++	void *cpu_addr;
++        if (dma_alloc_from_dev_coherent(hwdev, size, dma_handle, &cpu_addr))
++            return cpu_addr;
+ 	return dma_direct_alloc(hwdev, size, dma_handle, flags, attrs);
+ }
+ 
+ static inline void xen_free_coherent_pages(struct device *hwdev, size_t size,
+ 		void *cpu_addr, dma_addr_t dma_handle, unsigned long attrs)
+ {
++	if (dma_release_from_dev_coherent(hwdev, get_order(size), cpu_addr))
++            return;
+ 	dma_direct_free(hwdev, size, cpu_addr, dma_handle, attrs);
+ }
+ 
