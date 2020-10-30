@@ -179,6 +179,9 @@ func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
 
+const clockTicks uint64 = 100 // github.com/containerd/cgroups/ticks.go hardcoded as 100 also
+const nanoSecToSec uint64 = 1000000000
+
 func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	res := map[string]types.DomainMetric{}
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
@@ -206,7 +209,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 			} else {
 				usedMemPerc = 0
 			}
-			cpuTotal = metric.CPU.Usage.Total / 1000000000
+			cpuTotal = metric.CPU.Usage.Total / nanoSecToSec / clockTicks
 		} else {
 			log.Errorf("GetDomsCPUMem failed with error %v", err)
 		}
