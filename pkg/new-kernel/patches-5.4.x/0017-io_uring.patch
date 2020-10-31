@@ -33930,7 +33930,7 @@ index a9e71f09a3c4..d4d10a4a9df3 100644
 2.26.2
 
 
-From 438bc497102e3d921f6aab67b16063237d3e3428 Mon Sep 17 00:00:00 2001
+From dbeecf23aa3113b1d034cbd9c4203e267858eb17 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 8 Jan 2020 15:05:37 -0700
 Subject: [PATCH 237/650] eventpoll: support non-blocking do_epoll_ctl() calls
@@ -33943,12 +33943,12 @@ Signed-off-by: Jens Axboe <axboe@kernel.dk>
 Conflicts:
 	fs/eventpoll.c
 ---
- fs/eventpoll.c            | 47 +++++++++++++++++++++++++++------------
+ fs/eventpoll.c            | 46 ++++++++++++++++++++++++++++-----------
  include/linux/eventpoll.h |  9 ++++++++
- 2 files changed, 42 insertions(+), 14 deletions(-)
+ 2 files changed, 42 insertions(+), 13 deletions(-)
 
 diff --git a/fs/eventpoll.c b/fs/eventpoll.c
-index d4d10a4a9df3..803dab83f823 100644
+index d4d10a4a9df3..21f93e8c54bc 100644
 --- a/fs/eventpoll.c
 +++ b/fs/eventpoll.c
 @@ -352,12 +352,6 @@ static inline struct epitem *ep_item_from_epqueue(poll_table *p)
@@ -33986,7 +33986,7 @@ index d4d10a4a9df3..803dab83f823 100644
  {
  	int error;
  	int full_check = 0;
-@@ -2145,27 +2152,39 @@ static int do_epoll_ctl(int epfd, int op, int fd, struct epoll_event *epds)
+@@ -2145,14 +2152,18 @@ static int do_epoll_ctl(int epfd, int op, int fd, struct epoll_event *epds)
  	 * deep wakeup paths from forming in parallel through multiple
  	 * EPOLL_CTL_ADD operations.
  	 */
@@ -34008,9 +34008,7 @@ index d4d10a4a9df3..803dab83f823 100644
  			if (is_file_epoll(tf.file)) {
  				error = -ELOOP;
  				if (ep_loop_check(ep, tf.file) != 0)
- 					goto error_tgt_fput;
- 			} else {
--				get_file(tf.file);
+@@ -2162,10 +2173,19 @@ static int do_epoll_ctl(int epfd, int op, int fd, struct epoll_event *epds)
  				list_add(&tf.file->f_tfile_llink,
  							&tfile_check_list);
  			}
@@ -34032,7 +34030,7 @@ index d4d10a4a9df3..803dab83f823 100644
  			}
  		}
  	}
-@@ -2235,7 +2254,7 @@ SYSCALL_DEFINE4(epoll_ctl, int, epfd, int, op, int, fd,
+@@ -2235,7 +2255,7 @@ SYSCALL_DEFINE4(epoll_ctl, int, epfd, int, op, int, fd,
  	    copy_from_user(&epds, event, sizeof(struct epoll_event)))
  		return -EFAULT;
  
@@ -34065,7 +34063,7 @@ index bc6d79b00c4e..8f000fada5a4 100644
 2.26.2
 
 
-From ca4635ecc5a6a274f601d06df6d93a414a6ca123 Mon Sep 17 00:00:00 2001
+From fd195231cdab8265b7332bd6b8507caa7ae9e0b9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 8 Jan 2020 15:18:09 -0700
 Subject: [PATCH 238/650] io_uring: add support for epoll_ctl(2)
@@ -34219,7 +34217,7 @@ index 98105ff8d3e6..3f7961c1c243 100644
 2.26.2
 
 
-From 3e031c2eac1136cea12a34d856760bb7ec4eb73d Mon Sep 17 00:00:00 2001
+From 714f9b491bf417ddf388f6debcee6f491352bdab Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 26 Jan 2020 09:53:12 -0700
 Subject: [PATCH 239/650] Revert "io_uring: only allow submit from owning task"
@@ -34258,7 +34256,7 @@ index dc19e90deec9..6d3130504cb3 100644
 2.26.2
 
 
-From bcd741459e3ac72fd1024baaaab046f5f115aecb Mon Sep 17 00:00:00 2001
+From 06227f95e6790948b8014dfc88b218735dda59ec Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 30 Jan 2020 08:25:34 -0700
 Subject: [PATCH 240/650] io_uring: add ->show_fdinfo() for the io_uring file
@@ -34401,7 +34399,7 @@ index 6d3130504cb3..4e97cef9176c 100644
 2.26.2
 
 
-From 6433d0567470e17518b610b85361097d71a8e666 Mon Sep 17 00:00:00 2001
+From 256ff361caf67aac598be8bb3d32bb0d08d8a1e2 Mon Sep 17 00:00:00 2001
 From: Stefan Metzmacher <metze@samba.org>
 Date: Wed, 29 Jan 2020 14:39:41 +0100
 Subject: [PATCH 241/650] io_uring: add BUILD_BUG_ON() to assert the layout of
@@ -34465,7 +34463,7 @@ index 4e97cef9176c..83a04cc390b4 100644
 2.26.2
 
 
-From 7631c7591e529f2909feb9ae3536ee59292ce8a0 Mon Sep 17 00:00:00 2001
+From 0e82a6d40ea5bb759f8835e0f65243c89fa33d63 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 1 Feb 2020 21:30:11 -0700
 Subject: [PATCH 242/650] io_uring: prevent potential eventfd recursion on poll
@@ -34567,7 +34565,7 @@ index 83a04cc390b4..a576b0997055 100644
 2.26.2
 
 
-From 91e8e29e58eb83982d3b7541509385b1d8072381 Mon Sep 17 00:00:00 2001
+From 6c89c2dc4420e149ed15c67c106c58c7e8e7b7f9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 31 Jan 2020 08:34:59 -0700
 Subject: [PATCH 243/650] io_uring: use the proper helpers for io_send/recv
@@ -34619,7 +34617,7 @@ index a576b0997055..cecf7b8666ef 100644
 2.26.2
 
 
-From 9f7d992e4c2a653ac5784b7b7893f703e185bd4b Mon Sep 17 00:00:00 2001
+From e018afb098c1ba8f3ae321479e781d51a79e30bb Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 31 Jan 2020 12:06:52 -0700
 Subject: [PATCH 244/650] io_uring: don't map read/write iovec potentially
@@ -34662,7 +34660,7 @@ index cecf7b8666ef..1b79c660a0fd 100644
 2.26.2
 
 
-From 9bd63550c095cd0e8ad84dbbef6fcf219be155e7 Mon Sep 17 00:00:00 2001
+From 61cc01181dc8c9a5847c695ef34fb6eac78591a8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 1 Feb 2020 01:22:08 +0300
 Subject: [PATCH 245/650] io_uring: remove extra ->file check
@@ -34694,7 +34692,7 @@ index 1b79c660a0fd..d40df5c5f6c7 100644
 2.26.2
 
 
-From d7d590ea8b2cd1b89e9b8e67ddb1128fb45db3ce Mon Sep 17 00:00:00 2001
+From 857ff975a73a7a2f8a21656815d37d41d8982e6f Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 31 Jan 2020 17:16:48 -0700
 Subject: [PATCH 246/650] io_uring: fix sporadic double CQE entry for close
@@ -34756,7 +34754,7 @@ index d40df5c5f6c7..fda613c63d2e 100644
 2.26.2
 
 
-From e470a1faca245e16d0b3a7e167e9064565c6d5f0 Mon Sep 17 00:00:00 2001
+From 667e46524a238b18886771aeedb3ff3ec75388c4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 1 Feb 2020 09:22:49 -0700
 Subject: [PATCH 247/650] io_uring: punt even fadvise() WILLNEED to async
@@ -34806,7 +34804,7 @@ index fda613c63d2e..a3ceb155c81b 100644
 2.26.2
 
 
-From 9a0f849594d129fb1812871ff4e5455c5134fd99 Mon Sep 17 00:00:00 2001
+From 55c8621487a2ae51776c2b5e4b132c89347830df Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 1 Feb 2020 03:58:00 +0300
 Subject: [PATCH 248/650] io_uring: iterate req cache backwards
@@ -34863,7 +34861,7 @@ index a3ceb155c81b..3d7e2cc87926 100644
 2.26.2
 
 
-From 6c765d1a2f8d368f145fe7eb62e6be0c17a72dfb Mon Sep 17 00:00:00 2001
+From 57d4074950d9a7d0e242a56a0bd5985bbc741759 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 1 Feb 2020 03:58:42 +0300
 Subject: [PATCH 249/650] io_uring: put the flag changing code in the same spot
@@ -34910,7 +34908,7 @@ index 3d7e2cc87926..40e99da7fe96 100644
 2.26.2
 
 
-From cb86a5c9048727c5130e4ff0a23795790a92e219 Mon Sep 17 00:00:00 2001
+From 415a43f89eab1adfb18d4100f3bf8f736c7df11c Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 4 Feb 2020 16:48:34 -0700
 Subject: [PATCH 250/650] io_uring: spin for sq thread to idle on shutdown
@@ -34965,7 +34963,7 @@ index 40e99da7fe96..3d52c4d40a67 100644
 2.26.2
 
 
-From 0efa639d01feec93294bdea097d70931b16e1b6b Mon Sep 17 00:00:00 2001
+From 229807a74358d2f4e3df312ee739bf3d112c9cfd Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 4 Feb 2020 19:54:55 -0700
 Subject: [PATCH 251/650] io_uring: cleanup fixed file data table references
@@ -35072,7 +35070,7 @@ index 3d52c4d40a67..447bc5558be3 100644
 2.26.2
 
 
-From a45ba5a51b52722257aa06a20326535e67e6055f Mon Sep 17 00:00:00 2001
+From 2ad19b34ce315d12483b47755c74530fd1f0059e Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 6 Feb 2020 21:16:09 +0300
 Subject: [PATCH 252/650] io_uring: get rid of delayed mm check
@@ -35157,7 +35155,7 @@ index 447bc5558be3..755eab83e405 100644
 2.26.2
 
 
-From 502c6ed79ec8b3e278463a82b56c6dc38f9926d2 Mon Sep 17 00:00:00 2001
+From e649f7c2c90d772db4a7f07d9c97184cff910f50 Mon Sep 17 00:00:00 2001
 From: Randy Dunlap <rdunlap@infradead.org>
 Date: Wed, 5 Feb 2020 20:57:10 -0800
 Subject: [PATCH 253/650] io_uring: fix 1-bit bitfields to be unsigned
@@ -35209,7 +35207,7 @@ index 755eab83e405..31155388f279 100644
 2.26.2
 
 
-From 32ce79382a7ae11a2ca88eea849a259bcb43718d Mon Sep 17 00:00:00 2001
+From 7a6e70c43cd8b0b8167cc6397ef184076ee7fc79 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 6 Feb 2020 19:51:16 +0300
 Subject: [PATCH 254/650] io_uring: fix deferred req iovec leak
@@ -35357,7 +35355,7 @@ index 31155388f279..28fe102a110d 100644
 2.26.2
 
 
-From 68af80dabc675497e753441a94b1d048044960a5 Mon Sep 17 00:00:00 2001
+From c3119908beaeb10237599a895d71d112252bd8ec Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 6 Feb 2020 21:31:40 -0700
 Subject: [PATCH 255/650] io_uring: statx/openat/openat2 don't support fixed
@@ -35419,7 +35417,7 @@ index 28fe102a110d..8291067f3de5 100644
 2.26.2
 
 
-From f91c65c2061df9ff0fafeba6fb91e6b66b23e1c9 Mon Sep 17 00:00:00 2001
+From f71ed09c2e870fed6a519e2d3d4d16d4f279ac24 Mon Sep 17 00:00:00 2001
 From: Stefano Garzarella <sgarzare@redhat.com>
 Date: Fri, 7 Feb 2020 13:18:28 +0100
 Subject: [PATCH 256/650] io_uring: flush overflowed CQ events in the
@@ -35454,7 +35452,7 @@ index 8291067f3de5..320a38c5e8d2 100644
 2.26.2
 
 
-From df4e19792460533dc9184e0926e9c2dd2892a321 Mon Sep 17 00:00:00 2001
+From 21c84ea2cace1e912dea28d3ebc4c6ec0d7c8640 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 7 Feb 2020 19:21:25 +0300
 Subject: [PATCH 257/650] io_uring: remove unused struct io_async_open
@@ -35493,7 +35491,7 @@ index 320a38c5e8d2..07d9d87c4907 100644
 2.26.2
 
 
-From af9b98bf654769ecdbc3a726d19f26e6c7a577f2 Mon Sep 17 00:00:00 2001
+From 1eba21415b7d9e3189e6fa605d431d4db8cba1b0 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 7 Feb 2020 22:04:45 +0300
 Subject: [PATCH 258/650] io_uring: fix iovec leaks
@@ -35687,7 +35685,7 @@ index 07d9d87c4907..dc199507330b 100644
 2.26.2
 
 
-From 190b97c9528791798f570db1b372e499e4292d2a Mon Sep 17 00:00:00 2001
+From 00dc34714e3eb47067fe4aeeeafebc82d53cdcf9 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 7 Feb 2020 23:59:53 +0300
 Subject: [PATCH 259/650] io_uring: add cleanup for openat()/statx()
@@ -35761,7 +35759,7 @@ index dc199507330b..27a53366f556 100644
 2.26.2
 
 
-From b15c4568a2c89ad5073b5b4eb2bccce386263509 Mon Sep 17 00:00:00 2001
+From f5d5e4a7fcc44e9ef63edc305aa0fd8ccb8b03c8 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 7 Feb 2020 15:45:22 -0700
 Subject: [PATCH 260/650] io_uring: retry raw bdev writes if we hit -EOPNOTSUPP
@@ -35798,7 +35796,7 @@ index 27a53366f556..ebadbd77b989 100644
 2.26.2
 
 
-From 8dc506f21bd0cca70578da6ca97733ffcb392cd9 Mon Sep 17 00:00:00 2001
+From e8fac85c960c1fc6d47878359d84f5dba0708dc4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 6 Feb 2020 21:42:51 -0700
 Subject: [PATCH 261/650] io-wq: add support for inheriting ->fs
@@ -35889,7 +35887,7 @@ index 50b3378febf2..f152ba677d8f 100644
 2.26.2
 
 
-From 7c03c52ac15be25d607bbd29e6d406a1e4fdfe69 Mon Sep 17 00:00:00 2001
+From 9ed2d16ed2fc99c622a2f98563ca536d5a57d997 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 7 Feb 2020 16:05:21 -0700
 Subject: [PATCH 262/650] io_uring: grab ->fs as part of async preparation
@@ -36001,7 +35999,7 @@ index ebadbd77b989..e8c7b5ead907 100644
 2.26.2
 
 
-From c6cd4cf1897b67f44de09687cd2da7e39f6ed9b8 Mon Sep 17 00:00:00 2001
+From fa5589b5988cb43423d484dba2216a654b768bc9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 6 Feb 2020 21:42:51 -0700
 Subject: [PATCH 263/650] io_uring: allow AT_FDCWD for non-file
@@ -36032,7 +36030,7 @@ index e8c7b5ead907..318556577d2c 100644
 2.26.2
 
 
-From 585c2b588d5b3baf06c5559a6355e857af2c525b Mon Sep 17 00:00:00 2001
+From dab1f166652b623a54043eecfdb0209b736d4ffa Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 8 Feb 2020 14:04:34 +0300
 Subject: [PATCH 264/650] io_uring: fix async close() with f_op->flush()
@@ -36129,7 +36127,7 @@ index 318556577d2c..3d7dbbfdf49a 100644
 2.26.2
 
 
-From d84ac76538ada8a4bccc9fe7b1813f647a3bdaa2 Mon Sep 17 00:00:00 2001
+From 317277cc1a402eee61b1ababf97a4d88f396fa91 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 8 Feb 2020 13:28:02 +0300
 Subject: [PATCH 265/650] io_uring: fix double prep iovec leak
@@ -36198,7 +36196,7 @@ index 3d7dbbfdf49a..d2d51e8bfab9 100644
 2.26.2
 
 
-From fd830b131415847d530fd7e8ec09d0a031f8d7f1 Mon Sep 17 00:00:00 2001
+From d726718c9bcafcf2050a322b4e2ca8b4f0e795f5 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 8 Feb 2020 13:28:03 +0300
 Subject: [PATCH 266/650] io_uring: fix openat/statx's filename leak
@@ -36247,7 +36245,7 @@ index d2d51e8bfab9..4e7e695da271 100644
 2.26.2
 
 
-From 2d0a7c796d2527d1e8b35f71376d144c28cb3bdf Mon Sep 17 00:00:00 2001
+From f930683fd6d4591f87fa53c81aa9f17de009cb8e Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 8 Feb 2020 19:13:32 -0700
 Subject: [PATCH 267/650] io-wq: make io_wqe_cancel_work() take a match handler
@@ -36357,7 +36355,7 @@ index 7ac4a8876a50..df78de33ff84 100644
 2.26.2
 
 
-From babf0fa2911a0886b48521ec5c891016860e2886 Mon Sep 17 00:00:00 2001
+From 58c3dd59b2ae664bf88c221a19f99dda428185f0 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 8 Feb 2020 19:16:39 -0700
 Subject: [PATCH 268/650] io-wq: add io_wq_cancel_pid() to cancel based on a
@@ -36437,7 +36435,7 @@ index f152ba677d8f..ccc7d84af57d 100644
 2.26.2
 
 
-From 647fb22f6d3fe626fac0e5e297227010dbf4c485 Mon Sep 17 00:00:00 2001
+From 94c2d8ae06bb71271d1b5e0e8b02c43a423545a4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 8 Feb 2020 20:23:59 -0700
 Subject: [PATCH 269/650] io_uring: cancel pending async work if task exits
@@ -36492,7 +36490,7 @@ index 4e7e695da271..ba7eedf920e2 100644
 2.26.2
 
 
-From 0f9a2bb7322b29ac51e025f4d99f75e15f048319 Mon Sep 17 00:00:00 2001
+From 620c08d0966e33a483fce3d36aa86a9fd5639009 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 9 Feb 2020 11:29:15 -0700
 Subject: [PATCH 270/650] io_uring: retain sockaddr_storage across send/recvmsg
@@ -36573,7 +36571,7 @@ index ba7eedf920e2..c63919b558ea 100644
 2.26.2
 
 
-From d0a6ff9fcbac081b06ea44475d01333564652c22 Mon Sep 17 00:00:00 2001
+From 765da02d0b81d60fa7bdd979bb932faf09006cbd Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 11 Feb 2020 06:30:06 -0700
 Subject: [PATCH 271/650] io-wq: don't call kXalloc_node() with non-online node
@@ -36705,7 +36703,7 @@ index 182aa17dc2ca..0a5ab1a8f69a 100644
 2.26.2
 
 
-From 536abfe130e9c63cc463b043d375d3be81eff591 Mon Sep 17 00:00:00 2001
+From fb99776db182fb4174061413009d86bb8938c893 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 13 Feb 2020 17:17:35 -0700
 Subject: [PATCH 272/650] io_uring: prune request from overflow list on flush
@@ -36808,7 +36806,7 @@ index c63919b558ea..689543af7ad9 100644
 2.26.2
 
 
-From 5540ee5224fec242c48593f9d960cec02b79d743 Mon Sep 17 00:00:00 2001
+From 241500cad57d3c2c1a23eef7d0348686f8d2e2f9 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 16 Feb 2020 01:01:18 +0300
 Subject: [PATCH 273/650] io_uring: add missing io_req_cancelled()
@@ -36849,7 +36847,7 @@ index 689543af7ad9..6202b84d3ce9 100644
 2.26.2
 
 
-From c2957bba58e100d6e29cadb664e9ccd06f991f86 Mon Sep 17 00:00:00 2001
+From c1e7ca51d0542f3785dda6cebdab39cae5173f7c Mon Sep 17 00:00:00 2001
 From: Dan Carpenter <dan.carpenter@oracle.com>
 Date: Mon, 17 Feb 2020 17:39:45 +0300
 Subject: [PATCH 274/650] io_uring: remove unnecessary NULL checks
@@ -36890,7 +36888,7 @@ index 6202b84d3ce9..cc218b6e8c1b 100644
 2.26.2
 
 
-From 9cc4939b21ef3f850a4047c80d83405543aaaff2 Mon Sep 17 00:00:00 2001
+From 37672046670e23fadae7270b8b5b45d8b152cd97 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 19 Feb 2020 00:19:09 +0300
 Subject: [PATCH 275/650] io_uring: fix use-after-free by io_cleanup_req()
@@ -36937,7 +36935,7 @@ index cc218b6e8c1b..de3ae9d45c30 100644
 2.26.2
 
 
-From ac3561f027b8bd3414aeedad94a96c42d7863881 Mon Sep 17 00:00:00 2001
+From f77641f07566aacd48a7c82e9378a129dc69b54b Mon Sep 17 00:00:00 2001
 From: Stefano Garzarella <sgarzare@redhat.com>
 Date: Fri, 21 Feb 2020 16:42:16 +0100
 Subject: [PATCH 276/650] io_uring: prevent sq_thread from spinning when it
@@ -37006,7 +37004,7 @@ index de3ae9d45c30..c6a03bd7d1ce 100644
 2.26.2
 
 
-From 6bd3d252f7ac1f78520575ca220f4dc5cbb3ce81 Mon Sep 17 00:00:00 2001
+From d628e2c31a9fdaa6bf0b6f063f48072d668192bb Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Sat, 22 Feb 2020 14:46:05 +0800
 Subject: [PATCH 277/650] io_uring: fix __io_iopoll_check deadlock in
@@ -37090,7 +37088,7 @@ index c6a03bd7d1ce..b1f467de448e 100644
 2.26.2
 
 
-From 39f8f139b1960d4273556726153675e181cede8e Mon Sep 17 00:00:00 2001
+From 5b617889e9dc2d2f72990fad980b9a8f240103e9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 22 Feb 2020 23:22:19 -0700
 Subject: [PATCH 278/650] io_uring: handle multiple personalities in link
@@ -37196,7 +37194,7 @@ index b1f467de448e..120f449d8dc1 100644
 2.26.2
 
 
-From 77b6741d7d29021bdd3116b2f0f9117207d8567b Mon Sep 17 00:00:00 2001
+From 70ab630b7e40eb2f7f0c1c2a1cc5949b77b2afab Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 23 Feb 2020 13:11:42 -0700
 Subject: [PATCH 279/650] io_uring: fix personality idr leak
@@ -37227,7 +37225,7 @@ index 120f449d8dc1..8853e77e1f41 100644
 2.26.2
 
 
-From 8607a6a3d263ed460185542ace2b01e6d843104a Mon Sep 17 00:00:00 2001
+From 3af49b97ecc4e67ba9d5640f33cf61bff79d2114 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Tue, 25 Feb 2020 22:12:08 +0800
 Subject: [PATCH 280/650] io_uring: fix poll_list race for
@@ -37385,7 +37383,7 @@ index 8853e77e1f41..00a1c79b2c4b 100644
 2.26.2
 
 
-From 0bfc8fc7f75775857ecb36d70dfb2784a150e21c Mon Sep 17 00:00:00 2001
+From 075accd8c6680697bd6d103e640ff1628a512723 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Feb 2020 08:47:30 -0700
 Subject: [PATCH 281/650] io-wq: remove spin-for-work optimization
@@ -37454,7 +37452,7 @@ index 0a5ab1a8f69a..bf8ed1b0b90a 100644
 2.26.2
 
 
-From 8a698c3122837efd5ae49a6d3b8916f15448dc00 Mon Sep 17 00:00:00 2001
+From 88c56388a294d61afd576d155ae828a47efa2064 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Feb 2020 11:52:56 -0700
 Subject: [PATCH 282/650] io-wq: ensure work->task_pid is cleared on init
@@ -37499,7 +37497,7 @@ index ccc7d84af57d..33baba4370c5 100644
 2.26.2
 
 
-From d2eae231642474052415f58f99b8715f320da2e6 Mon Sep 17 00:00:00 2001
+From c62364ac664cf98e335efe8989f6cda34cc9eab4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Feb 2020 13:25:41 -0700
 Subject: [PATCH 283/650] io_uring: pick up link work on submit reference drop
@@ -37553,7 +37551,7 @@ index 00a1c79b2c4b..85dd06bdf58b 100644
 2.26.2
 
 
-From b01fe64476f6440cf4e7fd1065e5cdda00af4fbb Mon Sep 17 00:00:00 2001
+From 32fd429cbea20322f4661e51e08019e88476d368 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Feb 2020 17:48:55 -0700
 Subject: [PATCH 284/650] io_uring: import_single_range() returns 0/-ERROR
@@ -37586,7 +37584,7 @@ index 85dd06bdf58b..1839b42677b9 100644
 2.26.2
 
 
-From b321db421ec3586f6e82083c4c75e83a1d867696 Mon Sep 17 00:00:00 2001
+From 5afd169c1192ede5386485206f9908a26126ada9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 26 Feb 2020 10:23:43 -0700
 Subject: [PATCH 285/650] io_uring: drop file set ref put/get on switch
@@ -37713,7 +37711,7 @@ index 1839b42677b9..73bc31636ff2 100644
 2.26.2
 
 
-From 947cf4d3d90320fe21d06f71ce272f90634e68df Mon Sep 17 00:00:00 2001
+From a368c1a9180f8c27f9a53a3b39e38f611823bd64 Mon Sep 17 00:00:00 2001
 From: Tobias Klauser <tklauser@distanz.ch>
 Date: Wed, 26 Feb 2020 18:38:32 +0100
 Subject: [PATCH 286/650] io_uring: define and set show_fdinfo only if procfs
@@ -37764,7 +37762,7 @@ index 73bc31636ff2..28c81fdc2a27 100644
 2.26.2
 
 
-From ac10ceff0fd7301920928924c896f468e29201b2 Mon Sep 17 00:00:00 2001
+From 7434ece9ff933e6a6e219a20416aa93d5a8c8db4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 27 Feb 2020 14:17:49 -0700
 Subject: [PATCH 287/650] io_uring: fix 32-bit compatability with
@@ -37816,7 +37814,7 @@ index 28c81fdc2a27..864f5461fe60 100644
 2.26.2
 
 
-From 3e0aa74d16d6e8e1bd4de0355b3e4583af5dcf26 Mon Sep 17 00:00:00 2001
+From de06823ee7cb3ad8f8efc8caa1d24e4cff405cdc Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 1 Mar 2020 19:18:19 +0300
 Subject: [PATCH 288/650] io-wq: fix IO_WQ_WORK_NO_CANCEL cancellation
@@ -37889,7 +37887,7 @@ index bf8ed1b0b90a..9a7aacc96d84 100644
 2.26.2
 
 
-From f6469cc46f25304087b3c9bb303621410fa124b5 Mon Sep 17 00:00:00 2001
+From 03c83a64e381ec550ac6857919d26ca81546b3d0 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 2 Mar 2020 23:46:10 +0300
 Subject: [PATCH 289/650] io-wq: remove io_wq_flush and IO_WQ_WORK_INTERNAL
@@ -37989,7 +37987,7 @@ index 33baba4370c5..e5e15f2c93ec 100644
 2.26.2
 
 
-From d596e993eb8ef5e79435c53ff6c2690995dbaab4 Mon Sep 17 00:00:00 2001
+From 4bad24654769d2730de126e29c3c8e505c0ce72c Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 4 Mar 2020 07:25:50 -0700
 Subject: [PATCH 290/650] io_uring: free fixed_file_data after RCU grace period
@@ -38096,7 +38094,7 @@ index 864f5461fe60..f803b3aeded4 100644
 2.26.2
 
 
-From b329476cee304099dc08b1c1b2b76c1311ec8d6f Mon Sep 17 00:00:00 2001
+From 89fc02e0a85706ee8d9f2835f88e4deaade31853 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 7 Mar 2020 01:15:22 +0300
 Subject: [PATCH 291/650] io_uring: fix lockup with timeouts
@@ -38133,7 +38131,7 @@ index f803b3aeded4..a78a425a13d3 100644
 2.26.2
 
 
-From 85a87852c7a372c3f7a95aa0ca2b8700af931317 Mon Sep 17 00:00:00 2001
+From 89d507879849f3cdb1338bb99d50e83a30244ce7 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 8 Mar 2020 20:07:28 -0600
 Subject: [PATCH 292/650] io_uring: ensure RCU callback ordering with
@@ -38230,7 +38228,7 @@ index a78a425a13d3..37fc485a4ed6 100644
 2.26.2
 
 
-From 3ad97085a8d23f4eaae25acf7fda4fc7294d22d7 Mon Sep 17 00:00:00 2001
+From acea788ff40c7796e09d7f9d78a4dd9caee003ce Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 13 Mar 2020 22:29:14 +0300
 Subject: [PATCH 293/650] io_uring: NULL-deref for IOSQE_{ASYNC,DRAIN}
@@ -38280,7 +38278,7 @@ index 37fc485a4ed6..259d78f60d62 100644
 2.26.2
 
 
-From 6db28bb67278bb5e33cd4fcdc71d29d1abfe41d2 Mon Sep 17 00:00:00 2001
+From 99e5978b0fe8ba77eee9b78ed3cee24fe8a84e65 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 19 Mar 2020 19:23:18 -0600
 Subject: [PATCH 294/650] io_uring: make sure openat/openat2 honor rlimit
@@ -38376,7 +38374,7 @@ index 3fcddff56bc4..82fa6064662d 100644
 2.26.2
 
 
-From 53a09d022da6a596731bde39bdb5b4377d0269c6 Mon Sep 17 00:00:00 2001
+From 689d3551871ee59f1bd9a8c60250476b8d9b6a7f Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 19 Mar 2020 20:16:56 -0600
 Subject: [PATCH 295/650] io_uring: make sure accept honor rlimit nofile
@@ -38477,7 +38475,7 @@ index 484aa89bf134..f55492635005 100644
 2.26.2
 
 
-From cfaa576fb0ca39845bee6571fc75cfa5f5cc0e74 Mon Sep 17 00:00:00 2001
+From 057e2d5ca8c0340ad76ed8dfe6f515308fbb40b8 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 20 Feb 2020 09:56:08 -0700
 Subject: [PATCH 296/650] io_uring: consider any io_read/write -EAGAIN as final
@@ -38552,7 +38550,7 @@ index c23cdf405c0a..11e1279ccd71 100644
 2.26.2
 
 
-From e13f92383a5d9c67d99396c122345b81f92972e8 Mon Sep 17 00:00:00 2001
+From 36ff8a582c2ecec88f0cbc80beae2902a06bb8db Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 20 Feb 2020 09:59:02 -0700
 Subject: [PATCH 297/650] io_uring: io_accept() should hold on to submit
@@ -38591,7 +38589,7 @@ index 11e1279ccd71..0f204f67ec05 100644
 2.26.2
 
 
-From ecd1d05681063637998a269c083d9caf4fe6f253 Mon Sep 17 00:00:00 2001
+From 1e4691f475de5a04d9dfde7bbcadae8f2ebb56f8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 24 Feb 2020 11:30:16 +0300
 Subject: [PATCH 298/650] io_uring: don't call work.func from sync ctx
@@ -38781,7 +38779,7 @@ index 0f204f67ec05..3fcc8e718e9e 100644
 2.26.2
 
 
-From 2fda6a33bf13af6dfd4f2399a42dbc6d8f888650 Mon Sep 17 00:00:00 2001
+From 33861bd984f886fcda1b1b24ec2ca33839b9aeec Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 24 Feb 2020 11:30:17 +0300
 Subject: [PATCH 299/650] io_uring: don't do full *prep_worker() from io-wq
@@ -38832,7 +38830,7 @@ index 3fcc8e718e9e..3534e3ac3607 100644
 2.26.2
 
 
-From f30065632a424c297ee999060bea75eeebc7acdb Mon Sep 17 00:00:00 2001
+From 0b9306ebb497b95c8e7c4fa2df6cebdf9a096357 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 24 Feb 2020 11:30:18 +0300
 Subject: [PATCH 300/650] io_uring: remove req->in_async
@@ -38913,7 +38911,7 @@ index 3534e3ac3607..4f5986dd2695 100644
 2.26.2
 
 
-From 89065b9dad526b58cf376f3a431b529bc3e65127 Mon Sep 17 00:00:00 2001
+From 8f0ce0a9ba7894cbf44e885cb528209308286991 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 24 Feb 2020 11:32:44 +0300
 Subject: [PATCH 301/650] io_uring: add interface for getting files
@@ -39065,7 +39063,7 @@ index 4f5986dd2695..88528dd5254c 100644
 2.26.2
 
 
-From 662f82ce75e19f91e12a8026804f8e77e281df04 Mon Sep 17 00:00:00 2001
+From 18671d4b6e37f591a9f4010b0059d09b9b515d75 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 24 Feb 2020 11:32:43 +0300
 Subject: [PATCH 302/650] splice: make do_splice public
@@ -39114,7 +39112,7 @@ index 74b4911ac16d..ebbbfea48aa0 100644
 2.26.2
 
 
-From 027bea8e0115b4be7637933753cedb0e5e0a4592 Mon Sep 17 00:00:00 2001
+From 5096cc6088191fa41e6e20789fd1b8a67436f11d Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 24 Feb 2020 11:32:45 +0300
 Subject: [PATCH 303/650] io_uring: add splice(2) support
@@ -39384,7 +39382,7 @@ index 3f7961c1c243..08891cc1c1e7 100644
 2.26.2
 
 
-From de1bde4f9def9ddf6b9f55918bbd3243a38efb0d Mon Sep 17 00:00:00 2001
+From 7379814092a85b38f91c6aca412ca6ff8fdae8be Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 28 Feb 2020 10:36:35 +0300
 Subject: [PATCH 304/650] io_uring: clean io_poll_complete
@@ -39417,7 +39415,7 @@ index 0f268b0fbc87..3d15a982b20a 100644
 2.26.2
 
 
-From 2be0b2ad1620a1927ca0b9adaf7345f2c00ee57a Mon Sep 17 00:00:00 2001
+From 0f15e69ef11363bc04d18fbea5ca303ce7f7403b Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 28 Feb 2020 10:36:36 +0300
 Subject: [PATCH 305/650] io_uring: extract kmsg copy helper
@@ -39503,7 +39501,7 @@ index 3d15a982b20a..f0f002421eb3 100644
 2.26.2
 
 
-From 561aff68299ea2ae2f5734cfd20d32d08a08bbc9 Mon Sep 17 00:00:00 2001
+From 3abe441d9fe7077df83f433726113be35318d5b1 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 28 Feb 2020 10:36:37 +0300
 Subject: [PATCH 306/650] io-wq: remove unused IO_WQ_WORK_HAS_MM
@@ -39546,7 +39544,7 @@ index e5e15f2c93ec..d500d88ab84e 100644
 2.26.2
 
 
-From e3f1c47145dd8b83240faecc12f334776ab27455 Mon Sep 17 00:00:00 2001
+From 61eb2ea7967907c7f25dcc3f187d331271f24f30 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 28 Feb 2020 10:36:38 +0300
 Subject: [PATCH 307/650] io_uring: remove IO_WQ_WORK_CB
@@ -39619,7 +39617,7 @@ index f0f002421eb3..82f38cd32951 100644
 2.26.2
 
 
-From 64671f765e219b6a67c69a20dee91dc91284cef5 Mon Sep 17 00:00:00 2001
+From d8e5a41bd747ff9a046d7df51d9093fa0097888c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 28 Feb 2020 10:36:39 +0300
 Subject: [PATCH 308/650] io-wq: use BIT for ulong hash
@@ -39661,7 +39659,7 @@ index a1a42ead3b5a..042c7e2057ef 100644
 2.26.2
 
 
-From 7ff06bf19531178218fd5475f77716699de682f6 Mon Sep 17 00:00:00 2001
+From a19d709f2bd9d8061550b01f5797bb7a50607348 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 10 Feb 2020 09:07:05 -0700
 Subject: [PATCH 309/650] io_uring: store io_kiocb in wait->private
@@ -39704,7 +39702,7 @@ index 82f38cd32951..319dd70b4eb0 100644
 2.26.2
 
 
-From 9c189dd9459bd340b2caf89280a45cd224a94467 Mon Sep 17 00:00:00 2001
+From 51e2d8472ed3763bd7e5b428c9831570fd1b4b27 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 17 Feb 2020 09:52:41 -0700
 Subject: [PATCH 310/650] io_uring: add per-task callback handler
@@ -40144,7 +40142,7 @@ index 319dd70b4eb0..300489f9be72 100644
 2.26.2
 
 
-From 60107b8fc591066c85cfdbbd50e4843a208a034e Mon Sep 17 00:00:00 2001
+From d813fdf05202c34924107abf2c6ac372a7fec357 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 20 Feb 2020 09:59:44 -0700
 Subject: [PATCH 311/650] io_uring: mark requests that we can do poll async in
@@ -40266,7 +40264,7 @@ index 300489f9be72..652ba2fda80a 100644
 2.26.2
 
 
-From e0e712d269143e7b6016f9d797b5592df595cc5d Mon Sep 17 00:00:00 2001
+From eba002ed1a8b28425968d6fc608b50ead7a0bbc2 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 14 Feb 2020 22:23:12 -0700
 Subject: [PATCH 312/650] io_uring: use poll driven retry for files that
@@ -40901,7 +40899,7 @@ index 08891cc1c1e7..53b36311cdac 100644
 2.26.2
 
 
-From 6258bdf3d8de543c7f9cb72f9d38538a2b440404 Mon Sep 17 00:00:00 2001
+From f39614729abff0f02272b13f130348dedbdb28ac Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 29 Feb 2020 22:48:24 +0300
 Subject: [PATCH 313/650] io_uring: remove extra nxt check after punt
@@ -40975,7 +40973,7 @@ index fb77862e5bd4..d6a01673a2f7 100644
 2.26.2
 
 
-From 29ba619e1057534025231a8906b5e20012a2e2a0 Mon Sep 17 00:00:00 2001
+From 45ac20843e71d5ac8e2302a8a020fb3330d2eb76 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 29 Feb 2020 22:56:10 +0300
 Subject: [PATCH 314/650] io_uring: remove io_prep_next_work()
@@ -41026,7 +41024,7 @@ index d6a01673a2f7..4bb64acf12f4 100644
 2.26.2
 
 
-From c6a091e2705e7d30c5d632e49cdbba1868a0e0d5 Mon Sep 17 00:00:00 2001
+From 254d522b07fe793000e9ebc6d28e984a69a69357 Mon Sep 17 00:00:00 2001
 From: Nathan Chancellor <natechancellor@gmail.com>
 Date: Mon, 2 Mar 2020 16:01:19 -0700
 Subject: [PATCH 315/650] io_uring: Ensure mask is initialized in
@@ -41084,7 +41082,7 @@ index 4bb64acf12f4..3f44552b3c76 100644
 2.26.2
 
 
-From 8394e474bfba4c9f339860681df9c29939091329 Mon Sep 17 00:00:00 2001
+From f1378e691a8cf538033afce95b21bae077d734a3 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 2 Mar 2020 23:45:16 +0300
 Subject: [PATCH 316/650] io_uring: clean up io_close
@@ -41140,7 +41138,7 @@ index 3f44552b3c76..1480f0968083 100644
 2.26.2
 
 
-From e20fbf704a1ebebe76e035d5ef3f57e58823f4dc Mon Sep 17 00:00:00 2001
+From 71f41fce080812d2fe1040c9fd5dca849a2819ba Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 3 Mar 2020 21:33:11 +0300
 Subject: [PATCH 317/650] io_uring: make submission ref putting consistent
@@ -41290,7 +41288,7 @@ index 1480f0968083..f75d36698f60 100644
 2.26.2
 
 
-From 7ac7587a7c8385fd4fed1b8cc846b6e30723e354 Mon Sep 17 00:00:00 2001
+From 6dd4735d203ff8ba1ba2bf1d273037b7b8f85055 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 3 Mar 2020 21:33:12 +0300
 Subject: [PATCH 318/650] io_uring: remove @nxt from handlers
@@ -42082,7 +42080,7 @@ index f75d36698f60..13dead7c6c48 100644
 2.26.2
 
 
-From 373d28c7322e7a0faf2f8d127985a8860a71c2d3 Mon Sep 17 00:00:00 2001
+From 487bba73fa679389ac53c63909e71c64b6733cbe Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 3 Mar 2020 21:33:13 +0300
 Subject: [PATCH 319/650] io_uring: get next work with submission ref drop
@@ -42280,7 +42278,7 @@ index 13dead7c6c48..42bb0f75aa22 100644
 2.26.2
 
 
-From 57e2b7253c89432288032b6365cae02d33f6b365 Mon Sep 17 00:00:00 2001
+From 70c989419e70f2cb28683ad69417be6897f982c0 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 4 Mar 2020 16:14:09 +0300
 Subject: [PATCH 320/650] io-wq: shuffle io_worker_handle_work() code
@@ -42455,7 +42453,7 @@ index 042c7e2057ef..e438dc4d7cb3 100644
 2.26.2
 
 
-From 161060fa217a54335183e2af92b228e190d14be9 Mon Sep 17 00:00:00 2001
+From a48d177c0afaa3cbdb7db3abd503f534471017b4 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 4 Mar 2020 16:14:10 +0300
 Subject: [PATCH 321/650] io-wq: optimise locking in io_worker_handle_work()
@@ -42531,7 +42529,7 @@ index e438dc4d7cb3..473af080470a 100644
 2.26.2
 
 
-From 1ffd48fd501c8f4492597f2db7f8d79dfec1ab31 Mon Sep 17 00:00:00 2001
+From 983f39144dce78a729aae5a5ce80e2c2485ba9c6 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 4 Mar 2020 16:14:11 +0300
 Subject: [PATCH 322/650] io-wq: optimise out *next_work() double lock
@@ -42583,7 +42581,7 @@ index 473af080470a..82e76011d409 100644
 2.26.2
 
 
-From 141d9dae0ddd0875ea73940cd0503c599186169e Mon Sep 17 00:00:00 2001
+From d7a4f814c922a8d08a41da61c4dbb3e2d65f229e Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 4 Mar 2020 16:14:12 +0300
 Subject: [PATCH 323/650] io_uring/io-wq: forward submission ref to async
@@ -42848,7 +42846,7 @@ index 42bb0f75aa22..bff62e24446e 100644
 2.26.2
 
 
-From 83330bc4b769b33b92d9be6ee87491da6935d866 Mon Sep 17 00:00:00 2001
+From 50c43d10a96d2539f9e1837276230c645f84aaba Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 23 Feb 2020 16:23:11 -0700
 Subject: [PATCH 324/650] io_uring: buffer registration infrastructure
@@ -42942,7 +42940,7 @@ index bff62e24446e..9bc475211075 100644
 2.26.2
 
 
-From 65851f130bfe6cad0fccacfb20a8effb03827cf4 Mon Sep 17 00:00:00 2001
+From 3b2e256f3d275d5dbd69caa7351762b226bfa118 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 23 Feb 2020 16:41:33 -0700
 Subject: [PATCH 325/650] io_uring: add IORING_OP_PROVIDE_BUFFERS
@@ -43184,7 +43182,7 @@ index 53b36311cdac..bc34a57a660b 100644
 2.26.2
 
 
-From da904bc01257fc17e4e2295a55ff7d491e2da221 Mon Sep 17 00:00:00 2001
+From e3a59f1c93e5f2788c05a21d8a47e96fca3ac462 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 23 Feb 2020 16:42:51 -0700
 Subject: [PATCH 326/650] io_uring: support buffer selection for OP_READ and
@@ -43770,7 +43768,7 @@ index bc34a57a660b..9b263d9b24e6 100644
 2.26.2
 
 
-From c53174c092609d104d546435e9b3afb3668aea53 Mon Sep 17 00:00:00 2001
+From 74bbee6845e6a7adf4614c3fbc9035b6e10725e6 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 27 Feb 2020 07:31:19 -0700
 Subject: [PATCH 327/650] io_uring: add IOSQE_BUFFER_SELECT support for
@@ -43952,7 +43950,7 @@ index c26add13bc16..c374c9e6f190 100644
 2.26.2
 
 
-From 1706bca566d77d045cdaae996fd63e4ae23c8365 Mon Sep 17 00:00:00 2001
+From bc5d2146f7c9024ac9e37d7fce1d11f18f492f2d Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 27 Feb 2020 08:11:20 -0700
 Subject: [PATCH 328/650] net: abstract out normal and compat msghdr import
@@ -44097,7 +44095,7 @@ index f55492635005..4f08861dca4c 100644
 2.26.2
 
 
-From a31d5c5e4f49e4b6688aaa6f0312060fad181a0c Mon Sep 17 00:00:00 2001
+From d76fa6a0c7b65d6eed9af3d4e81ccfa06e5128c4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 27 Feb 2020 10:15:42 -0700
 Subject: [PATCH 329/650] io_uring: add IOSQE_BUFFER_SELECT support for
@@ -44307,7 +44305,7 @@ index c374c9e6f190..798548e91408 100644
 2.26.2
 
 
-From c9f26fac414929f5c923bb88a34299b14f8cff6d Mon Sep 17 00:00:00 2001
+From a7bfeaf3fed1ee65856f305383b6be7a657ba590 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 2 Mar 2020 16:32:28 -0700
 Subject: [PATCH 330/650] io_uring: provide means of removing buffers
@@ -44489,7 +44487,7 @@ index 9b263d9b24e6..cef4c0c0f26b 100644
 2.26.2
 
 
-From 1742c9d189b4bc3d5450dac69d6a5c763944d6c8 Mon Sep 17 00:00:00 2001
+From 27cf25cea46c889a0143a9719d460d3c0ae82d53 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 3 Mar 2020 15:28:17 -0700
 Subject: [PATCH 331/650] io_uring: add end-of-bits marker and build time
@@ -44530,7 +44528,7 @@ index 78f5ca1bdca5..3fc16dab7e08 100644
 2.26.2
 
 
-From e30b2433ba0b0b1dd69540ee3d27f65c3080f244 Mon Sep 17 00:00:00 2001
+From de3b66dd2c000a8aac830aab11343bebdda79ae3 Mon Sep 17 00:00:00 2001
 From: YueHaibing <yuehaibing@huawei.com>
 Date: Wed, 4 Mar 2020 15:53:52 +0800
 Subject: [PATCH 332/650] io_uring: Fix unused function warnings
@@ -44789,7 +44787,7 @@ index 3fc16dab7e08..2f188c135362 100644
 2.26.2
 
 
-From d80b434946de5bbaf3224e2c0d69d20a0c3c55ca Mon Sep 17 00:00:00 2001
+From b0472f9e4817bd5133a36e934647052a7c3fe1a7 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Wed, 11 Mar 2020 09:26:09 +0800
 Subject: [PATCH 333/650] io_uring: io_uring_enter(2) don't poll while
@@ -44876,7 +44874,7 @@ index 2f188c135362..770619cf52d2 100644
 2.26.2
 
 
-From 0617c5a437f62e297cc9d890aee7aaa95e173ced Mon Sep 17 00:00:00 2001
+From efb7e90f044b758891ee6a73aa0ede88dc472291 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 11 Mar 2020 12:27:04 -0600
 Subject: [PATCH 334/650] io_uring: fix truncated async read/readv and
@@ -44922,7 +44920,7 @@ index 770619cf52d2..3b140b52d681 100644
 2.26.2
 
 
-From 7e174e5841b1e2c825d92925be0af9cf0b7e7219 Mon Sep 17 00:00:00 2001
+From a1440f0c461d3a8a30520a6d4ae13d9737c9ef12 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 7 Mar 2020 01:15:39 +0300
 Subject: [PATCH 335/650] io-wq: remove duplicated cancel code
@@ -45134,7 +45132,7 @@ index eda36f997dea..0e7c6277afcb 100644
 2.26.2
 
 
-From 950cd9d5845af9864558760a8b9939d05d3ac052 Mon Sep 17 00:00:00 2001
+From 091560a6031be55172b58059ebd2ce3d3062c9bb Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 14 Mar 2020 00:31:03 +0300
 Subject: [PATCH 336/650] io-wq: don't resched if there is no work
@@ -45175,7 +45173,7 @@ index 0e7c6277afcb..8afe5565f57a 100644
 2.26.2
 
 
-From 3d43932e35c642f725cede0307a0831e41924040 Mon Sep 17 00:00:00 2001
+From 28215ff442d2a9da7a84ff172e569b844d9f41a9 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 14 Mar 2020 00:31:04 +0300
 Subject: [PATCH 337/650] io-wq: split hashing and enqueueing
@@ -45316,7 +45314,7 @@ index 3b140b52d681..84caf3658145 100644
 2.26.2
 
 
-From 7154569c69c0e37421bd90992cc30920043a2010 Mon Sep 17 00:00:00 2001
+From ec408dab6ba5f34714851663dd109d015bbb2c8c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 14 Mar 2020 00:31:05 +0300
 Subject: [PATCH 338/650] io-wq: hash dependent work
@@ -45415,7 +45413,7 @@ index e26ceef53cbd..9541df2729de 100644
 2.26.2
 
 
-From 321c429dd566e567057022800e6ec49ef3422d63 Mon Sep 17 00:00:00 2001
+From 25de7bb0be648d247808214ce20c34fd21d767b6 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 20 Mar 2020 11:23:41 -0600
 Subject: [PATCH 339/650] io_uring: honor original task RLIMIT_FSIZE
@@ -45500,7 +45498,7 @@ index 84caf3658145..abd654d7ee78 100644
 2.26.2
 
 
-From 0932dc5d840a82bd748c807a37517d011f74205f Mon Sep 17 00:00:00 2001
+From 80a6a65123d91acc2eb64c04e9e52abb3e0c06bc Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 22 Mar 2020 19:14:26 +0300
 Subject: [PATCH 340/650] io-wq: close cancel gap for hashed linked work
@@ -45552,7 +45550,7 @@ index 9541df2729de..b3fb61ec0870 100644
 2.26.2
 
 
-From bc1d8b67e120b6b6f4e553aeec4923c775a28964 Mon Sep 17 00:00:00 2001
+From e4b7326a47f9eba08b211b138e91658b0cb50134 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 23 Mar 2020 00:23:29 +0300
 Subject: [PATCH 341/650] io_uring: Fix ->data corruption on re-enqueue
@@ -45621,7 +45619,7 @@ index abd654d7ee78..2f8777570dc9 100644
 2.26.2
 
 
-From 62c7a74f4526b7f5017ac7fcca0c8938bff6d4df Mon Sep 17 00:00:00 2001
+From f15395d67b7ab2828cb23014582f572692bf46fe Mon Sep 17 00:00:00 2001
 From: Hillf Danton <hdanton@sina.com>
 Date: Mon, 23 Mar 2020 17:42:35 +0800
 Subject: [PATCH 342/650] io-uring: drop completion when removing file
@@ -45726,7 +45724,7 @@ index 2f8777570dc9..826c8fb5c7b8 100644
 2.26.2
 
 
-From 6b12b7eb50ec307680fb5213780e9b8cc9d4f02e Mon Sep 17 00:00:00 2001
+From 19aa2151b806edcd11e7186979ec5a6dfdf0b42c Mon Sep 17 00:00:00 2001
 From: Hillf Danton <hdanton@sina.com>
 Date: Mon, 23 Mar 2020 17:47:15 +0800
 Subject: [PATCH 343/650] io-uring: drop 'free_pfile' in struct io_file_put
@@ -45822,7 +45820,7 @@ index 826c8fb5c7b8..8d6e29d523e1 100644
 2.26.2
 
 
-From 431dfdd96eb5b38e649a3588898c29e6243f9f16 Mon Sep 17 00:00:00 2001
+From 45549c9572f28c0158e28855edcb194e326da364 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 23 Mar 2020 22:57:22 +0300
 Subject: [PATCH 344/650] io-wq: handle hashed writes in chains
@@ -46078,7 +46076,7 @@ index d2a5684bf673..3ee7356d6be5 100644
 2.26.2
 
 
-From 1c4a277a18f5ad3bb043fa91c07187a03723a28e Mon Sep 17 00:00:00 2001
+From b0da64f31973c61369a1986e48e3ddbea04da19e Mon Sep 17 00:00:00 2001
 From: Chucheng Luo <luochucheng@vivo.com>
 Date: Wed, 25 Mar 2020 11:31:38 +0800
 Subject: [PATCH 345/650] io_uring: fix missing 'return' in comment
@@ -46109,7 +46107,7 @@ index 8d6e29d523e1..a2d042f07756 100644
 2.26.2
 
 
-From 6f496ea644d7fd922cb83e3e0f6b8ae31eb02504 Mon Sep 17 00:00:00 2001
+From 993ffc266bc1af6c79596526852d7316088a4f25 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Fri, 27 Mar 2020 15:36:52 +0800
 Subject: [PATCH 346/650] io_uring: cleanup io_alloc_async_ctx()
@@ -46163,7 +46161,7 @@ index a2d042f07756..a4c63ee431e7 100644
 2.26.2
 
 
-From a06903a1e97d9b208ced8cd79b483ad0f30e6891 Mon Sep 17 00:00:00 2001
+From 26f5c24cf733aeaad67acb467db480d5c93cbd81 Mon Sep 17 00:00:00 2001
 From: yangerkun <yangerkun@huawei.com>
 Date: Wed, 18 Mar 2020 08:04:36 -0700
 Subject: [PATCH 347/650] iomap: fix comments in iomap_dio_rw
@@ -46197,7 +46195,7 @@ index 07bc8023b06a..e6259c51f43c 100644
 2.26.2
 
 
-From 017c65660ba6e17dd734b088066538e49f99b7b4 Mon Sep 17 00:00:00 2001
+From b918062ad04f444e44dbe7ee86be3bd26aec607f Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Tue, 31 Mar 2020 14:05:18 +0800
 Subject: [PATCH 348/650] io_uring: refactor file register/unregister/update
@@ -46636,7 +46634,7 @@ index a4c63ee431e7..3832f8a27722 100644
 2.26.2
 
 
-From 140d70de4e290de6f4d33c8cd57e9d395f2736d6 Mon Sep 17 00:00:00 2001
+From 97967135a9018fc165ea8fe523f362a459929fb7 Mon Sep 17 00:00:00 2001
 From: Hillf Danton <hdanton@sina.com>
 Date: Wed, 1 Apr 2020 17:19:33 +0800
 Subject: [PATCH 349/650] io_uring: add missing finish_wait() in io_sq_thread()
@@ -46668,7 +46666,7 @@ index 3832f8a27722..e18e91f20219 100644
 2.26.2
 
 
-From e8a8ba76172c00b136d2df5476c8a2da3b489068 Mon Sep 17 00:00:00 2001
+From baafa2e504058e0419d5e28fa39e17d5189cf9fd Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 3 Apr 2020 11:10:14 -0600
 Subject: [PATCH 350/650] io_uring: retry poll if we got woken with
@@ -46713,7 +46711,7 @@ index e18e91f20219..d010608dbe9c 100644
 2.26.2
 
 
-From 473beee719d6ab2ade156a67591278a848b61e58 Mon Sep 17 00:00:00 2001
+From c8ba6d8c5b39afb253893ce5fc4e1411e82be974 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 3 Apr 2020 11:19:06 -0600
 Subject: [PATCH 351/650] io_uring: grab task reference for poll requests
@@ -46789,7 +46787,7 @@ index d010608dbe9c..137b52ea352f 100644
 2.26.2
 
 
-From 847732ae6bcec7f3c777e9e4021d56f2f3ba2b93 Mon Sep 17 00:00:00 2001
+From adb97cafc2363306860630d8b3703f79e00519c8 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 3 Apr 2020 11:26:26 -0600
 Subject: [PATCH 352/650] io_uring: use io-wq manager as backup task if task is
@@ -46898,7 +46896,7 @@ index 137b52ea352f..312c06154f5f 100644
 2.26.2
 
 
-From e45b36698806eda2887e9e7ebecd3d1eb3e7da3b Mon Sep 17 00:00:00 2001
+From e15924f49368a658129aee9b22495c76199f4f4e Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 3 Apr 2020 13:54:26 -0600
 Subject: [PATCH 353/650] io_uring: remove bogus RLIMIT_NOFILE check in file
@@ -46937,7 +46935,7 @@ index 312c06154f5f..04f6d017c300 100644
 2.26.2
 
 
-From f6a36028dad365d8ba1a788059eb39f61dc65b13 Mon Sep 17 00:00:00 2001
+From 5f8c1a1124f5413cb784a3600c9d6603eb3a70ea Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Fri, 3 Apr 2020 13:51:33 -0700
 Subject: [PATCH 354/650] io_uring: process requests completed with -EAGAIN on
@@ -47026,7 +47024,7 @@ index 04f6d017c300..716709a6bbb0 100644
 2.26.2
 
 
-From ff81312c98430d1870548fb3ad71c8bd295ab1be Mon Sep 17 00:00:00 2001
+From 8de5ad6c4d6735b705acebcdd37cc29e99dfe475 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 6 Apr 2020 00:08:52 +0300
 Subject: [PATCH 355/650] io_uring: fix ctx refcounting in io_submit_sqes()
@@ -47064,7 +47062,7 @@ index 716709a6bbb0..1703370cdb41 100644
 2.26.2
 
 
-From fe0246d88ba24c585380df108dc45fbf8087b7e4 Mon Sep 17 00:00:00 2001
+From 8d0794e87b5f59e9c4a05be703ff92140f4886c6 Mon Sep 17 00:00:00 2001
 From: Colin Ian King <colin.king@canonical.com>
 Date: Mon, 6 Apr 2020 23:54:39 +0100
 Subject: [PATCH 356/650] io_uring: remove redundant variable pointer nxt and
@@ -47105,7 +47103,7 @@ index 1703370cdb41..1fda5c66be00 100644
 2.26.2
 
 
-From 03f4ec8bb352d7f2a842c6fd7e4dbbf5d0e53d80 Mon Sep 17 00:00:00 2001
+From 1c7eb63d5a637f3772bd3878c13dba7e8cda2a62 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Tue, 7 Apr 2020 20:02:31 +0800
 Subject: [PATCH 357/650] io_uring: initialize fixed_file_data lock
@@ -47169,7 +47167,7 @@ index 1fda5c66be00..8e2f41ee9a90 100644
 2.26.2
 
 
-From 4ffc1c283d5149d740fcda11766886bdafd78aaf Mon Sep 17 00:00:00 2001
+From 57548a7bad9c65f9021f5912d8d2ff8282af063d Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 8 Apr 2020 09:20:54 -0600
 Subject: [PATCH 358/650] io_uring: ensure openat sets O_LARGEFILE if needed
@@ -47233,7 +47231,7 @@ index 8e2f41ee9a90..bca152b9fa49 100644
 2.26.2
 
 
-From 8a152a990539abb851c11b75ce40aec13f8c87d9 Mon Sep 17 00:00:00 2001
+From 38d938971629c947afe8127bbcfee6b62807d810 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Wed, 8 Apr 2020 22:29:58 +0800
 Subject: [PATCH 359/650] io_uring: do not always copy iovec in io_req_map_rw()
@@ -47270,7 +47268,7 @@ index bca152b9fa49..41002fd0eb22 100644
 2.26.2
 
 
-From 9f0122b3e564e84ed7bcef16b8a693d9f858d3b0 Mon Sep 17 00:00:00 2001
+From 5b59c7192a7b278a906fb2656edaa76647fedf4b Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 8 Apr 2020 08:58:43 +0300
 Subject: [PATCH 360/650] io_uring: simplify io_get_sqring
@@ -47362,7 +47360,7 @@ index 41002fd0eb22..4a83311bd083 100644
 2.26.2
 
 
-From eb6c071e16b342f254e84008ad96037746f383c1 Mon Sep 17 00:00:00 2001
+From 0cd618e4cd24c8d5ec0902a2f2995a828fdf281c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 8 Apr 2020 08:58:44 +0300
 Subject: [PATCH 361/650] io_uring: alloc req only after getting sqe
@@ -47436,7 +47434,7 @@ index 4a83311bd083..a6c0ca5aefdb 100644
 2.26.2
 
 
-From a01d62773eac1c72816a57662a947090c44d0566 Mon Sep 17 00:00:00 2001
+From 549fa133b98b52447f75c35acea491854f89428c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 8 Apr 2020 08:58:45 +0300
 Subject: [PATCH 362/650] io_uring: remove req init from io_get_req()
@@ -47550,7 +47548,7 @@ index a6c0ca5aefdb..54f5d5ded759 100644
 2.26.2
 
 
-From df9e5d471c058d903cb9e5ad31417caf4cc4add8 Mon Sep 17 00:00:00 2001
+From 9d25b656cff7c32d3ffee9e91eb244058c5ac200 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 8 Apr 2020 08:58:46 +0300
 Subject: [PATCH 363/650] io_uring: don't read user-shared sqe flags twice
@@ -47645,7 +47643,7 @@ index 54f5d5ded759..96947ca7d6bd 100644
 2.26.2
 
 
-From d731d2ee10d8e526af83441f622ca8d1e1851109 Mon Sep 17 00:00:00 2001
+From 2de1c076d30b7515bb3e9058fa4e72f6cb85d494 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 9 Apr 2020 08:17:59 +0300
 Subject: [PATCH 364/650] io_uring: fix fs cleanup on cqe overflow
@@ -47686,7 +47684,7 @@ index 96947ca7d6bd..eadd00381413 100644
 2.26.2
 
 
-From ea6232ccc054a6e9a2e2eb2b9096af7392c84210 Mon Sep 17 00:00:00 2001
+From d7c8b76c5d1230443b3508470384f0132df8443b Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 9 Apr 2020 18:14:00 -0600
 Subject: [PATCH 365/650] io_uring: punt final io_ring_ctx wait-and-free to
@@ -47758,7 +47756,7 @@ index eadd00381413..bc99356d6008 100644
 2.26.2
 
 
-From de4f256125e9381bf45cbdfec60e5403d26d014a Mon Sep 17 00:00:00 2001
+From c04987caa751986e03c663523c65a285ff0e8153 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Apr 2020 02:05:01 +0300
 Subject: [PATCH 366/650] io_uring: remove obsolete @mm_fault
@@ -47798,7 +47796,7 @@ index bc99356d6008..0bd94b1b17bf 100644
 2.26.2
 
 
-From fe013ebe60ecca1b4dc6b135ffb48653127ae1b0 Mon Sep 17 00:00:00 2001
+From 867a512eecc84c109914f4170d1a86f5b33a389c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Apr 2020 02:05:02 +0300
 Subject: [PATCH 367/650] io_uring: track mm through current->mm
@@ -47916,7 +47914,7 @@ index 0bd94b1b17bf..2d237bcd213c 100644
 2.26.2
 
 
-From 65bbf87580c96d1c6523db50670593f0668c84c2 Mon Sep 17 00:00:00 2001
+From 81dba2a801e61c1d5b3566aa123b63adb3e373cc Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Apr 2020 02:05:03 +0300
 Subject: [PATCH 368/650] io_uring: early submission req fail code
@@ -48053,7 +48051,7 @@ index 2d237bcd213c..6787819bc48e 100644
 2.26.2
 
 
-From f70ca328a91b9bfcfa2e0edfc69e5f3383a01d32 Mon Sep 17 00:00:00 2001
+From ee7a2547b38b7977538af57ac2ad907db4e199e8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Apr 2020 02:05:04 +0300
 Subject: [PATCH 369/650] io_uring: keep all sqe->flags in req->flags
@@ -48188,7 +48186,7 @@ index 6787819bc48e..0b8a925f8732 100644
 2.26.2
 
 
-From 29b1a4ecffc1e7ddef129ea3460962dc42ca54d9 Mon Sep 17 00:00:00 2001
+From aa9018ecaca8a46abbbfd1da23dc50d8b12b18b2 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Apr 2020 02:05:05 +0300
 Subject: [PATCH 370/650] io_uring: move all request init code in one place
@@ -48383,7 +48381,7 @@ index 0b8a925f8732..6b6707b15138 100644
 2.26.2
 
 
-From ad853e90aade7d035f13334ff3149b8c264d59f7 Mon Sep 17 00:00:00 2001
+From 4340c9f9567a6ccce06a19b1e2a8997055f411f2 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Sun, 12 Apr 2020 14:50:54 +0800
 Subject: [PATCH 371/650] io_uring: restore req->work when canceling poll
@@ -48497,7 +48495,7 @@ index 6b6707b15138..34e2fe049567 100644
 2.26.2
 
 
-From 07d6fb77e6e367a1c7064fb018023b16e29a2c1c Mon Sep 17 00:00:00 2001
+From f400f53d90ec12dd2ebb3d431a249e2290f7697e Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 12 Apr 2020 21:12:49 -0600
 Subject: [PATCH 372/650] io_uring: correct O_NONBLOCK check for splice punt
@@ -48531,7 +48529,7 @@ index 34e2fe049567..90e5ae6cb937 100644
 2.26.2
 
 
-From b85dc562714d64fcda22691cd67e470f5d620de3 Mon Sep 17 00:00:00 2001
+From e3635d38f4973316807595960e984c21e164f7ec Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 13 Apr 2020 11:09:12 -0600
 Subject: [PATCH 373/650] io_uring: check for need to re-wait in polled async
@@ -48628,7 +48626,7 @@ index 90e5ae6cb937..cd294a436b6e 100644
 2.26.2
 
 
-From 9058acc057c4fa5b15b6307349492c50f4acd79c Mon Sep 17 00:00:00 2001
+From 866fb73190e6a52a159929937dcd4c511fa575a4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 13 Apr 2020 11:16:34 -0600
 Subject: [PATCH 374/650] io_uring: io_async_task_func() should check and honor
@@ -48681,7 +48679,7 @@ index cd294a436b6e..6fef05fa81fa 100644
 2.26.2
 
 
-From 81db1bb8416a489a380615c09ceaf099235aa3e4 Mon Sep 17 00:00:00 2001
+From b88196369bfbb5be336e72072a0e92d420594998 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 13 Apr 2020 17:05:14 -0600
 Subject: [PATCH 375/650] io_uring: only post events in io_poll_remove_all() if
@@ -48807,7 +48805,7 @@ index 6fef05fa81fa..e75d1cf8c142 100644
 2.26.2
 
 
-From cb2ccaaf04c7f993a109682fe9f4200300b25538 Mon Sep 17 00:00:00 2001
+From ae107517b1ddab16909bc42fc3b173edb7d18d02 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Apr 2020 00:39:48 +0300
 Subject: [PATCH 376/650] io_uring: fix cached_sq_head in io_timeout()
@@ -48885,7 +48883,7 @@ index e75d1cf8c142..b6704f181e51 100644
 2.26.2
 
 
-From 35bb367a64194b1781a492836374c29a256ceaf6 Mon Sep 17 00:00:00 2001
+From 4348eda3edb0a1399bbe4985dd1df8fc76eed044 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Apr 2020 00:39:49 +0300
 Subject: [PATCH 377/650] io_uring: kill already cached timeout.seq_offset
@@ -48962,7 +48960,7 @@ index b6704f181e51..2c4accf2ab3e 100644
 2.26.2
 
 
-From 1b7ed67ba7025c3c8cf506e7310596d378b287b1 Mon Sep 17 00:00:00 2001
+From 378906cadd22b8829acc502de3be9fdc1b55b5cf Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Apr 2020 00:39:50 +0300
 Subject: [PATCH 378/650] io_uring: don't count rqs failed after current one
@@ -49019,7 +49017,7 @@ index 2c4accf2ab3e..834596e744ab 100644
 2.26.2
 
 
-From 4729be08b28f0b59050b7cc56ff96cb530bb089b Mon Sep 17 00:00:00 2001
+From f478e6781c76683853e3ca0cd01c0b3728d20fc8 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Sun, 19 Apr 2020 10:06:55 +0800
 Subject: [PATCH 379/650] io_uring: only restore req->work for req that needs
@@ -49137,7 +49135,7 @@ index 834596e744ab..c716c896e356 100644
 2.26.2
 
 
-From 52c121be424d4a7f607cf0e379070a6f3f8801c4 Mon Sep 17 00:00:00 2001
+From aacc58b0d6923d71f92f62f4fb934a0be74aea8b Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 27 Apr 2020 10:41:22 -0600
 Subject: [PATCH 380/650] io_uring: statx must grab the file table for valid fd
@@ -49217,7 +49215,7 @@ index c716c896e356..a712fceb34b2 100644
 2.26.2
 
 
-From e556541bcd7a1358dc001db13a65c41e01c7a2a2 Mon Sep 17 00:00:00 2001
+From 64bf0e84c5f0c7189245dca5b7c349cb3e173ca0 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 28 Apr 2020 13:15:06 -0600
 Subject: [PATCH 381/650] io_uring: enable poll retry for any file with
@@ -49308,7 +49306,7 @@ index a712fceb34b2..889dbe1f788c 100644
 2.26.2
 
 
-From 3736e26509b86b1b801c081c2abc23036b0aabcc Mon Sep 17 00:00:00 2001
+From 0d9ffb99d64a16ea7705601aaaf6bacae84b38a0 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 28 Apr 2020 13:16:53 -0600
 Subject: [PATCH 382/650] io_uring: only force async punt if poll based retry
@@ -49351,7 +49349,7 @@ index 889dbe1f788c..234014b4f52a 100644
 2.26.2
 
 
-From c5946939a3a58d478b933d7c48f50ab16a8cacb6 Mon Sep 17 00:00:00 2001
+From d5e5c68867af9be53605da217d9146ac95529cf6 Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Wed, 29 Apr 2020 17:47:50 -0700
 Subject: [PATCH 383/650] io_uring: use proper references for fallback_req
@@ -49392,7 +49390,7 @@ index 234014b4f52a..d71d7f7632d6 100644
 2.26.2
 
 
-From bb48c0479ef0f40324a1edf3c69c8b8407c7ef57 Mon Sep 17 00:00:00 2001
+From e9c8f767255440e0b198e9c106616c9eca1e096c Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Fri, 1 May 2020 08:52:56 +0800
 Subject: [PATCH 384/650] io_uring: use cond_resched() in
@@ -49436,7 +49434,7 @@ index d71d7f7632d6..d1d13d66e9ac 100644
 2.26.2
 
 
-From 8c627fecd5cc8f3de379a3630596e80cec9917b7 Mon Sep 17 00:00:00 2001
+From 5da69aee3b4d0d0c24f22a3a119c47d66d9b4234 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 1 May 2020 17:09:36 +0300
 Subject: [PATCH 385/650] io_uring: fix extra put in sync_file_range()
@@ -49493,7 +49491,7 @@ index d1d13d66e9ac..ca6e7a7cf54a 100644
 2.26.2
 
 
-From 4c43827fd0cc51a2c31d8fe0e83a2388d103a52a Mon Sep 17 00:00:00 2001
+From 5b96d487b887ed77e017a9183302228283fcff45 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 1 May 2020 17:09:37 +0300
 Subject: [PATCH 386/650] io_uring: check non-sync defer_list carefully
@@ -49524,7 +49522,7 @@ index ca6e7a7cf54a..7fecfbe59589 100644
 2.26.2
 
 
-From fb21b09f794eae8195190969752297b83dc841ff Mon Sep 17 00:00:00 2001
+From 80c23bb557708b7c4a8123835be63a5d214287da Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 1 May 2020 17:09:38 +0300
 Subject: [PATCH 387/650] io_uring: punt splice async because of inode mutex
@@ -49577,7 +49575,7 @@ index 7fecfbe59589..3551ddedb189 100644
 2.26.2
 
 
-From 898cc9bc6a7503b812cea0ce80415dc5207f4c6b Mon Sep 17 00:00:00 2001
+From 62b2e99b49f4107c413b732aeb8f1aaa84c3692d Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Sun, 26 Apr 2020 15:54:43 +0800
 Subject: [PATCH 388/650] io_uring: fix mismatched finish_wait() calls in
@@ -49633,7 +49631,7 @@ index 3551ddedb189..22ee6a30109b 100644
 2.26.2
 
 
-From 4af58227a3b9377cf6ea5839310589eab75741be Mon Sep 17 00:00:00 2001
+From 68e87e46873ddfa8289e0d1ebe2ad4f9c24f218b Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Tue, 5 May 2020 16:28:53 +0800
 Subject: [PATCH 389/650] io_uring: handle -EFAULT properly in io_uring_setup()
@@ -49724,7 +49722,7 @@ index 22ee6a30109b..c6a07ac97f71 100644
 2.26.2
 
 
-From 052cdb31964628f5546db2a6087c0b27ddab8cc2 Mon Sep 17 00:00:00 2001
+From 2595ff45b108293b85203c2d098a1c047ff45ea8 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 7 May 2020 14:56:15 -0600
 Subject: [PATCH 390/650] io_uring: don't use 'fd' for openat/openat2/statx
@@ -49847,7 +49845,7 @@ index c6a07ac97f71..fdbeb5c89c69 100644
 2.26.2
 
 
-From ef5e8435842b9dd777f76e9b70465cad8f88f010 Mon Sep 17 00:00:00 2001
+From 382f5f45c0b6d94b0ab83548989318c9776a181f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 4 May 2020 23:00:54 +0300
 Subject: [PATCH 391/650] io_uring: fix zero len do_splice()
@@ -49895,7 +49893,7 @@ index fdbeb5c89c69..c5f4ad296cdb 100644
 2.26.2
 
 
-From d247401c7baa644b62ee9a259051ae723aee3923 Mon Sep 17 00:00:00 2001
+From 06909f62229d29fbe3858582dcff68c9c0488cb5 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 13 May 2020 12:53:19 -0600
 Subject: [PATCH 392/650] io_uring: polled fixed file must go through free
@@ -49944,7 +49942,7 @@ index c5f4ad296cdb..58baf37536cf 100644
 2.26.2
 
 
-From 74135376672f9f714e7d761f54a2d9b7116476c0 Mon Sep 17 00:00:00 2001
+From d70d7f75477a1e8c3109d0c021f9fc175a305fdf Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 17 May 2020 09:20:00 -0600
 Subject: [PATCH 393/650] io_uring: initialize ctx->sqo_wait earlier
@@ -50016,7 +50014,7 @@ index 58baf37536cf..d51e390dc9eb 100644
 2.26.2
 
 
-From 0d0cdcef5e192859212c926e33f98221a0c9d100 Mon Sep 17 00:00:00 2001
+From 072447fba48ea395b76b46ef42be2aca840cfe5c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:02:11 +0300
 Subject: [PATCH 394/650] io_uring: don't prepare DRAIN reqs twice
@@ -50058,7 +50056,7 @@ index d51e390dc9eb..5829b63babfb 100644
 2.26.2
 
 
-From 12f2c64ee1dd516422e62989c85496c2e4eb8269 Mon Sep 17 00:00:00 2001
+From f87a8fac3b0c155c7077a9d9b84b367ce059e4b9 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:02:12 +0300
 Subject: [PATCH 395/650] io_uring: fix FORCE_ASYNC req preparation
@@ -50099,7 +50097,7 @@ index 5829b63babfb..7490d30beca2 100644
 2.26.2
 
 
-From dcd04878371a2fa39395e01e72029addd95fbb83 Mon Sep 17 00:00:00 2001
+From 6fa549fa2b0399365b0ba22d9e3a6dd57cac968a Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 17 May 2020 14:21:38 -0600
 Subject: [PATCH 396/650] io_uring: remove dead check in io_splice()
@@ -50135,7 +50133,7 @@ index 7490d30beca2..f1e4571e0688 100644
 2.26.2
 
 
-From eb585ea7dfd8764803b1e8638abd1fe413069a2b Mon Sep 17 00:00:00 2001
+From 17077504b2a6e1ee6f691ae24cbadc37e1916645 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 18 May 2020 11:04:17 -0600
 Subject: [PATCH 397/650] io_uring: cancel work if task_work_add() fails
@@ -50178,7 +50176,7 @@ index f1e4571e0688..d821469f872b 100644
 2.26.2
 
 
-From 418f0f5074a3ebe1bcbe3f00896a7c3ae319fa93 Mon Sep 17 00:00:00 2001
+From 2d1b23b765fe81ff394f976e7beb066d7aecef86 Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Tue, 19 May 2020 14:52:49 -0700
 Subject: [PATCH 398/650] io_uring: don't use kiocb.private to store buf_index
@@ -50262,7 +50260,7 @@ index d821469f872b..b23060452c3a 100644
 2.26.2
 
 
-From eb5a0abcace89594a91dfc7c18f61f5b2fec85cd Mon Sep 17 00:00:00 2001
+From bdd247cd5b35b737e9950df82f201676105537e4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 19 May 2020 21:20:27 -0600
 Subject: [PATCH 399/650] io_uring: don't add non-IO requests to iopoll pending
@@ -50300,7 +50298,7 @@ index b23060452c3a..330183474bd7 100644
 2.26.2
 
 
-From 5998cd0684e322d877d0c9b5d217aa4cfabc628b Mon Sep 17 00:00:00 2001
+From e0f28170253a10fb75a2391c8b35095a72d72112 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Wed, 20 May 2020 21:24:35 +0800
 Subject: [PATCH 400/650] io_uring: reset -EBUSY error when io sq thread is
@@ -50408,7 +50406,7 @@ index 330183474bd7..6479a2a05bde 100644
 2.26.2
 
 
-From 2c8d18825f8408ab6cec434a2d9606c95ce353b6 Mon Sep 17 00:00:00 2001
+From 202cc8a7628bc6e6460e82305fb5e05dd6e0ac9c Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 8 May 2020 21:27:24 -0600
 Subject: [PATCH 401/650] io_uring: remove 'fd is io_uring' from close path
@@ -50465,7 +50463,7 @@ index 6479a2a05bde..d1ac8f63b44d 100644
 2.26.2
 
 
-From 19d3c682a7087e22e3e4d896b3ea1cd81e332b7f Mon Sep 17 00:00:00 2001
+From 2872f74562bc9e5439f033d8645b645b73d7672e Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Fri, 8 May 2020 21:19:30 +0800
 Subject: [PATCH 402/650] io_uring: remove obsolete 'state' parameter
@@ -50507,7 +50505,7 @@ index d1ac8f63b44d..7cb37218cf3f 100644
 2.26.2
 
 
-From dbd7c9123a17c6b7d6d1df277b5cfe4abbc06f64 Mon Sep 17 00:00:00 2001
+From b1207250317067cc9d17f6239b2b131f9a63b48b Mon Sep 17 00:00:00 2001
 From: Xiaoming Ni <nixiaoming@huawei.com>
 Date: Mon, 11 May 2020 19:25:43 +0800
 Subject: [PATCH 403/650] io_uring: remove duplicate semicolon at the end of
@@ -50538,7 +50536,7 @@ index 7cb37218cf3f..235e3b7d0e0c 100644
 2.26.2
 
 
-From 2187f7c1b606a372a1d39bcfcf059fabd0457d39 Mon Sep 17 00:00:00 2001
+From b23d07eff4c825e1dd61760fb8ab92b812ec1138 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 14 May 2020 17:18:39 -0600
 Subject: [PATCH 404/650] io_uring: name sq thread and ref completions
@@ -50663,7 +50661,7 @@ index 235e3b7d0e0c..c5bbac53b9cc 100644
 2.26.2
 
 
-From 39ecf05934ef8f1838026ae09210a8e38dd0f9c4 Mon Sep 17 00:00:00 2001
+From 183c087ccf8709cfd9b0ffde15fabd4b2ccc853d Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 14 May 2020 17:21:15 -0600
 Subject: [PATCH 405/650] io_uring: batch reap of dead file registrations
@@ -50811,7 +50809,7 @@ index c5bbac53b9cc..6809a3f839fd 100644
 2.26.2
 
 
-From 9d632d9389201986da42686ecd11f0535e05a0eb Mon Sep 17 00:00:00 2001
+From d526d819d9591d4ebd251ac1e489e5df599cac73 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 15 May 2020 11:56:54 -0600
 Subject: [PATCH 406/650] io_uring: allow POLL_ADD with double poll_wait()
@@ -51120,7 +51118,7 @@ index 6809a3f839fd..36e8279f81ee 100644
 2.26.2
 
 
-From 2068eac4a8052d085a66820a7b839014531ac32a Mon Sep 17 00:00:00 2001
+From f0bbd57d675211f30af3692f662ae312e77aa6a4 Mon Sep 17 00:00:00 2001
 From: Stefano Garzarella <sgarzare@redhat.com>
 Date: Fri, 15 May 2020 18:38:04 +0200
 Subject: [PATCH 407/650] io_uring: add 'cq_flags' field for the CQ ring
@@ -51197,7 +51195,7 @@ index cef4c0c0f26b..7fa3960adfd7 100644
 2.26.2
 
 
-From c3014e534388f341032edd9428209efaba222685 Mon Sep 17 00:00:00 2001
+From d2a3c7d43cc61cf80e5040dfea3ed68ac8d98280 Mon Sep 17 00:00:00 2001
 From: Stefano Garzarella <sgarzare@redhat.com>
 Date: Fri, 15 May 2020 18:38:05 +0200
 Subject: [PATCH 408/650] io_uring: add IORING_CQ_EVENTFD_DISABLED to the CQ
@@ -51256,7 +51254,7 @@ index 7fa3960adfd7..60e0cccb003e 100644
 2.26.2
 
 
-From e246960da7dffb6a3cd20aa8ece08f48567cdaf0 Mon Sep 17 00:00:00 2001
+From 99c0597a7365662dbd176128899c79e6981beb3f Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 15 May 2020 14:30:38 -0600
 Subject: [PATCH 409/650] io_uring: file registration list and lock
@@ -51361,7 +51359,7 @@ index 97db8141fec1..b7b09b348a0c 100644
 2.26.2
 
 
-From 474ff659e8b6182ae12f1c26286b23c330555ce4 Mon Sep 17 00:00:00 2001
+From 0414c945a042f37d0df30af6a5b0f3398501f64d Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 17 May 2020 13:54:12 -0600
 Subject: [PATCH 410/650] io_uring: cleanup io_poll_remove_one() logic
@@ -51431,7 +51429,7 @@ index b7b09b348a0c..e4e20ebb44cd 100644
 2.26.2
 
 
-From a6431e6634a1ac614844f01d8866e5a7efe094e6 Mon Sep 17 00:00:00 2001
+From 6fe25399a5dae586151cc6a37933566f64d54980 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:13:40 +0300
 Subject: [PATCH 411/650] io_uring: remove req->needs_fixed_files
@@ -51538,7 +51536,7 @@ index e4e20ebb44cd..41b1134059f7 100644
 2.26.2
 
 
-From eccae2519d51a3417d16fa36f042078cdc7156fb Mon Sep 17 00:00:00 2001
+From f7c3e3ee09ee97a172d1a0640afdc56d5bbdb806 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:13:41 +0300
 Subject: [PATCH 412/650] io_uring: rename io_file_put()
@@ -51606,7 +51604,7 @@ index 41b1134059f7..a8b25fc1aee7 100644
 2.26.2
 
 
-From 229fa6b45c1cad45a4e4b7a05141a57ef5f6b46d Mon Sep 17 00:00:00 2001
+From 5fbf0bb02072b8a3c8542650a2e82188d23f7b95 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:13:42 +0300
 Subject: [PATCH 413/650] io_uring: don't repeat valid flag list
@@ -51640,7 +51638,7 @@ index a8b25fc1aee7..cc0aa4967372 100644
 2.26.2
 
 
-From d1c75d466988fa943073b70407a45c6c5ff4be91 Mon Sep 17 00:00:00 2001
+From d771b148aac2a9179b912eb4e2a928f9e793ee6a Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:18:06 +0300
 Subject: [PATCH 414/650] io_uring: add tee(2) support
@@ -51786,7 +51784,7 @@ index 60e0cccb003e..4daecbf74d11 100644
 2.26.2
 
 
-From 69239296284f509eea2347bdde35a975a041f3c9 Mon Sep 17 00:00:00 2001
+From f23e491df5c160a6cf0506c18efb29ea3bd312a4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 17 May 2020 17:43:31 -0600
 Subject: [PATCH 415/650] io_uring: async task poll trigger cleanup
@@ -51865,7 +51863,7 @@ index b5d5e47ffcf1..24f9d3f40866 100644
 2.26.2
 
 
-From ea6cc9cb29fa9f4942b948dce4ef23e029936a4f Mon Sep 17 00:00:00 2001
+From 19b52b93f46ef1d0efa3b5db92135661b2af5d7b Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Wed, 20 May 2020 15:35:03 +0800
 Subject: [PATCH 416/650] io_uring: don't submit sqes when ctx->refs is dying
@@ -51923,7 +51921,7 @@ index 24f9d3f40866..ffa3319429b3 100644
 2.26.2
 
 
-From 84e984f0c913f10a8613cef5e7150be7c60725fc Mon Sep 17 00:00:00 2001
+From 88cbaeaf19cf3ff52adf5ed3d8f29a315fd60f6d Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 26 May 2020 20:34:02 +0300
 Subject: [PATCH 417/650] io_uring: fix flush req->refs underflow
@@ -51957,7 +51955,7 @@ index ffa3319429b3..1a0a2d335450 100644
 2.26.2
 
 
-From 709330b9135f93d5375d64135534208baf03991a Mon Sep 17 00:00:00 2001
+From 9c13cbb8e635a599553ee434a0cf838c898bd4c0 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 26 May 2020 20:34:03 +0300
 Subject: [PATCH 418/650] io_uring: simplify io_timeout locking
@@ -52003,7 +52001,7 @@ index 1a0a2d335450..02709fa1e97e 100644
 2.26.2
 
 
-From daf0111a0dc56c3900cd4d0039c42773e94dfe5b Mon Sep 17 00:00:00 2001
+From 3a355afd73bff707eb577c424e0e1b539e9c71b2 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 26 May 2020 20:34:04 +0300
 Subject: [PATCH 419/650] io_uring: don't re-read sqe->off in timeout_prep()
@@ -52046,7 +52044,7 @@ index 02709fa1e97e..357994bb06aa 100644
 2.26.2
 
 
-From 1b24905fdc6222e5809fa5c6e8ee9620e5412f02 Mon Sep 17 00:00:00 2001
+From 99da0a0d6a6e35487ae5e47ab5d693a14a88c47f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 26 May 2020 20:34:05 +0300
 Subject: [PATCH 420/650] io_uring: separate DRAIN flushing into a cold path
@@ -52121,7 +52119,7 @@ index 357994bb06aa..d0e0c1a0c2e3 100644
 2.26.2
 
 
-From c799c2ea2325828261bc6bc5556e8b0f165aac74 Mon Sep 17 00:00:00 2001
+From a8721af4f4048db0bdf250ed313002c23a237ebc Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 26 May 2020 20:34:06 +0300
 Subject: [PATCH 421/650] io_uring: get rid of manual punting in io_close
@@ -52175,7 +52173,7 @@ index d0e0c1a0c2e3..44220b779cfc 100644
 2.26.2
 
 
-From 37210fb90f8a3c67d75bcfc4127d602e7dc7b90f Mon Sep 17 00:00:00 2001
+From 6aad2e2160131fc6bbdb19b65d0bd957ae47c79e Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Fri, 22 May 2020 21:31:16 -0700
 Subject: [PATCH 422/650] io_uring: add io_statx structure
@@ -52288,7 +52286,7 @@ index 44220b779cfc..de1760972bca 100644
 2.26.2
 
 
-From d7c4cd310cc4954f433163c74bbdfd63e6a282d8 Mon Sep 17 00:00:00 2001
+From 7d9ff33a47068e932bb03ee30d34756dc0858bae Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Fri, 22 May 2020 21:31:18 -0700
 Subject: [PATCH 423/650] io_uring: call statx directly
@@ -52405,7 +52403,7 @@ index de1760972bca..ca1d8d14e5a2 100644
 2.26.2
 
 
-From 1e168b1a93929bd51424c7a774be1eb6843304e7 Mon Sep 17 00:00:00 2001
+From 1a8442551d40ecd3640dc0c1c81491134c5be78c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 30 May 2020 14:54:17 +0300
 Subject: [PATCH 424/650] io_uring: move timeouts flushing to a helper
@@ -52479,7 +52477,7 @@ index ca1d8d14e5a2..601c0904e411 100644
 2.26.2
 
 
-From e3661503fa1ccd9259117c64a33d27681cb9713f Mon Sep 17 00:00:00 2001
+From a86f3952c24bf7c553c8b4ffe260b90d496f81dc Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 30 May 2020 14:54:18 +0300
 Subject: [PATCH 425/650] io_uring: off timeouts based only on completions
@@ -52631,7 +52629,7 @@ index 601c0904e411..1df28ce2694e 100644
 2.26.2
 
 
-From 5067718d9599dde216922c2baa6c9c3b2135cd52 Mon Sep 17 00:00:00 2001
+From d07698ab338c16f295148207d215e40747471a32 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 30 May 2020 14:19:15 +0300
 Subject: [PATCH 426/650] io_uring: fix overflowed reqs cancellation
@@ -52672,7 +52670,7 @@ index 1df28ce2694e..fac21fbc795b 100644
 2.26.2
 
 
-From a80a190f60e2bdf1e78d6c5b3f9eb7363592bf4a Mon Sep 17 00:00:00 2001
+From 99abfd68d6136c2abf6fd59cd8e10e32e13bda4f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 17 May 2020 14:18:05 +0300
 Subject: [PATCH 427/650] splice: export do_tee()
@@ -52718,7 +52716,7 @@ index ebbbfea48aa0..5c47013f708e 100644
 2.26.2
 
 
-From 55bdf98541a33ce2852c6fc5f3881e75354d7904 Mon Sep 17 00:00:00 2001
+From 3e85d269e26cc026c55e489cf9b10716df83ec16 Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Fri, 22 May 2020 21:31:17 -0700
 Subject: [PATCH 428/650] statx: allow system call to be invoked from io_uring
@@ -52796,7 +52794,7 @@ index 030008796479..65cf51fda2aa 100644
 2.26.2
 
 
-From 86f06fa30a2e29dcab54dab38a6586b03fbd7710 Mon Sep 17 00:00:00 2001
+From 0b1dbe559d7eb32617763ec65ea7714b9af063d3 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 2 Jun 2020 16:40:47 -0600
 Subject: [PATCH 429/650] io_uring: disallow close of ring itself
@@ -52881,7 +52879,7 @@ index fac21fbc795b..095a9fb417ad 100644
 2.26.2
 
 
-From eaca311c09665668dcfc4ffd80d3c9d24655f4a4 Mon Sep 17 00:00:00 2001
+From 0e40ab78a0b17375ce13db7cce2bd80d9782acf7 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 3 Jun 2020 18:03:22 +0300
 Subject: [PATCH 430/650] io_uring: fix {SQ,IO}POLL with unsupported opcodes
@@ -53005,7 +53003,7 @@ index 095a9fb417ad..b42389579c60 100644
 2.26.2
 
 
-From 083313bdc3f4b3eedc94047e31513d1a4dbb400f Mon Sep 17 00:00:00 2001
+From fd435876606878a0cd4ae4bff93ff5b4d466c6af Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 3 Jun 2020 18:03:23 +0300
 Subject: [PATCH 431/650] io_uring: do build_open_how() only once
@@ -53063,7 +53061,7 @@ index b42389579c60..295d014ca133 100644
 2.26.2
 
 
-From a5fc7a73c5b208f03811282e744af873f07be55f Mon Sep 17 00:00:00 2001
+From 345faa9e8baedf98ba1f72e7690be191782022ec Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 3 Jun 2020 18:03:24 +0300
 Subject: [PATCH 432/650] io_uring: deduplicate io_openat{,2}_prep()
@@ -53185,7 +53183,7 @@ index 295d014ca133..1a46c03672e3 100644
 2.26.2
 
 
-From bad22773866da3a896d4c9e3a059e8cbb734aa11 Mon Sep 17 00:00:00 2001
+From de06a913758a710116fde5ba4f9d75930b8f2a49 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 3 Jun 2020 18:03:25 +0300
 Subject: [PATCH 433/650] io_uring: move send/recv IOPOLL check into prep
@@ -53267,7 +53265,7 @@ index 1a46c03672e3..9cf8de2526a5 100644
 2.26.2
 
 
-From 00b11bd753e49deb0c782bba7b727879e4a0d62b Mon Sep 17 00:00:00 2001
+From 58d2f82d286dbd933be7d7b54dd61268c04a05ab Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 4 Jun 2020 11:27:01 -0600
 Subject: [PATCH 434/650] io_uring: re-set iov base/len for buffer select retry
@@ -53305,7 +53303,7 @@ index 9cf8de2526a5..da2e3aeb50c7 100644
 2.26.2
 
 
-From e2bfbce3405efb2931a1920fa10f8980c92ec6f9 Mon Sep 17 00:00:00 2001
+From 3fec3052a7b4d0f391a60b3462bc3814b4d863e4 Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Thu, 4 Jun 2020 18:01:52 -0700
 Subject: [PATCH 435/650] io_uring: validate the full range of provided buffers
@@ -53337,7 +53335,7 @@ index da2e3aeb50c7..af4a75b6fc74 100644
 2.26.2
 
 
-From cfcfb6a45e47abdcf2fa9cec48b8e9b34876af04 Mon Sep 17 00:00:00 2001
+From f070fa1aff09088fcff8be7d60f32f336b279b71 Mon Sep 17 00:00:00 2001
 From: Denis Efremov <efremov@linux.com>
 Date: Fri, 5 Jun 2020 12:32:03 +0300
 Subject: [PATCH 436/650] io_uring: use kvfree() in io_sqe_buffer_register()
@@ -53373,7 +53371,7 @@ index af4a75b6fc74..eeec9ab3e373 100644
 2.26.2
 
 
-From 31944f930ae92b74d55b33e72bc52bc3e0036e43 Mon Sep 17 00:00:00 2001
+From 0f206a0e6a768862430bc726f7ce6f006bf96751 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 8 Jun 2020 21:08:17 +0300
 Subject: [PATCH 437/650] io_uring: don't derive close state from ->func
@@ -53474,7 +53472,7 @@ index eeec9ab3e373..b9a906334926 100644
 2.26.2
 
 
-From edd2be6ee5317efa7cf2fb476eaea035202769dc Mon Sep 17 00:00:00 2001
+From 9beed1a3e5adf5f6bd75e36fb07bfb6da7f8eb58 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 8 Jun 2020 21:08:18 +0300
 Subject: [PATCH 438/650] io_uring: remove custom ->func handlers
@@ -53713,7 +53711,7 @@ index b9a906334926..f553faa80c2d 100644
 2.26.2
 
 
-From 4426297260deb4bcbebcdb4fe507fa1fdf53de49 Mon Sep 17 00:00:00 2001
+From df2bc3948687d4b22e95ffc0205b5c358d0e15b8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 8 Jun 2020 21:08:19 +0300
 Subject: [PATCH 439/650] io_uring: don't arm a timeout through work.func
@@ -53807,7 +53805,7 @@ index f553faa80c2d..f2b5f9db6636 100644
 2.26.2
 
 
-From 6eaf7d5c47b504c2b69305cc49c15fa46cacdab8 Mon Sep 17 00:00:00 2001
+From b528a2e484b58fb2f58f718010656b52d96d9684 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 8 Jun 2020 21:08:20 +0300
 Subject: [PATCH 440/650] io_wq: add per-wq work handler instead of per work
@@ -53948,7 +53946,7 @@ index f2b5f9db6636..0691bbc599ab 100644
 2.26.2
 
 
-From 69bdf45ee12838eec60d64ff31d4810cbdb15b05 Mon Sep 17 00:00:00 2001
+From e18fe982286e8d78a40a8599c4e8738e44bfa3a1 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 9 Jun 2020 19:23:05 -0600
 Subject: [PATCH 441/650] io_uring: allow O_NONBLOCK async retry
@@ -54004,7 +54002,7 @@ index 0691bbc599ab..3e9436430a85 100644
 2.26.2
 
 
-From 2381dd73a422e658b039eb023d4ebc87eecae60a Mon Sep 17 00:00:00 2001
+From 8c4a19cd2c00ac3117ddfe2c8a1b724214e89902 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Wed, 10 Jun 2020 19:41:19 +0800
 Subject: [PATCH 442/650] io_uring: avoid whole io_wq_work copy for requests
@@ -54186,7 +54184,7 @@ index 3e9436430a85..f5952a601943 100644
 2.26.2
 
 
-From 8a98747e11d4437d613f72e71bbbf2dde5148805 Mon Sep 17 00:00:00 2001
+From 029773201145d4965301f8a4af223459af3ac009 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Wed, 10 Jun 2020 19:41:20 +0800
 Subject: [PATCH 443/650] io_uring: avoid unnecessary io_wq_work copy for fast
@@ -54251,7 +54249,7 @@ index f5952a601943..ae43adc74eb6 100644
 2.26.2
 
 
-From b5756a8a054c96e60a4f7ad96c95f089bf4c40f8 Mon Sep 17 00:00:00 2001
+From 71be217c7a747edc99c259e2c5987c71efb304b7 Mon Sep 17 00:00:00 2001
 From: Jiufei Xue <jiufei.xue@linux.alibaba.com>
 Date: Wed, 10 Jun 2020 13:41:59 +0800
 Subject: [PATCH 444/650] io_uring: check file O_NONBLOCK state for accept
@@ -54283,7 +54281,7 @@ index ae43adc74eb6..71f75c2eb9ed 100644
 2.26.2
 
 
-From fb34e2872fd5106815780b21a153fa4d2fa41bd6 Mon Sep 17 00:00:00 2001
+From c8601384ea92ac05d2ab7502be7e8fa395cdaada Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Thu, 11 Jun 2020 23:39:36 +0800
 Subject: [PATCH 445/650] io_uring: fix io_kiocb.flags modification race in
@@ -54392,7 +54390,7 @@ index 71f75c2eb9ed..8e547b1c4b7f 100644
 2.26.2
 
 
-From 40f69650ba90db17bc5d839bf2ab5af40593a6af Mon Sep 17 00:00:00 2001
+From a7e69c858cabb79626fbb61561f9b6d7f477dca7 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 16:36:30 +0300
 Subject: [PATCH 446/650] io_uring: fix lazy work init
@@ -54437,7 +54435,7 @@ index 8e547b1c4b7f..2b634abb0b0e 100644
 2.26.2
 
 
-From 88964b90dc7e22645df627572967b0f1b206b98c Mon Sep 17 00:00:00 2001
+From 1edaf1ed13327288790775ff2bb5bf527ad377c2 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 10:24:02 +0300
 Subject: [PATCH 447/650] io-wq: reorder cancellation pending -> running
@@ -54553,7 +54551,7 @@ index d7dc638f4b8e..9e7d277de248 100644
 2.26.2
 
 
-From 605a7a99888142252c3607189943300d977c6baa Mon Sep 17 00:00:00 2001
+From d7a0237ab0cd879642454828f210929999ed910f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 10:24:03 +0300
 Subject: [PATCH 448/650] io-wq: add an option to cancel all matched reqs
@@ -54742,7 +54740,7 @@ index 2b634abb0b0e..e1561820b449 100644
 2.26.2
 
 
-From b959b5062451fa5a7a212ba5755b98b52df33df1 Mon Sep 17 00:00:00 2001
+From e07bf7595d958e1b929223deaaee9b8b7acefbce Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 10:24:04 +0300
 Subject: [PATCH 449/650] io_uring: cancel all task's requests on exit
@@ -54831,7 +54829,7 @@ index e1561820b449..4df8f5fe85d1 100644
 2.26.2
 
 
-From 4df836a54b477bd005f2ffcce60b59219b514cc3 Mon Sep 17 00:00:00 2001
+From 7f5418da5b229f13c59d3495c8e1fa89ea1255ce Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 10:24:05 +0300
 Subject: [PATCH 450/650] io_uring: batch cancel in io_uring_cancel_files()
@@ -54877,7 +54875,7 @@ index 4df8f5fe85d1..f59de1bbb1a9 100644
 2.26.2
 
 
-From a4445851fb2a0d6693f10ee0fb1771f9c9481733 Mon Sep 17 00:00:00 2001
+From 1a1543a4e01d8ec931281b1072704493d0090eea Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 10:33:13 +0300
 Subject: [PATCH 451/650] io_uring: lazy get task
@@ -54984,7 +54982,7 @@ index f59de1bbb1a9..dd4ff751ef0f 100644
 2.26.2
 
 
-From 951af797b8aa6785bf2282914bd07a81369873f0 Mon Sep 17 00:00:00 2001
+From 99e0f0b72c9312de0ebe43995f2a00587c53d22a Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 15 Jun 2020 10:33:14 +0300
 Subject: [PATCH 452/650] io_uring: cancel by ->task not pid
@@ -55063,7 +55061,7 @@ index dd4ff751ef0f..b82428df04c8 100644
 2.26.2
 
 
-From ccfa272057ec593a3afcc759ed9084d488d16661 Mon Sep 17 00:00:00 2001
+From 40d72fa90be68f30b6751d1a8f3b6b7df50e0e14 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Tue, 16 Jun 2020 02:06:37 +0800
 Subject: [PATCH 453/650] io_uring: don't fail links for EAGAIN error in IOPOLL
@@ -55097,7 +55095,7 @@ index b82428df04c8..dcc5880dd581 100644
 2.26.2
 
 
-From 34548fcf1e7e21defab356ce30512b7c07770628 Mon Sep 17 00:00:00 2001
+From ceafe45400afa4453b10247ad3c30ee1ab1668e8 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Tue, 16 Jun 2020 02:06:38 +0800
 Subject: [PATCH 454/650] io_uring: add memory barrier to synchronize
@@ -55239,7 +55237,7 @@ index dcc5880dd581..2c3bddc6005c 100644
 2.26.2
 
 
-From de5e1b9f59dd0779af7fcb56cc64f7f2676c4936 Mon Sep 17 00:00:00 2001
+From aed19f32c0c23d7bc669cdb2864bd58b2dbd5d79 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 16 Jun 2020 18:42:49 -0600
 Subject: [PATCH 455/650] io_uring: acquire 'mm' for task_work for SQPOLL
@@ -55348,7 +55346,7 @@ index 2c3bddc6005c..7204e39e2678 100644
 2.26.2
 
 
-From a5a56a54774da352b06b3fe26d96676469574d54 Mon Sep 17 00:00:00 2001
+From 49cdc0d5bc72a32b333b240f0cf06ab270107bd1 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 17 Jun 2020 15:00:04 -0600
 Subject: [PATCH 456/650] io_uring: reap poll completions while waiting for
@@ -55397,7 +55395,7 @@ index 7204e39e2678..c80c1018095c 100644
 2.26.2
 
 
-From bd4f59519c74cc73e947830c78f68eabe4f1e911 Mon Sep 17 00:00:00 2001
+From bb70ca1b8d3d2b1074b5da72ec1fa8eccef3618e Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Thu, 18 Jun 2020 15:01:56 +0800
 Subject: [PATCH 457/650] io_uring: fix possible race condition against
@@ -55458,7 +55456,7 @@ index c80c1018095c..4e347a4df1d6 100644
 2.26.2
 
 
-From 6dd63ccd6ecaede025f917f7b45f0d75dbc3a5c1 Mon Sep 17 00:00:00 2001
+From 9f1dec91fddfd8d99f6ddfc03c45b024e1d9ba88 Mon Sep 17 00:00:00 2001
 From: Xuan Zhuo <xuanzhuo@linux.alibaba.com>
 Date: Tue, 23 Jun 2020 19:34:06 +0800
 Subject: [PATCH 458/650] io_uring: fix io_sq_thread no schedule when busy
@@ -55508,7 +55506,7 @@ index 4e347a4df1d6..113af88def7e 100644
 2.26.2
 
 
-From 06b106822443f77211cbee80232890fcf4d02217 Mon Sep 17 00:00:00 2001
+From 60c16602d62b56989da00652dcfd6e0f65835e61 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 25 Jun 2020 12:37:10 +0300
 Subject: [PATCH 459/650] io_uring: fix hanging iopoll in case of -EAGAIN
@@ -55562,7 +55560,7 @@ index 113af88def7e..b2e712db45c7 100644
 2.26.2
 
 
-From 0895670d64da1b986ee172099f2c1382338a0569 Mon Sep 17 00:00:00 2001
+From 0b9eac464a1f9087adaa7e21dc5b5fb9af50ca90 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 25 Jun 2020 12:37:11 +0300
 Subject: [PATCH 460/650] io_uring: fix current->mm NULL dereference on exit
@@ -55638,7 +55636,7 @@ index b2e712db45c7..bdd3dacb7902 100644
 2.26.2
 
 
-From 324453b14bc21336852710ecdf9bd4824967782e Mon Sep 17 00:00:00 2001
+From a88e75278fcf1cc235119b7a1b555c7c8d8d4fee Mon Sep 17 00:00:00 2001
 From: Oleg Nesterov <oleg@redhat.com>
 Date: Tue, 30 Jun 2020 17:32:54 +0200
 Subject: [PATCH 461/650] task_work: teach task_work_add() to do
@@ -55775,7 +55773,7 @@ index 0fef395662a6..ba9a7f0a735b 100644
 2.26.2
 
 
-From 7be25e25abbe3b5fb0d23832065135bd1a9ef688 Mon Sep 17 00:00:00 2001
+From aeeacb10c4fc199de45c439c9c0bfb6f90392030 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 30 Jun 2020 12:39:05 -0600
 Subject: [PATCH 462/650] io_uring: use signal based task_work running
@@ -55875,7 +55873,7 @@ index bdd3dacb7902..868f7e3c01b4 100644
 2.26.2
 
 
-From 0239ba2d69387fbbb3b3f3df2abed608a742d595 Mon Sep 17 00:00:00 2001
+From 533b4add7eca49611b33178dacf8611697661b94 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 4 Jul 2020 08:55:50 -0600
 Subject: [PATCH 463/650] io_uring: fix regression with always ignoring signals
@@ -55972,7 +55970,7 @@ index 868f7e3c01b4..05a82b3bcc68 100644
 2.26.2
 
 
-From ce3342809ca5c46c8d68109fdc95982389f8f005 Mon Sep 17 00:00:00 2001
+From ea494f0d25933aab7b9bbe2767547a585b1cddd0 Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Thu, 9 Jul 2020 09:15:29 +0800
 Subject: [PATCH 464/650] io_uring: export cq overflow status to userspace
@@ -56125,7 +56123,7 @@ index 4daecbf74d11..5dab0357a357 100644
 2.26.2
 
 
-From 60e5f30f3a371147d5734e803f0f4ff0e569158b Mon Sep 17 00:00:00 2001
+From 45e800990054ca0abb55469157f6b2a791ad84b3 Mon Sep 17 00:00:00 2001
 From: Yang Yingliang <yangyingliang@huawei.com>
 Date: Thu, 9 Jul 2020 10:11:41 +0000
 Subject: [PATCH 465/650] io_uring: fix memleak in __io_sqe_files_update()
@@ -56201,7 +56199,7 @@ index c2939b23f17a..a63cefd02ba4 100644
 2.26.2
 
 
-From 1e488ae5340226677b699d6ff838c55361d3ed6d Mon Sep 17 00:00:00 2001
+From 2d012043f3c05e8dbe128a5befbca8a2172a58e6 Mon Sep 17 00:00:00 2001
 From: Yang Yingliang <yangyingliang@huawei.com>
 Date: Fri, 10 Jul 2020 14:14:20 +0000
 Subject: [PATCH 466/650] io_uring: fix memleak in io_sqe_files_register()
@@ -56248,7 +56246,7 @@ index a63cefd02ba4..b85d0aeedcfe 100644
 2.26.2
 
 
-From 8775a151e8f0ccb887076858c9ad1c2fd6241888 Mon Sep 17 00:00:00 2001
+From e04f795bb593bb346c322db2aeddac041a699e73 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 10 Jul 2020 09:13:34 -0600
 Subject: [PATCH 467/650] io_uring: account user memory freed when exit has
@@ -56305,7 +56303,7 @@ index b85d0aeedcfe..c6324f6e0d9e 100644
 2.26.2
 
 
-From 8b4f6624877aefeb6afb199b2e08697971809d14 Mon Sep 17 00:00:00 2001
+From fa341654a362a49a28ad7ae21ec175dd189db83c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Jul 2020 13:23:08 +0300
 Subject: [PATCH 468/650] io_uring: fix missing msg_name assignment
@@ -56344,7 +56342,7 @@ index c6324f6e0d9e..8f4cb7c21fcd 100644
 2.26.2
 
 
-From ca6cfbfe77ab9684f327d009bbab5c7f2197f4b1 Mon Sep 17 00:00:00 2001
+From c38fa684abf98b6bd595230d2f481819ca600e97 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Jul 2020 16:16:47 +0300
 Subject: [PATCH 469/650] io_uring: fix not initialised work->flags
@@ -56384,7 +56382,7 @@ index 8f4cb7c21fcd..a71908ababa9 100644
 2.26.2
 
 
-From 8fa0806cf31a58708efae67d9d4e4a8cd73e25e0 Mon Sep 17 00:00:00 2001
+From b01fd784cd31418851ca5196bea801cf7a0282ae Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Jul 2020 22:20:45 +0300
 Subject: [PATCH 470/650] io_uring: fix recvmsg memory leak with buffer
@@ -56426,7 +56424,7 @@ index a71908ababa9..cfe8d4e0e28c 100644
 2.26.2
 
 
-From edaf46d7b976dee6f05538ad441ddc1952a307fa Mon Sep 17 00:00:00 2001
+From b55b4c96debf7441018110486ee9cf249165b241 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 17 Jul 2020 17:09:27 -0600
 Subject: [PATCH 471/650] io_uring: ensure double poll additions work with both
@@ -56634,7 +56632,7 @@ index cfe8d4e0e28c..dea30d800413 100644
 2.26.2
 
 
-From 0abae7a6772854b9b0aa7132fe029dfe33cc426e Mon Sep 17 00:00:00 2001
+From 463735aa29590b77497ed1903b36ff59114358d7 Mon Sep 17 00:00:00 2001
 From: Daniele Albano <d.albano@gmail.com>
 Date: Sat, 18 Jul 2020 14:15:16 -0600
 Subject: [PATCH 472/650] io_uring: always allow drain/link/hardlink/async sqe
@@ -56695,7 +56693,7 @@ index dea30d800413..0a49f4f18337 100644
 2.26.2
 
 
-From 331c4cdc784da032920c69dff1c150821d07e367 Mon Sep 17 00:00:00 2001
+From a5c415027c1185fc3aed407f59edf83975766a39 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 23 Jul 2020 20:17:20 +0300
 Subject: [PATCH 473/650] io_uring: missed req_init_async() for IOSQE_ASYNC
@@ -56726,7 +56724,7 @@ index 0a49f4f18337..ace685417c8b 100644
 2.26.2
 
 
-From ed853327bc531ecdad18fbee7964e47075069f23 Mon Sep 17 00:00:00 2001
+From cc5787be2b40ac153c72125abdddc5a14d82ded7 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 24 Jul 2020 20:07:20 +0300
 Subject: [PATCH 474/650] io_uring: fix ->work corruption with poll_add
@@ -56762,7 +56760,7 @@ index ace685417c8b..aa696e0ada10 100644
 2.26.2
 
 
-From 88d682834a9df41e7eab1def789976ea4725f94b Mon Sep 17 00:00:00 2001
+From 8abd79da62c0415b8feae3af7f6da647c2d2012f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 24 Jul 2020 20:07:21 +0300
 Subject: [PATCH 475/650] io_uring: fix lockup in io_fail_links()
@@ -56814,7 +56812,7 @@ index aa696e0ada10..cd18ccdc37a9 100644
 2.26.2
 
 
-From ef22fca4fcf2cc0874a944d3e71e6bdf2e10ee48 Mon Sep 17 00:00:00 2001
+From 0c603628cfbdbcd544a59373bf6ece5c4cf331e7 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 22 May 2020 09:12:09 -0600
 Subject: [PATCH 476/650] mm: add support for async page locking
@@ -56981,7 +56979,7 @@ index 51b2cb5aa503..3cbe369fc852 100644
 2.26.2
 
 
-From 86c414b6135d61f70a3e61d9f1527f3a953ddd31 Mon Sep 17 00:00:00 2001
+From 5d7cd22f981146c3e7edda587a125db75594124c Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 23 May 2020 08:22:14 -0600
 Subject: [PATCH 477/650] mm: abstract out wake_page_match() from
@@ -57101,7 +57099,7 @@ index 3cbe369fc852..620c81f5630a 100644
 2.26.2
 
 
-From 898c22469317bb3e0b41b82718636b9b6109b1ac Mon Sep 17 00:00:00 2001
+From 62b7442d9a02ee35779b4fd33c6c9bed5fc0dca4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 22 May 2020 10:18:23 -0600
 Subject: [PATCH 478/650] mm: add kiocb_wait_page_queue_init() helper
@@ -57151,7 +57149,7 @@ index 43d5b8755547..7d62b2b26082 100644
 2.26.2
 
 
-From dc517e6a6032072972a896522464c595b7437c38 Mon Sep 17 00:00:00 2001
+From 1bee3bee99648fccfa776a0dd9f2342530d5d569 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 31 Aug 2020 12:08:10 -0600
 Subject: [PATCH 479/650] fs: align IOCB_* flags with RWF_* flags
@@ -57249,7 +57247,7 @@ index 82bdfaf1a862..6e5218b18858 100644
 2.26.2
 
 
-From 9003c9e43cdaa49d6287ccd7e7dbfd4bc72bceca Mon Sep 17 00:00:00 2001
+From db7682c87c6de72cafbd0a53d3695095ace84c32 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 22 May 2020 09:12:51 -0600
 Subject: [PATCH 480/650] fs: add FMODE_BUF_RASYNC
@@ -57280,7 +57278,7 @@ index 6e5218b18858..f57a21fbbe8f 100644
 2.26.2
 
 
-From 6bc60662580b1c909b96d78577e7cc4b204e4a66 Mon Sep 17 00:00:00 2001
+From 91d818a99ca791e71e239997d26886f6c041304c Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 4 Jun 2020 11:23:39 -0600
 Subject: [PATCH 481/650] block: provide plug based way of signaling forced
@@ -57342,7 +57340,7 @@ index d5338b9ee550..2dd9e8a53e90 100644
 2.26.2
 
 
-From 8de1aba1f9f05a6a456e8fab877d7f5878f159dc Mon Sep 17 00:00:00 2001
+From 86d3be250bd295c2dd97431ea73a3d7bd381b75c Mon Sep 17 00:00:00 2001
 From: Jiufei Xue <jiufei.xue@linux.alibaba.com>
 Date: Wed, 17 Jun 2020 17:53:55 +0800
 Subject: [PATCH 482/650] io_uring: change the poll type to be 32-bits
@@ -57461,7 +57459,7 @@ index 5f305c86b892..28a837b6069d 100644
 2.26.2
 
 
-From 8677b9e8df69719a6c775da547b4468bb0379ffd Mon Sep 17 00:00:00 2001
+From 432bbbd6978d36d7aa4c660cbefc48025a1ef4bd Mon Sep 17 00:00:00 2001
 From: Jiufei Xue <jiufei.xue@linux.alibaba.com>
 Date: Wed, 17 Jun 2020 17:53:56 +0800
 Subject: [PATCH 483/650] io_uring: use EPOLLEXCLUSIVE flag to aoid thundering
@@ -57506,7 +57504,7 @@ index 705b0c2e96bb..53ea8af4aa3c 100644
 2.26.2
 
 
-From 1edcc1c86acf4ab40deff181f885c360f5af7d80 Mon Sep 17 00:00:00 2001
+From 52c49283bd1f84ad24638c319b93731b918cdb84 Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Tue, 16 Jun 2020 16:36:07 -0700
 Subject: [PATCH 484/650] io_uring: add wrappers for memory accounting
@@ -57660,7 +57658,7 @@ index 53ea8af4aa3c..b72e5debe1ba 100644
 2.26.2
 
 
-From 3424022287bdef9ff9940c4ff56a00d3f2a07423 Mon Sep 17 00:00:00 2001
+From d449bfd8ef7aed43d66ddd79dc474c7f6664d55c Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Tue, 16 Jun 2020 16:36:08 -0700
 Subject: [PATCH 485/650] io_uring: rename ctx->account_mem field
@@ -57744,7 +57742,7 @@ index b72e5debe1ba..cd74eaa8116d 100644
 2.26.2
 
 
-From b386792d5dc47cb3b752ac0be10df1b545b9cec9 Mon Sep 17 00:00:00 2001
+From 41454720e6f9dab4baba0e7ecfd282471a04504a Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Tue, 16 Jun 2020 16:36:09 -0700
 Subject: [PATCH 486/650] io_uring: report pinned memory usage
@@ -57836,7 +57834,7 @@ index cd74eaa8116d..ed52a12b4d77 100644
 2.26.2
 
 
-From f858d8d872a1027da423c288ce1c72cebfdcc09b Mon Sep 17 00:00:00 2001
+From 882f0f7f88432d1c77c648cdb7aacf0c0b9ce102 Mon Sep 17 00:00:00 2001
 From: Bijan Mottahedeh <bijan.mottahedeh@oracle.com>
 Date: Tue, 16 Jun 2020 16:36:10 -0700
 Subject: [PATCH 487/650] io_uring: separate reporting of ring pages from
@@ -57992,7 +57990,7 @@ index ed52a12b4d77..28c0309ba20b 100644
 2.26.2
 
 
-From 42790c6f74956e165175eda3e7470a93d59fac32 Mon Sep 17 00:00:00 2001
+From 3adfb217007b688b96c4a0a625bbf78f592951ee Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 1 Jun 2020 08:30:41 -0600
 Subject: [PATCH 488/650] io_uring: always plug for any number of IOs
@@ -58070,7 +58068,7 @@ index 28c0309ba20b..8fef34677889 100644
 2.26.2
 
 
-From e036578f45437e57e5f3d6b4a000a61c9969a069 Mon Sep 17 00:00:00 2001
+From cc100a739c796f5377a82189a7d5016d924962d1 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 1 Jun 2020 10:00:27 -0600
 Subject: [PATCH 489/650] io_uring: catch -EIO from buffered issue request
@@ -58155,7 +58153,7 @@ index 8fef34677889..8be45762ec1f 100644
 2.26.2
 
 
-From 3b8d415d3757063dc38536ca18d476c9c41e07df Mon Sep 17 00:00:00 2001
+From 8ebbaa30ce1cbe789f6c600cee920d5582f8569f Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 4 Jun 2020 11:28:00 -0600
 Subject: [PATCH 490/650] io_uring: re-issue block requests that failed because
@@ -58407,7 +58405,7 @@ index 8be45762ec1f..dddb0c5541a7 100644
 2.26.2
 
 
-From 09a7f350c62fce71f8677702bcdc8413e15590f1 Mon Sep 17 00:00:00 2001
+From 7d4afe1b50872fadab3111eccc602af3b3b5d2c3 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 22 May 2020 09:24:42 -0600
 Subject: [PATCH 491/650] io_uring: support true async buffered reads, if file
@@ -58609,7 +58607,7 @@ index dddb0c5541a7..fc8101bff0dc 100644
 2.26.2
 
 
-From e248785cc1af4e0a61a937880b593b01ba071140 Mon Sep 17 00:00:00 2001
+From b192afe9ad84ad96ce6766cfbdc19c34da35c45e Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 21 Jun 2020 13:09:50 +0300
 Subject: [PATCH 492/650] io_uring: remove setting REQ_F_MUST_PUNT in rw
@@ -58665,7 +58663,7 @@ index fc8101bff0dc..f6cf2c84d7a3 100644
 2.26.2
 
 
-From 736e5ff387d7a7d92ad23d1b46772782d584305d Mon Sep 17 00:00:00 2001
+From 302a0552dfe6803ac17a5cb9868f3c25058874ed Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 21 Jun 2020 13:09:51 +0300
 Subject: [PATCH 493/650] io_uring: remove REQ_F_MUST_PUNT
@@ -58763,7 +58761,7 @@ index f6cf2c84d7a3..a6498b916258 100644
 2.26.2
 
 
-From 86dc71d87b4c29b0d608b97477697543fc2fd413 Mon Sep 17 00:00:00 2001
+From f6f61c8b996eb73b71d30ec131c90435bdaebe9b Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 21 Jun 2020 13:09:52 +0300
 Subject: [PATCH 494/650] io_uring: set @poll->file after @poll init
@@ -58796,7 +58794,7 @@ index a6498b916258..228ef40f6bbe 100644
 2.26.2
 
 
-From 144f504ebe188afd0ac397c61f5ca6043173b193 Mon Sep 17 00:00:00 2001
+From c9a05f1cdd8944b46f33ab1fb9013cea4dd8c5c9 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 21 Jun 2020 13:09:53 +0300
 Subject: [PATCH 495/650] io_uring: kill NULL checks for submit state
@@ -58831,7 +58829,7 @@ index 228ef40f6bbe..a884425f4362 100644
 2.26.2
 
 
-From 664cf23acf580b4e37e6ecdb337964eea9363cb7 Mon Sep 17 00:00:00 2001
+From 0250703fab0109f4dcaaa6afab023437b1ce505b Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 25 Jun 2020 12:38:13 +0300
 Subject: [PATCH 496/650] io_uring: fix NULL-mm for linked reqs
@@ -58892,7 +58890,7 @@ index a884425f4362..734234669497 100644
 2.26.2
 
 
-From d280b94309bd9fb7080585e8601309466178194d Mon Sep 17 00:00:00 2001
+From cfe02aad658141d40a410d35e5a2ddb08e235638 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 22 Jun 2020 09:17:17 -0600
 Subject: [PATCH 497/650] io_uring: provide generic io_req_complete() helper
@@ -59276,7 +59274,7 @@ index 734234669497..9abf6d568bdb 100644
 2.26.2
 
 
-From d8ae54e3dbf352a673373252cdb0a413a288e026 Mon Sep 17 00:00:00 2001
+From 596da03d3c9ef5d1fde1e44a63ef32cbe24f8018 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 22 Jun 2020 09:29:15 -0600
 Subject: [PATCH 498/650] io_uring: add 'io_comp_state' to struct
@@ -59350,7 +59348,7 @@ index 9abf6d568bdb..3dcabe255c99 100644
 2.26.2
 
 
-From a80db1878dfdf60906ea88a8fbc1e3a3986ab9af Mon Sep 17 00:00:00 2001
+From 9c2e16b232be227e3db709f7256d2d1158eece98 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 22 Jun 2020 09:34:30 -0600
 Subject: [PATCH 499/650] io_uring: pass down completion state on the issue
@@ -59563,7 +59561,7 @@ index 3dcabe255c99..4938914ce673 100644
 2.26.2
 
 
-From 4018c89043211b7d078cab460730fec21c216df9 Mon Sep 17 00:00:00 2001
+From 5b2355ec2c522e1622c94201eab2a92a7cf1e432 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 22 Jun 2020 10:13:11 -0600
 Subject: [PATCH 500/650] io_uring: pass in completion state to appropriate
@@ -60028,7 +60026,7 @@ index 4938914ce673..12caee6b2190 100644
 2.26.2
 
 
-From 400d84c9fa3a6596f7cbfb3d2d1becfc037aedf1 Mon Sep 17 00:00:00 2001
+From 24c121b00ce3893d30342fced39937b839dc4904 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 22 Jun 2020 11:09:46 -0600
 Subject: [PATCH 501/650] io_uring: enable READ/WRITE to use deferred
@@ -60177,7 +60175,7 @@ index 12caee6b2190..945a2bd76521 100644
 2.26.2
 
 
-From 74e62f1cfefcdf8a988d308eab2cee6823c749d6 Mon Sep 17 00:00:00 2001
+From 66602d8776f312c16791eb661acd6b4b105955f9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 25 Jun 2020 15:39:59 -0600
 Subject: [PATCH 502/650] io_uring: use task_work for links if possible
@@ -60570,7 +60568,7 @@ index 945a2bd76521..e5935f2aaaf3 100644
 2.26.2
 
 
-From e064fb1bd1acd882e7ee238a60764cfa49545b46 Mon Sep 17 00:00:00 2001
+From f38ea0bb91f970ba4780514334cbeec1e0204ae6 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 25 Jun 2020 18:20:54 +0300
 Subject: [PATCH 503/650] io-wq: return next work from ->do_work() directly
@@ -60727,7 +60725,7 @@ index e5935f2aaaf3..36eb20f273c2 100644
 2.26.2
 
 
-From 16217e9c13c0aaafe3009253c1eee6787f3e37ca Mon Sep 17 00:00:00 2001
+From 029361036aa0a83a59e1fcca92a14a15ec4fa184 Mon Sep 17 00:00:00 2001
 From: Randy Dunlap <rdunlap@infradead.org>
 Date: Fri, 26 Jun 2020 16:32:50 -0700
 Subject: [PATCH 504/650] io_uring: fix function args for !CONFIG_NET
@@ -60814,7 +60812,7 @@ index 36eb20f273c2..0c0a2fc30213 100644
 2.26.2
 
 
-From 7a8458e4665c09addf7fc652762af7e9288aed5c Mon Sep 17 00:00:00 2001
+From 741be9762eb24de885850b58035c22f733d5c00d Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 27 Jun 2020 14:04:59 +0300
 Subject: [PATCH 505/650] io_uring: fix req->work corruption
@@ -60868,7 +60866,7 @@ index 0c0a2fc30213..7e087a83ff77 100644
 2.26.2
 
 
-From b712cd69ce3d59e9b875ff5bccacbec29e6cd88c Mon Sep 17 00:00:00 2001
+From 67ff72b4f072fd2cd700433282e0a218f08ac768 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 27 Jun 2020 14:04:55 +0300
 Subject: [PATCH 506/650] io_uring: fix punting req w/o grabbed env
@@ -60909,7 +60907,7 @@ index 7e087a83ff77..9701aad213bf 100644
 2.26.2
 
 
-From 8d34d44b17d0e61c43e9dfef1aa53e63b5da9ed5 Mon Sep 17 00:00:00 2001
+From 9b02e24f1e75d047827aa8f6c6c2a04cb68c35f8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 27 Jun 2020 14:04:56 +0300
 Subject: [PATCH 507/650] io_uring: fix feeding io-wq with uninit reqs
@@ -60977,7 +60975,7 @@ index 9701aad213bf..f307d13e43bd 100644
 2.26.2
 
 
-From 4dcd6ead4d0533e1dfbb0e799afd349031a29adc Mon Sep 17 00:00:00 2001
+From 2c17056f254bf57ecf6dbaf4edfe5b9b9e0e4269 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 27 Jun 2020 14:04:57 +0300
 Subject: [PATCH 508/650] io_uring: don't mark link's head for_async
@@ -61011,7 +61009,7 @@ index f307d13e43bd..78005a3c3e14 100644
 2.26.2
 
 
-From 7d25a4722cfc8e9da0a3414deeb02962da2777a5 Mon Sep 17 00:00:00 2001
+From aa92b4aa243feaf0e037598593286e9a64139bdf Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 27 Jun 2020 14:04:58 +0300
 Subject: [PATCH 509/650] io_uring: fix missing io_grab_files()
@@ -61055,7 +61053,7 @@ index 78005a3c3e14..7f94f5e9b705 100644
 2.26.2
 
 
-From c5205e33e1d830f3c4949cd6f02c808880674763 Mon Sep 17 00:00:00 2001
+From 974b72a9cb4ce8b41c00aab12f8de14faf1f4fb6 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:29 +0300
 Subject: [PATCH 510/650] io_uring: fix refs underflow in io_iopoll_queue()
@@ -61112,7 +61110,7 @@ index 7f94f5e9b705..eef7f75bcb28 100644
 2.26.2
 
 
-From e6b84a17fc35ee064af42d3d4941566df0a09c88 Mon Sep 17 00:00:00 2001
+From e2e31ac7fde892db5e5239bc41d440b6b772e55d Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:30 +0300
 Subject: [PATCH 511/650] io_uring: remove inflight batching in free_many()
@@ -61208,7 +61206,7 @@ index eef7f75bcb28..226346aac64c 100644
 2.26.2
 
 
-From 34e7f2c9a2a9125730e6af15d9edd3983c0d12c0 Mon Sep 17 00:00:00 2001
+From e45d679787e5e51a82d366997c7e991681fdba70 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:31 +0300
 Subject: [PATCH 512/650] io_uring: dismantle req early and remove need_iter
@@ -61278,7 +61276,7 @@ index 226346aac64c..efdfbaef0ef4 100644
 2.26.2
 
 
-From 7762b859ce9fa1bd5b41af9535693696ee3a1e63 Mon Sep 17 00:00:00 2001
+From 70f9b2ce8575c56390b02e98966f5be6080e5d33 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:32 +0300
 Subject: [PATCH 513/650] io_uring: batch-free linked requests as well
@@ -61362,7 +61360,7 @@ index efdfbaef0ef4..1686ea372c5a 100644
 2.26.2
 
 
-From 2eb2455789b63504d084a4a856cfe269f8447a5a Mon Sep 17 00:00:00 2001
+From 39b20000ce24fa6933c6794970e863f99d16f496 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:33 +0300
 Subject: [PATCH 514/650] io_uring: cosmetic changes for batch free
@@ -61486,7 +61484,7 @@ index 1686ea372c5a..1e006ae7122a 100644
 2.26.2
 
 
-From 288b24647ab0bc4280ee807c5c28de179877e929 Mon Sep 17 00:00:00 2001
+From d0477a4aac5de407a5c1f2b2adc6d93650178d49 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:34 +0300
 Subject: [PATCH 515/650] io_uring: kill REQ_F_LINK_NEXT
@@ -61555,7 +61553,7 @@ index 1e006ae7122a..bd2d230bc174 100644
 2.26.2
 
 
-From 1ac743f382248cb8e3b84051998633257d7cbe74 Mon Sep 17 00:00:00 2001
+From 494befdb700fe2142fde3985af9ece5acea96f45 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:35 +0300
 Subject: [PATCH 516/650] io_uring: clean up req->result setting by rw
@@ -61609,7 +61607,7 @@ index bd2d230bc174..8dfe16665368 100644
 2.26.2
 
 
-From 857561957ee59b494a386826cdbe097e0d2ef115 Mon Sep 17 00:00:00 2001
+From e2c956f0c298d792cccdbe19a405e58868f50b6f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:37 +0300
 Subject: [PATCH 517/650] io_uring: do task_work_run() during iopoll
@@ -61641,7 +61639,7 @@ index 8dfe16665368..74b565e73afe 100644
 2.26.2
 
 
-From ac2317830de363cf6273f822c965e94dcdc5d133 Mon Sep 17 00:00:00 2001
+From db5dee5e713aad44efa774d67b86639770ddbf04 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 28 Jun 2020 12:52:38 +0300
 Subject: [PATCH 518/650] io_uring: fix iopoll -EAGAIN handling
@@ -61700,7 +61698,7 @@ index 74b565e73afe..1d7c220f3172 100644
 2.26.2
 
 
-From 4ec64857d043b800f72f4a5dde034d7afbdfe639 Mon Sep 17 00:00:00 2001
+From ab5964190ffb972d9b95ac86d30c2b6093034a77 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 12:59:48 +0300
 Subject: [PATCH 519/650] io_uring: fix missing wake_up io_rw_reissue()
@@ -61734,7 +61732,7 @@ index 1d7c220f3172..4c69eb72f7ec 100644
 2.26.2
 
 
-From ff68e81153f7da51c576b165fa2ce982b1902fa7 Mon Sep 17 00:00:00 2001
+From a3abdd1d8b4cd4afc384fb1a64ec35b237ca36d5 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 13:12:59 +0300
 Subject: [PATCH 520/650] io_uring: deduplicate freeing linked timeouts
@@ -61924,7 +61922,7 @@ index 4c69eb72f7ec..c22a0e270dae 100644
 2.26.2
 
 
-From 98c0f41cd211c55bb95f488ddbf5d9fe7bf8ffbd Mon Sep 17 00:00:00 2001
+From db1d1463c4507c619344a078f404813680ab4278 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 13:13:00 +0300
 Subject: [PATCH 521/650] io_uring: replace find_next() out param with ret
@@ -62069,7 +62067,7 @@ index c22a0e270dae..7bbb2118ce04 100644
 2.26.2
 
 
-From c7437361eb4229bd21c964c5ea05c89b30135eaf Mon Sep 17 00:00:00 2001
+From 37631a16ac8b4b9edaa985fb2bc22213595f9393 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 13:13:01 +0300
 Subject: [PATCH 522/650] io_uring: kill REQ_F_TIMEOUT
@@ -62115,7 +62113,7 @@ index 7bbb2118ce04..27ab3da4667d 100644
 2.26.2
 
 
-From dfc37820aec820bec4dbc6fdc42da355f7414ad0 Mon Sep 17 00:00:00 2001
+From fb1063cc6b31dd0f44e1f452b36f89f2ec03fd64 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 13:13:02 +0300
 Subject: [PATCH 523/650] io_uring: kill REQ_F_TIMEOUT_NOSEQ
@@ -62194,7 +62192,7 @@ index 27ab3da4667d..a5be62c60bd7 100644
 2.26.2
 
 
-From 277c6393a4e2995216f7b83ece8a562a1b0de99b Mon Sep 17 00:00:00 2001
+From 584d06380629c2584c825185b6b7663df8a3c285 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 13:13:03 +0300
 Subject: [PATCH 524/650] io_uring: fix potential use after free on fallback
@@ -62236,7 +62234,7 @@ index a5be62c60bd7..2279a123362c 100644
 2.26.2
 
 
-From a33af83dc69199a04b6f80544e7ac8e80a180433 Mon Sep 17 00:00:00 2001
+From 8775bb06485b626520f530bd0d7d083533d97006 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 19:18:40 +0300
 Subject: [PATCH 525/650] io_uring: don't pass def into io_req_work_grab_env
@@ -62294,7 +62292,7 @@ index 2279a123362c..90a314e7e0ec 100644
 2.26.2
 
 
-From 8c8a4c1e86ac943f212bcfb2c2167e4cad3d88c1 Mon Sep 17 00:00:00 2001
+From 4835ad66bf9e1edbabf5b3ec82614aeb6537c6ab Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 19:18:41 +0300
 Subject: [PATCH 526/650] io_uring: do init work in grab_env()
@@ -62345,7 +62343,7 @@ index 90a314e7e0ec..55acae55bbf4 100644
 2.26.2
 
 
-From 56c31d6a7609b9d957485664e8f464741d614a6f Mon Sep 17 00:00:00 2001
+From 01f193ac7d0dac1644ad7fde75ba6d406a83d029 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 19:18:42 +0300
 Subject: [PATCH 527/650] io_uring: factor out grab_env() from defer_prep()
@@ -62428,7 +62426,7 @@ index 55acae55bbf4..76fcded267c2 100644
 2.26.2
 
 
-From 0dc69fc9dedb14258e0f9a946cd01147a71b5f17 Mon Sep 17 00:00:00 2001
+From 72db9c3ab6d548f07dcd24eb58a003c71838f2db Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 29 Jun 2020 19:18:43 +0300
 Subject: [PATCH 528/650] io_uring: do grab_env() just before punting
@@ -62578,7 +62576,7 @@ index 76fcded267c2..1eea8ab08d51 100644
 2.26.2
 
 
-From c4a2731dd127ba81367b69876b1512e14ed0ab2e Mon Sep 17 00:00:00 2001
+From 7830df433a7d6f71380fb58bd03b09867cce3d62 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 30 Jun 2020 08:43:15 -0600
 Subject: [PATCH 529/650] io_uring: clean up io_kill_linked_timeout() locking
@@ -62654,7 +62652,7 @@ index 1eea8ab08d51..174c14e1f05c 100644
 2.26.2
 
 
-From 393a4a4866759effb5bb69f1e46cd82c3556d4d3 Mon Sep 17 00:00:00 2001
+From 980938cfe6774dd0697b04c9c11b2438603d5c16 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 30 Jun 2020 15:20:40 +0300
 Subject: [PATCH 530/650] io_uring: don't fail iopoll requeue without ->mm
@@ -62688,7 +62686,7 @@ index 174c14e1f05c..6347f8ef243f 100644
 2.26.2
 
 
-From ae18167220b9d1a577dbc3b9b38cd36d6492509f Mon Sep 17 00:00:00 2001
+From 30fa73593238fd3af02b7fa7a563a2d811022912 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 30 Jun 2020 15:20:41 +0300
 Subject: [PATCH 531/650] io_uring: fix NULL mm in io_poll_task_func()
@@ -62727,7 +62725,7 @@ index 6347f8ef243f..e2a916696705 100644
 2.26.2
 
 
-From ee4748fce0fa16f2aa5cce64d982f9545f3e8cda Mon Sep 17 00:00:00 2001
+From 254196fe6402094a6b1f0aac52345818325bc498 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 30 Jun 2020 15:20:42 +0300
 Subject: [PATCH 532/650] io_uring: simplify io_async_task_func()
@@ -62801,7 +62799,7 @@ index e2a916696705..9722312bd39a 100644
 2.26.2
 
 
-From 928b850bc77793b938c04a80a01a7acbdc510142 Mon Sep 17 00:00:00 2001
+From 879b8e328c23d624b5f89072c789748457f8fb76 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 30 Jun 2020 15:20:43 +0300
 Subject: [PATCH 533/650] io_uring: optimise io_req_find_next() fast check
@@ -62852,7 +62850,7 @@ index 9722312bd39a..1ea7afb3bc0c 100644
 2.26.2
 
 
-From 94960aa9ce49217c3a78e30af07c4b4e0d37687b Mon Sep 17 00:00:00 2001
+From 76d869b5fda96f356816da3a8aa10ceb2228b04f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 30 Jun 2020 15:20:39 +0300
 Subject: [PATCH 534/650] io_uring: fix missing ->mm on exit
@@ -62934,7 +62932,7 @@ index 1ea7afb3bc0c..5acbd7102a80 100644
 2.26.2
 
 
-From 9dbc2d886553a274cfabd245e850283507bc1cf0 Mon Sep 17 00:00:00 2001
+From e660924499445d59c3e7506d6cd35a35c4f80099 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 1 Jul 2020 11:29:10 -0600
 Subject: [PATCH 535/650] io_uring: abstract out task work running
@@ -63066,7 +63064,7 @@ index 5acbd7102a80..6a0b6e8bcfea 100644
 2.26.2
 
 
-From 52f6b5973fa32ad66c681fca42be257560ae8d80 Mon Sep 17 00:00:00 2001
+From fa4fbc971dbe5defe33641aafb38379c4f23f233 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 1 Jul 2020 15:37:11 -0600
 Subject: [PATCH 536/650] io_uring: use new io_req_task_work_add() helper
@@ -63244,7 +63242,7 @@ index 6a0b6e8bcfea..3ca7f4db96f4 100644
 2.26.2
 
 
-From dd822920e5c0a4ba580a9fbc1e852bc00df4061c Mon Sep 17 00:00:00 2001
+From 0f80dc087cccfeedf18b17caa0b2ed99cdfe2121 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 3 Jul 2020 22:15:06 +0300
 Subject: [PATCH 537/650] io_uring: fix mis-refcounting linked timeouts
@@ -63360,7 +63358,7 @@ index 3ca7f4db96f4..100bc907e30c 100644
 2.26.2
 
 
-From e595fd1fa67f6c431455bd4b02de8628ae42ea06 Mon Sep 17 00:00:00 2001
+From b0f8ce36659308e4d4eae23f82f8014ff2176fca Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 3 Jul 2020 22:15:07 +0300
 Subject: [PATCH 538/650] io_uring: keep queue_sqe()'s fail path separately
@@ -63417,7 +63415,7 @@ index 100bc907e30c..019c81a5e25a 100644
 2.26.2
 
 
-From ba0c6d397846bed6b94657e095055bae1a77cc5a Mon Sep 17 00:00:00 2001
+From e500ad4924780355916658769c687781d0375786 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Fri, 3 Jul 2020 22:15:08 +0300
 Subject: [PATCH 539/650] io_uring: fix lost cqe->flags
@@ -63456,7 +63454,7 @@ index 019c81a5e25a..f1edd6e7e9c2 100644
 2.26.2
 
 
-From 45970067618207ff428cf69f461a34fbbde00b0d Mon Sep 17 00:00:00 2001
+From 56590ddee63ca1627ae2d88af8b5ea426228cfd1 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 6 Jul 2020 17:59:29 +0300
 Subject: [PATCH 540/650] io_uring: don't delay iopoll'ed req completion
@@ -63498,7 +63496,7 @@ index f1edd6e7e9c2..1cfabfdd1b5f 100644
 2.26.2
 
 
-From eeade929d0902ba47d32f8c9eb79dbf6f5cf7b51 Mon Sep 17 00:00:00 2001
+From 88eabe8d25a10cdd012358d0819d7eadcc2c23d0 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 6 Jul 2020 17:59:30 +0300
 Subject: [PATCH 541/650] io_uring: fix stopping iopoll'ing too early
@@ -63552,7 +63550,7 @@ index 1cfabfdd1b5f..03b3af9e518a 100644
 2.26.2
 
 
-From 5d425e92cc09bee8e2fad8553a720ba350144f43 Mon Sep 17 00:00:00 2001
+From 5a13424d576fd99212f4af3ed110eaf51cbb854e Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 6 Jul 2020 17:59:31 +0300
 Subject: [PATCH 542/650] io_uring: briefly loose locks while reaping events
@@ -63591,7 +63589,7 @@ index 03b3af9e518a..a18146152077 100644
 2.26.2
 
 
-From 58700ce54894bfc52018da76c15e28eeea6f6241 Mon Sep 17 00:00:00 2001
+From 7b38f868eb0fbf399be216889c52ebfc10abd705 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 7 Jul 2020 16:36:20 +0300
 Subject: [PATCH 543/650] io_uring: partially inline io_iopoll_getevents()
@@ -63638,7 +63636,7 @@ index a18146152077..90f7ae251c53 100644
 2.26.2
 
 
-From 3a630764be2bcded3a266c65a01daf968c7686eb Mon Sep 17 00:00:00 2001
+From 49636ddc06a2c94de561c27c536d13cdb6d62721 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 7 Jul 2020 16:36:21 +0300
 Subject: [PATCH 544/650] io_uring: remove nr_events arg from iopoll_check()
@@ -63704,7 +63702,7 @@ index 90f7ae251c53..7c3e8bc53fde 100644
 2.26.2
 
 
-From ab7cc336dc6b0d05ac932d89adf9c14851f9e77b Mon Sep 17 00:00:00 2001
+From 0be1f56897e152fbb674eb5c66b2f7ab77b5e2fe Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Tue, 7 Jul 2020 16:36:22 +0300
 Subject: [PATCH 545/650] io_uring: don't burn CPU for iopoll on exit
@@ -63805,7 +63803,7 @@ index 7c3e8bc53fde..0f38c8938465 100644
 2.26.2
 
 
-From 50929aeda569461f87c24d31adcaeac49e7ace51 Mon Sep 17 00:00:00 2001
+From d1643ec17dfd7834890dbfa04f1076b0e98666e8 Mon Sep 17 00:00:00 2001
 From: Dan Carpenter <dan.carpenter@oracle.com>
 Date: Wed, 8 Jul 2020 21:47:11 +0300
 Subject: [PATCH 546/650] io_uring: fix a use after free in
@@ -63848,7 +63846,7 @@ index 0f38c8938465..bca5e6f2f56a 100644
 2.26.2
 
 
-From 4b84429c09209ecf86e69713c240c5cd1aee9787 Mon Sep 17 00:00:00 2001
+From fe1ce1ef1bc874d1b3d7c87b133dc2e70143ad47 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 8 Jul 2020 15:15:26 -0600
 Subject: [PATCH 547/650] io_uring: only call kfree() for a non-zero pointer
@@ -63881,7 +63879,7 @@ index bca5e6f2f56a..c19412fe3615 100644
 2.26.2
 
 
-From f34f5d3ef9b7d6b8364d23beab37fda39378e37c Mon Sep 17 00:00:00 2001
+From e4d2685f787b47785787cc1ebd08d1c0bdb35add Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 9 Jul 2020 09:43:27 -0600
 Subject: [PATCH 548/650] io_uring: get rid of __req_need_defer()
@@ -63927,7 +63925,7 @@ index c19412fe3615..63366133bbe5 100644
 2.26.2
 
 
-From e13d9eaa1baef9623095d791bc613801fffa90dc Mon Sep 17 00:00:00 2001
+From feb47b87bdb818b62505eb2a8f7d88bc827f2b9c Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 9 Jul 2020 15:07:01 -0600
 Subject: [PATCH 549/650] io_uring: remove dead 'ctx' argument and move forward
@@ -64000,7 +63998,7 @@ index 63366133bbe5..3290f37ccc2f 100644
 2.26.2
 
 
-From 5a00606b17ba02eca137bdbba1c3985032e0b766 Mon Sep 17 00:00:00 2001
+From e2a1b8bb15bdda29d8fb51e1794a01fd7d544f27 Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Sat, 31 Oct 2020 18:02:15 -0400
 Subject: [PATCH 550/650] io_uring: Backport a missing kfree()
@@ -64026,7 +64024,7 @@ index 3290f37ccc2f..0093f068e061 100644
 2.26.2
 
 
-From 4ee31ddac0e56b69c9b959382f7663045f25aad0 Mon Sep 17 00:00:00 2001
+From 157e3b8e0ee9009ce084c7551648e9b035e9f9f9 Mon Sep 17 00:00:00 2001
 From: Dmitry Vyukov <dvyukov@google.com>
 Date: Sat, 11 Jul 2020 11:31:11 +0200
 Subject: [PATCH 551/650] io_uring: fix sq array offset calculation
@@ -64073,7 +64071,7 @@ index 0093f068e061..e836f8c6e3aa 100644
 2.26.2
 
 
-From 9d6d7ca130eb37a261b6971afe0dc5e00d498187 Mon Sep 17 00:00:00 2001
+From a5e3e6a6c8774989143187de0d967aa866af7045 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Jul 2020 20:41:04 +0300
 Subject: [PATCH 552/650] io_uring: rename sr->msg into umsg
@@ -64170,7 +64168,7 @@ index e836f8c6e3aa..24445e1564cf 100644
 2.26.2
 
 
-From ee36cc7d19678e8c34e6a20feb719e710a6be904 Mon Sep 17 00:00:00 2001
+From 5881bbd33f60ea18f1b2b33cdde32986e01982e7 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Jul 2020 20:41:05 +0300
 Subject: [PATCH 553/650] io_uring: use more specific type in rcv/snd msg cp
@@ -64359,7 +64357,7 @@ index 24445e1564cf..986843f9c4b4 100644
 2.26.2
 
 
-From 078d882c8835dc0a6dc828cdb1c84dd32753425b Mon Sep 17 00:00:00 2001
+From 133e52de4a87ca1a58385c030eae9f585a6433ed Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Jul 2020 20:41:06 +0300
 Subject: [PATCH 554/650] io_uring: extract io_sendmsg_copy_hdr()
@@ -64423,7 +64421,7 @@ index 986843f9c4b4..970c3b7fb8cd 100644
 2.26.2
 
 
-From 279f41fa74f303b54c6b0a9b05d89b1d56a3f84c Mon Sep 17 00:00:00 2001
+From cb76844ecfb3133d3dcfca179f19adeb1688ab3a Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 12 Jul 2020 20:42:04 +0300
 Subject: [PATCH 555/650] io_uring: replace rw->task_work with rq->task_work
@@ -64511,7 +64509,7 @@ index 970c3b7fb8cd..913aba813421 100644
 2.26.2
 
 
-From cfd193836153db9a40421a737a2bd2bd97d2a30c Mon Sep 17 00:00:00 2001
+From 696b266361ba19ed8ac2e1ed6b56b10ffdcb2c69 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 22:59:18 +0300
 Subject: [PATCH 556/650] io_uring: simplify io_req_map_rw()
@@ -64559,7 +64557,7 @@ index 913aba813421..cfb1db4b8fe9 100644
 2.26.2
 
 
-From 90e045b795aea69bea7b87aa91fbbbeb0e39eadb Mon Sep 17 00:00:00 2001
+From 07cdc1aa0a827f68fb292d4a29463494c409df7b Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 22:59:19 +0300
 Subject: [PATCH 557/650] io_uring: add a helper for async rw iovec prep
@@ -64658,7 +64656,7 @@ index cfb1db4b8fe9..bf38eef75864 100644
 2.26.2
 
 
-From 50fba5808ebc88c3a7d3494bba6c34891bda59bd Mon Sep 17 00:00:00 2001
+From 7e4b294a51e76bb1626907b757c0f4f48b02172d Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 22:59:20 +0300
 Subject: [PATCH 558/650] io_uring: follow **iovec idiom in io_import_iovec
@@ -64733,7 +64731,7 @@ index bf38eef75864..7386c516a128 100644
 2.26.2
 
 
-From 12621b91d9cde3e6a511c26bd04f92310ccb621c Mon Sep 17 00:00:00 2001
+From 9b73478b3e81c2c04f6c24557694b688080a29e2 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:08 +0300
 Subject: [PATCH 559/650] io_uring: share completion list w/ per-op space
@@ -64842,7 +64840,7 @@ index 7386c516a128..18af32bc8420 100644
 2.26.2
 
 
-From ed0f8230a31c93801e0accebade0181ea6dc0e91 Mon Sep 17 00:00:00 2001
+From 47b600d145834f4de896b69c6fbfc4a1ee4728dd Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:09 +0300
 Subject: [PATCH 560/650] io_uring: rename ctx->poll into ctx->iopoll
@@ -64984,7 +64982,7 @@ index 18af32bc8420..c530352d907d 100644
 2.26.2
 
 
-From a2e9dfa97d574d56e0b98e3f7584084873f8f06d Mon Sep 17 00:00:00 2001
+From 36bd33259dfe9b23eb156a76c1b5d39f6854f545 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:10 +0300
 Subject: [PATCH 561/650] io_uring: use inflight_entry list for iopoll'ing
@@ -65094,7 +65092,7 @@ index c530352d907d..aac0b71f4a2b 100644
 2.26.2
 
 
-From 272d78febc9ec2e2736f72c9c4ad6dea342b784a Mon Sep 17 00:00:00 2001
+From cb7b7569a0237f61d3a03ad8183918437fecca87 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:11 +0300
 Subject: [PATCH 562/650] io_uring: use completion list for CQ overflow
@@ -65163,7 +65161,7 @@ index aac0b71f4a2b..b563466ea282 100644
 2.26.2
 
 
-From 3055f5eaaa025d89ad684b1868b369e09d1b1552 Mon Sep 17 00:00:00 2001
+From 4b4dc642a3ea589a6dc435ca28a9475f62bb8675 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:12 +0300
 Subject: [PATCH 563/650] io_uring: add req->timeout.list
@@ -65272,7 +65270,7 @@ index b563466ea282..55b1254f4ce3 100644
 2.26.2
 
 
-From 2a12473612599886889f059f1ec304f89f4b28a6 Mon Sep 17 00:00:00 2001
+From 3f4a46f7d37f475c67b72b130d6c3af53040287f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:13 +0300
 Subject: [PATCH 564/650] io_uring: remove init for unused list
@@ -65301,7 +65299,7 @@ index 55b1254f4ce3..67f22055c648 100644
 2.26.2
 
 
-From aac5ab6b2201f73e85391eb5bcaa4d7c87cb4321 Mon Sep 17 00:00:00 2001
+From 6e819322af2524637dfbbdf3d56ef631f3ffa25a Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:14 +0300
 Subject: [PATCH 565/650] io_uring: use non-intrusive list for defer
@@ -65399,7 +65397,7 @@ index 67f22055c648..cc86934b5204 100644
 2.26.2
 
 
-From a8cf0cf0994ff61cf8353307ad097e3705f96207 Mon Sep 17 00:00:00 2001
+From 6b717f6b298bf78487ed0a5924ce5fd65284f1b5 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:15 +0300
 Subject: [PATCH 566/650] io_uring: remove sequence from io_kiocb
@@ -65542,7 +65540,7 @@ index cc86934b5204..7295e7b91cc3 100644
 2.26.2
 
 
-From 43c9078d3f7abe5b5c6c8a1f7b1c3e3fb73eb17a Mon Sep 17 00:00:00 2001
+From b11d9985a399c7fed4c5e54326b72e60d1445001 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Mon, 13 Jul 2020 23:37:16 +0300
 Subject: [PATCH 567/650] io_uring: place cflags into completion data
@@ -65617,7 +65615,7 @@ index 7295e7b91cc3..1285acce8fe0 100644
 2.26.2
 
 
-From 07d2230d1c9e2ac79d9fc67c8eba494597ffaae5 Mon Sep 17 00:00:00 2001
+From 6cfa2fea44d2e0060cee9918a9b3d6fe1313f707 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Jul 2020 12:46:49 +0300
 Subject: [PATCH 568/650] io_uring: inline io_req_work_grab_env()
@@ -65726,7 +65724,7 @@ index 1285acce8fe0..6bfcc58a0d8d 100644
 2.26.2
 
 
-From 554c2c29a09bbd47085e5b356c70ec706bb183a0 Mon Sep 17 00:00:00 2001
+From 6ecd67a659b6c74fe34c7aa949e6f4573103bb2f Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Jul 2020 12:46:50 +0300
 Subject: [PATCH 569/650] io_uring: remove empty cleanup of OP_OPEN* reqs
@@ -65758,7 +65756,7 @@ index 6bfcc58a0d8d..d235d5f59cd0 100644
 2.26.2
 
 
-From 13022cb13b8f525b25794b7a1c7e67385086a746 Mon Sep 17 00:00:00 2001
+From 972a2f52a7f6f899669131fb83a16cf2b432edb7 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Jul 2020 12:46:51 +0300
 Subject: [PATCH 570/650] io_uring: alloc ->io in io_req_defer_prep()
@@ -65846,7 +65844,7 @@ index d235d5f59cd0..de6f96ca2394 100644
 2.26.2
 
 
-From 03d9a0bd52584a68671cd6eb8005d29260fb0611 Mon Sep 17 00:00:00 2001
+From 4372937f4f24b8458db912ece9a081995af24b58 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Wed, 15 Jul 2020 12:46:52 +0300
 Subject: [PATCH 571/650] io_uring/io-wq: move RLIMIT_FSIZE to io-wq
@@ -66000,7 +65998,7 @@ index de6f96ca2394..01d4d7acbc3e 100644
 2.26.2
 
 
-From 7db244d8d3f89956e3f73a3362da756bf6e5046b Mon Sep 17 00:00:00 2001
+From b5c940b814d2d8c4ff0703999d3e8a44a28ba473 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:33 +0300
 Subject: [PATCH 572/650] io_uring: simplify file ref tracking in submission
@@ -66068,7 +66066,7 @@ index 01d4d7acbc3e..6745bd051238 100644
 2.26.2
 
 
-From e1be544c81ddeb2b9f42ea4636aa918c9d7a8147 Mon Sep 17 00:00:00 2001
+From f2f230d6cacdcd0775de10f82c3cfffa0f4a2323 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:27:59 +0300
 Subject: [PATCH 573/650] io_uring: indent left {send,recv}[msg]()
@@ -66420,7 +66418,7 @@ index 6745bd051238..bdac0d5014ac 100644
 2.26.2
 
 
-From e2b3059810ad2a5733934ddf7761f2cb050d2d56 Mon Sep 17 00:00:00 2001
+From 902e448f7981b8eed7f87a1e654a3e0f3e39a0d1 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:00 +0300
 Subject: [PATCH 574/650] io_uring: remove extra checks in send/recv
@@ -66487,7 +66485,7 @@ index bdac0d5014ac..c709740e7b02 100644
 2.26.2
 
 
-From 77664f09a85fb7531bc451a796489543f4a7eaea Mon Sep 17 00:00:00 2001
+From 994b58f0e5fdc46be8d62434514b45ad4bc5501d Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:01 +0300
 Subject: [PATCH 575/650] io_uring: don't forget cflags in io_recv()
@@ -66541,7 +66539,7 @@ index c709740e7b02..08b3986c4cb0 100644
 2.26.2
 
 
-From 37975982bdcf1aa2d520336323193e723409396b Mon Sep 17 00:00:00 2001
+From 99617501ead140cc391f1a44fe2f7be1655132dc Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:02 +0300
 Subject: [PATCH 576/650] io_uring: free selected-bufs if error'ed
@@ -66702,7 +66700,7 @@ index 08b3986c4cb0..3a46ade3d9d3 100644
 2.26.2
 
 
-From f738ad23e63a7b8f4b3987b16387689bf5c5cad2 Mon Sep 17 00:00:00 2001
+From fef68a55f0d22ca8a4f84ed5410f4a37bcaf07ff Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:03 +0300
 Subject: [PATCH 577/650] io_uring: move BUFFER_SELECT check into *recv[msg]
@@ -66776,7 +66774,7 @@ index 3a46ade3d9d3..9a10948c0d7a 100644
 2.26.2
 
 
-From d3f3c7f872eaa4fc7303bcc7bc611f91f006343a Mon Sep 17 00:00:00 2001
+From c470c6fffa4e0b06f4b06c4da95d34343459d811 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:04 +0300
 Subject: [PATCH 578/650] io_uring: extract io_put_kbuf() helper
@@ -66848,7 +66846,7 @@ index 9a10948c0d7a..f3a5fc005bae 100644
 2.26.2
 
 
-From e071067951f6275a5fa149ee41cf50193469c4e9 Mon Sep 17 00:00:00 2001
+From 2b730d446281df8531d5f0f0ffe9aafc02464c70 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 16 Jul 2020 23:28:05 +0300
 Subject: [PATCH 579/650] io_uring: don't open-code recv kbuf managment
@@ -66957,7 +66955,7 @@ index f3a5fc005bae..4be9f0f55bd4 100644
 2.26.2
 
 
-From 5597b9dab9d40333ba4367fc96a8a9dfe0905c3c Mon Sep 17 00:00:00 2001
+From beddd6e6f163169ee958751e9d4deb86fe381b13 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 18 Jul 2020 11:31:20 +0300
 Subject: [PATCH 580/650] io_uring: don't miscount pinned memory
@@ -66995,7 +66993,7 @@ index 4be9f0f55bd4..4de4b53a4594 100644
 2.26.2
 
 
-From d4e6821d709b15f061ab4645f69d3d3b668ac7c9 Mon Sep 17 00:00:00 2001
+From c5e802649189ada94d4d1ee0313f1292910d61aa Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 18 Jul 2020 11:31:21 +0300
 Subject: [PATCH 581/650] io_uring: return locked and pinned page accounting
@@ -67046,7 +67044,7 @@ index 4de4b53a4594..0d634a51df77 100644
 2.26.2
 
 
-From c19c6713b07776ea219abf3f73ffc76e37698b01 Mon Sep 17 00:00:00 2001
+From 70a5ea34d3c5230c716afba463fc45e9be95f04c Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 18 Jul 2020 11:32:51 +0300
 Subject: [PATCH 582/650] tasks: add put_task_struct_many()
@@ -67081,7 +67079,7 @@ index 4b1c3b664f51..9a2710cd6319 100644
 2.26.2
 
 
-From 4c12285f59b6a1beda192a8c4570894587bfe6e3 Mon Sep 17 00:00:00 2001
+From 205bafff4dda3d6498840505656b0fe357c417d8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 18 Jul 2020 11:32:52 +0300
 Subject: [PATCH 583/650] io_uring: batch put_task_struct()
@@ -67177,7 +67175,7 @@ index 0d634a51df77..cdc880236fdb 100644
 2.26.2
 
 
-From 748a0bfe7ff6808cecc56b991b7ce2ec83d4c70c Mon Sep 17 00:00:00 2001
+From 4900d206bd132131665f64c401bcf91fa501569e Mon Sep 17 00:00:00 2001
 From: Xiaoguang Wang <xiaoguang.wang@linux.alibaba.com>
 Date: Thu, 23 Jul 2020 20:57:24 +0800
 Subject: [PATCH 584/650] io_uring: clear IORING_SQ_NEED_WAKEUP after executing
@@ -67264,7 +67262,7 @@ index cdc880236fdb..de7f4c7b03ef 100644
 2.26.2
 
 
-From 6d17ae9ed61a8df43ea2603354a10b175ea0a49e Mon Sep 17 00:00:00 2001
+From e02dc60420f20d0a626e4e00fd810fa69d41604e Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 23 Jul 2020 20:25:20 +0300
 Subject: [PATCH 585/650] io_uring: don't do opcode prep twice
@@ -67300,7 +67298,7 @@ index de7f4c7b03ef..249079240b39 100644
 2.26.2
 
 
-From 2aff57e12c493059cd183f40aa55ac7c55afbb14 Mon Sep 17 00:00:00 2001
+From 3711e248126d95746b4298cb6e2a1385c51ddbba Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 23 Jul 2020 20:25:21 +0300
 Subject: [PATCH 586/650] io_uring: deduplicate io_grab_files() calls
@@ -67390,7 +67388,7 @@ index 249079240b39..5641fb693948 100644
 2.26.2
 
 
-From 1a3f621d1cb8d612fe3a0495880e7ea29ca5c4dc Mon Sep 17 00:00:00 2001
+From 68b4b2b3db4a51400aec2567e416e605c61030e8 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 25 Jul 2020 14:41:58 +0300
 Subject: [PATCH 587/650] io_uring: mark ->work uninitialised after cleanup
@@ -67431,7 +67429,7 @@ index 5641fb693948..0474698981ec 100644
 2.26.2
 
 
-From 3bb096827d17b7e7f58d18740ad7c0a00c72ccb6 Mon Sep 17 00:00:00 2001
+From 950bf25772f2c888aa6c1b0d3d8a997647af698a Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 25 Jul 2020 14:41:59 +0300
 Subject: [PATCH 588/650] io_uring: fix missing io_queue_linked_timeout()
@@ -67489,7 +67487,7 @@ index 0474698981ec..db883168aed0 100644
 2.26.2
 
 
-From 2061bc3c9940f3b3e156b3ab870ee8a777f8d2db Mon Sep 17 00:00:00 2001
+From a6153b39dc3c9ba2e77bf85e2568d9e53bf208e6 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 25 Jul 2020 14:42:00 +0300
 Subject: [PATCH 589/650] io-wq: update hash bits
@@ -67545,7 +67543,7 @@ index 6f20820edffa..a5ce0a5b8156 100644
 2.26.2
 
 
-From 238c627a908a752fa98906fc9a9d4757632d1c2c Mon Sep 17 00:00:00 2001
+From 4c6491076a8a1c196466bd2cce6bf391abbd053e Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 30 Jul 2020 18:43:45 +0300
 Subject: [PATCH 590/650] io_uring: de-unionise io_kiocb
@@ -67682,7 +67680,7 @@ index db883168aed0..7e31808ee06e 100644
 2.26.2
 
 
-From 0d5fbff7476a7f61115fae4875eb9150a3f3df27 Mon Sep 17 00:00:00 2001
+From 9f4e870ee69d825df9a85cb9640da62a5ed29ec5 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 30 Jul 2020 18:43:46 +0300
 Subject: [PATCH 591/650] io_uring: deduplicate __io_complete_rw()
@@ -67732,7 +67730,7 @@ index 7e31808ee06e..c3bfabe3b38a 100644
 2.26.2
 
 
-From e3f676c350bf88707167ea9883f93445f6ea9e7a Mon Sep 17 00:00:00 2001
+From 22b4d66e71086555ab0792d8d961e7389dd99a52 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 30 Jul 2020 18:43:47 +0300
 Subject: [PATCH 592/650] io_uring: fix racy overflow count reporting
@@ -67767,7 +67765,7 @@ index c3bfabe3b38a..d96ac76acdbe 100644
 2.26.2
 
 
-From 16b5f85a8caf42b3f8f74afebd7ef6b442727710 Mon Sep 17 00:00:00 2001
+From 56f0c85968c0345c45f0d703d4ef96fe1c84aa86 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 30 Jul 2020 18:43:48 +0300
 Subject: [PATCH 593/650] io_uring: fix stalled deferred requests
@@ -67799,7 +67797,7 @@ index d96ac76acdbe..e793f832bca0 100644
 2.26.2
 
 
-From 6d5bbfaec10954d1c9a9bdcb6372436317fbb756 Mon Sep 17 00:00:00 2001
+From 3d8175a47133d6d99583943486c57a16cde775be Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 30 Jul 2020 18:43:49 +0300
 Subject: [PATCH 594/650] io_uring: consolidate *_check_overflow accounting
@@ -67865,7 +67863,7 @@ index e793f832bca0..6e7814c1d086 100644
 2.26.2
 
 
-From 7541c173ca8b8ed896772485de699b77a4887158 Mon Sep 17 00:00:00 2001
+From 8fd2cca3c20c0bb52956cec79cfbcf721af69a58 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 30 Jul 2020 18:43:50 +0300
 Subject: [PATCH 595/650] io_uring: get rid of atomic FAA for cq_timeouts
@@ -67911,7 +67909,7 @@ index 6e7814c1d086..0cf6df11819c 100644
 2.26.2
 
 
-From 3ec0de5b938c6e00a4753b9025d65f8eb0c0dba0 Mon Sep 17 00:00:00 2001
+From 8a0b1a4b5319e4e2063b37f639166c294c07eb0f Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 30 Jul 2020 13:43:53 -0600
 Subject: [PATCH 596/650] io_uring: don't touch 'ctx' after installing file
@@ -67998,7 +67996,7 @@ index 0cf6df11819c..c62a6e02671b 100644
 2.26.2
 
 
-From aa956a33e885ac4183baa6a733d8962004135d00 Mon Sep 17 00:00:00 2001
+From 2de1f39d6100d069902af7d8c5c7501f2b3f2ed7 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sat, 1 Aug 2020 13:50:02 +0300
 Subject: [PATCH 597/650] io_uring: flip if handling after io_setup_async_rw
@@ -68223,7 +68221,7 @@ index c62a6e02671b..f2546663053f 100644
 2.26.2
 
 
-From edb4a407e83fd7712a97c9e0e62b766b462ee45e Mon Sep 17 00:00:00 2001
+From 32b48674ac1d8b4665f6593e9296a133915ccb80 Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Sat, 31 Oct 2020 18:54:02 -0400
 Subject: [PATCH 598/650] Backport "Merge tag 'for-5.9/io_uring-20200802' of
@@ -68305,7 +68303,7 @@ index f2546663053f..0628e18f37c0 100644
 2.26.2
 
 
-From f024f63146e1de50ca65ee67f814e3f7c45587e4 Mon Sep 17 00:00:00 2001
+From 84eb81cc84349c74956468eebfdb03e86775b40a Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 3 Aug 2020 17:06:21 -0600
 Subject: [PATCH 599/650] io_uring: io_async_buf_func() need not test page bit
@@ -68339,7 +68337,7 @@ index 0628e18f37c0..79c0cb1e2e9b 100644
 2.26.2
 
 
-From 4f2d05465171580412a9320ab59664f5ea943580 Mon Sep 17 00:00:00 2001
+From abe21d458bfcdb62d75f1a6071aeb6e91d8ec0a1 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 3 Aug 2020 16:43:59 -0600
 Subject: [PATCH 600/650] io_uring: add comments on how the async buffered read
@@ -68383,7 +68381,7 @@ index 79c0cb1e2e9b..336c35f1f73c 100644
 2.26.2
 
 
-From e24f59c2c99e7e193cf30963e4b0f9d8b717a464 Mon Sep 17 00:00:00 2001
+From 25712a3c82ea909fe24d7b0d2e66e22b8c600c91 Mon Sep 17 00:00:00 2001
 From: Guoyu Huang <hgy5945@gmail.com>
 Date: Wed, 5 Aug 2020 03:53:50 -0700
 Subject: [PATCH 601/650] io_uring: Fix NULL pointer dereference in
@@ -68490,7 +68488,7 @@ index 336c35f1f73c..ba7f963f2aa8 100644
 2.26.2
 
 
-From 73e88d639087d5d0f52499a3d615e1ffcd2e1051 Mon Sep 17 00:00:00 2001
+From afa7e35371bc123b30e261c31402ce2d52ba2677 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 5 Aug 2020 12:58:23 -0600
 Subject: [PATCH 602/650] io_uring: set ctx sq/cq entry count earlier
@@ -68542,7 +68540,7 @@ index ba7f963f2aa8..1d0caa14dd9b 100644
 2.26.2
 
 
-From 28bc57e0668b0d051a8a114d24404a99bb7b8d34 Mon Sep 17 00:00:00 2001
+From a8c5305d6e85b02f1ae8e50f99112569405a8bfe Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 5 Aug 2020 13:00:44 -0600
 Subject: [PATCH 603/650] io_uring: account locked memory before potential
@@ -68601,7 +68599,7 @@ index 1d0caa14dd9b..70a0a4b40eeb 100644
 2.26.2
 
 
-From 36f2c6d2f2c58aeaf49e7a54a53f6e599949bd8b Mon Sep 17 00:00:00 2001
+From a0b0d5c8f7482c8cc786b72856784e0b691175fe Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 6 Aug 2020 19:41:50 -0600
 Subject: [PATCH 604/650] io_uring: use TWA_SIGNAL for task_work uncondtionally
@@ -68665,7 +68663,7 @@ index 70a0a4b40eeb..a7181c03bf25 100644
 2.26.2
 
 
-From 17c2c625da15cb98fb85be2f4826bc49eb848e60 Mon Sep 17 00:00:00 2001
+From b3552e545e03d6df2e349592bb4ce46bb605599a Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 10 Aug 2020 09:55:22 -0600
 Subject: [PATCH 605/650] io_uring: fix recursive completion locking on oveflow
@@ -68820,7 +68818,7 @@ index a7181c03bf25..cd161bfd4d92 100644
 2.26.2
 
 
-From b1a62bd0521ba4ac22b9dcd9630256dced7fa32a Mon Sep 17 00:00:00 2001
+From ad8e6df07d218ab51dbcdab899c552bdfd60cdae Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 10 Aug 2020 10:54:02 -0600
 Subject: [PATCH 606/650] io_uring: add missing REQ_F_COMP_LOCKED for nested
@@ -68867,7 +68865,7 @@ index cd161bfd4d92..f508c0d5e29c 100644
 2.26.2
 
 
-From 5d647a1aa61ddaed9e187823558ccb7f520b3599 Mon Sep 17 00:00:00 2001
+From f76bdaf9d806082bb8105436ca64896912b228b3 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 10 Aug 2020 10:55:56 -0600
 Subject: [PATCH 607/650] io_uring: defer file table grabbing request cleanup
@@ -69021,7 +69019,7 @@ index f508c0d5e29c..6b20d22847b6 100644
 2.26.2
 
 
-From 94a1bd080c20c6a0c4d32e606e54e4f6a05af5be Mon Sep 17 00:00:00 2001
+From 466a85d55393c05ba63ca423e188a9fd105e32d0 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 11 Aug 2020 08:04:14 -0600
 Subject: [PATCH 608/650] io_uring: hold 'ctx' reference around task_work queue
@@ -69133,7 +69131,7 @@ index 6b20d22847b6..6f40e1b30512 100644
 2.26.2
 
 
-From de5e85ea9458f8703dbbc5a0400df3b74c457cd5 Mon Sep 17 00:00:00 2001
+From 60188e49f246675ff994e95f8a6afa31cc366feb Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 11 Aug 2020 09:50:19 -0600
 Subject: [PATCH 609/650] io_uring: fail poll arm on queue proc failure
@@ -69171,7 +69169,7 @@ index 6f40e1b30512..866aa2f9a6c7 100644
 2.26.2
 
 
-From 2871e7bee9b092db4aba7bea651dd5821e74869e Mon Sep 17 00:00:00 2001
+From 809d12872dabd8f292d4ecec0ed5c79de4d78cce Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 12 Aug 2020 17:33:30 -0600
 Subject: [PATCH 610/650] io_uring: enable lookup of links holding inflight
@@ -69339,7 +69337,7 @@ index 866aa2f9a6c7..7a6b9d76082f 100644
 2.26.2
 
 
-From 6c50bef3f1a4dc1d9ebe724eea983938d60f01d7 Mon Sep 17 00:00:00 2001
+From 4d56f13379bc57ba44a3dc244358679de94f5545 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 13 Aug 2020 09:47:43 -0600
 Subject: [PATCH 611/650] io_uring: retain iov_iter state over io_read/io_write
@@ -69677,7 +69675,7 @@ index 7a6b9d76082f..3b9c95f9cd0d 100644
 2.26.2
 
 
-From f0908f907a690bad6cf8d800f72ec071ae41c8b9 Mon Sep 17 00:00:00 2001
+From c4acd71a7c50a1127854bde9b412519a36737972 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 13 Aug 2020 11:51:40 -0600
 Subject: [PATCH 612/650] io_uring: internally retry short reads
@@ -69915,7 +69913,7 @@ index 3b9c95f9cd0d..9aa9cea4056a 100644
 2.26.2
 
 
-From ce6f0c80131a61ca9a8f64dd999dff259a6c903a Mon Sep 17 00:00:00 2001
+From ef78460b955dc44251bedb31cd09b5b2b58fce12 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 15 Aug 2020 11:44:50 -0700
 Subject: [PATCH 613/650] io_uring: sanitize double poll handling
@@ -70036,7 +70034,7 @@ index 9aa9cea4056a..3b6b3dde0521 100644
 2.26.2
 
 
-From 6b2aae1bee86d10adeae40a2c87a2ec94f184e0e Mon Sep 17 00:00:00 2001
+From 05da89f571782c3d788559cec6e71df657033db0 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 15 Aug 2020 15:58:42 -0700
 Subject: [PATCH 614/650] io_uring: short circuit -EAGAIN for blocking read
@@ -70081,7 +70079,7 @@ index 3b6b3dde0521..649f4bb5b45d 100644
 2.26.2
 
 
-From d006c6680d889fc6745d8d20a5ef2099f46c3b08 Mon Sep 17 00:00:00 2001
+From 9ed15e58012249215460216647d118cc1ad40c8e Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 16 Aug 2020 08:23:05 -0700
 Subject: [PATCH 615/650] io_uring: find and cancel head link async work on
@@ -70159,7 +70157,7 @@ index 649f4bb5b45d..ca02bde16f37 100644
 2.26.2
 
 
-From b85a2673322f0722d9604e958aed57dd42d26f1b Mon Sep 17 00:00:00 2001
+From f026c52a71d3a909f56dac526687bc029a739dbb Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 16 Aug 2020 10:58:43 -0700
 Subject: [PATCH 616/650] io_uring: get rid of kiocb_wait_page_queue_init()
@@ -70227,7 +70225,7 @@ index ca02bde16f37..7e6ae4845873 100644
 2.26.2
 
 
-From 6a69a468fca89bc55f975d6798f66f7c1c172eb6 Mon Sep 17 00:00:00 2001
+From 35fa75b3f41cf9d0168a12abebb46f49e4be3a07 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 18 Aug 2020 13:58:33 -0700
 Subject: [PATCH 617/650] io_uring: cleanup io_import_iovec() of pre-mapped
@@ -70309,7 +70307,7 @@ index 7e6ae4845873..2fa1cbeb1e7c 100644
 2.26.2
 
 
-From 74122fcad5a1fb962084877d72d8476ae07dc8c4 Mon Sep 17 00:00:00 2001
+From c595ac0590787b8985833be2933f88f3b4e30168 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 19 Aug 2020 11:10:51 -0600
 Subject: [PATCH 618/650] io_uring: use system_unbound_wq for ring exit work
@@ -70350,7 +70348,7 @@ index 2fa1cbeb1e7c..06eba87059e2 100644
 2.26.2
 
 
-From c6b819cf37a14429ee95b9f40c3f3824e85a95f8 Mon Sep 17 00:00:00 2001
+From a6c4d5a31a2e2854c6f02ffe6ac1d59f813d49c0 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 20 Aug 2020 11:33:35 +0300
 Subject: [PATCH 619/650] io_uring: fix racy req->flags modification
@@ -70509,7 +70507,7 @@ index 06eba87059e2..1b8139b148ed 100644
 2.26.2
 
 
-From b43072043be9dc4c76404873cb3f2d85ce816803 Mon Sep 17 00:00:00 2001
+From 06fd4254424547072176ec7ad5585f1d50719ba4 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 20 Aug 2020 11:34:10 +0300
 Subject: [PATCH 620/650] io_uring: comment on kfree(iovec) checks
@@ -70548,7 +70546,7 @@ index 1b8139b148ed..9ede0d32f59f 100644
 2.26.2
 
 
-From 0097274d6d68eaadea48a00e57f3d6dff6576bb3 Mon Sep 17 00:00:00 2001
+From 4f9537b9c0f966ae286f708935aa1d4c11be4c64 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Thu, 20 Aug 2020 11:34:39 +0300
 Subject: [PATCH 621/650] io_uring: kill extra iovec=NULL in import_iovec()
@@ -70582,7 +70580,7 @@ index 9ede0d32f59f..3fa9233dd05d 100644
 2.26.2
 
 
-From d10521534cf7bc73569a32aadd67c49a888bdf03 Mon Sep 17 00:00:00 2001
+From 11ad5ab63a40ef19421070ed88b86b209b71e042 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 23 Aug 2020 11:00:37 -0600
 Subject: [PATCH 622/650] io_uring: don't recurse on tsk->sighand->siglock with
@@ -70688,7 +70686,7 @@ index 3fa9233dd05d..12d6e833c147 100644
 2.26.2
 
 
-From 4428218317b808bb3b5b44bfd6ec7ce589db8c0e Mon Sep 17 00:00:00 2001
+From f3e7d9decccb8706397dce1ae467c7dc5342ab16 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 23 Aug 2020 20:33:10 +0300
 Subject: [PATCH 623/650] io-wq: fix hang after cancelling pending hashed work
@@ -70748,7 +70746,7 @@ index a5ce0a5b8156..71fd23b6f8cf 100644
 2.26.2
 
 
-From 72bfdb2813d28d955181d5a3e1ea105a5b411882 Mon Sep 17 00:00:00 2001
+From 02d7cbeba51b32440e7f6935f99ee15f2b77a8ee Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 24 Aug 2020 11:45:26 -0600
 Subject: [PATCH 624/650] io_uring: revert consumed iov_iter bytes on error
@@ -70796,7 +70794,7 @@ index 12d6e833c147..358b08c1cfef 100644
 2.26.2
 
 
-From 73f0171eec7378d09b4d0a5d2cd23ae255a5af0b Mon Sep 17 00:00:00 2001
+From 757bd0eadfcd7069983239039adcdd81e089fa6f Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Aug 2020 07:58:00 -0600
 Subject: [PATCH 625/650] io_uring: fix imbalanced sqo_mm accounting
@@ -70860,7 +70858,7 @@ index 358b08c1cfef..5fa9a36d3094 100644
 2.26.2
 
 
-From 77b9c0d92aa80fe702b557b3ae2f3a879ae5f86e Mon Sep 17 00:00:00 2001
+From c205ff383fd97668532a30e0aaf5b4359cb542a5 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Aug 2020 12:27:50 -0600
 Subject: [PATCH 626/650] io_uring: don't use poll handler if file can't be
@@ -70908,7 +70906,7 @@ index 5fa9a36d3094..267525697f83 100644
 2.26.2
 
 
-From 9d8d1cf890449f37549718a95dd1518e9a118e70 Mon Sep 17 00:00:00 2001
+From 5ab027e0e3007e1ccecaf7c0ac65c84fc337b9bc Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Tue, 25 Aug 2020 12:59:22 -0600
 Subject: [PATCH 627/650] io_uring: ensure read requests go through -ERESTART*
@@ -70944,7 +70942,7 @@ index 267525697f83..e83f05fd530f 100644
 2.26.2
 
 
-From 8a88599b0eea029cf5f6a9ed51139482a1e08f8d Mon Sep 17 00:00:00 2001
+From 329b7f85f77eef3f37e1266947cff3cee33356a3 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 26 Aug 2020 10:36:20 -0600
 Subject: [PATCH 628/650] io_uring: make offset == -1 consistent with
@@ -71017,7 +71015,7 @@ index e83f05fd530f..89235854e50d 100644
 2.26.2
 
 
-From 2fc18fefc786c5861c7edc271c8113f8597badb7 Mon Sep 17 00:00:00 2001
+From bd5758c53141357275749a319edefd6ea6423db9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 26 Aug 2020 18:58:26 -0600
 Subject: [PATCH 629/650] io_uring: clear req->result on IOPOLL re-issue
@@ -71050,7 +71048,7 @@ index 89235854e50d..7c37978acf72 100644
 2.26.2
 
 
-From 6abcc5f85a9ebb0e1b2d234acec336c72bf02ff8 Mon Sep 17 00:00:00 2001
+From 6628a4ec22c11a62b76d8aaf0bd9f88dc11a8e6d Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 27 Aug 2020 16:40:19 -0600
 Subject: [PATCH 630/650] io_uring: fix IOPOLL -EAGAIN retries
@@ -71140,7 +71138,7 @@ index 7c37978acf72..e190e71dbfc5 100644
 2.26.2
 
 
-From ddd31effc8c5dee6904eb207f1d48b1995cb2c42 Mon Sep 17 00:00:00 2001
+From 199f0a325a402ee76c97b5d748abf8dbedd091fc Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 27 Aug 2020 16:46:24 -0600
 Subject: [PATCH 631/650] io_uring: don't bounce block based -EAGAIN retry off
@@ -71205,7 +71203,7 @@ index e190e71dbfc5..b131356b342f 100644
 2.26.2
 
 
-From 361678521afd389215398210501596488543c82b Mon Sep 17 00:00:00 2001
+From ea947e90bdd6285bb59c4df495a81561b965ffee Mon Sep 17 00:00:00 2001
 From: Jiufei Xue <jiufei.xue@linux.alibaba.com>
 Date: Tue, 1 Sep 2020 13:35:02 +0800
 Subject: [PATCH 632/650] io_uring: fix removing the wrong file in
@@ -71240,7 +71238,7 @@ index b131356b342f..6cdaed004c8f 100644
 2.26.2
 
 
-From d106cb8ce4290941357ace3d44609ffab41622c8 Mon Sep 17 00:00:00 2001
+From e93b95bbb6a78e6e5d05a986d49c2cf8976a057c Mon Sep 17 00:00:00 2001
 From: Jiufei Xue <jiufei.xue@linux.alibaba.com>
 Date: Wed, 2 Sep 2020 17:59:39 +0800
 Subject: [PATCH 633/650] io_uring: set table->files[i] to NULL when
@@ -71274,7 +71272,7 @@ index 6cdaed004c8f..2157ae076c3b 100644
 2.26.2
 
 
-From 9de7cb76c5c44f9a2b64ba5c823649a9cb9cda5e Mon Sep 17 00:00:00 2001
+From 74b88c3c43961d208f0469fc76bc3dfc53c255b4 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Wed, 2 Sep 2020 09:30:31 -0600
 Subject: [PATCH 634/650] io_uring: no read/write-retry on -EAGAIN error and
@@ -71341,7 +71339,7 @@ index 2157ae076c3b..d0c414a9ec9d 100644
 2.26.2
 
 
-From 11ef6a2fc20ff3ce977fdd3d5c0993f61623877a Mon Sep 17 00:00:00 2001
+From ecccb4e8a98c146e9f4d2c0e5baa6ca85fae7cb3 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 4 Sep 2020 22:36:52 -0600
 Subject: [PATCH 635/650] io_uring: fix explicit async read/write mapping for
@@ -71387,7 +71385,7 @@ index d0c414a9ec9d..53745fa8a85a 100644
 2.26.2
 
 
-From 16ff7cb1217eb6baa89e685b30ba2d83edff0490 Mon Sep 17 00:00:00 2001
+From 356eab85eb13aaeed7fe964d2a081ac8b1dfd08b Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 6 Sep 2020 00:45:14 +0300
 Subject: [PATCH 636/650] io_uring: fix cancel of deferred reqs with ->files
@@ -71452,7 +71450,7 @@ index 53745fa8a85a..28b1a86e948a 100644
 2.26.2
 
 
-From e77f9218e2fefd927b597daab45419e0ab3b1195 Mon Sep 17 00:00:00 2001
+From d561e39864b9a0d6d5cb45ee7b6e5b9977496506 Mon Sep 17 00:00:00 2001
 From: Pavel Begunkov <asml.silence@gmail.com>
 Date: Sun, 6 Sep 2020 00:45:15 +0300
 Subject: [PATCH 637/650] io_uring: fix linked deferred ->files cancellation
@@ -71513,7 +71511,7 @@ index 28b1a86e948a..0cf7d9b1a0f7 100644
 2.26.2
 
 
-From c1fb3475ef319d2ea59ba9b7038472f1cb28a48c Mon Sep 17 00:00:00 2001
+From dcd41e2074dde1a733bdb6b0d1e15cf1887cead6 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sat, 12 Sep 2020 13:18:10 -0600
 Subject: [PATCH 638/650] io_uring: grab any needed state during defer prep
@@ -71546,7 +71544,7 @@ index 0cf7d9b1a0f7..8d28fd5bd294 100644
 2.26.2
 
 
-From fdc1634982b1515f29e7440c7b9b977c833fed65 Mon Sep 17 00:00:00 2001
+From b83570365db3dee0c7f4f39845290ab3954810db Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 14 Sep 2020 08:20:12 -0600
 Subject: [PATCH 639/650] io_uring: drop 'ctx' ref on task work cancelation
@@ -71582,7 +71580,7 @@ index 8d28fd5bd294..40198ddd15f5 100644
 2.26.2
 
 
-From c92fd44905655506f5444529a057f17f7b9e2beb Mon Sep 17 00:00:00 2001
+From a4c000c9abda1045420cbd39a66a34664e6b1457 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Sun, 13 Sep 2020 14:38:30 -0600
 Subject: [PATCH 640/650] io_uring: don't run task work on an exiting task
@@ -71636,7 +71634,7 @@ index 40198ddd15f5..a97dd2874046 100644
 2.26.2
 
 
-From 4c856d78f752f3b1e3ac86b579f49843757def74 Mon Sep 17 00:00:00 2001
+From 5a3ecd3dc5b290f37b2d229a8e226f068e877a49 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 14 Sep 2020 09:28:14 -0600
 Subject: [PATCH 641/650] io_uring: don't re-setup vecs/iter in
@@ -71684,7 +71682,7 @@ index a97dd2874046..d1bc2c5d1bce 100644
 2.26.2
 
 
-From 8d62ea50ead5c817446ac3aeafe77c781219bb88 Mon Sep 17 00:00:00 2001
+From b4713ceda4bc6d01a9c6aa24bd0248fe62f9ba83 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 14 Sep 2020 09:30:38 -0600
 Subject: [PATCH 642/650] io_uring: don't use retry based buffered reads for
@@ -71738,7 +71736,7 @@ index d1bc2c5d1bce..afd9ab96fe65 100644
 2.26.2
 
 
-From f2f516c1389484fa4142e011f7ac50bc09735b30 Mon Sep 17 00:00:00 2001
+From bce80ae1986ecbd9c9c705ec19db1b291a65f6fb Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 18 Sep 2020 16:51:19 -0600
 Subject: [PATCH 643/650] io_uring: mark statx/files_update/epoll_ctl as
@@ -71789,7 +71787,7 @@ index afd9ab96fe65..32236860e5c9 100644
 2.26.2
 
 
-From 656764cfb611e53d52d5bbacb27cde022850aa4c Mon Sep 17 00:00:00 2001
+From 72a95b174a1b25243a304f1fc45887b50f0ed9d9 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 18 Sep 2020 19:36:24 -0600
 Subject: [PATCH 644/650] io_uring: fix openat/openat2 unified prep handling
@@ -71841,7 +71839,7 @@ index 32236860e5c9..06d2cbb2c2f8 100644
 2.26.2
 
 
-From e6911e9b700f1e632a2de82dacd3c78633e7f14c Mon Sep 17 00:00:00 2001
+From f4858ecb0bd0dcd91c3a0cd2d5d91dfeafaeafb8 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Thu, 24 Sep 2020 14:55:54 -0600
 Subject: [PATCH 645/650] io_uring: ensure open/openat2 name is cleaned on
@@ -71879,7 +71877,7 @@ index 06d2cbb2c2f8..5092c734e1c2 100644
 2.26.2
 
 
-From 0845783243c39363251877e2217ffceb58996beb Mon Sep 17 00:00:00 2001
+From 89b1fecd764a081584cafe59b4c44aec9fd7e342 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 25 Sep 2020 09:01:53 -0600
 Subject: [PATCH 646/650] io_uring: don't unconditionally set plug->nowait =
@@ -71917,7 +71915,7 @@ index 5092c734e1c2..ceac4a698f6d 100644
 2.26.2
 
 
-From 321e16f79cce8d78992a42bf2084a5c50fe7e8da Mon Sep 17 00:00:00 2001
+From 6ff0c307727f9d181e11f816a0f8cad84873cf0a Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Fri, 25 Sep 2020 15:23:43 -0600
 Subject: [PATCH 647/650] io_uring: ensure async buffered read-retry is setup
@@ -71955,7 +71953,7 @@ index ceac4a698f6d..d2be797daa48 100644
 2.26.2
 
 
-From b579eac734c92b0d3388abe35a23dba09fa8c121 Mon Sep 17 00:00:00 2001
+From 58151a11c0d06f3bf0bbd5b25ebd786103cb2a22 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 28 Sep 2020 08:38:54 -0600
 Subject: [PATCH 648/650] io_uring: always delete double poll wait entry on
@@ -72028,7 +72026,7 @@ index d2be797daa48..3ac1ab192f52 100644
 2.26.2
 
 
-From 6b3fd7896cc6e9784e152b4857723ac088c74a16 Mon Sep 17 00:00:00 2001
+From 631842d058817aea95fb6474b9a0280f61cd8ab8 Mon Sep 17 00:00:00 2001
 From: Jens Axboe <axboe@kernel.dk>
 Date: Mon, 28 Sep 2020 08:57:48 -0600
 Subject: [PATCH 649/650] io_uring: fix potential ABBA deadlock in
@@ -72232,7 +72230,7 @@ index 3ac1ab192f52..43d48841d7d3 100644
 2.26.2
 
 
-From ece7c96ed2f90edbdbf7666da73c695a254fb932 Mon Sep 17 00:00:00 2001
+From c2f1b8395300956fd3f032e6d5f657e91cdb2857 Mon Sep 17 00:00:00 2001
 From: Hao Xu <haoxu@linux.alibaba.com>
 Date: Tue, 29 Sep 2020 20:00:45 +0800
 Subject: [PATCH 650/650] io_uring: fix async buffered reads when readahead is
