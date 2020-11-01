@@ -1,0 +1,26 @@
+From 9a3a98bfc7bcffa4c7457701331f68933bb5bad5 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Sun, 1 Nov 2020 01:43:12 -0500
+Subject: [PATCH 13/14] Add Xen make target
+
+---
+ arch/arm/boot/dts/overlays/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/overlays/Makefile b/arch/arm/boot/dts/overlays/Makefile
+index fa6db6eed3e2..cbca43456352 100644
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -200,7 +200,8 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
+ 	w1-gpio.dtbo \
+ 	w1-gpio-pullup.dtbo \
+ 	w5500.dtbo \
+-	wittypi.dtbo
++	wittypi.dtbo \
++	pi4-64-xen.dtbo
+ 
+ targets += dtbs dtbs_install
+ targets += $(dtbo-y)
+-- 
+2.26.2
+
