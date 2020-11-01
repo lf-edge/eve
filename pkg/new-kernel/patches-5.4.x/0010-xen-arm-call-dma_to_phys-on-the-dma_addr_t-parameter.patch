@@ -1,7 +1,7 @@
-From 1f1182bf84ec7a6d1ec74c56fccd66ff013077af Mon Sep 17 00:00:00 2001
+From d8c281e30101602e180dde4c07cea42b494a8eb6 Mon Sep 17 00:00:00 2001
 From: Stefano Stabellini <stefano.stabellini@xilinx.com>
 Date: Wed, 20 May 2020 16:43:08 -0700
-Subject: [PATCH 10/10] xen/arm: call dma_to_phys on the dma_addr_t parameter
+Subject: [PATCH 10/14] xen/arm: call dma_to_phys on the dma_addr_t parameter
  of dma_cache_maint
 
 Add a struct device* parameter to dma_cache_maint.
@@ -12,64 +12,31 @@ case of multipage handling.
 
 Signed-off-by: Stefano Stabellini <stefano.stabellini@xilinx.com>
 ---
- arch/arm/xen/mm.c | 15 +++++++++------
- 1 file changed, 9 insertions(+), 6 deletions(-)
+ include/xen/arm/page-coherent.h | 5 +++++
+ 1 file changed, 5 insertions(+)
 
-diff --git a/arch/arm/xen/mm.c b/arch/arm/xen/mm.c
-index 7639251bcc79..6ddf3b3c1ab5 100644
---- a/arch/arm/xen/mm.c
-+++ b/arch/arm/xen/mm.c
-@@ -43,15 +43,18 @@ unsigned long xen_get_swiotlb_free_pages(unsigned int order)
- static bool hypercall_cflush = false;
- 
- /* buffers in highmem or foreign pages cannot cross page boundaries */
--static void dma_cache_maint(dma_addr_t handle, size_t size, u32 op)
-+static void dma_cache_maint(struct device *dev, dma_addr_t handle,
-+			    size_t size, u32 op)
+diff --git a/include/xen/arm/page-coherent.h b/include/xen/arm/page-coherent.h
+index b9cc11e887ed..50c7a2e96523 100644
+--- a/include/xen/arm/page-coherent.h
++++ b/include/xen/arm/page-coherent.h
+@@ -8,12 +8,17 @@
+ static inline void *xen_alloc_coherent_pages(struct device *hwdev, size_t size,
+ 		dma_addr_t *dma_handle, gfp_t flags, unsigned long attrs)
  {
- 	struct gnttab_cache_flush cflush;
- 
--	cflush.a.dev_bus_addr = handle & XEN_PAGE_MASK;
- 	cflush.offset = xen_offset_in_page(handle);
- 	cflush.op = op;
-+	handle &= XEN_PAGE_MASK;
- 
- 	do {
-+		cflush.a.dev_bus_addr = dma_to_phys(dev, handle);
-+
- 		if (size + cflush.offset > XEN_PAGE_SIZE)
- 			cflush.length = XEN_PAGE_SIZE - cflush.offset;
- 		else
-@@ -60,7 +63,7 @@ static void dma_cache_maint(dma_addr_t handle, size_t size, u32 op)
- 		HYPERVISOR_grant_table_op(GNTTABOP_cache_flush, &cflush, 1);
- 
- 		cflush.offset = 0;
--		cflush.a.dev_bus_addr += cflush.length;
-+		handle += cflush.length;
- 		size -= cflush.length;
- 	} while (size);
- }
-@@ -79,7 +82,7 @@ void xen_dma_sync_for_cpu(struct device *dev, dma_addr_t handle,
- 	if (pfn_valid(PFN_DOWN(dma_to_phys(dev, handle))))
- 		arch_sync_dma_for_cpu(paddr, size, dir);
- 	else if (dir != DMA_TO_DEVICE)
--		dma_cache_maint(handle, size, GNTTAB_CACHE_INVAL);
-+		dma_cache_maint(dev, handle, size, GNTTAB_CACHE_INVAL);
++	void *cpu_addr;
++        if (dma_alloc_from_dev_coherent(hwdev, size, dma_handle, &cpu_addr))
++            return cpu_addr;
+ 	return dma_direct_alloc(hwdev, size, dma_handle, flags, attrs);
  }
  
- void xen_dma_sync_for_device(struct device *dev, dma_addr_t handle,
-@@ -89,9 +92,9 @@ void xen_dma_sync_for_device(struct device *dev, dma_addr_t handle,
- 	if (pfn_valid(PFN_DOWN(dma_to_phys(dev, handle))))
- 		arch_sync_dma_for_device(paddr, size, dir);
- 	else if (dir == DMA_FROM_DEVICE)
--		dma_cache_maint(handle, size, GNTTAB_CACHE_INVAL);
-+		dma_cache_maint(dev, handle, size, GNTTAB_CACHE_INVAL);
- 	else
--		dma_cache_maint(handle, size, GNTTAB_CACHE_CLEAN);
-+		dma_cache_maint(dev, handle, size, GNTTAB_CACHE_CLEAN);
+ static inline void xen_free_coherent_pages(struct device *hwdev, size_t size,
+ 		void *cpu_addr, dma_addr_t dma_handle, unsigned long attrs)
+ {
++	if (dma_release_from_dev_coherent(hwdev, get_order(size), cpu_addr))
++            return;
+ 	dma_direct_free(hwdev, size, cpu_addr, dma_handle, attrs);
  }
  
- bool xen_arch_need_swiotlb(struct device *dev,
 -- 
-2.15.4
+2.26.2
 
