@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.4.51 Kernel Configuration
+# Linux/arm64 5.4.72 Kernel Configuration
 #
 
 #
@@ -5735,6 +5735,7 @@ CONFIG_NLS_ISO8859_1=y
 # CONFIG_NLS_UTF8 is not set
 # CONFIG_DLM is not set
 CONFIG_UNICODE=y
+CONFIG_IO_WQ=y
 # CONFIG_UNICODE_NORMALIZATION_SELFTEST is not set
 # end of File systems
 
