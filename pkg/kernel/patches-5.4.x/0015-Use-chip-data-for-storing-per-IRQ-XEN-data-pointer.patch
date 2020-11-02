@@ -30,7 +30,7 @@ that back.
 
 --- a/drivers/xen/events/events_base.c
 +++ b/drivers/xen/events/events_base.c
-@@ -154,7 +154,7 @@
+@@ -156,7 +156,7 @@ int get_evtchn_to_irq(evtchn_port_t evtc
  /* Get info for IRQ */
  struct irq_info *info_for_irq(unsigned irq)
  {
@@ -39,7 +39,7 @@ that back.
  }
  
  /* Constructors for packed IRQ information. */
-@@ -375,7 +375,7 @@
+@@ -377,7 +377,7 @@ static void xen_irq_init(unsigned irq)
  	info->type = IRQT_UNBOUND;
  	info->refcnt = -1;
  
@@ -48,7 +48,7 @@ that back.
  
  	list_add_tail(&info->list, &xen_irq_list_head);
  }
-@@ -424,14 +424,14 @@
+@@ -426,14 +426,14 @@ static int __must_check xen_allocate_irq
  
  static void xen_free_irq(unsigned irq)
  {
@@ -65,16 +65,16 @@ that back.
  
  	WARN_ON(info->refcnt > 0);
  
-@@ -601,7 +601,7 @@
+@@ -603,7 +603,7 @@ EXPORT_SYMBOL_GPL(xen_irq_from_gsi);
  static void __unbind_from_irq(unsigned int irq)
  {
- 	int evtchn = evtchn_from_irq(irq);
+	int evtchn = evtchn_from_irq(irq);
 -	struct irq_info *info = irq_get_handler_data(irq);
 +	struct irq_info *info = irq_get_chip_data(irq);
  
  	if (info->refcnt > 0) {
  		info->refcnt--;
-@@ -1105,7 +1105,7 @@
+@@ -1108,7 +1108,7 @@ int bind_ipi_to_irqhandler(enum ipi_vect
  
  void unbind_from_irqhandler(unsigned int irq, void *dev_id)
  {
@@ -83,7 +83,7 @@ that back.
  
  	if (WARN_ON(!info))
  		return;
-@@ -1139,7 +1139,7 @@
+@@ -1142,7 +1142,7 @@ int evtchn_make_refcounted(evtchn_port_t
  	if (irq == -1)
  		return -ENOENT;
  
@@ -92,7 +92,7 @@ that back.
  
  	if (!info)
  		return -ENOENT;
-@@ -1167,7 +1167,7 @@
+@@ -1170,7 +1170,7 @@ int evtchn_get(evtchn_port_t evtchn)
  	if (irq == -1)
  		goto done;
  

@@ -1,3 +1,4 @@
+# This file must be kept as much in sync with pkg/kernel/Dockerfile as posisble
 FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 AS kernel-build
 
 RUN apk add \
@@ -34,8 +35,8 @@ RUN apk add \
     zlib-dev \
     openssl
 
-ARG KERNEL_VERSION_aarch64=4.19.5
-ARG KERNEL_VERSION_x86_64=4.19.5
+ARG KERNEL_VERSION_aarch64=5.4.51
+ARG KERNEL_VERSION_x86_64=5.4.51
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -140,19 +141,17 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
          modules modules_install
 #  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
 RUN if [ "$(uname -m)" != aarch64 ]; then \
-       git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU && \
-       (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c) && \
-       make -C /tmp/rtl8821CU KSRC=/linux modules && \
+       git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
+       (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c) &&\
+       make -C /tmp/rtl8821CU KSRC=/linux modules &&\
        install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
-    fi
+     fi
+
+# Strip at least some of the modules to conserve space
+RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules/*/extra -name \*.ko` ;fi
 
 # Device Tree Blobs
-# FIXME: we will switch to a native make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install at some point
-RUN if [ "$(uname -m)" = aarch64 ]; then \
-       mkdir -p /tmp/kernel-modules/boot/dtb/eve && \
-       ./scripts/dtc/dtc -O dtb -o /tmp/kernel-modules/boot/dtb/eve/eve.dtb -I dts /eve.dts ;\
-       strip --strip-debug `find /tmp/kernel-modules/lib/modules/*/extra -name \*.ko`       ;\
-    fi
+RUN if [ "$(uname -m)" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install ;fi
 
 # Package all the modules up
 RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
