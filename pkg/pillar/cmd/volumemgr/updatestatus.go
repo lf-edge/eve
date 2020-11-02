@@ -419,7 +419,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.CurrentSize = ctStatus.CurrentSize
 			changed = true
 		}
-		if status.State != ctStatus.State {
+		if status.State != ctStatus.State && status.State < types.CREATING_VOLUME {
 			status.State = ctStatus.State
 			changed = true
 		}
