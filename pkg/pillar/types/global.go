@@ -12,6 +12,8 @@ import (
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
+// TEST COMMENT to test github_pr tool. DO NOT MERGE
+
 // SenderResult - Enum name for return extra sender results from SendOnAllIntf
 type SenderResult uint8
 
