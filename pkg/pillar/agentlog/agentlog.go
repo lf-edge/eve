@@ -164,7 +164,7 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 				if err == nil {
 					for _, stack := range stackArray {
 						// This goes to /persist/agentdebug/<agentname>/sigusr1 file
-						sigUsr1File.WriteString(stack)
+						sigUsr1File.WriteString(stack + "\n\n")
 					}
 					sigUsr1File.Close()
 				} else {
