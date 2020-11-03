@@ -242,7 +242,7 @@ const qemuDiskTemplate = `
 [drive "drive-virtio-disk{{.DiskID}}"]
   file = "{{.FileLocation}}"
   format = "{{.Format | Fmt}}"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
