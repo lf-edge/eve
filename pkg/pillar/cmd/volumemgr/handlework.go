@@ -56,9 +56,15 @@ func AddWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
 		status: *status,
 	}
 	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
-	// Don't check errors to make idempotent (Submit returns an error if
+	// Don't fail on errors to make idempotent (Submit returns an error if
 	// the work was already submitted)
-	_ = ctx.worker.Submit(w)
+	done, err := ctx.worker.TrySubmit(w)
+	if err != nil {
+		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
+	} else if !done {
+		log.Fatalf("Failed to submit work due to queue length for %s",
+			status.Key())
+	}
 }
 
 // AddWorkLoad adds a Work job to load an image and blobs into CAS
@@ -67,9 +73,15 @@ func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 		status: *status,
 	}
 	w := worker.Work{Kind: workIngest, Key: status.Key(), Description: d}
-	// Don't check errors to make idempotent (Submit returns an error if
+	// Don't fail on errors to make idempotent (Submit returns an error if
 	// the work was already submitted)
-	_ = ctx.worker.Submit(w)
+	done, err := ctx.worker.TrySubmit(w)
+	if err != nil {
+		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
+	} else if !done {
+		log.Fatalf("Failed to submit work due to queue length for %s",
+			status.Key())
+	}
 }
 
 // DeleteWorkCreate is called by user when work is done
@@ -89,9 +101,15 @@ func AddWorkDestroy(ctx *volumemgrContext, status *types.VolumeStatus) {
 		status:  *status,
 	}
 	w := worker.Work{Kind: workCreate, Key: status.Key(), Description: d}
-	// Don't check errors to make idempotent (Submit returns an error if
+	// Don't fail on errors to make idempotent (Submit returns an error if
 	// the work was already submitted)
-	_ = ctx.worker.Submit(w)
+	done, err := ctx.worker.TrySubmit(w)
+	if err != nil {
+		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
+	} else if !done {
+		log.Fatalf("Failed to submit work due to queue length for %s",
+			status.Key())
+	}
 }
 
 // DeleteWorkDestroy cancels a job to destroy a volume

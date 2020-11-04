@@ -49,7 +49,7 @@ type baseOsMgrContext struct {
 	rebootTime           time.Time // From last reboot
 	rebootImage          string    // Image from which the last reboot happened
 
-	worker *worker.Worker // For background work
+	worker *worker.Pool // For background work
 }
 
 var debug = false
@@ -101,7 +101,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// publish initial zboot partition status
 	updateAndPublishZbootStatusAll(&ctx)
 
-	ctx.worker = worker.NewWorker(log, &ctx, 20, map[string]worker.Handler{
+	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
 		workInstall: {Request: installWorker, Response: processInstallWorkResult},
 	})
 
