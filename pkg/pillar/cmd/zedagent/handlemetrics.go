@@ -912,6 +912,11 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
 				networkInfo)
 		}
+
+		for _, vr := range aiStatus.VolumeRefStatusList {
+			ReportAppInfo.VolumeRefs = append(ReportAppInfo.VolumeRefs,
+				vr.VolumeID.String())
+		}
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Ainfo)
