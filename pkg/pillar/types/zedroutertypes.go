@@ -608,6 +608,13 @@ func (trPtr *TestResults) Update(src TestResults) {
 	}
 }
 
+// Clear test results.
+func (trPtr *TestResults) Clear() {
+	trPtr.LastFailed = time.Time{}
+	trPtr.LastSucceeded = time.Time{}
+	trPtr.LastError = ""
+}
+
 type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig method to get config pointer
@@ -927,6 +934,21 @@ type NetworkPortStatus struct {
 	ProxyConfig
 	// TestResults provides recording of failure and success
 	TestResults
+}
+
+// HasIPAndDNS - Check if the given port has a valid unicast IP along with DNS & Gateway.
+func (port NetworkPortStatus) HasIPAndDNS() bool {
+	foundUnicast := false
+	for _, addr := range port.AddrInfoList {
+		if !addr.Addr.IsLinkLocalUnicast() {
+			foundUnicast = true
+		}
+	}
+	if foundUnicast && len(port.DefaultRouters) > 0 && len(port.DNSServers) > 0 {
+		return true
+	}
+
+	return false
 }
 
 type AddrInfo struct {

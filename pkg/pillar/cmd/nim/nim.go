@@ -923,10 +923,10 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			log.Warnf("tryDeviceConnectivityToCloud: remoteTemporaryFailure: %s", err)
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test restart timer due to %s", err)
+			ctx.CloudConnectivityWorks = false
 		}
 		// Restart network test timer for next slot.
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
-		ctx.CloudConnectivityWorks = false
 	}
 	return false
 }
@@ -988,7 +988,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			} else {
 				log.Infof("Starting TestBetterTimer: %d",
 					gcpNetworkTestBetterInterval)
-				networkTestBetterInterval := time.Duration(ctx.deviceNetworkContext.NetworkTestBetterInterval) * time.Second
+				networkTestBetterInterval := time.Duration(gcpNetworkTestBetterInterval) * time.Second
 				networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
 				ctx.deviceNetworkContext.NetworkTestBetterTimer = networkTestBetterTimer
 			}
