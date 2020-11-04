@@ -440,7 +440,6 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 	if err := ctx.ctrdContext.Stop(domainName, domainID, true); err != nil {
 		return err
 	}
-
 	return ctx.ctrdContext.Delete(domainName, domainID)
 }
 
