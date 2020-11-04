@@ -1004,8 +1004,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	// initialize the VifList here with the VifUsed.
 	status.VifList = checkIfEmu(status.VifList)
 
-	status.DiskStatusList = make([]types.DiskStatus,
-		len(config.DiskConfigList))
 	publishDomainStatus(ctx, &status)
 	log.Infof("handleCreate(%v) set domainName %s for %s",
 		config.UUIDandVersion, status.DomainName,
@@ -1519,6 +1517,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
+	status.DiskStatusList = make([]types.DiskStatus,
+		len(config.DiskConfigList))
 	need9P := false
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
@@ -1542,23 +1542,12 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	if (config.IsCipher || config.CloudInitUserData != nil) &&
 		!status.IsContainer {
 
-		// Did we already add it and we're retrying the boot?
-		filename := cloudInitISOFileLocation(ctx, config)
-		found := false
-		for _, ds := range status.DiskStatusList {
-			if ds.FileLocation == filename {
-				found = true
-				break
-			}
+		ds, err := createCloudInitISO(ctx, config)
+		if err != nil {
+			return err
 		}
-		if !found {
-			ds, err := createCloudInitISO(ctx, config)
-			if err != nil {
-				return err
-			}
-			status.DiskStatusList = append(status.DiskStatusList,
-				*ds)
-		}
+		status.DiskStatusList = append(status.DiskStatusList,
+			*ds)
 	}
 	if need9P {
 		status.DiskStatusList = append(status.DiskStatusList, types.DiskStatus{
