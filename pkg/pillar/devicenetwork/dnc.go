@@ -677,6 +677,11 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 	log.Infof("Initial DPCL %v", storedDpcl)
 	var dpcl types.DevicePortConfigList
 	for _, portConfig := range storedDpcl.PortConfigList {
+		// Clear the errors from before reboot and start fresh.
+		for i := 0; i < len(portConfig.Ports); i++ {
+			portPtr := &portConfig.Ports[i]
+			portPtr.Clear()
+		}
 		if portConfig.CountMgmtPorts() == 0 {
 			log.Warnf("Stored DevicePortConfig key %s has no management ports; ignored",
 				portConfig.Key)
