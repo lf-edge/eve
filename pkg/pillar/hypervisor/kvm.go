@@ -350,10 +350,11 @@ func newKvm() Hypervisor {
 		}
 	case "amd64":
 		return kvmContext{
+			//nolint:godox // FIXME: Removing "-overcommit", "mem-lock=on", "-overcommit" for now, revisit it later as part of resource partitioning
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
-			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-serial", "chardev:charserial0", "-no-hpet"},
+			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-no-hpet"},
 			dmCPUArgs:    []string{},
 			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
 		}
@@ -397,7 +398,9 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
-	if err := ctx.ctrdClient.LKTaskPrepare(domainName, "xen-tools", &config, &status, qemuOverHead, args); err != nil {
+	//nolint:godox // FIXME: Not passing domain config to LKTaskPrepare for disk performance improvement,
+	// revisit it later as part of resource partitioning
+	if err := ctx.ctrdClient.LKTaskPrepare(domainName, "xen-tools", nil, &status, qemuOverHead, args); err != nil {
 		return logError("LKTaskPrepare failed for %s, (%v)", domainName, err)
 	}
 
@@ -413,7 +416,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	tmplCtx.Memory = (config.Memory + 1023) / 1024
 	tmplCtx.DisplayName = domainName
 	if config.VirtualizationMode == types.FML || config.VirtualizationMode == types.PV {
-		// FIXME XXX hack to reuce memory pressure of UEFI when we run containers on x86
+		//nolint:godox // FIXME XXX hack to reuce memory pressure of UEFI when we run containers on x86
 		if config.IsContainer && runtime.GOARCH == "amd64" {
 			tmplCtx.BootLoader = "/usr/lib/xen/boot/seabios.bin"
 		} else {
