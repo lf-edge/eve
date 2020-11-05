@@ -341,7 +341,7 @@ func doBridgeAclsDelete(
 	items := ctx.pubAppNetworkStatus.GetAll()
 	for _, ans := range items {
 		appNetStatus := ans.(types.AppNetworkStatus)
-
+		appID := appNetStatus.UUIDandVersion.UUID
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
 			if ulStatus.Network != status.UUID {
 				continue
@@ -354,12 +354,20 @@ func doBridgeAclsDelete(
 			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
 				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AllocatedIPAddr,
 				UpLinks: status.IfNameList}
-			ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
+			if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
+				ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
+			}
+			ruleList, err := deleteACLConfiglet(aclArgs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules)
 			if err != nil {
 				log.Errorf("NetworkInstance DeleteACL failed: %s\n",
 					err)
 			}
-			ulStatus.ACLRules = ruleList
+			if len(ruleList) == 0 {
+				delete(ctx.NLaclMap[appID], ulStatus.Name)
+			} else {
+				rlist := types.ULNetworkACLs{ACLRules: ruleList}
+				ctx.NLaclMap[appID][ulStatus.Name] = rlist
+			}
 		}
 	}
 	return
