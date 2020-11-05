@@ -682,6 +682,7 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 			portPtr := &portConfig.Ports[i]
 			portPtr.Clear()
 		}
+
 		if portConfig.CountMgmtPorts() == 0 {
 			log.Warnf("Stored DevicePortConfig key %s has no management ports; ignored",
 				portConfig.Key)

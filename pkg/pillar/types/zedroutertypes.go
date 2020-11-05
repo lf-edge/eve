@@ -939,11 +939,13 @@ type NetworkPortStatus struct {
 // HasIPAndDNS - Check if the given port has a valid unicast IP along with DNS & Gateway.
 func (port NetworkPortStatus) HasIPAndDNS() bool {
 	foundUnicast := false
+
 	for _, addr := range port.AddrInfoList {
 		if !addr.Addr.IsLinkLocalUnicast() {
 			foundUnicast = true
 		}
 	}
+
 	if foundUnicast && len(port.DefaultRouters) > 0 && len(port.DNSServers) > 0 {
 		return true
 	}
