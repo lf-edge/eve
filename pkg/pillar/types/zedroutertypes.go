@@ -1718,7 +1718,11 @@ type UnderlayNetworkStatus struct {
 	Assigned        bool   // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch  bool
 	HostName        string
-	ACLRules        IPTablesRuleList
+}
+
+// ULNetworkACLs - Underlay Network ACLRules
+type ULNetworkACLs struct {
+	ACLRules IPTablesRuleList
 }
 
 type NetworkType uint8
