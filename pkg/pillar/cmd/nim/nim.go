@@ -919,14 +919,19 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
 	} else {
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		if rtf {
+			// The fact that cloud replied with a status code shows that the cloud is UP, but not functioning
+			// fully at this time. So, we mark the cloud connectivity as UP for now.
 			log.Warnf("tryDeviceConnectivityToCloud: remoteTemporaryFailure: %s", err)
+			ctx.CloudConnectivityWorks = true
+
+			return true
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test restart timer due to %s", err)
 			ctx.CloudConnectivityWorks = false
 		}
-		// Restart network test timer for next slot.
-		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 	}
 	return false
 }

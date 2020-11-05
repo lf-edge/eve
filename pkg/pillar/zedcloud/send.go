@@ -191,6 +191,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		if port.IsMgmt {
 			continue
 		}
+
 		if port.HasIPAndDNS() {
 			intfStatusMap.RecordSuccess(port.IfName)
 		}
