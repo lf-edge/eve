@@ -76,7 +76,8 @@ type zedrouterContext struct {
 	pubAppVifIPTrig           pubsub.Publication
 	pubAppContainerMetrics    pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
-	dnsServers                map[string][]net.IP // Key is ifname
+	NLaclMap                  map[uuid.UUID]map[string]types.ULNetworkACLs // app uuid plus bridge ul name
+	dnsServers                map[string][]net.IP                          // Key is ifname
 	checkNIUplinks            chan bool
 	hostProbeTimer            *time.Timer
 	hostFastProbe             bool
@@ -154,6 +155,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		agentStartTime:     time.Now(),
 		dnsServers:         make(map[string][]net.IP),
 		aclog:              agentlog.CustomLogInit(logrus.InfoLevel),
+		NLaclMap:           make(map[uuid.UUID]map[string]types.ULNetworkACLs),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
@@ -950,7 +952,16 @@ func appNetworkDoActivateUnderlayNetwork(
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	ulStatus.ACLRules = ruleList
+	appID := status.UUIDandVersion.UUID
+	tmpMap := ctx.NLaclMap[appID]
+	if tmpMap == nil {
+		ctx.NLaclMap[appID] = make(map[string]types.ULNetworkACLs)
+	}
+	if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
+		ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
+	}
+	rlist := types.ULNetworkACLs{ACLRules: ruleList}
+	ctx.NLaclMap[appID][ulStatus.Name] = rlist
 
 	if appIPAddr != "" {
 		// XXX clobber any IPv6 EID entry since same name
@@ -1343,12 +1354,17 @@ func doAppNetworkModifyUnderlayNetwork(
 	// XXX could there be a change to AllocatedIPAddress?
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
+	appID := status.UUIDandVersion.UUID
+	if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
+		ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
+	}
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, ulStatus.ACLRules, force)
+		ulStatus.ACLs, ulConfig.ACLs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	ulStatus.ACLRules = ruleList
+	rlist := types.ULNetworkACLs{ACLRules: ruleList}
+	ctx.NLaclMap[appID][ulStatus.Name] = rlist
 
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
@@ -1443,6 +1459,8 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 		appNetworkDoInactivateUnderlayNetwork(
 			ctx, status, ulStatus, ipsets)
 	}
+	appID := status.UUIDandVersion.UUID
+	delete(ctx.NLaclMap, appID)
 }
 
 func appNetworkDoInactivateUnderlayNetwork(
@@ -1499,12 +1517,21 @@ func appNetworkDoInactivateUnderlayNetwork(
 		UpLinks: netstatus.IfNameList}
 
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
+	appID := status.UUIDandVersion.UUID
 	if ulStatus.Vif != "" {
-		ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
+		if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
+			ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
+		}
+		ruleList, err := deleteACLConfiglet(aclArgs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		ulStatus.ACLRules = ruleList
+		rlist := types.ULNetworkACLs{ACLRules: ruleList}
+		if len(ruleList) == 0 {
+			delete(ctx.NLaclMap[appID], ulStatus.Name)
+		} else {
+			ctx.NLaclMap[appID][ulStatus.Name] = rlist
+		}
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -1826,14 +1853,23 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext) {
 func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 	status *types.AppNetworkStatus) {
 	log.Infof("relaseAppNetworkResources(%s)\n", key)
-	for idx, ulStatus := range status.UnderlayNetworkList {
+	appID := status.UUIDandVersion.UUID
+	for _, ulStatus := range status.UnderlayNetworkList {
 		aclArgs := types.AppNetworkACLArgs{BridgeName: ulStatus.Bridge,
 			VifName: ulStatus.Vif}
-		ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
+		if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
+			ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
+		}
+		ruleList, err := deleteACLConfiglet(aclArgs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		status.UnderlayNetworkList[idx].ACLRules = ruleList
+		if len(ruleList) == 0 {
+			delete(ctx.NLaclMap[appID], ulStatus.Name)
+		} else {
+			rlist := types.ULNetworkACLs{ACLRules: ruleList}
+			ctx.NLaclMap[appID][ulStatus.Name] = rlist
+		}
 	}
 	publishAppNetworkStatus(ctx, status)
 }

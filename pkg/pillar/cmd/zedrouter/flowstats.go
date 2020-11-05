@@ -515,6 +515,7 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
+		appID := status.UUIDandVersion.UUID
 		for i, ulStatus := range status.UnderlayNetworkList {
 			log.Debugf("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
 				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
@@ -556,7 +557,11 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 				tmpMap := make(map[int]aclAttr)
 				instData.ipaclattr[status.AppNum] = tmpMap
 			}
-			for _, rule := range ulStatus.ACLRules {
+			if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
+				ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
+			}
+			rlist := ctx.NLaclMap[appID][ulStatus.Name].ACLRules
+			for _, rule := range rlist {
 				if (rule.IsUserConfigured == false || rule.IsMarkingRule == true) &&
 					rule.IsDefaultDrop == false {
 					// only include user defined rules and default drop rules
