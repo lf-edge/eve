@@ -619,8 +619,9 @@ func (client *Client) LKTaskPrepare(name, linuxkit string, domSettings *types.Do
 		if memOverhead > 0 {
 			spec.AdjustMemLimit(*domSettings, memOverhead)
 		}
-		spec.UpdateMountsNested(domStatus.DiskStatusList)
 	}
+
+	spec.UpdateMountsNested(domStatus.DiskStatusList)
 
 	if args != nil {
 		spec.Get().Process.Args = args
