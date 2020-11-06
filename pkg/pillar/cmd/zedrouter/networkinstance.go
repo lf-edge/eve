@@ -354,23 +354,37 @@ func doBridgeAclsDelete(
 			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
 				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AllocatedIPAddr,
 				UpLinks: status.IfNameList}
-			if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
-				ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
-			}
-			ruleList, err := deleteACLConfiglet(aclArgs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules)
+			rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
+			ruleList, err := deleteACLConfiglet(aclArgs, rules.ACLRules)
 			if err != nil {
 				log.Errorf("NetworkInstance DeleteACL failed: %s\n",
 					err)
 			}
-			if len(ruleList) == 0 {
-				delete(ctx.NLaclMap[appID], ulStatus.Name)
-			} else {
-				rlist := types.ULNetworkACLs{ACLRules: ruleList}
-				ctx.NLaclMap[appID][ulStatus.Name] = rlist
-			}
+			setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 		}
 	}
 	return
+}
+
+func getNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string) types.ULNetworkACLs {
+	tmpMap := ctx.NLaclMap[appID]
+	if tmpMap == nil {
+		ctx.NLaclMap[appID] = make(map[string]types.ULNetworkACLs)
+	}
+
+	if _, ok := ctx.NLaclMap[appID][intf]; !ok {
+		ctx.NLaclMap[appID][intf] = types.ULNetworkACLs{}
+	}
+	return ctx.NLaclMap[appID][intf]
+}
+
+func setNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string, rulelist types.IPTablesRuleList) {
+	if len(rulelist) == 0 {
+		delete(ctx.NLaclMap[appID], intf)
+	} else {
+		rlist := types.ULNetworkACLs{ACLRules: rulelist}
+		ctx.NLaclMap[appID][intf] = rlist
+	}
 }
 
 func handleNetworkInstanceModify(

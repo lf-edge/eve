@@ -953,15 +953,8 @@ func appNetworkDoActivateUnderlayNetwork(
 		addError(ctx, status, "createACL", err)
 	}
 	appID := status.UUIDandVersion.UUID
-	tmpMap := ctx.NLaclMap[appID]
-	if tmpMap == nil {
-		ctx.NLaclMap[appID] = make(map[string]types.ULNetworkACLs)
-	}
-	if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
-		ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
-	}
-	rlist := types.ULNetworkACLs{ACLRules: ruleList}
-	ctx.NLaclMap[appID][ulStatus.Name] = rlist
+	getNetworkACLRules(ctx, appID, ulStatus.Name)
+	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
 	if appIPAddr != "" {
 		// XXX clobber any IPv6 EID entry since same name
@@ -1355,16 +1348,13 @@ func doAppNetworkModifyUnderlayNetwork(
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	appID := status.UUIDandVersion.UUID
-	if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
-		ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
-	}
+	rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules, force)
+		ulStatus.ACLs, ulConfig.ACLs, rules.ACLRules, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	rlist := types.ULNetworkACLs{ACLRules: ruleList}
-	ctx.NLaclMap[appID][ulStatus.Name] = rlist
+	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
@@ -1519,19 +1509,12 @@ func appNetworkDoInactivateUnderlayNetwork(
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	appID := status.UUIDandVersion.UUID
 	if ulStatus.Vif != "" {
-		if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
-			ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
-		}
-		ruleList, err := deleteACLConfiglet(aclArgs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules)
+		rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
+		ruleList, err := deleteACLConfiglet(aclArgs, rules.ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		rlist := types.ULNetworkACLs{ACLRules: ruleList}
-		if len(ruleList) == 0 {
-			delete(ctx.NLaclMap[appID], ulStatus.Name)
-		} else {
-			ctx.NLaclMap[appID][ulStatus.Name] = rlist
-		}
+		setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -1857,19 +1840,12 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 	for _, ulStatus := range status.UnderlayNetworkList {
 		aclArgs := types.AppNetworkACLArgs{BridgeName: ulStatus.Bridge,
 			VifName: ulStatus.Vif}
-		if _, ok := ctx.NLaclMap[appID][ulStatus.Name]; !ok {
-			ctx.NLaclMap[appID][ulStatus.Name] = types.ULNetworkACLs{}
-		}
-		ruleList, err := deleteACLConfiglet(aclArgs, ctx.NLaclMap[appID][ulStatus.Name].ACLRules)
+		rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
+		ruleList, err := deleteACLConfiglet(aclArgs, rules.ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		if len(ruleList) == 0 {
-			delete(ctx.NLaclMap[appID], ulStatus.Name)
-		} else {
-			rlist := types.ULNetworkACLs{ACLRules: ruleList}
-			ctx.NLaclMap[appID][ulStatus.Name] = rlist
-		}
+		setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 	}
 	publishAppNetworkStatus(ctx, status)
 }
