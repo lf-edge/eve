@@ -948,7 +948,7 @@ func appNetworkDoActivateUnderlayNetwork(
 		AppNum: int32(status.AppNum)}
 
 	// Set up ACLs
-	ruleList, err := createACLConfiglet(aclArgs, ulStatus.ACLs)
+	ruleList, err := createACLConfiglet(aclArgs, ulConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
@@ -1186,6 +1186,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedrouterContext)
 	config := configArg.(types.AppNetworkConfig)
+	oldConfig := oldConfigArg.(types.AppNetworkConfig)
 	status := lookupAppNetworkStatus(ctx, key)
 	log.Infof("handleAppNetworkModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -1194,7 +1195,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 	status.PendingModify = true
 	publishAppNetworkStatus(ctx, status)
 
-	if !doAppNetworkSanityCheckForModify(ctx, config, status) {
+	if !doAppNetworkSanityCheckForModify(ctx, config, oldConfig, status) {
 		status.PendingModify = false
 		publishAppNetworkStatus(ctx, status)
 		log.Errorf("handleAppNetworkModify: Config check failed for %s\n", config.DisplayName)
@@ -1226,7 +1227,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 		appCheckStatsCollect(ctx, &config, status)
 
 		// Look for ACL changes in underlay
-		doAppNetworkModifyAllUnderlayNetworks(ctx, config, status, ipsets)
+		doAppNetworkModifyAllUnderlayNetworks(ctx, config, oldConfig, status, ipsets)
 
 		// Write out what we modified to AppNetworkStatus
 		// Note that lengths are the same as before
@@ -1258,14 +1259,15 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 }
 
 func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
-	config types.AppNetworkConfig, status *types.AppNetworkStatus) bool {
+	config types.AppNetworkConfig, oldConfig types.AppNetworkConfig,
+	status *types.AppNetworkStatus) bool {
 	// XXX what about changing the number of interfaces as
 	// part of an inactive/active transition?
 	// XXX We could should we allow the addition of interfaces
 	// if the domU would find out through some hotplug event.
 	// But deletion is hard.
 	// For now don't allow any adds or deletes.
-	if len(config.UnderlayNetworkList) != len(status.UnderlayNetworkList) {
+	if len(config.UnderlayNetworkList) != len(oldConfig.UnderlayNetworkList) {
 		errStr := fmt.Sprintf("Unsupported: Changed number of underlays for %s",
 			config.UUIDandVersion)
 		addError(ctx, status, "handleModify", errors.New(errStr))
@@ -1313,15 +1315,17 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 func doAppNetworkModifyAllUnderlayNetworks(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
+	oldConfig types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
 	ipsets []string) {
 
 	for i := range config.UnderlayNetworkList {
 		log.Debugf("handleModify ulNum %d\n", i)
 		ulConfig := &config.UnderlayNetworkList[i]
+		oldulConfig := &oldConfig.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
 		doAppNetworkModifyUnderlayNetwork(
-			ctx, status, ulConfig, ulStatus, ipsets, false)
+			ctx, status, ulConfig, oldulConfig, ulStatus, ipsets, false)
 	}
 }
 
@@ -1329,6 +1333,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ulConfig *types.UnderlayNetworkConfig,
+	oldulConfig *types.UnderlayNetworkConfig,
 	ulStatus *types.UnderlayNetworkStatus,
 	ipsets []string, force bool) {
 
@@ -1351,7 +1356,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	appID := status.UUIDandVersion.UUID
 	rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, rules.ACLRules, force)
+		oldulConfig.ACLs, ulConfig.ACLs, rules.ACLRules, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -1730,15 +1735,24 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 		addError(ctx, appNetStatus, "underlayACL", err)
 		return false
 	}
-	pub := ctx.pubAppNetworkStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		appNetStatus1 := st.(types.AppNetworkStatus)
-		ulCfgList1 := appNetStatus1.UnderlayNetworkList
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		appNetConfig1 := c.(types.AppNetworkConfig)
+		ulCfgList1 := appNetConfig1.UnderlayNetworkList
+		if len(ulCfgList1) == 0 {
+			continue
+		}
 		// XXX can an delete+add of app instance with same
 		// portmap result in a failure?
-		if appNetStatus.DisplayName == appNetStatus1.DisplayName ||
-			(appNetStatus1.HasError() && !appNetStatus1.Activated) || len(ulCfgList1) == 0 {
+		if appNetConfig.DisplayName == appNetConfig1.DisplayName {
+			continue
+		}
+		appNetStatus1 := lookupAppNetworkStatus(ctx, appNetConfig1.Key())
+		if appNetStatus1 == nil {
+			continue
+		}
+		if appNetStatus1.HasError() && !appNetStatus1.Activated {
 			continue
 		}
 		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
@@ -1770,7 +1784,7 @@ func containsHangingACLPortMapRule(ctx *zedrouterContext,
 
 func checkUnderlayNetworkForPortMapOverlap(ctx *zedrouterContext,
 	appNetStatus *types.AppNetworkStatus, ulCfgList []types.UnderlayNetworkConfig,
-	ulCfgList1 []types.UnderlayNetworkStatus) bool {
+	ulCfgList1 []types.UnderlayNetworkConfig) bool {
 	for _, ulCfg := range ulCfgList {
 		network := ulCfg.Network.String()
 		// validate whether there are duplicate portmap rules
