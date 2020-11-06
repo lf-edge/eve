@@ -613,7 +613,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	// Update persistent counter
 	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
 		status.UUIDandVersion.UUID,
-		int(status.PurgeCmd.Counter),
+		int(config.PurgeCmd.Counter),
 		false, "purgeCmdCounter")
 	return changed
 }
