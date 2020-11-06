@@ -1807,8 +1807,9 @@ func doNetworkInstanceFallback(
 					ulConfig := &config.UnderlayNetworkList[i]
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
+					// XXX no change in config
 					doAppNetworkModifyUnderlayNetwork(
-						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+						ctx, &appNetworkStatus, ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)
@@ -1858,8 +1859,9 @@ func doNetworkInstanceFallback(
 					ulConfig := &config.UnderlayNetworkList[i]
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
+					// XXX no change in config
 					doAppNetworkModifyUnderlayNetwork(
-						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+						ctx, &appNetworkStatus, ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)

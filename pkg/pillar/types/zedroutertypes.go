@@ -1735,6 +1735,7 @@ type UnderlayNetworkConfig struct {
 
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
+	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
 	BridgeMac       net.HardwareAddr
 	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter

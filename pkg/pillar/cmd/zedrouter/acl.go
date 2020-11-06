@@ -150,23 +150,23 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	if netconfig == nil {
 		return ipsets
 	}
-	// walk all of netconfig - find all hosts which use this network
-	pub := ctx.pubAppNetworkStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.AppNetworkStatus)
-		if skipKey != "" && status.Key() == skipKey {
+	// walk all app instances to find all which use this network
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := c.(types.AppNetworkConfig)
+		if skipKey != "" && config.Key() == skipKey {
 			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
 				skipKey)
 			continue
 		}
 
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.Network != netconfig.UUID {
+		for _, ulConfig := range config.UnderlayNetworkList {
+			if ulConfig.Network != netconfig.UUID {
 				continue
 			}
 			ipsets = append(ipsets,
-				compileAceIpsets(ulStatus.ACLs)...)
+				compileAceIpsets(ulConfig.ACLs)...)
 		}
 	}
 	return ipsets
