@@ -953,7 +953,6 @@ func appNetworkDoActivateUnderlayNetwork(
 		addError(ctx, status, "createACL", err)
 	}
 	appID := status.UUIDandVersion.UUID
-	getNetworkACLRules(ctx, appID, ulStatus.Name)
 	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
 	if appIPAddr != "" {

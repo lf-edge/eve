@@ -1745,6 +1745,7 @@ type UnderlayNetworkStatus struct {
 }
 
 // ULNetworkACLs - Underlay Network ACLRules
+// moved out from UnderlayNetowrkStatus, and now ACLRules are kept in zedrouterContext 2D-map NLaclMap
 type ULNetworkACLs struct {
 	ACLRules IPTablesRuleList
 }
