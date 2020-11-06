@@ -45,7 +45,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					return changed, false
 				}
 				log.Infof("Processing ResolveStatus for content tree (%v)", status.ContentID)
-				status.State = types.RESOLVED_TAG
 				changed = true
 				if rs.HasError() {
 					errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
@@ -71,6 +70,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				foundSha := strings.ToLower(rs.ImageSha256)
 				log.Infof("Added Image SHA (%s) for content tree (%s)",
 					foundSha, status.ContentID)
+				status.State = types.RESOLVED_TAG
 				status.ContentSha256 = foundSha
 				status.HasResolverRef = false
 				status.RelativeURL = maybeInsertSha(status.RelativeURL, status.ContentSha256)
