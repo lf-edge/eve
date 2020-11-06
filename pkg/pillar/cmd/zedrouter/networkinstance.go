@@ -379,6 +379,11 @@ func getNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string) typ
 }
 
 func setNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string, rulelist types.IPTablesRuleList) {
+	tmpMap := ctx.NLaclMap[appID]
+	if tmpMap == nil {
+		ctx.NLaclMap[appID] = make(map[string]types.ULNetworkACLs)
+	}
+
 	if len(rulelist) == 0 {
 		delete(ctx.NLaclMap[appID], intf)
 	} else {
