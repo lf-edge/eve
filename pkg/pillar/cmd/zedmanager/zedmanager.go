@@ -374,28 +374,22 @@ func handleCreate(ctxArg interface{}, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	status := types.AppInstanceStatus{
-		UUIDandVersion:      config.UUIDandVersion,
-		DisplayName:         config.DisplayName,
-		FixedResources:      config.FixedResources,
-		UnderlayNetworkList: config.UnderlayNetworkList,
-		IoAdapterList:       config.IoAdapterList,
-		RestartCmd:          config.RestartCmd,
-		PurgeCmd:            config.PurgeCmd,
-		State:               types.INITIAL,
+		UUIDandVersion: config.UUIDandVersion,
+		DisplayName:    config.DisplayName,
+		State:          types.INITIAL,
 	}
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	c, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
 		config.UUIDandVersion.UUID, "purgeCmdCounter")
 	if err == nil {
-		if uint32(c) == status.PurgeCmd.Counter {
+		if uint32(c) == config.PurgeCmd.Counter {
 			log.Infof("handleCreate(%v) for %s found matching purge counter %d",
 				config.UUIDandVersion, config.DisplayName, c)
 		} else {
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d",
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
-			status.PurgeCmd.Counter = config.PurgeCmd.Counter
 			status.PurgeInprogress = types.RecreateVolumes
 			status.State = types.PURGING
 			// We persist the PurgeCmd Counter when
@@ -471,6 +465,7 @@ func handleModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
+	oldConfig := oldConfigArg.(types.AppInstanceConfig)
 	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
@@ -483,29 +478,28 @@ func handleModify(ctxArg interface{}, key string,
 	// purge of disk changes, so we can generate errors if it is
 	// not a PurgeCmd and RestartCmd, respectively
 	// If we are purging then restart is redundant.
-	needPurge, needRestart, purgeReason, restartReason := quantifyChanges(config, *status)
+	needPurge, needRestart, purgeReason, restartReason := quantifyChanges(config, oldConfig, *status)
 	if needPurge {
 		needRestart = false
 	}
 
-	if config.RestartCmd.Counter != status.RestartCmd.Counter {
+	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter {
 
 		log.Infof("handleModify(%v) for %s restartcmd from %d to %d "+
 			"needRestart: %v",
 			config.UUIDandVersion, config.DisplayName,
-			status.RestartCmd.Counter, config.RestartCmd.Counter,
+			oldConfig.RestartCmd.Counter, config.RestartCmd.Counter,
 			needRestart)
 		if config.Activate {
 			// Will restart even if we crash/power cycle since that
 			// would also restart the app. Hence we can update
 			// the status counter here.
-			status.RestartCmd.Counter = config.RestartCmd.Counter
 			status.RestartInprogress = types.BringDown
 			status.State = types.RESTARTING
 		} else {
 			log.Infof("handleModify(%v) for %s restartcmd ignored config !Activate",
 				config.UUIDandVersion, config.DisplayName)
-			status.RestartCmd.Counter = config.RestartCmd.Counter
+			oldConfig.RestartCmd.Counter = config.RestartCmd.Counter
 		}
 	} else if needRestart {
 		errStr := fmt.Sprintf("Need restart due to %s but not a restartCmd",
@@ -516,17 +510,16 @@ func handleModify(ctxArg interface{}, key string,
 		return
 	}
 
-	if config.PurgeCmd.Counter != status.PurgeCmd.Counter {
+	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter {
 		log.Infof("handleModify(%v) for %s purgecmd from %d to %d "+
 			"needPurge: %v",
 			config.UUIDandVersion, config.DisplayName,
-			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
+			oldConfig.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
 		if status.IsErrorSource(types.AppInstanceStatus{}) {
 			log.Infof("Removing error %s", status.Error)
 			status.ClearErrorWithSource()
 		}
-		status.PurgeCmd.Counter = config.PurgeCmd.Counter
 		status.PurgeInprogress = types.RecreateVolumes
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
@@ -547,9 +540,6 @@ func handleModify(ctxArg interface{}, key string,
 		log.Infof("handleModify status change for %s", status.Key())
 		publishAppInstanceStatus(ctx, status)
 	}
-	status.FixedResources = config.FixedResources
-	status.UnderlayNetworkList = config.UnderlayNetworkList
-	status.IoAdapterList = config.IoAdapterList
 	publishAppInstanceStatus(ctx, status)
 	log.Infof("handleModify done for %s", config.DisplayName)
 }
@@ -571,7 +561,7 @@ func handleDelete(ctx *zedmanagerContext, key string,
 // it returns needPurge.
 // If there is a change to the CPU etc resources it returns needRestart
 // Changes to ACLs don't result in either being returned.
-func quantifyChanges(config types.AppInstanceConfig,
+func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstanceConfig,
 	status types.AppInstanceStatus) (bool, bool, string, string) {
 
 	needPurge := false
@@ -579,9 +569,9 @@ func quantifyChanges(config types.AppInstanceConfig,
 	var purgeReason, restartReason string
 	log.Infof("quantifyChanges for %s %s",
 		config.Key(), config.DisplayName)
-	if len(status.VolumeRefStatusList) != len(config.VolumeRefConfigList) {
+	if len(oldConfig.VolumeRefConfigList) != len(config.VolumeRefConfigList) {
 		str := fmt.Sprintf("number of volume ref changed from %d to %d",
-			len(status.VolumeRefStatusList),
+			len(oldConfig.VolumeRefConfigList),
 			len(config.VolumeRefConfigList))
 		log.Infof(str)
 		needPurge = true
@@ -599,53 +589,53 @@ func quantifyChanges(config types.AppInstanceConfig,
 			}
 		}
 	}
-	if len(status.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
+	if len(oldConfig.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
 		str := fmt.Sprintf("number of underlay interfaces changed from %d to %d",
-			len(status.UnderlayNetworkList),
+			len(oldConfig.UnderlayNetworkList),
 			len(config.UnderlayNetworkList))
 		log.Infof(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
 		for i, uc := range config.UnderlayNetworkList {
-			us := status.UnderlayNetworkList[i]
-			if us.AppMacAddr.String() != uc.AppMacAddr.String() {
+			old := oldConfig.UnderlayNetworkList[i]
+			if old.AppMacAddr.String() != uc.AppMacAddr.String() {
 				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
-					us.AppMacAddr, uc.AppMacAddr)
+					old.AppMacAddr, uc.AppMacAddr)
 				log.Infof(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if !us.AppIPAddr.Equal(uc.AppIPAddr) {
+			if !old.AppIPAddr.Equal(uc.AppIPAddr) {
 				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
-					us.AppIPAddr, uc.AppIPAddr)
+					old.AppIPAddr, uc.AppIPAddr)
 				log.Infof(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if us.Network != uc.Network {
+			if old.Network != uc.Network {
 				str := fmt.Sprintf("Network changed from %v to %v",
-					us.Network, uc.Network)
+					old.Network, uc.Network)
 				log.Infof(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if !cmp.Equal(uc.ACLs, us.ACLs) {
+			if !cmp.Equal(old.ACLs, uc.ACLs) {
 				log.Infof("FYI ACLs changed: %v",
-					cmp.Diff(uc.ACLs, us.ACLs))
+					cmp.Diff(old.ACLs, uc.ACLs))
 			}
 		}
 	}
-	if !cmp.Equal(config.IoAdapterList, status.IoAdapterList) {
+	if !cmp.Equal(config.IoAdapterList, oldConfig.IoAdapterList) {
 		str := fmt.Sprintf("IoAdapterList changed: %v",
-			cmp.Diff(config.IoAdapterList, status.IoAdapterList))
+			cmp.Diff(oldConfig.IoAdapterList, config.IoAdapterList))
 		log.Infof(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	}
-	if !cmp.Equal(config.FixedResources, status.FixedResources) {
+	if !cmp.Equal(config.FixedResources, oldConfig.FixedResources) {
 		str := fmt.Sprintf("FixedResources changed: %v",
-			cmp.Diff(config.FixedResources, status.FixedResources))
+			cmp.Diff(oldConfig.FixedResources, config.FixedResources))
 		log.Infof(str)
 		needRestart = true
 		restartReason += str + "\n"
