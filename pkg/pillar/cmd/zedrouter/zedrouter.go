@@ -166,7 +166,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
-		CreateHandler: handleDNSModify,
+		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
 		WarningTime:   warningTime,
@@ -184,7 +184,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
-		CreateHandler: handleAAModify,
+		CreateHandler: handleAACreate,
 		ModifyHandler: handleAAModify,
 		DeleteHandler: handleAADelete,
 		WarningTime:   warningTime,
@@ -207,7 +207,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -335,7 +335,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.NetworkInstanceConfig{},
 		Activate:      false,
 		Ctx:           &zedrouterCtx,
-		CreateHandler: handleNetworkInstanceModify,
+		CreateHandler: handleNetworkInstanceCreate,
 		ModifyHandler: handleNetworkInstanceModify,
 		DeleteHandler: handleNetworkInstanceDelete,
 		WarningTime:   warningTime,
@@ -1178,10 +1178,12 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
-// Note that handleModify will not touch the EID; just ACLs
+// Note that handleAppNetworkModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{}) {
+func handleAppNetworkModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+
 	ctx := ctxArg.(*zedrouterContext)
 	config := configArg.(types.AppNetworkConfig)
 	status := lookupAppNetworkStatus(ctx, key)
@@ -1575,15 +1577,25 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	}
 }
 
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedrouterContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigImpl for %s\n", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -1591,7 +1603,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigImpl done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1610,18 +1622,28 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
+func handleAACreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAAImpl(ctxArg, key, statusArg)
+}
+
 func handleAAModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAAImpl(ctxArg, key, statusArg)
+}
+
+func handleAAImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedrouterContext)
 	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
-		log.Infof("handleAAModify: ignoring %s\n", key)
+		log.Infof("handleAAImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleAAModify() %+v\n", status)
+	log.Infof("handleAAImpl() %+v\n", status)
 	*ctx.assignableAdapters = status
-	log.Infof("handleAAModify() done\n")
+	log.Infof("handleAAImpl() done\n")
 }
 
 func handleAADelete(ctxArg interface{}, key string,
@@ -1637,21 +1659,32 @@ func handleAADelete(ctxArg interface{}, key string,
 	log.Infof("handleAADelete() done\n")
 }
 
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*zedrouterContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSImpl for %s\n", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSModify no change\n")
+		log.Infof("handleDNSImpl no change\n")
 		return
 	}
-	log.Infof("handleDNSModify: changed %v",
+	log.Infof("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 
 	if isDNSServerChanged(ctx, &status) {
@@ -1663,7 +1696,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	deviceUpdateNIprobing(ctx, &status)
 
-	log.Infof("handleDNSModify done for %s\n", key)
+	log.Infof("handleDNSImpl done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,

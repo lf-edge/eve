@@ -25,9 +25,9 @@ func handleContentTreeCreateAppImg(ctxArg interface{}, key string,
 }
 
 func handleContentTreeModifyAppImg(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
-	log.Infof("handleContentTreeModify(%s)", key)
+	log.Infof("handleContentTreeModifyAppImg(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupContentTreeStatus(ctx, config.Key(), types.AppImgObj)
@@ -35,13 +35,13 @@ func handleContentTreeModifyAppImg(ctxArg interface{}, key string,
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 	updateContentTree(ctx, status)
-	log.Infof("handleContentTreeModify(%s) Done", key)
+	log.Infof("handleContentTreeAppImg(%s) Done", key)
 }
 
 func handleContentTreeDeleteAppImg(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleContentTreeDelete(%s)", key)
+	log.Infof("handleContentTreeDeleteAppImg(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupContentTreeStatus(ctx, config.Key(), types.AppImgObj)
@@ -49,7 +49,7 @@ func handleContentTreeDeleteAppImg(ctxArg interface{}, key string,
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 	deleteContentTree(ctx, status)
-	log.Infof("handleContentTreeModify(%s) Done", key)
+	log.Infof("handleContentTreeDeleteAppImg(%s) Done", key)
 }
 
 func handleContentTreeCreateBaseOs(ctxArg interface{}, key string,
@@ -64,9 +64,9 @@ func handleContentTreeCreateBaseOs(ctxArg interface{}, key string,
 }
 
 func handleContentTreeModifyBaseOs(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
-	log.Infof("handleContentTreeModify(%s)", key)
+	log.Infof("handleContentTreeModifyBaseOs(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupContentTreeStatus(ctx, config.Key(), types.BaseOsObj)
@@ -74,13 +74,13 @@ func handleContentTreeModifyBaseOs(ctxArg interface{}, key string,
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 	updateContentTree(ctx, status)
-	log.Infof("handleContentTreeModify(%s) Done", key)
+	log.Infof("handleContentTreeModifyBaseOs(%s) Done", key)
 }
 
 func handleContentTreeDeleteBaseOs(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleContentTreeDelete(%s)", key)
+	log.Infof("handleContentTreeDeleteBaseOs(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupContentTreeStatus(ctx, config.Key(), types.BaseOsObj)
@@ -88,7 +88,7 @@ func handleContentTreeDeleteBaseOs(ctxArg interface{}, key string,
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 	deleteContentTree(ctx, status)
-	log.Infof("handleContentTreeModify(%s) Done", key)
+	log.Infof("handleContentTreeDeleteBaseOs(%s) Done", key)
 }
 
 func handleContentTreeRestart(ctxArg interface{}, done bool) {

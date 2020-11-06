@@ -326,7 +326,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			Persistent:    true,
 			Activate:      false,
 			Ctx:           &domainCtx,
-			CreateHandler: handleGlobalConfigModify,
+			CreateHandler: handleGlobalConfigCreate,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
 			SyncHandler:   handleGlobalConfigSync,
@@ -346,7 +346,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.DeviceNetworkStatus{},
 			Activate:      false,
 			Ctx:           &domainCtx,
-			CreateHandler: handleDNSModify,
+			CreateHandler: handleDNSCreate,
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,
 			WarningTime:   warningTime,
@@ -468,8 +468,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.PhysicalIOAdapterList{},
 			Activate:      false,
 			Ctx:           &domainCtx,
-			CreateHandler: handlePhysicalIOAdapterListCreateModify,
-			ModifyHandler: handlePhysicalIOAdapterListCreateModify,
+			CreateHandler: handlePhysicalIOAdapterListCreate,
+			ModifyHandler: handlePhysicalIOAdapterListModify,
 			DeleteHandler: handlePhysicalIOAdapterListDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
@@ -659,7 +659,8 @@ func handlersInit() {
 // Wrappers around handleCreate, handleModify, and handleDelete
 
 // Determine whether it is an create or modify
-func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
+func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
+	oldConfigArg interface{}) {
 
 	log.Infof("handleDomainModify(%s)", key)
 	config := configArg.(types.DomainConfig)
@@ -1875,31 +1876,41 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 	return err
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Infof("handleDNSImpl: ignoring %s", key)
 		return
 	}
 	// Ignore test status and timestamps
 	// Compare Testing to save its updated value which is used by us
 	if ctx.deviceNetworkStatus.MostlyEqual(status) &&
 		ctx.deviceNetworkStatus.Testing == status.Testing {
-		log.Infof("handleDNSModify unchanged")
+		log.Infof("handleDNSImpl unchanged")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Infof("handleDNSModify: changed %v",
+	log.Infof("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	// Even if Testing is set we look at it for pciback transitions to
 	// bring things out of pciback (but not to add to pciback)
 	ctx.deviceNetworkStatus = status
 	checkAndSetIoBundleAll(ctx)
 	ctx.DNSinitialized = true
-	log.Infof("handleDNSModify done for %s", key)
+	log.Infof("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -1916,16 +1927,25 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -1946,7 +1966,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		}
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s. "+
+	log.Infof("handleGlobalConfigImpl done for %s. "+
 		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d",
 		key, ctx.domainBootRetryTime, ctx.usbAccess,
 		ctx.metricInterval)
@@ -2146,13 +2166,23 @@ func mkisofs(output string, dir string) error {
 	return nil
 }
 
-func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
-	key string, configArg interface{}) {
+func handlePhysicalIOAdapterListCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handlePhysicalIOAdapterListImpl(ctxArg, key, configArg)
+}
+
+func handlePhysicalIOAdapterListModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handlePhysicalIOAdapterListImpl(ctxArg, key, configArg)
+}
+
+func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
+	configArg interface{}) {
 
 	ctx := ctxArg.(*domainContext)
 	phyIOAdapterList := configArg.(types.PhysicalIOAdapterList)
 	aa := ctx.assignableAdapters
-	log.Infof("handlePhysicalIOAdapterListCreateModify: current len %d, update %+v",
+	log.Infof("handlePhysicalIOAdapterListImpl: current len %d, update %+v",
 		len(aa.IoBundleList), phyIOAdapterList)
 
 	if !aa.Initialized {
@@ -2165,15 +2195,15 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 		}
 		// Now initialize each entry
 		for _, ib := range aa.IoBundleList {
-			log.Infof("handlePhysicalIOAdapterListCreateModify: new Adapter: %+v",
+			log.Infof("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
 				ib)
 			handleIBCreate(ctx, ib)
 		}
-		log.Infof("handlePhysicalIOAdapterListCreateModify: initialized to get len %d",
+		log.Infof("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
 		aa.Initialized = true
 		ctx.publishAssignableAdapters()
-		log.Infof("handlePhysicalIOAdapterListCreateModify() done len %d",
+		log.Infof("handlePhysicalIOAdapterListImpl() done len %d",
 			len(aa.IoBundleList))
 		return
 	}
@@ -2197,21 +2227,21 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 		ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
 		if currentIbPtr == nil {
-			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
+			log.Infof("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"added. %+v", phyAdapter.Phylabel, ib)
 			handleIBCreate(ctx, ib)
 		} else if currentIbPtr.HasAdapterChanged(log, phyAdapter) {
-			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
+			log.Infof("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"changed. Current: %+v, New: %+v", phyAdapter.Phylabel,
 				*currentIbPtr, ib)
 			handleIBModify(ctx, ib)
 		} else {
-			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
+			log.Infof("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"- No Change", phyAdapter.Phylabel)
 		}
 	}
 	ctx.publishAssignableAdapters()
-	log.Infof("handlePhysicalIOAdapterListCreateModify() done len %d",
+	log.Infof("handlePhysicalIOAdapterListImpl() done len %d",
 		len(aa.IoBundleList))
 }
 

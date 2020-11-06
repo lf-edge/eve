@@ -144,7 +144,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -184,7 +184,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.VolumeRefStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleVolumeRefStatusModify,
+		CreateHandler: handleVolumeRefStatusCreate,
 		ModifyHandler: handleVolumeRefStatusModify,
 		DeleteHandler: handleVolumeRefStatusDelete,
 		WarningTime:   warningTime,
@@ -203,7 +203,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:      types.AppNetworkStatus{},
 		Activate:       false,
 		Ctx:            &ctx,
-		CreateHandler:  handleAppNetworkStatusModify,
+		CreateHandler:  handleAppNetworkStatusCreate,
 		ModifyHandler:  handleAppNetworkStatusModify,
 		DeleteHandler:  handleAppNetworkStatusDelete,
 		RestartHandler: handleZedrouterRestarted,
@@ -223,7 +223,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DomainStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleDomainStatusModify,
+		CreateHandler: handleDomainStatusCreate,
 		ModifyHandler: handleDomainStatusModify,
 		DeleteHandler: handleDomainStatusDelete,
 		WarningTime:   warningTime,
@@ -467,7 +467,7 @@ func handleCreate(ctxArg interface{}, key string,
 }
 
 func handleModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
@@ -655,16 +655,25 @@ func quantifyChanges(config types.AppInstanceConfig,
 	return needPurge, needRestart, purgeReason, restartReason
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -672,7 +681,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,

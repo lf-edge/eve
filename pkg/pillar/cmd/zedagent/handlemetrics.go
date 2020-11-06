@@ -30,12 +30,24 @@ import (
 	"github.com/shirou/gopsutil/host"
 )
 
-func handleDiskMetricModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDiskMetricCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDiskMetricImpl(ctxArg, key, statusArg)
+}
+
+func handleDiskMetricModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDiskMetricImpl(ctxArg, key, statusArg)
+}
+
+func handleDiskMetricImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.DiskMetric)
 	ctx := ctxArg.(*zedagentContext)
 	ctx.iteration++
 	path := status.DiskPath
-	log.Infof("handleDiskMetricModify: %s", path)
+	log.Infof("handleDiskMetricImpl: %s", path)
 }
 
 func handleDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -68,20 +80,6 @@ func getAllDiskMetrics(ctx *zedagentContext) []*types.DiskMetric {
 	}
 	log.Debugf("getAllDiskMetrics: Done")
 	return retList
-}
-
-func handleAppDiskMetricModify(ctxArg interface{}, key string, statusArg interface{}) {
-	status := statusArg.(types.AppDiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
-	log.Infof("handleAppDiskMetricModify: Received %s", status.DiskPath)
-}
-
-func handleAppDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
-	status := statusArg.(types.AppDiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
-	log.Infof("handleAppDiskMetricDelete: %s", status.DiskPath)
 }
 
 func lookupAppDiskMetric(ctx *zedagentContext, diskPath string) *types.AppDiskMetric {

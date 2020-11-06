@@ -510,7 +510,18 @@ func attestModuleStart(ctx *zedagentContext) error {
 }
 
 // pubsub functions
-func handleAttestQuoteModify(ctxArg interface{}, key string, quoteArg interface{}) {
+func handleAttestQuoteCreate(ctxArg interface{}, key string,
+	quoteArg interface{}) {
+	handleAttestQuoteImpl(ctxArg, key, quoteArg)
+}
+
+func handleAttestQuoteModify(ctxArg interface{}, key string,
+	quoteArg interface{}, oldQuoteArg interface{}) {
+	handleAttestQuoteImpl(ctxArg, key, quoteArg)
+}
+
+func handleAttestQuoteImpl(ctxArg interface{}, key string,
+	quoteArg interface{}) {
 
 	//Store quote received in state machine
 	ctx, ok := ctxArg.(*zedagentContext)
@@ -539,7 +550,7 @@ func handleAttestQuoteModify(ctxArg interface{}, key string, quoteArg interface{
 	//Trigger event on the state machine
 	zattest.InternalQuoteRecvd(attestCtx.attestFsmCtx)
 
-	log.Infof("handleAttestQuoteModify done for %s", quote.Key())
+	log.Infof("handleAttestQuoteImpl done for %s", quote.Key())
 	return
 }
 
@@ -579,7 +590,23 @@ func handleAttestQuoteDelete(ctxArg interface{}, key string, quoteArg interface{
 	return
 }
 
-func handleEncryptedKeyFromDeviceModify(ctxArg interface{}, key string, vaultKeyArg interface{}) {
+func handleEncryptedKeyFromDeviceCreate(ctxArg interface{}, key string,
+	vaultKeyArg interface{}) {
+	handleEncryptedKeyFromDeviceImpl(ctxArg, key, vaultKeyArg)
+}
+
+func handleEncryptedKeyFromDeviceModify(ctxArg interface{}, key string,
+	vaultKeyArg interface{}, oldStatusArg interface{}) {
+	handleEncryptedKeyFromDeviceImpl(ctxArg, key, vaultKeyArg)
+}
+
+func handleEncryptedKeyFromDeviceDelete(ctxArg interface{}, key string,
+	vaultKeyArg interface{}) {
+	handleEncryptedKeyFromDeviceImpl(ctxArg, key, vaultKeyArg)
+}
+
+func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
+	vaultKeyArg interface{}) {
 
 	//Store quote received in state machine
 	ctx, ok := ctxArg.(*zedagentContext)

@@ -1280,7 +1280,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			Persistent:    true,
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigModify,
+			CreateHandler: handleGlobalConfigCreate,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
 			WarningTime:   warningTime,
@@ -1298,6 +1298,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.NodeAgentStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
+			CreateHandler: handleNodeAgentStatusCreate,
 			ModifyHandler: handleNodeAgentStatusModify,
 			DeleteHandler: handleNodeAgentStatusDelete,
 			WarningTime:   warningTime,
@@ -1324,7 +1325,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.AttestNonce{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleAttestNonceModify,
+			CreateHandler: handleAttestNonceCreate,
 			ModifyHandler: handleAttestNonceModify,
 			DeleteHandler: handleAttestNonceDelete,
 			WarningTime:   warningTime,
@@ -1458,23 +1459,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	return 0
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1491,16 +1501,27 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
-// Handles both create and modify events
-func handleNodeAgentStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleNodeAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.NodeAgentStatus)
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "nodeagent" {
-		log.Infof("handleNodeAgentStatusModify: ignoring %s", key)
+		log.Infof("handleNodeAgentStatusImpl: ignoring %s", key)
 		return
 	}
 	ctx.DeviceReboot = status.DeviceReboot
-	log.Infof("handleNodeAgentStatusModify done for %s: %v", key, ctx.DeviceReboot)
+	log.Infof("handleNodeAgentStatusImpl done for %s: %v", key, ctx.DeviceReboot)
 }
 
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
@@ -1526,9 +1547,20 @@ func readNodeAgentStatus(ctx *tpmMgrContext) (bool, error) {
 	return status.DeviceReboot, nil
 }
 
-// Handles both create and modify events
-func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Infof("handleAttestNonceModify received")
+func handleAttestNonceCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAttestNonceImpl(ctxArg, key, statusArg)
+}
+
+func handleAttestNonceModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAttestNonceImpl(ctxArg, key, statusArg)
+}
+
+func handleAttestNonceImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleAttestNonceImpl received")
 	ctx := ctxArg.(*tpmMgrContext)
 	nonceReq := statusArg.(types.AttestNonce)
 	log.Infof("Received quote request from %s", nonceReq.Requester)
@@ -1547,7 +1579,7 @@ func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface
 	log.Debugf("publishing quote for nonce %x", pubKey)
 	pub := ctx.pubAttestQuote
 	pub.Publish(pubKey, attestQuote)
-	log.Debugf("handleAttestNonceModify done")
+	log.Debugf("handleAttestNonceImpl done")
 }
 
 func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -1560,5 +1592,5 @@ func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface
 		pub := ctx.pubAttestQuote
 		pub.Unpublish(key)
 	}
-	log.Infof("handleAttestNonceModify done")
+	log.Infof("handleAttestNonceDelete done")
 }

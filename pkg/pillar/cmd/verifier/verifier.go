@@ -111,7 +111,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -446,23 +446,32 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 	log.Infof("handleDelete done for %s", status.ImageSha256)
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*verifierContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,

@@ -4,7 +4,7 @@
 package downloader
 
 func handleDownloaderConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
 	dHandler.modify(ctxArg, key, configArg)
 }

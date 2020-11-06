@@ -227,7 +227,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &logmanagerCtx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -246,7 +246,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DomainStatus{},
 		Activate:      false,
 		Ctx:           &logmanagerCtx,
-		CreateHandler: handleDomainStatusModify,
+		CreateHandler: handleDomainStatusCreate,
 		ModifyHandler: handleDomainStatusModify,
 		DeleteHandler: handleDomainStatusDelete,
 		WarningTime:   warningTime,
@@ -280,7 +280,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &DNSctx,
-		CreateHandler: handleDNSModify,
+		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
 		WarningTime:   warningTime,
@@ -570,19 +570,29 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 	}
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Infof("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Infof("handleDNSImpl for %s", key)
 	// Ignore test status and timestamps
 	if deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSModify no change")
+		log.Infof("handleDNSImpl no change")
 		return
 	}
 	*deviceNetworkStatus = status
@@ -594,7 +604,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		done := zedcloud.HandleDeferred(&zedcloudCtx, change, 1*time.Second)
 		globalDeferInprogress = !done
 		if globalDeferInprogress {
-			log.Warnf("handleDNSModify: globalDeferInprogress")
+			log.Warnf("handleDNSImpl: globalDeferInprogress")
 		}
 	}
 
@@ -602,7 +612,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
-	log.Infof("handleDNSModify done for %s; %d usable",
+	log.Infof("handleDNSImpl done for %s; %d usable",
 		key, newAddrCount)
 }
 
@@ -1146,16 +1156,25 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	log.Infof("Read UUID %s", devUUID)
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig,
@@ -1180,7 +1199,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	// Any deletes?
 	delRemoteMapAgents(foundAgents)
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,

@@ -131,7 +131,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			Persistent:    true,
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigModify,
+			CreateHandler: handleGlobalConfigCreate,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
 			WarningTime:   warningTime,
@@ -207,7 +207,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.LedBlinkCounter{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleLedBlinkModify,
+			CreateHandler: handleLedBlinkCreate,
 			ModifyHandler: handleLedBlinkModify,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
@@ -226,7 +226,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.DeviceNetworkStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleDNSModify,
+			CreateHandler: handleDNSCreate,
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,
 			WarningTime:   warningTime,
@@ -247,7 +247,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.DevicePortConfigList{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleDPCModify,
+			CreateHandler: handleDPCCreate,
 			ModifyHandler: handleDPCModify,
 		})
 	if err != nil {
@@ -260,7 +260,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedclient",
 		MyAgentName:   agentName,
-		CreateHandler: handleOnboardStatusModify,
+		CreateHandler: handleOnboardStatusCreate,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -315,15 +315,24 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
-// Handles both create and modify events
+func handleLedBlinkCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleLedBlinkImpl(ctxArg, key, configArg)
+}
+
 func handleLedBlinkModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleLedBlinkImpl(ctxArg, key, configArg)
+}
+
+func handleLedBlinkImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*diagContext)
 
 	if key != "ledconfig" {
-		log.Errorf("handleLedBlinkModify: ignoring %s", key)
+		log.Errorf("handleLedBlinkImpl: ignoring %s", key)
 		return
 	}
 	// Supress work and logging if no change
@@ -340,26 +349,36 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 	printOutput(ctx)
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Infof("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Infof("handleDNSImpl for %s", key)
 	// Since we report test status we compare all fields
 	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
-		log.Infof("handleDNSModify unchanged")
+		log.Infof("handleDNSImpl unchanged")
 		return
 	}
-	log.Infof("handleDNSModify: changed %v",
+	log.Infof("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.DeviceNetworkStatus, status))
 	*ctx.DeviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	log.Infof("handleDNSModify %d usable addresses", newAddrCount)
+	log.Infof("handleDNSImpl %d usable addresses", newAddrCount)
 	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
 		ctx.UsableAddressCount = newAddrCount
@@ -377,7 +396,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
-	log.Infof("handleDNSModify done for %s", key)
+	log.Infof("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
@@ -407,38 +426,60 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
-// Handles both create and modify events
-func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDPCCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDPCImpl(ctxArg, key, statusArg)
+}
+
+func handleDPCModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDPCImpl(ctxArg, key, statusArg)
+}
+
+func handleDPCImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleDPCModify: ignoring %s", key)
+		log.Infof("handleDPCImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDPCModify for %s", key)
+	log.Infof("handleDPCImpl for %s", key)
 	if ctx.DevicePortConfigList.MostlyEqual(status) {
 		return
 	}
-	log.Infof("handleDPCModify: changed %v",
+	log.Infof("handleDPCImpl: changed %v",
 		cmp.Diff(ctx.DevicePortConfigList, status))
 	*ctx.DevicePortConfigList = status
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
-	log.Infof("handleDPCModify done for %s", key)
+	log.Infof("handleDPCImpl done for %s", key)
 }
 
 // Handles UUID change from process client
-func handleOnboardStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleOnboardStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.OnboardingStatus)
 	ctx := ctxArg.(*diagContext)
 	if cmp.Equal(ctx.devUUID, status.DeviceUUID) {
-		log.Infof("handleOnboardStatusModify no change to %v", ctx.devUUID)
+		log.Infof("handleOnboardStatusImpl no change to %v", ctx.devUUID)
 		return
 	}
 	ctx.devUUID = status.DeviceUUID
-	log.Infof("handleOnboardStatusModify changed to %v", ctx.devUUID)
+	log.Infof("handleOnboardStatusImpl changed to %v", ctx.devUUID)
 	printOutput(ctx)
 }
 
@@ -1089,16 +1130,25 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	}
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -1106,7 +1156,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,

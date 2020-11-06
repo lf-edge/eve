@@ -111,9 +111,18 @@ func unpublishVolumeConfig(ctx *getconfigContext,
 
 // volume event watch to capture transitions
 // and publish to zedCloud
-// Handles both create and modify events
-func handleVolumeStatusModify(ctxArg interface{},
-	key string, statusArg interface{}) {
+func handleVolumeStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVolumeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVolumeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)

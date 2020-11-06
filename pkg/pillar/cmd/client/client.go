@@ -169,7 +169,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -186,7 +186,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleDNSModify,
+		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
 		WarningTime:   warningTime,
@@ -723,23 +723,32 @@ func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
 	return false, nilUUID, "", "", ""
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*clientContext)
 	if key != "global" {
-		log.Debugf("handleGlobalConfigModify: ignoring %s", key)
+		log.Debugf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -757,23 +766,33 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*clientContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Infof("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Infof("handleDNSImpl for %s", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSModify no change")
+		log.Infof("handleDNSImpl no change")
 		return
 	}
 
-	log.Infof("handleDNSModify: changed %v",
+	log.Infof("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	*ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
@@ -806,10 +825,10 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			onboardTLSConfig.RootCAs = cloudCtx.TlsConfig.RootCAs
 		}
 		devtlsConfig.RootCAs = cloudCtx.TlsConfig.RootCAs
-		log.Infof("handleDNSModify: client rootCAs updated")
+		log.Infof("handleDNSImpl: client rootCAs updated")
 	}
 
-	log.Infof("handleDNSModify done for %s", key)
+	log.Infof("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,

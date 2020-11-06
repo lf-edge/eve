@@ -117,12 +117,22 @@ func unpublishVolumeRefConfig(ctx *zedmanagerContext, key string) {
 	log.Debugf("unpublishVolumeRefConfig(%s) Done", key)
 }
 
+func handleVolumeRefStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVolumeRefStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleVolumeRefStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVolumeRefStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeRefStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VolumeRefStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleVolumeRefStatusModify: key:%s, name:%s",
+	log.Infof("handleVolumeRefStatusImpl: key:%s, name:%s",
 		key, status.DisplayName)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
@@ -136,7 +146,7 @@ func handleVolumeRefStatusModify(ctxArg interface{}, key string,
 			}
 		}
 	}
-	log.Infof("handleVolumeRefStatusModify done for %s", key)
+	log.Infof("handleVolumeRefStatusImpl done for %s", key)
 }
 
 func handleVolumeRefStatusDelete(ctxArg interface{}, key string,

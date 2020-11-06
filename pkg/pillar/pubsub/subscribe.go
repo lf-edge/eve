@@ -17,9 +17,9 @@ import (
 // `PubSub.Subscribe*`
 type SubscriptionImpl struct {
 	C                   <-chan Change
-	CreateHandler       SubHandler
-	ModifyHandler       SubHandler
-	DeleteHandler       SubHandler
+	CreateHandler       SubCreateHandler
+	ModifyHandler       SubModifyHandler
+	DeleteHandler       SubDeleteHandler
 	RestartHandler      SubRestartHandler
 	SynchronizedHandler SubRestartHandler
 	MaxProcessTimeWarn  time.Duration // If set generate warning if ProcessChange
@@ -239,10 +239,14 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	}
 	// Need a copy in case the caller will modify e.g., embedded maps
 	newItem := deepCopy(sub.log, item)
-	if created && sub.CreateHandler != nil {
-		(sub.CreateHandler)(sub.userCtx, key, newItem)
-	} else if sub.ModifyHandler != nil {
-		(sub.ModifyHandler)(sub.userCtx, key, newItem)
+	if created {
+		if sub.CreateHandler != nil {
+			(sub.CreateHandler)(sub.userCtx, key, newItem)
+		}
+	} else {
+		if sub.ModifyHandler != nil {
+			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+		}
 	}
 	sub.log.Debugf("pubsub.handleModify(%s) done for key %s\n", name, key)
 }

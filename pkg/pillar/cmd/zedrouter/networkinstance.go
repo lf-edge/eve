@@ -395,7 +395,8 @@ func setNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string, rul
 func handleNetworkInstanceModify(
 	ctxArg interface{},
 	key string,
-	configArg interface{}) {
+	configArg interface{},
+	oldConfigArg interface{}) {
 
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkInstanceStatus
@@ -411,14 +412,17 @@ func handleNetworkInstanceModify(
 		publishNetworkInstanceStatus(ctx, status)
 		log.Infof("handleNetworkInstanceModify(%s) done\n", key)
 	} else {
-		handleNetworkInstanceCreate(ctx, key, config)
+		log.Fatalf("handleNetworkInstanceModify(%s) no status", key)
 	}
 }
 
 func handleNetworkInstanceCreate(
-	ctx *zedrouterContext,
+	ctxArg interface{},
 	key string,
-	config types.NetworkInstanceConfig) {
+	configArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	config := configArg.(types.NetworkInstanceConfig)
 
 	log.Infof("handleNetworkInstanceCreate: (UUID: %s, name:%s)\n",
 		key, config.DisplayName)

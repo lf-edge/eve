@@ -68,8 +68,8 @@ func New(ps *pubsub.PubSub, log *base.LogObject, agentName string, executor stri
 		MyAgentName:   agentName,
 		TopicImpl:     types.ExecStatus{},
 		Ctx:           &handle,
-		CreateHandler: handleStatus,
-		ModifyHandler: handleStatus,
+		CreateHandler: handleStatusCreate,
+		ModifyHandler: handleStatusModify,
 	})
 	if err != nil {
 		return nil, err
@@ -124,11 +124,21 @@ func (hdl *ExecuteHandle) Execute(args ExecuteArgs) (string, error) {
 	return status.Output, nil
 }
 
-func handleStatus(ctxArg interface{}, key string,
+func handleStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	hdl := ctxArg.(*ExecuteHandle)
-	hdl.log.Infof("handleStatus %s", key)
+	hdl.log.Infof("handleStatusImpl %s", key)
 	if key != hdl.caller {
 		hdl.log.Infof("Mismatched key %s vs %s\n", key, hdl.caller)
 		return

@@ -128,16 +128,26 @@ func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 	pub.Unpublish(key)
 }
 
+func handleDomainStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDomainStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleDomainStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDomainStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleDomainStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.DomainStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleDomainStatusModify for %s", key)
+	log.Infof("handleDomainStatusImpl for %s", key)
 	// Record DomainStatus.State even if Pending() to capture HALTING
 
 	updateAIStatusUUID(ctx, status.Key())
-	log.Infof("handleDomainStatusModify done for %s", key)
+	log.Infof("handleDomainStatusImpl done for %s", key)
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, key string,

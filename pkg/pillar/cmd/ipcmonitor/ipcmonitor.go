@@ -196,7 +196,7 @@ func handleCreate(ctxArg interface{}, key string,
 }
 
 func handleModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	statusArg interface{}, oldStatusArg interface{}) {
 
 	log.Infof("handleModify(%s) type %T\n", key, statusArg)
 	switch statusArg.(type) {

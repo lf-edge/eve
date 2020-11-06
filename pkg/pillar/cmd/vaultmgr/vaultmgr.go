@@ -774,7 +774,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			Persistent:    true,
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigModify,
+			CreateHandler: handleGlobalConfigCreate,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
 			WarningTime:   warningTime,
@@ -793,7 +793,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.EncryptedVaultKeyFromController{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleVaultKeyFromControllerModify,
+			CreateHandler: handleVaultKeyFromControllerCreate,
 			ModifyHandler: handleVaultKeyFromControllerModify,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
@@ -858,23 +858,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	return 0
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*vaultMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigImpl for %s\n", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigImpl done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -891,11 +900,20 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
-// Handles both create and modify events
-func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
+func handleVaultKeyFromControllerCreate(ctxArg interface{}, key string,
 	keyArg interface{}) {
-	ctx := ctxArg.(*vaultMgrContext)
+	handleVaultKeyFromControllerImpl(ctxArg, key, keyArg)
+}
 
+func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
+	keyArg interface{}, oldStatusArg interface{}) {
+	handleVaultKeyFromControllerImpl(ctxArg, key, keyArg)
+}
+
+func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
+	keyArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
 	if !etpm.IsTpmEnabled() {
 		log.Notice("Receiving Vault key on device without active TPM usage. Ignoring")
 		return

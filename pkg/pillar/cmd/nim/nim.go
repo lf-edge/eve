@@ -126,7 +126,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &nimCtx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		SyncHandler:   handleGlobalConfigSynchronized,
@@ -280,7 +280,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
-		CreateHandler: devicenetwork.HandleDPCModify,
+		CreateHandler: devicenetwork.HandleDPCCreate,
 		ModifyHandler: devicenetwork.HandleDPCModify,
 		DeleteHandler: devicenetwork.HandleDPCDelete,
 		WarningTime:   warningTime,
@@ -298,7 +298,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
-		CreateHandler: devicenetwork.HandleDPCModify,
+		CreateHandler: devicenetwork.HandleDPCCreate,
 		ModifyHandler: devicenetwork.HandleDPCModify,
 		DeleteHandler: devicenetwork.HandleDPCDelete,
 		WarningTime:   warningTime,
@@ -316,7 +316,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
-		CreateHandler: devicenetwork.HandleDPCModify,
+		CreateHandler: devicenetwork.HandleDPCCreate,
 		ModifyHandler: devicenetwork.HandleDPCModify,
 		DeleteHandler: devicenetwork.HandleDPCDelete,
 		WarningTime:   warningTime,
@@ -334,7 +334,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
 		Ctx:           &nimCtx.deviceNetworkContext,
-		CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
+		CreateHandler: devicenetwork.HandleAssignableAdaptersCreate,
 		ModifyHandler: devicenetwork.HandleAssignableAdaptersModify,
 		DeleteHandler: devicenetwork.HandleAssignableAdaptersDelete,
 		WarningTime:   warningTime,
@@ -352,7 +352,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.NetworkInstanceStatus{},
 		Activate:      false,
 		Ctx:           &nimCtx,
-		CreateHandler: handleNetworkInstanceModify,
+		CreateHandler: handleNetworkInstanceCreate,
 		ModifyHandler: handleNetworkInstanceModify,
 		DeleteHandler: handleNetworkInstanceDelete,
 		WarningTime:   warningTime,
@@ -947,16 +947,25 @@ func publishDeviceNetworkStatus(ctx *nimContext) {
 	ctx.deviceNetworkContext.PubDeviceNetworkStatus.Publish("global", *ctx.deviceNetworkContext.DeviceNetworkStatus)
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*nimContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.debugOverride, logger)
@@ -1006,7 +1015,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		dnc.TestSendTimeout = ctx.globalConfig.GlobalValueInt(types.NetworkTestTimeout)
 	}
 	ctx.GCInitialized = true
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1038,14 +1047,24 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	}
 }
 
-// Handles both create and modify events
-func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleNetworkInstanceCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleNetworkInstanceImpl(ctxArg, key, statusArg)
+}
 
-	log.Infof("handleNetworkInstanceStatusModify(%s)", key)
+func handleNetworkInstanceModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleNetworkInstanceImpl(ctxArg, key, statusArg)
+}
+
+func handleNetworkInstanceImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleNetworkInstanceStatusImpl(%s)", key)
 	ctx := ctxArg.(*nimContext)
 	// Hard to check if any switch NI was added, deleted, or changed
 	updateFilteredFallback(ctx)
-	log.Infof("handleNetworkInstanceModify(%s) done", key)
+	log.Infof("handleNetworkInstanceImpl(%s) done", key)
 }
 
 func handleNetworkInstanceDelete(ctxArg interface{}, key string,

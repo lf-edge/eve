@@ -29,7 +29,7 @@ func WaitForVault(ps *pubsub.PubSub, log *base.LogObject, agentName string, warn
 		TopicImpl:     types.VaultStatus{},
 		Activate:      false,
 		Ctx:           Ctx,
-		CreateHandler: handleVaultStatusModify,
+		CreateHandler: handleVaultStatusCreate,
 		ModifyHandler: handleVaultStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -59,7 +59,17 @@ func WaitForVault(ps *pubsub.PubSub, log *base.LogObject, agentName string, warn
 	return nil
 }
 
+func handleVaultStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleVaultStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVaultStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*Context)
@@ -82,7 +92,7 @@ func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, 
 		Activate:      true,
 		Persistent:    true,
 		Ctx:           Ctx,
-		CreateHandler: handleOnboardStatusModify,
+		CreateHandler: handleOnboardStatusCreate,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -114,7 +124,19 @@ func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, 
 var nilUUID = uuid.UUID{}
 
 // Set Initialized if the UUID is not nil
-func handleOnboardStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleOnboardStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.OnboardingStatus)
 	ctx := ctxArg.(*Context)
 
