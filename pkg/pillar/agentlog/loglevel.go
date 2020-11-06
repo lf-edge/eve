@@ -152,7 +152,7 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 			log.Errorf("***ParseLevel %s failed: %s\n", loglevel, err)
 		} else {
 			level = l
-			log.Infof("handleGlobalConfigModify: level %v\n",
+			log.Infof("HandleGlobalConfigImpl: level %v\n",
 				level)
 		}
 		if level == logrus.TraceLevel {

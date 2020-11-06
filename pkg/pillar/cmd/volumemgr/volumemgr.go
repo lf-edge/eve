@@ -134,7 +134,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -270,7 +270,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.ZedAgentStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleZedAgentStatusModify,
+		CreateHandler: handleZedAgentStatusCreate,
 		ModifyHandler: handleZedAgentStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -288,7 +288,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DownloaderStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleDownloaderStatusModify,
+		CreateHandler: handleDownloaderStatusCreate,
 		ModifyHandler: handleDownloaderStatusModify,
 		DeleteHandler: handleDownloaderStatusDelete,
 		WarningTime:   warningTime,
@@ -307,7 +307,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:      types.VerifyImageStatus{},
 		Activate:       false,
 		Ctx:            &ctx,
-		CreateHandler:  handleVerifyImageStatusModify,
+		CreateHandler:  handleVerifyImageStatusCreate,
 		ModifyHandler:  handleVerifyImageStatusModify,
 		DeleteHandler:  handleVerifyImageStatusDelete,
 		RestartHandler: handleVerifierRestarted,
@@ -327,7 +327,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.ResolveStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleResolveStatusModify,
+		CreateHandler: handleResolveStatusCreate,
 		ModifyHandler: handleResolveStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -409,7 +409,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subBaseOsContentTreeConfig.Activate()
 
 	subDatastoreConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleDatastoreConfigModify,
+		CreateHandler: handleDatastoreConfigCreate,
 		ModifyHandler: handleDatastoreConfigModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -572,15 +572,25 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*volumemgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -589,7 +599,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -607,7 +617,17 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
+func handleZedAgentStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleZedAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*volumemgrContext)

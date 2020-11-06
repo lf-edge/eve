@@ -33,7 +33,7 @@ func makeVerifyHandler() *verifyHandler {
 
 // Determine whether it is an create or modify
 func (v *verifyHandler) modify(ctxArg interface{},
-	key string, configArg interface{}) {
+	key string, configArg interface{}, oldConfigArg interface{}) {
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)

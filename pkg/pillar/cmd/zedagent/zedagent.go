@@ -277,7 +277,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleAAModify,
+		CreateHandler: handleAACreate,
 		ModifyHandler: handleAAModify,
 		DeleteHandler: handleAADelete,
 		WarningTime:   warningTime,
@@ -436,7 +436,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -454,7 +454,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.NetworkInstanceStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleNetworkInstanceModify,
+		CreateHandler: handleNetworkInstanceCreate,
 		ModifyHandler: handleNetworkInstanceModify,
 		DeleteHandler: handleNetworkInstanceDelete,
 		WarningTime:   warningTime,
@@ -467,16 +467,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subNetworkInstanceStatus.Activate()
 
 	subNetworkInstanceMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedrouter",
-		MyAgentName:   agentName,
-		TopicImpl:     types.NetworkInstanceMetrics{},
-		Activate:      false,
-		Ctx:           &zedagentCtx,
-		CreateHandler: handleNetworkInstanceMetricsModify,
-		ModifyHandler: handleNetworkInstanceMetricsModify,
-		DeleteHandler: handleNetworkInstanceMetricsDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.NetworkInstanceMetrics{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -490,7 +487,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.IPFlow{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleAppFlowMonitorModify,
+		CreateHandler: handleAppFlowMonitorCreate,
 		ModifyHandler: handleAppFlowMonitorModify,
 		DeleteHandler: handleAppFlowMonitorDelete,
 		WarningTime:   warningTime,
@@ -509,7 +506,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.VifIPTrig{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleAppVifIPTrigModify,
+		CreateHandler: handleAppVifIPTrigCreate,
 		ModifyHandler: handleAppVifIPTrigModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -526,7 +523,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AppInstanceStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleAppInstanceStatusModify,
+		CreateHandler: handleAppInstanceStatusCreate,
 		ModifyHandler: handleAppInstanceStatusModify,
 		DeleteHandler: handleAppInstanceStatusDelete,
 		WarningTime:   warningTime,
@@ -546,7 +543,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.ContentTreeStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleContentTreeStatusModify,
+		CreateHandler: handleContentTreeStatusCreate,
 		ModifyHandler: handleContentTreeStatusModify,
 		DeleteHandler: handleContentTreeStatusDelete,
 		WarningTime:   warningTime,
@@ -566,7 +563,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.VolumeStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleVolumeStatusModify,
+		CreateHandler: handleVolumeStatusCreate,
 		ModifyHandler: handleVolumeStatusModify,
 		DeleteHandler: handleVolumeStatusDelete,
 		WarningTime:   warningTime,
@@ -629,7 +626,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:      types.ZbootStatus{},
 		Activate:       false,
 		Ctx:            &zedagentCtx,
-		CreateHandler:  handleZbootStatusModify,
+		CreateHandler:  handleZbootStatusCreate,
 		ModifyHandler:  handleZbootStatusModify,
 		DeleteHandler:  handleZbootStatusDelete,
 		RestartHandler: handleZbootRestarted,
@@ -649,7 +646,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AppContainerMetrics{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleAppContainerMetricsModify,
+		CreateHandler: handleAppContainerMetricsCreate,
 		ModifyHandler: handleAppContainerMetricsModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -666,7 +663,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.BaseOsStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleBaseOsStatusModify,
+		CreateHandler: handleBaseOsStatusCreate,
 		ModifyHandler: handleBaseOsStatusModify,
 		DeleteHandler: handleBaseOsStatusDelete,
 		WarningTime:   warningTime,
@@ -684,6 +681,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.EdgeNodeCert{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
+		CreateHandler: handleEdgeNodeCertCreate,
 		ModifyHandler: handleEdgeNodeCertModify,
 		DeleteHandler: handleEdgeNodeCertDelete,
 		WarningTime:   warningTime,
@@ -701,6 +699,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.VaultStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
+		CreateHandler: handleVaultStatusCreate,
 		ModifyHandler: handleVaultStatusModify,
 		DeleteHandler: handleVaultStatusDelete,
 		WarningTime:   warningTime,
@@ -718,6 +717,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AttestQuote{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
+		CreateHandler: handleAttestQuoteCreate,
 		ModifyHandler: handleAttestQuoteModify,
 		DeleteHandler: handleAttestQuoteDelete,
 		WarningTime:   warningTime,
@@ -735,8 +735,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.EncryptedVaultKeyFromDevice{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
+		CreateHandler: handleEncryptedKeyFromDeviceCreate,
 		ModifyHandler: handleEncryptedKeyFromDeviceModify,
-		DeleteHandler: handleEncryptedKeyFromDeviceModify,
+		DeleteHandler: handleEncryptedKeyFromDeviceDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 	})
@@ -753,6 +754,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.NodeAgentStatus{},
 		Activate:      false,
 		Ctx:           &getconfigCtx,
+		CreateHandler: handleNodeAgentStatusCreate,
 		ModifyHandler: handleNodeAgentStatusModify,
 		DeleteHandler: handleNodeAgentStatusDelete,
 		WarningTime:   warningTime,
@@ -771,6 +773,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &DNSctx,
+		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
 		WarningTime:   warningTime,
@@ -788,6 +791,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DevicePortConfigList{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
+		CreateHandler: handleDPCLCreate,
 		ModifyHandler: handleDPCLModify,
 		DeleteHandler: handleDPCLDelete,
 		WarningTime:   warningTime,
@@ -805,7 +809,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.BlobStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleBlobStatusModify,
+		CreateHandler: handleBlobStatusCreate,
 		ModifyHandler: handleBlobStatusModify,
 		DeleteHandler: handleBlobDelete,
 		WarningTime:   warningTime,
@@ -837,7 +841,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DiskMetric{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,
-		CreateHandler: handleDiskMetricModify,
+		CreateHandler: handleDiskMetricCreate,
 		ModifyHandler: handleDiskMetricModify,
 		DeleteHandler: handleDiskMetricDelete,
 		WarningTime:   warningTime,
@@ -850,16 +854,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDiskMetric.Activate()
 
 	subAppDiskMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "volumemgr",
-		MyAgentName:   agentName,
-		TopicImpl:     types.AppDiskMetric{},
-		Activate:      false,
-		Ctx:           &zedagentCtx,
-		CreateHandler: handleAppDiskMetricModify,
-		ModifyHandler: handleAppDiskMetricModify,
-		DeleteHandler: handleAppDiskMetricDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
+		AgentName:   "volumemgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppDiskMetric{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -1310,7 +1311,8 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 // and publish to zedCloud
 // Handles both create and modify events
 func handleAppInstanceStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	statusArg interface{}, oldStatusArg interface{}) {
+
 	status := statusArg.(types.AppInstanceStatus)
 	log.Infof("handleAppInstanceStatusModify(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
@@ -1346,22 +1348,33 @@ func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanc
 	return &status
 }
 
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Infof("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Infof("handleDNSImpl for %s", key)
 	// Since we report the TestResults we compare the whole struct
 	if cmp.Equal(*deviceNetworkStatus, status) {
-		log.Infof("handleDNSModify no change")
+		log.Infof("handleDNSImpl no change")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Infof("handleDNSModify: changed %v",
+	log.Infof("handleDNSImpl: changed %v",
 		cmp.Diff(*deviceNetworkStatus, status))
 	*deviceNetworkStatus = status
 	ctx.DNSinitialized = true
@@ -1370,7 +1383,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(zedcloudCtx)
 	}
-	log.Infof("handleDNSModify done for %s", key)
+	log.Infof("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
@@ -1388,21 +1401,32 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
-func handleDPCLModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDPCLCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDPCLImpl(ctxArg, key, statusArg)
+}
+
+func handleDPCLModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDPCLImpl(ctxArg, key, statusArg)
+}
+
+func handleDPCLImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleDPCLModify: ignoring %s", key)
+		log.Infof("handleDPCLImpl: ignoring %s", key)
 		return
 	}
 	if cmp.Equal(ctx.devicePortConfigList, status) {
-		log.Infof("handleDPCLModify no change")
+		log.Infof("handleDPCLImpl no change")
 		return
 	}
 	// Note that lastSucceeded will increment a lot; ignore it but compare
 	// lastFailed/lastError?? XXX how?
-	log.Infof("handleDPCLModify: changed %v",
+	log.Infof("handleDPCLImpl: changed %v",
 		cmp.Diff(ctx.devicePortConfigList, status))
 	ctx.devicePortConfigList = status
 	triggerPublishDevInfo(ctx)
@@ -1422,11 +1446,22 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 // base os status event handlers
 // Report BaseOsStatus to zedcloud
-// Handles both create and modify events
-func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleBaseOsStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleBaseOsStatusModify(%s) done", key)
+	log.Infof("handleBaseOsStatusImpl(%s) done", key)
 }
 
 func handleBaseOsStatusDelete(ctxArg interface{}, key string,
@@ -1440,10 +1475,22 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 
 // vault status event handlers
 // Report VaultStatus to zedcloud
-func handleVaultStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleVaultStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVaultStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVaultStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleVaultStatusModify(%s) done", key)
+	log.Infof("handleVaultStatusImpl(%s) done", key)
 }
 
 func handleVaultStatusDelete(ctxArg interface{}, key string,
@@ -1459,16 +1506,25 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -1476,7 +1532,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1494,20 +1550,29 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
-// Handles both create and modify events
+func handleAACreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAAImpl(ctxArg, key, statusArg)
+}
+
 func handleAAModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAAImpl(ctxArg, key, statusArg)
+}
+
+func handleAAImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
-		log.Infof("handleAAModify: ignoring %s", key)
+		log.Infof("handleAAImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleAAModify() %+v", status)
+	log.Infof("handleAAImpl() %+v", status)
 	*ctx.assignableAdapters = status
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleAAModify() done")
+	log.Infof("handleAAImpl() done")
 }
 
 func handleAADelete(ctxArg interface{}, key string,
@@ -1524,16 +1589,25 @@ func handleAADelete(ctxArg interface{}, key string,
 	log.Infof("handleAADelete() done")
 }
 
-// Handles both create and modify events
+func handleZbootStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleZbootStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleZbootStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleZbootStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZbootStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	if !isZbootValidPartitionLabel(key) {
-		log.Errorf("handleZbootStatusModify: invalid key %s", key)
+		log.Errorf("handleZbootStatusImpl: invalid key %s", key)
 		return
 	}
-	log.Infof("handleZbootStatusModify: for %s", key)
+	log.Infof("handleZbootStatusImpl: for %s", key)
 	// nothing to do
 	triggerPublishDevInfo(ctx)
 }
@@ -1548,12 +1622,22 @@ func handleZbootStatusDelete(ctxArg interface{}, key string,
 	// Nothing to do
 }
 
+func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleNodeAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	getconfigCtx := ctxArg.(*getconfigContext)
 	status := statusArg.(types.NodeAgentStatus)
-	log.Infof("handleNodeAgentStatusModify: updateInProgress %t rebootReason %s bootReason %s",
+	log.Infof("handleNodeAgentStatusImpl: updateInProgress %t rebootReason %s bootReason %s",
 		status.UpdateInprogress, status.RebootReason,
 		status.BootReason.String())
 	updateInprogress := getconfigCtx.updateInprogress
@@ -1579,7 +1663,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 		handleDeviceReboot(ctx)
 	}
 	triggerPublishDevInfo(ctx)
-	log.Infof("handleNodeAgentStatusModify: done.")
+	log.Infof("handleNodeAgentStatusImpl: done.")
 }
 
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,

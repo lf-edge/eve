@@ -114,8 +114,19 @@ func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 	pub.Unpublish(key)
 }
 
-func handleAppNetworkStatusModify(ctxArg interface{}, key string,
+func handleAppNetworkStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	handleAppNetworkStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleAppNetworkStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppNetworkStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleAppNetworkStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.AppNetworkStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Infof("handleAppNetworkStatusModify: key:%s, name:%s",

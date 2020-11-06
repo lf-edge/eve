@@ -94,9 +94,19 @@ func unpublishContentTreeConfig(ctx *getconfigContext, key string) {
 
 // content tree event watch to capture transitions
 // and publish to zedCloud
-// Handles both create and modify events
-func handleContentTreeStatusModify(ctxArg interface{}, key string,
+func handleContentTreeStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()

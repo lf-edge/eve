@@ -522,18 +522,30 @@ func getCurrentDPC(ctx *DeviceNetworkContext) *types.DevicePortConfig {
 	return &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 }
 
-// Handle three different sources in this priority order:
+// HandleDPCCreate handles three different sources in this priority order:
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
 // 3. "lastresort" derived from the set of network interfaces
 // We determine the priority from TimePriority in the config.
-func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
+func HandleDPCCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleDPCImpl(ctxArg, key, configArg)
+}
+
+// HandleDPCModify handles three different sources as above
+func HandleDPCModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleDPCImpl(ctxArg, key, configArg)
+}
+
+func handleDPCImpl(ctxArg interface{}, key string,
+	configArg interface{}) {
 
 	portConfig := configArg.(types.DevicePortConfig)
 	ctx := ctxArg.(*DeviceNetworkContext)
 	log := ctx.Log
 
-	log.Infof("HandleDPCModify: key: %s, Current Config: %+v, portConfig: %+v\n",
+	log.Infof("handleDPCImpl: key: %s, Current Config: %+v, portConfig: %+v\n",
 		key, ctx.DevicePortConfig, portConfig)
 
 	portConfig.DoSanitize(log, true, true, key, true)
@@ -559,12 +571,12 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ipAddrCount := types.CountLocalIPv4AddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
 	numDNSServers := types.CountDNSServers(*ctx.DeviceNetworkStatus, "")
 	if !configChanged && ipAddrCount > 0 && numDNSServers > 0 && ctx.DevicePortConfigList.CurrentIndex != -1 {
-		log.Infof("HandleDPCModify: Config already current. No changes to process\n")
+		log.Infof("handleDPCImpl: Config already current. No changes to process\n")
 		return
 	}
 
-	RestartVerify(ctx, "HandleDPCModify")
-	log.Infof("HandleDPCModify done for %s\n", key)
+	RestartVerify(ctx, "handleDPCImpl")
+	log.Infof("handleDPCImpl done for %s\n", key)
 }
 
 //
@@ -591,19 +603,30 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCDelete done for %s\n", key)
 }
 
+// HandleAssignableAdaptersCreate - Handle Assignable Adapter list creation
+func HandleAssignableAdaptersCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAssignableAdaptersImpl(ctxArg, key, statusArg)
+}
+
 // HandleAssignableAdaptersModify - Handle Assignable Adapter list modifications
 func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAssignableAdaptersImpl(ctxArg, key, statusArg)
+}
+
+func handleAssignableAdaptersImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*DeviceNetworkContext)
 	log := ctx.Log
 
 	if key != "global" {
-		log.Infof("HandleAssignableAdaptersModify: ignoring %s\n", key)
+		log.Infof("handleAssignableAdaptersImpl: ignoring %s\n", key)
 		return
 	}
 	newAssignableAdapters := statusArg.(types.AssignableAdapters)
-	log.Infof("HandleAssignableAdaptersModify() %+v\n", newAssignableAdapters)
+	log.Infof("handleAssignableAdaptersImpl() %+v\n", newAssignableAdapters)
 
 	// ctxArg is DeviceNetworkContext
 	for _, ioBundle := range newAssignableAdapters.IoBundleList {
@@ -615,23 +638,23 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 				ioBundle.Phylabel)
 			if currentIoBundle != nil &&
 				ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
-				log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) "+
+				log.Infof("handleAssignableAdaptersImpl(): ioBundle (%+v) "+
 					"PCIBack status (%+v) unchanged\n",
 					ioBundle.Phylabel, ioBundle.IsPCIBack)
 				continue
 			}
 		} else {
-			log.Infof("HandleAssignableAdaptersModify(): " +
+			log.Infof("handleAssignableAdaptersImpl(): " +
 				"ctx.AssignableAdapters = nil\n")
 		}
 		if ioBundle.IsPCIBack {
-			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
+			log.Infof("handleAssignableAdaptersImpl(): ioBundle (%+v) changed "+
 				"to pciBack", ioBundle.Phylabel)
 			// Interface put back in pciBack list.
 			// Stop dhcp and update DeviceNetworkStatus
 			//doDhcpClientInactivate()  KALYAN- FIXTHIS BEFORE MERGE
 		} else {
-			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
+			log.Infof("handleAssignableAdaptersImpl(): ioBundle (%+v) changed "+
 				"to pciBack=false", ioBundle.Phylabel)
 			// Interface moved out of PciBack mode.
 		}
@@ -644,7 +667,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 	log.Infof("handleAssignableAdaptersModify() done\n")
 }
 
-// HandleAssignableAdaptersModify - Handle Assignable Adapter list deletions
+// HandleAssignableAdaptersDelete - Handle Assignable Adapter list deletions
 func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 

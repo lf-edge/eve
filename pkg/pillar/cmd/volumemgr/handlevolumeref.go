@@ -52,7 +52,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 }
 
 func handleVolumeRefModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
 	log.Infof("handleVolumeRefModify(%s)", key)
 	config := configArg.(types.VolumeRefConfig)

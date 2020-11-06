@@ -83,10 +83,20 @@ func deleteResolveConfig(ctx *volumemgrContext, key string) {
 	log.Infof("deleteResolveConfig for %s Done", key)
 }
 
+func handleResolveStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleResolveStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleResolveStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleResolveStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleResolveStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleResolveStatusModify for %s", key)
+	log.Infof("handleResolveStatusImpl for %s", key)
 	ctx := ctxArg.(*volumemgrContext)
 	rs := statusArg.(types.ResolveStatus)
 	pub := ctx.pubContentTreeStatus
@@ -102,11 +112,11 @@ func handleResolveStatusModify(ctxArg interface{}, key string,
 			status.ContentID)
 		changed, _ := doUpdateContentTree(ctx, &status)
 		if changed {
-			log.Infof("ContentTree(Name:%s, UUID:%s): handleResolveStatusModify status change.",
+			log.Infof("ContentTree(Name:%s, UUID:%s): handleResolveStatusImpl status change.",
 				status.DisplayName, status.ContentID)
 			publishContentTreeStatus(ctx, &status)
 		}
 		updateVolumeStatusFromContentID(ctx, status.ContentID)
 	}
-	log.Infof("handleResolveStatusModify done for %s", key)
+	log.Infof("handleResolveStatusImpl done for %s", key)
 }

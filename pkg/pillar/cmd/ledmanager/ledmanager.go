@@ -239,7 +239,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.LedBlinkCounter{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleLedBlinkModify,
+		CreateHandler: handleLedBlinkCreate,
 		ModifyHandler: handleLedBlinkModify,
 		DeleteHandler: handleLedBlinkDelete,
 		WarningTime:   warningTime,
@@ -257,7 +257,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleDNSModify,
+		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
 		WarningTime:   warningTime,
@@ -277,7 +277,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -326,15 +326,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 }
 
-// Handles both create and modify events
+func handleLedBlinkCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleLedBlinkImpl(ctxArg, key, configArg)
+}
+
 func handleLedBlinkModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleLedBlinkImpl(ctxArg, key, configArg)
+}
+
+func handleLedBlinkImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if key != "ledconfig" {
-		log.Errorf("handleLedBlinkModify: ignoring %s", key)
+		log.Errorf("handleLedBlinkImpl: ignoring %s", key)
 		return
 	}
 	// Supress work and logging if no change
@@ -347,7 +356,7 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 	log.Infof("counter %d usableAddr %d, derived %d",
 		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 	ctx.countChange <- ctx.derivedLedCounter
-	log.Infof("handleLedBlinkModify done for %s", key)
+	log.Infof("handleLedBlinkImpl done for %s", key)
 }
 
 func handleLedBlinkDelete(ctxArg interface{}, key string,
@@ -533,24 +542,34 @@ func ExecuteLedCmd(ledName string) {
 	}
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	ctx := ctxArg.(*ledManagerContext)
 	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Infof("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Infof("handleDNSImpl for %s", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSModify no change")
+		log.Infof("handleDNSImpl no change")
 		return
 	}
 	ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-	log.Infof("handleDNSModify %d usable addresses", newAddrCount)
+	log.Infof("handleDNSImpl %d usable addresses", newAddrCount)
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
 		ctx.usableAddressCount = newAddrCount
@@ -560,7 +579,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 		ctx.countChange <- ctx.derivedLedCounter
 	}
-	log.Infof("handleDNSModify done for %s", key)
+	log.Infof("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -586,23 +605,32 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s", key)
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*ledManagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Infof("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Infof("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,

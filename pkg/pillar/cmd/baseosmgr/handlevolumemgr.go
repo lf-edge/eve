@@ -79,18 +79,29 @@ func unpublishContentTreeConfig(ctx *baseOsMgrContext, key string) {
 	pub.Unpublish(key)
 }
 
-func handleContentTreeStatusModify(ctxArg interface{}, key string,
+func handleContentTreeStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleContentTreeStatusModify: key:%s, name:%s",
+	log.Infof("handleContentTreeStatusImpl: key:%s, name:%s",
 		key, status.DisplayName)
 	if status.ContentSha256 != "" {
 		baseOsHandleStatusUpdateImageSha(ctx, status.ContentSha256)
 	} else {
 		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}
-	log.Infof("handleContentTreeStatusModify done for %s", key)
+	log.Infof("handleContentTreeStatusImpl done for %s", key)
 }
 
 func handleContentTreeStatusDelete(ctxArg interface{}, key string,

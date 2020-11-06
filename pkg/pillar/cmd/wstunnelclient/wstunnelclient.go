@@ -98,7 +98,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &wscCtx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -116,7 +116,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
 		Ctx:           &DNSctx,
-		CreateHandler: handleDNSModify,
+		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
 		WarningTime:   warningTime,
@@ -136,7 +136,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.AppInstanceConfig{},
 		Activate:      false,
 		Ctx:           &wscCtx,
-		CreateHandler: handleAppInstanceConfigModify,
+		CreateHandler: handleAppInstanceConfigCreate,
 		ModifyHandler: handleAppInstanceConfigModify,
 		DeleteHandler: handleAppInstanceConfigDelete,
 		WarningTime:   warningTime,
@@ -211,23 +211,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*wstunnelclientContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigImpl for %s\n", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigImpl done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -244,23 +253,33 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSImpl for %s\n", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSModify no change\n")
+		log.Infof("handleDNSImpl no change\n")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Infof("handleDNSModify: changed %v",
+	log.Infof("handleDNSImpl: changed %v",
 		cmp.Diff(*ctx.deviceNetworkStatus, status))
 	*ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
@@ -271,7 +290,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	ctx.DNSinitialized = true
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSModify done for %s\n", key)
+	log.Infof("handleDNSImpl done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
@@ -290,15 +309,24 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
-// Handles both create and modify events
-func handleAppInstanceConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+func handleAppInstanceConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAppInstanceConfigImpl(ctxArg, key, statusArg)
+}
 
-	log.Infof("handleAppInstanceConfigModify for %s\n", key)
+func handleAppInstanceConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppInstanceConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleAppInstanceConfigImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleAppInstanceConfigImpl for %s\n", key)
 	// XXX config := configArg.(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
-	log.Infof("handleAppInstanceConfigModify done for %s\n", key)
+	log.Infof("handleAppInstanceConfigImpl done for %s\n", key)
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,

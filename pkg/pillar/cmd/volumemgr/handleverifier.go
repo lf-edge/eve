@@ -150,11 +150,22 @@ func deleteVerifyImageConfig(ctx *volumemgrContext, config *types.VerifyImageCon
 	log.Infof("deleteVerifyImageConfig done for %s", config.ImageSha256)
 }
 
-func handleVerifyImageStatusModify(ctxArg interface{}, key string,
+func handleVerifyImageStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	handleVerifyImageStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVerifyImageStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVerifyImageStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVerifyImageStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleVerifyImageStatusModify for ImageSha256: %s, "+
+	log.Infof("handleVerifyImageStatusImpl for ImageSha256: %s, "+
 		" RefCount %d Expired %t", status.ImageSha256, status.RefCount,
 		status.Expired)
 
@@ -168,7 +179,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 
 	config := lookupVerifyImageConfig(ctx, status.ImageSha256)
 	if config == nil && status.RefCount == 0 {
-		log.Infof("handleVerifyImageStatusModify adding RefCount=0 config %s",
+		log.Infof("handleVerifyImageStatusImpl adding RefCount=0 config %s",
 			key)
 
 		// Note: signature-related fields are filled in when
@@ -188,21 +199,21 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	// If config is not Expired it means it was recreated and we
 	// ignore the Expired status
 	if status.Expired && config != nil && config.RefCount == 0 && config.Expired {
-		log.Infof("handleVerifyImageStatusModify delete config for %s",
+		log.Infof("handleVerifyImageStatusImpl delete config for %s",
 			key)
 		unpublishVerifyImageConfig(ctx, config.Key())
 	} else if status.Expired {
-		log.Infof("handleVerifyImageStatusModify ignore expired VerifyImageStatus; config not Expired for %s",
+		log.Infof("handleVerifyImageStatusImpl ignore expired VerifyImageStatus; config not Expired for %s",
 			key)
 	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for"+
+		log.Infof("handleVerifyImageStatusImpl skipped due to Pending* for"+
 			" ImageSha256: %s", status.ImageSha256)
 		return
 	}
 	updateStatusByBlob(ctx, status.ImageSha256)
-	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageSha256)
+	log.Infof("handleVerifyImageStatusImpl done for %s", status.ImageSha256)
 }
 
 // Note that this function returns the entry even if Pending* or Expired is set.

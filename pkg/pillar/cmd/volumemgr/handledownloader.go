@@ -126,11 +126,22 @@ func unpublishDownloaderConfig(ctx *volumemgrContext,
 	log.Debugf("unpublishDownloaderConfig(%s) Done", key)
 }
 
-func handleDownloaderStatusModify(ctxArg interface{}, key string,
+func handleDownloaderStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	handleDownloaderStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleDownloaderStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDownloaderStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleDownloaderStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*volumemgrContext)
-	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d "+
+	log.Infof("handleDownloaderStatusImpl for %s status.RefCount %d "+
 		"status.Expired: %+v ENTIRE: %+v",
 		status.ImageSha256, status.RefCount, status.Expired, status)
 
@@ -145,19 +156,19 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 
 	config := lookupDownloaderConfig(ctx, status.ImageSha256)
 	if config != nil && config.RefCount == 0 && status.Expired {
-		log.Infof("handleDownloaderStatusModify expired - deleting config %s",
+		log.Infof("handleDownloaderStatusImpl expired - deleting config %s",
 			key)
 		unpublishDownloaderConfig(ctx, config)
 
 		return
 	} else if status.Expired {
-		log.Infof("handleDownloaderStatusModify ignore expired DownloaderStatus; "+
+		log.Infof("handleDownloaderStatusImpl ignore expired DownloaderStatus; "+
 			"config still has reference for %s", key)
 	}
 
 	// Normal update case
 	updateStatusByBlob(ctx, status.ImageSha256)
-	log.Infof("handleDownloaderStatusModify done for %s", status.ImageSha256)
+	log.Infof("handleDownloaderStatusImpl done for %s", status.ImageSha256)
 }
 
 func lookupDownloaderConfig(ctx *volumemgrContext,

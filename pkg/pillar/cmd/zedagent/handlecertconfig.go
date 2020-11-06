@@ -139,14 +139,23 @@ func unpublishControllerCert(ctx *getconfigContext, key string) {
 	pub.Unpublish(key)
 }
 
+func handleEdgeNodeCertCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleEdgeNodeCertImpl(ctxArg, key, configArg)
+}
+
 func handleEdgeNodeCertModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleEdgeNodeCertImpl(ctxArg, key, configArg)
+}
+
+func handleEdgeNodeCertImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	status := configArg.(types.EdgeNodeCert)
-	log.Infof("handleEdgeNodeCertModify for %s", status.Key())
+	log.Infof("handleEdgeNodeCertImpl for %s", status.Key())
 	triggerEdgeNodeCertEvent(ctx)
-	return
 }
 
 func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
@@ -156,7 +165,6 @@ func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
 	status := configArg.(types.EdgeNodeCert)
 	log.Infof("handleEdgeNodeCertDelete for %s", status.Key())
 	triggerEdgeNodeCertEvent(ctx)
-	return
 }
 
 // Run a task certificate post task, on change trigger

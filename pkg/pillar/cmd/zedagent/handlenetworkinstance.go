@@ -25,8 +25,20 @@ import (
 
 var flowIteration int
 
-func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Infof("handleNetworkInstanceStatusModify(%s)", key)
+func handleNetworkInstanceCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleNetworkInstanceImpl(ctxArg, key, statusArg)
+}
+
+func handleNetworkInstanceModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleNetworkInstanceImpl(ctxArg, key, statusArg)
+}
+
+func handleNetworkInstanceImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleNetworkInstanceStatusImpl(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := statusArg.(types.NetworkInstanceStatus)
 	if !status.ErrorTime.IsZero() {
@@ -34,7 +46,7 @@ func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg inter
 			status.Error)
 	}
 	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
-	log.Infof("handleNetworkInstanceModify(%s) done", key)
+	log.Infof("handleNetworkInstanceImpl(%s) done", key)
 }
 
 func handleNetworkInstanceDelete(ctxArg interface{}, key string,
@@ -198,18 +210,6 @@ func fillVpnInfo(info *zinfo.ZInfoNetworkInstance, vpnStatus *types.VpnStatus) {
 	if x, ok := info.GetInfoContent().(*zinfo.ZInfoNetworkInstance_Vinfo); ok {
 		x.Vinfo = vpnInfo
 	}
-}
-
-func handleNetworkInstanceMetricsModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Debugf("handleNetworkInstanceMetricsModify(%s)", key)
-}
-
-func handleNetworkInstanceMetricsDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Infof("handleNetworkInstanceMetricsDelete(%s)", key)
 }
 
 func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
@@ -430,10 +430,20 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 	}
 }
 
+func handleAppFlowMonitorCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAppFlowMonitorImpl(ctxArg, key, statusArg)
+}
+
 func handleAppFlowMonitorModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppFlowMonitorImpl(ctxArg, key, statusArg)
+}
+
+func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAppFlowMonitorModify(%s)", key)
+	log.Infof("handleAppFlowMonitorImpl(%s)", key)
 	flows := statusArg.(types.IPFlow)
 
 	// encoding the flows with protobuf format
@@ -449,10 +459,20 @@ func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 	log.Infof("handleAppFlowMonitorDelete(%s)", key)
 }
 
+func handleAppVifIPTrigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAppVifIPTrigImpl(ctxArg, key, statusArg)
+}
+
 func handleAppVifIPTrigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppVifIPTrigImpl(ctxArg, key, statusArg)
+}
+
+func handleAppVifIPTrigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAppVifIPTrigModify(%s)", key)
+	log.Infof("handleAppVifIPTrigImpl(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	trig := statusArg.(types.VifIPTrig)
 	findVifAndTrigAppInfoUpload(ctx, trig.MacAddr, trig.IPAddr)
@@ -594,9 +614,20 @@ func writeSentFlowProtoMessage(contents []byte) {
 	writeProtoMessage("lastflowlog", contents)
 }
 
+func handleAppContainerMetricsCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAppContainerMetricsImpl(ctxArg, key, statusArg)
+}
+
 func handleAppContainerMetricsModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppContainerMetricsImpl(ctxArg, key, statusArg)
+}
+
+func handleAppContainerMetricsImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	acMetrics := statusArg.(types.AppContainerMetrics)
-	log.Debugf("handleAppContainerMetricsModify(%s), num containers %d", key, len(acMetrics.StatsList))
+	log.Debugf("handleAppContainerMetricsImpl(%s), num containers %d",
+		key, len(acMetrics.StatsList))
 }

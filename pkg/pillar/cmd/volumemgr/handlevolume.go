@@ -100,7 +100,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 }
 
 func handleVolumeModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
 	log.Infof("handleVolumeModify(%s)", key)
 	config := configArg.(types.VolumeConfig)
