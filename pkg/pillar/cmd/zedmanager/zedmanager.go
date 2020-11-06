@@ -309,13 +309,7 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishAppInstanceStatus(%s)", key)
 	pub := ctx.pubAppInstanceStatus
-	// zedmanager AppInstanceStatus include UnderlayNetworkConfig twice, remove one
-	// in the UnderlayNetworks from []UnderlayNetworkStatus for publication
-	aiStatus := *status
-	for idx := range aiStatus.UnderlayNetworks {
-		aiStatus.UnderlayNetworks[idx].ACLs = []types.ACE{}
-	}
-	pub.Publish(key, aiStatus)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppInstanceStatus(ctx *zedmanagerContext,
