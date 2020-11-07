@@ -7,17 +7,30 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ARM64, ubuntu-20.04]
     steps:
       - uses: actions/checkout@v2
 
+      - name: Login to DockerHUB
+        run: |
+          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
+             docker login -u evebuild --password-stdin
       - name: Build packages
         run: |
-          make pkgs
+          # GH Actions convert our annotated tags into plain ones
+          git tag -a -m"Release $(git tag)" -f $(git tag) $(git tag)
+          # sadly, our build sometimes times out on network access
+          # re-trying for 3 times if needed
+          for i in 1 2 3; do
+             make LINUXKIT_PKG_TARGET=push pkgs && break
+          done
       - name: Build EVE
         run: |
-          make eve
+          make LINUXKIT_PKG_TARGET=push eve
       - name: Build EVE for KVM
         run: |
           rm -rf dist
-          make HV=kvm eve
+          make LINUXKIT_PKG_TARGET=push HV=kvm eve
