@@ -1,7 +1,9 @@
 ---
-name: Release
+name: Publish
 on:
   push:
+    branches:
+      - "master"
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
 
@@ -18,13 +20,16 @@ jobs:
       - name: Login to DockerHUB
         run: |
           echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
-             docker login -u evebuild --password-stdin
+             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
       - name: Build packages
         run: |
-          # GH Actions convert our annotated tags into plain ones
-          git config --global user.name "Edge Virtualization Engine"
-          git config --global user.email "eve@lfedge.org"
-          git tag -a -m"Release $(git tag)" -f $(git tag) $(git tag)
+          # GH Actions convert our annotated tags into plain ones,
+          # so we need to convert it back (but only if it exists).
+          if [ -n "$(git tag)" ]; then
+             git config --global user.name "Edge Virtualization Engine"
+             git config --global user.email "eve@lfedge.org"
+             git tag -a -m"Release $(git tag)" -f $(git tag) $(git tag)
+          fi
           # sadly, our build sometimes times out on network access
           # re-trying for 3 times if needed
           for i in 1 2 3; do
