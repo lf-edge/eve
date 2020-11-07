@@ -1,6 +1,8 @@
 ---
 name: Eden
 on:
+  push:
+    branches: [master]
   pull_request_review:
     branches: [master]
     types: [submitted]

@@ -21,11 +21,15 @@ jobs:
       - name: Build packages
         run: |
           # GH Actions convert our annotated tags into plain ones
+          git config --global user.name "Edge Virtualization Engine"
+          git config --global user.email "eve@lfedge.org"
           git tag -a -m"Release $(git tag)" -f $(git tag) $(git tag)
           # sadly, our build sometimes times out on network access
           # re-trying for 3 times if needed
           for i in 1 2 3; do
-             make LINUXKIT_PKG_TARGET=push pkgs && break
+             if make LINUXKIT_PKG_TARGET=push pkgs; then
+                break
+             fi
           done
       - name: Build EVE
         run: |
