@@ -10,7 +10,7 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-20.04
-    if: ${{ github.event.review.state == 'approved' }}
+    if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' }}
     steps:
       - name: setup
         run: |
