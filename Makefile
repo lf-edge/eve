@@ -180,7 +180,11 @@ FORCE_BUILD=--force
 
 ifeq ($(LINUXKIT_PKG_TARGET),push)
   EVE_REL:=$(REPO_TAG)
-  ifneq ($(EVE_REL),snapshot)
+  ifeq ($(EVE_REL),snapshot)
+    ifneq ($(REPO_BRANCH),master)
+      EVE_REL=$(REPO_BRANCH)
+    endif
+  else
     EVE_HASH:=$(EVE_REL)
     EVE_REL:=$(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(EVE_HASH) ] && echo latest)
   endif
