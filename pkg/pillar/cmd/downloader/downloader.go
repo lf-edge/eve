@@ -36,14 +36,15 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	debug         = false
-	debugOverride bool                               // From command line arg
-	retryTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
-	Version       = "No version specified"           // Set from Makefile
-	dHandler      = makeDownloadHandler()
-	resHandler    = makeResolveHandler()
-	logger        *logrus.Logger
-	log           *base.LogObject
+	debug          = false
+	debugOverride  bool                               // From command line arg
+	retryTime      = time.Duration(600) * time.Second // Unless from GlobalConfig
+	maxStalledTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+	Version        = "No version specified"           // Set from Makefile
+	dHandler       = makeDownloadHandler()
+	resHandler     = makeResolveHandler()
+	logger         *logrus.Logger
+	log            *base.LogObject
 )
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {

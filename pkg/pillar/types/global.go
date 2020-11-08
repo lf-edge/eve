@@ -129,6 +129,8 @@ const (
 	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
 	// DownloadRetryTime global setting key
 	DownloadRetryTime GlobalSettingKey = "timer.download.retry"
+	// DownloadStalledTime global setting key
+	DownloadStalledTime GlobalSettingKey = "timer.download.stalled"
 	// DomainBootRetryTime global setting key
 	DomainBootRetryTime GlobalSettingKey = "timer.boot.retry"
 	// NetworkGeoRedoTime global setting key
@@ -700,6 +702,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(StaleConfigTime, 7*24*3600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DownloadStalledTime, 600, 20, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, 0xFFFFFFFF)
