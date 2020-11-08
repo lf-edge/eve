@@ -154,7 +154,7 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 		}()
 	}
 
-	result, err := s.up.Upload(&s3manager.UploadInput{
+	result, err := s.up.UploadWithContext(s.ctx, &s3manager.UploadInput{
 		Body: reader, Bucket: aws.String(bname),
 		Key: aws.String(bkey)})
 	if err != nil {
@@ -183,7 +183,7 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 	}
 
 	defer fd.Close()
-	_, err = s.dn.Download(cWriter, &s3.GetObjectInput{Bucket: aws.String(bname),
+	_, err = s.dn.DownloadWithContext(s.ctx, cWriter, &s3.GetObjectInput{Bucket: aws.String(bname),
 		Key: aws.String(bkey)})
 	if err != nil {
 		return err
@@ -198,7 +198,7 @@ func (s *S3ctx) DownloadFileByChunks(fname, bname, bkey string) (io.ReadCloser, 
 		return nil, 0, err
 	}
 	fmt.Println("size,", bsize)
-	req, err := s.ss3.GetObject(&s3.GetObjectInput{Bucket: aws.String(bname),
+	req, err := s.ss3.GetObjectWithContext(s.ctx, &s3.GetObjectInput{Bucket: aws.String(bname),
 		Key: aws.String(bkey)})
 	if err != nil {
 		return nil, 0, err
@@ -212,7 +212,7 @@ func (s *S3ctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) 
 		Bucket: aws.String(bname),
 	}
 
-	result, err := s.ss3.ListObjects(input)
+	result, err := s.ss3.ListObjectsWithContext(s.ctx, input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {

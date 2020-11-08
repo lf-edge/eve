@@ -4,6 +4,7 @@
 package zedUpload
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,10 @@ type DronaRequest struct {
 	// Optional, you can direct request for perticular server
 	syncEp    DronaEndPoint
 	operation SyncOpType
+
+	// If cancelContext is set it can be used to cancel some operations
+	cancelContext context.Context
+	cancelFunc    context.CancelFunc
 
 	// Object that needs to be downloaded
 	name      string
@@ -339,6 +344,20 @@ func (req *DronaRequest) post() {
 	req.postOnChannel()
 }
 
+// Cancel checks if WithCancel was used.
 func (req *DronaRequest) Cancel() error {
+	if req.cancelFunc != nil {
+		req.cancelFunc()
+	}
 	return nil
+}
+
+// WithCancel can be used to setup cancellation
+// Caller should call req.Cancel when done even on success
+func (req *DronaRequest) WithCancel(ctx context.Context) *DronaRequest {
+
+	cancelContext, cancel := context.WithCancel(ctx)
+	req.cancelContext = cancelContext
+	req.cancelFunc = cancel
+	return req
 }
