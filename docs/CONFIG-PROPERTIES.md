@@ -13,6 +13,7 @@
 | timer.use.config.checkpoint | integer in seconds | 600 | use checkpointed config if no cloud connectivity |
 | timer.gc.vdisk | integer in seconds | 1 hour | garbage collect unused instance virtual disk |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
+| timer.download.stalled | integer in seconds | 600 | cancel a stalled download |
 | timer.boot.retry | integer in seconds | 600 | retry a failed domain boot |
 | timer.port.georedo | integer in seconds | 1 hour | redo IP geolocation |
 | timer.port.georetry | integer in seconds | 600 | retry geolocation after failure |

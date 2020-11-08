@@ -9,7 +9,8 @@ import (
 
 // Status provides a struct that can be called to update download progress
 type Status interface {
-	Progress(uint, int64, int64)
+	// Progress report progress; returns false if no change
+	Progress(uint, int64, int64) bool
 }
 
 // PublishStatus practical implementation of Status
@@ -21,9 +22,15 @@ type PublishStatus struct {
 }
 
 // Progress report progress as a percentage of completeness
-func (d *PublishStatus) Progress(p uint, currentSize, totalSize int64) {
+// Returns true if there was a change to the recorded values
+func (d *PublishStatus) Progress(p uint, currentSize, totalSize int64) bool {
+	if d.status.Progress == p && d.status.CurrentSize == currentSize &&
+		d.status.TotalSize == totalSize {
+		return false
+	}
 	d.status.Progress = p
 	d.status.CurrentSize = currentSize
 	d.status.TotalSize = totalSize
 	publishDownloaderStatus(d.ctx, d.status)
+	return true
 }

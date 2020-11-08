@@ -4,9 +4,11 @@
 package downloader
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -63,7 +65,12 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return "", errors.New("NewRequest failed")
 	}
 
+	req = req.WithCancel(context.Background())
+	defer req.Cancel()
+
 	req.Post()
+
+	lastProgress := time.Now()
 	for resp := range respChan {
 		if resp.IsDnUpdate() {
 			currentSize, totalSize, progress := resp.Progress()
@@ -78,7 +85,21 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				log.Errorln(errStr)
 				return "", errors.New(errStr)
 			}
-			status.Progress(progress, currentSize, totalSize)
+			// Did anything change since last update?
+			change := status.Progress(progress, currentSize,
+				totalSize)
+			if !change {
+				if time.Since(lastProgress) > maxStalledTime {
+					err := fmt.Errorf("Cancelling due to no progress for %s in %v; size %d/%d",
+						resp.GetLocalName(),
+						time.Since(lastProgress),
+						currentSize, totalSize)
+					log.Error(err)
+					return "", err
+				}
+			} else {
+				lastProgress = time.Now()
+			}
 			continue
 		}
 		if syncOp == zedUpload.SyncOpDownload {
@@ -147,9 +168,21 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return sha256, errors.New("NewRequest failed")
 	}
 
+	req = req.WithCancel(context.Background())
+	defer req.Cancel()
+
 	req.Post()
+
+	lastProgress := time.Now()
 	for resp := range respChan {
 		if resp.IsDnUpdate() {
+			if time.Since(lastProgress) > maxStalledTime {
+				err := fmt.Errorf("Cancelling due to no progress for %s in %v",
+					resp.GetLocalName(),
+					time.Since(lastProgress))
+				log.Error(err)
+				return "", err
+			}
 			continue
 		}
 		if syncOp == zedUpload.SyncOpGetObjectMetaData {

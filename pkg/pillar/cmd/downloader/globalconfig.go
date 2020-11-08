@@ -36,6 +36,9 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		if gcp.GlobalValueInt(types.DownloadRetryTime) != 0 {
 			retryTime = time.Duration(gcp.GlobalValueInt(types.DownloadRetryTime)) * time.Second
 		}
+		if gcp.GlobalValueInt(types.DownloadStalledTime) != 0 {
+			maxStalledTime = time.Duration(gcp.GlobalValueInt(types.DownloadStalledTime)) * time.Second
+		}
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigImpl done for %s", key)
