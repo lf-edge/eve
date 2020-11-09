@@ -73,7 +73,7 @@ var (
 	entrypoints = map[string]entrypoint{
 		"client":           {f: client.Run, inline: inlineAlways},
 		"command":          {f: command.Run},
-		"diag":             {f: diag.Run},
+		"diag":             {f: diag.Run, inline: inlineUnlessService},
 		"domainmgr":        {f: domainmgr.Run},
 		"downloader":       {f: downloader.Run},
 		"executor":         {f: executor.Run},

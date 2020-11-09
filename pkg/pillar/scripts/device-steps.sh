@@ -302,7 +302,7 @@ wait_for_touch nim
 touch "$WATCHDOG_FILE/nim.touch"
 
 # Print diag output forever on changes
-$BINDIR/diag -f -o /dev/console &
+$BINDIR/diag -f -o /dev/console runAsService &
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
