@@ -18,7 +18,7 @@ import (
 	"github.com/containerd/containerd/cio"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 
-	log "github.com/sirupsen/logrus" // XXX add log argument
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -97,19 +97,19 @@ func (r *remoteLog) Path(n string) string {
 	if err := syscall.Mkfifo(path, 0600); err != nil {
 		return "/dev/null"
 	}
-	log.Infof("Creating %s at %s", "func", logutils.GetMyStack())
+	logrus.Infof("Creating %s at %s", "func", logutils.GetMyStack())
 	go func() {
 		// In a goroutine because Open of the FIFO will block until
 		// containerd opens it when the task is started.
 		fd, err := syscall.Open(path, syscall.O_RDONLY, 0)
 		if err != nil {
 			// Should never happen: we just created the fifo
-			log.Printf("failed to open fifo %s: %s", path, err)
+			logrus.Printf("failed to open fifo %s: %s", path, err)
 		}
 		defer syscall.Close(fd)
 		if err := sendToLogger(n, fd); err != nil {
 			// Should never happen: logging is enabled
-			log.Printf("failed to send fifo %s to logger: %s", path, err)
+			logrus.Printf("failed to send fifo %s to logger: %s", path, err)
 		}
 	}()
 	return path
@@ -119,7 +119,7 @@ func (r *remoteLog) Path(n string) string {
 func (r *remoteLog) Open(n string) (io.WriteCloser, error) {
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
-		log.Fatal("Unable to create socketpair: ", err)
+		logrus.Fatal("Unable to create socketpair: ", err)
 	}
 	logFile := os.NewFile(uintptr(fds[0]), "")
 
@@ -137,13 +137,13 @@ func (r *remoteLog) Dump(n string) {
 	}
 	conn, err := net.DialUnix("unix", nil, &addr)
 	if err != nil {
-		log.Printf("Failed to connect to logger: %s", err)
+		logrus.Printf("Failed to connect to logger: %s", err)
 		return
 	}
 	defer conn.Close()
 	nWritten, err := conn.Write([]byte{logDumpCommand})
 	if err != nil || nWritten < 1 {
-		log.Printf("Failed to request logs from logger: %s", err)
+		logrus.Printf("Failed to request logs from logger: %s", err)
 		return
 	}
 	reader := bufio.NewReader(conn)
@@ -153,7 +153,7 @@ func (r *remoteLog) Dump(n string) {
 			return
 		}
 		if err != nil {
-			log.Printf("Failed to read log message: %s", err)
+			logrus.Printf("Failed to read log message: %s", err)
 			return
 		}
 		// a line is of the form
@@ -161,7 +161,7 @@ func (r *remoteLog) Dump(n string) {
 		prefixBody := strings.SplitN(line, ";", 2)
 		csv := strings.Split(prefixBody[0], ",")
 		if len(csv) < 2 {
-			log.Printf("Failed to parse log message: %s", line)
+			logrus.Printf("Failed to parse log message: %s", line)
 			continue
 		}
 		if csv[1] == n {
@@ -186,7 +186,7 @@ func sendToLogger(name string, fd int) error {
 	ctlUnixConn, ok := ctlConn.(*net.UnixConn)
 	if !ok {
 		// should never happen
-		log.Fatal("Internal error, invalid cast.")
+		logrus.Fatal("Internal error, invalid cast.")
 	}
 
 	raddr := net.UnixAddr{Name: logWriteSocket, Net: "unixgram"}

@@ -38,7 +38,7 @@ import (
 	v1stat "github.com/containerd/cgroups/stats/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
-	log "github.com/sirupsen/logrus" // XXX add log argument
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -79,7 +79,7 @@ type Client struct {
 }
 
 func init() {
-	log.Info("Containerd Init")
+	logrus.Info("Containerd Init")
 	// see if we need to fine-tune default snapshotter based on what flavor of storage persist partition is
 	persistType, err := ioutil.ReadFile(eveStorageTypeFile)
 	if err == nil && strings.TrimSpace(string(persistType)) == "zfs" {
@@ -90,7 +90,7 @@ func init() {
 // NewContainerdClient returns a *Client
 // Callable from multiple go-routines.
 func NewContainerdClient() (*Client, error) {
-	log.Infof("NewContainerdClient")
+	logrus.Infof("NewContainerdClient")
 	var (
 		err          error
 		ctrdClient   *containerd.Client
@@ -99,7 +99,7 @@ func NewContainerdClient() (*Client, error) {
 
 	ctrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
 	if err != nil {
-		log.Errorf("NewContainerdClient: could not create containerd client. %v", err.Error())
+		logrus.Errorf("NewContainerdClient: could not create containerd client. %v", err.Error())
 		return nil, fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
 	}
 
@@ -122,7 +122,7 @@ func (client *Client) CloseClient() error {
 	}
 	if err := client.ctrdClient.Close(); err != nil {
 		err = fmt.Errorf("CloseClient: exception while closing containerd client. %v", err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 	client.ctrdClient = nil
@@ -230,7 +230,7 @@ func (client *Client) CtrLoadImage(ctx context.Context, reader *os.File) ([]imag
 	}
 	imgs, err := client.ctrdClient.Import(ctx, reader)
 	if err != nil {
-		log.Errorf("CtrLoadImage: could not load image %s into containerd: %+s", reader.Name(), err.Error())
+		logrus.Errorf("CtrLoadImage: could not load image %s into containerd: %+s", reader.Name(), err.Error())
 		return nil, err
 	}
 	return imgs, nil
@@ -243,7 +243,7 @@ func (client *Client) CtrGetImage(ctx context.Context, reference string) (contai
 	}
 	image, err := client.ctrdClient.GetImage(ctx, reference)
 	if err != nil {
-		log.Errorf("CtrGetImage: could not get image %s from containerd: %+s", reference, err.Error())
+		logrus.Errorf("CtrGetImage: could not get image %s from containerd: %+s", reference, err.Error())
 		return nil, err
 	}
 	return image, nil
@@ -330,7 +330,7 @@ func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) 
 	}
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
 	if err := snapshotter.Remove(ctx, snapshotID); err != nil {
-		log.Errorf("CtrRemoveSnapshot: unable to remove snapshot: %v. %v", snapshotID, err)
+		logrus.Errorf("CtrRemoveSnapshot: unable to remove snapshot: %v. %v", snapshotID, err)
 		return err
 	}
 	return nil
@@ -594,7 +594,7 @@ func (client *Client) LKTaskPrepare(name, linuxkit string, domSettings *types.Do
 	config := "/containers/services/" + linuxkit + "/config.json"
 	rootfs := "/containers/services/" + linuxkit + "/rootfs"
 
-	log.Infof("Starting LKTaskLaunch for %s", linuxkit)
+	logrus.Infof("Starting LKTaskLaunch for %s", linuxkit)
 	f, err := os.Open("/hostfs" + config)
 	if err != nil {
 		return fmt.Errorf("LKTaskLaunch: can't open spec file %s %v", config, err)
@@ -718,7 +718,7 @@ func (client *Client) ctrExec(ctx context.Context, domainName string, args []str
 	}
 
 	st, ee := process.Status(ctx)
-	log.Debugf("ctrExec process exited with: %v %v %d %d %d %d", st, ee, stdOut.Cap(), stdOut.Len(), stdErr.Cap(), stdErr.Len())
+	logrus.Debugf("ctrExec process exited with: %v %v %d %d %d %d", st, ee, stdOut.Cap(), stdOut.Len(), stdErr.Cap(), stdErr.Len())
 	return stdOut.String(), stdErr.String(), err
 }
 
@@ -730,19 +730,19 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 
 	mpFile, err := os.Create(mpFileName)
 	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
+		logrus.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
 	}
 	defer mpFile.Close()
 
 	cmdFile, err := os.Create(cmdFileName)
 	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
+		logrus.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
 	}
 	defer cmdFile.Close()
 
 	envFile, err := os.Create(envFileName)
 	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
+		logrus.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
 	}
 	defer envFile.Close()
 
@@ -753,7 +753,7 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 	switch {
 	case noOfDisks > len(mountpoints):
 		//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
-		log.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
+		logrus.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
 			"Excessive volumes will be ignored", noOfDisks, len(mountpoints))
 	case noOfDisks < len(mountpoints):
 		//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
@@ -766,13 +766,13 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 		if !strings.HasPrefix(path, "/") {
 			//Target path is expected to be absolute.
 			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return err
 		}
-		log.Infof("createMountPointExecEnvFiles: Processing mount point %s\n", path)
+		logrus.Infof("createMountPointExecEnvFiles: Processing mount point %s\n", path)
 		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", path)); err != nil {
 			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return err
 		}
 	}
@@ -784,7 +784,7 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 	}
 	if _, err := cmdFile.WriteString(strings.Join(execpathQuoted, " ")); err != nil {
 		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 
@@ -797,7 +797,7 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 	}
 	if _, err := envFile.WriteString(envContent); err != nil {
 		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 
@@ -838,7 +838,7 @@ func getContainerConfigs(imageInfo ocispec.Image, userEnvVars map[string]string)
 // prepareProcess sets up anything that needs to be done after the container process is created,
 // but before it runs (for example networking)
 func prepareProcess(pid int, VifList []types.VifInfo) error {
-	log.Infof("prepareProcess(%d, %v)", pid, VifList)
+	logrus.Infof("prepareProcess(%d, %v)", pid, VifList)
 	for _, iface := range VifList {
 		if iface.Vif == "" {
 			return fmt.Errorf("Interface requires a name")
@@ -959,7 +959,7 @@ func newServiceCtxWithLease(ctrdClient *containerd.Client, namespace string) (co
 	//Returning a single method which calls both done() (to delete the lease) and cancel() (to cancel the context).
 	return ctx, func() {
 		if err := done(ctx); err != nil {
-			log.Errorf("newServiceCtxWithLease(%s): exception while deleting newCtrdCtx: %s",
+			logrus.Errorf("newServiceCtxWithLease(%s): exception while deleting newCtrdCtx: %s",
 				namespace, err.Error())
 		}
 		cancel()

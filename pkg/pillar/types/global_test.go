@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -130,7 +130,7 @@ func TestAddStringItem(t *testing.T) {
 }
 
 func TestNewConfigItemSpecMap(t *testing.T) {
-	// log.SetLevel(log.TraceLevel)
+	// logrus.SetLevel(logrus.TraceLevel)
 	specMap := NewConfigItemSpecMap()
 
 	// Verify none of the Global key have agent as prefix
@@ -256,7 +256,7 @@ func (testPtr *parseItemTestEntry) configItemValue(
 	case ConfigItemTypeTriState:
 		val.TriStateValue, _ = ParseTriState(valueStr)
 	default:
-		log.Fatalf("Invalid inteType %d in testPtr %+v",
+		logrus.Fatalf("Invalid inteType %d in testPtr %+v",
 			testPtr.itemType, *testPtr)
 	}
 	return val
@@ -282,7 +282,7 @@ func (testPtr *parseItemTestEntry) verifyEntry(t *testing.T, testname string,
 }
 
 func TestParseGlobalItem(t *testing.T) {
-	// log.SetLevel(log.TraceLevel)
+	// logrus.SetLevel(logrus.TraceLevel)
 	specMap := NewConfigItemSpecMap()
 	testMatrix := map[string]parseItemTestEntry{
 		"Global String Setting": {
@@ -372,7 +372,7 @@ func TestParseGlobalItem(t *testing.T) {
 //  Verify Unknown settings ( New and Legacy ) are rejected
 //  Verify Invalid Values for known settings are rejected and old value retained
 func TestParseAgentItem(t *testing.T) {
-	// log.SetLevel(log.TraceLevel)
+	// logrus.SetLevel(logrus.TraceLevel)
 	specMap := NewConfigItemSpecMap()
 
 	testMatrix := map[string]parseItemTestEntry{
@@ -434,7 +434,7 @@ func TestParseAgentItem(t *testing.T) {
 		if test.oldValue != "" {
 			agentName, asKey, err := parseAgentSettingKey(test.item.key)
 			if err != nil {
-				log.Fatalf("Invalid Agent Key. Key: %s, err: %s",
+				logrus.Fatalf("Invalid Agent Key. Key: %s, err: %s",
 					test.item.key, err)
 			}
 			// Set old value in globalConfig
@@ -447,7 +447,7 @@ func TestParseAgentItem(t *testing.T) {
 		}
 		agentName, asKey, err := parseAgentSettingKey(test.item.key)
 		if err != nil {
-			log.Fatalf("Unexpected Error in parsing key(%s). err: %s",
+			logrus.Fatalf("Unexpected Error in parsing key(%s). err: %s",
 				test.item.key, err)
 		}
 		newGlobalConfig := DefaultConfigItemValueMap()
@@ -459,7 +459,7 @@ func TestParseAgentItem(t *testing.T) {
 				t.Fatalf("TEST FAILED: %s - Expected Error. But did not get one",
 					testname)
 			} else {
-				log.Debugf("Test %s - received Error as expected: %s",
+				logrus.Debugf("Test %s - received Error as expected: %s",
 					testname, err)
 				if test.oldValue != "" {
 					// Value Error. Verify the Old value has been retained

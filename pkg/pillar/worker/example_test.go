@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/worker"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 func Example_workerprocess() {
@@ -35,7 +35,7 @@ func Example_workerprocess() {
 	}
 
 	// create a new worker that can handle jobs of Kind "install"
-	work := worker.NewWorker(log.New(), ctx, 5, map[string]worker.Handler{
+	work := worker.NewWorker(logrus.New(), ctx, 5, map[string]worker.Handler{
 		kind: {Request: installWorker, Response: processInstallWorkResult},
 	})
 
@@ -43,11 +43,11 @@ func Example_workerprocess() {
 	// what happened when we submitted?
 	if err != nil {
 		if _, ok := err.(*worker.JobInProgressError); ok {
-			log.Fatal("job already in progress")
+			logrus.Fatal("job already in progress")
 		}
-		log.Fatalf("unknown error: %v\n", err)
+		logrus.Fatalf("unknown error: %v\n", err)
 	}
-	log.Info("job submitted")
+	logrus.Info("job submitted")
 	// nothing to do now, wait for the result
 forloop:
 	for {

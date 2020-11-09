@@ -8,7 +8,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -331,7 +331,7 @@ type kvmContext struct {
 func newKvm() Hypervisor {
 	ctrdCtx, err := initContainerd()
 	if err != nil {
-		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
+		logrus.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above
 	}
 	// later on we may want to pass device model machine type in DomainConfig directly;
@@ -487,11 +487,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	var serialAssignments []string
 
 	for _, adapter := range config.IoAdapterList {
-		log.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
+		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
 		list := aa.LookupIoBundleAny(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
-			log.Fatalf("IoBundle disappeared %d %s for %s\n",
+			logrus.Fatalf("IoBundle disappeared %d %s for %s\n",
 				adapter.Type, adapter.Name, domainName)
 		}
 		for _, ib := range list {
@@ -499,21 +499,21 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 				continue
 			}
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				log.Fatalf("IoBundle not ours %s: %d %s for %s\n",
+				logrus.Fatalf("IoBundle not ours %s: %d %s for %s\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainName)
 			}
 			if ib.PciLong != "" {
-				log.Infof("Adding PCI device <%v>\n", ib.PciLong)
+				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
 				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Serial != "" {
-				log.Infof("Adding serial <%s>\n", ib.Serial)
+				logrus.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
 			}
 			if ib.UsbAddr != "" {
-				log.Infof("Adding USB host device <%s>\n", ib.UsbAddr)
+				logrus.Infof("Adding USB host device <%s>\n", ib.UsbAddr)
 				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
 			}
 		}
@@ -581,18 +581,18 @@ func waitForQmp(domainName string) error {
 	delay := time.Second
 	var waited time.Duration
 	for {
-		log.Infof("waitForQmp for %s: waiting for %v", domainName, delay)
+		logrus.Infof("waitForQmp for %s: waiting for %v", domainName, delay)
 		if delay != 0 {
 			time.Sleep(delay)
 			waited += delay
 		}
 		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); err == nil {
-			log.Infof("waitForQmp for %s, found file", domainName)
+			logrus.Infof("waitForQmp for %s, found file", domainName)
 			return nil
 		} else {
 			if waited > maxDelay {
 				// Give up
-				log.Warnf("waitForQmp for %s: giving up", domainName)
+				logrus.Warnf("waitForQmp for %s: giving up", domainName)
 				return logError("Qmp not found")
 			}
 			delay = 2 * delay
@@ -604,22 +604,22 @@ func waitForQmp(domainName string) error {
 }
 
 func (ctx kvmContext) Start(domainName string, domainID int) error {
-	log.Infof("starting KVM domain %s", domainName)
+	logrus.Infof("starting KVM domain %s", domainName)
 	if err := ctx.ctrdContext.Start(domainName, domainID); err != nil {
-		log.Errorf("couldn't start task for domain %s: %v", domainName, err)
+		logrus.Errorf("couldn't start task for domain %s: %v", domainName, err)
 		return err
 	}
-	log.Infof("done launching qemu device model")
+	logrus.Infof("done launching qemu device model")
 	if err := waitForQmp(domainName); err != nil {
-		log.Errorf("Error waiting for Qmp for domain %s: %v", domainName, err)
+		logrus.Errorf("Error waiting for Qmp for domain %s: %v", domainName, err)
 		return err
 	}
-	log.Infof("done launching qemu device model")
+	logrus.Infof("done launching qemu device model")
 
 	qmpFile := getQmpExecutorSocket(domainName)
 
-	log.Debugf("starting qmpEventHandler")
-	log.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
+	logrus.Debugf("starting qmpEventHandler")
+	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
 	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
 
 	if err := execContinue(qmpFile); err != nil {
@@ -697,7 +697,7 @@ func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState,
 }
 
 func (ctx kvmContext) PCIReserve(long string) error {
-	log.Infof("PCIReserve long addr is %s", long)
+	logrus.Infof("PCIReserve long addr is %s", long)
 
 	overrideFile := sysfsPciDevices + long + "/driver_override"
 	driverPath := sysfsPciDevices + long + "/driver"
@@ -708,7 +708,7 @@ func (ctx kvmContext) PCIReserve(long string) error {
 	vfioDriverPathInfo, vfioDriverPathErr := os.Stat(vfioDriverPath)
 	if driverPathErr == nil && vfioDriverPathErr == nil &&
 		os.SameFile(driverPathInfo, vfioDriverPathInfo) {
-		log.Infof("Driver for %s is already bound to vfio-pci, skipping unbind", long)
+		logrus.Infof("Driver for %s is already bound to vfio-pci, skipping unbind", long)
 		return nil
 	}
 
@@ -735,21 +735,21 @@ func (ctx kvmContext) PCIReserve(long string) error {
 }
 
 func (ctx kvmContext) PCIRelease(long string) error {
-	log.Infof("PCIRelease long addr is %s", long)
+	logrus.Infof("PCIRelease long addr is %s", long)
 
 	overrideFile := sysfsPciDevices + long + "/driver_override"
 	unbindFile := sysfsPciDevices + long + "/driver/unbind"
 
 	//Write Empty string, to clear driver_override for the device
 	if err := ioutil.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
-		log.Fatalf("driver_override failure for PCI device %s: %v",
+		logrus.Fatalf("driver_override failure for PCI device %s: %v",
 			long, err)
 	}
 
 	//Unbind vfio-pci, if unbind file is present
 	if _, err := os.Stat(unbindFile); err == nil {
 		if err := ioutil.WriteFile(unbindFile, []byte(long), 0644); err != nil {
-			log.Fatalf("unbind failure for PCI device %s: %v",
+			logrus.Fatalf("unbind failure for PCI device %s: %v",
 				long, err)
 		}
 	}
@@ -757,7 +757,7 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers_probe,
 	//as a best-effort to bring back original driver
 	if err := ioutil.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
-		log.Fatalf("drivers_probe failure for PCI device %s: %v",
+		logrus.Fatalf("drivers_probe failure for PCI device %s: %v",
 			long, err)
 	}
 
