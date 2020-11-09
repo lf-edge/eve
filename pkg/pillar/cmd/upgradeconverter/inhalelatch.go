@@ -20,7 +20,7 @@ type latch struct {
 }
 
 func inhaleLatch(ps *pubsub.PubSub) (latch, error) {
-	log.Debugf("inhaleLatch()")
+	log.Tracef("inhaleLatch()")
 	var l latch
 
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -34,7 +34,7 @@ func inhaleLatch(ps *pubsub.PubSub) (latch, error) {
 	}
 	// The persistent publication has pulled in what is already published
 	items := pub.GetAll()
-	log.Debugf("inhaleLatch found %d", len(items))
+	log.Tracef("inhaleLatch found %d", len(items))
 	for _, item := range items {
 		aih := item.(types.AppAndImageToHash)
 		l.latches = append(l.latches, aih)
@@ -48,12 +48,12 @@ func (l *latch) lookup(appInstID uuid.UUID, imageID uuid.UUID, purgeCounter uint
 		aih := &l.latches[i]
 		if aih.AppUUID == appInstID && aih.ImageID == imageID &&
 			aih.PurgeCounter == purgeCounter {
-			log.Debugf("latch.lookup found appInstID %s imageID %s purgeCounter %d",
+			log.Tracef("latch.lookup found appInstID %s imageID %s purgeCounter %d",
 				appInstID, imageID, purgeCounter)
 			return aih
 		}
 	}
-	log.Debugf("latch.lookup NOT found appInstID %s imageID %s purgeCounter %d",
+	log.Tracef("latch.lookup NOT found appInstID %s imageID %s purgeCounter %d",
 		appInstID, imageID, purgeCounter)
 	return nil
 }

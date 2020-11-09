@@ -46,7 +46,7 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 	}
 	if verbatim != "" {
 		// Just return file content as a single string
-		log.Debugf("readLTE verbatim %s: %s",
+		log.Tracef("readLTE verbatim %s: %s",
 			verbatim, string(bytes))
 		info := types.MetricItem{Key: verbatim, Value: string(bytes)}
 		info.Type = types.MetricItemOther

@@ -7,23 +7,23 @@ package downloader
 func handleResolveCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleResolveCreate for %s", key)
+	log.Functionf("handleResolveCreate for %s", key)
 	resHandler.create(ctxArg, key, configArg)
-	log.Infof("handleResolveCreate for %s, done", key)
+	log.Functionf("handleResolveCreate for %s, done", key)
 }
 
 func handleResolveModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 
-	log.Infof("handleResolveModify for %s", key)
+	log.Functionf("handleResolveModify for %s", key)
 	resHandler.modify(ctxArg, key, configArg, oldConfigArg)
-	log.Infof("handleResolveModify for %s, done", key)
+	log.Functionf("handleResolveModify for %s, done", key)
 }
 
 func handleResolveDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleResolveDelete for %s", key)
+	log.Functionf("handleResolveDelete for %s", key)
 	resHandler.delete(ctxArg, key, configArg)
-	log.Infof("handleResolveDelete for %s, done", key)
+	log.Functionf("handleResolveDelete for %s, done", key)
 }

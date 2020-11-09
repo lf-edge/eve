@@ -20,7 +20,7 @@ const (
 // to /persist/vault/verifier/verified/<lower case sha>
 
 func renameVerifiedFiles(ctxPtr *ucContext) error {
-	log.Infof("renameVerifiedFiles()")
+	log.Functionf("renameVerifiedFiles()")
 	if _, err := os.Stat(dstDir); err != nil {
 		if err := os.MkdirAll(dstDir, 0700); err != nil {
 			log.Error(err)
@@ -31,14 +31,14 @@ func renameVerifiedFiles(ctxPtr *ucContext) error {
 		ctxPtr.noFlag)
 	renameFiles(srcDirRoot+"/"+types.BaseOsObj+"/verified", dstDir,
 		ctxPtr.noFlag)
-	log.Infof("renameVerifiedFiles() DONE")
+	log.Functionf("renameVerifiedFiles() DONE")
 	return nil
 }
 
 // If noFlag is set we just log and no file system modifications.
 func renameFiles(srcDir string, dstDir string, noFlag bool) {
 
-	log.Infof("renameFiles(%s, %s, %t)", srcDir, dstDir, noFlag)
+	log.Functionf("renameFiles(%s, %s, %t)", srcDir, dstDir, noFlag)
 	if _, err := os.Stat(dstDir); err != nil {
 		if err := os.MkdirAll(dstDir, 0700); err != nil {
 			log.Error(err)
@@ -84,7 +84,7 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 			continue
 		}
 		if noFlag {
-			log.Infof("renameFiles: dryrun from %s to %s",
+			log.Functionf("renameFiles: dryrun from %s to %s",
 				srcFile, dstFile)
 		} else {
 			// Must copy due to fscrypt

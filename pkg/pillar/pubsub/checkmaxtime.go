@@ -21,7 +21,7 @@ var lockedLastStillMap = base.NewLockedStringMap()
 // Those files are observed by the watchdog
 func (p *PubSub) StillRunning(agentName string, warnTime time.Duration, errTime time.Duration) {
 	log := p.log
-	log.Debugf("StillRunning(%s)\n", agentName)
+	log.Tracef("StillRunning(%s)\n", agentName)
 
 	if lsValue, found := lockedLastStillMap.Load(agentName); !found {
 		lockedLastStillMap.Store(agentName, time.Now())
@@ -46,7 +46,7 @@ func (p *PubSub) StillRunning(agentName string, warnTime time.Duration, errTime 
 	if err != nil {
 		file, err := os.Create(filename)
 		if err != nil {
-			log.Infof("StillRunning: %s\n", err)
+			log.Functionf("StillRunning: %s\n", err)
 			return
 		}
 		file.Close()

@@ -17,7 +17,7 @@ type Semaphore struct {
 
 // New returns a Semaphore object
 func New(log *base.LogObject, n int) *Semaphore {
-	log.Infof("sema.New()")
+	log.Functionf("sema.New()")
 	return &Semaphore{
 		c:   make(chan empty, n),
 		log: log,
@@ -27,19 +27,19 @@ func New(log *base.LogObject, n int) *Semaphore {
 
 // Acquire n resources
 func (s *Semaphore) P(n int) {
-	s.log.Infof("sema.P(%d)", n)
+	s.log.Functionf("sema.P(%d)", n)
 	var e empty
 	for i := 0; i < n; i++ {
 		s.c <- e
 	}
-	s.log.Infof("sema.P(%d) done", n)
+	s.log.Functionf("sema.P(%d) done", n)
 }
 
 // Release n resources
 func (s *Semaphore) V(n int) {
-	s.log.Infof("sema.V(%d)", n)
+	s.log.Functionf("sema.V(%d)", n)
 	for i := 0; i < n; i++ {
 		<-s.c
 	}
-	s.log.Infof("sema.V(%d) done", n)
+	s.log.Functionf("sema.V(%d) done", n)
 }

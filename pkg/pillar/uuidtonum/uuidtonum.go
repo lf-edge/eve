@@ -21,7 +21,7 @@ import (
 func UuidToNumAllocate(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID,
 	number int, mustCreate bool, numType string) {
 
-	log.Infof("UuidToNumAllocate(%s, %d, %v)\n", uuid.String(), number,
+	log.Functionf("UuidToNumAllocate(%s, %d, %v)\n", uuid.String(), number,
 		mustCreate)
 	i, err := pub.Get(uuid.String())
 	if err != nil {
@@ -33,7 +33,7 @@ func UuidToNumAllocate(log *base.LogObject, pub pubsub.Publication, uuid uuid.UU
 			NumType:     numType,
 			Number:      number,
 		}
-		log.Infof("UuidToNumAllocate(%s) publishing created %v\n",
+		log.Functionf("UuidToNumAllocate(%s) publishing created %v\n",
 			uuid.String(), u)
 		pub.Publish(u.Key(), u)
 		return
@@ -59,7 +59,7 @@ func UuidToNumAllocate(log *base.LogObject, pub pubsub.Publication, uuid uuid.UU
 	u.InUse = true
 	u.LastUseTime = time.Now()
 	// XXX note that nothing but lastusetime might be updated! Improve log?
-	log.Infof("UuidToNumAllocate(%s) publishing updated %v\n",
+	log.Functionf("UuidToNumAllocate(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
 		log.Fatalf("UuidToNumAllocate(%s) publish failed %v\n",
@@ -70,7 +70,7 @@ func UuidToNumAllocate(log *base.LogObject, pub pubsub.Publication, uuid uuid.UU
 // Clear InUse
 func UuidToNumFree(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) {
 
-	log.Infof("UuidToNumFree(%s)\n", uuid.String())
+	log.Functionf("UuidToNumFree(%s)\n", uuid.String())
 	i, err := pub.Get(uuid.String())
 	if err != nil {
 		log.Fatalf("UuidToNumFree(%s) does not exist\n", uuid.String())
@@ -78,7 +78,7 @@ func UuidToNumFree(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) 
 	u := i.(types.UuidToNum)
 	u.InUse = false
 	u.LastUseTime = time.Now()
-	log.Infof("UuidToNumFree(%s) publishing updated %v\n",
+	log.Functionf("UuidToNumFree(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
 		log.Fatalf("UuidToNumFree(%s) publish failed %v\n",
@@ -88,7 +88,7 @@ func UuidToNumFree(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) 
 
 func UuidToNumDelete(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) {
 
-	log.Infof("UuidToNumDelete(%s)\n", uuid.String())
+	log.Functionf("UuidToNumDelete(%s)\n", uuid.String())
 	_, err := pub.Get(uuid.String())
 	if err != nil {
 		log.Fatalf("UuidToNumDelete(%s) does not exist\n",
@@ -104,20 +104,20 @@ func UuidToNumGet(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID,
 	numType string) (int, error) {
 
 	key := uuid.String()
-	log.Infof("UuidToNumGet(%s, %s)\n", key, numType)
+	log.Functionf("UuidToNumGet(%s, %s)\n", key, numType)
 	i, err := pub.Get(key)
 	if err != nil {
 		return 0, err
 	}
 	u := i.(types.UuidToNum)
-	log.Infof("UuidToNumGet(%s, %s) found %v\n", key, numType, u)
+	log.Functionf("UuidToNumGet(%s, %s) found %v\n", key, numType, u)
 	return u.Number, nil
 }
 
 func UuidToNumGetOldestUnused(log *base.LogObject, pub pubsub.Publication,
 	numType string) (uuid.UUID, int, error) {
 
-	log.Infof("UuidToNumGetOldestUnused(%s)\n", numType)
+	log.Functionf("UuidToNumGetOldestUnused(%s)\n", numType)
 
 	// Will have a LastUseTime of zero
 	oldest := new(types.UuidToNum)
@@ -128,7 +128,7 @@ func UuidToNumGetOldestUnused(log *base.LogObject, pub pubsub.Publication,
 			continue
 		}
 		if oldest.LastUseTime.Before(status.LastUseTime) {
-			log.Infof("UuidToNumGetOldestUnused(%s) found older %v\n",
+			log.Functionf("UuidToNumGetOldestUnused(%s) found older %v\n",
 				numType, status)
 			oldest = &status
 		}
@@ -138,6 +138,6 @@ func UuidToNumGetOldestUnused(log *base.LogObject, pub pubsub.Publication,
 			numType)
 		return uuid.UUID{}, 0, errors.New(errStr)
 	}
-	log.Infof("UuidToNumGetOldestUnused(%s) found %v\n", numType, oldest)
+	log.Functionf("UuidToNumGetOldestUnused(%s) found %v\n", numType, oldest)
 	return oldest.UUID, oldest.Number, nil
 }

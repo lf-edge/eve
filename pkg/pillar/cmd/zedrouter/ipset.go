@@ -17,7 +17,7 @@ import (
 // XXX should we add 169.254.0.0/16 as well?
 func createDefaultIpset() {
 
-	log.Debugf("createDefaultIpset()\n")
+	log.Tracef("createDefaultIpset()\n")
 	ipsetName := "local"
 	err := ipsetCreatePair(ipsetName, "hash:net")
 	if err != nil {
@@ -48,7 +48,7 @@ func createDefaultIpset() {
 func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToIP,
 	appIPAddr string) {
 
-	log.Debugf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
+	log.Tracef("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
 		vifname, nameToIPList, appIPAddr)
 	ipsetName := "eids." + vifname
 	err := ipsetCreatePair(ipsetName, "hash:ip")
@@ -103,7 +103,7 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 func updateDefaultIpsetConfiglet(vifname string,
 	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
 
-	log.Debugf("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
+	log.Tracef("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
 		vifname, oldList, newList)
 	ipsetName := "eids." + vifname
 	set4 := "ipv4." + ipsetName
@@ -150,7 +150,7 @@ func updateDefaultIpsetConfiglet(vifname string,
 
 func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
 
-	log.Debugf("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
+	log.Tracef("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
 	ipsetName := "eids." + vifname
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName
@@ -199,7 +199,7 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 		family = "inet6"
 	}
 	args := []string{"create", ipsetName, setType, "family", family}
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	if _, err := base.Exec(log, cmd, args...).CombinedOutput(); err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 func ipsetDestroy(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"destroy", ipsetName}
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	if res, err := base.Exec(log, cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset destroy %s failed %s: %s",
 			ipsetName, res, err)
@@ -221,7 +221,7 @@ func ipsetDestroy(ipsetName string) error {
 func ipsetFlush(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"flush", ipsetName}
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	if res, err := base.Exec(log, cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset flush %s failed %s: %s",
 			ipsetName, res, err)
@@ -233,7 +233,7 @@ func ipsetFlush(ipsetName string) error {
 func ipsetAdd(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"add", ipsetName, member}
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	if res, err := base.Exec(log, cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset add %s failed %s: %s",
 			ipsetName, res, err)
@@ -245,7 +245,7 @@ func ipsetAdd(ipsetName string, member string) error {
 func ipsetDel(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"del", ipsetName, member}
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	if res, err := base.Exec(log, cmd, args...).CombinedOutput(); err != nil {
 		errStr := fmt.Sprintf("ipset del %s failed %s: %s",
 			ipsetName, res, err)
@@ -257,7 +257,7 @@ func ipsetDel(ipsetName string, member string) error {
 func ipsetExists(ipsetName string) bool {
 	cmd := "ipset"
 	args := []string{"list", ipsetName}
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	if _, err := base.Exec(log, cmd, args...).Output(); err != nil {
 		return false
 	}

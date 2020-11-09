@@ -46,7 +46,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
 	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
-		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
+		log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
 		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
 	} else {
 		dEndPoint.WithSrcIPSelection(ipSrc)
@@ -54,7 +54,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Infof("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
+	log.Functionf("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
 		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
 		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
 		locFilename)
@@ -74,7 +74,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	for resp := range respChan {
 		if resp.IsDnUpdate() {
 			currentSize, totalSize, progress := resp.Progress()
-			log.Infof("Update progress for %v: %v/%v",
+			log.Functionf("Update progress for %v: %v/%v",
 				resp.GetLocalName(), currentSize, totalSize)
 			// sometime, the download goes to an infinite loop,
 			// showing it has downloaded, more than it is supposed to
@@ -111,7 +111,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			return "", err
 		}
 		asize, osize := resp.GetAsize(), resp.GetOsize()
-		log.Infof("Done for %v: size %v/%v",
+		log.Functionf("Done for %v: size %v/%v",
 			resp.GetLocalName(),
 			asize, osize)
 		status.Progress(100, osize, asize)
@@ -149,7 +149,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 
 	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
-		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
+		log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
 		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
 	} else {
 		dEndPoint.WithSrcIPSelection(ipSrc)
@@ -157,7 +157,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Infof("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
+	log.Functionf("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
 		"downloadURL: <%s>, ifname: %s, ipSrc: %+v",
 		trType, dpath, region, filename, downloadURL, ifname, ipSrc)
 	// create Request
@@ -194,7 +194,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		if resp.IsError() {
 			return sha256, err
 		}
-		log.Infof("Resolve config Done for %v: sha %v",
+		log.Functionf("Resolve config Done for %v: sha %v",
 			filename, resp.GetSha256())
 		return sha256, nil
 	}

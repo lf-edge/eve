@@ -30,26 +30,26 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
 		// hence we don't print unless the entry is new
-		log.Infof("IfindexToNameAdd index %d name %s type %s\n",
+		log.Functionf("IfindexToNameAdd index %d name %s type %s\n",
 			index, linkName, linkType)
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
 			linkType: linkType,
 		}
 		ifindexMaybeRemoveOld(log, index, linkName)
-		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
+		// log.Tracef("ifindexToName post add %v\n", ifindexToName)
 		return true
 	} else if m.linkName != linkName {
 		// We get this when the vifs are created with "vif*" names
 		// and then changed to "bu*" etc.
-		log.Infof("IfindexToNameAdd name mismatch %s vs %s for %d\n",
+		log.Functionf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
 			linkType: linkType,
 		}
 		ifindexMaybeRemoveOld(log, index, linkName)
-		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
+		// log.Tracef("ifindexToName post add %v\n", ifindexToName)
 		return false
 	} else {
 		return false
@@ -60,7 +60,7 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 func ifindexMaybeRemoveOld(log *base.LogObject, newIndex int, ifname string) {
 	for index, lnt := range ifindexToName {
 		if lnt.linkName == ifname && index != newIndex {
-			log.Infof("Found old ifindex %d for new %d for %s",
+			log.Functionf("Found old ifindex %d for new %d for %s",
 				index, newIndex, ifname)
 			delete(ifindexToName, index)
 			return
@@ -80,13 +80,13 @@ func IfindexToNameDel(log *base.LogObject, index int, linkName string) bool {
 		log.Errorf("IfindexToNameDel name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
 		delete(ifindexToName, index)
-		// log.Debugf("ifindexToName post delete %v\n", ifindexToName)
+		// log.Tracef("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	} else {
-		log.Debugf("IfindexToNameDel index %d name %s\n",
+		log.Tracef("IfindexToNameDel index %d name %s\n",
 			index, linkName)
 		delete(ifindexToName, index)
-		// log.Debugf("ifindexToName post delete %v\n", ifindexToName)
+		// log.Tracef("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	}
 }
@@ -154,7 +154,7 @@ func RelevantLastResort(log *base.LogObject, link netlink.Link) (bool, bool) {
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
 		attrs.MasterIndex == 0 && !isVif {
 
-		log.Infof("Relevant %s adminUp %t operState %s\n",
+		log.Functionf("Relevant %s adminUp %t operState %s\n",
 			ifname, adminUpFlag, attrs.OperState.String())
 		return true, upFlag
 	} else {
@@ -170,12 +170,12 @@ var ifindexToAddrs = make(map[int][]net.IP)
 // if it doesn't already exist
 // Returns true if added
 func IfindexToAddrsAdd(log *base.LogObject, index int, addr net.IP) bool {
-	log.Debugf("IfindexToAddrsAdd(%d, %s)", index, addr.String())
+	log.Tracef("IfindexToAddrsAdd(%d, %s)", index, addr.String())
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Debugf("IfindexToAddrsAdd add %v for %d\n", addr, index)
+		log.Tracef("IfindexToAddrsAdd add %v for %d\n", addr, index)
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
-		// log.Debugf("ifindexToAddrs post add %v\n", ifindexToAddrs)
+		// log.Tracef("ifindexToAddrs post add %v\n", ifindexToAddrs)
 		return true
 	}
 	found := false
@@ -186,9 +186,9 @@ func IfindexToAddrsAdd(log *base.LogObject, index int, addr net.IP) bool {
 		}
 	}
 	if !found {
-		log.Debugf("IfindexToAddrsAdd add %v for %d\n", addr, index)
+		log.Tracef("IfindexToAddrsAdd add %v for %d\n", addr, index)
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
-		// log.Debugf("ifindexToAddrs post add %v\n", ifindexToAddrs)
+		// log.Tracef("ifindexToAddrs post add %v\n", ifindexToAddrs)
 	}
 	return !found
 }
@@ -196,7 +196,7 @@ func IfindexToAddrsAdd(log *base.LogObject, index int, addr net.IP) bool {
 // IfindexToAddrsDel removes from the map based on the ifindex and address
 // Returns true if deleted
 func IfindexToAddrsDel(log *base.LogObject, index int, addr net.IP) bool {
-	log.Debugf("IfindexToAddrsDel(%d, %s)", index, addr.String())
+	log.Tracef("IfindexToAddrsDel(%d, %s)", index, addr.String())
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Warnf("IfindexToAddrsDel unknown index %d\n", index)
@@ -204,7 +204,7 @@ func IfindexToAddrsDel(log *base.LogObject, index int, addr net.IP) bool {
 	}
 	for i, a := range addrs {
 		if a.Equal(addr) {
-			log.Debugf("IfindexToAddrsDel del %v for %d\n",
+			log.Tracef("IfindexToAddrsDel del %v for %d\n",
 				addr, index)
 			if i+1 == len(addrs) {
 				ifindexToAddrs[index] = ifindexToAddrs[index][:i]
@@ -212,7 +212,7 @@ func IfindexToAddrsDel(log *base.LogObject, index int, addr net.IP) bool {
 				ifindexToAddrs[index] = append(ifindexToAddrs[index][:i],
 					ifindexToAddrs[index][i+1:]...)
 			}
-			// log.Debugf("ifindexToAddrs post remove %v\n", ifindexToAddrs)
+			// log.Tracef("ifindexToAddrs post remove %v\n", ifindexToAddrs)
 			// XXX should we check for zero and remove ifindex?
 			return true
 		}
@@ -238,7 +238,7 @@ func IfindexToAddrsFlush(log *base.LogObject, index int) {
 		log.Warnf("IfindexToAddrsFlush: Unknown ifindex %d", index)
 		return
 	}
-	log.Infof("IfindexToAddrsFlush(%d) removing %v",
+	log.Functionf("IfindexToAddrsFlush(%d) removing %v",
 		index, ifindexToAddrs[index])
 	var addrs []net.IP
 	ifindexToAddrs[index] = addrs
@@ -246,7 +246,7 @@ func IfindexToAddrsFlush(log *base.LogObject, index int) {
 
 // IfnameToAddrsFlush does the above flush but based on ifname
 func IfnameToAddrsFlush(log *base.LogObject, ifname string) {
-	log.Infof("IfNameToAddrsFlush(%s)", ifname)
+	log.Functionf("IfNameToAddrsFlush(%s)", ifname)
 	index, err := IfnameToIndex(log, ifname)
 	if err != nil {
 		log.Warnf("IfnameToAddrsFlush: Unknown ifname %s: %s", ifname, err)

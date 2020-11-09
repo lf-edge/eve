@@ -70,7 +70,7 @@ func NewPoolWithGC(log Logger, ctx interface{}, maxWorkers int, handlers map[str
 }
 
 func (wp *Pool) periodicGC() {
-	wp.log.Debugf("periodicGC starting")
+	wp.log.Tracef("periodicGC starting")
 	t := time.NewTicker(wp.periodicGCTime)
 	done := false
 	for !done {
@@ -84,14 +84,14 @@ func (wp *Pool) periodicGC() {
 			}
 		}
 	}
-	wp.log.Debugf("periodicGC done")
+	wp.log.Tracef("periodicGC done")
 }
 
 func (wp *Pool) mergeResult(w *Worker) {
-	wp.log.Debugf("mergeResult starting")
+	wp.log.Tracef("mergeResult starting")
 	ch := w.MsgChan()
 	for res := range ch {
-		wp.log.Debugf("mergeResult got %+v", res)
+		wp.log.Tracef("mergeResult got %+v", res)
 		wp.resultChan <- res
 	}
 	wp.numChan--
@@ -99,7 +99,7 @@ func (wp *Pool) mergeResult(w *Worker) {
 	if wp.numChan == 0 {
 		close(wp.resultChan)
 	}
-	wp.log.Debugf("mergeResult done")
+	wp.log.Tracef("mergeResult done")
 }
 
 // NumPending returns the current number work items
@@ -122,10 +122,10 @@ func (wp *Pool) TrySubmit(work Work) (bool, error) {
 	for i, w := range wp.workers {
 		done, err := w.worker.TrySubmit(work)
 		if err != nil {
-			wp.log.Debugf("failed TrySubmit for %d", i)
+			wp.log.Tracef("failed TrySubmit for %d", i)
 			return done, err
 		} else if done {
-			wp.log.Debugf("succeeded TrySubmit for %d", i)
+			wp.log.Tracef("succeeded TrySubmit for %d", i)
 			w.lastUsed = time.Now()
 			wp.purgeOld(i + 1)
 			return done, nil
@@ -133,27 +133,27 @@ func (wp *Pool) TrySubmit(work Work) (bool, error) {
 	}
 	// Used all of them; can we create a new one?
 	if wp.maxWorkers == 0 || len(wp.workers) < wp.maxWorkers {
-		wp.log.Debugf("Creating new worker")
+		wp.log.Tracef("Creating new worker")
 		w := NewWorker(wp.log, wp.ctx, 0, wp.handlers)
 		neww := myworker{worker: w, lastUsed: time.Now()}
 		wp.workers = append(wp.workers, neww)
 		if len(wp.workers) > wp.maxWorkersUsed {
 			wp.maxWorkersUsed = len(wp.workers)
-			wp.log.Debugf("maxWorkersUsed %d", wp.maxWorkersUsed)
+			wp.log.Tracef("maxWorkersUsed %d", wp.maxWorkersUsed)
 		}
 		wp.numChan++
-		wp.log.Debugf("Creating %s at %s", "wp.mergeResult",
+		wp.log.Tracef("Creating %s at %s", "wp.mergeResult",
 			agentlog.GetMyStack())
 		go wp.mergeResult(w)
 		err := w.Submit(work)
 		if err != nil {
-			wp.log.Debugf("new worker yet failed: %s", err)
+			wp.log.Tracef("new worker yet failed: %s", err)
 			return false, err
 		}
-		wp.log.Debugf("succeeded Submit for %d", len(wp.workers))
+		wp.log.Tracef("succeeded Submit for %d", len(wp.workers))
 		return true, nil
 	}
-	wp.log.Debugf("Would exceed maxWorkers of %d", wp.maxWorkers)
+	wp.log.Tracef("Would exceed maxWorkers of %d", wp.maxWorkers)
 	return false, fmt.Errorf("Would exceed maxWorkers of %d", wp.maxWorkers)
 }
 
@@ -206,16 +206,16 @@ func (wp *Pool) Peek(key string) *WorkResult {
 // purgeOld removes old workers from the pool
 func (wp *Pool) purgeOld(startIndex int) {
 
-	wp.log.Debugf("purgeOld(%d) have %d", startIndex, len(wp.workers))
+	wp.log.Tracef("purgeOld(%d) have %d", startIndex, len(wp.workers))
 	var newWorkers []myworker
 	for i, w := range wp.workers {
 		if i <= startIndex || time.Since(w.lastUsed) < wp.submitGCTime {
 			newWorkers = append(newWorkers, w)
 		} else {
-			wp.log.Debugf("purgeOld GC %d", i)
+			wp.log.Tracef("purgeOld GC %d", i)
 			w.worker.Done()
 		}
 	}
 	wp.workers = newWorkers
-	wp.log.Debugf("purgeOld post GC have %d", len(wp.workers))
+	wp.log.Tracef("purgeOld post GC have %d", len(wp.workers))
 }

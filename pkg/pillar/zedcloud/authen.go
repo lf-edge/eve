@@ -94,7 +94,7 @@ func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]by
 			ctx.log.Errorf("verifyAuthentication: verifyAuthSig error %v\n", err)
 			return nil, types.SenderStatusSignVerifyFail, err
 		}
-		ctx.log.Debugf("verifyAuthentication: ok\n")
+		ctx.log.Tracef("verifyAuthentication: ok\n")
 	}
 	return data, senderSt, nil
 }
@@ -133,7 +133,7 @@ func ClearCloudCert(ctx *ZedCloudContext) {
 // verify the signed data with cloud certificate public key
 func verifyAuthSig(ctx *ZedCloudContext, signature []byte, cert *x509.Certificate, hash []byte) error {
 
-	ctx.log.Debugf("verifyAuthsig sigdata (len %d) %v\n", len(hash), hash)
+	ctx.log.Tracef("verifyAuthsig sigdata (len %d) %v\n", len(hash), hash)
 
 	switch pub := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
@@ -141,7 +141,7 @@ func verifyAuthSig(ctx *ZedCloudContext, signature []byte, cert *x509.Certificat
 		if err != nil {
 			return err
 		}
-		ctx.log.Debugf("verifyAuthSig: verify rsa ok\n")
+		ctx.log.Tracef("verifyAuthSig: verify rsa ok\n")
 	case *ecdsa.PublicKey:
 
 		sigHalflen, err := ecdsakeyBytes(pub)
@@ -158,7 +158,7 @@ func verifyAuthSig(ctx *ZedCloudContext, signature []byte, cert *x509.Certificat
 		if !ok {
 			return errors.New("ecdsa image signature verification failed")
 		}
-		ctx.log.Debugf("verifyAuthSig: verify ecdsa ok\n")
+		ctx.log.Tracef("verifyAuthSig: verify ecdsa ok\n")
 	default:
 		ctx.log.Errorf("verifyAuthSig: unknown type of public key %T\n", pub)
 		return errors.New("unknown type of public key")
@@ -180,7 +180,7 @@ func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (
 
 	cert, err := getMyDevCert(ctx, useOnboard)
 	if err != nil {
-		ctx.log.Debugf("addAuthenticate: get client cert failed\n")
+		ctx.log.Tracef("addAuthenticate: get client cert failed\n")
 		return nil, err
 	}
 
@@ -193,7 +193,7 @@ func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (
 			ctx.log.Errorf("addAuthenticate: get sender cert failed, %v\n", err)
 			return nil, err
 		}
-		ctx.log.Debugf("addAuthenticate: onboard senderCert size %d\n", len(sm.SenderCert))
+		ctx.log.Tracef("addAuthenticate: onboard senderCert size %d\n", len(sm.SenderCert))
 	} else {
 		sm.SenderCertHash = ctx.deviceCertHash
 	}
@@ -204,7 +204,7 @@ func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (
 
 	sig, err := signAuthData(ctx, data, cert)
 	if err != nil {
-		ctx.log.Debugf("addAuthenticate: sign auth data error %v\n", err)
+		ctx.log.Tracef("addAuthenticate: sign auth data error %v\n", err)
 		return nil, err
 	}
 	sm.SignatureHash = sig
@@ -212,13 +212,13 @@ func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (
 
 	data2, err := proto.Marshal(&sm)
 	if err != nil {
-		ctx.log.Debugf("addAuthenticate: auth marshal error %v\n", err)
+		ctx.log.Tracef("addAuthenticate: auth marshal error %v\n", err)
 		return nil, err
 	}
 
 	size := int64(proto.Size(&sm))
 	buf := bytes.NewBuffer(data2)
-	ctx.log.Debugf("addAuthenticate: payload size %d, sig %v\n", size, sig)
+	ctx.log.Tracef("addAuthenticate: payload size %d, sig %v\n", size, sig)
 	return buf, nil
 }
 
@@ -230,13 +230,13 @@ func getMyDevCert(ctx *ZedCloudContext, isOnboard bool) (tls.Certificate, error)
 			cert, err = tls.LoadX509KeyPair(types.OnboardCertName,
 				types.OnboardKeyName)
 			if err != nil {
-				ctx.log.Debugf("getMyDevCert: get onboard cert error %v\n", err)
+				ctx.log.Tracef("getMyDevCert: get onboard cert error %v\n", err)
 				return cert, err
 			}
 
 			onboardCertpem, err := ioutil.ReadFile(types.OnboardCertName)
 			if err != nil {
-				ctx.log.Debugf("getMyDevCert: get onboard certbytes error %v\n", err)
+				ctx.log.Tracef("getMyDevCert: get onboard certbytes error %v\n", err)
 				return cert, err
 			}
 			ctx.onBoardCertBytes = []byte(base64.StdEncoding.EncodeToString(onboardCertpem))
@@ -247,7 +247,7 @@ func getMyDevCert(ctx *ZedCloudContext, isOnboard bool) (tls.Certificate, error)
 				return cert, err
 			}
 			ctx.onBoardCert = &cert
-			ctx.log.Debugf("getMyDevCert: onboard cert with hash %v\n", string(ctx.onBoardCertHash))
+			ctx.log.Tracef("getMyDevCert: onboard cert with hash %v\n", string(ctx.onBoardCertHash))
 		} else {
 			cert = *ctx.onBoardCert
 		}
@@ -265,7 +265,7 @@ func getMyDevCert(ctx *ZedCloudContext, isOnboard bool) (tls.Certificate, error)
 				return cert, err
 			}
 			ctx.deviceCert = &cert
-			ctx.log.Debugf("getMyDevCert: device cert with hash %v\n", string(ctx.deviceCertHash))
+			ctx.log.Tracef("getMyDevCert: device cert with hash %v\n", string(ctx.deviceCertHash))
 		} else {
 			cert = *ctx.deviceCert
 		}
@@ -275,7 +275,7 @@ func getMyDevCert(ctx *ZedCloudContext, isOnboard bool) (tls.Certificate, error)
 
 // sign hash'ed data with certificate private key
 func signAuthData(ctx *ZedCloudContext, sigdata []byte, cert tls.Certificate) ([]byte, error) {
-	ctx.log.Debugf("sending sigdata (len %d) %v\n", len(sigdata), sigdata)
+	ctx.log.Tracef("sending sigdata (len %d) %v\n", len(sigdata), sigdata)
 	hash := ComputeSha(sigdata)
 
 	var sigres []byte
@@ -289,13 +289,13 @@ func signAuthData(ctx *ZedCloudContext, sigdata []byte, cert tls.Certificate) ([
 			ctx.log.Errorf("signAuthData: tpmSign error %v\n", err)
 			return nil, err
 		}
-		ctx.log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+		ctx.log.Tracef("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
 		sigres, err = RSCombinedBytes(ctx, r.Bytes(), s.Bytes(), key.PublicKey.(*ecdsa.PublicKey))
 		if err != nil {
 			return nil, err
 		}
-		ctx.log.Debugf("signAuthData: tpm sigres (len %d): %x\n", len(sigres), sigres)
+		ctx.log.Tracef("signAuthData: tpm sigres (len %d): %x\n", len(sigres), sigres)
 	case *ecdsa.PrivateKey:
 		r, s, err := ecdsa.Sign(rand.Reader, key, hash)
 		if err != nil {
@@ -303,13 +303,13 @@ func signAuthData(ctx *ZedCloudContext, sigdata []byte, cert tls.Certificate) ([
 			return nil, err
 			//ctx.log.Fatal("ecdsa.Sign: ", err)
 		}
-		ctx.log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+		ctx.log.Tracef("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
 		sigres, err = RSCombinedBytes(ctx, r.Bytes(), s.Bytes(), &key.PublicKey)
 		if err != nil {
 			return nil, err
 		}
-		ctx.log.Debugf("signAuthData: ecdas sigres (len %d): %x\n",
+		ctx.log.Tracef("signAuthData: ecdas sigres (len %d): %x\n",
 			len(sigres), sigres)
 	}
 	return sigres, nil
@@ -422,7 +422,7 @@ func VerifySigningCertChain(ctx *ZedCloudContext, content []byte) ([]byte, error
 		}
 	}
 
-	ctx.log.Debugf("VerifySigningCertChain: key count %d\n", keyCnt)
+	ctx.log.Tracef("VerifySigningCertChain: key count %d\n", keyCnt)
 	if signKeyCnt == 0 {
 		errStr := fmt.Sprintf("failed to acquire signing cert")
 		ctx.log.Errorln("VerifySigningCertChain: " + errStr)
@@ -441,7 +441,7 @@ func VerifySigningCertChain(ctx *ZedCloudContext, content []byte) ([]byte, error
 			}
 		}
 	}
-	ctx.log.Debugf("VerifySigningCertChain: success\n")
+	ctx.log.Tracef("VerifySigningCertChain: success\n")
 	return sigCertBytes, nil
 }
 
@@ -557,7 +557,7 @@ func certToSha256(ctx *ZedCloudContext, cert tls.Certificate) ([]byte, error) {
 
 	c, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		ctx.log.Infof("certToSha256: parse cert entry err %v\n", err)
+		ctx.log.Functionf("certToSha256: parse cert entry err %v\n", err)
 		return nil, err
 	}
 

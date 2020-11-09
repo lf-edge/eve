@@ -23,7 +23,7 @@ func getRemainingVolumeDiskSpace(ctxPtr *volumemgrContext) (uint64, string, erro
 	for _, iterStatusJSON := range items {
 		iterStatus := iterStatusJSON.(types.VolumeStatus)
 		if iterStatus.State < types.CREATED_VOLUME {
-			log.Debugf("Volume %s State %d < CREATED_VOLUME",
+			log.Tracef("Volume %s State %d < CREATED_VOLUME",
 				iterStatus.Key(), iterStatus.State)
 			continue
 		}
@@ -62,7 +62,7 @@ func dom0DiskReservedSize(ctxPtr *volumemgrContext, deviceDiskSize uint64) uint6
 	maxDom0DiskSize := uint64(ctxPtr.globalConfig.GlobalValueInt(
 		types.Dom0DiskUsageMaxBytes))
 	if diskReservedForDom0 > maxDom0DiskSize {
-		log.Debugf("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
+		log.Tracef("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
 			"maxDom0DiskSize (%d)", maxDom0DiskSize)
 		diskReservedForDom0 = maxDom0DiskSize
 	}

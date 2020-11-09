@@ -18,12 +18,12 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 	rawUrl string) (*url.URL, error) {
 
 	for _, port := range status.Ports {
-		log.Debugf("LookupProxy: Looking for proxy config on port %s",
+		log.Tracef("LookupProxy: Looking for proxy config on port %s",
 			port.IfName)
 		if port.IfName != ifname {
 			continue
 		}
-		log.Debugf("LookupProxy: Port configuration found for %s", ifname)
+		log.Tracef("LookupProxy: Port configuration found for %s", ifname)
 		proxyConfig := port.ProxyConfig
 
 		// Check if the URL is present in exception list
@@ -77,7 +77,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 				log.Errorf(errStr)
 				return nil, errors.New(errStr)
 			}
-			log.Debugf("LookupProxy: PAC proxy being used is %s", proxy0)
+			log.Tracef("LookupProxy: PAC proxy being used is %s", proxy0)
 			return proxy, err
 		}
 
@@ -92,7 +92,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 					httpProxy = fmt.Sprintf("%s", proxy.Server)
 				}
 				config.HTTPProxy = httpProxy
-				log.Debugf("LookupProxy: Adding HTTP proxy %s for port %s",
+				log.Tracef("LookupProxy: Adding HTTP proxy %s for port %s",
 					config.HTTPProxy, ifname)
 			case types.NPT_HTTPS:
 				var httpsProxy string
@@ -102,7 +102,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 					httpsProxy = fmt.Sprintf("%s", proxy.Server)
 				}
 				config.HTTPSProxy = httpsProxy
-				log.Debugf("LookupProxy: Adding HTTPS proxy %s for port %s",
+				log.Tracef("LookupProxy: Adding HTTPS proxy %s for port %s",
 					config.HTTPSProxy, ifname)
 			default:
 				// XXX We should take care of Socks proxy, FTP proxy also in future
@@ -118,7 +118,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 		}
 		return proxy, err
 	}
-	log.Infof("LookupProxy: No proxy configured for port %s", ifname)
+	log.Functionf("LookupProxy: No proxy configured for port %s", ifname)
 	return nil, nil
 }
 

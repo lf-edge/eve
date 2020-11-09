@@ -23,14 +23,14 @@ func getAllIPv4Routes(ifindex int) []netlink.Route {
 	filter := netlink.Route{Table: table, LinkIndex: ifindex}
 	fflags := netlink.RT_FILTER_TABLE
 	fflags |= netlink.RT_FILTER_OIF
-	log.Infof("getAllIPv4Routes(%d) filter %v\n", ifindex, filter)
+	log.Functionf("getAllIPv4Routes(%d) filter %v\n", ifindex, filter)
 	routes, err := netlink.RouteListFiltered(syscall.AF_INET,
 		&filter, fflags)
 	if err != nil {
 		log.Errorf("getAllIPv4Routes: ifindex %d failed, error %v", ifindex, err)
 		return nil
 	}
-	log.Debugf("getAllIPv4Routes(%d) - got %d matches\n",
+	log.Tracef("getAllIPv4Routes(%d) - got %d matches\n",
 		ifindex, len(routes))
 	return routes
 }
@@ -56,7 +56,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	linkType := change.Link.Type()
-	log.Infof("PbrLinkChange: index %d name %s type %s\n", ifindex, ifname,
+	log.Functionf("PbrLinkChange: index %d name %s type %s\n", ifindex, ifname,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:

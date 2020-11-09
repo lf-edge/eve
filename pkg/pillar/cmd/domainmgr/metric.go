@@ -20,7 +20,7 @@ const (
 
 // Run a periodic post of the metrics
 func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
-	log.Infoln("starting metrics timer task")
+	log.Functionln("starting metrics timer task")
 	getAndPublishMetrics(ctx, hyper)
 
 	// Publish 4X more often than zedagent publishes to controller
@@ -103,7 +103,7 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory) {
 		AvailableMemory:   uint32(hm.FreeMemoryMB),
 		UsedMemoryPercent: usedPerc,
 	}
-	log.Debugf("formatAndPublishHostCPUMem: hostcpu, dm %+v, CPU num %d", dm, CPUnum)
+	log.Tracef("formatAndPublishHostCPUMem: hostcpu, dm %+v, CPU num %d", dm, CPUnum)
 	ctx.pubDomainMetric.Publish(dm.Key(), dm)
 }
 

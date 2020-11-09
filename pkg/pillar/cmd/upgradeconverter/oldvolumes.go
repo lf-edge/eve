@@ -26,7 +26,7 @@ type oldVolume struct {
 // recursive scanning for volumes
 func scanDir(dirName string, isContainer bool) []oldVolume {
 
-	log.Debugf("scanDir(%s)", dirName)
+	log.Tracef("scanDir(%s)", dirName)
 	var old []oldVolume
 
 	locations, err := ioutil.ReadDir(dirName)
@@ -39,7 +39,7 @@ func scanDir(dirName string, isContainer bool) []oldVolume {
 	for _, location := range locations {
 		filelocation := dirName + "/" + location.Name()
 		if location.IsDir() && !isContainer {
-			log.Debugf("scanDir: directory %s ignored", filelocation)
+			log.Tracef("scanDir: directory %s ignored", filelocation)
 			continue
 		}
 		info, err := os.Stat(filelocation)
@@ -49,7 +49,7 @@ func scanDir(dirName string, isContainer bool) []oldVolume {
 			continue
 		}
 		_, sha256, appUUIDStr, purgeCounter, format := parseAppRwVolumeName(filelocation, isContainer)
-		log.Infof("scanDir: Processing sha256: %s, AppUuid: %s, "+
+		log.Functionf("scanDir: Processing sha256: %s, AppUuid: %s, "+
 			"fileLocation:%s, format:%s",
 			sha256, appUUIDStr, filelocation, format)
 

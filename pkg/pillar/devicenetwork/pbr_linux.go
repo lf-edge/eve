@@ -34,7 +34,7 @@ func CopyRoutesTable(log *base.LogObject, srcTable int, ifindex int, dstTable in
 		log.Errorf("CopyRoutesTable: for src table %d, ifindex %d failed, error %v", srcTable, ifindex, err)
 		return
 	}
-	log.Infof("CopyRoutesTable(%d, %d, %d) - got %d",
+	log.Functionf("CopyRoutesTable(%d, %d, %d) - got %d",
 		srcTable, ifindex, dstTable, len(routes))
 	for _, rt := range routes {
 		if rt.Table != srcTable {
@@ -49,7 +49,7 @@ func CopyRoutesTable(log *base.LogObject, srcTable int, ifindex int, dstTable in
 		// table unless the Priority differs. Different
 		// LinkIndex, Src, Scope doesn't matter.
 		if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-			log.Debugf("Forcing IPv6 priority to %v",
+			log.Tracef("Forcing IPv6 priority to %v",
 				rt.LinkIndex)
 			// Hack to make the kernel routes not appear identical
 			art.Priority = rt.LinkIndex
@@ -59,7 +59,7 @@ func CopyRoutesTable(log *base.LogObject, srcTable int, ifindex int, dstTable in
 		if rt.Flags != 0 {
 			art.Flags = 0
 		}
-		log.Infof("CopyRoutesTable(%d, %d, %d) adding %v",
+		log.Functionf("CopyRoutesTable(%d, %d, %d) adding %v",
 			srcTable, ifindex, dstTable, art)
 		if err := netlink.RouteAdd(&art); err != nil {
 			log.Errorf("CopyRoutesTable failed to add %v to %d: %s",

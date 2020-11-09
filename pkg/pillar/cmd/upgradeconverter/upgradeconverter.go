@@ -107,7 +107,7 @@ func (ctx ucContext) configCheckpointFile() string {
 
 func runHandlers(ctxPtr *ucContext, handlers []ConversionHandler) {
 	for _, handler := range handlers {
-		log.Infof("upgradeconverter.Run: Running Conversion handler: %s",
+		log.Functionf("upgradeconverter.Run: Running Conversion handler: %s",
 			handler.description)
 		err := handler.handlerFunc(ctxPtr)
 		if err != nil {
@@ -145,7 +145,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, ctx.agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s\n", ctx.agentName)
+	log.Functionf("Starting %s\n", ctx.agentName)
 
 	phase := UCPhasePreVault
 	if len(flag.Args()) != 0 {

@@ -19,7 +19,7 @@ import (
 )
 
 func convertPersistVolumes(ctxPtr *ucContext) error {
-	log.Infof("convertPersistVolumes()")
+	log.Functionf("convertPersistVolumes()")
 	checkpointFile := ctxPtr.configCheckpointFile()
 	if !fileExists(checkpointFile) {
 		// This error always happens on first boot of a device.
@@ -47,12 +47,12 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 	oldVMExists := dirExists(oldVMVolumesDir)
 	oldOCIExists := dirExists(oldOCIVolumesDir)
 	if !newExists {
-		log.Infof("Creating new %s", newVolumesDir)
+		log.Functionf("Creating new %s", newVolumesDir)
 		if err := os.MkdirAll(newVolumesDir, 0700); err != nil {
 			return err
 		}
 	}
-	log.Infof("new %t oldVM %t oldOCI %t", newExists, oldVMExists,
+	log.Functionf("new %t oldVM %t oldOCI %t", newExists, oldVMExists,
 		oldOCIExists)
 	var old1, old2 []oldVolume
 	if oldVMExists {
@@ -62,7 +62,7 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 		old2 = scanDir(oldOCIVolumesDir, true)
 	}
 	old := append(old1, old2...)
-	log.Debugf("Found %d oldVolumes: %+v", len(old), old)
+	log.Tracef("Found %d oldVolumes: %+v", len(old), old)
 	for i, ov := range old {
 		dlvr := pr.lookupDriveAndVolumeRef(ov.appInstID, ov.sha256)
 		if dlvr == nil {
@@ -70,14 +70,14 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 				i, ov.appInstID, ov.sha256)
 			continue
 		}
-		log.Infof("DLVR %d used by appInst %s, path %s",
+		log.Functionf("DLVR %d used by appInst %s, path %s",
 			i, ov.appInstID, ov.pathname)
 		// Note that we get the generationCounter from the volumeRef
 		// which is most likely zero even if the old volume had a
 		// non-zero purgeCounter
 		newPath := fmt.Sprintf("%s/%s#%d.%s", newVolumesDir,
 			dlvr.volumeID, dlvr.generationCounter, ov.format)
-		log.Infof("DLVR %d volumeID %s generationCounter %d, purgeCounter %d, format %s, new path %s",
+		log.Functionf("DLVR %d volumeID %s generationCounter %d, purgeCounter %d, format %s, new path %s",
 			i, dlvr.volumeID, dlvr.generationCounter,
 			dlvr.purgeCounter, ov.format, newPath)
 		if dlvr.sha256 != ov.sha256 {
@@ -104,7 +104,7 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 	if err == nil {
 		newModTime := info.ModTime()
 		if newModTime.After(oldModTime) {
-			log.Infof("New file %s newer than old %s: %s vs. %s. Not replaced",
+			log.Functionf("New file %s newer than old %s: %s vs. %s. Not replaced",
 				newPath, oldPath,
 				oldModTime.Format(time.RFC3339Nano),
 				newModTime.Format(time.RFC3339Nano))
@@ -119,10 +119,10 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 		return
 	}
 	if noFlag {
-		log.Infof("Persist layout dryrun from %s to %s",
+		log.Functionf("Persist layout dryrun from %s to %s",
 			oldPath, newPath)
 	} else {
-		log.Infof("Moving %s to %s: %t", oldPath, newPath, !noFlag)
+		log.Functionf("Moving %s to %s: %t", oldPath, newPath, !noFlag)
 		// Can not rename between vault directories so we
 		// have to copy and delete.
 		fi, err := os.Stat(oldPath)
@@ -192,12 +192,12 @@ func (pr *parseResult) propagateInfo() {
 			continue
 		}
 		if vi.sha256 == "" {
-			log.Infof("volume[%d] volumeID %s setting sha from ctID %s: %s",
+			log.Functionf("volume[%d] volumeID %s setting sha from ctID %s: %s",
 				i, vi.volumeID, vi.contentTreeID, ct.sha256)
 			vi.sha256 = ct.sha256
 		}
 		if vi.imageURL == "" {
-			log.Infof("volume[%d] volumeID %s setting imageURL from ctID %s: %s",
+			log.Functionf("volume[%d] volumeID %s setting imageURL from ctID %s: %s",
 				i, vi.volumeID, vi.contentTreeID, ct.relativeURL)
 			vi.imageURL = ct.relativeURL
 		}
@@ -213,7 +213,7 @@ func (pr *parseResult) applyLatch(l latch) {
 			continue
 		}
 		if davr.sha256 == "" {
-			log.Infof("app inst[%d] appInstID %s imageID %s purge %d setting sha: %s",
+			log.Functionf("app inst[%d] appInstID %s imageID %s purge %d setting sha: %s",
 				i, davr.appInstID, davr.imageID,
 				davr.purgeCounter, aih.Hash)
 			davr.sha256 = aih.Hash

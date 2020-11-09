@@ -148,7 +148,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	d := w.Description.(casIngestWorkDescription)
 	status := d.status
 
-	log.Infof("casIngestWorker has blobs: %v", status.Blobs)
+	log.Functionf("casIngestWorker has blobs: %v", status.Blobs)
 	blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
 
 	// find the blobs we need to load and indicate that they are being loaded

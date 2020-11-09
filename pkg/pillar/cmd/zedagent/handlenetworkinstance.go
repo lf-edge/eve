@@ -38,7 +38,7 @@ func handleNetworkInstanceModify(ctxArg interface{}, key string,
 func handleNetworkInstanceImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleNetworkInstanceStatusImpl(%s)", key)
+	log.Functionf("handleNetworkInstanceStatusImpl(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := statusArg.(types.NetworkInstanceStatus)
 	if !status.ErrorTime.IsZero() {
@@ -46,17 +46,17 @@ func handleNetworkInstanceImpl(ctxArg interface{}, key string,
 			status.Error)
 	}
 	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
-	log.Infof("handleNetworkInstanceImpl(%s) done", key)
+	log.Functionf("handleNetworkInstanceImpl(%s) done", key)
 }
 
 func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleNetworkInstanceDelete(%s)", key)
+	log.Functionf("handleNetworkInstanceDelete(%s)", key)
 	status := statusArg.(types.NetworkInstanceStatus)
 	ctx := ctxArg.(*zedagentContext)
 	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true)
-	log.Infof("handleNetworkInstanceDelete(%s) done", key)
+	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
 
 func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
@@ -139,7 +139,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 					reportAA.IoAddressList = append(reportAA.IoAddressList,
 						reportMac)
 				}
-				log.Debugf("AssignableAdapters for %s macs %v",
+				log.Tracef("AssignableAdapters for %s macs %v",
 					reportAA.Name, reportAA.IoAddressList)
 			}
 			info.AssignedAdapters = append(info.AssignedAdapters,
@@ -156,7 +156,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if x, ok := infoMsg.GetInfoContent().(*zinfo.ZInfoMsg_Niinfo); ok {
 		x.Niinfo = info
 	}
-	log.Debugf("Publish NetworkInstance Info message to zedcloud: %v",
+	log.Tracef("Publish NetworkInstance Info message to zedcloud: %v",
 		infoMsg)
 	publishInfo(ctx, uuid, infoMsg)
 }
@@ -402,7 +402,7 @@ func publishInfo(ctx *zedagentContext, UUID string, infoMsg *zinfo.ZInfoMsg) {
 
 func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) {
 
-	log.Infof("publishInfoToZedCloud sending %v", infoMsg)
+	log.Functionf("publishInfoToZedCloud sending %v", infoMsg)
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
 		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
@@ -443,7 +443,7 @@ func handleAppFlowMonitorModify(ctxArg interface{}, key string,
 func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAppFlowMonitorImpl(%s)", key)
+	log.Functionf("handleAppFlowMonitorImpl(%s)", key)
 	flows := statusArg.(types.IPFlow)
 
 	// encoding the flows with protobuf format
@@ -456,7 +456,7 @@ func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAppFlowMonitorDelete(%s)", key)
+	log.Functionf("handleAppFlowMonitorDelete(%s)", key)
 }
 
 func handleAppVifIPTrigCreate(ctxArg interface{}, key string,
@@ -472,7 +472,7 @@ func handleAppVifIPTrigModify(ctxArg interface{}, key string,
 func handleAppVifIPTrigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAppVifIPTrigImpl(%s)", key)
+	log.Functionf("handleAppVifIPTrigImpl(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
 	trig := statusArg.(types.VifIPTrig)
 	findVifAndTrigAppInfoUpload(ctx, trig.MacAddr, trig.IPAddr)
@@ -484,11 +484,11 @@ func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string, ipAddr ne
 
 	for _, st := range items {
 		aiStatus := st.(types.AppInstanceStatus)
-		log.Debugf("findVifAndTrigAppInfoUpload: mac address %s match, ip %v, publish the info to cloud", macAddr, ipAddr)
+		log.Tracef("findVifAndTrigAppInfoUpload: mac address %s match, ip %v, publish the info to cloud", macAddr, ipAddr)
 		uuidStr := aiStatus.Key()
 		aiStatusPtr := &aiStatus
 		if aiStatusPtr.MaybeUpdateAppIPAddr(macAddr, ipAddr.String()) {
-			log.Infof("findVifAndTrigAppInfoUpload: underlay %v", aiStatusPtr.UnderlayNetworks)
+			log.Functionf("findVifAndTrigAppInfoUpload: underlay %v", aiStatusPtr.UnderlayNetworks)
 			PublishAppInfoToZedCloud(ctx, uuidStr, aiStatusPtr, ctx.assignableAdapters, ctx.iteration)
 			ctx.iteration++
 			break
@@ -597,7 +597,7 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 			return
 		}
 
-		log.Debugf("Send Flow protobuf out on all intfs, message size %d, flowQ size %d",
+		log.Tracef("Send Flow protobuf out on all intfs, message size %d, flowQ size %d",
 			size, flowQ.Len())
 		writeSentFlowProtoMessage(data)
 
@@ -628,6 +628,6 @@ func handleAppContainerMetricsImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	acMetrics := statusArg.(types.AppContainerMetrics)
-	log.Debugf("handleAppContainerMetricsImpl(%s), num containers %d",
+	log.Tracef("handleAppContainerMetricsImpl(%s), num containers %d",
 		key, len(acMetrics.StatsList))
 }

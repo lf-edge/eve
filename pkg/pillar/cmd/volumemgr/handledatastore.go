@@ -22,7 +22,7 @@ func handleDatastoreConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*volumemgrContext)
 	config := configArg.(types.DatastoreConfig)
-	log.Infof("handleDatastoreConfigImpl for %s", key)
+	log.Functionf("handleDatastoreConfigImpl for %s", key)
 	updateStatusByDatastore(ctx, config)
-	log.Infof("handleDatastoreConfigImpl for %s, done", key)
+	log.Functionf("handleDatastoreConfigImpl for %s, done", key)
 }

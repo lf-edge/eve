@@ -16,7 +16,7 @@ func createConfigItemMapDir(configItemMapDir string) {
 	if err == nil {
 		// Dir Exists.. Make sure it is a Dir
 		if info.IsDir() {
-			log.Debugf("createConfigItemMapDir: Dir %s Exists", configItemMapDir)
+			log.Tracef("createConfigItemMapDir: Dir %s Exists", configItemMapDir)
 			return
 		}
 		log.Errorf("***createConfigItemMapDir: %s not a directory. Info: %+v\n"+
@@ -27,7 +27,7 @@ func createConfigItemMapDir(configItemMapDir string) {
 				configItemMapDir, err)
 		}
 	} else if os.IsNotExist(err) {
-		log.Debugf("createConfigItemMapDir: Dir %s Doesn't Exist. Creating it.",
+		log.Tracef("createConfigItemMapDir: Dir %s Doesn't Exist. Creating it.",
 			configItemMapDir)
 	} else {
 		log.Fatalf("***createConfigItemMapDir: Failed to get Info for file %s. Err: %s",
@@ -46,7 +46,7 @@ func delOldGlobalConfigDir(ctxPtr *ucContext) error {
 	globalConfigDir := ctxPtr.globalConfigDir()
 	err := os.RemoveAll(globalConfigDir)
 	if err == nil {
-		log.Debugf("delOldGlobalConfigDir: Removed %s", globalConfigDir)
+		log.Tracef("delOldGlobalConfigDir: Removed %s", globalConfigDir)
 		return nil
 	}
 	log.Errorf("delOldGlobalConfigDir: Failed to remove %s", globalConfigDir)
@@ -68,25 +68,25 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 		if newExists {
 			newTime, _ := fileTimeStamp(newGlobalConfigFile)
 			oldTime, _ := fileTimeStamp(oldGlobalConfigFile)
-			log.Debugf("convertGlobalConfig: newTime:%+v, oldTime: %+v",
+			log.Tracef("convertGlobalConfig: newTime:%+v, oldTime: %+v",
 				newTime, oldTime)
 			if oldTime.After(newTime) {
-				log.Infof("OldConfig Newer than NewConfig. Need Conversion")
+				log.Functionf("OldConfig Newer than NewConfig. Need Conversion")
 			} else {
-				log.Infof("convertGlobalConfig: NewConfig Newer than OldConfig")
+				log.Functionf("convertGlobalConfig: NewConfig Newer than OldConfig")
 				delOldGlobalConfigDir(ctxPtr)
 				return nil
 			}
 		} else {
-			log.Infof("OldConfig Exists. NO NewConfig. Need Conversion")
+			log.Functionf("OldConfig Exists. NO NewConfig. Need Conversion")
 		}
 		newConfigPtr = newConfigFromOld(oldGlobalConfigFile)
 	} else if newExists {
-		log.Infof("No Old Config. Only new Config Exists. No conversion needed")
+		log.Functionf("No Old Config. Only new Config Exists. No conversion needed")
 		delOldGlobalConfigDir(ctxPtr)
 		return nil
 	} else {
-		log.Infof("Neither New Nor Old Configs Exist. Do nothing")
+		log.Functionf("Neither New Nor Old Configs Exist. Do nothing")
 		return nil
 	}
 
@@ -102,7 +102,7 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 	}
 	// Delete the OldGlobalConfig
 	delOldGlobalConfigDir(ctxPtr)
-	log.Debugf("upgradeconverter.convertGlobalConfig done")
+	log.Tracef("upgradeconverter.convertGlobalConfig done")
 	return nil
 }
 
@@ -133,6 +133,6 @@ func newConfigFromOld(globalConfigFile string) *types.ConfigItemValueMap {
 func convert(ctxPtr *ucContext) error {
 	// Any any conversions we need here.
 	err := convertGlobalConfig(ctxPtr)
-	log.Debugf("upgradeconverter.convert done")
+	log.Tracef("upgradeconverter.convert done")
 	return err
 }

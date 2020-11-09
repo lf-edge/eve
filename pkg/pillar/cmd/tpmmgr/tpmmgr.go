@@ -218,7 +218,7 @@ func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, over
 		tpm2.HandleOwner,
 		keyHandle,
 		keyHandle); err != nil {
-		log.Debugf("EvictControl failed: %v", err)
+		log.Tracef("EvictControl failed: %v", err)
 	}
 	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner, handle,
@@ -287,7 +287,7 @@ func writeDeviceCert() error {
 	if err := tpm2.NVUndefineSpace(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner, etpm.TpmDeviceCertHdl,
 	); err != nil {
-		log.Debugf("NVUndefineSpace failed: %v", err)
+		log.Tracef("NVUndefineSpace failed: %v", err)
 	}
 
 	deviceCertBytes, err := ioutil.ReadFile(TpmDeviceCertFileName)
@@ -375,7 +375,7 @@ func writeCredentials() error {
 	if err := tpm2.NVUndefineSpace(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner, etpm.TpmPasswdHdl,
 	); err != nil {
-		log.Debugf("NVUndefineSpace failed: %v", err)
+		log.Tracef("NVUndefineSpace failed: %v", err)
 	}
 
 	tpmCredentialBytes, err := ioutil.ReadFile(etpm.TpmCredentialsFileName)
@@ -1099,10 +1099,10 @@ func writeEcdhCertToFile(certBytes, keyBytes []byte) error {
 
 func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
 	key := config.Key()
-	log.Debugf("publishEdgeNodeCert %s", key)
+	log.Tracef("publishEdgeNodeCert %s", key)
 	pub := ctx.pubEdgeNodeCert
 	pub.Publish(key, config)
-	log.Debugf("publishEdgeNodeCert %s Done", key)
+	log.Tracef("publishEdgeNodeCert %s Done", key)
 }
 
 func readEdgeNodeCert(certPath string) ([]byte, error) {
@@ -1124,7 +1124,7 @@ func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 }
 
 func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certType types.CertType, isTpm bool, metaDataItems []types.CertMetaData) {
-	log.Infof("publishEdgeNodeCertToController started")
+	log.Functionf("publishEdgeNodeCertToController started")
 	if !etpm.FileExists(certFile) {
 		log.Errorf("publishEdgeNodeCertToController failed: no cert file")
 		return
@@ -1156,7 +1156,7 @@ func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certTy
 		}
 	}
 	publishEdgeNodeCert(ctx, cert)
-	log.Infof("publishEdgeNodeCertToController Done")
+	log.Functionf("publishEdgeNodeCertToController Done")
 }
 
 func getEkCertMetaData() ([]types.CertMetaData, error) {
@@ -1282,7 +1282,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			log.Errorf("saveTpmInfo failed: %v", err)
 		}
 	case "runAsService":
-		log.Infof("Starting %s", agentName)
+		log.Functionf("Starting %s", agentName)
 
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
@@ -1388,7 +1388,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
-			log.Infof("waiting for GCInitialized")
+			log.Functionf("waiting for GCInitialized")
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
@@ -1398,7 +1398,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			}
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
-		log.Infof("processed GlobalConfig")
+		log.Functionf("processed GlobalConfig")
 
 		if etpm.IsTpmEnabled() && !etpm.FileExists(etpm.TpmCredentialsFileName) {
 			err := readCredentials()
@@ -1497,17 +1497,17 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigImpl for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigImpl done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1515,13 +1515,13 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
 func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
@@ -1540,25 +1540,25 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.NodeAgentStatus)
 	ctx := ctxArg.(*tpmMgrContext)
 	if key != "nodeagent" {
-		log.Infof("handleNodeAgentStatusImpl: ignoring %s", key)
+		log.Functionf("handleNodeAgentStatusImpl: ignoring %s", key)
 		return
 	}
 	ctx.DeviceReboot = status.DeviceReboot
-	log.Infof("handleNodeAgentStatusImpl done for %s: %v", key, ctx.DeviceReboot)
+	log.Functionf("handleNodeAgentStatusImpl done for %s: %v", key, ctx.DeviceReboot)
 }
 
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleNodeAgentStatusDelete for %s", key)
+	log.Functionf("handleNodeAgentStatusDelete for %s", key)
 	ctx := ctxArg.(*tpmMgrContext)
 
 	if key != "nodeagent" {
-		log.Infof("handleNodeAgentStatusDelete: ignoring %s", key)
+		log.Functionf("handleNodeAgentStatusDelete: ignoring %s", key)
 		return
 	}
 	ctx.DeviceReboot = false
-	log.Infof("handleNodeAgentStatusDelete done for %s: %v", key, ctx.DeviceReboot)
+	log.Functionf("handleNodeAgentStatusDelete done for %s: %v", key, ctx.DeviceReboot)
 }
 
 func readNodeAgentStatus(ctx *tpmMgrContext) (bool, error) {
@@ -1583,10 +1583,10 @@ func handleAttestNonceModify(ctxArg interface{}, key string,
 func handleAttestNonceImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAttestNonceImpl received")
+	log.Functionf("handleAttestNonceImpl received")
 	ctx := ctxArg.(*tpmMgrContext)
 	nonceReq := statusArg.(types.AttestNonce)
-	log.Infof("Received quote request from %s", nonceReq.Requester)
+	log.Functionf("Received quote request from %s", nonceReq.Requester)
 	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
 	if err != nil {
 		log.Errorf("Error in fetching quote %v", err)
@@ -1599,21 +1599,21 @@ func handleAttestNonceImpl(ctxArg interface{}, key string,
 		PCRs:      pcrs,
 	}
 	pubKey := attestQuote.Key()
-	log.Debugf("publishing quote for nonce %x", pubKey)
+	log.Tracef("publishing quote for nonce %x", pubKey)
 	pub := ctx.pubAttestQuote
 	pub.Publish(pubKey, attestQuote)
-	log.Debugf("handleAttestNonceImpl done")
+	log.Tracef("handleAttestNonceImpl done")
 }
 
 func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Infof("handleAttestNonceDelete received")
+	log.Functionf("handleAttestNonceDelete received")
 	ctx := ctxArg.(*tpmMgrContext)
 	pub := ctx.pubAttestQuote
 	st, _ := pub.Get(key)
 	if st != nil {
-		log.Infof("Unpublishing quote for nonce %x", key)
+		log.Functionf("Unpublishing quote for nonce %x", key)
 		pub := ctx.pubAttestQuote
 		pub.Unpublish(key)
 	}
-	log.Infof("handleAttestNonceDelete done")
+	log.Functionf("handleAttestNonceDelete done")
 }

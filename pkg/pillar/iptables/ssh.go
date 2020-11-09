@@ -38,7 +38,7 @@ var ControlProtocolMarkingIDMap = map[string]string{
 
 func UpdateSshAccess(log *base.LogObject, enable bool, first bool) {
 
-	log.Infof("updateSshAccess(enable %v first %v)\n",
+	log.Functionf("updateSshAccess(enable %v first %v)\n",
 		enable, first)
 
 	if first {
@@ -57,7 +57,7 @@ func UpdateSshAccess(log *base.LogObject, enable bool, first bool) {
 
 func UpdateVncAccess(log *base.LogObject, enable bool) {
 
-	log.Infof("updateVncAccess(enable %v\n", enable)
+	log.Functionf("updateVncAccess(enable %v\n", enable)
 
 	if enable {
 		allowPortRange(log, 5900, 5999)
@@ -67,7 +67,7 @@ func UpdateVncAccess(log *base.LogObject, enable bool) {
 }
 
 func allowPortRange(log *base.LogObject, startPort int, endPort int) {
-	log.Infof("allowPortRange(%d, %d)\n", startPort, endPort)
+	log.Functionf("allowPortRange(%d, %d)\n", startPort, endPort)
 	// Delete these rules
 	// iptables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// ip6tables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -83,7 +83,7 @@ func allowPortRange(log *base.LogObject, startPort int, endPort int) {
 
 // Like above but allow for 127.0.0.1 to 127.0.0.1 and block for other IPs
 func allowLocalPortRange(log *base.LogObject, startPort int, endPort int) {
-	log.Infof("allowLocalPortRange(%d, %d)\n", startPort, endPort)
+	log.Functionf("allowLocalPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
 	// iptables -A INPUT -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 22 -j ACCEPT
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -106,7 +106,7 @@ func allowLocalPortRange(log *base.LogObject, startPort int, endPort int) {
 }
 
 func dropPortRange(log *base.LogObject, startPort int, endPort int) {
-	log.Infof("dropPortRange(%d, %d)\n", startPort, endPort)
+	log.Functionf("dropPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// ip6tables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset

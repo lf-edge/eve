@@ -260,7 +260,7 @@ func startNewRetryTimer(ctx *Context) error {
 	if ctx.restartTimer != nil {
 		ctx.restartTimer.Stop()
 	}
-	ctx.log.Debugf("Starting retry timer at %v\n", time.Now())
+	ctx.log.Tracef("Starting retry timer at %v\n", time.Now())
 	if ctx.retryTime == 0 {
 		return fmt.Errorf("retryTime not initialized")
 	}
@@ -270,7 +270,7 @@ func startNewRetryTimer(ctx *Context) error {
 
 //The event handlers
 func handleInitializeAtNone(ctx *Context) error {
-	ctx.log.Debug("handleInitializeAtNone")
+	ctx.log.Trace("handleInitializeAtNone")
 	ctx.state = StateNonceWait
 	err := verifier.SendNonceRequest(ctx)
 	if err == nil {
@@ -292,14 +292,14 @@ func handleInitializeAtNone(ctx *Context) error {
 }
 
 func handleRestartAtNone(ctx *Context) error {
-	ctx.log.Debug("handleRestartAtNone")
+	ctx.log.Trace("handleRestartAtNone")
 
 	//same handling as EventRestart
 	return handleInitializeAtNone(ctx)
 }
 
 func handleNonceRecvdAtNonceWait(ctx *Context) error {
-	ctx.log.Debug("handleNonceRecvdAtNonceWait")
+	ctx.log.Trace("handleNonceRecvdAtNonceWait")
 	ctx.state = StateInternalQuoteWait
 	err := tpmAgent.SendInternalQuoteRequest(ctx)
 	if err == nil {
@@ -315,7 +315,7 @@ func handleNonceRecvdAtNonceWait(ctx *Context) error {
 }
 
 func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
-	ctx.log.Debug("handleInternalQuoteRecvdAtInternalQuoteWait")
+	ctx.log.Trace("handleInternalQuoteRecvdAtInternalQuoteWait")
 	ctx.state = StateAttestWait
 	err := verifier.SendAttestQuote(ctx)
 	if err == nil {
@@ -345,7 +345,7 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 }
 
 func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
-	ctx.log.Debug("handleAttestSuccessfulAtAttestWait")
+	ctx.log.Trace("handleAttestSuccessfulAtAttestWait")
 	ctx.state = StateAttestEscrowWait
 	err := verifier.SendAttestEscrow(ctx)
 	if err == nil {
@@ -373,7 +373,7 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 }
 
 func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
-	ctx.log.Debug("handleAttestEscrowRecordedAtAttestEscrowWait")
+	ctx.log.Trace("handleAttestEscrowRecordedAtAttestEscrowWait")
 	ctx.state = StateComplete
 	if ctx.restartRequestPending {
 		ctx.state = StateRestartWait
@@ -383,41 +383,41 @@ func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
 }
 
 func handleRestartAtStateComplete(ctx *Context) error {
-	ctx.log.Debug("handleRestartAtStateComplete")
+	ctx.log.Trace("handleRestartAtStateComplete")
 	ctx.state = StateRestartWait
 	return startNewRetryTimer(ctx)
 }
 
 func handleRestart(ctx *Context) error {
-	ctx.log.Debug("handleRestart")
+	ctx.log.Trace("handleRestart")
 	ctx.restartRequestPending = true
 	return nil
 }
 
 func handleNonceMismatchAtAttestWait(ctx *Context) error {
-	ctx.log.Debug("handleNonceMismatchAtAttestWait")
+	ctx.log.Trace("handleNonceMismatchAtAttestWait")
 	ctx.state = StateRestartWait
 	return startNewRetryTimer(ctx)
 }
 
 func handleQuoteMismatchAtAttestWait(ctx *Context) error {
-	ctx.log.Debug("handleQuoteMismatchAtAttestWait")
+	ctx.log.Trace("handleQuoteMismatchAtAttestWait")
 	return handleNonceMismatchAtAttestWait(ctx)
 }
 
 func handleNoQuoteCertRcvdAtAttestWait(ctx *Context) error {
-	ctx.log.Debug("handleNoQuoteCertRcvdAtAttestWait")
+	ctx.log.Trace("handleNoQuoteCertRcvdAtAttestWait")
 	return handleNonceMismatchAtAttestWait(ctx)
 }
 
 func handleAttestEscrowFailedAtAttestEscrowWait(ctx *Context) error {
-	ctx.log.Debug("handleAttestEscrowFailedAtAttestEscrowWait")
+	ctx.log.Trace("handleAttestEscrowFailedAtAttestEscrowWait")
 	ctx.state = StateRestartWait
 	return startNewRetryTimer(ctx)
 }
 
 func handleInternalEscrowRecvdAtInternalEscrowWait(ctx *Context) error {
-	ctx.log.Debug("handleInternalEscrowRecvdAtInternalEscrowWait")
+	ctx.log.Trace("handleInternalEscrowRecvdAtInternalEscrowWait")
 	//try sending escrow data now
 	return handleAttestSuccessfulAtAttestWait(ctx)
 }
@@ -426,7 +426,7 @@ func handleInternalEscrowRecvdAtInternalEscrowWait(ctx *Context) error {
 //at any other state, other than StateInternalQuoteWait.
 //for StateInternalQuoteWait, we have handleInternalEscrowRecvdAtInternalEscrowWait
 func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
-	ctx.log.Debug("handleInternalEscrowRecvdAtAnyOther")
+	ctx.log.Trace("handleInternalEscrowRecvdAtAnyOther")
 	switch ctx.state {
 	case StateInternalEscrowWait:
 		//We should not have reached here since there is an explicit
@@ -443,39 +443,39 @@ func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
 }
 
 func handleNoEscrowAtAttestEscrowWait(ctx *Context) error {
-	ctx.log.Debug("handleNoEscrowAtAttestEscrowWait")
+	ctx.log.Trace("handleNoEscrowAtAttestEscrowWait")
 	//Wait till we get escrow data published
 	ctx.state = StateInternalEscrowWait
 	return nil
 }
 
 func handleRetryTimerExpiryAtRestartWait(ctx *Context) error {
-	ctx.log.Debug("handleRetryTimerExpiryAtRestartWait")
+	ctx.log.Trace("handleRetryTimerExpiryAtRestartWait")
 	ctx.state = StateNone
 	ctx.restartRequestPending = false
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 
 func handleRetryTimerExpiryAtNonceWait(ctx *Context) error {
-	ctx.log.Debug("handleRetryTimerExpiryAtNonceWait")
+	ctx.log.Trace("handleRetryTimerExpiryAtNonceWait")
 	ctx.state = StateNone
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 
 func handleRetryTimerExpiryAtAttestWait(ctx *Context) error {
 	//try re-sending quote
-	ctx.log.Debug("handleRetryTimerExpiryAtAttestWait")
+	ctx.log.Trace("handleRetryTimerExpiryAtAttestWait")
 	return handleInternalQuoteRecvdAtInternalQuoteWait(ctx)
 }
 
 func handleRetryTimerExpiryWhileAttestEscrowWait(ctx *Context) error {
 	//try re-sending escrow info
-	ctx.log.Debug("handleRetryTimerExpiryWhileAttestEscrowWait")
+	ctx.log.Trace("handleRetryTimerExpiryWhileAttestEscrowWait")
 	return handleAttestSuccessfulAtAttestWait(ctx)
 }
 
 func handleRetryTimerExpiryAtInternalQuoteWait(ctx *Context) error {
-	ctx.log.Debug("handleRetryTimerExpiryAtInternalQuoteWait")
+	ctx.log.Trace("handleRetryTimerExpiryAtInternalQuoteWait")
 	return handleNonceRecvdAtNonceWait(ctx)
 }
 
@@ -518,15 +518,15 @@ func (ctx *Context) EnterEventLoop() {
 	for {
 		select {
 		case ctx.event = <-ctx.eventTrigger:
-			ctx.log.Debug("[ATTEST] despatching event")
+			ctx.log.Trace("[ATTEST] despatching event")
 			if err := despatchEvent(ctx.event, ctx.state, ctx); err != nil {
 				ctx.log.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			ctx.log.Debug("[ATTEST] EventRetryTimerExpiry event")
+			ctx.log.Trace("[ATTEST] EventRetryTimerExpiry event")
 			triggerSelfEvent(ctx, EventRetryTimerExpiry)
 		case <-stillRunning.C:
-			ctx.log.Debug("[ATTEST] stillRunning event")
+			ctx.log.Trace("[ATTEST] stillRunning event")
 			punchWatchdog(ctx)
 		}
 	}

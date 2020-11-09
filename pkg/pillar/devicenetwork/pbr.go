@@ -31,7 +31,7 @@ func FlushRoutesTable(log *base.LogObject, table int, ifindex int) {
 		log.Errorf("FlushRoutesTable: for table %d, ifindex %d failed, error %v", table, ifindex, err)
 		return
 	}
-	log.Debugf("FlushRoutesTable(%d, %d) - got %d",
+	log.Tracef("FlushRoutesTable(%d, %d) - got %d",
 		table, ifindex, len(routes))
 	for _, rt := range routes {
 		if rt.Table != table {
@@ -40,7 +40,7 @@ func FlushRoutesTable(log *base.LogObject, table int, ifindex int) {
 		if ifindex != 0 && rt.LinkIndex != ifindex {
 			continue
 		}
-		log.Infof("FlushRoutesTable(%d, %d) deleting %v",
+		log.Functionf("FlushRoutesTable(%d, %d) deleting %v",
 			table, ifindex, rt)
 		if err := netlink.RouteDel(&rt); err != nil {
 			log.Errorf("FlushRoutesTable - RouteDel %v failed %s",
@@ -58,12 +58,12 @@ func FlushRules(log *base.LogObject, ifindex int) {
 		log.Errorf("FlushRules: for ifindex %d failed, error %v", ifindex, err)
 		return
 	}
-	log.Debugf("FlushRules(%d) - got %d", ifindex, len(rules))
+	log.Tracef("FlushRules(%d) - got %d", ifindex, len(rules))
 	for _, r := range rules {
 		if r.Table != baseTableIndex+ifindex {
 			continue
 		}
-		log.Infof("FlushRules: RuleDel %v", r)
+		log.Functionf("FlushRules: RuleDel %v", r)
 		if err := netlink.RuleDel(&r); err != nil {
 			log.Errorf("FlushRules - RuleDel %v failed %s",
 				r, err)
@@ -92,9 +92,9 @@ func makeNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool) *netlink.Rule 
 // specific table for the ifindex.
 func AddSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet bool) {
 
-	log.Infof("AddSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
+	log.Functionf("AddSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
 	r := makeNetlinkRule(ifindex, p, addForSubnet)
-	log.Debugf("AddSourceRule: RuleAdd %v", r)
+	log.Tracef("AddSourceRule: RuleAdd %v", r)
 	// Avoid duplicate rules
 	_ = netlink.RuleDel(r)
 	if err := netlink.RuleAdd(r); err != nil {
@@ -107,9 +107,9 @@ func AddSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet b
 // specific table for the ifindex.
 func DelSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet bool) {
 
-	log.Infof("DelSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
+	log.Functionf("DelSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
 	r := makeNetlinkRule(ifindex, p, addForSubnet)
-	log.Debugf("DelSourceRule: RuleDel %v", r)
+	log.Tracef("DelSourceRule: RuleDel %v", r)
 	if err := netlink.RuleDel(r); err != nil {
 		log.Errorf("RuleDel %v failed with %s", r, err)
 		return

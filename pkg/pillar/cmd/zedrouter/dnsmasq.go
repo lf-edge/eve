@@ -72,7 +72,7 @@ func dnsmasqBridgeNames() []string {
 
 func dnsmasqInitDirs() {
 	if _, err := os.Stat(dnsmasqLeaseDir); err != nil {
-		log.Infof("Create %s\n", dnsmasqLeaseDir)
+		log.Functionf("Create %s\n", dnsmasqLeaseDir)
 		if err := os.Mkdir(dnsmasqLeaseDir, 0755); err != nil {
 			log.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func createDnsmasqConfiglet(
 	netconf *types.NetworkInstanceConfig, hostsDir string,
 	ipsets []string, Ipv4Eid bool, uplink string, dnsServers []net.IP) {
 
-	log.Infof("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v",
+	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v",
 		bridgeName, bridgeIPAddr, netconf, ipsets, uplink, dnsServers)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
@@ -195,7 +195,7 @@ func createDnsmasqConfiglet(
 	var router string
 
 	if netconf.Logicallabel == "" {
-		log.Infof("Internal switch without external port case, dnsmasq suppress router advertize\n")
+		log.Functionf("Internal switch without external port case, dnsmasq suppress router advertize\n")
 		advertizeRouter = false
 	} else if Ipv4Eid {
 		advertizeRouter = false
@@ -257,7 +257,7 @@ func createDnsmasqConfiglet(
 				netconf.Subnet.String(), router))
 		}
 	} else {
-		log.Infof("createDnsmasqConfiglet: no router\n")
+		log.Functionf("createDnsmasqConfiglet: no router\n")
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
 		}
@@ -265,7 +265,7 @@ func createDnsmasqConfiglet(
 			// Handle isolated network by making sure
 			// we are not a DNS server. Can be overridden
 			// with the DnsServers above
-			log.Infof("createDnsmasqConfiglet: no DNS server\n")
+			log.Functionf("createDnsmasqConfiglet: no DNS server\n")
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
 		}
 	}
@@ -283,7 +283,7 @@ func createDnsmasqConfiglet(
 func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 	hostname string) {
 
-	log.Infof("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
+	log.Functionf("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
 		appIPAddr, hostname)
 	if dnsmasqStopStart {
 		stopDnsmasq(bridgeName, true, false)
@@ -322,7 +322,7 @@ func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 
 func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
-	log.Infof("removehostDnsmasq(%s, %s, %s)\n",
+	log.Functionf("removehostDnsmasq(%s, %s, %s)\n",
 		bridgeName, appMac, appIPAddr)
 	stopDnsmasq(bridgeName, true, false)
 	ip := net.ParseIP(appIPAddr)
@@ -340,7 +340,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 	cfgPathname := dhcphostsDir + "/" + appMac + suffix
 	if _, err := os.Stat(cfgPathname); err != nil {
-		log.Infof("removehostDnsmasq(%s, %s) failed: %s\n",
+		log.Functionf("removehostDnsmasq(%s, %s) failed: %s\n",
 			bridgeName, appMac, err)
 	} else {
 		if err := os.Remove(cfgPathname); err != nil {
@@ -353,7 +353,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 func deleteDnsmasqConfiglet(bridgeName string) {
 
-	log.Infof("deleteDnsmasqConfiglet(%s)\n", bridgeName)
+	log.Functionf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	if _, err := os.Stat(cfgPathname); err == nil {
 		if err := os.Remove(cfgPathname); err != nil {
@@ -377,7 +377,7 @@ func RemoveDirContent(dir string) error {
 	}
 	for _, file := range files {
 		filename := dir + "/" + file.Name()
-		log.Infoln("RemoveDirContent found ", filename)
+		log.Functionln("RemoveDirContent found ", filename)
 		err = os.RemoveAll(filename)
 		if err != nil {
 			return err
@@ -390,7 +390,7 @@ func RemoveDirContent(dir string) error {
 //    ${DMDIR}/dnsmasq -b -C /run/zedrouter/dnsmasq.${BRIDGENAME}.conf
 func startDnsmasq(bridgeName string) {
 
-	log.Infof("startDnsmasq(%s)\n", bridgeName)
+	log.Functionf("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
 	args := []string{
@@ -398,20 +398,20 @@ func startDnsmasq(bridgeName string) {
 		"-C",
 		cfgPathname,
 	}
-	log.Infof("Calling command %s %v\n", name, args)
+	log.Functionf("Calling command %s %v\n", name, args)
 	out, err := base.Exec(log, name, args...).CombinedOutput()
 	if err != nil {
 		log.Errorf("startDnsmasq: Failed starting dnsmasq for bridge %s (%s)",
 			bridgeName, err)
 	} else {
-		log.Infof("startDnsmasq: Started dnsmasq with output: %s", out)
+		log.Functionf("startDnsmasq: Started dnsmasq with output: %s", out)
 	}
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
-	log.Infof("stopDnsmasq(%s)\n", bridgeName)
+	log.Functionf("stopDnsmasq(%s)\n", bridgeName)
 	pidfile := fmt.Sprintf("/run/dnsmasq.%s.pid", bridgeName)
 	pidByte, err := ioutil.ReadFile(pidfile)
 	if err != nil {
@@ -437,10 +437,10 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 		if err == nil {
 			err = p.Signal(syscall.Signal(0))
 			if err != nil {
-				log.Infof("stopDnsmasq: kill process done for %d\n", pid)
+				log.Functionf("stopDnsmasq: kill process done for %d\n", pid)
 				break
 			} else {
-				log.Infof("stopDnsmasq: wait for %d to finish\n", pid)
+				log.Functionf("stopDnsmasq: wait for %d to finish\n", pid)
 			}
 			if time.Since(startCheckTime).Seconds() > 60 {
 				log.Errorf("stopDnsmasq: kill dnsmasq on %s pid %d not finish in 60 seconds\n", bridgeName, pid)
@@ -448,7 +448,7 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 			}
 			time.Sleep(1 * time.Second)
 		} else {
-			log.Infof("stopDnsmasq: find dnsmasq process %s error %v\n", pidStr, err)
+			log.Functionf("stopDnsmasq: find dnsmasq process %s error %v\n", pidStr, err)
 			break
 		}
 	}
@@ -481,7 +481,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 			l := findLease(ctx, status.Key(), ulStatus.Mac, true)
 			assigned := (l != nil)
 			if ulStatus.Assigned != assigned {
-				log.Infof("Changing(%s) %s mac %s to %t",
+				log.Functionf("Changing(%s) %s mac %s to %t",
 					status.Key(), status.DisplayName,
 					ulStatus.Mac, assigned)
 				ulStatus.Assigned = assigned
@@ -530,10 +530,10 @@ func findLease(ctx *zedrouterContext, hostname string, mac string, ignoreExpired
 			log.Warnf("Ignoring expired lease: %v", *l)
 			return nil
 		}
-		log.Debugf("Found %v", *l)
+		log.Tracef("Found %v", *l)
 		return l
 	}
-	log.Debugf("Not found %s/%s", hostname, mac)
+	log.Tracef("Not found %s/%s", hostname, mac)
 	return nil
 }
 
@@ -542,10 +542,10 @@ func addOrUpdateLease(ctx *zedrouterContext, lease dnsmasqLease) bool {
 	l := findLease(ctx, lease.Hostname, lease.MacAddr, false)
 	if l == nil {
 		ctx.dhcpLeases = append(ctx.dhcpLeases, lease)
-		log.Infof("Adding lease %v", lease)
+		log.Functionf("Adding lease %v", lease)
 		return true
 	} else if !cmp.Equal(*l, lease) {
-		log.Infof("Updating lease %v with %v", *l, lease)
+		log.Functionf("Updating lease %v with %v", *l, lease)
 		*l = lease
 		return true
 	} else {
@@ -560,7 +560,7 @@ func markRemoveLease(ctx *zedrouterContext, hostname string, mac string) {
 	if l == nil {
 		log.Fatalf("Lease not found %s/%s", hostname, mac)
 	}
-	log.Infof("Removing lease %v", l)
+	log.Functionf("Removing lease %v", l)
 	l.Remove = true
 }
 
@@ -576,9 +576,9 @@ func purgeRemovedLeases(ctx *zedrouterContext) {
 		newLeases = append(newLeases, lease)
 	}
 	ctx.dhcpLeases = newLeases
-	log.Infof("purgeRemovedLeases removed %d", removed)
-	// XXX change to log.Debugf
-	log.Infof("XXX after purgeRemovedLeases %v", ctx.dhcpLeases)
+	log.Functionf("purgeRemovedLeases removed %d", removed)
+	// XXX change to log.Tracef
+	log.Functionf("XXX after purgeRemovedLeases %v", ctx.dhcpLeases)
 }
 
 type dnsmasqLease struct {
@@ -603,14 +603,14 @@ const leaseGCTime = 5 * time.Minute
 func updateAllLeases(ctx *zedrouterContext) bool {
 	changed := false
 	bridgeNames := dnsmasqBridgeNames()
-	log.Debugf("bridgeNames: %v", bridgeNames)
+	log.Tracef("bridgeNames: %v", bridgeNames)
 	for _, bridgeName := range bridgeNames {
 		leases, err := readLeases(bridgeName)
 		if err != nil {
 			log.Warnf("readLeases(%s) failed: %s", bridgeName, err)
 			continue
 		}
-		log.Debugf("read leases(%s) %v", bridgeName, leases)
+		log.Tracef("read leases(%s) %v", bridgeName, leases)
 		// Add any new ones
 		for _, l := range leases {
 			if addOrUpdateLease(ctx, l) {
@@ -627,7 +627,7 @@ func updateAllLeases(ctx *zedrouterContext) bool {
 			time.Since(l.LeaseTime) <= leaseGCTime {
 			continue
 		}
-		log.Infof("lease %v garbage collected: lastSeen %v ago, lease expiry %v ago",
+		log.Functionf("lease %v garbage collected: lastSeen %v ago, lease expiry %v ago",
 			l, time.Since(l.LastSeen), time.Since(l.LeaseTime))
 		markRemoveLease(ctx, l.Hostname, l.MacAddr)
 		changed = true
@@ -699,7 +699,7 @@ func readLeases(bridgeName string) ([]dnsmasqLease, error) {
 // that has the IP address allotment information.
 func deleteOnlyDnsmasqConfiglet(bridgeName string) {
 
-	log.Infof("deleteOnlyDnsmasqConfiglet(%s)\n", bridgeName)
+	log.Functionf("deleteOnlyDnsmasqConfiglet(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	if _, err := os.Stat(cfgPathname); err == nil {
 		if err := os.Remove(cfgPathname); err != nil {

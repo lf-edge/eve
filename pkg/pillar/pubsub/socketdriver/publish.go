@@ -42,7 +42,7 @@ type Publisher struct {
 // Publish publish a key-value pair
 func (s *Publisher) Publish(key string, item []byte) error {
 	fileName := s.dirName + "/" + key + ".json"
-	s.log.Debugf("Publish writing %s\n", fileName)
+	s.log.Tracef("Publish writing %s\n", fileName)
 
 	err := fileutils.WriteRename(fileName, item)
 	if err != nil {
@@ -54,7 +54,7 @@ func (s *Publisher) Publish(key string, item []byte) error {
 // Unpublish delete a key and publish its deletion
 func (s *Publisher) Unpublish(key string) error {
 	fileName := s.dirName + "/" + key + ".json"
-	s.log.Debugf("Unpublish deleting file %s\n", fileName)
+	s.log.Tracef("Unpublish deleting file %s\n", fileName)
 	if err := os.Remove(fileName); err != nil {
 		return fmt.Errorf("Unpublish(%s/%s): failed %s", s.name, key, err)
 	}
@@ -67,7 +67,7 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 	foundRestarted := false
 	items := make(map[string][]byte)
 
-	s.log.Debugf("Load(%s)\n", s.name)
+	s.log.Tracef("Load(%s)\n", s.name)
 
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 			continue
 		}
 
-		s.log.Debugf("Load found key %s file %s\n", key, statusFile)
+		s.log.Tracef("Load found key %s file %s\n", key, statusFile)
 
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
@@ -112,7 +112,7 @@ func (s *Publisher) Start() error {
 	if s.listener == nil {
 		return nil
 	}
-	s.log.Infof("Creating %s at %s", "func", logutils.GetMyStack())
+	s.log.Functionf("Creating %s at %s", "func", logutils.GetMyStack())
 	go func(s *Publisher) {
 		instance := 0
 		done := false
@@ -130,7 +130,7 @@ func (s *Publisher) Start() error {
 				done = true
 				continue
 			}
-			s.log.Infof("Creating %s at %s", "s.serveConnection", logutils.GetMyStack())
+			s.log.Functionf("Creating %s at %s", "s.serveConnection", logutils.GetMyStack())
 			go s.serveConnection(c, instance)
 			maybeLogAllocated(s.log)
 			instance++
@@ -142,7 +142,7 @@ func (s *Publisher) Start() error {
 
 // Stop the publisher
 func (s *Publisher) Stop() error {
-	s.log.Infof("Stop(%s)", s.name)
+	s.log.Functionf("Stop(%s)", s.name)
 	if s.listener == nil {
 		// Nothing to do
 		return nil
@@ -173,7 +173,7 @@ func (s *Publisher) Restart(restarted bool) error {
 }
 
 func (s *Publisher) serveConnection(conn net.Conn, instance int) {
-	s.log.Infof("serveConnection(%s/%d)\n", s.name, instance)
+	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()
 
 	// Track the set of keys/values we are sending to the peer
@@ -198,7 +198,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	}
 
 	request := strings.Split(string(buf[0:res]), " ")
-	s.log.Infof("serveConnection read %d: %v\n", len(request), request)
+	s.log.Functionf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != s.topic {
 		s.log.Errorf("Invalid request message: %v\n", request)
 		return
@@ -242,7 +242,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	// Handle any changes
 	done := false
 	for !done {
-		s.log.Debugf("serveConnection(%s/%d) waiting for notification\n", s.name, instance)
+		s.log.Tracef("serveConnection(%s/%d) waiting for notification\n", s.name, instance)
 		startWait := time.Now()
 		select {
 		case _, ok := <-s.doneChan:
@@ -255,7 +255,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 		case <-updater:
 		}
 		waitTime := time.Since(startWait)
-		s.log.Debugf("serveConnection(%s/%d) received notification waited %d seconds\n", s.name, instance, waitTime/time.Second)
+		s.log.Tracef("serveConnection(%s/%d) received notification waited %d seconds\n", s.name, instance, waitTime/time.Second)
 
 		// Update and determine which keys changed
 		keys := s.differ.DetermineDiffs(sendToPeer)
@@ -282,7 +282,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 func (s *Publisher) serialize(sock net.Conn, keys []string,
 	sendToPeer pubsub.LocalCollection) error {
 
-	s.log.Debugf("serialize(%s, %v)\n", s.name, keys)
+	s.log.Tracef("serialize(%s, %v)\n", s.name, keys)
 
 	for _, key := range keys {
 		val, ok := sendToPeer[key]
@@ -306,7 +306,7 @@ func (s *Publisher) serialize(sock net.Conn, keys []string,
 func (s *Publisher) sendUpdate(sock net.Conn, key string,
 	val []byte) error {
 
-	s.log.Debugf("sendUpdate(%s): key %s\n", s.name, key)
+	s.log.Tracef("sendUpdate(%s): key %s\n", s.name, key)
 	// base64-encode to avoid having spaces in the key and val
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	sendVal := base64.StdEncoding.EncodeToString(val)
@@ -320,7 +320,7 @@ func (s *Publisher) sendUpdate(sock net.Conn, key string,
 }
 
 func (s *Publisher) sendDelete(sock net.Conn, key string) error {
-	s.log.Debugf("sendDelete(%s): key %s\n", s.name, key)
+	s.log.Tracef("sendDelete(%s): key %s\n", s.name, key)
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	buf := fmt.Sprintf("delete %s %s", s.topic, sendKey)
@@ -333,7 +333,7 @@ func (s *Publisher) sendDelete(sock net.Conn, key string) error {
 }
 
 func (s *Publisher) sendRestarted(sock net.Conn) error {
-	s.log.Infof("sendRestarted(%s)\n", s.name)
+	s.log.Functionf("sendRestarted(%s)\n", s.name)
 	buf := fmt.Sprintf("restarted %s", s.topic)
 	if len(buf) >= maxsize {
 		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
@@ -344,7 +344,7 @@ func (s *Publisher) sendRestarted(sock net.Conn) error {
 }
 
 func (s *Publisher) sendComplete(sock net.Conn) error {
-	s.log.Infof("sendComplete(%s)\n", s.name)
+	s.log.Functionf("sendComplete(%s)\n", s.name)
 	buf := fmt.Sprintf("complete %s", s.topic)
 	if len(buf) >= maxsize {
 		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",

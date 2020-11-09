@@ -93,7 +93,7 @@ func (hdl *ExecuteHandle) Execute(args ExecuteArgs) (string, error) {
 		Combined:  args.CombinedOutput,
 		DontWait:  args.DontWait,
 	}
-	hdl.log.Infof("publish %+v", config)
+	hdl.log.Functionf("publish %+v", config)
 	hdl.pubExecConfig.Publish(config.Key(), config)
 	if args.DontWait {
 		return "", nil
@@ -138,14 +138,14 @@ func handleStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	hdl := ctxArg.(*ExecuteHandle)
-	hdl.log.Infof("handleStatusImpl %s", key)
+	hdl.log.Functionf("handleStatusImpl %s", key)
 	if key != hdl.caller {
-		hdl.log.Infof("Mismatched key %s vs %s\n", key, hdl.caller)
+		hdl.log.Functionf("Mismatched key %s vs %s\n", key, hdl.caller)
 		return
 	}
 	status := statusArg.(types.ExecStatus)
 	if status.Sequence != hdl.sequence {
-		hdl.log.Infof("Mismatched sequence %d vs %d\n",
+		hdl.log.Functionf("Mismatched sequence %d vs %d\n",
 			status.Sequence, hdl.sequence)
 		return
 	}

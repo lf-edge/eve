@@ -78,12 +78,12 @@ func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byt
 	cmd := exec.CommandContext(ctx, command, args...)
 
 	if log != nil {
-		log.Infof("Waiting for zbootMutex.lock for %s %+v\n",
+		log.Functionf("Waiting for zbootMutex.lock for %s %+v\n",
 			command, args)
 	}
 	zbootMutex.Lock()
 	if log != nil {
-		log.Infof("Got zbootMutex.lock. Executing %s %+v\n",
+		log.Functionf("Got zbootMutex.lock. Executing %s %+v\n",
 			command, args)
 	}
 
@@ -91,7 +91,7 @@ func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byt
 
 	zbootMutex.Unlock()
 	if log != nil {
-		log.Infof("Released zbootMutex.lock for %s %+v\n",
+		log.Functionf("Released zbootMutex.lock for %s %+v\n",
 			command, args)
 	}
 
@@ -197,7 +197,7 @@ func IsPartitionState(partName string, partState string) bool {
 
 func setPartitionState(log *base.LogObject, partName string, partState string) {
 
-	log.Infof("setPartitionState(%s, %s)\n", partName, partState)
+	log.Functionf("setPartitionState(%s, %s)\n", partName, partState)
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
@@ -340,7 +340,7 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 		return errors.New(errStr)
 	}
 
-	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, image)
+	log.Functionf("WriteToPartition %s, %s: %v\n", partName, devName, image)
 
 	// use the edge-containers library to extract the data we need
 	puller := registry.Puller{
@@ -396,17 +396,17 @@ func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 	curPart := GetCurrentPartition()
 	otherPart := GetOtherPartition()
 
-	log.Infof("Check current partition %s, for inProgress state\n", curPart)
+	log.Functionf("Check current partition %s, for inProgress state\n", curPart)
 	if ret := IsCurrentPartitionStateInProgress(); ret == false {
 		errStr := fmt.Sprintf("Current partition %s, is not inProgress",
 			curPart)
 		return errors.New(errStr)
 	}
 
-	log.Infof("Mark the current partition %s, active\n", curPart)
+	log.Functionf("Mark the current partition %s, active\n", curPart)
 	setCurrentPartitionStateActive(log)
 
-	log.Infof("Check other partition %s for active state or inprogress\n",
+	log.Functionf("Check other partition %s for active state or inprogress\n",
 		otherPart)
 	state := GetPartitionState(otherPart)
 	switch state {
@@ -420,7 +420,7 @@ func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 		return errors.New(errStr)
 	}
 
-	log.Infof("Mark other partition %s, unused\n", otherPart)
+	log.Functionf("Mark other partition %s, unused\n", otherPart)
 	SetOtherPartitionStateUnused(log)
 	return nil
 }
@@ -454,7 +454,7 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
-		log.Infof("%s, readCurVersion %s\n", part, versionStr)
+		log.Functionf("%s, readCurVersion %s\n", part, versionStr)
 		return versionStr, nil
 	} else {
 		verFilename = otherPartVersionFile
@@ -500,7 +500,7 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
-		log.Infof("%s, readOtherVersion %s\n", part, versionStr)
+		log.Functionf("%s, readOtherVersion %s\n", part, versionStr)
 		return versionStr, nil
 	}
 }

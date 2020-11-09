@@ -63,7 +63,7 @@ func createJSONFile(config interface{}, file string) {
 		if err != nil {
 			log.Fatalf("Failed to create Dir: %s", parentDir)
 		}
-		log.Debugf("Created Dir: %s", parentDir)
+		log.Tracef("Created Dir: %s", parentDir)
 	}
 	configJSON, err := json.Marshal(config)
 	if err != nil {

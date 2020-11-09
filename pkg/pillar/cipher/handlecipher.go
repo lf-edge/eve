@@ -32,7 +32,7 @@ type DecryptCipherContext struct {
 
 // look up controller cert
 func lookupControllerCert(ctx *DecryptCipherContext, key string) *types.ControllerCert {
-	ctx.Log.Infof("lookupControllerCert(%s)\n", key)
+	ctx.Log.Functionf("lookupControllerCert(%s)\n", key)
 	sub := ctx.SubControllerCert
 	item, err := sub.Get(key)
 	if err != nil {
@@ -40,13 +40,13 @@ func lookupControllerCert(ctx *DecryptCipherContext, key string) *types.Controll
 		return nil
 	}
 	status := item.(types.ControllerCert)
-	ctx.Log.Infof("lookupControllerCert(%s) Done\n", key)
+	ctx.Log.Functionf("lookupControllerCert(%s) Done\n", key)
 	return &status
 }
 
 // look up cipher context
 func lookupCipherContext(ctx *DecryptCipherContext, key string) *types.CipherContext {
-	ctx.Log.Infof("lookupCipherContext(%s)\n", key)
+	ctx.Log.Functionf("lookupCipherContext(%s)\n", key)
 	sub := ctx.SubCipherContext
 	item, err := sub.Get(key)
 	if err != nil {
@@ -54,13 +54,13 @@ func lookupCipherContext(ctx *DecryptCipherContext, key string) *types.CipherCon
 		return nil
 	}
 	status := item.(types.CipherContext)
-	ctx.Log.Infof("lookupCipherContext(%s) done\n", key)
+	ctx.Log.Functionf("lookupCipherContext(%s) done\n", key)
 	return &status
 }
 
 // look up edge node cert
 func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCert {
-	ctx.Log.Infof("lookupEdgeNodeCert(%s)\n", key)
+	ctx.Log.Functionf("lookupEdgeNodeCert(%s)\n", key)
 	sub := ctx.SubEdgeNodeCert
 	item, err := sub.Get(key)
 	if err != nil {
@@ -68,14 +68,14 @@ func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCe
 		return nil
 	}
 	status := item.(types.EdgeNodeCert)
-	ctx.Log.Infof("lookupEdgeNodeCert(%s) Done\n", key)
+	ctx.Log.Functionf("lookupEdgeNodeCert(%s) Done\n", key)
 	return &status
 }
 
 func getDeviceCert(ctx *DecryptCipherContext,
 	cipherBlock types.CipherBlockStatus) ([]byte, error) {
 
-	ctx.Log.Infof("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
+	ctx.Log.Functionf("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
 	cipherContext := lookupCipherContext(ctx, cipherBlock.CipherContextID)
 	if cipherContext == nil {
 		errStr := fmt.Sprintf("cipher context %s not found\n",
@@ -93,7 +93,7 @@ func getDeviceCert(ctx *DecryptCipherContext,
 	}
 	if computeAndMatchHash(certBytes, cipherContext.DeviceCertHash,
 		cipherContext.HashScheme) {
-		ctx.Log.Infof("getDeviceCert for %s Done\n", cipherBlock.CipherBlockID)
+		ctx.Log.Functionf("getDeviceCert for %s Done\n", cipherBlock.CipherBlockID)
 		return certBytes, nil
 	}
 	errStr := fmt.Sprintf("getDeviceCert for %s not found\n",

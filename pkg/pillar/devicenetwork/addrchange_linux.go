@@ -37,22 +37,22 @@ func LinkChange(log *base.LogObject, change netlink.LinkUpdate) (bool, int) {
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
 		relevantFlag, upFlag := RelevantLastResort(log, change.Link)
-		log.Infof("LinkChange: NEWLINK index %d name %s type %s\n",
+		log.Functionf("LinkChange: NEWLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
 		changed = IfindexToNameAdd(log, ifindex, ifname, linkType, relevantFlag, upFlag)
-		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
+		log.Functionf("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)
 		if changed && relevantFlag && !upFlag {
 			setLinkUp(log, ifname)
 		}
 	case syscall.RTM_DELLINK:
-		log.Infof("LinkChange: DELLINK index %d name %s type %s\n",
+		log.Functionf("LinkChange: DELLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
 		// Drop all cached addresses
 		IfindexToAddrsFlush(log, ifindex)
 
 		changed = IfindexToNameDel(log, ifindex, ifname)
-		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
+		log.Functionf("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)
 	}
 	return changed, ifindex
@@ -60,7 +60,7 @@ func LinkChange(log *base.LogObject, change netlink.LinkUpdate) (bool, int) {
 
 // Set up to be able to see LOWER-UP and NO-CARRIER in operStatus later
 func setLinkUp(log *base.LogObject, ifname string) {
-	log.Infof("setLinkUp(%s)", ifname)
+	log.Functionf("setLinkUp(%s)", ifname)
 	link, err := netlink.LinkByName(ifname)
 	if link == nil {
 		log.Warnf("Can't find link %s: %s\n", ifname, err)

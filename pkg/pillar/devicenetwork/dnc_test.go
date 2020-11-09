@@ -383,7 +383,7 @@ func TestCompressDPCL(t *testing.T) {
 
 	for testname, test := range testMatrix {
 		t.Logf("TESTCASE: %s - Running", testname)
-		log.Debugf("======================TESTCASE: %s - Running============",
+		log.Tracef("======================TESTCASE: %s - Running============",
 			testname)
 		ctx := DeviceNetworkContext{
 			DevicePortConfigList: &test.dpcl,
@@ -394,11 +394,11 @@ func TestCompressDPCL(t *testing.T) {
 		}
 		dpcl := compressDPCL(&ctx)
 		passed := test.checkDpclEqual(t, testname, dpcl)
-		log.Debugf("======================TESTCASE: %s - DONE - Passed: %t "+
+		log.Tracef("======================TESTCASE: %s - DONE - Passed: %t "+
 			"===============", testname, passed)
 		t.Logf("TESTCASE: %s - Done", testname)
 		if !passed {
-			log.Debugf("Test Failed.. Stopping")
+			log.Tracef("Test Failed.. Stopping")
 			break
 		}
 	}

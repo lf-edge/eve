@@ -17,7 +17,7 @@ import (
 func latchContentTreeHash(ctx *volumemgrContext, contentID uuid.UUID,
 	hash string, generationCounter uint32) {
 
-	log.Infof("latchContentTreeHash(%s, %s, %d)", contentID, hash, generationCounter)
+	log.Functionf("latchContentTreeHash(%s, %s, %d)", contentID, hash, generationCounter)
 	if hash == "" {
 		log.Errorf("latchContentTreeHash(%s, %d) empty hash",
 			contentID, generationCounter)
@@ -40,14 +40,14 @@ func latchContentTreeHash(ctx *volumemgrContext, contentID uuid.UUID,
 			contentID, generationCounter, old.Hash, aih.Hash)
 	}
 	ctx.pubContentTreeToHash.Publish(aih.Key(), aih)
-	log.Infof("latchContentTreeHash(%s, %s, %d) done", contentID, hash, generationCounter)
+	log.Functionf("latchContentTreeHash(%s, %s, %d) done", contentID, hash, generationCounter)
 }
 
 // Delete for a specific content tree
 func deleteLatchContentTreeHash(ctx *volumemgrContext,
 	contentID uuid.UUID, generationCounter uint32) {
 
-	log.Infof("deleteLatchContentTreeHash(%s, %d)", contentID, generationCounter)
+	log.Functionf("deleteLatchContentTreeHash(%s, %d)", contentID, generationCounter)
 	aih := types.AppAndImageToHash{
 		ImageID:      contentID,
 		PurgeCounter: generationCounter,
@@ -59,13 +59,13 @@ func deleteLatchContentTreeHash(ctx *volumemgrContext,
 		return
 	}
 	ctx.pubContentTreeToHash.Unpublish(aih.Key())
-	log.Infof("deleteLatchContentTreeHash(%s, %d) done", contentID, generationCounter)
+	log.Functionf("deleteLatchContentTreeHash(%s, %d) done", contentID, generationCounter)
 }
 
 // Purge all for contentID
 func purgeLatchContentTreeHash(ctx *volumemgrContext, contentID uuid.UUID) {
 
-	log.Infof("purgeLatchContentTreeHash(%s)", contentID)
+	log.Functionf("purgeLatchContentTreeHash(%s)", contentID)
 	items := ctx.pubContentTreeToHash.GetAll()
 	for _, a := range items {
 		aih := a.(types.AppAndImageToHash)
@@ -75,26 +75,26 @@ func purgeLatchContentTreeHash(ctx *volumemgrContext, contentID uuid.UUID) {
 			ctx.pubContentTreeToHash.Unpublish(aih.Key())
 		}
 	}
-	log.Infof("purgeLatchContentTreeHash(%s) done", contentID)
+	log.Functionf("purgeLatchContentTreeHash(%s) done", contentID)
 }
 
 // Returns "" string if not found
 func lookupLatchContentTreeHash(ctx *volumemgrContext,
 	contentID uuid.UUID, generationCounter uint32) string {
 
-	log.Debugf("lookupLatchContentTreeHash(%s, %d)", contentID, generationCounter)
+	log.Tracef("lookupLatchContentTreeHash(%s, %d)", contentID, generationCounter)
 	temp := types.AppAndImageToHash{
 		ImageID:      contentID,
 		PurgeCounter: generationCounter,
 	}
 	item, _ := ctx.pubContentTreeToHash.Get(temp.Key())
 	if item == nil {
-		log.Debugf("lookupLatchContentTreeHash(%s, %d) not found",
+		log.Tracef("lookupLatchContentTreeHash(%s, %d) not found",
 			contentID, generationCounter)
 		return ""
 	}
 	aih := item.(types.AppAndImageToHash)
-	log.Debugf("lookupLatchContentTreeHash(%s, %d) found %s",
+	log.Tracef("lookupLatchContentTreeHash(%s, %d) found %s",
 		contentID, generationCounter, aih.Hash)
 	return aih.Hash
 }
@@ -105,19 +105,19 @@ func maybeLatchContentTreeHash(ctx *volumemgrContext, status *types.ContentTreeS
 	imageSha := lookupLatchContentTreeHash(ctx, status.ContentID, uint32(status.GenerationCounter))
 	if imageSha == "" {
 		if status.IsContainer() && status.ContentSha256 == "" {
-			log.Infof("ContentTree(%s) %s has not (yet) latched sha",
+			log.Functionf("ContentTree(%s) %s has not (yet) latched sha",
 				status.ContentID, status.DisplayName)
 		}
 		return
 	}
 	if status.ContentSha256 == "" {
-		log.Infof("Latching ContentTree(%s) %s to sha %s",
+		log.Functionf("Latching ContentTree(%s) %s to sha %s",
 			status.ContentID, status.DisplayName, imageSha)
 		status.ContentSha256 = imageSha
 		if status.IsContainer() {
 			newName := maybeInsertSha(status.RelativeURL, imageSha)
 			if newName != status.RelativeURL {
-				log.Infof("Changing content tree name from %s to %s",
+				log.Functionf("Changing content tree name from %s to %s",
 					status.RelativeURL, newName)
 				status.RelativeURL = newName
 			}
