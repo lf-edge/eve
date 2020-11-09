@@ -147,7 +147,6 @@ type AppInstanceStatus struct {
 	Activated           bool
 	ActivateInprogress  bool // Needed for cleanup after failure
 	VolumeRefStatusList []VolumeRefStatus
-	EIDList             []EIDStatusDetails // XXX remove?
 	UnderlayNetworks    []UnderlayNetworkStatus
 	BootTime            time.Time
 	IoAdapterList       []IoAdapter // Report what was actually used
