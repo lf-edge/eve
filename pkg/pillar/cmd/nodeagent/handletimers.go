@@ -66,7 +66,7 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		log.Errorf(errStr)
 		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonFallback)
 	} else {
-		log.Infof("handleFallbackOnCloudDisconnect %d seconds remaining",
+		log.Functionf("handleFallbackOnCloudDisconnect %d seconds remaining",
 			fallbackLimit-timePassed)
 	}
 }
@@ -82,7 +82,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		log.Errorf(errStr)
 		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonDisconnect)
 	} else {
-		log.Debugf("handleResetOnCloudDisconnect %d seconds remaining",
+		log.Tracef("handleResetOnCloudDisconnect %d seconds remaining",
 			resetLimit-timePassed)
 	}
 }
@@ -94,7 +94,7 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
-		log.Infof("CurPart: %s, Upgrade Validation Test Complete",
+		log.Functionf("CurPart: %s, Upgrade Validation Test Complete",
 			ctxPtr.curPart)
 		resetTestStartTime(ctxPtr)
 		initiateBaseOsZedCloudTestComplete(ctxPtr)
@@ -116,7 +116,7 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 		log.Errorf(errStr)
 		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonVaultFailure)
 	} else {
-		log.Infof("handleRebootOnVaultLocked %d seconds remaining",
+		log.Functionf("handleRebootOnVaultLocked %d seconds remaining",
 			vaultCutOffTime-timePassed)
 	}
 }
@@ -128,7 +128,7 @@ func checkUpgradeValidationTestTimeExpiry(ctxPtr *nodeagentContext) bool {
 	if timePassed < successLimit {
 		ctxPtr.remainingTestTime = time.Second *
 			time.Duration(successLimit-timePassed)
-		log.Infof("CurPart: %s inprogress, waiting for %d seconds",
+		log.Functionf("CurPart: %s inprogress, waiting for %d seconds",
 			ctxPtr.curPart, ctxPtr.remainingTestTime/time.Second)
 		publishNodeAgentStatus(ctxPtr)
 		return false
@@ -147,7 +147,7 @@ func setTestStartTime(ctxPtr *nodeagentContext) {
 		return
 	}
 	mintimeUpdateSuccess := ctxPtr.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)
-	log.Infof("Starting upgrade validation for %d seconds", mintimeUpdateSuccess)
+	log.Functionf("Starting upgrade validation for %d seconds", mintimeUpdateSuccess)
 	ctxPtr.testInprogress = true
 	ctxPtr.upgradeTestStartTime = ctxPtr.timeTickCount
 	successLimit := mintimeUpdateSuccess
@@ -159,7 +159,7 @@ func resetTestStartTime(ctxPtr *nodeagentContext) {
 	if !ctxPtr.testInprogress {
 		return
 	}
-	log.Infof("Resetting upgrade validation")
+	log.Functionf("Resetting upgrade validation")
 	ctxPtr.testInprogress = false
 	ctxPtr.remainingTestTime = time.Second * time.Duration(0)
 }
@@ -168,7 +168,7 @@ func resetTestStartTime(ctxPtr *nodeagentContext) {
 func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	status types.ZedAgentStatus) {
 
-	log.Infof("updateZedagentCloudConnectStatus from %d to %d",
+	log.Functionf("updateZedagentCloudConnectStatus from %d to %d",
 		ctxPtr.configGetStatus, status.ConfigGetStatus)
 
 	// config Get Status has not changed
@@ -178,12 +178,12 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	ctxPtr.configGetStatus = status.ConfigGetStatus
 	switch ctxPtr.configGetStatus {
 	case types.ConfigGetSuccess:
-		log.Infof("Config get from controller, is successful")
+		log.Functionf("Config get from controller, is successful")
 		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
 		setTestStartTime(ctxPtr)
 
 	case types.ConfigGetTemporaryFail:
-		log.Infof("Config get from controller, has temporarily failed")
+		log.Functionf("Config get from controller, has temporarily failed")
 		// We know it is reachable even though it is not (yet) giving
 		// us a config
 		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
@@ -194,10 +194,10 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 		setTestStartTime(ctxPtr)
 
 	case types.ConfigGetReadSaved:
-		log.Infof("Config is read from saved config")
+		log.Functionf("Config is read from saved config")
 
 	case types.ConfigGetFail:
-		log.Infof("Config get from controller has failed")
+		log.Functionf("Config get from controller has failed")
 	}
 }
 
@@ -206,7 +206,7 @@ func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
 	if !status.RebootCmd || ctxPtr.rebootCmd {
 		return
 	}
-	log.Infof("handleRebootCmd reason %s bootReason %s",
+	log.Functionf("handleRebootCmd reason %s bootReason %s",
 		status.RebootReason, status.BootReason.String())
 	ctxPtr.rebootCmd = true
 	scheduleNodeReboot(ctxPtr, status.RebootReason, status.BootReason)
@@ -214,10 +214,10 @@ func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
 
 func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string, bootReason types.BootReason) {
 	if ctxPtr.deviceReboot {
-		log.Infof("reboot flag is already set")
+		log.Functionf("reboot flag is already set")
 		return
 	}
-	log.Infof("scheduleNodeReboot(): current RebootReason: %s BootReason %s",
+	log.Functionf("scheduleNodeReboot(): current RebootReason: %s BootReason %s",
 		reasonStr, bootReason.String())
 
 	// publish, for zedagent to pick up the reboot event
@@ -232,7 +232,7 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string, bootReason t
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
-	log.Infof("Creating %s at %s", "handleNodeReboot", agentlog.GetMyStack())
+	log.Functionf("Creating %s at %s", "handleNodeReboot", agentlog.GetMyStack())
 	go handleNodeReboot(ctxPtr)
 }
 
@@ -242,14 +242,14 @@ func allDomainsHalted(ctxPtr *nodeagentContext) bool {
 	for _, c := range items {
 		ds := c.(types.DomainStatus)
 		if ds.Activated {
-			log.Debugf("allDomainsHalted: Domain (UUID: %s, name: %s) "+
+			log.Tracef("allDomainsHalted: Domain (UUID: %s, name: %s) "+
 				"not halted. State: %d",
 				ds.UUIDandVersion.UUID.String(), ds.DisplayName, ds.State)
 			return false
 		}
-		log.Debugf("allDomainsHalted: %s is deactivated", ds.DisplayName)
+		log.Tracef("allDomainsHalted: %s is deactivated", ds.DisplayName)
 	}
-	log.Infof("allDomainsHalted: All Domains Halted.")
+	log.Functionf("allDomainsHalted: All Domains Halted.")
 	return true
 
 }
@@ -267,12 +267,12 @@ func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 
 		duration := time.Second * time.Duration(ctxPtr.domainHaltWaitIncrement)
 		domainHaltWaitTimer := time.NewTimer(duration)
-		log.Debugf("waitForAllDomainsHalted: Waiting for all domains to be halted. "+
+		log.Tracef("waitForAllDomainsHalted: Waiting for all domains to be halted. "+
 			"totalWaitTime: %d sec, domainHaltWaitIncrement: %d sec",
 			totalWaitTime, domainHaltWaitIncrement)
 		<-domainHaltWaitTimer.C
 	}
-	log.Infof("waitForAllDomainsHalted: Max waittime for DomainsHalted."+
+	log.Functionf("waitForAllDomainsHalted: Max waittime for DomainsHalted."+
 		"totalWaitTime: %d sec, maxDomainHaltTime: %d sec. Proceeding "+
 		"with reboot", totalWaitTime, maxDomainHaltTime)
 }
@@ -281,7 +281,7 @@ func handleNodeReboot(ctxPtr *nodeagentContext) {
 	// Wait for MinRebootDelay time
 	duration := time.Second * time.Duration(minRebootDelay)
 	rebootTimer := time.NewTimer(duration)
-	log.Infof("handleNodeReboot: minRebootDelay timer %d seconds",
+	log.Functionf("handleNodeReboot: minRebootDelay timer %d seconds",
 		duration/time.Second)
 	<-rebootTimer.C
 
@@ -293,16 +293,16 @@ func handleNodeReboot(ctxPtr *nodeagentContext) {
 	waitForAllDomainsHalted(ctxPtr)
 
 	// do a sync
-	log.Infof("Doing a sync..")
+	log.Functionf("Doing a sync..")
 	syscall.Sync()
-	log.Infof("Rebooting... Starting timer for Duration(secs): %d",
+	log.Functionf("Rebooting... Starting timer for Duration(secs): %d",
 		duration/time.Second)
 
 	rebootTimer = time.NewTimer(duration)
-	log.Infof("Timer started. Wait to expire")
+	log.Functionf("Timer started. Wait to expire")
 	<-rebootTimer.C
 	rebootTimer = time.NewTimer(1)
-	log.Infof("Timer Expired.. Zboot.Reset()")
+	log.Functionf("Timer Expired.. Zboot.Reset()")
 	syscall.Sync()
 	<-rebootTimer.C
 	zboot.Reset(log)

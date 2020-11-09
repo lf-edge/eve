@@ -33,7 +33,7 @@ const (
 
 func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 
-	log.Infof("UpdateSshAuthorizedKeys: %s", authorizedKeys)
+	log.Functionf("UpdateSshAuthorizedKeys: %s", authorizedKeys)
 	tmpfile, err := ioutil.TempFile(runDir, "ak")
 	if err != nil {
 		log.Errorln("TempFile ", err)
@@ -51,7 +51,7 @@ func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
-				log.Debugln(err)
+				log.Traceln(err)
 				if err != io.EOF {
 					log.Errorln("ReadString ", err)
 					return
@@ -92,5 +92,5 @@ func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 		log.Errorln(err)
 		return
 	}
-	log.Infof("UpdateSshAuthorizedKey done")
+	log.Functionf("UpdateSshAuthorizedKey done")
 }

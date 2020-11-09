@@ -217,7 +217,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("processed onboarded")
+	log.Functionf("processed onboarded")
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -294,7 +294,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !logmanagerCtx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -302,9 +302,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
-	log.Infof("Waiting until we have some management ports with usable addresses")
+	log.Functionf("Waiting until we have some management ports with usable addresses")
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -322,12 +322,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			}
 		}
 		if hangFlag {
-			log.Infof("Requested to not touch to cause watchdog")
+			log.Functionf("Requested to not touch to cause watchdog")
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
-	log.Infof("Have %d management ports with usable addresses",
+	log.Functionf("Have %d management ports with usable addresses",
 		DNSctx.usableAddressCount)
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
@@ -352,10 +352,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		inputMetrics: &inputMetrics}
 
 	// Start sender of log events
-	log.Infof("Creating %s at %s", "processEvents", agentlog.GetMyStack())
+	log.Functionf("Creating %s at %s", "processEvents", agentlog.GetMyStack())
 	go processEvents(currentPartition, loggerChan, eveVersion, &logmanagerCtx)
 
-	log.Infof("Creating %s at %s", "parseAndSendSyslogEntries",
+	log.Functionf("Creating %s at %s", "parseAndSendSyslogEntries",
 		agentlog.GetMyStack())
 	go parseAndSendSyslogEntries(&ctx)
 
@@ -375,7 +375,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			log.Debugln("publishTimer at", time.Now())
+			log.Traceln("publishTimer at", time.Now())
 			metrics := zedcloud.GetCloudMetrics(log)
 			metrics = purgeAppURLMetrics(&logmanagerCtx, metrics)
 			err := pub.Publish("global", metrics)
@@ -410,7 +410,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			}
 		}
 		if hangFlag {
-			log.Infof("Requested to not touch to cause watchdog")
+			log.Functionf("Requested to not touch to cause watchdog")
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
@@ -509,7 +509,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		}
 		level := parseLogLevel(logInfo.Level)
 		if dropEvent(logInfo.Source, level) {
-			log.Debugf("Dropping source %s level %v",
+			log.Tracef("Dropping source %s level %v",
 				logInfo.Source, level)
 			continue
 		}
@@ -539,7 +539,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 			appUUID = logInfo.Appuuid
 			logContent = appContainerMsg(logInfo)
 			appLog = true
-			log.Debugf("parseAndSendSyslogEntries: container-name %s, app-UUID %s, content %s",
+			log.Tracef("parseAndSendSyslogEntries: container-name %s, app-UUID %s, content %s",
 				logInfo.Containername, appUUID, logContent)
 		}
 		logMsg := logEntry{
@@ -586,13 +586,13 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSImpl: ignoring %s", key)
+		log.Functionf("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSImpl for %s", key)
+	log.Functionf("handleDNSImpl for %s", key)
 	// Ignore test status and timestamps
 	if deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSImpl no change")
+		log.Functionf("handleDNSImpl no change")
 		return
 	}
 	*deviceNetworkStatus = status
@@ -612,23 +612,23 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
-	log.Infof("handleDNSImpl done for %s; %d usable",
+	log.Functionf("handleDNSImpl done for %s; %d usable",
 		key, newAddrCount)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
-	log.Infof("handleDNSDelete for %s", key)
+	log.Functionf("handleDNSDelete for %s", key)
 	ctx := ctxArg.(*DNSContext)
 
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s", key)
+		log.Functionf("handleDNSDelete: ignoring %s", key)
 		return
 	}
 	*deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSDelete done for %s", key)
+	log.Functionf("handleDNSDelete done for %s", key)
 }
 
 // This runs as a separate go routine sending out data
@@ -678,7 +678,7 @@ func processEvents(image string, logChan <-chan logEntry,
 					" in deferred state", image)
 				continue
 			}
-			log.Infof("processEvents(%s) deferInprogress done",
+			log.Functionf("processEvents(%s) deferInprogress done",
 				image)
 			deferInprogress = false
 			logMetrics.IsLogProcessingDeferred = false
@@ -691,7 +691,7 @@ func processEvents(image string, logChan <-chan logEntry,
 			sent := false
 			is4xx := false
 			if !more {
-				log.Infof("processEvents(%s) end",
+				log.Functionf("processEvents(%s) end",
 					image)
 				flushAllLogBundles(image, iteration, eveVersion,
 					reportLogs, appLogBundles, &logMetrics)
@@ -711,12 +711,12 @@ func processEvents(image string, logChan <-chan logEntry,
 				var ok bool
 				appLogBundle, ok = appLogBundles[appUUID]
 				if !ok {
-					log.Debugf("processEvents: Creating new Bundle for app %s with UUID %s",
+					log.Tracef("processEvents: Creating new Bundle for app %s with UUID %s",
 						event.source, appUUID)
 					appLogBundle = &logs.AppInstanceLogBundle{}
 					appLogBundles[appUUID] = appLogBundle
 				} else {
-					log.Debugf("processEvents: Bundle found for app %s with UUID %s",
+					log.Tracef("processEvents: Bundle found for app %s with UUID %s",
 						event.source, appUUID)
 				}
 
@@ -741,7 +741,7 @@ func processEvents(image string, logChan <-chan logEntry,
 				break
 			}
 
-			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d",
+			log.Tracef("processEvents(%s): sending at messageCount %d, byteCount %d",
 				image, messageCount, byteCount)
 			if event.isAppLog {
 				sent, is4xx = sendProtoStrForAppLogs(appUUID, appLogBundle, iteration, image)
@@ -773,7 +773,7 @@ func processEvents(image string, logChan <-chan logEntry,
 			}
 
 		case <-flushTimer.C:
-			log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d",
+			log.Tracef("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d",
 				image, time.Now().String(),
 				dropped, messageCount,
 				proto.Size(reportLogs))
@@ -791,7 +791,7 @@ func processEvents(image string, logChan <-chan logEntry,
 			}
 		case <-metricsPublishTimer.C:
 			publishLogMetrics(ctx, &logMetrics)
-			log.Debugf("processEvents(%s): Published log metrics at %s",
+			log.Tracef("processEvents(%s): Published log metrics at %s",
 				image, time.Now().String())
 		}
 	}
@@ -830,7 +830,7 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 	var is4xx bool
 	appBundlesToDelete := []string{}
 	for appUUID, appLogBundle := range appLogBundles {
-		log.Debugf("flushAllLogBundles: Trying to flush App bundle with UUID %s and %d logs",
+		log.Tracef("flushAllLogBundles: Trying to flush App bundle with UUID %s and %d logs",
 			appUUID, len(appLogBundle.Log))
 		messageCount := len(appLogBundle.Log)
 		byteCount := proto.Size(appLogBundle)
@@ -849,7 +849,7 @@ func flushAllLogBundles(image string, iteration int, eveVersion string,
 			logMetrics.LastAppBundleSendTime = time.Now()
 		}
 
-		log.Debugf("flushAllLogBundles: Flushed App bundle with UUID %s", appUUID)
+		log.Tracef("flushAllLogBundles: Flushed App bundle with UUID %s", appUUID)
 		appBundlesToDelete = append(appBundlesToDelete, appUUID)
 		if !sent {
 			break
@@ -865,7 +865,7 @@ var msgIDCounter = 1
 
 // returns false when app log event is dropped
 func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) bool {
-	log.Debugf("Read event from %s time %v",
+	log.Tracef("Read event from %s time %v",
 		event.source, event.timestamp)
 	// Have to discard if too large since service doesn't
 	// handle above 64k; we limit payload at 32k
@@ -899,7 +899,7 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle) bool {
 	// Assign a unique msgID for each message
 	msgID := msgIDCounter
 	msgIDCounter++
-	log.Debugf("Read event from %s time %v id %d",
+	log.Tracef("Read event from %s time %v id %d",
 		event.source, event.timestamp, msgID)
 	// Have to discard if too large since service doesn't
 	// handle above 64k; we limit payload at 32k
@@ -940,7 +940,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	reportLogs.Image = image
 	reportLogs.EveVersion = eveVersion
 
-	log.Debugln("sendProtoStrForLogs called...", iteration)
+	log.Traceln("sendProtoStrForLogs called...", iteration)
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
@@ -950,9 +950,9 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		log.Warnf("LogBundle: DevID %s, Image %s, EveVersion %s, %d log entries",
 			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion, len(reportLogs.Log))
 	} else {
-		log.Debugf("sendProtoStrForLogs %d bytes: %s",
+		log.Tracef("sendProtoStrForLogs %d bytes: %s",
 			size, reportLogs)
-		log.Debugf("LogBundle: DevID %s, Image %s, EveVersion %s",
+		log.Tracef("LogBundle: DevID %s, Image %s, EveVersion %s",
 			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion)
 	}
 	buf := bytes.NewBuffer(data)
@@ -963,7 +963,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	// For any 4xx and 5xx HTTP error we abandon
 	const bailOnHTTPErr = true
 	if zedcloud.HasDeferred(&zedcloudCtx, image) {
-		log.Infof("SendProtoStrForLogs queued after existing for %s",
+		log.Functionf("SendProtoStrForLogs queued after existing for %s",
 			image)
 		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, logsURL,
 			bailOnHTTPErr)
@@ -998,7 +998,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	log.Debugf("Sent %d bytes image %s to %s", size, image, logsURL)
+	log.Tracef("Sent %d bytes image %s to %s", size, image, logsURL)
 	reportLogs.Log = []*logs.LogEntry{}
 	return true
 }
@@ -1009,7 +1009,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	if len(appLogs.Log) == 0 {
 		return true, false
 	}
-	log.Debugln("sendProtoStrForAppLogs called...", iteration)
+	log.Traceln("sendProtoStrForAppLogs called...", iteration)
 	data, err := proto.Marshal(appLogs)
 	if err != nil {
 		log.Fatal("sendProtoStrForAppLogs proto marshaling error: ", err)
@@ -1018,8 +1018,8 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	if size > logMaxBytes {
 		log.Warnf("AppLogBundle: App with UUID %s, %d log entries", appUUID, len(appLogs.Log))
 	} else {
-		log.Debugf("sendProtoStrForAppLogs %d bytes: %s", size, appLogs)
-		log.Debugf("AppLogBundle: App with UUID %s", appUUID)
+		log.Tracef("sendProtoStrForAppLogs %d bytes: %s", size, appLogs)
+		log.Tracef("AppLogBundle: App with UUID %s", appUUID)
 	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1048,7 +1048,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// For any 4xx and 5xx HTTP error we abandon
 	const bailOnHTTPErr = true
 	if zedcloud.HasDeferred(&zedcloudCtx, image) {
-		log.Infof("SendProtoStrForAppLogs queued after existing for %s",
+		log.Functionf("SendProtoStrForAppLogs queued after existing for %s",
 			image)
 		zedcloud.AddDeferred(&zedcloudCtx, image, buf, size, appLogsURL,
 			bailOnHTTPErr)
@@ -1088,7 +1088,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		appLogs.Log = []*logs.LogEntry{}
 		return false, false
 	}
-	log.Debugf("Sent %d bytes image %s to %s", size, image, appLogsURL)
+	log.Tracef("Sent %d bytes image %s to %s", size, image, appLogsURL)
 	appLogs.Log = []*logs.LogEntry{}
 	return true, false
 }
@@ -1121,10 +1121,10 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
-	log.Infof("sendCtxInit: Use V2 API %v", zedcloud.UseV2API())
+	log.Functionf("sendCtxInit: Use V2 API %v", zedcloud.UseV2API())
 
 	dnsCtx.zedcloudCtx = &zedcloudCtx
-	log.Infof("Log Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
+	log.Functionf("Log Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
 	// XXX need to redo this since the root certificates can change when DeviceNetworkStatus changes
@@ -1153,7 +1153,7 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	}
 	// wait for uuid of logs V2 URL string
 	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "logs")
-	log.Infof("Read UUID %s", devUUID)
+	log.Functionf("Read UUID %s", devUUID)
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
@@ -1171,10 +1171,10 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigImpl for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	status := statusArg.(types.ConfigItemValueMap)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig,
@@ -1190,7 +1190,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		addRemoteMap("default", defaultRemoteLogLevel)
 	}
 	for agentName := range status.AgentSettings {
-		log.Debugf("Processing agentName %s", agentName)
+		log.Tracef("Processing agentName %s", agentName)
 		foundAgents[agentName] = true
 		remoteLogLevel := status.AgentSettingStringValue(agentName, types.RemoteLogLevel)
 		if remoteLogLevel != "" {
@@ -1199,7 +1199,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	}
 	// Any deletes?
 	delRemoteMapAgents(foundAgents)
-	log.Infof("handleGlobalConfigImpl done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1207,15 +1207,15 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfigNoDefault(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
 // Cache of loglevels per agent. Protected by mutex since accessed by
@@ -1224,7 +1224,7 @@ var remoteMapLock sync.Mutex
 var remoteMap map[string]logrus.Level = make(map[string]logrus.Level)
 
 func addRemoteMap(agentName string, logLevel string) {
-	log.Infof("addRemoteMap(%s, %s)", agentName, logLevel)
+	log.Functionf("addRemoteMap(%s, %s)", agentName, logLevel)
 	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		log.Errorf("addRemoteMap: ParseLevel failed: %s", err)
@@ -1233,32 +1233,32 @@ func addRemoteMap(agentName string, logLevel string) {
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap[agentName] = level
-	log.Infof("addRemoteMap after %v", remoteMap)
+	log.Functionf("addRemoteMap after %v", remoteMap)
 }
 
 // Delete everything not in foundAgents
 func delRemoteMapAgents(foundAgents map[string]bool) {
-	log.Infof("delRemoteMapAgents(%v)", foundAgents)
+	log.Functionf("delRemoteMapAgents(%v)", foundAgents)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	for agentName := range remoteMap {
-		log.Debugf("delRemoteMapAgents: processing %s", agentName)
+		log.Tracef("delRemoteMapAgents: processing %s", agentName)
 		if _, ok := foundAgents[agentName]; !ok {
 			delete(remoteMap, agentName)
 		}
 	}
-	log.Infof("delRemoteMapAgents after %v", remoteMap)
+	log.Functionf("delRemoteMapAgents after %v", remoteMap)
 }
 
 func delRemoteMap(agentName string) {
-	log.Infof("delRemoteMap(%s)", agentName)
+	log.Functionf("delRemoteMap(%s)", agentName)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	delete(remoteMap, agentName)
 }
 
 func delRemoteMapAll() {
-	log.Infof("delRemoteMapAll()")
+	log.Functionf("delRemoteMapAll()")
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap = make(map[string]logrus.Level)

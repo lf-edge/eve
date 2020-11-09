@@ -48,7 +48,7 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	var name string
 
 	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified len %d", len(contents))
+		log.Tracef("StatusNotModified len %d", len(contents))
 		// Return as error since we are not returning any useful values.
 		return devUUID, hardwaremodel, enterprise, name,
 			fmt.Errorf("Unchanged StatusNotModified")
@@ -66,12 +66,12 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
-		log.Debugf("Same ConfigHash %s len %d", hash, len(contents))
+		log.Tracef("Same ConfigHash %s len %d", hash, len(contents))
 		// Return as error since we are not returning any useful values.
 		return devUUID, hardwaremodel, enterprise, name,
 			fmt.Errorf("Unchanged config hash")
 	}
-	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	log.Functionf("Change in ConfigHash from %s to %s", prevConfigHash, hash)
 	prevConfigHash = hash
 	config := configResponse.GetConfig()
 
@@ -131,7 +131,7 @@ func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, e
 var prevConfigHash string
 
 func generateConfigRequest() ([]byte, error) {
-	log.Debugf("generateConfigRequest() sending hash %s", prevConfigHash)
+	log.Tracef("generateConfigRequest() sending hash %s", prevConfigHash)
 	configRequest := &zconfig.ConfigRequest{
 		ConfigHash: prevConfigHash,
 	}

@@ -61,7 +61,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -92,7 +92,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -100,7 +100,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	for {
 		select {
@@ -140,17 +140,17 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*faultContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigImpl for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigImpl done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -158,11 +158,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*faultContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.debugOverride, logger)
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

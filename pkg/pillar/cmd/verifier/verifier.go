@@ -83,7 +83,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -143,7 +143,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -151,13 +151,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 
-	log.Infof("processed vault status")
+	log.Functionf("processed vault status")
 
 	// create the directories
 	initializeDirs()
@@ -169,7 +169,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Report to volumemgr that init is done
 	pubVerifyImageStatus.SignalRestarted()
-	log.Infof("SignalRestarted done")
+	log.Functionf("SignalRestarted done")
 
 	for {
 		select {
@@ -187,12 +187,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 func handleInit(ctx *verifierContext) {
 
-	log.Infoln("handleInit")
+	log.Functionln("handleInit")
 
 	// Create VerifyImageStatus for objects that were verified before reboot
 	handleInitVerifiedObjects(ctx)
 
-	log.Infoln("handleInit done")
+	log.Functionln("handleInit done")
 }
 
 func updateVerifyErrStatus(ctx *verifierContext,
@@ -206,7 +206,7 @@ func updateVerifyErrStatus(ctx *verifierContext,
 func publishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Debugf("publishVerifyImageStatus(%s)", status.ImageSha256)
+	log.Tracef("publishVerifyImageStatus(%s)", status.ImageSha256)
 
 	pub := ctx.pubVerifyImageStatus
 	key := status.Key()
@@ -216,7 +216,7 @@ func publishVerifyImageStatus(ctx *verifierContext,
 func unpublishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Debugf("publishVerifyImageStatus(%s)", status.ImageSha256)
+	log.Tracef("publishVerifyImageStatus(%s)", status.ImageSha256)
 
 	pub := ctx.pubVerifyImageStatus
 	key := status.Key()
@@ -235,7 +235,7 @@ func lookupVerifyImageStatus(ctx *verifierContext,
 	pub := ctx.pubVerifyImageStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupVerifyImageStatus(%s) not found", key)
+		log.Functionf("lookupVerifyImageStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.VerifyImageStatus)
@@ -245,7 +245,7 @@ func lookupVerifyImageStatus(ctx *verifierContext,
 // Server for each VerifyImageConfig
 func runHandler(ctx *verifierContext, key string, c <-chan Notify) {
 
-	log.Infof("runHandler starting")
+	log.Functionf("runHandler starting")
 
 	closed := false
 	for !closed {
@@ -275,13 +275,13 @@ func runHandler(ctx *verifierContext, key string, c <-chan Notify) {
 			}
 		}
 	}
-	log.Infof("runHandler(%s) DONE", key)
+	log.Functionf("runHandler(%s) DONE", key)
 }
 
 func handleCreate(ctx *verifierContext,
 	config *types.VerifyImageConfig) {
 
-	log.Infof("handleCreate(%s) for %s", config.ImageSha256, config.Name)
+	log.Functionf("handleCreate(%s) for %s", config.ImageSha256, config.Name)
 
 	status := types.VerifyImageStatus{
 		Name:        config.Name,
@@ -326,13 +326,13 @@ func handleCreate(ctx *verifierContext,
 	status.PendingAdd = false
 	status.State = types.VERIFIED
 	publishVerifyImageStatus(ctx, &status)
-	log.Infof("handleCreate done for %s", config.Name)
+	log.Functionf("handleCreate done for %s", config.Name)
 }
 
 func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, status *types.VerifyImageStatus) bool {
 
 	verifierFilename := status.FileLocation
-	log.Infof("verifyObjectSha: Verifying %s file %s",
+	log.Functionf("verifyObjectSha: Verifying %s file %s",
 		config.Name, verifierFilename)
 
 	_, err := os.Stat(verifierFilename)
@@ -353,7 +353,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 			config.Name, cerr)
 		return false
 	}
-	log.Infof("internal hash consistency validated for %s file %s",
+	log.Functionf("internal hash consistency validated for %s file %s",
 		config.Name, verifierFilename)
 
 	imageHash := fmt.Sprintf("%x", imageHashB)
@@ -370,7 +370,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 		return false
 	}
 
-	log.Infof("Sha validation successful for %s", config.Name)
+	log.Functionf("Sha validation successful for %s", config.Name)
 	return true
 }
 
@@ -397,20 +397,20 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Note no comparison on version
 	changed := false
 
-	log.Infof("handleModify(%s) for %s, config.RefCount: %d, "+
+	log.Functionf("handleModify(%s) for %s, config.RefCount: %d, "+
 		"status.RefCount: %d",
 		status.ImageSha256, config.Name, config.RefCount,
 		status.RefCount)
 
 	// Always update RefCount and Expired
 	if status.RefCount != config.RefCount {
-		log.Infof("handleModify RefCount change %s from %d to %d",
+		log.Functionf("handleModify RefCount change %s from %d to %d",
 			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 		changed = true
 	}
 	if status.Expired != config.Expired {
-		log.Infof("handleModify Expired change %s from %t to %t",
+		log.Functionf("handleModify Expired change %s from %t to %t",
 			config.Name, status.Expired, config.Expired)
 		status.Expired = config.Expired
 		changed = true
@@ -419,7 +419,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	if changed {
 		publishVerifyImageStatus(ctx, status)
 	}
-	log.Infof("handleModify done for %s. Status.RefCount=%d, Config.RefCount:%d",
+	log.Functionf("handleModify done for %s. Status.RefCount=%d, Config.RefCount:%d",
 		config.Name, status.RefCount, config.RefCount)
 }
 
@@ -428,11 +428,11 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 // is set to zero.
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Infof("handleDelete(%s) refcount %d",
+	log.Functionf("handleDelete(%s) refcount %d",
 		status.ImageSha256, status.RefCount)
 
 	if _, err := os.Stat(status.FileLocation); err == nil {
-		log.Infof("handleDelete removing %s",
+		log.Functionf("handleDelete removing %s",
 			status.FileLocation)
 		if err := os.RemoveAll(status.FileLocation); err != nil {
 			log.Fatal(err)
@@ -443,7 +443,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 	}
 
 	unpublishVerifyImageStatus(ctx, status)
-	log.Infof("handleDelete done for %s", status.ImageSha256)
+	log.Functionf("handleDelete done for %s", status.ImageSha256)
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
@@ -461,17 +461,17 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*verifierContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigImpl for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigImpl done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -479,13 +479,13 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*verifierContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
 // ImageVerifierFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
@@ -507,7 +507,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
-	log.Infof("markObjectAsVerifying: Move from %s to %s", pendingFilename, verifierFilename)
+	log.Functionf("markObjectAsVerifying: Move from %s to %s", pendingFilename, verifierFilename)
 
 	info, err := os.Stat(pendingFilename)
 	if err != nil {
@@ -527,7 +527,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 		}
 	}
 
-	log.Debugf("markObjectAsVerifying: Create %s", verifierDirname)
+	log.Tracef("markObjectAsVerifying: Create %s", verifierDirname)
 	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
-	log.Infof("markObjectAsVerified: Move from %s to %s", verifierFilename, verifiedFilename)
+	log.Functionf("markObjectAsVerified: Move from %s to %s", verifierFilename, verifiedFilename)
 
 	if _, err := os.Stat(verifierFilename); err != nil {
 		log.Fatal(err)
@@ -567,7 +567,7 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 		}
 	}
 
-	log.Infof("markObjectAsVerified: Create %s", verifiedDirname)
+	log.Functionf("markObjectAsVerified: Create %s", verifiedDirname)
 	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyI
 
 	status.FileLocation = verifiedFilename
 
-	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s",
+	log.Functionf("markObjectAsVerified - DOne. Moved from %s to %s",
 		verifierFilename, verifiedFilename)
 }
 
@@ -614,7 +614,7 @@ func verifyImageStatusFromImageFile(imageFileName string,
 func populateInitialStatusFromVerified(ctx *verifierContext,
 	objDirname string, parentDirname string) {
 
-	log.Infof("populateInitialStatusFromVerified(%s, %s)", objDirname,
+	log.Functionf("populateInitialStatusFromVerified(%s, %s)", objDirname,
 		parentDirname)
 
 	locations, err := ioutil.ReadDir(objDirname)
@@ -623,14 +623,14 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 		log.Fatal(err)
 	}
 
-	log.Debugf("populateInitialStatusFromVerified: processing locations %v", locations)
+	log.Tracef("populateInitialStatusFromVerified: processing locations %v", locations)
 
 	for _, location := range locations {
 
 		pathname := objDirname + "/" + location.Name()
 
 		if location.IsDir() {
-			log.Debugf("populateInitialStatusFromVerified: Recursively looking in %s",
+			log.Tracef("populateInitialStatusFromVerified: Recursively looking in %s",
 				pathname)
 			if _, err := os.Stat(pathname); err == nil {
 				populateInitialStatusFromVerified(ctx,
@@ -645,7 +645,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			} else {
 				size = info.Size()
 			}
-			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes",
+			log.Tracef("populateInitialStatusFromVerified: Processing %s: %d Mbytes",
 				pathname, size/(1024*1024))
 			status := verifyImageStatusFromImageFile(
 				location.Name(), size, pathname)

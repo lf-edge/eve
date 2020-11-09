@@ -67,7 +67,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			log.Fatal(err)
 		}
 	}
-	log.Infof("Starting %s\n", agentName)
+	log.Functionf("Starting %s\n", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -99,13 +99,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	done := false
 	for DNSctx.usableAddressCount == 0 && !done {
-		log.Infof("Waiting for usable address(es)\n")
+		log.Functionf("Waiting for usable address(es)\n")
 		select {
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-timer.C:
-			log.Infoln("Exit since we got timeout")
+			log.Functionln("Exit since we got timeout")
 			done = true
 
 		case <-stillRunning.C:
@@ -131,38 +131,38 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSImpl: ignoring %s\n", key)
+		log.Functionf("handleDNSImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleDNSImpl for %s\n", key)
+	log.Functionf("handleDNSImpl for %s\n", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSImpl no change\n")
+		log.Functionf("handleDNSImpl no change\n")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Infof("handleDNSImpl: changed %v",
+	log.Functionf("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	ctx.DNSinitialized = true
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSImpl done for %s\n", key)
+	log.Functionf("handleDNSImpl done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDNSDelete for %s\n", key)
+	log.Functionf("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		log.Functionf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	ctx.DNSinitialized = false
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSDelete done for %s\n", key)
+	log.Functionf("handleDNSDelete done for %s\n", key)
 }

@@ -193,14 +193,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	model := hardware.GetHardwareModel(log)
-	log.Infof("Got HardwareModel %s", model)
+	log.Functionf("Got HardwareModel %s", model)
 
 	var blinkFunc Blink200msFunc
 	var initFunc BlinkInitFunc
@@ -210,12 +210,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			blinkFunc = m.blinkFunc
 			initFunc = m.initFunc
 			ledName = m.ledName
-			log.Infof("Found %v led %s for model %s",
+			log.Functionf("Found %v led %s for model %s",
 				blinkFunc, ledName, model)
 			break
 		}
 		if m.model == "" {
-			log.Infof("No blink function for %s", model)
+			log.Functionf("No blink function for %s", model)
 			blinkFunc = m.blinkFunc
 			initFunc = m.initFunc
 			ledName = m.ledName
@@ -230,7 +230,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
-	log.Infof("Creating %s at %s", "triggerBinkOnDevice", agentlog.GetMyStack())
+	log.Functionf("Creating %s at %s", "triggerBinkOnDevice", agentlog.GetMyStack())
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc, ledName)
 
 	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -291,7 +291,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -299,7 +299,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	for {
 		select {
@@ -319,7 +319,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			}
 		}
 		if hangFlag {
-			log.Infof("Requested to not touch to cause watchdog")
+			log.Functionf("Requested to not touch to cause watchdog")
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
@@ -353,16 +353,16 @@ func handleLedBlinkImpl(ctxArg interface{}, key string,
 	ctx.ledCounter = config.BlinkCounter
 	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 		ctx.usableAddressCount)
-	log.Infof("counter %d usableAddr %d, derived %d",
+	log.Functionf("counter %d usableAddr %d, derived %d",
 		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 	ctx.countChange <- ctx.derivedLedCounter
-	log.Infof("handleLedBlinkImpl done for %s", key)
+	log.Functionf("handleLedBlinkImpl done for %s", key)
 }
 
 func handleLedBlinkDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleLedBlinkDelete for %s", key)
+	log.Functionf("handleLedBlinkDelete for %s", key)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if key != "ledconfig" {
@@ -373,10 +373,10 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 	ctx.ledCounter = 0
 	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 		ctx.usableAddressCount)
-	log.Infof("counter %d usableAddr %d, derived %d",
+	log.Functionf("counter %d usableAddr %d, derived %d",
 		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 	ctx.countChange <- ctx.derivedLedCounter
-	log.Infof("handleLedBlinkDelete done for %s", key)
+	log.Functionf("handleLedBlinkDelete done for %s", key)
 }
 
 func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc,
@@ -386,12 +386,12 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc,
 	for {
 		select {
 		case counter = <-countChange:
-			log.Debugf("Received counter update: %d",
+			log.Tracef("Received counter update: %d",
 				counter)
 		default:
-			log.Debugf("Unchanged counter: %d", counter)
+			log.Tracef("Unchanged counter: %d", counter)
 		}
-		log.Debugln("Number of times LED will blink: ", counter)
+		log.Traceln("Number of times LED will blink: ", counter)
 		for i := 0; i < counter; i++ {
 			if blinkFunc != nil {
 				blinkFunc(ledName)
@@ -415,7 +415,7 @@ func InitDellCmd(ledName string) {
 	err := ioutil.WriteFile("/sys/class/gpio/export", []byte("346"), 0644)
 	if err == nil {
 		if err = ioutil.WriteFile("/sys/class/gpio/gpio346/direction", []byte("out"), 0644); err == nil {
-			log.Infof("Enabled Dell Cloud LED")
+			log.Functionf("Enabled Dell Cloud LED")
 			return
 		}
 	}
@@ -435,7 +435,7 @@ func InitDDCmd(ledName string) {
 	if disk == "" {
 		return
 	}
-	log.Infof("InitDDCmd using disk %s", disk)
+	log.Functionf("InitDDCmd using disk %s", disk)
 	readBuffer = make([]byte, bufferLength)
 	diskDevice = "/dev/" + disk
 	count := 100 * 16
@@ -486,9 +486,9 @@ func uncachedDiskRead(count int) {
 			log.Error(err.Error())
 		}
 		syscall.Madvise(readBuffer, 4) // 4 == MADV_DONTNEED
-		log.Debugf("uncachedDiskRead: size: %d", readBytes)
+		log.Tracef("uncachedDiskRead: size: %d", readBytes)
 		if int64(readBytes) < bufferLength {
-			log.Debugf("uncachedDiskRead: done")
+			log.Tracef("uncachedDiskRead: done")
 			break
 		}
 		offset += bufferLength
@@ -505,7 +505,7 @@ const (
 // Disable existing trigger
 // Write "none" to /sys/class/leds/<ledName>/trigger
 func InitLedCmd(ledName string) {
-	log.Infof("InitLedCmd(%s)", ledName)
+	log.Functionf("InitLedCmd(%s)", ledName)
 	triggerFilename := fmt.Sprintf("/sys/class/leds/%s/trigger", ledName)
 	b := []byte("none")
 	err := ioutil.WriteFile(triggerFilename, b, 0644)
@@ -530,7 +530,7 @@ func ExecuteLedCmd(ledName string) {
 			log.Error(err, brightnessFilename)
 			printOnce = false
 		} else {
-			log.Debug(err, brightnessFilename)
+			log.Trace(err, brightnessFilename)
 		}
 		return
 	}
@@ -538,7 +538,7 @@ func ExecuteLedCmd(ledName string) {
 	b = []byte("0")
 	err = ioutil.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
-		log.Debug(err, brightnessFilename)
+		log.Trace(err, brightnessFilename)
 	}
 }
 
@@ -558,51 +558,51 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*ledManagerContext)
 	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
-		log.Infof("handleDNSImpl: ignoring %s", key)
+		log.Functionf("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSImpl for %s", key)
+	log.Functionf("handleDNSImpl for %s", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSImpl no change")
+		log.Functionf("handleDNSImpl no change")
 		return
 	}
 	ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-	log.Infof("handleDNSImpl %d usable addresses", newAddrCount)
+	log.Functionf("handleDNSImpl %d usable addresses", newAddrCount)
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
 		ctx.usableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 			ctx.usableAddressCount)
-		log.Infof("counter %d usableAddr %d, derived %d",
+		log.Functionf("counter %d usableAddr %d, derived %d",
 			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 		ctx.countChange <- ctx.derivedLedCounter
 	}
-	log.Infof("handleDNSImpl done for %s", key)
+	log.Functionf("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*ledManagerContext)
-	log.Infof("handleDNSDelete for %s", key)
+	log.Functionf("handleDNSDelete for %s", key)
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s", key)
+		log.Functionf("handleDNSDelete: ignoring %s", key)
 		return
 	}
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-	log.Infof("handleDNSDelete %d usable addresses", newAddrCount)
+	log.Functionf("handleDNSDelete %d usable addresses", newAddrCount)
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
 		ctx.usableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 			ctx.usableAddressCount)
-		log.Infof("counter %d usableAddr %d, derived %d",
+		log.Functionf("counter %d usableAddr %d, derived %d",
 			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 		ctx.countChange <- ctx.derivedLedCounter
 	}
-	log.Infof("handleDNSDelete done for %s", key)
+	log.Functionf("handleDNSDelete done for %s", key)
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
@@ -620,17 +620,17 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*ledManagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigImpl: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigImpl for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigImpl done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -638,11 +638,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*ledManagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

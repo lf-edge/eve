@@ -43,7 +43,7 @@ func (s *Subscriber) Load() (map[string][]byte, bool, error) {
 	foundRestarted := false
 	items := make(map[string][]byte)
 
-	s.log.Debugf("Load(%s)\n", s.name)
+	s.log.Tracef("Load(%s)\n", s.name)
 
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *Subscriber) Load() (map[string][]byte, bool, error) {
 			continue
 		}
 
-		s.log.Debugf("Load found key %s file %s\n", key, statusFile)
+		s.log.Tracef("Load found key %s file %s\n", key, statusFile)
 
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
@@ -103,16 +103,16 @@ func (s *Subscriber) Start() error {
 		// format than the standard for pubsub
 		// we pass it through a translator
 		translator := make(chan string)
-		s.log.Infof("Creating %s at %s", "watch.WatchStatus",
+		s.log.Functionf("Creating %s at %s", "watch.WatchStatus",
 			logutils.GetMyStack())
 		go watch.WatchStatus(s.log, s.dirName, true, s.doneChan,
 			translator)
-		s.log.Infof("Creating %s at %s", "s.Translate",
+		s.log.Functionf("Creating %s at %s", "s.Translate",
 			logutils.GetMyStack())
 		go s.translate(translator, s.C)
 		return nil
 	} else if subscribeFromSock {
-		s.log.Infof("Creating %s at %s", "s.watchSock",
+		s.log.Functionf("Creating %s at %s", "s.watchSock",
 			logutils.GetMyStack())
 		go s.watchSock()
 		return nil
@@ -124,7 +124,7 @@ func (s *Subscriber) Start() error {
 
 // Stop the subscriber listening on the given name and topic
 func (s *Subscriber) Stop() error {
-	s.log.Infof("Stop(%s)", s.name)
+	s.log.Functionf("Stop(%s)", s.name)
 	// We handle both subscribeFromDir and subscribeFromSock
 	if s.subscribeFromDir {
 		// Tell watch.WatchStatus to finish and close the translator
@@ -184,14 +184,14 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 	// Waiting for publisher to appear; retry on error
 	for {
 		if areWeDone(s.log, s.doneChan) {
-			s.log.Infof("connectAndRead(%s) done", s.name)
+			s.log.Functionf("connectAndRead(%s) done", s.name)
 			return "done", "", nil
 		}
 		if delay != 0 {
 			time.Sleep(delay)
 			delay = time.Duration(0)
 			if areWeDone(s.log, s.doneChan) {
-				s.log.Infof("connectAndRead(%s) done", s.name)
+				s.log.Functionf("connectAndRead(%s) done", s.name)
 				return "done", "", nil
 			}
 		}
@@ -203,7 +203,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				// During startup and after a publisher has
 				// exited we get these failures; treat
 				// as debug
-				s.log.Debugln(errStr)
+				s.log.Traceln(errStr)
 				delay = 10 * time.Second
 				continue
 			}
@@ -220,7 +220,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 		}
 		if areWeDone(s.log, s.doneChan) {
-			s.log.Infof("connectAndRead(%s) done", s.name)
+			s.log.Functionf("connectAndRead(%s) done", s.name)
 			return "done", "", nil
 		}
 
@@ -287,7 +287,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 	// continue aka reconnect?
 	switch msg {
 	case "hello", "restarted", "complete":
-		s.log.Debugf("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
+		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
 		return msg, "", nil
 
 	case "delete":
@@ -305,7 +305,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 			return "", "", nil
 		}
 		if s.logger.GetLevel() == logrus.TraceLevel {
-			s.log.Debugf("connectAndRead(%s): delete type %s key %s\n", s.name, t, string(key))
+			s.log.Tracef("connectAndRead(%s): delete type %s key %s\n", s.name, t, string(key))
 		}
 		return msg, string(key), nil
 
@@ -330,7 +330,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 			return "", "", nil
 		}
 		if s.logger.GetLevel() == logrus.TraceLevel {
-			s.log.Debugf("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
+			s.log.Tracef("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
 		}
 		return msg, string(key), val
 
@@ -344,23 +344,23 @@ func (s *Subscriber) read() (string, string, []byte) {
 func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 	statusDirName := s.dirName
 	for change := range in {
-		s.log.Debugf("translate received message '%s'", change)
+		s.log.Tracef("translate received message '%s'", change)
 		operation := string(change[0])
 		fileName := string(change[2:])
 		// Remove .json from name */
 		name := strings.Split(fileName, ".json")
 		switch {
 		case operation == "R":
-			s.log.Infof("Received restart <%s>\n", fileName)
+			s.log.Functionf("Received restart <%s>\n", fileName)
 			// I do not know why, but the "R" operation from the file watcher
 			// historically called the Complete operation, leading to the
 			// "Synchronized" handler being called.
 			out <- pubsub.Change{Operation: pubsub.Create}
 		case operation == "M" && fileName == "restarted":
-			s.log.Debugf("Found restarted file\n")
+			s.log.Tracef("Found restarted file\n")
 			out <- pubsub.Change{Operation: pubsub.Restart}
 		case !strings.HasSuffix(fileName, ".json"):
-			// s.log.Debugf("Ignoring file <%s> operation %s\n",
+			// s.log.Tracef("Ignoring file <%s> operation %s\n",
 			//	fileName, operation)
 			continue
 		case operation == "D":

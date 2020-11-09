@@ -22,7 +22,7 @@ import (
 // from the name of the volume and prepares map of it
 func populateExistingVolumesFormat(dirName string) {
 
-	log.Infof("populateExistingVolumesFormat(%s)", dirName)
+	log.Functionf("populateExistingVolumesFormat(%s)", dirName)
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
 		log.Errorf("populateExistingVolumesFormat: read directory '%s' failed: %v",
@@ -37,14 +37,14 @@ func populateExistingVolumesFormat(dirName string) {
 		}
 		volumeFormat[key] = zconfig.Format(zconfig.Format_value[format])
 	}
-	log.Infof("populateExistingVolumesFormat(%s) Done", dirName)
+	log.Functionf("populateExistingVolumesFormat(%s) Done", dirName)
 }
 
 // Periodic garbage collection looking at RefCount=0 files in the unknown
 // Others have their delete handler.
 func gcObjects(ctx *volumemgrContext, dirName string) {
 
-	log.Debugf("gcObjects(%s)", dirName)
+	log.Tracef("gcObjects(%s)", dirName)
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
 		log.Errorf("gcObjects: read directory '%s' failed: %v",
@@ -61,7 +61,7 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 		}
 		vs := lookupVolumeStatus(ctx, key)
 		if vs == nil {
-			log.Infof("gcObjects: Found unused volume %s. Deleting it.",
+			log.Functionf("gcObjects: Found unused volume %s. Deleting it.",
 				filelocation)
 			if format == "CONTAINER" {
 				_ = ctx.casClient.RemoveContainerRootDir(filelocation)
@@ -69,7 +69,7 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 			deleteFile(filelocation)
 		}
 	}
-	log.Debugf("gcObjects(%s) Done", dirName)
+	log.Tracef("gcObjects(%s) Done", dirName)
 }
 
 func getVolumeKeyAndFormat(dirName, name string) (key string, format string, tmp bool, err error) {
@@ -89,7 +89,7 @@ func getVolumeKeyAndFormat(dirName, name string) (key string, format string, tmp
 }
 
 func deleteFile(filelocation string) {
-	log.Infof("deleteFile: Deleting %s", filelocation)
+	log.Functionf("deleteFile: Deleting %s", filelocation)
 	if err := os.RemoveAll(filelocation); err != nil {
 		log.Errorf("Failed to delete file %s. Error: %s",
 			filelocation, err.Error())

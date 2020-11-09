@@ -28,7 +28,7 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 		log.Errorf("process.Processes failed: %s", err)
 		return ret, reportedPids
 	}
-	log.Debugf("watchedPids: %+v", watchedPids)
+	log.Tracef("watchedPids: %+v", watchedPids)
 	processes, err := process.Processes()
 	if err != nil {
 		log.Errorf("process.Processes failed: %s", err)
@@ -153,14 +153,14 @@ func unpublishRemovedPids(ctx *domainContext, oldPids, newPids map[int32]bool) {
 
 func publishProcessMetric(ctx *domainContext, status *types.ProcessMetric) {
 	key := status.Key()
-	log.Debugf("publishProcessMetric(%s)", key)
+	log.Tracef("publishProcessMetric(%s)", key)
 	pub := ctx.pubProcessMetric
 	pub.Publish(key, *status)
 }
 
 func unpublishProcessMetric(ctx *domainContext, pid uint32) {
 	key := strconv.Itoa(int(pid))
-	log.Debugf("unpublishProcessMetric(%s)", key)
+	log.Tracef("unpublishProcessMetric(%s)", key)
 	pub := ctx.pubProcessMetric
 	pub.Unpublish(key)
 }

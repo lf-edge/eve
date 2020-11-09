@@ -26,7 +26,7 @@ func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[0] = "-w"
 	args[1] = "5"
 	if log != nil {
-		log.Infof("Calling command %s %v\n", cmd, args)
+		log.Functionf("Calling command %s %v\n", cmd, args)
 		out, err = base.Exec(log, cmd, args...).CombinedOutput()
 	} else {
 		out, err = base.Exec(log, cmd, args...).Output()
@@ -60,7 +60,7 @@ func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[0] = "-w"
 	args[1] = "5"
 	if log != nil {
-		log.Infof("Calling command %s %v\n", cmd, args)
+		log.Functionf("Calling command %s %v\n", cmd, args)
 		out, err = base.Exec(log, cmd, args...).CombinedOutput()
 	} else {
 		out, err = base.Exec(log, cmd, args...).Output()
@@ -159,7 +159,7 @@ func getIpRuleCounters(log *base.LogObject, counters []AclCounters, match *AclCo
 		if c.Piif != match.Piif || c.Poif != match.Poif {
 			continue
 		}
-		log.Debugf("getIpRuleCounters: matched counters %+v\n",
+		log.Tracef("getIpRuleCounters: matched counters %+v\n",
 			&counters[i])
 		// accumulate counter across matching ACLs
 		match.Bytes += counters[i].Bytes
@@ -282,7 +282,7 @@ type AclCounters struct {
 func parseline(log *base.LogObject, line string, table string, ipVer int) *AclCounters {
 	items := strings.Split(line, " ")
 	if len(items) < 4 {
-		// log.Debugf("Too short: %s\n", line)
+		// log.Tracef("Too short: %s\n", line)
 		return nil
 	}
 	if items[0] != "-A" {
@@ -304,7 +304,7 @@ func parseline(log *base.LogObject, line string, table string, ipVer int) *AclCo
 		}
 		// Mark RateLimit flag
 		if items[i] == "-m" && items[i+1] == "limit" {
-			// log.Debugf("Marking RateLimit: true\n")
+			// log.Tracef("Marking RateLimit: true\n")
 			ac.Limit = true
 			i += 2
 			continue
@@ -374,7 +374,7 @@ func parseline(log *base.LogObject, line string, table string, ipVer int) *AclCo
 			continue
 		}
 
-		// log.Debugf("Got more items %d %s\n", i, items[i])
+		// log.Tracef("Got more items %d %s\n", i, items[i])
 		ac.More = true
 		i += 1
 	}

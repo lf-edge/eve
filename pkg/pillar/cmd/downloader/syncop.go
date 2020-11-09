@@ -63,23 +63,23 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	// make sure the directory exists - just a safety check
 	if _, err := os.Stat(locDirname); err != nil {
-		log.Debugf("Create %s", locDirname)
+		log.Tracef("Create %s", locDirname)
 		if err = os.MkdirAll(locDirname, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	log.Infof("Downloading <%s> to <%s> using %v allow non-free port",
+	log.Functionf("Downloading <%s> to <%s> using %v allow non-free port",
 		config.Name, locFilename, config.AllowNonFreePort)
 
 	var addrCount int
 	if !config.AllowNonFreePort {
 		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Infof("Have %d free management port addresses", addrCount)
+		log.Functionf("Have %d free management port addresses", addrCount)
 		err = errors.New("No free IP management port addresses for download")
 	} else {
 		addrCount = types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Infof("Have %d any management port addresses", addrCount)
+		log.Functionf("Have %d any management port addresses", addrCount)
 		err = errors.New("No IP management port addresses for download")
 	}
 	if addrCount == 0 {
@@ -190,7 +190,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			continue
 		}
 		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
-		log.Infof("Using IP source %v if %s transport %v",
+		log.Functionf("Using IP source %v if %s transport %v",
 			ipSrc, ifname, dsCtx.TransportMethod)
 
 		// do the download
@@ -273,7 +273,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		return
 	}
 
-	log.Infof("handleSyncOpResponse(%s): successful <%s>",
+	log.Functionf("handleSyncOpResponse(%s): successful <%s>",
 		config.Name, locFilename)
 	// We do not clear any status.RetryCount, Error, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
@@ -344,10 +344,10 @@ func getDatastoreCredential(ctx *downloaderContext,
 			}
 			return decBlock, nil
 		}
-		log.Infof("%s, datastore config cipherblock decryption successful", dst.Key())
+		log.Functionf("%s, datastore config cipherblock decryption successful", dst.Key())
 		return decBlock, nil
 	}
-	log.Infof("%s, datastore config cipherblock not present", dst.Key())
+	log.Functionf("%s, datastore config cipherblock not present", dst.Key())
 	decBlock := types.EncryptionBlock{}
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password

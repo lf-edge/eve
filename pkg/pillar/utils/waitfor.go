@@ -46,7 +46,7 @@ func WaitForVault(ps *pubsub.PubSub, log *base.LogObject, agentName string, warn
 
 	// Wait for vault to be ready, which might be delayed due to attestation
 	for !Ctx.Initialized {
-		log.Infof("Waiting for VaultStatus initialized")
+		log.Functionf("Waiting for VaultStatus initialized")
 		select {
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
@@ -107,7 +107,7 @@ func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, 
 
 	// Wait for Onboarding to be done by client
 	for !Ctx.Initialized {
-		log.Infof("Waiting for OnboardStatus initialized")
+		log.Functionf("Waiting for OnboardStatus initialized")
 		select {
 		case change := <-subOnboardStatus.MsgChan():
 			subOnboardStatus.ProcessChange(change)

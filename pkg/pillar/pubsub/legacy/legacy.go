@@ -38,7 +38,7 @@ func Publish(agentName string, topicType interface{}) (pubsub.Publication, error
 	if once() {
 		initialize(agentName)
 	}
-	log.Debugf("legacy.Publish agentName(%s)", agentName)
+	log.Tracef("legacy.Publish agentName(%s)", agentName)
 	return defaultPubsub.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: topicType,
@@ -52,7 +52,7 @@ func PublishPersistent(agentName string, topicType interface{}) (pubsub.Publicat
 	if once() {
 		initialize(agentName)
 	}
-	log.Infof("legacy.PublishPersistent agentName(%s)", agentName)
+	log.Functionf("legacy.PublishPersistent agentName(%s)", agentName)
 	return defaultPubsub.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		TopicType:  topicType,

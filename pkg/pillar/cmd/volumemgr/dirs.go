@@ -13,7 +13,7 @@ func initializeDirs() {
 
 	// first the certs directory
 	if _, err := os.Stat(types.CertificateDirname); err != nil {
-		log.Debugf("initializeDirs: Create %s", types.CertificateDirname)
+		log.Tracef("initializeDirs: Create %s", types.CertificateDirname)
 		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -25,7 +25,7 @@ func initializeDirs() {
 	}
 	for _, dirName := range volumeDirs {
 		if _, err := os.Stat(dirName); err != nil {
-			log.Infof("Create %s", dirName)
+			log.Functionf("Create %s", dirName)
 			if err := os.MkdirAll(dirName, 0700); err != nil {
 				log.Fatal(err)
 			}

@@ -28,19 +28,19 @@ import (
 func UpdateDhcpClient(log *base.LogObject, newConfig, oldConfig types.DevicePortConfig) {
 
 	// Look for adds or changes
-	log.Infof("updateDhcpClient: new %v old %v\n",
+	log.Functionf("updateDhcpClient: new %v old %v\n",
 		newConfig, oldConfig)
 	for _, newU := range newConfig.Ports {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
 		if oldU == nil || oldU.Dhcp == types.DT_NONE {
-			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
+			log.Functionf("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
 			doDhcpClientActivate(log, newU)
 		} else {
-			log.Infof("updateDhcpClient: found old %v\n",
+			log.Functionf("updateDhcpClient: found old %v\n",
 				oldU)
 			if !reflect.DeepEqual(newU.DhcpConfig, oldU.DhcpConfig) {
-				log.Infof("updateDhcpClient: changed %s\n",
+				log.Functionf("updateDhcpClient: changed %s\n",
 					newU.IfName)
 				doDhcpClientInactivate(log, *oldU)
 				doDhcpClientActivate(log, newU)
@@ -51,11 +51,11 @@ func UpdateDhcpClient(log *base.LogObject, newConfig, oldConfig types.DevicePort
 	for _, oldU := range oldConfig.Ports {
 		newU := lookupOnIfname(newConfig, oldU.IfName)
 		if newU == nil || newU.Dhcp == types.DT_NONE {
-			log.Infof("updateDhcpClient: deleted %s\n",
+			log.Functionf("updateDhcpClient: deleted %s\n",
 				oldU.IfName)
 			doDhcpClientInactivate(log, oldU)
 		} else {
-			log.Infof("updateDhcpClient: found new %v\n",
+			log.Functionf("updateDhcpClient: found new %v\n",
 				newU)
 		}
 	}
@@ -63,11 +63,11 @@ func UpdateDhcpClient(log *base.LogObject, newConfig, oldConfig types.DevicePort
 
 func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 
-	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
+	log.Functionf("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
 	if strings.HasPrefix(nuc.IfName, "wwan") {
-		log.Infof("doDhcpClientActivate: skipping %s\n",
+		log.Functionf("doDhcpClientActivate: skipping %s\n",
 			nuc.IfName)
 		return
 	}
@@ -81,7 +81,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 	}
 	switch nuc.Dhcp {
 	case types.DT_NONE:
-		log.Infof("doDhcpClientActivate(%s) DT_NONE is a no-op\n",
+		log.Functionf("doDhcpClientActivate(%s) DT_NONE is a no-op\n",
 			nuc.IfName)
 		return
 	case types.DT_CLIENT:
@@ -89,7 +89,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
 			time.Sleep(10 * time.Second)
 		}
-		log.Infof("dhcpcd %s not running", nuc.IfName)
+		log.Functionf("dhcpcd %s not running", nuc.IfName)
 		extras := []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
 		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
@@ -112,7 +112,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 			time.Sleep(10 * time.Second)
 		}
 		if !failed {
-			log.Infof("dhcpcd %s is running", nuc.IfName)
+			log.Functionf("dhcpcd %s is running", nuc.IfName)
 		}
 
 	case types.DT_STATIC:
@@ -132,7 +132,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
 			time.Sleep(10 * time.Second)
 		}
-		log.Infof("dhcpcd %s not running", nuc.IfName)
+		log.Functionf("dhcpcd %s not running", nuc.IfName)
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.AddrSubnet)}
 
 		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
@@ -176,7 +176,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 			time.Sleep(10 * time.Second)
 		}
 		if !failed {
-			log.Infof("dhcpcd %s is running", nuc.IfName)
+			log.Functionf("dhcpcd %s is running", nuc.IfName)
 		}
 	default:
 		log.Errorf("doDhcpClientActivate: unsupported dhcp %v\n",
@@ -186,17 +186,17 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 
 func doDhcpClientInactivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 
-	log.Infof("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
+	log.Functionf("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
 	if strings.HasPrefix(nuc.IfName, "wwan") {
-		log.Infof("doDhcpClientInactivate: skipping %s\n",
+		log.Functionf("doDhcpClientInactivate: skipping %s\n",
 			nuc.IfName)
 		return
 	}
 	switch nuc.Dhcp {
 	case types.DT_NONE:
-		log.Infof("doDhcpClientInactivate(%s) DT_NONE is a no-op\n",
+		log.Functionf("doDhcpClientInactivate(%s) DT_NONE is a no-op\n",
 			nuc.IfName)
 	case types.DT_STATIC, types.DT_CLIENT:
 		extras := []string{}
@@ -208,7 +208,7 @@ func doDhcpClientInactivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 			log.Warnf("dhcpcd %s still running", nuc.IfName)
 			time.Sleep(10 * time.Second)
 		}
-		log.Infof("dhcpcd %s gone", nuc.IfName)
+		log.Functionf("dhcpcd %s gone", nuc.IfName)
 	default:
 		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
@@ -224,8 +224,8 @@ func dhcpcdCmd(log *base.LogObject, op string, extras []string, ifname string, b
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 
-		log.Infof("Background command %s %v\n", name, args)
-		log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
+		log.Functionf("Background command %s %v\n", name, args)
+		log.Functionf("Creating %s at %s", "func", agentlog.GetMyStack())
 		go func() {
 			if err := cmd.Run(); err != nil {
 				log.Errorf("%s %v: failed: %s",
@@ -233,7 +233,7 @@ func dhcpcdCmd(log *base.LogObject, op string, extras []string, ifname string, b
 			}
 		}()
 	} else {
-		log.Infof("Calling command %s %v\n", name, args)
+		log.Functionf("Calling command %s %v\n", name, args)
 		out, err := base.Exec(log, name, args...).CombinedOutput()
 		if err != nil {
 			errStr := fmt.Sprintf("dhcpcd command %s failed %s output %s",
@@ -247,15 +247,15 @@ func dhcpcdCmd(log *base.LogObject, op string, extras []string, ifname string, b
 
 func dhcpcdExists(log *base.LogObject, ifname string) bool {
 
-	log.Infof("dhcpcdExists(%s)", ifname)
+	log.Functionf("dhcpcdExists(%s)", ifname)
 	// XXX should we use dhcpcd -P <ifname> to get name of pidfile? Hardcoded path here
 	pidfileName := fmt.Sprintf("/run/dhcpcd-%s.pid", ifname)
 	val, t := statAndRead(pidfileName)
 	if val == "" {
-		log.Infof("dhcpcdExists(%s) not exist", ifname)
+		log.Functionf("dhcpcdExists(%s) not exist", ifname)
 		return false
 	}
-	log.Infof("dhcpcdExists(%s) found modtime %v", ifname, t)
+	log.Functionf("dhcpcdExists(%s) found modtime %v", ifname, t)
 
 	pid, err := strconv.Atoi(strings.TrimSpace(val))
 	if err != nil {
@@ -265,7 +265,7 @@ func dhcpcdExists(log *base.LogObject, ifname string) bool {
 	// Does the pid exist?
 	p, err := os.FindProcess(pid)
 	if err != nil {
-		log.Infof("dhcpcdExists(%s) pid %d not found: %s", ifname, pid,
+		log.Functionf("dhcpcdExists(%s) pid %d not found: %s", ifname, pid,
 			err)
 		return false
 	}
@@ -274,7 +274,7 @@ func dhcpcdExists(log *base.LogObject, ifname string) bool {
 		log.Errorf("dhcpcdExists(%s) Signal failed %s", ifname, err)
 		return false
 	}
-	log.Infof("dhcpcdExists(%s) Signal 0 OK for %d", ifname, pid)
+	log.Functionf("dhcpcdExists(%s) Signal 0 OK for %d", ifname, pid)
 	return true
 }
 

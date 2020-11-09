@@ -46,12 +46,12 @@ func getFscryptOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) 
 	if err == nil {
 		if _, _, err := execCmd(FscryptPath, StatusParams...); err != nil {
 			//fscrypt is setup, but not being used
-			log.Debug("Setting status to Error")
+			log.Trace("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Fscrypt Encryption is not setup"
 		} else {
 			//fscrypt is setup, and being used on /persist
-			log.Debug("Setting status to Enabled")
+			log.Trace("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
 				"Fscrypt is enabled and active"
 		}
@@ -80,7 +80,7 @@ func getZfsOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 func GetOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	if !etpm.IsTpmEnabled() {
 		//No encryption on plaforms without a (working) TPM
-		log.Debug("Setting status to disabled, TPM is not in use")
+		log.Trace("Setting status to disabled, TPM is not in use")
 		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 			"TPM is either absent or not in use"
 	}
@@ -91,7 +91,7 @@ func GetOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	case "zfs":
 		return getZfsOperInfo(log)
 	default:
-		log.Debugf("Unsupported filesystem (%s), setting status to disabled",
+		log.Tracef("Unsupported filesystem (%s), setting status to disabled",
 			persistFsType)
 		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 			"Current filesystem does not support encryption"

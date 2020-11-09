@@ -28,11 +28,11 @@ func NewSubscriber(log *base.LogObject, agent string, topic interface{}) <-chan 
 
 // startSubscriber Creates a socket for the agent and starts listening
 func startSubscriber(log *base.LogObject, agent string, topic interface{}, retChan chan<- string) {
-	log.Infof("startSubscriber(%s)", agent)
+	log.Functionf("startSubscriber(%s)", agent)
 	sockName := getSocketName(agent, topic)
 	dir := path.Dir(sockName)
 	if _, err := os.Stat(dir); err != nil {
-		log.Infof("startSubscriber(%s): Create %s\n", agent, dir)
+		log.Functionf("startSubscriber(%s): Create %s\n", agent, dir)
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			log.Fatalf("startSubscriber(%s): Exception while creating %s. %s",
 				agent, dir, err)

@@ -57,7 +57,7 @@ func swanCtlCmdGet(vpnStatus *types.VpnStatus) error {
 	tunCount := swanCtlCmdParse(vpnStatus, string(bytes))
 	totalTunCount := vpnStatus.ActiveTunCount + vpnStatus.ConnectingTunCount
 	if totalTunCount != tunCount {
-		log.Infof("Tunnel count mismatch (%d, %d)\n",
+		log.Functionf("Tunnel count mismatch (%d, %d)\n",
 			vpnStatus.ActiveTunCount, tunCount)
 		return errors.New("active tunnel count mismatch")
 	}
@@ -140,7 +140,7 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 			}
 		}
 	}
-	log.Debugf("ipSecCmdParse:%v\n", ipSecCmdOut)
+	log.Tracef("ipSecCmdParse:%v\n", ipSecCmdOut)
 	return ipSecCmdOut
 }
 
@@ -165,7 +165,7 @@ func swanCtlCmdParse(vpnStatus *types.VpnStatus, outStr string) uint32 {
 	}
 	if logrus.GetLevel() == logrus.TraceLevel {
 		if bytes, err := json.Marshal(vpnStatus); err == nil {
-			log.Debugf("swanCtlCmdParse(): %s\n", string(bytes))
+			log.Tracef("swanCtlCmdParse(): %s\n", string(bytes))
 		}
 	}
 	return cmdOut.childCount
@@ -262,7 +262,7 @@ func swanCtlCmdOutPrint(cb *readBlock, depth int) {
 	if cb == nil {
 		return
 	}
-	log.Debugf("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
+	log.Tracef("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
 	for _, childBlock := range cb.childBlocks {
 		swanCtlCmdOutPrint(childBlock, depth+1)
 	}

@@ -13,9 +13,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 )
 
-// Logger basic interface to send debug messages
+// Logger basic interface to send trace messages
 type Logger interface {
-	Debugf(format string, args ...interface{})
+	Tracef(format string, args ...interface{})
 }
 
 // Worker captures the worker channels
@@ -97,7 +97,7 @@ func NewWorker(log Logger, ctx interface{}, length int, handlers map[string]Hand
 		log:         log,
 	}
 
-	log.Debugf("Creating %s at %s", "w.processWork", agentlog.GetMyStack())
+	log.Tracef("Creating %s at %s", "w.processWork", agentlog.GetMyStack())
 	go w.processWork(log, ctx, requestChan, resultChan)
 	return w
 }
@@ -112,7 +112,7 @@ func (w Worker) NumPending() int {
 // processWork calls the fn for each work until the requestChan is closed
 func (w *Worker) processWork(log Logger, ctx interface{}, requestChan <-chan Work, resultChan chan<- Processor) {
 
-	log.Debugf("processWork starting for context %T", ctx)
+	log.Tracef("processWork starting for context %T", ctx)
 	for work := range requestChan {
 		var result WorkResult
 		// find the correct handler for it
@@ -141,7 +141,7 @@ func (w *Worker) processWork(log Logger, ctx interface{}, requestChan <-chan Wor
 		w.deletePending(work.Key)
 	}
 	close(resultChan)
-	log.Debugf("processWork done for context %T", ctx)
+	log.Tracef("processWork done for context %T", ctx)
 }
 
 // MsgChan returns a channel to be used in a select loop.

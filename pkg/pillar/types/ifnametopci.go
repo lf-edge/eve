@@ -115,7 +115,7 @@ func PciLongToIfname(log *base.LogObject, long string) (bool, string) {
 		return false, ""
 	}
 	ifname := locations[0].Name()
-	log.Infof("PciLongToIfname(%s) %s", long, ifname)
+	log.Functionf("PciLongToIfname(%s) %s", long, ifname)
 	return true, ifname
 }
 
@@ -170,7 +170,7 @@ func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) {
 // IfRename brings down the interface, renames it, and brings it back up
 func IfRename(log *base.LogObject, ifname string, newIfname string) error {
 
-	log.Infof("IfRename %s to %s", ifname, newIfname)
+	log.Functionf("IfRename %s to %s", ifname, newIfname)
 	link, err := netlink.LinkByName(ifname)
 	if link == nil {
 		log.Errorf("LinkByname on %s failed: %s", ifname, err)

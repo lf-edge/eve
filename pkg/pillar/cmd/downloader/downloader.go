@@ -67,7 +67,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -108,7 +108,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
@@ -116,16 +116,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("processed Vault Status")
+	log.Functionf("processed Vault Status")
 	// First wait to have some management ports with addresses
 	// Looking at any management ports since we can do download over all
 	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 {
-		log.Infof("Waiting for management port addresses")
+		log.Functionf("Waiting for management port addresses")
 
 		select {
 		case change := <-ctx.subGlobalConfig.MsgChan():
@@ -140,7 +140,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("Have %d management ports addresses to use",
+	log.Functionf("Have %d management ports addresses to use",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
 
 	ctx.dCtx = downloaderInit(&ctx)
@@ -212,7 +212,7 @@ func lookupDownloaderStatus(ctx *downloaderContext,
 	pub := ctx.pubDownloaderStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupDownloaderStatus(%s) not found", key)
+		log.Functionf("lookupDownloaderStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.DownloaderStatus)
@@ -224,7 +224,7 @@ func lookupDownloaderConfig(ctx *downloaderContext, key string) *types.Downloade
 	sub := ctx.subDownloaderConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Infof("lookupDownloaderConfig(%s) not found", key)
+		log.Functionf("lookupDownloaderConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.DownloaderConfig)
@@ -234,7 +234,7 @@ func lookupDownloaderConfig(ctx *downloaderContext, key string) *types.Downloade
 // runHandler is the server for each DownloaderConfig object aka key
 func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 
-	log.Infof("runHandler starting")
+	log.Functionf("runHandler starting")
 
 	max := float64(retryTime)
 	min := max * 0.3
@@ -269,14 +269,14 @@ func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 				// XXX stop timer
 			}
 		case <-ticker.C:
-			log.Debugf("runHandler(%s) timer", key)
+			log.Tracef("runHandler(%s) timer", key)
 			status := lookupDownloaderStatus(ctx, key)
 			if status != nil {
 				maybeRetryDownload(ctx, status)
 			}
 		}
 	}
-	log.Infof("runHandler(%s) DONE", key)
+	log.Functionf("runHandler(%s) DONE", key)
 }
 
 func maybeRetryDownload(ctx *downloaderContext,
@@ -290,17 +290,17 @@ func maybeRetryDownload(ctx *downloaderContext,
 	t := time.Now()
 	elapsed := t.Sub(status.ErrorTime)
 	if elapsed < retryTime {
-		log.Infof("maybeRetryDownload(%s) %d remaining",
+		log.Functionf("maybeRetryDownload(%s) %d remaining",
 			status.Key(),
 			(retryTime-elapsed)/time.Second)
 		return
 	}
-	log.Infof("maybeRetryDownload(%s) after %s at %v",
+	log.Functionf("maybeRetryDownload(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
 	config := lookupDownloaderConfig(ctx, status.Key())
 	if config == nil {
-		log.Infof("maybeRetryDownload(%s) no config",
+		log.Functionf("maybeRetryDownload(%s) no config",
 			status.Key())
 		return
 	}
@@ -316,7 +316,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
 	status *types.DownloaderStatus, key string) {
 
-	log.Infof("handleCreate(%s) for %s", config.ImageSha256, config.Name)
+	log.Functionf("handleCreate(%s) for %s", config.ImageSha256, config.Name)
 
 	if status == nil {
 		// Start by marking with PendingAdd
@@ -356,22 +356,22 @@ func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
-	log.Infof("handleModify(%s) for %s", status.ImageSha256, status.Name)
+	log.Functionf("handleModify(%s) for %s", status.ImageSha256, status.Name)
 
 	status.PendingModify = true
 	publishDownloaderStatus(ctx, status)
 
-	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s",
+	log.Functionf("handleModify(%s) RefCount %d to %d, Expired %v for %s",
 		status.ImageSha256, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
 
 	// If RefCount from zero to non-zero and status has error
 	// or status is not downloaded then do install
 	if config.RefCount != 0 && (status.HasError() || status.State != types.DOWNLOADED) {
-		log.Infof("handleModify installing %s", config.Name)
+		log.Functionf("handleModify installing %s", config.Name)
 		handleCreate(ctx, config, status, key)
 	} else if status.RefCount != config.RefCount {
-		log.Infof("handleModify RefCount change %s from %d to %d",
+		log.Functionf("handleModify RefCount change %s from %d to %d",
 			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 	}
@@ -379,16 +379,16 @@ func handleModify(ctx *downloaderContext, key string,
 	status.Expired = (status.RefCount == 0) // Start delete handshake
 	status.ClearPendingStatus()
 	publishDownloaderStatus(ctx, status)
-	log.Infof("handleModify done for %s", config.Name)
+	log.Functionf("handleModify done for %s", config.Name)
 }
 
 func doDelete(ctx *downloaderContext, key string, filename string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("doDelete(%s) for %s", status.ImageSha256, status.Name)
+	log.Functionf("doDelete(%s) for %s", status.ImageSha256, status.Name)
 
 	if _, err := os.Stat(filename); err == nil {
-		log.Infof("Deleting %s", filename)
+		log.Functionf("Deleting %s", filename)
 		if err := os.RemoveAll(filename); err != nil {
 			log.Errorf("Failed to remove %s: err %s",
 				filename, err)
@@ -426,7 +426,7 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
 		return
 	}
-	log.Debugf("Found datastore(%s) for %s", config.DatastoreID.String(), config.Name)
+	log.Tracef("Found datastore(%s) for %s", config.DatastoreID.String(), config.Name)
 
 	handleSyncOp(ctx, status.Key(), config, status, dst)
 }
@@ -434,7 +434,7 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%s) for %s RefCount %d LastUse %v Expired %v",
+	log.Functionf("handleDelete(%s) for %s RefCount %d LastUse %v Expired %v",
 		status.ImageSha256, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
 
@@ -448,7 +448,7 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Infof("handleDelete done for %s", status.Name)
+	log.Functionf("handleDelete done for %s", status.Name)
 }
 
 // helper functions
@@ -473,7 +473,7 @@ func publishDownloaderStatus(ctx *downloaderContext,
 
 	pub := ctx.pubDownloaderStatus
 	key := status.Key()
-	log.Debugf("publishDownloaderStatus(%s)", key)
+	log.Tracef("publishDownloaderStatus(%s)", key)
 	pub.Publish(key, *status)
 }
 
@@ -482,7 +482,7 @@ func unpublishDownloaderStatus(ctx *downloaderContext,
 
 	pub := ctx.pubDownloaderStatus
 	key := status.Key()
-	log.Debugf("unpublishDownloaderStatus(%s)", key)
+	log.Tracef("unpublishDownloaderStatus(%s)", key)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Errorf("unpublishDownloaderStatus(%s) not found", key)

@@ -26,14 +26,14 @@ func UpdateLedManagerConfig(log *base.LogObject, count int) {
 	if err == nil {
 		bc := item.(types.LedBlinkCounter)
 		if bc.BlinkCounter == count {
-			log.Debugf("UpdateLedManagerConfig: unchanged at %d",
+			log.Tracef("UpdateLedManagerConfig: unchanged at %d",
 				count)
 			return
 		}
-		log.Infof("UpdateLedManagerConfig: set %d was %d", count,
+		log.Functionf("UpdateLedManagerConfig: set %d was %d", count,
 			bc.BlinkCounter)
 	} else {
-		log.Infof("UpdateLedManagerConfig: set to %d", count)
+		log.Functionf("UpdateLedManagerConfig: set to %d", count)
 	}
 	err = pub.Publish(ledConfigKey, blinkCount)
 	if err != nil {

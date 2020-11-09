@@ -49,7 +49,7 @@ func getZbootCurrentPartition(ctx *zedagentContext) string {
 	for _, st := range items {
 		status := st.(types.ZbootStatus)
 		if status.CurrentPartition {
-			log.Debugf("getZbootCurrentPartition:%s", status.PartitionLabel)
+			log.Tracef("getZbootCurrentPartition:%s", status.PartitionLabel)
 			return status.PartitionLabel
 		}
 	}
@@ -63,7 +63,7 @@ func getZbootOtherPartition(ctx *zedagentContext) string {
 	for _, st := range items {
 		status := st.(types.ZbootStatus)
 		if !status.CurrentPartition {
-			log.Debugf("getZbootOtherPartition:%s", status.PartitionLabel)
+			log.Tracef("getZbootOtherPartition:%s", status.PartitionLabel)
 			return status.PartitionLabel
 		}
 	}

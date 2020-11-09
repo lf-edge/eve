@@ -78,7 +78,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 
-	log.Infof("Starting %s\n", agentName)
+	log.Functionf("Starting %s\n", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -166,12 +166,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Infof("Read devUUID %s\n", wscCtx.devUUID.String())
+		log.Functionf("Read devUUID %s\n", wscCtx.devUUID.String())
 	}
 
 	// Pick up debug aka log level before we start real work
 	for !wscCtx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -179,12 +179,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	wscCtx.dnsContext = &DNSctx
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
-		log.Infof("Waiting for DeviceNetworkStatus\n")
+		log.Functionf("Waiting for DeviceNetworkStatus\n")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -226,17 +226,17 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*wstunnelclientContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigImpl: ignoring %s\n", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigImpl for %s\n", key)
+	log.Functionf("handleGlobalConfigImpl for %s\n", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigImpl done for %s\n", key)
+	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -244,13 +244,13 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*wstunnelclientContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Functionf("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Functionf("handleGlobalConfigDelete done for %s\n", key)
 }
 
 func handleDNSCreate(ctxArg interface{}, key string,
@@ -269,44 +269,44 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSImpl: ignoring %s\n", key)
+		log.Functionf("handleDNSImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleDNSImpl for %s\n", key)
+	log.Functionf("handleDNSImpl for %s\n", key)
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
-		log.Infof("handleDNSImpl no change\n")
+		log.Functionf("handleDNSImpl no change\n")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Infof("handleDNSImpl: changed %v",
+	log.Functionf("handleDNSImpl: changed %v",
 		cmp.Diff(*ctx.deviceNetworkStatus, status))
 	*ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
+		log.Functionf("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
 		// XXX do we need to trigger something like a reconnect?
 	}
 	ctx.DNSinitialized = true
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSImpl done for %s\n", key)
+	log.Functionf("handleDNSImpl done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDNSDelete for %s\n", key)
+	log.Functionf("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		log.Functionf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.DNSinitialized = false
 	ctx.usableAddressCount = newAddrCount
-	log.Infof("handleDNSDelete done for %s\n", key)
+	log.Functionf("handleDNSDelete done for %s\n", key)
 }
 
 func handleAppInstanceConfigCreate(ctxArg interface{}, key string,
@@ -322,21 +322,21 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 func handleAppInstanceConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleAppInstanceConfigImpl for %s\n", key)
+	log.Functionf("handleAppInstanceConfigImpl for %s\n", key)
 	// XXX config := configArg.(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
-	log.Infof("handleAppInstanceConfigImpl done for %s\n", key)
+	log.Functionf("handleAppInstanceConfigImpl done for %s\n", key)
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleAppInstanceConfigDelete for %s\n", key)
+	log.Functionf("handleAppInstanceConfigDelete for %s\n", key)
 	// XXX config := configArg).(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
-	log.Infof("handleAppInstanceConfigDelete done for %s\n", key)
+	log.Functionf("handleAppInstanceConfigDelete done for %s\n", key)
 }
 
 // walk over all instances to determine new value
@@ -347,11 +347,11 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 	items := sub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
-		log.Debugf("Remote console status for app-instance: %s: %t\n",
+		log.Tracef("Remote console status for app-instance: %s: %t\n",
 			config.DisplayName, config.RemoteConsole)
 		isTunnelRequired = config.RemoteConsole || isTunnelRequired
 	}
-	log.Infof("Tunnel check status after checking app-instance configs: %t\n",
+	log.Functionf("Tunnel check status after checking app-instance configs: %t\n",
 		isTunnelRequired)
 
 	if !isTunnelRequired {
@@ -368,7 +368,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 	for _, port := range deviceNetworkStatus.Ports {
 		ifname := port.IfName
 		if !types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-			log.Debugf("Skipping connection using non-mangement intf %s\n",
+			log.Tracef("Skipping connection using non-mangement intf %s\n",
 				ifname)
 			continue
 		}
@@ -376,13 +376,13 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 		destURL := wstunnelclient.Tunnel
 
 		addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus, ifname)
-		log.Infof("Connecting to %s using intf %s #sources %d\n",
+		log.Functionf("Connecting to %s using intf %s #sources %d\n",
 			destURL, ifname, addrCount)
 
 		if addrCount == 0 {
 			errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 				destURL, ifname)
-			log.Infoln(errStr)
+			log.Functionln(errStr)
 			continue
 		}
 
@@ -391,14 +391,14 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 			localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*deviceNetworkStatus,
 				retryCount, ifname)
 			if err != nil {
-				log.Info(err)
+				log.Function(err)
 				continue
 			}
 
 			proxyURL, _ := zedcloud.LookupProxy(log, deviceNetworkStatus,
 				ifname, destURL)
 			if err := wstunnelclient.TestConnection(deviceNetworkStatus, proxyURL, localAddr, ctx.devUUID); err != nil {
-				log.Info(err)
+				log.Function(err)
 				continue
 			}
 			connected = true
@@ -409,6 +409,6 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 			ctx.wstunnelclient = wstunnelclient
 			break
 		}
-		log.Infof("Could not connect to %s using intf %s\n", destURL, ifname)
+		log.Functionf("Could not connect to %s using intf %s\n", destURL, ifname)
 	}
 }

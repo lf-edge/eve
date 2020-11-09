@@ -39,7 +39,7 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 		return handleCipherBlockCredError(agentName, cipherBlock,
 			decBlock, nil, types.Invalid)
 	}
-	ctx.Log.Infof("%s, cipherblock decryption, using cipher-context: %s\n",
+	ctx.Log.Functionf("%s, cipherblock decryption, using cipher-context: %s\n",
 		cipherBlock.Key(), cipherBlock.CipherContextID)
 	if len(cipherBlock.Error) != 0 {
 		errStr := fmt.Sprintf("%s, cipherblock is not ready, %s",
@@ -65,7 +65,7 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 		return handleCipherBlockCredError(agentName, cipherBlock,
 			decBlock, err, types.UnmarshalFailed)
 	}
-	ctx.Log.Infof("%s, cipherblock decryption successful", cipherBlock.Key())
+	ctx.Log.Functionf("%s, cipherblock decryption successful", cipherBlock.Key())
 	decBlock = getEncryptionBlock(&zconfigDecBlock)
 	RecordSuccess(agentName)
 	return *cipherBlock, decBlock, err
@@ -79,7 +79,7 @@ func GetCipherData(ctx *DecryptCipherContext, agentName string, status types.Cip
 	if !cipherBlock.IsCipher {
 		return handleCipherBlockError(agentName, cipherBlock, data, nil)
 	}
-	ctx.Log.Infof("%s, cipherblock decryption, using cipher-context: %s\n",
+	ctx.Log.Functionf("%s, cipherblock decryption, using cipher-context: %s\n",
 		cipherBlock.Key(), cipherBlock.CipherContextID)
 	if len(cipherBlock.Error) != 0 {
 		errStr := fmt.Sprintf("%s, cipherblock is not ready, %s",

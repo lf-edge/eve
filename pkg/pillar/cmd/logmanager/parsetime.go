@@ -71,7 +71,7 @@ func parseTime(ts string) (time.Time, bool) {
 	}
 	err = t.UnmarshalText([]byte(ts))
 	if err != nil {
-		log.Debugln(err)
+		log.Traceln(err)
 		return t, false
 	}
 	return t, true
@@ -98,7 +98,7 @@ func parseOldTime(date, timeStr string) (time.Time, bool) {
 	///convert newDateAndTime type string to type time.time
 	dt, err := time.Parse(layout, newDateAndTime)
 	if err != nil {
-		log.Debugln(err)
+		log.Traceln(err)
 		return t, false
 	} else {
 		return dt, true

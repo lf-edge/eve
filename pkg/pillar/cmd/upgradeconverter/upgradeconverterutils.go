@@ -36,7 +36,7 @@ func dirExists(dirname string) bool {
 func fileTimeStamp(filename string) (time.Time, error) {
 	file, err := os.Stat(filename)
 	if err != nil {
-		log.Infof("failed to get a timestamp for file %s err %s", filename, err)
+		log.Functionf("failed to get a timestamp for file %s err %s", filename, err)
 		return time.Time{}, err
 	}
 	return file.ModTime(), nil
@@ -45,7 +45,7 @@ func fileTimeStamp(filename string) (time.Time, error) {
 func deleteFile(filename string) error {
 	var err = os.Remove(filename)
 	if err == nil {
-		log.Infof("Removed file %s", filename)
+		log.Functionf("Removed file %s", filename)
 		return nil
 	}
 	return err
