@@ -8,7 +8,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"os"
 )
 
@@ -93,6 +93,6 @@ func roundFromKbytesToMbytes(byteCount uint64) uint64 {
 }
 
 func logError(format string, a ...interface{}) error {
-	log.Errorf(format, a...)
+	logrus.Errorf(format, a...)
 	return fmt.Errorf(format, a...)
 }

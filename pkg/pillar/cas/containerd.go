@@ -25,7 +25,7 @@ import (
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
-	log "github.com/sirupsen/logrus" // XXX add log argument
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -110,7 +110,7 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 		case v1types.OCIImageIndex, v1types.DockerManifestList:
 			index, err := getIndexManifest(c, dig)
 			if err != nil {
-				log.Infof("ListBlobsMediaTypes: could not get index for %s, ignoring", dig)
+				logrus.Infof("ListBlobsMediaTypes: could not get index for %s, ignoring", dig)
 				continue
 			}
 			// save all of the manifests
@@ -120,7 +120,7 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 				// and now read each manifest
 				manifest, err := getManifest(c, digm)
 				if err != nil {
-					log.Infof("ListBlobsMediaTypes: could not get manifest for %s in index %s, ignoring", digm, dig)
+					logrus.Infof("ListBlobsMediaTypes: could not get manifest for %s in index %s, ignoring", digm, dig)
 					continue
 				}
 				// read the config and the layers
@@ -132,7 +132,7 @@ func (c *containerdCAS) ListBlobsMediaTypes() (map[string]string, error) {
 		case v1types.OCIManifestSchema1, v1types.DockerManifestSchema1, v1types.DockerManifestSchema2, v1types.DockerManifestSchema1Signed:
 			manifest, err := getManifest(c, dig)
 			if err != nil {
-				log.Infof("ListBlobsMediaTypes: could not get manifest for %s, ignoring", dig)
+				logrus.Infof("ListBlobsMediaTypes: could not get manifest for %s, ignoring", dig)
 				continue
 			}
 			// read the config and the layers
@@ -170,10 +170,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			sha = fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blob.Sha256))
 		)
 
-		log.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
+		logrus.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
 		// Process the blob only if its not in a loaded status already
 		if blob.State == types.LOADED {
-			log.Infof("IngestBlob(%s): Not loading blob as it is already marked as loaded", blob.Sha256)
+			logrus.Infof("IngestBlob(%s): Not loading blob as it is already marked as loaded", blob.Sha256)
 			loadedBlobs = append(loadedBlobs, blob)
 			continue
 		}
@@ -181,29 +181,29 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		// Process the blob only if it isn't already loaded. It might be loaded but not
 		// yet marked in the blobstatus, so we wait
 		if blob.State == types.LOADING {
-			log.Infof("IngestBlob(%s): Not loading blob as it is marked as loading from a different thread", blob.Sha256)
+			logrus.Infof("IngestBlob(%s): Not loading blob as it is marked as loading from a different thread", blob.Sha256)
 			continue
 		}
-		log.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
+		logrus.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
 
 		//Step 1.1: Read the blob from verified dir or provided content
 		switch {
 		case blobFile == "" && len(blob.Content) == 0:
 			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent empty %s: %+s",
 				blob.Sha256, blobFile, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return loadedBlobs, err
 		case blobFile != "" && len(blob.Content) != 0:
 			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent provided, cannot pick, %s: %+s",
 				blob.Sha256, blobFile, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return loadedBlobs, err
 		case blobFile != "":
 			fileReader, err := os.Open(blobFile)
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not open blob file for reading at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				log.Errorf(err.Error())
+				logrus.Errorf(err.Error())
 				return loadedBlobs, err
 			}
 			defer fileReader.Close()
@@ -221,7 +221,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				log.Errorf(err.Error())
+				logrus.Errorf(err.Error())
 				return loadedBlobs, err
 			}
 			// create a new reader for the content.WriteBlob
@@ -230,7 +230,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err := json.Unmarshal(data, &index); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not parse index at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				log.Errorf(err.Error())
+				logrus.Errorf(err.Error())
 				return loadedBlobs, err
 			}
 			indexHash = sha
@@ -240,7 +240,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				log.Errorf(err.Error())
+				logrus.Errorf(err.Error())
 				return loadedBlobs, err
 			}
 			// create a new reader for the content.WriteBlob
@@ -250,7 +250,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err := json.Unmarshal(data, &mfst); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not parse manifest at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				log.Errorf(err.Error())
+				logrus.Errorf(err.Error())
 				return loadedBlobs, err
 			}
 			manifests = append(manifests, &mfst)
@@ -264,10 +264,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		if err := c.ctrdClient.CtrWriteBlob(ctx, sha, blob.Size, r); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not load blob file into containerd at %s: %+s",
 				blob.Sha256, blobFile, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return loadedBlobs, err
 		}
-		log.Infof("IngestBlob(%s): Loaded the blob successfully", blob.Sha256)
+		logrus.Infof("IngestBlob(%s): Loaded the blob successfully", blob.Sha256)
 		blob.State = types.LOADED
 		loadedBlobs = append(loadedBlobs, blob)
 	}
@@ -283,7 +283,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		}
 		if err := c.UpdateBlobInfo(info); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not update labels on index: %v", info.Digest, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return loadedBlobs, err
 		}
 	}
@@ -303,7 +303,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err := c.UpdateBlobInfo(info); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not update labels on manifest: %v",
 					info.Digest, err.Error())
-				log.Errorf(err.Error())
+				logrus.Errorf(err.Error())
 				return loadedBlobs, err
 			}
 		}
@@ -323,7 +323,7 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 	existingBlobIfo, err := c.GetBlobInfo(blobInfo.Digest)
 	if err != nil {
 		err = fmt.Errorf("UpdateBlobInfo: Exception while fetching existing blobInfo of %s: %s", blobInfo.Digest, err.Error())
-		log.Error(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 
@@ -351,7 +351,7 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 		if err := c.ctrdClient.CtrUpdateBlobInfo(ctrdCtx, updatedContentInfo, updatedFields); err != nil {
 			err = fmt.Errorf("UpdateBlobInfo: Exception while updating blobInfo of %s: %s",
 				blobInfo.Digest, err.Error())
-			log.Error(err.Error())
+			logrus.Error(err.Error())
 			return err
 		}
 	}
@@ -364,7 +364,7 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 func (c *containerdCAS) ReadBlob(ctrdCtx context.Context, blobHash string) (io.Reader, error) {
 	reader, err := c.ctrdClient.CtrReadBlob(ctrdCtx, blobHash)
 	if err != nil {
-		log.Errorf("ReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
+		logrus.Errorf("ReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
 		return nil, err
 	}
 	return reader, nil
@@ -523,7 +523,7 @@ func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) err
 	if err := c.ctrdClient.UnpackClientImage(clientImageObj); err != nil {
 		err = fmt.Errorf("CreateSnapshotForImage: could not unpack clientImageObj %s: %+s",
 			clientImageObj.Name(), err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 
@@ -584,14 +584,14 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	// existing bundle of the container and recreate it. This is safe to run even
 	// when bundle doesn't exist
 	if c.RemoveContainerRootDir(rootPath) != nil {
-		log.Warnf("PrepareContainerRootDir: tried to clean up any existing state, hopefully it worked")
+		logrus.Warnf("PrepareContainerRootDir: tried to clean up any existing state, hopefully it worked")
 	}
 
 	//Step 2: create snapshot of the image so that it can be mounted as container's rootfs.
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.CreateSnapshotForImage(snapshotID, reference); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not create snapshot %s. %v", snapshotID, err)
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 
@@ -600,7 +600,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: exception while fetching image config for reference %s: %s",
 			reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		//return err
 	}
 	mountpoints := clientImageSpec.Config.Volumes
@@ -608,25 +608,25 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	cmd := clientImageSpec.Config.Cmd
 	workdir := clientImageSpec.Config.WorkingDir
 	unProcessedEnv := clientImageSpec.Config.Env
-	log.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v",
+	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v",
 		mountpoints, execpath, cmd, workdir, unProcessedEnv)
 	clientImageSpecJSON, err := getJSON(clientImageSpec)
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not build json of image: %v. %v",
 			reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 
 	if err := os.MkdirAll(rootPath, 0766); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Exception while creating rootPath dir. %v", err)
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 	if err := ioutil.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(clientImageSpecJSON), 0666); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %v/%v. %v",
 			rootPath, imageConfigFilename, err)
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return err
 	}
 	return nil
@@ -638,14 +638,14 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 	if err := syscall.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
 		err = fmt.Errorf("RemoveContainerRootDir: exception while unmounting: %v/%v. %v",
 			rootPath, containerRootfsPath, err)
-		log.Error(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 
 	//Step 2: Clean container rootPath
 	if err := os.RemoveAll(rootPath); err != nil {
 		err = fmt.Errorf("RemoveContainerRootDir: exception while deleting: %v. %v", rootPath, err)
-		log.Error(err.Error())
+		logrus.Error(err.Error())
 
 		return err
 
@@ -655,7 +655,7 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.RemoveSnapshot(snapshotID); err != nil {
 		err = fmt.Errorf("RemoveContainerRootDir: unable to remove snapshot: %v. %v", snapshotID, err)
-		log.Error(err.Error())
+		logrus.Error(err.Error())
 
 		return err
 
@@ -677,13 +677,13 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 // Instead, we let containerd GC them.
 func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.BlobStatus, blobs ...types.BlobStatus) ([]types.BlobStatus, error) {
 
-	log.Infof("IngestBlobsAndCreateImage: Attempting to Ingest %d blobs and add reference: %s", len(blobs), reference)
+	logrus.Infof("IngestBlobsAndCreateImage: Attempting to Ingest %d blobs and add reference: %s", len(blobs), reference)
 	loadedBlobs := make([]types.BlobStatus, 0)
 	newCtxWithLease, deleteLease, err := c.ctrdClient.CtrNewUserServicesCtxWithLease()
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Unable load blobs for reference %s. "+
 			"Exception while creating lease: %v", reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 	// deleting the lease means that containerd will be free to GC any blob that doesn't have a tag
@@ -692,25 +692,25 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 	loadedBlobs, err = c.IngestBlob(newCtxWithLease, blobs...)
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Exception while loading blobs into CAS: %v", err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(root.Sha256))
 	mediaType := root.MediaType
 	imageHash, err := c.GetImageHash(reference)
-	log.Infof("IngestBlobsAndCreateImage: creating/updating reference: %s for rootBlob %s", reference, rootBlobSha)
+	logrus.Infof("IngestBlobsAndCreateImage: creating/updating reference: %s for rootBlob %s", reference, rootBlobSha)
 	if err != nil || imageHash == "" {
 		if err := c.CreateImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return nil, err
 		}
 	} else {
 		if err := c.ReplaceImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not update reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return nil, err
 		}
 	}
@@ -726,7 +726,7 @@ func (c *containerdCAS) Resolver(ctrdCtx context.Context) (resolver.ResolverClos
 func (c *containerdCAS) CloseClient() error {
 	if err := c.ctrdClient.CloseClient(); err != nil {
 		err = fmt.Errorf("CloseClient: Exception while closinn %s CAS client: %s", casClientType, err.Error())
-		log.Error(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 	c.ctrdClient = nil
@@ -742,7 +742,7 @@ func (c *containerdCAS) CtrNewUserServicesCtx() (context.Context, context.Cancel
 func newContainerdCAS() CAS {
 	ctrdClient, err := containerd.NewContainerdClient()
 	if err != nil {
-		log.Fatalf("newContainerdCAS: exception while creating containerd client: %s", err.Error())
+		logrus.Fatalf("newContainerdCAS: exception while creating containerd client: %s", err.Error())
 	}
 	return &containerdCAS{ctrdClient: ctrdClient}
 }
@@ -836,14 +836,14 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while reading blob %s for reference %s: %s",
 			imageParentHash, reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 	blobData, err := ioutil.ReadAll(blobReader)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: could not read blobdata %s for reference %s: %+s",
 			imageParentHash, reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 
@@ -855,7 +855,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		if err := json.Unmarshal(blobData, &manifests); err != nil {
 			err = fmt.Errorf("getImageConfig: could not read imageManifest %s for reference %s: %+s",
 				imageParentHash, reference, err.Error())
-			log.Errorf(err.Error())
+			logrus.Errorf(err.Error())
 			return nil, err
 		}
 	} else {
@@ -867,7 +867,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 				if err != nil {
 					err = fmt.Errorf("getImageConfig: exception while reading manifest blob %s for reference %s: %s",
 						m.Digest.String(), reference, err.Error())
-					log.Errorf(err.Error())
+					logrus.Errorf(err.Error())
 					return nil, err
 				}
 				//Step 3.1.3: Read the manifest data
@@ -875,13 +875,13 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 				if err != nil {
 					err = fmt.Errorf("getImageConfig: could not parsr manifestBlob %s for reference %s: %+s",
 						m.Digest.String(), reference, err.Error())
-					log.Errorf(err.Error())
+					logrus.Errorf(err.Error())
 					return nil, err
 				}
 				if err := json.Unmarshal(blobData, &manifests); err != nil {
 					err = fmt.Errorf("getImageConfig: could not parse manifestBlob %s for reference %s: %+s",
 						m.Digest.String(), reference, err.Error())
-					log.Errorf(err.Error())
+					logrus.Errorf(err.Error())
 					return nil, err
 				}
 				break
@@ -895,20 +895,20 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while reading config blob %s for reference %s: %s",
 			configHash, reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 	blobData, err = ioutil.ReadAll(blobReader)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: could not read config blobdata %s for reference %s: %+s",
 			configHash, reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 	if err := json.Unmarshal(blobData, &imageConfig); err != nil {
 		err = fmt.Errorf("getImageConfig: could not parse configBlob %s for reference %s: %+s",
 			configHash, reference, err.Error())
-		log.Errorf(err.Error())
+		logrus.Errorf(err.Error())
 		return nil, err
 	}
 	return &imageConfig, nil
