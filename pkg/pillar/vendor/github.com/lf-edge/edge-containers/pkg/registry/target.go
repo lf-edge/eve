@@ -6,11 +6,6 @@ import (
 
 	ctrcontent "github.com/containerd/containerd/content"
 	"github.com/deislabs/oras/pkg/content"
-	"github.com/lf-edge/edge-containers/pkg/store"
-)
-
-const (
-	Blocksize = 10240
 )
 
 // IngesterCloser an ingester that also has a Close(). May return nil
@@ -49,6 +44,10 @@ type FilesTarget struct {
 	Disks []io.Writer
 	// Other writer where to write the other elements
 	Other []io.Writer
+	// BlockSize how big a blocksize to use when reading/writing. Defaults to whatever io.Copy uses
+	BlockSize int
+	// AcceptHash if set to true, accept the hash in the descriptor as is, i.e. do not recalculate it
+	AcceptHash bool
 }
 
 // Ingester get the IngesterCloser
@@ -72,22 +71,30 @@ func (w FilesTarget) Writer(ctx context.Context, opts ...ctrcontent.WriterOpt) (
 	}
 	desc := wOpts.Desc
 
+	writerOpts := []content.WriterOpt{}
+	if w.BlockSize > 0 {
+		writerOpts = append(writerOpts, content.WithBlocksize(w.BlockSize))
+	}
+	if w.AcceptHash {
+		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
+		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
+	}
 	// check if it meets the requirements
 	switch desc.Annotations[AnnotationRole] {
 	case RoleKernel:
 		if w.Kernel != nil {
-			return store.NewIoWriterWrapper(w.Kernel, "kernel"), nil
+			return content.NewIoContentWriter(w.Kernel, writerOpts...), nil
 		}
 	case RoleInitrd:
 		if w.Initrd != nil {
-			return store.NewIoWriterWrapper(w.Initrd, "initrd"), nil
+			return content.NewIoContentWriter(w.Initrd, writerOpts...), nil
 		}
 	case RoleRootDisk:
 		if w.Root != nil {
-			return store.NewIoWriterWrapper(w.Root, "root"), nil
+			return content.NewIoContentWriter(w.Root, writerOpts...), nil
 		}
 	case RoleAdditionalDisk:
 	}
 	// nothing, so return something that dumps to /var/null
-	return store.NewIoWriterWrapper(nil, ""), nil
+	return content.NewIoContentWriter(nil, writerOpts...), nil
 }

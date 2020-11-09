@@ -26,7 +26,7 @@ type Puller struct {
 //
 // The resolver provides the channel to connect to the target type. resolver.Registry just uses the default registry,
 // while resolver.Directory uses a local directory, etc.
-func (p *Puller) Pull(target Target, verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *Artifact, error) {
+func (p *Puller) Pull(target Target, blocksize int, verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *Artifact, error) {
 	// must have valid image ref
 	if p.Image == "" {
 		return nil, nil, fmt.Errorf("must have valid image ref")
@@ -48,7 +48,7 @@ func (p *Puller) Pull(target Target, verbose bool, writer io.Writer, resolver ec
 
 	targetStore := target.Ingester()
 	defer targetStore.Close()
-	decompressStore := store.NewDecompressStore(targetStore)
+	decompressStore := store.NewDecompressStore(targetStore, blocksize)
 
 	allowedMediaTypes := AllMimeTypes()
 

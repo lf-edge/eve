@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go v1.27.1
 	github.com/containerd/cgroups v0.0.0-20200824123100-0b889c03f102
 	github.com/containerd/containerd v1.4.1-0.20201014210714-22aea1e9a7a0
+	github.com/containerd/fifo v0.0.0-20201026212402-0724c46b320c // indirect
 	github.com/containerd/typeurl v1.0.1
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
@@ -27,7 +28,7 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/kr/fs v0.1.0 // indirect
-	github.com/lf-edge/edge-containers v0.0.0-20201015070651-e9dcf23f69f0
+	github.com/lf-edge/edge-containers v0.0.0-20201110094902-3c8c998af9f7
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
 	github.com/opencontainers/go-digest v1.0.0
