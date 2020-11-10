@@ -443,6 +443,9 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					// Look for a better choice in a while
 					duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
 					ctx.NetworkTestBetterTimer = time.NewTimer(duration)
+					log.Infof("VerifyDevicePortConfig: Kick started NetworkTestBetterTimer to try and get back to DPC at Index 0")
+				} else {
+					log.Warnf("VerifyDevicePortConfig: Did not start NetworkTestBetterTimer since timer interval is configured to be zero")
 				}
 			}
 		}
