@@ -12,7 +12,9 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"text/template"
 	"time"
 )
@@ -20,6 +22,8 @@ import (
 //TBD: Have a better way to calculate this number.
 //For now it is based on some trial-and-error experiments
 const qemuOverHead = int64(600 * 1024 * 1024)
+
+const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
 
 // We build device model around PCIe topology according to best practices
 //    https://github.com/qemu/qemu/blob/master/docs/pcie.txt
@@ -242,7 +246,7 @@ const qemuDiskTemplate = `
 [drive "drive-virtio-disk{{.DiskID}}"]
   file = "{{.FileLocation}}"
   format = "{{.Format | Fmt}}"
-  aio = "io_uring"
+  aio = "{{.AioType}}"
   cache = "writeback"
   if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
@@ -441,8 +445,30 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	diskContext := struct {
 		Machine               string
 		PCIId, DiskID, SATAId int
+		AioType               string
 		types.DiskStatus
-	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0}
+	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "threads"}
+
+	var osver []string
+	var major, minor, patch uint64
+
+	osver = strings.SplitN(getOsVersion(), ".", 3)
+
+	if len(osver) >= 1 {
+		major, _ = strconv.ParseUint(osver[0], 10, 8)
+	}
+	if len(osver) >= 2 {
+		minor, _ = strconv.ParseUint(osver[1], 10, 8)
+	}
+	if len(osver) >= 3 {
+		osver[2] = strings.Split(osver[2], "-")[0]
+		patch, _ = strconv.ParseUint(osver[2], 10, 8)
+	}
+
+	if minUringKernelTag <= kernelVersionTag(major, minor, patch) {
+		diskContext.AioType = "io_uring"
+	}
+
 	t, _ = template.New("qemuDisk").
 		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).
 		Parse(qemuDiskTemplate)
@@ -778,4 +804,21 @@ func getQmpExecutorSocket(domainName string) string {
 
 func getQmpListenerSocket(domainName string) string {
 	return kvmStateDir + domainName + "/listener.qmp"
+}
+
+func getOsVersion() string {
+	var uname syscall.Utsname
+
+	syscall.Uname(&uname)
+	b := make([]rune, len(uname.Release[:]))
+
+	for i, v := range uname.Release {
+		b[i] = rune(v)
+	}
+
+	return string(b)
+}
+
+func kernelVersionTag(major uint64, minor uint64, patch uint64) uint64 {
+	return (major << 16) | (minor << 8) | (patch << 0)
 }
