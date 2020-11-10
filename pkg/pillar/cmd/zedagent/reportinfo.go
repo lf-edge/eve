@@ -561,7 +561,11 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 }
 
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
-	dpcl := ctx.devicePortConfigList
+	dpcl := types.DevicePortConfigList{}
+	item, err := ctx.subDevicePortConfigList.Get("global")
+	if err == nil {
+		dpcl = item.(types.DevicePortConfigList)
+	}
 	sainfo := new(info.SystemAdapterInfo)
 	sainfo.CurrentIndex = uint32(dpcl.CurrentIndex)
 	sainfo.Status = make([]*info.DevicePortStatus, len(dpcl.PortConfigList))
