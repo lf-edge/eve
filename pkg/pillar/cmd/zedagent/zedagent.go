@@ -124,7 +124,6 @@ type zedagentContext struct {
 	// outstanding reboot commands from cloud.
 	rebootConfigCounter     uint32
 	subDevicePortConfigList pubsub.Subscription
-	devicePortConfigList    types.DevicePortConfigList
 	remainingTestTime       time.Duration
 	physicalIoAdapterMap    map[string]types.PhysicalIOAdapter
 	globalConfig            types.ConfigItemValueMap
@@ -1413,22 +1412,11 @@ func handleDPCLModify(ctxArg interface{}, key string,
 
 func handleDPCLImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
-
-	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
 		log.Functionf("handleDPCLImpl: ignoring %s", key)
 		return
 	}
-	if cmp.Equal(ctx.devicePortConfigList, status) {
-		log.Functionf("handleDPCLImpl no change")
-		return
-	}
-	// Note that lastSucceeded will increment a lot; ignore it but compare
-	// lastFailed/lastError?? XXX how?
-	log.Functionf("handleDPCLImpl: changed %v",
-		cmp.Diff(ctx.devicePortConfigList, status))
-	ctx.devicePortConfigList = status
 	triggerPublishDevInfo(ctx)
 }
 
@@ -1440,7 +1428,6 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Functionf("handleDPCLDelete for %s", key)
-	ctx.devicePortConfigList = types.DevicePortConfigList{}
 	triggerPublishDevInfo(ctx)
 }
 

@@ -440,33 +440,25 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		}
 	}
 	pending.Inprogress = false
+	ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
+	*ctx.DevicePortConfig = pending.PendDPC
+	*ctx.DeviceNetworkStatus = pending.PendDNS
+	ctx.DeviceNetworkStatus.Testing = false
+	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
+	DoDNSUpdate(ctx)
 
+	// Did we get a new DPC at index zero?
+	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
+		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
+			"or a old working DPC moved up to top of DPC list while network testing " +
+			"was in progress. Restarting DPC verification.")
+		RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
+		return
+	}
 	switch res {
 	case types.DPC_SUCCESS, types.DPC_REMOTE_WAIT:
-		ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
-		*ctx.DevicePortConfig = pending.PendDPC
-		*ctx.DeviceNetworkStatus = pending.PendDNS
-		ctx.DeviceNetworkStatus.Testing = false
-		*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
-		DoDNSUpdate(ctx)
-		// Did we get a new at index zero?
-		if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-			log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
-				"or a old working DPC moved up to top of DPC list while network testing " +
-				"was in progress. Restarting DPC verification.")
-			RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
-			return
-		}
-
 		// We just found a new DPC that restored our cloud connectivity.
 		ctx.CloudConnectivityWorks = true
-	case types.DPC_FAIL_WITH_IPANDDNS:
-		ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
-		*ctx.DevicePortConfig = pending.PendDPC
-		*ctx.DeviceNetworkStatus = pending.PendDNS
-		ctx.DeviceNetworkStatus.Testing = false
-		*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
-		DoDNSUpdate(ctx)
 	default:
 	}
 
