@@ -137,7 +137,8 @@ func TestUnsubscribe(t *testing.T) {
 			time.Sleep(time.Second)
 
 			// Check that goroutines are gone
-			assert.Equal(t, numGoroutines, runtime.NumGoroutine())
+			// Sometimes we see a decrease
+			assert.GreaterOrEqual(t, numGoroutines, runtime.NumGoroutine())
 			if numGoroutines != runtime.NumGoroutine() {
 				t.Logf("All goroutine stacks on entry: %v",
 					origStacks)
