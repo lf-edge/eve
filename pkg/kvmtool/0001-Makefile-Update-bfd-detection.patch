@@ -1,0 +1,42 @@
+From a539c2d1657822c873efbc35602b1d63321c3165 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Thu, 5 Nov 2020 12:59:07 -0500
+Subject: [PATCH] Makefile: Update bfd detection
+
+Modern versions of libbfd require a number of additional
+libraries to get linked properly
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ Makefile | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 35bb118..03a0909 100644
+--- a/Makefile
++++ b/Makefile
+@@ -210,15 +210,15 @@ ifeq ($(call try-build,$(SOURCE_STRLCPY),$(CFLAGS),$(LDFLAGS)),y)
+ 	CFLAGS_STATOPT	+= -DHAVE_STRLCPY
+ endif
+ 
+-ifeq ($(call try-build,$(SOURCE_BFD),$(CFLAGS),$(LDFLAGS) -lbfd -static),y)
+-	CFLAGS_STATOPT	+= -DCONFIG_HAS_BFD
++ifeq ($(call try-build,$(SOURCE_BFD),$(CFLAGS),$(LDFLAGS) -DPACKAGE="kvmtool" -lbfd -ldl -lz -liberty -static),y)
++	CFLAGS_STATOPT	+= -DCONFIG_HAS_BFD -DPACKAGE="kvmtool"
+ 	OBJS_STATOPT	+= symbol.o
+-	LIBS_STATOPT	+= -lbfd
++	LIBS_STATOPT	+= -lbfd -ldl -lz -liberty
+ else
+-	ifeq ($(call try-build,$(SOURCE_BFD),$(CFLAGS),$(LDFLAGS) -lbfd),y)
+-		CFLAGS_DYNOPT	+= -DCONFIG_HAS_BFD
++	ifeq ($(call try-build,$(SOURCE_BFD),$(CFLAGS),$(LDFLAGS) -DPACKAGE="kvmtool" -lbfd -ldl -lz -liberty),y)
++		CFLAGS_DYNOPT	+= -DCONFIG_HAS_BFD -DPACKAGE="kvmtool"
+ 		OBJS_DYNOPT	+= symbol.o
+-		LIBS_DYNOPT	+= -lbfd
++		LIBS_DYNOPT	+= -lbfd -ldl -lz -liberty
+ 	else
+ 		NOTFOUND	+= bfd
+ 	endif
+-- 
+2.29.2
+
