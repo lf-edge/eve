@@ -324,7 +324,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		AddWorkLoad(ctx, status)
 
-		return changed, false
+		return true, false
 	}
 
 	// if it is LOADING, check each blob until all are loaded
@@ -431,7 +431,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.CurrentSize = ctStatus.CurrentSize
 			changed = true
 		}
-		if status.State != ctStatus.State && status.State < types.CREATING_VOLUME {
+		if status.State != ctStatus.State {
 			status.State = ctStatus.State
 			changed = true
 		}
