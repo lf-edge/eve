@@ -28,7 +28,7 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/kr/fs v0.1.0 // indirect
-	github.com/lf-edge/edge-containers v0.0.0-20201110094902-3c8c998af9f7
+	github.com/lf-edge/edge-containers v0.0.0-20201111200732-5491ea93dbe4
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
 	github.com/opencontainers/go-digest v1.0.0
