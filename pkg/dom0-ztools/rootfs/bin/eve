@@ -7,7 +7,7 @@ help() {
   cat <<__EOT__
 Welcome to EVE!
   commands: enter [qube (assumed pillar)] [command (assumed sh)]
-  commands: enter-user-app <qube>
+            enter-user-app <qube>
             exec qube command
             list
             status
@@ -48,10 +48,12 @@ create_new_p3_part() {
 }
 
 case "$1" in
-    exec) [ -z "$2" -o -z "$3" ] && help
-          CONT="$2"
-          shift 2
-          ${CTR_CMD} t exec --exec-id $(basename $(mktemp)) "$CONT" "$@"
+    exec) # shellcheck disable=SC2086
+          ID=$(${CTR_CMD} t ls | awk '/^'${2:-pillar}' /{print $2;}' 2>/dev/null)
+          CMD="${3:-sh}"
+          shift ; shift ; shift
+          for c in /sys/fs/cgroup/*/tasks; do echo "$$" >> "$c"; done
+          exec nsenter -F -a -t "${ID:-1}" "$CMD" "$@"
           ;;
    enter) # shellcheck disable=SC2086
           ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
