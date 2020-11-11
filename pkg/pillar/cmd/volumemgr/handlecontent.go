@@ -283,16 +283,6 @@ func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.Co
 	status.Blobs = make([]string, 0)
 }
 
-// updateContentTreeByID lookup a ContentTreeStatus by its ID, then run update
-func updateContentTreeByID(ctx *volumemgrContext, id string) {
-	for _, objType := range ctObjTypes {
-		status := lookupContentTreeStatus(ctx, id, objType)
-		if status != nil {
-			updateContentTree(ctx, status)
-		}
-	}
-}
-
 func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 
 	log.Functionf("updateContentTree for %v", status.ContentID)
