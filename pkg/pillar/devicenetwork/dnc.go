@@ -335,9 +335,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	ctx.NetworkTestBetterTimer.Stop()
 	pending := &ctx.Pending
 
-	passed := false
-	for !passed {
-		res := VerifyPending(ctx, &ctx.Pending, ctx.AssignableAdapters,
+	endloop := false
+	var res types.PendDPCStatus
+	for !endloop {
+		res = VerifyPending(ctx, &ctx.Pending, ctx.AssignableAdapters,
 			ctx.TestSendTimeout)
 		dpc := &ctx.Pending.PendDPC
 		dpc.State = res
@@ -395,25 +396,12 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			nextIndex := getNextTestableDPCIndex(ctx,
 				ctx.NextDPCIndex+1)
 			if nextIndex == -1 {
-				log.Functionf("VerifyDevicePortConfig: nothing testable")
-				if res == types.DPC_FAIL_WITH_IPANDDNS {
-					// publish what we have since applications
-					// might need it
-					ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
-					*ctx.DevicePortConfig = pending.PendDPC
-					*ctx.DeviceNetworkStatus = pending.PendDNS
-					ctx.DeviceNetworkStatus.Testing = false
-					*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
-					DoDNSUpdate(ctx)
-				}
-				pending.Inprogress = false
-				// Restart network test timer
-				duration := time.Duration(ctx.NetworkTestInterval) * time.Second
-				ctx.NetworkTestTimer = time.NewTimer(duration)
-				return
+				log.Errorf("VerifyDevicePortConfig: No testable DPC found, working with DPC found at index %d for now.",
+					ctx.NextDPCIndex)
+				endloop = true
+			} else {
+				SetupVerify(ctx, nextIndex)
 			}
-			SetupVerify(ctx, nextIndex)
-			continue
 
 		case types.DPC_SUCCESS, types.DPC_REMOTE_WAIT:
 			// We treat DPC_REMOTE_WAIT as DPC_SUCCESS because we manage to connect to the controller
@@ -430,47 +418,57 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					res.String(), ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
 					pending.PendDPC.Key)
 			}
-			passed = true
-			if ctx.NextDPCIndex == 0 {
-				log.Functionf("VerifyDevicePortConfig: Working DPC configuration found "+
-					"at index %d in DPC list",
-					ctx.NextDPCIndex)
-			} else {
-				log.Warnf("VerifyDevicePortConfig: Working DPC configuration found "+
-					"at index %d in DPC list",
-					ctx.NextDPCIndex)
-				if ctx.NetworkTestBetterInterval != 0 {
-					// Look for a better choice in a while
-					duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
-					ctx.NetworkTestBetterTimer = time.NewTimer(duration)
-					log.Infof("VerifyDevicePortConfig: Kick started NetworkTestBetterTimer to try and get back to DPC at Index 0")
-				} else {
-					log.Warnf("VerifyDevicePortConfig: Did not start NetworkTestBetterTimer since timer interval is configured to be zero")
-				}
-			}
+			endloop = true
+			log.Functionf("VerifyDevicePortConfig: Working DPC configuration found "+
+				"at index %d in DPC list", ctx.NextDPCIndex)
 		}
 	}
-	// Found a working one
-	ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
-	*ctx.DevicePortConfig = pending.PendDPC
-	*ctx.DeviceNetworkStatus = pending.PendDNS
-	ctx.DeviceNetworkStatus.Testing = false
-	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
-	DoDNSUpdate(ctx)
 
+	if ctx.NextDPCIndex != 0 {
+		log.Warnf("VerifyDevicePortConfig: Working with DPC configuration found "+
+			"at index %d in DPC list",
+			ctx.NextDPCIndex)
+		if ctx.NetworkTestBetterInterval != 0 {
+			// Look for a better choice in a while
+			duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
+			ctx.NetworkTestBetterTimer = time.NewTimer(duration)
+			log.Warnf("VerifyDevicePortConfig: Kick started NetworkTestBetterTimer " +
+				"to try and get back to DPC at Index 0")
+		} else {
+			log.Warnf("VerifyDevicePortConfig: Did not start NetworkTestBetterTimer " +
+				"since timer interval is configured to be zero")
+		}
+	}
 	pending.Inprogress = false
 
-	// Did we get a new at index zero?
-	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
-			"or a old working DPC moved up to top of DPC list while network testing " +
-			"was in progress. Restarting DPC verification.")
-		RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
-		return
-	}
+	switch res {
+	case types.DPC_SUCCESS, types.DPC_REMOTE_WAIT:
+		ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
+		*ctx.DevicePortConfig = pending.PendDPC
+		*ctx.DeviceNetworkStatus = pending.PendDNS
+		ctx.DeviceNetworkStatus.Testing = false
+		*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
+		DoDNSUpdate(ctx)
+		// Did we get a new at index zero?
+		if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
+			log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
+				"or a old working DPC moved up to top of DPC list while network testing " +
+				"was in progress. Restarting DPC verification.")
+			RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
+			return
+		}
 
-	// We just found a new DPC that restored our cloud connectivity.
-	ctx.CloudConnectivityWorks = true
+		// We just found a new DPC that restored our cloud connectivity.
+		ctx.CloudConnectivityWorks = true
+	case types.DPC_FAIL_WITH_IPANDDNS:
+		ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
+		*ctx.DevicePortConfig = pending.PendDPC
+		*ctx.DeviceNetworkStatus = pending.PendDNS
+		ctx.DeviceNetworkStatus.Testing = false
+		*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
+		DoDNSUpdate(ctx)
+	default:
+	}
 
 	// Restart network test timer
 	duration := time.Duration(ctx.NetworkTestInterval) * time.Second
