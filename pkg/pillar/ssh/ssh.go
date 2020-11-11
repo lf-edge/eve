@@ -12,7 +12,6 @@ package ssh
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -26,9 +25,6 @@ const (
 	runDir                   = "/run"
 	baseAuthorizedKeysFile   = types.IdentityDirname + "/authorized_keys"
 	targetAuthorizedKeysFile = runDir + "/authorized_keys"
-
-	// XXX a bit of a hack to hard-code this here
-	sshCommand = `command="ctr --namespace services.linuxkit t exec ${TERM:+-t} --exec-id $(basename $(mktemp)) pillar ${TERM:+env TERM=\"$TERM\"} ${SSH_ORIGINAL_COMMAND:-sh} ${TERM:+-l}"`
 )
 
 func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
@@ -65,18 +61,14 @@ func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 			if strings.HasPrefix(line, "#") {
 				continue
 			}
-			_, err = tmpfile.WriteString(fmt.Sprintf("%s %s\n",
-				sshCommand, line))
-			if err != nil {
+			if _, err = tmpfile.WriteString(line); err != nil {
 				log.Error(err)
 				return
 			}
 		}
 	}
 	if authorizedKeys != "" {
-		_, err := tmpfile.WriteString(fmt.Sprintf("%s %s\n",
-			sshCommand, authorizedKeys))
-		if err != nil {
+		if _, err := tmpfile.WriteString(authorizedKeys); err != nil {
 			log.Error(err)
 			return
 		}
