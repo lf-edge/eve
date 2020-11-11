@@ -302,6 +302,18 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 	// at this point, the image is VERIFIED or higher
 	if status.State == types.VERIFIED {
+		// XXX do we have any blobs in LOADING state?
+		// Can we check in the loop above to avoid the lookup?
+		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
+		for _, b := range blobStatuses {
+			if b.State == types.LOADING {
+				// XXX
+				log.Warnf("XXX found blob %s in LOADING; defer",
+					b.Key())
+				return changed, false
+			}
+		}
+
 		log.Infof("doUpdateContentTree(%s): ContentTree state is VERIFIED, starting LOADING", status.Key())
 
 		// now we start loading
@@ -442,6 +454,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.State != types.CREATING_VOLUME &&
 			!status.VolumeCreated {
 
+			_, err := ctx.casClient.GetImageHash(ctStatus.ReferenceID())
+			if err != nil {
+				log.Warnf("doUpdateVol(%s): waiting for image create: %s", status.Key(), err.Error())
+				return changed, false
+			}
+
 			status.State = types.CREATING_VOLUME
 			// first blob is always the root
 			if len(ctStatus.Blobs) < 1 {
@@ -531,8 +549,8 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 var ctObjTypes = []string{types.AppImgObj, types.BaseOsObj}
 
 // updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
-// that has this Sha256
-func updateStatusByBlob(ctx *volumemgrContext, sha string) {
+// that has Sha256 from sha slice
+func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 
 	log.Infof("updateStatusByBlob(%s)", sha)
 	found := false
@@ -542,11 +560,15 @@ func updateStatusByBlob(ctx *volumemgrContext, sha string) {
 		for _, st := range items {
 			status := st.(types.ContentTreeStatus)
 			var hasSha bool
+		blobLoop:
 			for _, blobSha := range status.Blobs {
-				if blobSha == sha {
-					log.Debugf("Found blob %s on ContentTreeStatus %s",
-						sha, status.Key())
-					hasSha = true
+				for _, s := range sha {
+					if blobSha == s {
+						log.Debugf("Found blob %s on ContentTreeStatus %s",
+							sha, status.Key())
+						hasSha = true
+						break blobLoop
+					}
 				}
 			}
 			if hasSha {

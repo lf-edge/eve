@@ -212,8 +212,7 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(casIngestWorkDescription)
-	// this might have changed, so we want to be careful about passing it; always look it up
-	updateContentTreeByID(ctx, d.status.Key())
+	updateStatusByBlob(ctx, d.status.Blobs...)
 	return nil
 }
 
