@@ -302,7 +302,12 @@ wait_for_touch nim
 touch "$WATCHDOG_FILE/nim.touch"
 
 # Print diag output forever on changes
-$BINDIR/diag -f -o /dev/console runAsService &
+# NOTE: it is safe to do either kill -STOP or an outright
+# kill -9 on the following cat process if you want to stop
+# receiving those messages on the console.
+mkfifo /run/diag.pipe
+(while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
+$BINDIR/diag -f -o /run/diag.pipe runAsService &
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
