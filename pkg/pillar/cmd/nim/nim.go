@@ -594,7 +594,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			if !ok {
 				log.Functionf("Network testBetterTimer stopped?")
-			} else if dnc.NextDPCIndex == 0 {
+			} else if dnc.NextDPCIndex == 0 && !dnc.DeviceNetworkStatus.HasErrors() {
 				log.Tracef("Network testBetterTimer at zero ignored")
 			} else {
 				log.Functionf("Network testBetterTimer at index %d",
@@ -671,6 +671,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
 						"LinkChange", true)
+					ifname, _, _ := devicenetwork.IfindexToName(log, ifindex)
+					if ifname != "" {
+						portStatus := nimCtx.deviceNetworkContext.DevicePortConfigList.PortConfigList[0].GetPortByIfName(ifname)
+						if !nimCtx.deviceNetworkContext.Pending.Inprogress && portStatus != nil {
+							log.Functionf("Start network connectivity verfication because ifname %s port of DPC at index 0 changed", ifname)
+							devicenetwork.RestartVerify(&nimCtx.deviceNetworkContext, "HandleLinkChange")
+						}
+					}
 				}
 			}
 			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
@@ -735,7 +743,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			if !ok {
 				log.Functionf("Network testBetterTimer stopped?")
-			} else if dnc.NextDPCIndex == 0 {
+			} else if dnc.NextDPCIndex == 0 && !dnc.DeviceNetworkStatus.HasErrors() {
 				log.Tracef("Network testBetterTimer at zero ignored")
 			} else {
 				log.Functionf("Network testBetterTimer at index %d",
