@@ -1159,6 +1159,15 @@ func (status *DeviceNetworkStatus) GetPortByLogicallabel(
 	return nil
 }
 
+func (status DeviceNetworkStatus) HasErrors() bool {
+	for _, port := range status.Ports {
+		if port.HasError() {
+			return true
+		}
+	}
+	return false
+}
+
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}

@@ -25,7 +25,7 @@ const (
 type DPCPending struct {
 	Inprogress bool
 	PendDPC    types.DevicePortConfig
-	OldDPC     types.DevicePortConfig
+	RunningDPC types.DevicePortConfig
 	PendDNS    types.DeviceNetworkStatus
 	PendTimer  *time.Timer
 	TestCount  uint
@@ -228,31 +228,33 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	log.Functionf("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
 
-	ifname, err := checkInterfacesExists(log, pending.PendDPC)
-	if err != nil {
+	portErrors, runnableDPC := checkInterfacesExists(log, pending.PendDPC)
+	if len(portErrors) > 0 {
 		// Still waiting for a network interface to appear
 		if pending.TestCount < MaxDPCCheckIfCount {
-			log.Warnf("VerifyPending: interface check: retry due to ifname %s at count %d: %s",
-				ifname, pending.TestCount, err)
+			log.Warnf("VerifyPending: interface check: retry due to %d port Errors at test count %d",
+				len(portErrors), pending.TestCount)
 			pending.TestCount++
 			return types.DPC_INTF_WAIT
 		}
-		log.Warnf("VerifyPending: interface check: failed due to ifname %s: %s",
-			ifname, err)
-		pending.PendDPC.RecordPortFailure(ifname, err.Error())
-		pending.PendDPC.RecordFailure(err.Error())
+		for _, portError := range portErrors {
+			log.Warnf("VerifyPending: interface check: failed due to ifname %s: %s",
+				portError.ifName, portError.err)
+			pending.PendDPC.RecordPortFailure(portError.ifName, portError.err.Error())
+			pending.PendDPC.RecordFailure(portError.err.Error())
+		}
 		// Proceed trying other interfaces
 	}
 	log.Functionf("VerifyPending: No required ports missing. " +
 		"parsing device port config list")
 
-	if !pending.PendDPC.MostlyEqual(&pending.OldDPC) {
+	if !runnableDPC.MostlyEqual(&pending.RunningDPC) {
 		log.Functionf("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
-		checkAndUpdateWireless(ctx, &pending.OldDPC, &pending.PendDPC)
+		checkAndUpdateWireless(ctx, &pending.RunningDPC, &runnableDPC)
 
 		log.Functionf("VerifyPending: DPC changed. update DhcpClient.\n")
-		UpdateDhcpClient(log, pending.PendDPC, pending.OldDPC)
-		pending.OldDPC = pending.PendDPC
+		UpdateDhcpClient(log, runnableDPC, pending.RunningDPC)
+		pending.RunningDPC = runnableDPC
 	}
 	pend2 := MakeDeviceNetworkStatus(log, pending.PendDPC, pending.PendDNS)
 	pending.PendDNS = pend2
@@ -307,18 +309,35 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	return types.DPC_FAIL_WITH_IPANDDNS
 }
 
+type portError struct {
+	ifName string
+	err    error
+}
+
 // Check if all interfaces exist in the kernel
 // Returns the ifname for the first missing if there is an error
-func checkInterfacesExists(log *base.LogObject, dpc types.DevicePortConfig) (string, error) {
+func checkInterfacesExists(log *base.LogObject, dpc types.DevicePortConfig) ([]portError, types.DevicePortConfig) {
+	runnableDPC := types.DevicePortConfig{}
+	runnableDPC.Version = dpc.Version
+	runnableDPC.Key = dpc.Key
+	runnableDPC.TimePriority = dpc.TimePriority
+	runnableDPC.State = types.DPC_NONE
+	runnableDPC.TestResults = dpc.TestResults
+	runnableDPC.LastIPAndDNS = dpc.LastIPAndDNS
+
+	portErrors := []portError{}
 
 	for _, nuc := range dpc.Ports {
 		// Check the ifname exists
 		_, err := IfnameToIndex(log, nuc.IfName)
 		if err != nil {
-			return nuc.IfName, err
+			portErrors = append(portErrors, portError{ifName: nuc.IfName, err: err})
+			log.Errorf("Port with name %s not added to running DPC due to error: %s", nuc.IfName, err)
+			continue
 		}
+		runnableDPC.Ports = append(runnableDPC.Ports, nuc)
 	}
-	return "", nil
+	return portErrors, runnableDPC
 }
 
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
@@ -424,7 +443,9 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		}
 	}
 
-	if ctx.NextDPCIndex != 0 {
+	// If there are port level errors in current selected DPC, we should mark
+	// it for re-test during the next TestBetterTimer innvocation.
+	if ctx.NextDPCIndex != 0 || pending.PendDNS.HasErrors() {
 		log.Warnf("VerifyDevicePortConfig: Working with DPC configuration found "+
 			"at index %d in DPC list",
 			ctx.NextDPCIndex)
