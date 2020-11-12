@@ -671,7 +671,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
 						"LinkChange", true)
-					ifname, _, _ := devicenetwork.IfindexToName(log, ifindex)
+					ifname := change.Attrs().Name
 					if ifname != "" {
 						portStatus := nimCtx.deviceNetworkContext.DevicePortConfigList.PortConfigList[0].GetPortByIfName(ifname)
 						if !nimCtx.deviceNetworkContext.Pending.Inprogress && portStatus != nil {

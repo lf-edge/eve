@@ -1159,6 +1159,7 @@ func (status *DeviceNetworkStatus) GetPortByLogicallabel(
 	return nil
 }
 
+// HasErrors - DeviceNetworkStatus has errors on any of it's ports?
 func (status DeviceNetworkStatus) HasErrors() bool {
 	for _, port := range status.Ports {
 		if port.HasError() {
