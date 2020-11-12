@@ -257,7 +257,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		log.Functionf("VerifyPending: DPC changed. update DhcpClient.\n")
 		UpdateDhcpClient(log, runnableDPC, pending.RunningDPC)
 		pending.RunningDPC = runnableDPC
-		// XXX Does it make sense to publish RunningDPC for debug?
+		log.Functionf("Running with DPC %v", pending.RunningDPC)
 	}
 	pend2 := MakeDeviceNetworkStatus(log, pending.PendDPC, pending.PendDNS)
 	pending.PendDNS = pend2
@@ -318,15 +318,10 @@ type portError struct {
 }
 
 // Check if all interfaces exist in the kernel
-// Returns the ifname for the first missing if there is an error
+// Returns a list of port errors if any and a DPC that we should run next.
 func checkInterfacesExists(log *base.LogObject, dpc types.DevicePortConfig) ([]portError, types.DevicePortConfig) {
-	runnableDPC := types.DevicePortConfig{}
-	runnableDPC.Version = dpc.Version
-	runnableDPC.Key = dpc.Key
-	runnableDPC.TimePriority = dpc.TimePriority
-	runnableDPC.State = types.DPC_NONE
-	runnableDPC.TestResults = dpc.TestResults
-	runnableDPC.LastIPAndDNS = dpc.LastIPAndDNS
+	runnableDPC := dpc
+	runnableDPC.Ports = []types.NetworkPortConfig{}
 
 	portErrors := []portError{}
 
