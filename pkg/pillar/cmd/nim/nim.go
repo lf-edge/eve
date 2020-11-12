@@ -671,13 +671,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					handleLinkChange(&nimCtx)
 					handleInterfaceChange(&nimCtx, ifindex,
 						"LinkChange", true)
-					ifname := change.Attrs().Name
-					if ifname != "" {
-						portStatus := nimCtx.deviceNetworkContext.DevicePortConfigList.PortConfigList[0].GetPortByIfName(ifname)
-						if !nimCtx.deviceNetworkContext.Pending.Inprogress && portStatus != nil {
-							log.Functionf("Start network connectivity verfication because ifname %s port of DPC at index 0 changed", ifname)
-							devicenetwork.RestartVerify(&nimCtx.deviceNetworkContext, "HandleLinkChange")
-						}
+					if isIfNameCrucial(&nimCtx.deviceNetworkContext, change.Attrs().Name) {
+						log.Functionf("Start network connectivity verfication because ifname %s port of DPC at index 0 changed", change.Attrs().Name)
+						devicenetwork.RestartVerify(&nimCtx.deviceNetworkContext, "HandleLinkChange")
 					}
 				}
 			}
@@ -769,6 +765,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+// network port is crucial if it's either part of current running DPC or
+// is part of DPC at index 0 in DevicePortConfigList
+func isIfNameCrucial(ctx *devicenetwork.DeviceNetworkContext, ifname string) bool {
+	portConfigList := ctx.DevicePortConfigList.PortConfigList
+	currentIndex := ctx.DevicePortConfigList.CurrentIndex
+
+	if ifname == "" || currentIndex < 0 || currentIndex >= len(portConfigList) {
+		return false
+	}
+
+	if !ctx.Pending.Inprogress {
+		// Is part of DPC at CurrentIndex in DPCL?
+		portStatus := portConfigList[currentIndex].GetPortByIfName(ifname)
+		if portStatus != nil {
+			return true
+		}
+
+		// Is part of DPC at index 0 in DPCL?
+		portStatus = portConfigList[0].GetPortByIfName(ifname)
+		if portStatus != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func handleLinkChange(ctx *nimContext) {
