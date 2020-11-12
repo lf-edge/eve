@@ -244,9 +244,11 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 			pending.PendDPC.RecordFailure(portError.err.Error())
 		}
 		// Proceed trying other interfaces
+		log.Warnf("VerifyPending: Some required ports are missing. Continuing verification process with remaining ports")
+	} else {
+		log.Functionf("VerifyPending: No required ports missing. " +
+			"parsing device port config list")
 	}
-	log.Functionf("VerifyPending: No required ports missing. " +
-		"parsing device port config list")
 
 	if !runnableDPC.MostlyEqual(&pending.RunningDPC) {
 		log.Functionf("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
@@ -255,6 +257,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		log.Functionf("VerifyPending: DPC changed. update DhcpClient.\n")
 		UpdateDhcpClient(log, runnableDPC, pending.RunningDPC)
 		pending.RunningDPC = runnableDPC
+		// XXX Does it make sense to publish RunningDPC for debug?
 	}
 	pend2 := MakeDeviceNetworkStatus(log, pending.PendDPC, pending.PendDNS)
 	pending.PendDNS = pend2
