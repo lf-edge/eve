@@ -112,6 +112,9 @@ PART_SPEC_amd64=efi conf imga
 PART_SPEC_arm64=boot conf imga
 PART_SPEC=$(PART_SPEC_$(ZARCH))
 
+#parallels settings
+PARALLELS_UUID="{5fbaabe3-6958-40ff-92a7-860e329aab41}"
+
 # public cloud settings (only CGP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
 CLOUD_IMG_NAME=$(subst .,-,live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH))
@@ -304,6 +307,14 @@ run-proxy:
 
 run-build-vm: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$(BUILD_VM)
+
+run-parallels-vm:
+	mkdir $(LIVE).hdd
+	qemu-img convert -O parallels $(LIVE).qcow2 $(LIVE).hdd/live.0.$(PARALLELS_UUID).hds
+	qemu-img info -f parallels --output json $(LIVE).hdd/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
+	prlctl create eve --distribution ubuntu --no-hdd --dst $(DIST)/
+	prlctl set eve --device-add hdd --image $(LIVE).hdd --nested-virt on --adaptive-hypervisor on
+	prlctl start eve
 
 # alternatively (and if you want greater control) you can replace the first command with
 #    gcloud auth activate-service-account --key-file=-
