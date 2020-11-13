@@ -13,7 +13,8 @@ import (
 var (
 	myNoticeLevel   = logrus.InfoLevel
 	myMetricLevel   = logrus.DebugLevel
-	myFunctionLevel = logrus.DebugLevel
+	myFunctionLevel = logrus.InfoLevel
+	myTraceLevel    = logrus.InfoLevel
 )
 
 // Function :
@@ -238,7 +239,7 @@ func (object *LogObject) Trace(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	object.logger.WithFields(object.Fields).Trace(args...)
+	object.logger.WithFields(object.Fields).Log(myTraceLevel, args...)
 }
 
 // Tracef :
@@ -247,7 +248,7 @@ func (object *LogObject) Tracef(format string, args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	object.logger.WithFields(object.Fields).Tracef(format, args...)
+	object.logger.WithFields(object.Fields).Logf(myTraceLevel, format, args...)
 }
 
 // Traceln :
@@ -256,5 +257,5 @@ func (object *LogObject) Traceln(args ...interface{}) {
 		logrus.Fatal("LogObject used without initialization")
 		return
 	}
-	object.logger.WithFields(object.Fields).Traceln(args...)
+	object.logger.WithFields(object.Fields).Logln(myTraceLevel, args...)
 }
