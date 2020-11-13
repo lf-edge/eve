@@ -476,7 +476,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ctx.subContentTreeConfig.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
-			res.Process(&ctx, true)
+			log.Functionf("Process worker")
+			if err := res.Process(log, &ctx, true); err != nil {
+				log.Error(err)
+			}
 
 		case <-stillRunning.C:
 		}
@@ -547,7 +550,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				warningTime, errorTime)
 
 		case res := <-ctx.worker.MsgChan():
-			res.Process(&ctx, true)
+			log.Functionf("Process worker")
+			if err := res.Process(log, &ctx, true); err != nil {
+				log.Error(err)
+			}
 
 		case <-stillRunning.C:
 		}

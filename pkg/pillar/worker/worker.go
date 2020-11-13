@@ -8,6 +8,7 @@ package worker
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -21,8 +22,9 @@ type Logger interface {
 // Worker captures the worker channels
 type Worker struct {
 	// Private
-	requestChan  chan<- Work
-	resultChan   <-chan Processor
+	requestChan chan<- Work
+	resultChan  <-chan Processor
+	sync.RWMutex
 	requestCount uint // Number of work items submitted
 	resultCount  uint // Number of work results processed
 	workMap      map[string]bool
@@ -105,7 +107,9 @@ func NewWorker(log Logger, ctx interface{}, length int, handlers map[string]Hand
 // NumPending returns the number of pending work items
 // Callers should use this to check if it is less than the length specified
 // in NewWorker
-func (w Worker) NumPending() int {
+func (w *Worker) NumPending() int {
+	w.RLock()
+	defer w.RUnlock()
 	return int(w.requestCount) - int(w.resultCount)
 }
 
@@ -176,17 +180,22 @@ func (w *Worker) TrySubmit(work Work) (bool, error) {
 func (w *Worker) submitImpl(work Work, wait bool) (bool, error) {
 	done := false
 	// if this Key already exists and is being processed, do nothing
+	w.RLock()
 	if work.Key != "" && w.lookupPending(work.Key) {
+		w.RUnlock()
 		return done, &JobInProgressError{s: work.Key}
 	}
 	// Kind must be set to be handleable
 	if work.Kind == "" {
+		w.RUnlock()
 		return done, fmt.Errorf("cannot process a job with a blank Kind")
 	}
 	if _, ok := w.handlers[work.Kind]; !ok {
+		w.RUnlock()
 		return done, fmt.Errorf("no registered handlers for a job of Kind '%s'",
 			work.Kind)
 	}
+	w.RUnlock()
 	if wait {
 		w.requestChan <- work
 		done = true
@@ -199,10 +208,12 @@ func (w *Worker) submitImpl(work Work, wait bool) (bool, error) {
 		}
 	}
 	if done {
+		w.Lock()
 		w.requestCount++
 		if work.Key != "" {
 			w.addPending(work.Key)
 		}
+		w.Unlock()
 	}
 	return done, nil
 }
@@ -237,30 +248,40 @@ func (w *Worker) Peek(key string) *WorkResult {
 }
 
 func (w *Worker) lookupPending(key string) bool {
+	w.RLock()
+	defer w.RUnlock()
 	res, ok := w.workMap[key]
 	return ok && res
 }
 
+// addPending assumes caller holds lock
 func (w *Worker) addPending(key string) {
 	w.workMap[key] = true
 }
 
 func (w *Worker) deletePending(key string) {
+	w.Lock()
+	defer w.Unlock()
 	delete(w.workMap, key)
 }
 
 func (w *Worker) lookupResult(key string) *WorkResult {
+	w.RLock()
+	defer w.RUnlock()
 	if res, ok := w.resultMap[key]; ok {
 		return &res
 	}
 	return nil
 }
 
+// addResult assumes caller holds lock
 func (w *Worker) addResult(key string, res WorkResult) {
 	w.resultMap[key] = res
 }
 
 func (w *Worker) deleteResult(key string) {
+	w.Lock()
+	defer w.Unlock()
 	delete(w.resultMap, key)
 }
 
@@ -273,7 +294,7 @@ type Processor struct {
 // Can pass it an arbitrary context that will be passed to the handler,
 // as well as whether to make it available for lookup afterwards via Pop/Peek.
 // If false, it is here and that is it. If true, it will be available for Pop/Peek.
-func (p Processor) Process(ctx interface{}, later bool) (err error) {
+func (p Processor) Process(log Logger, ctx interface{}, later bool) (err error) {
 	kind := p.result.kind
 	w := p.result.worker
 	res := WorkResult{
@@ -283,14 +304,26 @@ func (p Processor) Process(ctx interface{}, later bool) (err error) {
 		Output:      p.result.output,
 		Description: p.result.description,
 	}
+	w.Lock()
 	w.resultCount++
+	if log != nil {
+		log.Tracef("Process(%s) requestCount %d resultCount %d",
+			res.Key, w.requestCount, w.resultCount)
+	}
 	if later {
 		w.addResult(p.result.key, res)
 	}
+	w.Unlock()
 	// find the correct handler for it
 	if handler, ok := w.handlers[kind]; ok {
 		if handler.Response == nil {
+			if log != nil {
+				log.Tracef("Process(%s) no Response handler", res.Key)
+			}
 			return nil
+		}
+		if log != nil {
+			log.Tracef("Process(%s) calling Response handler", res.Key)
 		}
 		return handler.Response(ctx, res)
 	}

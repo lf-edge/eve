@@ -19,6 +19,7 @@ import (
 )
 
 var timestamp time.Time
+var logObject *base.LogObject
 
 func TestWork(t *testing.T) {
 	testMatrix := map[string]struct {
@@ -57,8 +58,11 @@ func TestWork(t *testing.T) {
 		return nil
 	}
 
+	logger := logrus.StandardLogger()
+	// logger.SetLevel(logrus.TraceLevel)
+	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	worker := NewWorker(
-		base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234),
+		logObject,
 		&ctx, 1, map[string]Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		})
@@ -71,7 +75,7 @@ func TestWork(t *testing.T) {
 			worker.Submit(w)
 			assert.Equal(t, 1, worker.NumPending())
 			proc := <-worker.MsgChan()
-			proc.Process(ctx, true)
+			proc.Process(logObject, ctx, true)
 			assert.Equal(t, 0, worker.NumPending())
 			assert.Equal(t, testname, res.Key)
 			assert.Equal(t, d.generateOutput, res.Output)
@@ -119,8 +123,11 @@ func TestLength(t *testing.T) {
 		res = r
 		return nil
 	}
+	logger := logrus.StandardLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	worker := NewWorker(
-		base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234),
+		logObject,
 		&ctx, 1, map[string]Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		})
@@ -167,7 +174,7 @@ func TestLength(t *testing.T) {
 	assert.False(t, done)
 
 	proc1 := <-worker.MsgChan()
-	proc1.Process(ctx, true)
+	proc1.Process(logObject, ctx, true)
 	assert.Equal(t, 2, worker.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
@@ -179,7 +186,7 @@ func TestLength(t *testing.T) {
 		assert.Less(t, int64(took), int64(maxDuration))
 	}
 	proc2 := <-worker.MsgChan()
-	proc2.Process(ctx, true)
+	proc2.Process(logObject, ctx, true)
 	assert.Equal(t, 1, worker.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep2.generateOutput, res.Output)
@@ -195,7 +202,7 @@ func TestLength(t *testing.T) {
 	}
 
 	proc3 := <-worker.MsgChan()
-	proc3.Process(ctx, true)
+	proc3.Process(logObject, ctx, true)
 	// this one uses the Pop, so we exercise it
 	res3 := worker.Pop(testname + "3")
 	assert.Equal(t, 0, worker.NumPending())

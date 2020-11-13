@@ -44,6 +44,8 @@ var sleep20 = dummyDescription{
 	generateOutput: "sleep20",
 }
 
+var logObject *base.LogObject
+
 func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 	ctx := dummyContext{contextName: "testContext"}
 	var res worker.WorkResult
@@ -53,8 +55,9 @@ func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 	}
 	logger := logrus.StandardLogger()
 	// logger.SetLevel(logrus.TraceLevel)
+	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	wp := worker.NewPoolWithGC(
-		base.NewSourceLogObject(logger, "test", 1234),
+		logObject,
 		&ctx, maxPool, map[string]worker.Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		},
@@ -102,19 +105,19 @@ func TestInOrder(t *testing.T) {
 	assert.Equal(t, 3, wp.NumPending())
 
 	proc1 := <-wp.MsgChan()
-	proc1.Process(ctx, true)
+	proc1.Process(nil, ctx, true)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc2 := <-wp.MsgChan()
-	proc2.Process(ctx, true)
+	proc2.Process(nil, ctx, true)
 	assert.Equal(t, 1, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep2.generateOutput, res.Output)
 
 	proc3 := <-wp.MsgChan()
-	proc3.Process(ctx, true)
+	proc3.Process(nil, ctx, true)
 	// this one uses the Pop, so we exercise it
 	res3 := wp.Pop(testname + "3")
 	assert.Equal(t, testname+"3", res3.Key)
@@ -179,19 +182,19 @@ func TestNoLimit(t *testing.T) {
 	assert.Equal(t, 4, wp.NumPending())
 
 	proc1 := <-wp.MsgChan()
-	proc1.Process(ctx, true)
+	proc1.Process(nil, ctx, true)
 	assert.Equal(t, 3, wp.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc2 := <-wp.MsgChan()
-	proc2.Process(ctx, true)
+	proc2.Process(nil, ctx, true)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep2.generateOutput, res.Output)
 
 	proc3 := <-wp.MsgChan()
-	proc3.Process(ctx, true)
+	proc3.Process(nil, ctx, true)
 	// this one uses the Pop, so we exercise it
 	res3 := wp.Pop(testname + "3")
 	assert.Equal(t, testname+"3", res3.Key)
@@ -199,7 +202,7 @@ func TestNoLimit(t *testing.T) {
 	assert.Equal(t, 1, wp.NumPending())
 
 	proc4 := <-wp.MsgChan()
-	proc4.Process(ctx, true)
+	proc4.Process(nil, ctx, true)
 	res4 := wp.Pop(testname + "4")
 	assert.Equal(t, testname+"4", res4.Key)
 	assert.Equal(t, sleep4.generateOutput, res4.Output)
@@ -249,13 +252,13 @@ func TestNoblocking(t *testing.T) {
 	assert.Equal(t, 2, wp.NumPending())
 
 	proc1 := <-wp.MsgChan()
-	proc1.Process(ctx, true)
+	proc1.Process(nil, ctx, true)
 	assert.Equal(t, 1, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc2 := <-wp.MsgChan()
-	proc2.Process(ctx, true)
+	proc2.Process(nil, ctx, true)
 	assert.Equal(t, 0, wp.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep4.generateOutput, res.Output)
@@ -318,13 +321,13 @@ func TestGC(t *testing.T) {
 
 	// Pick up 1 second one and two second one
 	proc2 := <-wp.MsgChan()
-	proc2.Process(ctx, true)
+	proc2.Process(nil, ctx, true)
 	assert.Equal(t, 3, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc3 := <-wp.MsgChan()
-	proc3.Process(ctx, true)
+	proc3.Process(nil, ctx, true)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"3", res.Key)
 	assert.Equal(t, sleep3.generateOutput, res.Output)
@@ -341,19 +344,19 @@ func TestGC(t *testing.T) {
 	assert.Equal(t, 2, wp.NumPending())
 
 	proc4 := <-wp.MsgChan()
-	proc4.Process(ctx, true)
+	proc4.Process(nil, ctx, true)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"4", res.Key)
 	assert.Equal(t, sleep4.generateOutput, res.Output)
 
 	proc5 := <-wp.MsgChan()
-	proc5.Process(ctx, true)
+	proc5.Process(nil, ctx, true)
 	assert.Equal(t, 1, wp.NumPending())
 	assert.Equal(t, testname+"5", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc1 := <-wp.MsgChan()
-	proc1.Process(ctx, true)
+	proc1.Process(nil, ctx, true)
 	assert.Equal(t, 0, wp.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep20.generateOutput, res.Output)
