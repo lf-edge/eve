@@ -31,7 +31,7 @@ jobs:
           path: 'eve'
       - name: fetch or build eve
         env:
-          TAG: 0.0.0-pr-${{ github.event.pull_request.number }}
+          TAG: pr${{ github.event.pull_request.number }}
           CACHE: evebuild/danger
         run: |
           if docker pull "$CACHE:$TAG-kvm"; then
