@@ -12,6 +12,21 @@ linters:
     - stylecheck        # covered by revive
     - typecheck         # See golangci/golangci-lint#419
     - varcheck          # unreliable
+    - funlen            # function length checks
+    - godot             # Don't mandate periods at end of comments
+    - nlreturn          # Too opioniated about whitespace
+    - wsl               # Way to opinionated
+    - whitespace        # Too opinionated about whitespace
+    - wrapcheck         # XXX should we switch to wrapped errors etc?
+    - goerr113          # XXX should we switch to wrapped errors etc?
+    - exhaustivestruct  # Too opinionated
+    - gofumpt           # Too opinionated about whitespace
+    - gomnd             # We use plenty of magic constants
+    - scopelint         # Obsoleted
+    - gocognit          # Too opinionated on existing code
+    - gocyclo           # Too opinionated on existing code
+    - maligned          # Too opinionated on existing structs
+    - nestif            # Too opinionated on existing code
 
 issues:
   max-issues-per-linter: 0

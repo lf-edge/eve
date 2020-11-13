@@ -24,6 +24,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/domainmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/downloader"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/executor"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/faultinjection"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/hardwaremodel"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
@@ -72,10 +73,11 @@ var (
 	entrypoints = map[string]entrypoint{
 		"client":           {f: client.Run, inline: inlineAlways},
 		"command":          {f: command.Run},
-		"diag":             {f: diag.Run},
+		"diag":             {f: diag.Run, inline: inlineUnlessService},
 		"domainmgr":        {f: domainmgr.Run},
 		"downloader":       {f: downloader.Run},
 		"executor":         {f: executor.Run},
+		"faultinjection":   {f: faultinjection.Run},
 		"hardwaremodel":    {f: hardwaremodel.Run, inline: inlineAlways},
 		"ledmanager":       {f: ledmanager.Run},
 		"logmanager":       {f: logmanager.Run},
@@ -111,7 +113,7 @@ func main() {
 			inline = true
 			for _, arg := range os.Args {
 				if arg == "runAsService" {
-					log.Infof("Found runAsService for %s",
+					log.Functionf("Found runAsService for %s",
 						basename)
 					inline = false
 					break
@@ -136,7 +138,7 @@ func main() {
 
 func runService(serviceName string, sep entrypoint, inline bool) int {
 	if inline {
-		log.Infof("Running inline command %s args: %+v",
+		log.Functionf("Running inline command %s args: %+v",
 			serviceName, os.Args[1:])
 		ps := pubsub.New(
 			&socketdriver.SocketDriver{Logger: logger, Log: log},
@@ -148,7 +150,7 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 		ServiceName: serviceName,
 		CmdArgs:     os.Args,
 	}
-	log.Infof("Notifying zedbox to start service %s with args %v",
+	log.Functionf("Notifying zedbox to start service %s with args %v",
 		sericeInitStatus.ServiceName, sericeInitStatus.CmdArgs)
 	if err := reverse.Publish(log, agentName, &sericeInitStatus); err != nil {
 		log.Fatalf(err.Error())
@@ -169,7 +171,7 @@ func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) in
 	}
 	stillRunning := time.NewTicker(15 * time.Second)
 
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -201,7 +203,7 @@ func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) in
 // that serviceName
 func handleService(serviceName string, cmdArgs []string) {
 
-	log.Infof("zedbox: Received command = %s args = %v", serviceName, cmdArgs)
+	log.Functionf("zedbox: Received command = %s args = %v", serviceName, cmdArgs)
 	srvLogger, srvLog := agentlog.Init(serviceName)
 	srvPs := pubsub.New(
 		&socketdriver.SocketDriver{
@@ -214,11 +216,11 @@ func handleService(serviceName string, cmdArgs []string) {
 		log.Fatalf("zedbox: Unknown package: %s",
 			serviceName)
 	}
-	log.Infof("zedbox: Starting %s", serviceName)
+	log.Functionf("zedbox: Starting %s", serviceName)
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = cmdArgs
 	go startAgentAndDone(sep, serviceName, srvPs, srvLogger, srvLog)
-	log.Infof("zedbox: Started %s",
+	log.Functionf("zedbox: Started %s",
 		serviceName)
 }
 

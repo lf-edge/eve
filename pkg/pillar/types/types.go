@@ -125,6 +125,7 @@ func (state SwState) ZSwState() info.ZSwState {
 	case LOADING:
 		return info.ZSwState_LOADING
 	case LOADED:
+		// TBD return info.ZSwState_LOADED
 		return info.ZSwState_DELIVERED
 	case CREATING_VOLUME:
 		return info.ZSwState_CREATING_VOLUME

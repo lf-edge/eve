@@ -1,0 +1,296 @@
+From 5b912a26ebf49e65b12467b200103a939e2d1dc1 Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Fri, 22 May 2020 09:18:38 -0600
+Subject: [PATCH 1/7] mm: support async buffered reads in
+ generic_file_buffered_read()
+
+Use the async page locking infrastructure, if IOCB_WAITQ is set in the
+passed in iocb. The caller must expect an -EIOCBQUEUED return value,
+which means that IO is started but not done yet. This is similar to how
+O_DIRECT signals the same operation. Once the callback is received by
+the caller for IO completion, the caller must retry the operation.
+
+Acked-by: Johannes Weiner <hannes@cmpxchg.org>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ mm/filemap.c | 38 +++++++++++++++++++++++++++-----------
+ 1 file changed, 27 insertions(+), 11 deletions(-)
+
+diff --git a/mm/filemap.c b/mm/filemap.c
+index 620c81f5630a..17ee2f1042a8 100644
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -1235,6 +1235,14 @@ static int __wait_on_page_locked_async(struct page *page,
+ 	return ret;
+ }
+ 
++static int wait_on_page_locked_async(struct page *page,
++				     struct wait_page_queue *wait)
++{
++	if (!PageLocked(page))
++		return 0;
++	return __wait_on_page_locked_async(compound_head(page), wait, false);
++}
++
+ /**
+  * put_and_wait_on_page_locked - Drop a reference and wait for it to be unlocked
+  * @page: The page to wait for.
+@@ -2069,17 +2077,25 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
+ 					index, last_index - index);
+ 		}
+ 		if (!PageUptodate(page)) {
+-			if (iocb->ki_flags & IOCB_NOWAIT) {
+-				put_page(page);
+-				goto would_block;
+-			}
+-
+ 			/*
+ 			 * See comment in do_read_cache_page on why
+ 			 * wait_on_page_locked is used to avoid unnecessarily
+ 			 * serialisations and why it's safe.
+ 			 */
+-			error = wait_on_page_locked_killable(page);
++			if (iocb->ki_flags & IOCB_WAITQ) {
++				if (written) {
++					put_page(page);
++					goto out;
++				}
++				error = wait_on_page_locked_async(page,
++								iocb->ki_waitq);
++			} else {
++				if (iocb->ki_flags & IOCB_NOWAIT) {
++					put_page(page);
++					goto would_block;
++				}
++				error = wait_on_page_locked_killable(page);
++			}
+ 			if (unlikely(error))
+ 				goto readpage_error;
+ 			if (PageUptodate(page))
+@@ -2167,7 +2183,10 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
+ 
+ page_not_up_to_date:
+ 		/* Get exclusive access to the page ... */
+-		error = lock_page_killable(page);
++		if (iocb->ki_flags & IOCB_WAITQ)
++			error = lock_page_async(page, iocb->ki_waitq);
++		else
++			error = lock_page_killable(page);
+ 		if (unlikely(error))
+ 			goto readpage_error;
+ 
+@@ -2210,10 +2229,7 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
+ 		}
+ 
+ 		if (!PageUptodate(page)) {
+-			if (iocb->ki_flags & IOCB_WAITQ)
+-				error = lock_page_async(page, iocb->ki_waitq);
+-			else
+-				error = lock_page_killable(page);
++			error = lock_page_killable(page);
+ 			if (unlikely(error))
+ 				goto readpage_error;
+ 			if (!PageUptodate(page)) {
+-- 
+2.26.2
+
+
+From 4b5d606f063ef7b08b05d2a282b4f23080105eab Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Fri, 22 May 2020 08:59:42 -0600
+Subject: [PATCH 2/7] mm: allow read-ahead with IOCB_NOWAIT set
+
+The read-ahead shouldn't block, so allow it to be done even if
+IOCB_NOWAIT is set in the kiocb.
+
+Acked-by: Johannes Weiner <hannes@cmpxchg.org>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ mm/filemap.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/mm/filemap.c b/mm/filemap.c
+index 17ee2f1042a8..91117e9297fe 100644
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -2062,8 +2062,6 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
+ 
+ 		page = find_get_page(mapping, index);
+ 		if (!page) {
+-			if (iocb->ki_flags & IOCB_NOWAIT)
+-				goto would_block;
+ 			page_cache_sync_readahead(mapping,
+ 					ra, filp,
+ 					index, last_index - index);
+-- 
+2.26.2
+
+
+From ea10f48a18cbeed4b86617dee78f6373d95bc720 Mon Sep 17 00:00:00 2001
+From: Hao Xu <haoxu@linux.alibaba.com>
+Date: Tue, 29 Sep 2020 20:00:45 +0800
+Subject: [PATCH 3/7] io_uring: fix async buffered reads when readahead is
+ disabled
+
+The async buffered reads feature is not working when readahead is
+turned off. There are two things to concern:
+
+- when doing retry in io_read, not only the IOCB_WAITQ flag but also
+  the IOCB_NOWAIT flag is still set, which makes it goes to would_block
+  phase in generic_file_buffered_read() and then return -EAGAIN. After
+  that, the io-wq thread work is queued, and later doing the async
+  reads in the old way.
+
+- even if we remove IOCB_NOWAIT when doing retry, the feature is still
+  not running properly, since in generic_file_buffered_read() it goes to
+  lock_page_killable() after calling mapping->a_ops->readpage() to do
+  IO, and thus causing process to sleep.
+
+Fixes: 1a0a7853b901 ("mm: support async buffered reads in generic_file_buffered_read()")
+Fixes: 3b2a4439e0ae ("io_uring: get rid of kiocb_wait_page_queue_init()")
+Signed-off-by: Hao Xu <haoxu@linux.alibaba.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ mm/filemap.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/mm/filemap.c b/mm/filemap.c
+index 91117e9297fe..03a39209c9fd 100644
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -2227,7 +2227,11 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
+ 		}
+ 
+ 		if (!PageUptodate(page)) {
+-			error = lock_page_killable(page);
++			if (iocb->ki_flags & IOCB_WAITQ)
++				error = lock_page_async(page, iocb->ki_waitq);
++			else
++				error = lock_page_killable(page);
++
+ 			if (unlikely(error))
+ 				goto readpage_error;
+ 			if (!PageUptodate(page)) {
+-- 
+2.26.2
+
+
+From e219d578dc68f8c77ed06440721bb6da7a7589f9 Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Fri, 22 May 2020 09:14:08 -0600
+Subject: [PATCH 4/7] block: flag block devices as supporting IOCB_WAITQ
+
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ fs/block_dev.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/block_dev.c b/fs/block_dev.c
+index 79272cdbe827..37c10197db99 100644
+--- a/fs/block_dev.c
++++ b/fs/block_dev.c
+@@ -1833,7 +1833,7 @@ static int blkdev_open(struct inode * inode, struct file * filp)
+ 	 */
+ 	filp->f_flags |= O_LARGEFILE;
+ 
+-	filp->f_mode |= FMODE_NOWAIT;
++	filp->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC;
+ 
+ 	if (filp->f_flags & O_NDELAY)
+ 		filp->f_mode |= FMODE_NDELAY;
+-- 
+2.26.2
+
+
+From 339813328a5141ed2ae86ba9afdb3460b15d19be Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Fri, 22 May 2020 09:27:33 -0600
+Subject: [PATCH 5/7] xfs: flag files as supporting buffered async reads
+
+XFS uses generic_file_read_iter(), which already supports this.
+
+Acked-by: Darrick J. Wong <darrick.wong@oracle.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ fs/xfs/xfs_file.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/xfs/xfs_file.c b/fs/xfs/xfs_file.c
+index 203065a64765..d198ae5f1406 100644
+--- a/fs/xfs/xfs_file.c
++++ b/fs/xfs/xfs_file.c
+@@ -1066,7 +1066,7 @@ xfs_file_open(
+ 		return -EFBIG;
+ 	if (XFS_FORCED_SHUTDOWN(XFS_M(inode->i_sb)))
+ 		return -EIO;
+-	file->f_mode |= FMODE_NOWAIT;
++	file->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC;
+ 	return 0;
+ }
+ 
+-- 
+2.26.2
+
+
+From 58dcc9c6624a30e44cff099f0899e88b41f02096 Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Fri, 22 May 2020 10:19:22 -0600
+Subject: [PATCH 6/7] btrfs: flag files as supporting buffered async reads
+
+btrfs uses generic_file_read_iter(), which already supports this.
+
+Acked-by: Chris Mason <clm@fb.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ fs/btrfs/file.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/btrfs/file.c b/fs/btrfs/file.c
+index 4126513e2429..29a2aa36e8a6 100644
+--- a/fs/btrfs/file.c
++++ b/fs/btrfs/file.c
+@@ -3475,7 +3475,7 @@ static loff_t btrfs_file_llseek(struct file *file, loff_t offset, int whence)
+ 
+ static int btrfs_file_open(struct inode *inode, struct file *filp)
+ {
+-	filp->f_mode |= FMODE_NOWAIT;
++	filp->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC;
+ 	return generic_file_open(inode, filp);
+ }
+ 
+-- 
+2.26.2
+
+
+From 34f9206677cf9698fdcd780cee4f91f03f4f083a Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Mon, 3 Aug 2020 17:02:11 -0600
+Subject: [PATCH 7/7] ext4: flag as supporting buffered async reads
+
+ext4 uses generic_file_read_iter(), which already supports this.
+
+Cc: Theodore Ts'o <tytso@mit.edu>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+
+Link: https://lore.kernel.org/r/fb90cc2d-b12c-738f-21a4-dd7a8ae0556a@kernel.dk
+Signed-off-by: Theodore Ts'o <tytso@mit.edu>
+---
+ fs/ext4/file.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/ext4/file.c b/fs/ext4/file.c
+index fd7ce3573a00..b2d5d5850816 100644
+--- a/fs/ext4/file.c
++++ b/fs/ext4/file.c
+@@ -471,7 +471,7 @@ static int ext4_file_open(struct inode * inode, struct file * filp)
+ 			return ret;
+ 	}
+ 
+-	filp->f_mode |= FMODE_NOWAIT;
++	filp->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC;
+ 	return dquot_file_open(inode, filp);
+ }
+ 
+-- 
+2.26.2
+

@@ -50,7 +50,7 @@ func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
 	publishAppNetworkStatus(ctx, status)
 	if status.GetStatsIPAddr == nil && oldIPAddr != nil ||
 		status.GetStatsIPAddr != nil && !status.GetStatsIPAddr.Equal(oldIPAddr) {
-		log.Infof("appCheckStatsCollect: config ip %v, status ip %v", status.GetStatsIPAddr, oldIPAddr)
+		log.Functionf("appCheckStatsCollect: config ip %v, status ip %v", status.GetStatsIPAddr, oldIPAddr)
 		if oldIPAddr == nil && status.GetStatsIPAddr != nil {
 			ensureStatsCollectRunning(ctx)
 		}
@@ -60,7 +60,7 @@ func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
 
 // goroutine for App container stats collection
 func appStatsAndLogCollect(ctx *zedrouterContext) {
-	log.Infof("appStatsAndLogCollect: containerStats, started")
+	log.Functionf("appStatsAndLogCollect: containerStats, started")
 	// cache the container last timestamp of log entries of the batch
 	lastLogTime := make(map[string]time.Time)
 	appStatsCollectTimer := time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
@@ -99,7 +99,7 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 				}
 			}
 			// log output every 5 min, see this goroutine running status and number of containers from App
-			log.Infof("appStatsAndLogCollect: containerStats, %d processed. total log entries %d, reset timer", acNum, numlogs)
+			log.Functionf("appStatsAndLogCollect: containerStats, %d processed. total log entries %d, reset timer", acNum, numlogs)
 
 			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
 		}
@@ -111,7 +111,7 @@ func ensureStatsCollectRunning(ctx *zedrouterContext) {
 	if !ctx.appCollectStatsRunning {
 		ctx.appCollectStatsRunning = true
 		ctx.appStatsMutex.Unlock()
-		log.Infof("Creating %s at %s", "appStatusAndLogCollect",
+		log.Functionf("Creating %s at %s", "appStatusAndLogCollect",
 			agentlog.GetMyStack())
 		go appStatsAndLogCollect(ctx)
 	} else {
@@ -131,7 +131,7 @@ func checkAppStopStatsCollect(ctx *zedrouterContext) (map[string]interface{}, bo
 		}
 	}
 	if numStatsIP == 0 {
-		log.Infof("checkAppStopStatsCollect: no stats IP anymore. stop and exit out")
+		log.Functionf("checkAppStopStatsCollect: no stats IP anymore. stop and exit out")
 		ctx.appCollectStatsRunning = false
 		ctx.appStatsMutex.Unlock()
 		return items, true
@@ -163,7 +163,7 @@ func getAppContainerStats(status types.AppNetworkStatus, cli *client.Client, con
 			log.Errorf("getAppContainerStats: process stats for %s, error %v\n", container.Names[0], err)
 			continue
 		}
-		log.Debugf("getAppContainerStats: container stats %v", acStats)
+		log.Tracef("getAppContainerStats: container stats %v", acStats)
 		acMetrics.StatsList = append(acMetrics.StatsList, acStats)
 	}
 
@@ -235,13 +235,13 @@ func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkC
 	for _, item := range items {
 		cfg := item.(types.AppNetworkConfig)
 		if cfg.Key() == config.Key() {
-			log.Infof("appStatsMayNeedReinstallACL: same app, skip")
+			log.Functionf("appStatsMayNeedReinstallACL: same app, skip")
 			continue
 		}
 		if cfg.GetStatsIPAddr != nil {
 			appConfigContainerStatsACL(cfg.GetStatsIPAddr, true)
 			appConfigContainerStatsACL(cfg.GetStatsIPAddr, false)
-			log.Infof("appStatsMayNeedReinstallACL: reinstall %s\n", cfg.GetStatsIPAddr.String())
+			log.Functionf("appStatsMayNeedReinstallACL: reinstall %s\n", cfg.GetStatsIPAddr.String())
 		}
 	}
 }
@@ -270,7 +270,7 @@ func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, l
 		stdcopy.StdCopy(&buf, &buf, io.LimitReader(out, 100000))
 		logLines := strings.Split(buf.String(), "\n")
 		numlogs += len(logLines)
-		log.Debugf("getAppContainerLogs: container %s, lasttime %s, lines %d", containerName, lasttime, len(logLines))
+		log.Tracef("getAppContainerLogs: container %s, lasttime %s, lines %d", containerName, lasttime, len(logLines))
 		for _, line := range logLines {
 			sline := strings.SplitN(line, " ", 2)
 			time := sline[0]

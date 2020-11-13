@@ -20,14 +20,14 @@ import (
 // XXX remove "done" boolean return?
 func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) (bool, bool) {
 
-	log.Infof("doUpdateContentTree(%s) name %s state %s", status.Key(), status.DisplayName, status.State)
+	log.Functionf("doUpdateContentTree(%s) name %s state %s", status.Key(), status.DisplayName, status.State)
 
 	changed := false
 	addedBlobs := []string{}
 
 	if status.State < types.VERIFIED {
 		if status.DatastoreType == "" {
-			log.Infof("contentTreeStatus(%s) does not have a datastore type yet, deferring", status.ContentID)
+			log.Functionf("contentTreeStatus(%s) does not have a datastore type yet, deferring", status.ContentID)
 			return false, false
 		}
 
@@ -36,7 +36,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if status.ContentSha256 == "" {
 				rs := lookupResolveStatus(ctx, status.ResolveKey())
 				if rs == nil {
-					log.Infof("Resolve status not found for %s",
+					log.Functionf("Resolve status not found for %s",
 						status.ContentID)
 					status.HasResolverRef = true
 					MaybeAddResolveConfig(ctx, *status)
@@ -44,8 +44,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					changed = true
 					return changed, false
 				}
-				log.Infof("Processing ResolveStatus for content tree (%v)", status.ContentID)
-				status.State = types.RESOLVED_TAG
+				log.Functionf("Processing ResolveStatus for content tree (%v)", status.ContentID)
 				changed = true
 				if rs.HasError() {
 					errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
@@ -64,13 +63,14 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					changed = true
 					return changed, false
 				} else if status.IsErrorSource(types.ResolveStatus{}) {
-					log.Infof("Clearing resolver error %s", status.Error)
+					log.Functionf("Clearing resolver error %s", status.Error)
 					status.ClearErrorWithSource()
 					changed = true
 				}
 				foundSha := strings.ToLower(rs.ImageSha256)
-				log.Infof("Added Image SHA (%s) for content tree (%s)",
+				log.Functionf("Added Image SHA (%s) for content tree (%s)",
 					foundSha, status.ContentID)
+				status.State = types.RESOLVED_TAG
 				status.ContentSha256 = foundSha
 				status.HasResolverRef = false
 				status.RelativeURL = maybeInsertSha(status.RelativeURL, status.ContentSha256)
@@ -99,7 +99,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					Size:        status.MaxDownloadSize,
 					State:       types.INITIAL,
 				}
-				log.Infof("doUpdateContentTree: publishing new root BlobStatus (%s) for content tree (%s)",
+				log.Functionf("doUpdateContentTree: publishing new root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
 				publishBlobStatus(ctx, rootBlob)
 			} else if rootBlob.State == types.LOADED {
@@ -107,7 +107,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				// because if any child blob is not downloaded, then we would need the below data.
 				rootBlob.DatastoreID = status.DatastoreID
 				rootBlob.RelativeURL = status.RelativeURL
-				log.Infof("doUpdateContentTree: publishing loaded root BlobStatus (%s) for content tree (%s)",
+				log.Functionf("doUpdateContentTree: publishing loaded root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
 				publishBlobStatus(ctx, rootBlob)
 			}
@@ -148,7 +148,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if blob.State <= types.DOWNLOADING {
 				// any state less than downloaded, we ask for download, so that we have the refcount;
 				// downloadBlob() is smart enough to look for existing references
-				log.Debugf("doUpdateContentTree: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
+				log.Tracef("doUpdateContentTree: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
 				if downloadBlob(ctx, status.ObjType, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
@@ -156,7 +156,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			}
 			if blob.State == types.DOWNLOADED || blob.State == types.VERIFYING {
 				// downloaded: kick off verifier for this blob
-				log.Infof("doUpdateContentTree: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
+				log.Functionf("doUpdateContentTree: blob sha %s download state %v less than VERIFIED", blob.Sha256, blob.State)
 				if verifyBlob(ctx, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
@@ -164,14 +164,14 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			}
 			if blob.State < types.VERIFIED {
 				leftToProcess = true
-				log.Debugf("doUpdateContentTree: left to process due to state '%s' for content blob %s",
+				log.Tracef("doUpdateContentTree: left to process due to state '%s' for content blob %s",
 					blob.State, blob.Sha256)
 			} else {
-				log.Debugf("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
+				log.Tracef("doUpdateContentTree: blob sha %s download state VERIFIED", blob.Sha256)
 				// if verified, check for any children and start them off
 				blobChildren := blobsNotInList(getBlobChildren(ctx, blob), status.Blobs)
 				if len(blobChildren) > 0 {
-					log.Infof("doUpdateContentTree: adding %d children", len(blobChildren))
+					log.Functionf("doUpdateContentTree: adding %d children", len(blobChildren))
 					// add all of the children
 					for _, blob := range blobChildren {
 						addedBlobs = append(addedBlobs, blob.Sha256)
@@ -211,7 +211,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if status.TotalSize > 0 {
 				status.Progress = uint(100 * status.CurrentSize / status.TotalSize)
 			}
-			log.Infof("doUpdateContentTree: updating CurrentSize/TotalSize/Progress %d/%d/%d",
+			log.Functionf("doUpdateContentTree: updating CurrentSize/TotalSize/Progress %d/%d/%d",
 				currentSize, totalSize, status.Progress)
 		}
 
@@ -222,7 +222,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			return changed, false
 		}
 		if status.FileLocation != rootBlob.Path {
-			log.Infof("doUpdateContentTree(%s) name %s: updating file location to %s",
+			log.Functionf("doUpdateContentTree(%s) name %s: updating file location to %s",
 				status.Key(), status.DisplayName, rootBlob.Path)
 			status.FileLocation = rootBlob.Path
 			changed = true
@@ -231,17 +231,17 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// update errors from blobs to status
 		if len(blobErrors) != 0 {
 			status.SetError(strings.Join(blobErrors, " / "), blobErrorTime)
-			log.Infof("doUpdateContentTree(%s) had errors: %v", status.Key(), status.Error)
+			log.Functionf("doUpdateContentTree(%s) had errors: %v", status.Key(), status.Error)
 			changed = true
 		} else if status.HasError() {
-			log.Infof("doUpdateContentTree(%s) clearing errors", status.Key())
+			log.Functionf("doUpdateContentTree(%s) clearing errors", status.Key())
 			status.ClearErrorWithSource()
 			changed = true
 		}
 
 		// if we added any blobs, we need to reprocess this
 		if len(addedBlobs) > 0 {
-			log.Infof("doUpdateContentTree(%s) rerunning with added blobs: %v", status.Key(), addedBlobs)
+			log.Functionf("doUpdateContentTree(%s) rerunning with added blobs: %v", status.Key(), addedBlobs)
 			return doUpdateContentTree(ctx, status)
 		}
 
@@ -249,7 +249,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// the rest of this flow should happen only when every part of the content tree
 		// is downloaded and verified
 		if leftToProcess {
-			log.Infof("doUpdateContentTree(%s) leftToProcess=true, so returning `true,false`", status.Key())
+			log.Functionf("doUpdateContentTree(%s) leftToProcess=true, so returning `true,false`", status.Key())
 			return true, false
 		}
 
@@ -258,7 +258,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// if we just had an image pointing to a single blob that is not index or manifest, we need
 		// to add a manifest to it.
-		log.Infof("doUpdateContentTree(%s) checking if we need to add a manifest, have %d blobs", status.Key(), len(blobStatuses))
+		log.Functionf("doUpdateContentTree(%s) checking if we need to add a manifest, have %d blobs", status.Key(), len(blobStatuses))
 		if len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex() {
 			blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
 			if err != nil {
@@ -295,14 +295,26 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// if we made it this far, the entire tree has been verified
 		// we can mark the tree as verified, but still have to load it into the CAS store
-		log.Infof("doUpdateContentTree(%s): all blobs verified %v, setting ContentTree state to VERIFIED", status.Key(), status.Blobs)
+		log.Functionf("doUpdateContentTree(%s): all blobs verified %v, setting ContentTree state to VERIFIED", status.Key(), status.Blobs)
 		status.State = types.VERIFIED
 		publishContentTreeStatus(ctx, status)
 	}
 
 	// at this point, the image is VERIFIED or higher
 	if status.State == types.VERIFIED {
-		log.Infof("doUpdateContentTree(%s): ContentTree state is VERIFIED, starting LOADING", status.Key())
+		// XXX do we have any blobs in LOADING state?
+		// Can we check in the loop above to avoid the lookup?
+		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
+		for _, b := range blobStatuses {
+			if b.State == types.LOADING {
+				// XXX we need to wait for blobs from another apps if they exists and in the LOADING state
+				log.Functionf("XXX found blob %s in LOADING; defer",
+					b.Key())
+				return changed, false
+			}
+		}
+
+		log.Functionf("doUpdateContentTree(%s): ContentTree state is VERIFIED, starting LOADING", status.Key())
 
 		// now we start loading
 		// it is a bit silly to publish twice, but it is important that we keep the audit
@@ -317,11 +329,11 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 	// if it is LOADING, check each blob until all are loaded
 	if status.State == types.LOADING {
-		log.Infof("doUpdateContentTree(%s): ContentTree status is LOADING", status.Key())
+		log.Functionf("doUpdateContentTree(%s): ContentTree status is LOADING", status.Key())
 		// get the work result - see if it succeeded
 		wres := popCasIngestWorkResult(ctx, status.Key())
 		if wres != nil {
-			log.Infof("doUpdateContentTree(%s): IngestWorkResult found", status.Key())
+			log.Functionf("doUpdateContentTree(%s): IngestWorkResult found", status.Key())
 			if wres.Error != nil {
 				err := fmt.Errorf("doUpdateContentTree(%s): IngestWorkResult error, exception while loading blobs into CAS: %v", status.Key(), wres.Error)
 				log.Errorf(err.Error())
@@ -336,20 +348,20 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		for _, blob := range blobStatuses {
 			// if the blob was not yet loaded, we ignore it
 			if blob.State != types.LOADED {
-				log.Infof("doUpdateContentTree(%s): blob %s not yet loaded", status.Key(), blob.Sha256)
+				log.Functionf("doUpdateContentTree(%s): blob %s not yet loaded", status.Key(), blob.Sha256)
 				leftToProcess++
 				continue
 			}
 
-			log.Infof("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), blob.Sha256)
+			log.Functionf("doUpdateContentTree(%s): Successfully loaded blob: %s", status.Key(), blob.Sha256)
 			if blob.HasDownloaderRef {
-				log.Infof("doUpdateContentTree(%s): removing downloaderRef from Blob %s",
+				log.Functionf("doUpdateContentTree(%s): removing downloaderRef from Blob %s",
 					status.Key(), blob.Sha256)
 				MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
 				blob.HasDownloaderRef = false
 			}
 			if blob.HasVerifierRef {
-				log.Infof("doUpdateContentTree(%s): removing verifyRef from Blob %s",
+				log.Functionf("doUpdateContentTree(%s): removing verifyRef from Blob %s",
 					status.Key(), blob.Sha256)
 				MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
 				// Set the path to "" as we delete the verifier path
@@ -359,13 +371,13 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			publishBlobStatus(ctx, blob)
 		}
 		if leftToProcess > 0 {
-			log.Infof("doUpdateContentTree(%s): Still have %d blobs left to load", status.Key(), leftToProcess)
+			log.Functionf("doUpdateContentTree(%s): Still have %d blobs left to load", status.Key(), leftToProcess)
 			return changed, false
 		}
-		log.Infof("doUpdateContentTree(%s): all blobs LOADED", status.Key())
+		log.Functionf("doUpdateContentTree(%s): all blobs LOADED", status.Key())
 
 		// if we made it here, then all blobs were loaded
-		log.Infof("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
+		log.Functionf("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
 		status.State = types.LOADED
 		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
 		status.FileLocation = ""
@@ -380,11 +392,11 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 // XXX remove "done" boolean return?
 func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 
-	log.Infof("doUpdateVol(%s) name %s", status.Key(), status.DisplayName)
+	log.Functionf("doUpdateVol(%s) name %s", status.Key(), status.DisplayName)
 
 	// Anything to do?
 	if status.State == types.CREATED_VOLUME {
-		log.Infof("doUpdateVol(%s) name %s nothing to do",
+		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
 	}
@@ -407,7 +419,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			return changed, false
 		}
 		if status.IsErrorSource(types.ContentTreeStatus{}) {
-			log.Infof("doUpdate: Clearing volume error %s", status.Error)
+			log.Functionf("doUpdate: Clearing volume error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
@@ -434,13 +446,19 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				changed = true
 				return changed, false
 			}
-			log.Infof("doUpdateVol(%s) name %s: waiting for content tree status %v to be LOADED",
+			log.Functionf("doUpdateVol(%s) name %s: waiting for content tree status %v to be LOADED",
 				status.Key(), status.DisplayName, ctStatus.DisplayName)
 			return changed, false
 		}
 		if ctStatus.State == types.LOADED &&
 			status.State != types.CREATING_VOLUME &&
 			!status.VolumeCreated {
+
+			_, err := ctx.casClient.GetImageHash(ctStatus.ReferenceID())
+			if err != nil {
+				log.Functionf("doUpdateVol(%s): waiting for image create: %s", status.Key(), err.Error())
+				return changed, false
+			}
 
 			status.State = types.CREATING_VOLUME
 			// first blob is always the root
@@ -456,23 +474,23 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			AddWorkCreate(ctx, status)
 		}
 		if status.IsErrorSource(types.ContentTreeStatus{}) {
-			log.Infof("doUpdate: Clearing volume error %s", status.Error)
+			log.Functionf("doUpdate: Clearing volume error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
 		if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
 			vr := popVolumeWorkResult(ctx, status.Key())
 			if vr != nil {
-				log.Infof("doUpdateVol: VolumeWorkResult(%s) location %s, created %t",
+				log.Functionf("doUpdateVol: VolumeWorkResult(%s) location %s, created %t",
 					status.Key(), vr.FileLocation, vr.VolumeCreated)
 				if status.VolumeCreated != vr.VolumeCreated {
-					log.Infof("From vr set VolumeCreated to %s for %s",
+					log.Functionf("From vr set VolumeCreated to %s for %s",
 						vr.FileLocation, status.VolumeID)
 					status.VolumeCreated = vr.VolumeCreated
 					changed = true
 				}
 				if status.FileLocation != vr.FileLocation && vr.Error == nil {
-					log.Infof("doUpdateContentTree: From vr set FileLocation to %s for %s",
+					log.Functionf("doUpdateContentTree: From vr set FileLocation to %s for %s",
 						vr.FileLocation, status.VolumeID)
 					status.FileLocation = vr.FileLocation
 					changed = true
@@ -485,12 +503,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					changed = true
 					return changed, false
 				} else if status.IsErrorSource(types.VolumeStatus{}) {
-					log.Infof("doUpdateContentTree: Clearing volume error %s", status.Error)
+					log.Functionf("doUpdateContentTree: Clearing volume error %s", status.Error)
 					status.ClearErrorWithSource()
 					changed = true
 				}
 			} else {
-				log.Infof("doUpdateVol: VolumeWorkResult(%s) not found", status.Key())
+				log.Functionf("doUpdateVol: VolumeWorkResult(%s) not found", status.Key())
 			}
 		}
 		if status.State == types.CREATING_VOLUME && status.VolumeCreated {
@@ -505,7 +523,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				if err != nil {
 					log.Error(err)
 				} else if maxVolSize != status.MaxVolSize {
-					log.Infof("doUpdateVol: MaxVolSize update from  %d to %d for %s",
+					log.Functionf("doUpdateVol: MaxVolSize update from  %d to %d for %s",
 
 						status.MaxVolSize, maxVolSize,
 						status.FileLocation)
@@ -531,10 +549,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 var ctObjTypes = []string{types.AppImgObj, types.BaseOsObj}
 
 // updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
-// that has this Sha256
-func updateStatusByBlob(ctx *volumemgrContext, sha string) {
+// that has Sha256 from sha slice
+func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 
-	log.Infof("updateStatusByBlob(%s)", sha)
+	log.Functionf("updateStatusByBlob(%s)", sha)
 	found := false
 	for _, objType := range ctObjTypes {
 		pub := ctx.publication(types.ContentTreeStatus{}, objType)
@@ -542,22 +560,26 @@ func updateStatusByBlob(ctx *volumemgrContext, sha string) {
 		for _, st := range items {
 			status := st.(types.ContentTreeStatus)
 			var hasSha bool
+		blobLoop:
 			for _, blobSha := range status.Blobs {
-				if blobSha == sha {
-					log.Debugf("Found blob %s on ContentTreeStatus %s",
-						sha, status.Key())
-					hasSha = true
+				for _, s := range sha {
+					if blobSha == s {
+						log.Tracef("Found blob %s on ContentTreeStatus %s",
+							sha, status.Key())
+						hasSha = true
+						break blobLoop
+					}
 				}
 			}
 			if hasSha {
 				found = true
 				if changed, _ := doUpdateContentTree(ctx, &status); changed {
-					log.Infof("updateStatusByBlob(%s) publishing ContentTreeStatus",
+					log.Functionf("updateStatusByBlob(%s) publishing ContentTreeStatus",
 						status.Key())
 					publishContentTreeStatus(ctx, &status)
 				}
 				// Volume status referring to this content UUID needs to get updated
-				log.Infof("updateStatusByBlob(%s) updating volume status from content ID %v",
+				log.Functionf("updateStatusByBlob(%s) updating volume status from content ID %v",
 					status.Key(), status.ContentID)
 				updateVolumeStatusFromContentID(ctx,
 					status.ContentID)
@@ -571,7 +593,7 @@ func updateStatusByBlob(ctx *volumemgrContext, sha string) {
 
 // updateStatusByDatastore update any datastore missing status
 func updateStatusByDatastore(ctx *volumemgrContext, datastore types.DatastoreConfig) {
-	log.Infof("updateStatusByDatastore(%s)", datastore.UUID)
+	log.Functionf("updateStatusByDatastore(%s)", datastore.UUID)
 	for _, objType := range ctObjTypes {
 		pub := ctx.publication(types.ContentTreeStatus{}, objType)
 		items := pub.GetAll()
@@ -583,16 +605,16 @@ func updateStatusByDatastore(ctx *volumemgrContext, datastore types.DatastoreCon
 				continue
 			}
 			// set the type
-			log.Infof("Setting datastore type %s for datastore %s on ContentTreeStatus %s",
+			log.Functionf("Setting datastore type %s for datastore %s on ContentTreeStatus %s",
 				datastore.DsType, datastore.UUID, status.Key())
 			status.DatastoreType = datastore.DsType
 			if changed, _ := doUpdateContentTree(ctx, &status); changed {
-				log.Infof("updateStatusByDatastore(%s) publishing ContentTreeStatus",
+				log.Functionf("updateStatusByDatastore(%s) publishing ContentTreeStatus",
 					status.Key())
 				publishContentTreeStatus(ctx, &status)
 			}
 			// Volume status referring to this content UUID needs to get updated
-			log.Infof("updateStatusByDatastore(%s) updating volume status from content ID %v",
+			log.Functionf("updateStatusByDatastore(%s) updating volume status from content ID %v",
 				status.Key(), status.ContentID)
 			updateVolumeStatusFromContentID(ctx,
 				status.ContentID)
@@ -602,7 +624,7 @@ func updateStatusByDatastore(ctx *volumemgrContext, datastore types.DatastoreCon
 
 func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, contentID uuid.UUID) {
 
-	log.Infof("updateContentTreeStatus(%s)", contentID)
+	log.Functionf("updateContentTreeStatus(%s)", contentID)
 	found := false
 	for _, objType := range ctObjTypes {
 		pub := ctx.publication(types.ContentTreeStatus{}, objType)
@@ -610,7 +632,7 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 		for _, st := range items {
 			status := st.(types.ContentTreeStatus)
 			if status.ContentSha256 == contentSha256 {
-				log.Infof("Found ContentTreeStatus %s",
+				log.Functionf("Found ContentTreeStatus %s",
 					status.Key())
 				found = true
 				changed, _ := doUpdateContentTree(ctx, &status)
@@ -618,7 +640,7 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 					publishContentTreeStatus(ctx, &status)
 				}
 				// Volume status referring to this content UUID needs to get updated
-				log.Infof("updateContentTreeStatus(%s) updating volume status from content ID %v",
+				log.Functionf("updateContentTreeStatus(%s) updating volume status from content ID %v",
 					status.Key(), status.ContentID)
 				updateVolumeStatusFromContentID(ctx,
 					status.ContentID)
@@ -633,14 +655,14 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 // Find all the VolumeStatus which refer to this volume uuid
 func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) {
 
-	log.Infof("updateVolumeStatus for %s", volumeID)
+	log.Functionf("updateVolumeStatus for %s", volumeID)
 	found := false
 	pub := ctx.pubVolumeStatus
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.VolumeStatus)
 		if status.VolumeID == volumeID {
-			log.Infof("Found VolumeStatus %s: name %s",
+			log.Functionf("Found VolumeStatus %s: name %s",
 				status.Key(), status.DisplayName)
 			found = true
 			changed, _ := doUpdateVol(ctx, &status)
@@ -662,14 +684,14 @@ func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) {
 // Find all the VolumeStatus which refer to this content uuid
 func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID) {
 
-	log.Debugf("updateVolumeStatusFromContentID for %s", contentID)
+	log.Tracef("updateVolumeStatusFromContentID for %s", contentID)
 	found := false
 	pub := ctx.pubVolumeStatus
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.VolumeStatus)
 		if status.ContentID == contentID {
-			log.Debugf("Found VolumeStatus %s: name %s",
+			log.Tracef("Found VolumeStatus %s: name %s",
 				status.Key(), status.DisplayName)
 			found = true
 			changed, _ := doUpdateVol(ctx, &status)

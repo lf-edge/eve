@@ -74,7 +74,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -144,7 +144,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleGlobalConfigModify,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
@@ -184,7 +184,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.VolumeRefStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleVolumeRefStatusModify,
+		CreateHandler: handleVolumeRefStatusCreate,
 		ModifyHandler: handleVolumeRefStatusModify,
 		DeleteHandler: handleVolumeRefStatusDelete,
 		WarningTime:   warningTime,
@@ -203,7 +203,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:      types.AppNetworkStatus{},
 		Activate:       false,
 		Ctx:            &ctx,
-		CreateHandler:  handleAppNetworkStatusModify,
+		CreateHandler:  handleAppNetworkStatusCreate,
 		ModifyHandler:  handleAppNetworkStatusModify,
 		DeleteHandler:  handleAppNetworkStatusDelete,
 		RestartHandler: handleZedrouterRestarted,
@@ -223,7 +223,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.DomainStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
-		CreateHandler: handleDomainStatusModify,
+		CreateHandler: handleDomainStatusCreate,
 		ModifyHandler: handleDomainStatusModify,
 		DeleteHandler: handleDomainStatusDelete,
 		WarningTime:   warningTime,
@@ -237,7 +237,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
-		log.Infof("waiting for GCInitialized")
+		log.Functionf("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -245,7 +245,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("Handling all inputs")
+	log.Functionf("Handling all inputs")
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -279,7 +279,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 // Need EIDs before zedrouter ...
 func handleConfigRestart(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleConfigRestart(%v)", done)
+	log.Functionf("handleConfigRestart(%v)", done)
 	if done {
 		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
@@ -288,7 +288,7 @@ func handleConfigRestart(ctxArg interface{}, done bool) {
 func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
 
-	log.Infof("handleIdentitymgrRestarted(%v)", done)
+	log.Functionf("handleIdentitymgrRestarted(%v)", done)
 	if done {
 		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
@@ -297,7 +297,7 @@ func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
 func handleZedrouterRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
 
-	log.Infof("handleZedrouterRestarted(%v)", done)
+	log.Functionf("handleZedrouterRestarted(%v)", done)
 	if done {
 		ctx.pubDomainConfig.SignalRestarted()
 	}
@@ -307,7 +307,7 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
 	key := status.Key()
-	log.Debugf("publishAppInstanceStatus(%s)", key)
+	log.Tracef("publishAppInstanceStatus(%s)", key)
 	pub := ctx.pubAppInstanceStatus
 	pub.Publish(key, *status)
 }
@@ -316,7 +316,7 @@ func unpublishAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
 	key := status.Key()
-	log.Debugf("unpublishAppInstanceStatus(%s)", key)
+	log.Tracef("unpublishAppInstanceStatus(%s)", key)
 	pub := ctx.pubAppInstanceStatus
 	st, _ := pub.Get(key)
 	if st == nil {
@@ -329,15 +329,15 @@ func unpublishAppInstanceStatus(ctx *zedmanagerContext,
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleAppInstanceConfigDelete(%s)", key)
+	log.Functionf("handleAppInstanceConfigDelete(%s)", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	status := lookupAppInstanceStatus(ctx, key)
 	if status == nil {
-		log.Infof("handleAppInstanceConfigDelete: unknown %s", key)
+		log.Functionf("handleAppInstanceConfigDelete: unknown %s", key)
 		return
 	}
 	handleDelete(ctx, key, status)
-	log.Infof("handleAppInstanceConfigDelete(%s) done", key)
+	log.Functionf("handleAppInstanceConfigDelete(%s) done", key)
 }
 
 // Callers must be careful to publish any changes to AppInstanceStatus
@@ -346,7 +346,7 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	pub := ctx.pubAppInstanceStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Debugf("lookupAppInstanceStatus(%s) not found", key)
+		log.Tracef("lookupAppInstanceStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.AppInstanceStatus)
@@ -358,7 +358,7 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	sub := ctx.subAppInstanceConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Debugf("lookupAppInstanceConfig(%s) not found", key)
+		log.Tracef("lookupAppInstanceConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.AppInstanceConfig)
@@ -370,32 +370,26 @@ func handleCreate(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
 
-	log.Infof("handleCreate(%v) for %s",
+	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	status := types.AppInstanceStatus{
-		UUIDandVersion:      config.UUIDandVersion,
-		DisplayName:         config.DisplayName,
-		FixedResources:      config.FixedResources,
-		UnderlayNetworkList: config.UnderlayNetworkList,
-		IoAdapterList:       config.IoAdapterList,
-		RestartCmd:          config.RestartCmd,
-		PurgeCmd:            config.PurgeCmd,
-		State:               types.INITIAL,
+		UUIDandVersion: config.UUIDandVersion,
+		DisplayName:    config.DisplayName,
+		State:          types.INITIAL,
 	}
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	c, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
 		config.UUIDandVersion.UUID, "purgeCmdCounter")
 	if err == nil {
-		if uint32(c) == status.PurgeCmd.Counter {
-			log.Infof("handleCreate(%v) for %s found matching purge counter %d",
+		if uint32(c) == config.PurgeCmd.Counter {
+			log.Functionf("handleCreate(%v) for %s found matching purge counter %d",
 				config.UUIDandVersion, config.DisplayName, c)
 		} else {
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d",
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
-			status.PurgeCmd.Counter = config.PurgeCmd.Counter
 			status.PurgeInprogress = types.RecreateVolumes
 			status.State = types.PURGING
 			// We persist the PurgeCmd Counter when
@@ -403,7 +397,7 @@ func handleCreate(ctxArg interface{}, key string,
 		}
 	} else {
 		// Save this PurgeCmd.Counter as the baseline
-		log.Infof("handleCreate(%v) for %s saving purge counter %d",
+		log.Functionf("handleCreate(%v) for %s saving purge counter %d",
 			config.UUIDandVersion, config.DisplayName,
 			config.PurgeCmd.Counter)
 		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
@@ -459,20 +453,21 @@ func handleCreate(ctxArg interface{}, key string,
 	// If there are no errors, go ahead with Instance creation.
 	changed := doUpdate(ctx, config, &status)
 	if changed {
-		log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
+		log.Functionf("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
 			config.DisplayName, config.UUIDandVersion.UUID)
 		publishAppInstanceStatus(ctx, &status)
 	}
-	log.Infof("handleCreate done for %s", config.DisplayName)
+	log.Functionf("handleCreate done for %s", config.DisplayName)
 }
 
 func handleModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
+	oldConfig := oldConfigArg.(types.AppInstanceConfig)
 	status := lookupAppInstanceStatus(ctx, key)
-	log.Infof("handleModify(%v) for %s",
+	log.Functionf("handleModify(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	// We handle at least ACL and activate changes. XXX What else?
@@ -483,29 +478,28 @@ func handleModify(ctxArg interface{}, key string,
 	// purge of disk changes, so we can generate errors if it is
 	// not a PurgeCmd and RestartCmd, respectively
 	// If we are purging then restart is redundant.
-	needPurge, needRestart, purgeReason, restartReason := quantifyChanges(config, *status)
+	needPurge, needRestart, purgeReason, restartReason := quantifyChanges(config, oldConfig, *status)
 	if needPurge {
 		needRestart = false
 	}
 
-	if config.RestartCmd.Counter != status.RestartCmd.Counter {
+	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter {
 
-		log.Infof("handleModify(%v) for %s restartcmd from %d to %d "+
+		log.Functionf("handleModify(%v) for %s restartcmd from %d to %d "+
 			"needRestart: %v",
 			config.UUIDandVersion, config.DisplayName,
-			status.RestartCmd.Counter, config.RestartCmd.Counter,
+			oldConfig.RestartCmd.Counter, config.RestartCmd.Counter,
 			needRestart)
 		if config.Activate {
 			// Will restart even if we crash/power cycle since that
 			// would also restart the app. Hence we can update
 			// the status counter here.
-			status.RestartCmd.Counter = config.RestartCmd.Counter
 			status.RestartInprogress = types.BringDown
 			status.State = types.RESTARTING
 		} else {
-			log.Infof("handleModify(%v) for %s restartcmd ignored config !Activate",
+			log.Functionf("handleModify(%v) for %s restartcmd ignored config !Activate",
 				config.UUIDandVersion, config.DisplayName)
-			status.RestartCmd.Counter = config.RestartCmd.Counter
+			oldConfig.RestartCmd.Counter = config.RestartCmd.Counter
 		}
 	} else if needRestart {
 		errStr := fmt.Sprintf("Need restart due to %s but not a restartCmd",
@@ -516,17 +510,16 @@ func handleModify(ctxArg interface{}, key string,
 		return
 	}
 
-	if config.PurgeCmd.Counter != status.PurgeCmd.Counter {
-		log.Infof("handleModify(%v) for %s purgecmd from %d to %d "+
+	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter {
+		log.Functionf("handleModify(%v) for %s purgecmd from %d to %d "+
 			"needPurge: %v",
 			config.UUIDandVersion, config.DisplayName,
-			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
+			oldConfig.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
 		if status.IsErrorSource(types.AppInstanceStatus{}) {
-			log.Infof("Removing error %s", status.Error)
+			log.Functionf("Removing error %s", status.Error)
 			status.ClearErrorWithSource()
 		}
-		status.PurgeCmd.Counter = config.PurgeCmd.Counter
 		status.PurgeInprogress = types.RecreateVolumes
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
@@ -544,26 +537,23 @@ func handleModify(ctxArg interface{}, key string,
 
 	changed := doUpdate(ctx, config, status)
 	if changed {
-		log.Infof("handleModify status change for %s", status.Key())
+		log.Functionf("handleModify status change for %s", status.Key())
 		publishAppInstanceStatus(ctx, status)
 	}
-	status.FixedResources = config.FixedResources
-	status.UnderlayNetworkList = config.UnderlayNetworkList
-	status.IoAdapterList = config.IoAdapterList
 	publishAppInstanceStatus(ctx, status)
-	log.Infof("handleModify done for %s", config.DisplayName)
+	log.Functionf("handleModify done for %s", config.DisplayName)
 }
 
 func handleDelete(ctx *zedmanagerContext, key string,
 	status *types.AppInstanceStatus) {
 
-	log.Infof("handleDelete(%v) for %s",
+	log.Functionf("handleDelete(%v) for %s",
 		status.UUIDandVersion, status.DisplayName)
 
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
 	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, status.UUIDandVersion.UUID)
-	log.Infof("handleDelete done for %s", status.DisplayName)
+	log.Functionf("handleDelete done for %s", status.DisplayName)
 }
 
 // Returns needRestart, needPurge, plus a string for each.
@@ -571,19 +561,19 @@ func handleDelete(ctx *zedmanagerContext, key string,
 // it returns needPurge.
 // If there is a change to the CPU etc resources it returns needRestart
 // Changes to ACLs don't result in either being returned.
-func quantifyChanges(config types.AppInstanceConfig,
+func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstanceConfig,
 	status types.AppInstanceStatus) (bool, bool, string, string) {
 
 	needPurge := false
 	needRestart := false
 	var purgeReason, restartReason string
-	log.Infof("quantifyChanges for %s %s",
+	log.Functionf("quantifyChanges for %s %s",
 		config.Key(), config.DisplayName)
-	if len(status.VolumeRefStatusList) != len(config.VolumeRefConfigList) {
+	if len(oldConfig.VolumeRefConfigList) != len(config.VolumeRefConfigList) {
 		str := fmt.Sprintf("number of volume ref changed from %d to %d",
-			len(status.VolumeRefStatusList),
+			len(oldConfig.VolumeRefConfigList),
 			len(config.VolumeRefConfigList))
-		log.Infof(str)
+		log.Functionf(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
@@ -599,72 +589,81 @@ func quantifyChanges(config types.AppInstanceConfig,
 			}
 		}
 	}
-	if len(status.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
+	if len(oldConfig.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
 		str := fmt.Sprintf("number of underlay interfaces changed from %d to %d",
-			len(status.UnderlayNetworkList),
+			len(oldConfig.UnderlayNetworkList),
 			len(config.UnderlayNetworkList))
-		log.Infof(str)
+		log.Functionf(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
 		for i, uc := range config.UnderlayNetworkList {
-			us := status.UnderlayNetworkList[i]
-			if us.AppMacAddr.String() != uc.AppMacAddr.String() {
+			old := oldConfig.UnderlayNetworkList[i]
+			if old.AppMacAddr.String() != uc.AppMacAddr.String() {
 				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
-					us.AppMacAddr, uc.AppMacAddr)
-				log.Infof(str)
+					old.AppMacAddr, uc.AppMacAddr)
+				log.Functionf(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if !us.AppIPAddr.Equal(uc.AppIPAddr) {
+			if !old.AppIPAddr.Equal(uc.AppIPAddr) {
 				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
-					us.AppIPAddr, uc.AppIPAddr)
-				log.Infof(str)
+					old.AppIPAddr, uc.AppIPAddr)
+				log.Functionf(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if us.Network != uc.Network {
+			if old.Network != uc.Network {
 				str := fmt.Sprintf("Network changed from %v to %v",
-					us.Network, uc.Network)
-				log.Infof(str)
+					old.Network, uc.Network)
+				log.Functionf(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
-			if !cmp.Equal(uc.ACLs, us.ACLs) {
-				log.Infof("FYI ACLs changed: %v",
-					cmp.Diff(uc.ACLs, us.ACLs))
+			if !cmp.Equal(old.ACLs, uc.ACLs) {
+				log.Functionf("FYI ACLs changed: %v",
+					cmp.Diff(old.ACLs, uc.ACLs))
 			}
 		}
 	}
-	if !cmp.Equal(config.IoAdapterList, status.IoAdapterList) {
+	if !cmp.Equal(config.IoAdapterList, oldConfig.IoAdapterList) {
 		str := fmt.Sprintf("IoAdapterList changed: %v",
-			cmp.Diff(config.IoAdapterList, status.IoAdapterList))
-		log.Infof(str)
+			cmp.Diff(oldConfig.IoAdapterList, config.IoAdapterList))
+		log.Functionf(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	}
-	if !cmp.Equal(config.FixedResources, status.FixedResources) {
+	if !cmp.Equal(config.FixedResources, oldConfig.FixedResources) {
 		str := fmt.Sprintf("FixedResources changed: %v",
-			cmp.Diff(config.FixedResources, status.FixedResources))
-		log.Infof(str)
+			cmp.Diff(oldConfig.FixedResources, config.FixedResources))
+		log.Functionf(str)
 		needRestart = true
 		restartReason += str + "\n"
 	}
-	log.Infof("quantifyChanges for %s %s returns %v, %v",
+	log.Functionf("quantifyChanges for %s %s returns %v, %v",
 		config.Key(), config.DisplayName, needPurge, needRestart)
 	return needPurge, needRestart, purgeReason, restartReason
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -672,7 +671,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -680,12 +679,12 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedmanagerContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

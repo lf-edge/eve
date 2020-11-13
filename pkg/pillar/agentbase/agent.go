@@ -61,7 +61,7 @@ func Run(agentSpecificContext AgentBase) {
 	if err := pidfile.CheckAndCreatePidfile(log, ctx.AgentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s\n", ctx.AgentName)
+	log.Functionf("Starting %s\n", ctx.AgentName)
 	if ctx.NeedWatchdog {
 		ctx.PubSub.StillRunning(ctx.AgentName, ctx.WarningTime, ctx.ErrorTime)
 	}

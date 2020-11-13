@@ -10,7 +10,7 @@ import (
 func handleVolumeRefCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleVolumeRefCreate(%s)", key)
+	log.Functionf("handleVolumeRefCreate(%s)", key)
 	config := configArg.(types.VolumeRefConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupVolumeRefStatus(ctx, key)
@@ -48,13 +48,13 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		}
 	}
 	publishVolumeRefStatus(ctx, status)
-	log.Infof("handleVolumeRefCreate(%s) Done", key)
+	log.Functionf("handleVolumeRefCreate(%s) Done", key)
 }
 
 func handleVolumeRefModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	configArg interface{}, oldConfigArg interface{}) {
 
-	log.Infof("handleVolumeRefModify(%s)", key)
+	log.Functionf("handleVolumeRefModify(%s)", key)
 	config := configArg.(types.VolumeRefConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := lookupVolumeRefStatus(ctx, config.Key())
@@ -68,13 +68,13 @@ func handleVolumeRefModify(ctxArg interface{}, key string,
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
 	}
-	log.Infof("handleVolumeRefModify(%s) Done", key)
+	log.Functionf("handleVolumeRefModify(%s) Done", key)
 }
 
 func handleVolumeRefDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleVolumeRefDelete(%s)", key)
+	log.Functionf("handleVolumeRefDelete(%s)", key)
 	config := configArg.(types.VolumeRefConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	unpublishVolumeRefStatus(ctx, config.Key())
@@ -84,7 +84,7 @@ func handleVolumeRefDelete(ctxArg interface{}, key string,
 		publishVolumeStatus(ctx, vs)
 		maybeDeleteVolume(ctx, vs)
 	}
-	log.Infof("handleVolumeRefDelete(%s) Done", key)
+	log.Functionf("handleVolumeRefDelete(%s) Done", key)
 }
 
 func lookupVolumeRefConfig(ctx *volumemgrContext, key string) *types.VolumeRefConfig {
@@ -92,7 +92,7 @@ func lookupVolumeRefConfig(ctx *volumemgrContext, key string) *types.VolumeRefCo
 	sub := ctx.subVolumeRefConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Debugf("lookupVolumeRefConfig(%s) not found", key)
+		log.Tracef("lookupVolumeRefConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.VolumeRefConfig)
@@ -104,7 +104,7 @@ func lookupVolumeRefStatus(ctx *volumemgrContext, key string) *types.VolumeRefSt
 	pub := ctx.pubVolumeRefStatus
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Debugf("lookupVolumeRefStatus(%s) not found", key)
+		log.Tracef("lookupVolumeRefStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.VolumeRefStatus)
@@ -114,15 +114,15 @@ func lookupVolumeRefStatus(ctx *volumemgrContext, key string) *types.VolumeRefSt
 func publishVolumeRefStatus(ctx *volumemgrContext, status *types.VolumeRefStatus) {
 
 	key := status.Key()
-	log.Debugf("publishVolumeRefStatus(%s)", key)
+	log.Tracef("publishVolumeRefStatus(%s)", key)
 	pub := ctx.pubVolumeRefStatus
 	pub.Publish(key, *status)
-	log.Debugf("publishVolumeRefStatus(%s) Done", key)
+	log.Tracef("publishVolumeRefStatus(%s) Done", key)
 }
 
 func unpublishVolumeRefStatus(ctx *volumemgrContext, key string) {
 
-	log.Debugf("unpublishVolumeRefStatus(%s)", key)
+	log.Tracef("unpublishVolumeRefStatus(%s)", key)
 	pub := ctx.pubVolumeRefStatus
 	c, _ := pub.Get(key)
 	if c == nil {
@@ -130,7 +130,7 @@ func unpublishVolumeRefStatus(ctx *volumemgrContext, key string) {
 		return
 	}
 	pub.Unpublish(key)
-	log.Debugf("unpublishVolumeRefStatus(%s) Done", key)
+	log.Tracef("unpublishVolumeRefStatus(%s) Done", key)
 }
 
 func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {

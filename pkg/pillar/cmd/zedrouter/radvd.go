@@ -37,7 +37,7 @@ interface %s {
 //	olIfname - Overlay Interface Name
 func createRadvdConfiglet(cfgPathname string, olIfname string) {
 
-	log.Debugf("createRadvdConfiglet: %s\n", olIfname)
+	log.Tracef("createRadvdConfiglet: %s\n", olIfname)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal("createRadvdConfiglet failed ", err)
@@ -48,7 +48,7 @@ func createRadvdConfiglet(cfgPathname string, olIfname string) {
 
 func deleteRadvdConfiglet(cfgPathname string) {
 
-	log.Debugf("createRadvdConfiglet: %s\n", cfgPathname)
+	log.Tracef("createRadvdConfiglet: %s\n", cfgPathname)
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Errorln(err)
 	}
@@ -58,7 +58,7 @@ func deleteRadvdConfiglet(cfgPathname string) {
 //    radvd -u radvd -C /run/zedrouter/radvd.${OLIFNAME}.conf -p /run/radvd.${OLIFNAME}.pid
 func startRadvd(cfgPathname string, olIfname string) {
 
-	log.Debugf("startRadvd: %s\n", cfgPathname)
+	log.Tracef("startRadvd: %s\n", cfgPathname)
 	pidPathname := "/run/radvd." + olIfname + ".pid"
 	cmd := "nohup"
 	args := []string{
@@ -70,8 +70,8 @@ func startRadvd(cfgPathname string, olIfname string) {
 		"-p",
 		pidPathname,
 	}
-	log.Infof("Creating %s at %s", "nohup radvd", agentlog.GetMyStack())
-	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Functionf("Creating %s at %s", "nohup radvd", agentlog.GetMyStack())
+	log.Functionf("Calling command %s %v\n", cmd, args)
 	go exec.Command(cmd, args...).Output()
 }
 
@@ -85,7 +85,7 @@ func getBridgeRadvdCfgFileName(bridgeName string) (string, string) {
 func stopRadvd(bridgeName string, printOnError bool) {
 	cfgFilename, cfgPathname := getBridgeRadvdCfgFileName(bridgeName)
 
-	log.Debugf("stopRadvd: cfgFileName:%s, cfgPathName:%s\n",
+	log.Tracef("stopRadvd: cfgFileName:%s, cfgPathName:%s\n",
 		cfgFilename, cfgPathname)
 	pkillUserArgs("radvd", cfgFilename, printOnError)
 	deleteRadvdConfiglet(cfgPathname)

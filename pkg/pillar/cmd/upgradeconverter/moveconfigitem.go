@@ -18,12 +18,12 @@ func moveConfigItemValueMap(ctxPtr *ucContext) error {
 		if newExists {
 			newTime, _ := fileTimeStamp(newFile)
 			oldTime, _ := fileTimeStamp(oldFile)
-			log.Debugf("moveConfigItemValueMap: newTime:%+v, oldTime: %+v",
+			log.Tracef("moveConfigItemValueMap: newTime:%+v, oldTime: %+v",
 				newTime, oldTime)
 			if oldTime.After(newTime) {
-				log.Infof("oldFile more recent than newFile. Copy")
+				log.Functionf("oldFile more recent than newFile. Copy")
 			} else {
-				log.Infof("newFile more recent than oldFile. Discard old")
+				log.Functionf("newFile more recent than oldFile. Discard old")
 				err := os.RemoveAll(ctxPtr.oldConfigItemValueMapDir())
 				if err != nil {
 					log.Error(err)
@@ -31,17 +31,17 @@ func moveConfigItemValueMap(ctxPtr *ucContext) error {
 				return nil
 			}
 		} else {
-			log.Infof("Old Config Exists. No New Config. Copy")
+			log.Functionf("Old Config Exists. No New Config. Copy")
 		}
 	} else if newExists {
-		log.Infof("No Old Config. Only new Config Exists. No copy needed")
+		log.Functionf("No Old Config. Only new Config Exists. No copy needed")
 		return nil
 	} else {
-		log.Infof("Neither new nor old configs exist. Bail")
+		log.Functionf("Neither new nor old configs exist. Bail")
 		return nil
 	}
 
-	log.Infof("Copy from %s to %s", oldFile, newFile)
+	log.Functionf("Copy from %s to %s", oldFile, newFile)
 	err := CopyFile(oldFile, newFile)
 	if err != nil {
 		log.Error(err)
@@ -51,6 +51,6 @@ func moveConfigItemValueMap(ctxPtr *ucContext) error {
 	if err != nil {
 		log.Error(err)
 	}
-	log.Debugf("upgradeconverter.moveConfigItemValueMap done")
+	log.Tracef("upgradeconverter.moveConfigItemValueMap done")
 	return nil
 }

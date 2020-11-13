@@ -50,15 +50,15 @@ func watchReadDir(log *base.LogObject, configDir string, fileChanges chan<- stri
 			}
 		}
 		if retry {
-			log.Debugln("watchReadDir retry modified",
+			log.Traceln("watchReadDir retry modified",
 				configDir, file.Name())
 		} else {
-			log.Infoln("watchReadDir modified", file.Name())
+			log.Functionln("watchReadDir modified", file.Name())
 		}
 		fileChanges <- "M " + file.Name()
 	}
 	if !retry {
-		log.Infof("watchReadDir done for %s\n", configDir)
+		log.Functionf("watchReadDir done for %s\n", configDir)
 	}
 	return foundRestart, foundRestarted
 }
@@ -74,7 +74,7 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 	defer w.Close()
 
 	funcDone := make(chan struct{})
-	log.Infof("Creating %s at %s", "func", agentlog.GetMyStack())
+	log.Functionf("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		done := false
 		for !done {
@@ -88,20 +88,20 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Debugln("WatchStatus event:", event)
+				// log.Traceln("WatchStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Debugln("WatchStatus modified", baseName)
+					// log.Traceln("WatchStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&fsnotify.Chmod != 0 {
-					// log.Debugln("WatchStatus chmod", baseName)
+					// log.Traceln("WatchStatus chmod", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Debugln("WatchStatus deleted", baseName)
+					// log.Traceln("WatchStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
 					log.Errorln("WatchStatus unknown", event, baseName)
@@ -120,7 +120,7 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 		log.Error(err, " Inintial Add: ", statusDir)
 		// Check again when timer fires
 	}
-	// log.Debugln("WatchStatus added", statusDir)
+	// log.Traceln("WatchStatus added", statusDir)
 
 	foundRestart, foundRestarted := watchReadDir(log, statusDir, fileChanges,
 		false, jsonOnly)
@@ -154,7 +154,7 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 		case <-ticker.C:
 			// Remove and re-add
 			// XXX do we also need to re-scan?
-			// log.Debugln("WatchStatus remove/re-add", statusDir)
+			// log.Traceln("WatchStatus remove/re-add", statusDir)
 			err = w.Remove(statusDir)
 			if err != nil {
 				log.Error(err, " Remove: ", statusDir)

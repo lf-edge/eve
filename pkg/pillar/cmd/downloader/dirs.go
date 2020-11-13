@@ -16,7 +16,7 @@ func createDownloadDirs() {
 	// now create the download dirs
 	for _, dirName := range workingDirTypes {
 		if _, err := os.Stat(dirName); err != nil {
-			log.Debugf("Create %s", dirName)
+			log.Tracef("Create %s", dirName)
 			if err := os.MkdirAll(dirName, 0700); err != nil {
 				log.Fatal(err)
 			}

@@ -150,23 +150,23 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	if netconfig == nil {
 		return ipsets
 	}
-	// walk all of netconfig - find all hosts which use this network
-	pub := ctx.pubAppNetworkStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.AppNetworkStatus)
-		if skipKey != "" && status.Key() == skipKey {
-			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
+	// walk all app instances to find all which use this network
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := c.(types.AppNetworkConfig)
+		if skipKey != "" && config.Key() == skipKey {
+			log.Tracef("compileNetworkIpsetsStatus skipping %s\n",
 				skipKey)
 			continue
 		}
 
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.Network != netconfig.UUID {
+		for _, ulConfig := range config.UnderlayNetworkList {
+			if ulConfig.Network != netconfig.UUID {
 				continue
 			}
 			ipsets = append(ipsets,
-				compileAceIpsets(ulStatus.ACLs)...)
+				compileAceIpsets(ulConfig.ACLs)...)
 		}
 	}
 	return ipsets
@@ -232,7 +232,7 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 func createACLConfiglet(aclArgs types.AppNetworkACLArgs,
 	ACLs []types.ACE) (types.IPTablesRuleList, error) {
 
-	log.Infof("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
+	log.Functionf("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
 	rules, err := aclToRules(aclArgs, ACLs)
@@ -271,7 +271,7 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 	rules types.IPTablesRuleList) (types.IPTablesRuleList, error) {
 	var err error
 	var activeRules types.IPTablesRuleList
-	log.Debugf("applyACLRules: ipVer %d, bridgeName %s appIP %s with %d rules\n",
+	log.Tracef("applyACLRules: ipVer %d, bridgeName %s appIP %s with %d rules\n",
 		aclArgs.IPVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
 
 	// the catch all log/drop rules are towards the end of the rule list
@@ -284,9 +284,9 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 	for numRules > 0 {
 		numRules--
 		rule := rules[numRules]
-		log.Debugf("createACLConfiglet: add rule %v\n", rule)
+		log.Tracef("createACLConfiglet: add rule %v\n", rule)
 		if err := rulePrefix(aclArgs, &rule); err != nil {
-			log.Debugf("createACLConfiglet: skipping rule %v\n", rule)
+			log.Tracef("createACLConfiglet: skipping rule %v\n", rule)
 			continue
 		}
 		err = executeIPTablesRule("-I", rule)
@@ -303,7 +303,7 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTablesRuleList, error) {
 
 	var rulesList types.IPTablesRuleList
-	log.Debugf("aclToRules(%s, %s, %d, %s, %s, %v\n",
+	log.Tracef("aclToRules(%s, %s, %d, %s, %s, %v\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.IPVer,
 		aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
 
@@ -535,7 +535,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		}
 		rulesList = append(rulesList, rules...)
 	}
-	log.Debugf("aclToRules(%v)\n", rulesList)
+	log.Tracef("aclToRules(%v)\n", rulesList)
 	return rulesList, nil
 }
 
@@ -548,7 +548,7 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 	aclRule3.IPVer = aclArgs.IPVer
 	aclRule4.IPVer = aclArgs.IPVer
 
-	log.Debugf("aclDropRules: bridgeName %s, vifName %s\n",
+	log.Tracef("aclDropRules: bridgeName %s, vifName %s\n",
 		aclArgs.BridgeName, aclArgs.VifName)
 
 	// Always match on interface. Note that rulePrefix adds physdev-in
@@ -779,7 +779,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 			// These rules are applied on the upLink interfaces and port number.
 			// loop through the uplink interfaces
 			for _, upLink := range aclArgs.UpLinks {
-				log.Debugf("PortMap - upLink %s\n", upLink)
+				log.Tracef("PortMap - upLink %s\n", upLink)
 				// The DNAT/SNAT rules do not compare fport and ipset
 				// Make sure packets are returned to zedrouter and not
 				// e.g., out a directly attached interface in the domU
@@ -961,8 +961,8 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		// Add separate DROP without the limit to count the excess
 		unlimitedOutActions := []string{"-j", "DROP"}
 		unlimitedInActions := []string{"-j", "DROP"}
-		log.Debugf("unlimitedOutArgs %v\n", unlimitedOutArgs)
-		log.Debugf("unlimitedInArgs %v\n", unlimitedInArgs)
+		log.Tracef("unlimitedOutArgs %v\n", unlimitedOutArgs)
+		log.Tracef("unlimitedInArgs %v\n", unlimitedInArgs)
 		aclRule5.Rule = unlimitedInArgs
 		aclRule5.Action = unlimitedInActions
 		aclRule5.IsLimitDropRule = true
@@ -974,7 +974,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		aclRule6.IsUserConfigured = true
 		rulesList = append(rulesList, aclRule5, aclRule6)
 	}
-	log.Infof("rulesList %v\n", rulesList)
+	log.Functionf("rulesList %v\n", rulesList)
 	return rulesList, nil
 }
 
@@ -1132,7 +1132,7 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	if (len(newIpsets) != len(oldIpsets)) || (len(staleIpsets) != 0) {
 		restartDnsmasq = true
 	}
-	log.Infof("diffIpsets: restart %v, new %v, stale %v",
+	log.Functionf("diffIpsets: restart %v, new %v, stale %v",
 		restartDnsmasq, newIpsets, staleIpsets)
 	return newIpsets, staleIpsets, restartDnsmasq
 }
@@ -1145,19 +1145,19 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, ACLs []types.ACE,
 	oldRules types.IPTablesRuleList, force bool) (types.IPTablesRuleList, error) {
 
-	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
+	log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
 	if compareACLs(oldACLs, ACLs) == true && !force {
-		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
+		log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
 			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 		return oldRules, nil
 	}
 
 	rules, err := deleteACLConfiglet(aclArgs, oldRules)
 	if err != nil {
-		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
+		log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
 			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 		return rules, err
 	}
@@ -1187,7 +1187,7 @@ func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, AC
 		if err != nil {
 			log.Errorf("updateACLConfiglet: Error clearing flows before update - %s", err)
 		} else {
-			log.Infof("updateACLConfiglet: Cleared %d flows before updating ACLs for app num %d",
+			log.Functionf("updateACLConfiglet: Cleared %d flows before updating ACLs for app num %d",
 				number, aclArgs.AppNum)
 		}
 	}
@@ -1199,11 +1199,11 @@ func deleteACLConfiglet(aclArgs types.AppNetworkACLArgs,
 	rules types.IPTablesRuleList) (types.IPTablesRuleList, error) {
 	var err error
 	var activeRules types.IPTablesRuleList
-	log.Infof("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
+	log.Functionf("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
 		aclArgs.BridgeName, aclArgs.VifName, rules)
 
 	for _, rule := range rules {
-		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
+		log.Tracef("deleteACLConfiglet: rule %v\n", rule)
 		if err != nil {
 			activeRules = append(activeRules, rule)
 		} else {
@@ -1364,7 +1364,7 @@ func checkForMatchCondition(ace types.ACE, ace1 types.ACE, matchTypes []string) 
 		value1 := valueList1[idx]
 		if value == "" || value1 == "" ||
 			value != value1 {
-			log.Infof("difference for %d: value %s value1 %s",
+			log.Functionf("difference for %d: value %s value1 %s",
 				idx, value, value1)
 			return false
 		}
@@ -1412,7 +1412,7 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 // Network Instance Level ACL rule handling routines
 func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArgs) error {
 
-	log.Infof("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
+	log.Functionf("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
 	rulesList := networkInstanceBridgeRules(aclArgs)
 	// For Network instance, we are going to do a "-A" operation
 	// so that, the rules, will at the end of the rule chain
@@ -1475,7 +1475,7 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesR
 	default:
 	}
 
-	log.Debugf("bridge(%s, %v) attach iptable rules:%v\n",
+	log.Tracef("bridge(%s, %v) attach iptable rules:%v\n",
 		aclArgs.BridgeName, aclArgs.BridgeIP, rulesList)
 	return rulesList
 }
@@ -1485,7 +1485,7 @@ func createFlowMonDummyInterface(fwmark uint32) {
 	dummyIntfName := "flow-mon-dummy"
 	link, err := netlink.LinkByName(dummyIntfName)
 	if link != nil {
-		log.Infof("createFlowMonDummyInterface: %s already present", dummyIntfName)
+		log.Functionf("createFlowMonDummyInterface: %s already present", dummyIntfName)
 		return
 	}
 
@@ -1581,7 +1581,7 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 	}
 
 	newChain := []string{"-t", "mangle", "-N", name}
-	log.Infof("createMarkAndAcceptChain: Creating new chain (%s)", name)
+	log.Functionf("createMarkAndAcceptChain: Creating new chain (%s)", name)
 	err := iptables.IptableCmd(log, newChain...)
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New chain (%s) creation failed: %s",
@@ -1677,6 +1677,6 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 	if err != nil {
 		log.Errorf("appCheckContainerStatsACL: iptableCmd err %v", err)
 	} else {
-		log.Infof("appCheckContainerStatsACL: iptableCmd %s for %s", action, appIPAddr.String())
+		log.Functionf("appCheckContainerStatsACL: iptableCmd %s for %s", action, appIPAddr.String())
 	}
 }

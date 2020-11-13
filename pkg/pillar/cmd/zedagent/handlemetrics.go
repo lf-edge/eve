@@ -30,12 +30,24 @@ import (
 	"github.com/shirou/gopsutil/host"
 )
 
-func handleDiskMetricModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDiskMetricCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDiskMetricImpl(ctxArg, key, statusArg)
+}
+
+func handleDiskMetricModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDiskMetricImpl(ctxArg, key, statusArg)
+}
+
+func handleDiskMetricImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.DiskMetric)
 	ctx := ctxArg.(*zedagentContext)
 	ctx.iteration++
 	path := status.DiskPath
-	log.Infof("handleDiskMetricModify: %s", path)
+	log.Functionf("handleDiskMetricImpl: %s", path)
 }
 
 func handleDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -43,7 +55,7 @@ func handleDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{
 	ctx := ctxArg.(*zedagentContext)
 	ctx.iteration++
 	path := status.DiskPath
-	log.Infof("handleDiskMetricModify: %s", path)
+	log.Functionf("handleDiskMetricModify: %s", path)
 }
 
 func lookupDiskMetric(ctx *zedagentContext, diskPath string) *types.DiskMetric {
@@ -59,29 +71,15 @@ func lookupDiskMetric(ctx *zedagentContext, diskPath string) *types.DiskMetric {
 
 func getAllDiskMetrics(ctx *zedagentContext) []*types.DiskMetric {
 	var retList []*types.DiskMetric
-	log.Debugf("getAllDiskMetrics")
+	log.Tracef("getAllDiskMetrics")
 	sub := ctx.subDiskMetric
 	items := sub.GetAll()
 	for _, st := range items {
 		status := st.(types.DiskMetric)
 		retList = append(retList, &status)
 	}
-	log.Debugf("getAllDiskMetrics: Done")
+	log.Tracef("getAllDiskMetrics: Done")
 	return retList
-}
-
-func handleAppDiskMetricModify(ctxArg interface{}, key string, statusArg interface{}) {
-	status := statusArg.(types.AppDiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
-	log.Infof("handleAppDiskMetricModify: Received %s", status.DiskPath)
-}
-
-func handleAppDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
-	status := statusArg.(types.AppDiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
-	log.Infof("handleAppDiskMetricDelete: %s", status.DiskPath)
 }
 
 func lookupAppDiskMetric(ctx *zedagentContext, diskPath string) *types.AppDiskMetric {
@@ -138,7 +136,7 @@ func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
 // Run a periodic post of the metrics
 func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
-	log.Infoln("starting report metrics timer task")
+	log.Functionln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
 	interval := time.Duration(ctx.globalConfig.GlobalValueInt(types.MetricInterval)) * time.Second
@@ -179,7 +177,7 @@ func updateMetricsTimer(metricInterval uint32, tickerHandle interface{}) {
 		return
 	}
 	interval := time.Duration(metricInterval) * time.Second
-	log.Infof("updateMetricsTimer() change to %v", interval)
+	log.Functionf("updateMetricsTimer() change to %v", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
@@ -194,7 +192,7 @@ func lookupDomainMetric(ctx *zedagentContext, uuidStr string) *types.DomainMetri
 	sub := ctx.getconfigCtx.subDomainMetric
 	m, _ := sub.Get(uuidStr)
 	if m == nil {
-		log.Infof("lookupDomainMetric(%s) not found", uuidStr)
+		log.Functionf("lookupDomainMetric(%s) not found", uuidStr)
 		return nil
 	}
 	metric := m.(types.DomainMetric)
@@ -231,9 +229,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	if err != nil {
 		log.Fatalf("host.Info(): %s", err)
 	}
-	log.Debugf("uptime %d = %d days",
+	log.Tracef("uptime %d = %d days",
 		info.Uptime, info.Uptime/(3600*24))
-	log.Debugf("Booted at %v", time.Unix(int64(info.BootTime), 0).UTC())
+	log.Tracef("Booted at %v", time.Unix(int64(info.BootTime), 0).UTC())
 
 	// Note that uptime is seconds we've been up. We're converting
 	// to a timestamp. That better not be interpreted as a time since
@@ -261,7 +259,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 	ReportDeviceMetric.Memory.UsedPercentage = usedPercent
 	ReportDeviceMetric.Memory.AvailPercentage = 100.0 - (usedPercent)
-	log.Debugf("Device Memory from xl info: %v %v %v %v",
+	log.Tracef("Device Memory from xl info: %v %v %v %v",
 		ReportDeviceMetric.Memory.UsedMem,
 		ReportDeviceMetric.Memory.AvailMem,
 		ReportDeviceMetric.Memory.UsedPercentage,
@@ -338,7 +336,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 		ReportDeviceMetric.Log = deviceLogMetric
 	}
-	log.Debugln("log metrics: ", ReportDeviceMetric.Log)
+	log.Traceln("log metrics: ", ReportDeviceMetric.Log)
 
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := types.MetricsMap{} // Start empty
@@ -370,7 +368,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			metric.LastSuccess = ls
 		}
 		for url, um := range cm.URLCounters {
-			log.Debugf("CloudMetrics[%s] url %s %v",
+			log.Tracef("CloudMetrics[%s] url %s %v",
 				ifname, url, um)
 			urlMet := new(metrics.UrlcloudMetric)
 			urlMet.Url = url
@@ -400,7 +398,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsNim)
 	}
 	for agentName, cm := range cipherMetrics {
-		log.Debugf("Cipher metrics for %s: %+v", agentName, cm)
+		log.Tracef("Cipher metrics for %s: %+v", agentName, cm)
 		metric := metrics.CipherMetric{AgentName: agentName,
 			FailureCount: cm.FailureCount,
 			SuccessCount: cm.SuccessCount,
@@ -448,7 +446,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			persistUsage = diskMetric.UsedBytes
 		}
 	}
-	log.Debugf("DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
+	log.Tracef("DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
 
 	// Determine how much we use in /persist and how much of it is
 	// for the benefits of applications
@@ -459,13 +457,13 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			persistAppUsage += diskMetric.UsedBytes
 		}
 	}
-	log.Debugf("persistAppUsage %d, elapse sec %v", persistAppUsage, time.Since(startPubTime).Seconds())
+	log.Tracef("persistAppUsage %d, elapse sec %v", persistAppUsage, time.Since(startPubTime).Seconds())
 
 	persistOverhead := persistUsage - persistAppUsage
 	// Convert to MB
 	runtimeStorageOverhead := types.RoundupToKB(types.RoundupToKB(persistOverhead))
 	appRunTimeStorage := types.RoundupToKB(types.RoundupToKB(persistAppUsage))
-	log.Debugf("runtimeStorageOverhead %d MB, appRunTimeStorage %d MB",
+	log.Tracef("runtimeStorageOverhead %d MB, appRunTimeStorage %d MB",
 		runtimeStorageOverhead, appRunTimeStorage)
 	ReportDeviceMetric.RuntimeStorageOverheadMB = runtimeStorageOverhead
 	ReportDeviceMetric.AppRunTimeStorageMB = appRunTimeStorage
@@ -484,7 +482,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	// Get device info using nil UUID
 	dm := lookupDomainMetric(ctx, nilUUID.String())
 	if dm != nil {
-		log.Debugf("host CPU: %d, percent used %d",
+		log.Tracef("host CPU: %d, percent used %d",
 			dm.CPUTotal, (100*dm.CPUTotal)/uint64(info.Uptime))
 		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotal)
 
@@ -493,7 +491,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = dm.AvailableMemory
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = dm.UsedMemoryPercent
 		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = 100.0 - (dm.UsedMemoryPercent)
-		log.Debugf("host Memory: %v %v %v %v",
+		log.Tracef("host Memory: %v %v %v %v",
 			ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
 			ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
 			ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
@@ -525,7 +523,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 		dm := lookupDomainMetric(ctx, aiStatus.Key())
 		if dm != nil {
-			log.Debugf("metrics for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
+			log.Tracef("metrics for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
 				aiStatus.DomainName, dm.CPUTotal, dm.UsedMemory,
 				dm.AvailableMemory, dm.UsedMemoryPercent)
 			ReportAppMetric.Cpu.Total = *proto.Uint64(dm.CPUTotal)
@@ -537,7 +535,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 
 		appInterfaceList := aiStatus.GetAppInterfaceList()
-		log.Debugf("ReportMetrics: domainName %s ifs %v",
+		log.Tracef("ReportMetrics: domainName %s ifs %v",
 			aiStatus.DomainName, appInterfaceList)
 		// Use the network metrics from zedrouter subscription
 		for _, ifName := range appInterfaceList {
@@ -553,7 +551,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			}
 			networkDetails := new(metrics.NetworkMetric)
 			name := appIfnameToName(&aiStatus, metric.IfName)
-			log.Debugf("app %s/%s localname %s name %s",
+			log.Tracef("app %s/%s localname %s name %s",
 				aiStatus.Key(), aiStatus.DisplayName,
 				metric.IfName, name)
 			networkDetails.IName = name
@@ -597,7 +595,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		for _, vrs := range aiStatus.VolumeRefStatusList {
 			appDiskDetails := new(metrics.AppDiskMetric)
 			if vrs.ActiveFileLocation == "" {
-				log.Infof("ActiveFileLocation is empty for %s", vrs.Key())
+				log.Functionf("ActiveFileLocation is empty for %s", vrs.Key())
 			} else {
 				err := getDiskInfo(ctx, vrs, appDiskDetails)
 				if err != nil {
@@ -654,9 +652,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	createVolumeInstanceMetrics(ctx, ReportMetrics)
 	createProcessMetrics(ctx, ReportMetrics)
 
-	log.Debugf("PublishMetricsToZedCloud sending %s", ReportMetrics)
+	log.Tracef("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
-	log.Debugf("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
+	log.Tracef("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
 }
 
 func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
@@ -715,7 +713,7 @@ func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
 			si.ShaTlsRootCa = sha
 		}
 	}
-	log.Debugf("getSecurityInfo returns %+v", si)
+	log.Tracef("getSecurityInfo returns %+v", si)
 	return si
 }
 
@@ -774,7 +772,7 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	status.NetworkProxyURL = proxyConfig.NetworkProxyURL
 	status.WpadURL = proxyConfig.WpadURL
 	// XXX add? status.ProxyCertPEM = proxyConfig.ProxyCertPEM
-	log.Debugf("encodeProxyStatus: %+v", status)
+	log.Tracef("encodeProxyStatus: %+v", status)
 	return status
 }
 
@@ -832,7 +830,7 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	aiStatus *types.AppInstanceStatus,
 	aa *types.AssignableAdapters, iteration int) {
-	log.Infof("PublishAppInfoToZedCloud uuid %s", uuid)
+	log.Functionf("PublishAppInfoToZedCloud uuid %s", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
 
 	appType := new(info.ZInfoTypes)
@@ -859,7 +857,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 		if aiStatus.BootTime.IsZero() {
 			// If never booted
-			log.Infoln("BootTime is empty")
+			log.Functionln("BootTime is empty")
 		} else {
 			bootTime, _ := ptypes.TimestampProto(aiStatus.BootTime)
 			ReportAppInfo.BootTime = bootTime
@@ -882,7 +880,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					reportAA.IoAddressList = append(reportAA.IoAddressList,
 						reportMac)
 				}
-				log.Debugf("AssignableAdapters for %s macs %v",
+				log.Tracef("AssignableAdapters for %s macs %v",
 					reportAA.Name, reportAA.IoAddressList)
 			}
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
@@ -892,7 +890,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		// Mostly reporting the UP status
 		// We extract the appIP from the dnsmasq assignment
 		ifNames := (*aiStatus).GetAppInterfaceList()
-		log.Debugf("ReportAppInfo: domainName %s ifs %v",
+		log.Tracef("ReportAppInfo: domainName %s ifs %v",
 			aiStatus.DomainName, ifNames)
 		for _, ifname := range ifNames {
 			networkInfo := new(info.ZInfoNetwork)
@@ -905,12 +903,17 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			networkInfo.Up = allocated
 			networkInfo.IpAddrMisMatch = ipAddrMismatch
 			name := appIfnameToName(aiStatus, ifname)
-			log.Debugf("app %s/%s localName %s devName %s",
+			log.Tracef("app %s/%s localName %s devName %s",
 				aiStatus.Key(), aiStatus.DisplayName,
 				ifname, name)
 			networkInfo.DevName = *proto.String(name)
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
 				networkInfo)
+		}
+
+		for _, vr := range aiStatus.VolumeRefStatusList {
+			ReportAppInfo.VolumeRefs = append(ReportAppInfo.VolumeRefs,
+				vr.VolumeID.String())
 		}
 	}
 
@@ -919,7 +922,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		x.Ainfo = ReportAppInfo
 	}
 
-	log.Infof("PublishAppInfoToZedCloud sending %v", ReportInfo)
+	log.Functionf("PublishAppInfoToZedCloud sending %v", ReportInfo)
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
@@ -955,7 +958,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	ctStatus *types.ContentTreeStatus, iteration int) {
 
-	log.Infof("PublishContentInfoToZedCloud uuid %s", uuid)
+	log.Functionf("PublishContentInfoToZedCloud uuid %s", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
 
 	contentType := new(info.ZInfoTypes)
@@ -992,7 +995,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		x.Cinfo = ReportContentInfo
 	}
 
-	log.Infof("PublishContentInfoToZedCloud sending %v", ReportInfo)
+	log.Functionf("PublishContentInfoToZedCloud sending %v", ReportInfo)
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
@@ -1026,7 +1029,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	volStatus *types.VolumeStatus, iteration int) {
 
-	log.Infof("PublishVolumeToZedCloud uuid %s", uuid)
+	log.Functionf("PublishVolumeToZedCloud uuid %s", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
 
 	volumeType := new(info.ZInfoTypes)
@@ -1050,7 +1053,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		}
 
 		if volStatus.FileLocation == "" {
-			log.Infof("FileLocation is empty for %s", volStatus.Key())
+			log.Functionf("FileLocation is empty for %s", volStatus.Key())
 		} else {
 			VolumeResourcesInfo := new(info.VolumeResources)
 			err := getVolumeResourcesInfo(ctx, volStatus, VolumeResourcesInfo)
@@ -1071,7 +1074,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		x.Vinfo = ReportVolumeInfo
 	}
 
-	log.Infof("PublishVolumeToZedCloud sending %v", ReportInfo)
+	log.Functionf("PublishVolumeToZedCloud sending %v", ReportInfo)
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
@@ -1103,7 +1106,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 // When blob Status is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus *types.BlobStatus, iteration int) {
-	log.Infof("PublishBlobInfoToZedCloud blobSha %v", blobSha)
+	log.Functionf("PublishBlobInfoToZedCloud blobSha %v", blobSha)
 	var ReportInfo = &info.ZInfoMsg{}
 
 	contentType := new(info.ZInfoTypes)
@@ -1129,7 +1132,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		blobInfoList.Binfo = ReportBlobInfoList
 	}
 
-	log.Infof("PublishBlobInfoToZedCloud sending %v", ReportInfo)
+	log.Functionf("PublishBlobInfoToZedCloud sending %v", ReportInfo)
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
@@ -1187,7 +1190,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 		case http.StatusNotFound, http.StatusGone:
 			// Assume the resource is gone in the controller
 
-			log.Infof("SendProtoBuf: %s silently ignore code %d %s",
+			log.Functionf("SendProtoBuf: %s silently ignore code %d %s",
 				url, resp.StatusCode, http.StatusText(resp.StatusCode))
 			return nil
 		}
@@ -1225,12 +1228,12 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	vifname string) (string, bool, string, bool) {
 
-	log.Debugf("getAppIP(%s, %s)", aiStatus.Key(), vifname)
+	log.Tracef("getAppIP(%s, %s)", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.VifUsed != vifname {
 			continue
 		}
-		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s",
+		log.Tracef("getAppIP(%s, %s) found underlay %s assigned %v mac %s",
 			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
 		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac, ulStatus.IPAddrMisMatch
 	}
@@ -1238,7 +1241,7 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 }
 
 func createVolumeInstanceMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {
-	log.Debugf("Volume instance metrics started")
+	log.Tracef("Volume instance metrics started")
 	sub := ctx.getconfigCtx.subVolumeStatus
 	volumelist := sub.GetAll()
 	if volumelist == nil || len(volumelist) == 0 {
@@ -1250,13 +1253,13 @@ func createVolumeInstanceMetrics(ctx *zedagentContext, reportMetrics *metrics.ZM
 		volumeMetric.Uuid = volumeStatus.VolumeID.String()
 		volumeMetric.DisplayName = volumeStatus.DisplayName
 		if volumeStatus.FileLocation == "" {
-			log.Infof("FileLocation is empty for %s", volumeStatus.Key())
+			log.Functionf("FileLocation is empty for %s", volumeStatus.Key())
 		} else {
 			getVolumeResourcesMetrics(ctx, volumeStatus.FileLocation, volumeMetric)
 		}
 		reportMetrics.Vm = append(reportMetrics.Vm, volumeMetric)
 	}
-	log.Debugf("Volume instance metrics done: %v", reportMetrics.Vm)
+	log.Tracef("Volume instance metrics done: %v", reportMetrics.Vm)
 }
 
 func getVolumeResourcesMetrics(ctx *zedagentContext, name string, volumeMetric *metrics.ZMetricVolume) error {
@@ -1273,7 +1276,7 @@ func getVolumeResourcesMetrics(ctx *zedagentContext, name string, volumeMetric *
 }
 
 func createProcessMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {
-	log.Debugf("Process metrics started")
+	log.Tracef("Process metrics started")
 	sub := ctx.getconfigCtx.subProcessMetric
 	items := sub.GetAll()
 	for _, item := range items {
@@ -1297,7 +1300,7 @@ func createProcessMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMs
 		processMetric.MemoryPercent = p.MemoryPercent
 		reportMetrics.Pr = append(reportMetrics.Pr, processMetric)
 	}
-	log.Debugf("Process metrics done: %v", reportMetrics.Pr)
+	log.Tracef("Process metrics done: %v", reportMetrics.Pr)
 }
 
 func createNetworkInstanceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetricMsg) {
@@ -1312,7 +1315,7 @@ func createNetworkInstanceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMet
 		metricInstance := protoEncodeNetworkInstanceMetricProto(metrics)
 		reportMetrics.Nm = append(reportMetrics.Nm, metricInstance)
 	}
-	log.Debugln("network instance metrics: ", reportMetrics.Nm)
+	log.Traceln("network instance metrics: ", reportMetrics.Nm)
 }
 
 func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) *zmet.ZMetricNetworkInstance {

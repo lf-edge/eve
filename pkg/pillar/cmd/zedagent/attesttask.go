@@ -105,7 +105,7 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
-	log.Debugf("Sending Nonce request %v", attestReq)
+	log.Tracef("Sending Nonce request %v", attestReq)
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
@@ -183,7 +183,7 @@ func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 		uefiVersion.VersionType = attest.AttestVersionType_ATTEST_VERSION_TYPE_FIRMWARE
 		uefiVersion.Version = biosStr
 		quoteMsg.Versions = append(quoteMsg.Versions, uefiVersion)
-		log.Infof("quoteMsg.Versions %s %s", eveVersion.Version, uefiVersion.Version)
+		log.Functionf("quoteMsg.Versions %s %s", eveVersion.Version, uefiVersion.Version)
 	}
 	return nil
 }
@@ -255,7 +255,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
-	log.Debugf("Sending Quote request")
+	log.Tracef("Sending Quote request")
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
@@ -297,7 +297,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 				encryptedKey := sk.GetKey()
 				if encryptedKeyType == attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK {
 					publishEncryptedKeyFromController(attestCtx, encryptedKey)
-					log.Infof("[ATTEST] published Controller-given encrypted key")
+					log.Functionf("[ATTEST] published Controller-given encrypted key")
 				}
 			}
 		}
@@ -350,7 +350,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
-	log.Debugf("Sending Escrow data")
+	log.Tracef("Sending Escrow data")
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
@@ -406,7 +406,7 @@ func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error 
 
 	//Clear existing quote before requesting a new one
 	if attestCtx.InternalQuote != nil {
-		log.Infof("[ATTEST] Clearing current quote, before requesting a new one")
+		log.Functionf("[ATTEST] Clearing current quote, before requesting a new one")
 		attestCtx.InternalQuote = nil
 	}
 	publishAttestNonce(attestCtx)
@@ -415,7 +415,7 @@ func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error 
 
 //PunchWatchdog implements PunchWatchdog method of zattest.Watchdog
 func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
-	log.Debug("[ATTEST] Punching watchdog")
+	log.Trace("[ATTEST] Punching watchdog")
 	ctx.PubSub.StillRunning(attestWdName, warningTime, errorTime)
 	return nil
 }
@@ -492,14 +492,14 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 
 // start the task threads
 func attestModuleStart(ctx *zedagentContext) error {
-	log.Info("[ATTEST] Starting attestation task")
+	log.Function("[ATTEST] Starting attestation task")
 	if ctx.attestCtx == nil {
 		return fmt.Errorf("No attest module context")
 	}
 	if ctx.attestCtx.attestFsmCtx == nil {
 		return fmt.Errorf("No state machine context found")
 	}
-	log.Infof("Creating %s at %s", "attestFsmCtx.EnterEventLoop",
+	log.Functionf("Creating %s at %s", "attestFsmCtx.EnterEventLoop",
 		agentlog.GetMyStack())
 	go ctx.attestCtx.attestFsmCtx.EnterEventLoop()
 	zattest.Kickstart(ctx.attestCtx.attestFsmCtx)
@@ -510,7 +510,18 @@ func attestModuleStart(ctx *zedagentContext) error {
 }
 
 // pubsub functions
-func handleAttestQuoteModify(ctxArg interface{}, key string, quoteArg interface{}) {
+func handleAttestQuoteCreate(ctxArg interface{}, key string,
+	quoteArg interface{}) {
+	handleAttestQuoteImpl(ctxArg, key, quoteArg)
+}
+
+func handleAttestQuoteModify(ctxArg interface{}, key string,
+	quoteArg interface{}, oldQuoteArg interface{}) {
+	handleAttestQuoteImpl(ctxArg, key, quoteArg)
+}
+
+func handleAttestQuoteImpl(ctxArg interface{}, key string,
+	quoteArg interface{}) {
 
 	//Store quote received in state machine
 	ctx, ok := ctxArg.(*zedagentContext)
@@ -539,7 +550,7 @@ func handleAttestQuoteModify(ctxArg interface{}, key string, quoteArg interface{
 	//Trigger event on the state machine
 	zattest.InternalQuoteRecvd(attestCtx.attestFsmCtx)
 
-	log.Infof("handleAttestQuoteModify done for %s", quote.Key())
+	log.Functionf("handleAttestQuoteImpl done for %s", quote.Key())
 	return
 }
 
@@ -575,11 +586,27 @@ func handleAttestQuoteDelete(ctxArg interface{}, key string, quoteArg interface{
 	} else {
 		log.Warnf("[ATTEST] Nonce didn't match, ignoring incoming delete")
 	}
-	log.Infof("handleAttestQuoteDelete done for %s", quote.Key())
+	log.Functionf("handleAttestQuoteDelete done for %s", quote.Key())
 	return
 }
 
-func handleEncryptedKeyFromDeviceModify(ctxArg interface{}, key string, vaultKeyArg interface{}) {
+func handleEncryptedKeyFromDeviceCreate(ctxArg interface{}, key string,
+	vaultKeyArg interface{}) {
+	handleEncryptedKeyFromDeviceImpl(ctxArg, key, vaultKeyArg)
+}
+
+func handleEncryptedKeyFromDeviceModify(ctxArg interface{}, key string,
+	vaultKeyArg interface{}, oldStatusArg interface{}) {
+	handleEncryptedKeyFromDeviceImpl(ctxArg, key, vaultKeyArg)
+}
+
+func handleEncryptedKeyFromDeviceDelete(ctxArg interface{}, key string,
+	vaultKeyArg interface{}) {
+	handleEncryptedKeyFromDeviceImpl(ctxArg, key, vaultKeyArg)
+}
+
+func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
+	vaultKeyArg interface{}) {
 
 	//Store quote received in state machine
 	ctx, ok := ctxArg.(*zedagentContext)
@@ -616,10 +643,10 @@ func publishAttestNonce(ctx *attestContext) {
 		Requester: agentName,
 	}
 	key := nonce.Key()
-	log.Debugf("[ATTEST] publishAttestNonce %s", key)
+	log.Tracef("[ATTEST] publishAttestNonce %s", key)
 	pub := ctx.pubAttestNonce
 	pub.Publish(key, nonce)
-	log.Debugf("[ATTEST] publishAttestNonce done for %s", key)
+	log.Tracef("[ATTEST] publishAttestNonce done for %s", key)
 }
 
 func publishEncryptedKeyFromController(ctx *attestContext, encryptedVaultKey []byte) {
@@ -628,10 +655,10 @@ func publishEncryptedKeyFromController(ctx *attestContext, encryptedVaultKey []b
 		EncryptedVaultKey: encryptedVaultKey,
 	}
 	key := sK.Key()
-	log.Debugf("[ATTEST] publishEncryptedKeyFromController %s", key)
+	log.Tracef("[ATTEST] publishEncryptedKeyFromController %s", key)
 	pub := ctx.pubEncryptedKeyFromController
 	pub.Publish(key, sK)
-	log.Debugf("[ATTEST] publishEncryptedKeyFromController done for %s", key)
+	log.Tracef("[ATTEST] publishEncryptedKeyFromController done for %s", key)
 }
 
 func unpublishAttestNonce(ctx *attestContext) {
@@ -655,7 +682,7 @@ func unpublishAttestNonce(ctx *attestContext) {
 		}
 		log.Fatal("[ATTEST] Stale nonce items found after unpublishing")
 	}
-	log.Debugf("[ATTEST] unpublishAttestNonce done for %s", key)
+	log.Tracef("[ATTEST] unpublishAttestNonce done for %s", key)
 }
 
 //helper to set IntegrityToken

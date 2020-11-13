@@ -79,11 +79,11 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	newItem := deepCopy(pub.log, item)
 	if m, ok := pub.km.key.Load(key); ok {
 		if cmp.Equal(m, newItem) {
-			pub.log.Debugf("Publish(%s/%s) unchanged\n", name, key)
+			pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
 			return nil
 		}
 		// DO NOT log Values. They may contain sensitive information.
-		pub.log.Debugf("Publish(%s/%s) replacing due to diff\n",
+		pub.log.Tracef("Publish(%s/%s) replacing due to diff\n",
 			name, key)
 
 		loggable, ok := newItem.(base.LoggableObject)
@@ -92,7 +92,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
-		pub.log.Debugf("Publish(%s/%s) adding Item", name, key)
+		pub.log.Tracef("Publish(%s/%s) adding Item", name, key)
 		loggable, ok := newItem.(base.LoggableObject)
 		if ok {
 			loggable.LogCreate(pub.log)
@@ -118,7 +118,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 	name := pub.nameString()
 	if m, ok := pub.km.key.Load(key); ok {
 		// DO NOT log Values. They may contain sensitive information.
-		pub.log.Debugf("Unpublish(%s/%s) removing Item", name, key)
+		pub.log.Tracef("Unpublish(%s/%s) removing Item", name, key)
 		loggable, ok := m.(base.LoggableObject)
 		if ok {
 			loggable.LogDelete(pub.log)
@@ -140,13 +140,13 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 
 // SignalRestarted signal that a publication is restarted
 func (pub *PublicationImpl) SignalRestarted() error {
-	pub.log.Debugf("pub.SignalRestarted(%s)\n", pub.nameString())
+	pub.log.Tracef("pub.SignalRestarted(%s)\n", pub.nameString())
 	return pub.restartImpl(true)
 }
 
 // ClearRestarted clear the restart signal
 func (pub *PublicationImpl) ClearRestarted() error {
-	pub.log.Debugf("pub.ClearRestarted(%s)\n", pub.nameString())
+	pub.log.Tracef("pub.ClearRestarted(%s)\n", pub.nameString())
 	return pub.restartImpl(false)
 }
 
@@ -184,7 +184,7 @@ func (pub *PublicationImpl) Iterate(function base.StrMapFunc) {
 func (pub *PublicationImpl) Close() error {
 	items := pub.GetAll()
 	for key := range items {
-		pub.log.Infof("Close(%s) unloading key %s",
+		pub.log.Functionf("Close(%s) unloading key %s",
 			pub.nameString(), key)
 		pub.Unpublish(key)
 	}
@@ -205,10 +205,10 @@ func (pub *PublicationImpl) updatersNotify(name string) {
 		}
 		select {
 		case nn.ch <- Notify{}:
-			pub.log.Debugf("updaterNotify sent to %s/%d\n",
+			pub.log.Tracef("updaterNotify sent to %s/%d\n",
 				nn.name, nn.instance)
 		default:
-			pub.log.Debugf("updaterNotify NOT sent to %s/%d\n",
+			pub.log.Tracef("updaterNotify NOT sent to %s/%d\n",
 				nn.name, nn.instance)
 		}
 	}
@@ -219,7 +219,7 @@ func (pub *PublicationImpl) updatersNotify(name string) {
 func (pub *PublicationImpl) populate() {
 	name := pub.nameString()
 
-	pub.log.Debugf("populate(%s)\n", name)
+	pub.log.Tracef("populate(%s)\n", name)
 
 	pairs, restarted, err := pub.driver.Load()
 	if err != nil {
@@ -237,7 +237,7 @@ func (pub *PublicationImpl) populate() {
 		pub.km.key.Store(key, item)
 	}
 	pub.km.restarted = restarted
-	pub.log.Debugf("populate(%s) done\n", name)
+	pub.log.Tracef("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server.
@@ -255,7 +255,7 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 	for localKey := range localCollection {
 		_, ok := items[localKey]
 		if !ok {
-			pub.log.Debugf("determineDiffs(%s): key %s deleted\n",
+			pub.log.Tracef("determineDiffs(%s): key %s deleted\n",
 				name, localKey)
 			delete(localCollection, localKey)
 			keys = append(keys, localKey)
@@ -270,18 +270,18 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 
 		local := lookupLocal(localCollection, originKey)
 		if local == nil {
-			pub.log.Debugf("determineDiffs(%s): key %s added\n",
+			pub.log.Tracef("determineDiffs(%s): key %s added\n",
 				name, originKey)
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else if bytes.Compare(originb, local) != 0 {
-			pub.log.Debugf("determineDiffs(%s): key %s replacing due to diff\n",
+			pub.log.Tracef("determineDiffs(%s): key %s replacing due to diff\n",
 				name, originKey)
 			// XXX is deepCopy needed?
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else {
-			pub.log.Debugf("determineDiffs(%s): key %s unchanged\n",
+			pub.log.Tracef("determineDiffs(%s): key %s unchanged\n",
 				name, originKey)
 		}
 	}
@@ -304,10 +304,10 @@ func (pub *PublicationImpl) nameString() string {
 // Record the restarted state and send over socket/file.
 func (pub *PublicationImpl) restartImpl(restarted bool) error {
 	name := pub.nameString()
-	pub.log.Infof("pub.restartImpl(%s, %v)\n", name, restarted)
+	pub.log.Functionf("pub.restartImpl(%s, %v)\n", name, restarted)
 
 	if restarted == pub.km.restarted {
-		pub.log.Infof("pub.restartImpl(%s, %v) value unchanged\n",
+		pub.log.Functionf("pub.restartImpl(%s, %v) value unchanged\n",
 			name, restarted)
 		return nil
 	}
@@ -324,16 +324,16 @@ func (pub *PublicationImpl) restartImpl(restarted bool) error {
 func (pub *PublicationImpl) dump(infoStr string) {
 
 	name := pub.nameString()
-	pub.log.Debugf("dump(%s) %s\n", name, infoStr)
+	pub.log.Tracef("dump(%s) %s\n", name, infoStr)
 	dumper := func(key string, val interface{}) bool {
 		_, err := json.Marshal(val)
 		if err != nil {
 			pub.log.Fatal("json Marshal in dump", err)
 		}
 		// DO NOT log Values. They may contain sensitive information.
-		pub.log.Debugf("\tkey %s", key)
+		pub.log.Tracef("\tkey %s", key)
 		return true
 	}
 	pub.km.key.Range(dumper)
-	pub.log.Debugf("\trestarted %t\n", pub.km.restarted)
+	pub.log.Tracef("\trestarted %t\n", pub.km.restarted)
 }

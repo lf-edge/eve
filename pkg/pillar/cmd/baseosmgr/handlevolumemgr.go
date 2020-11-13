@@ -11,27 +11,27 @@ import (
 
 // MaybeAddContentTreeConfig makes sure we have a ContentTreeConfig
 func MaybeAddContentTreeConfig(ctx *baseOsMgrContext, ctc *types.ContentTreeConfig) bool {
-	log.Infof("MaybeAddContentTreeConfig for %s", ctc.Key())
+	log.Functionf("MaybeAddContentTreeConfig for %s", ctc.Key())
 	m := lookupContentTreeConfig(ctx, ctc.Key())
 	if m != nil {
-		log.Infof("Content tree config exists for %s", ctc.Key())
+		log.Functionf("Content tree config exists for %s", ctc.Key())
 		return false
 	}
 	publishContentTreeConfig(ctx, ctc)
-	log.Infof("MaybeAddContentTreeConfig for %s Done", ctc.Key())
+	log.Functionf("MaybeAddContentTreeConfig for %s Done", ctc.Key())
 	return true
 }
 
 // MaybeRemoveContentTreeConfig deletes the ContentTreeConfig
 func MaybeRemoveContentTreeConfig(ctx *baseOsMgrContext, key string) bool {
-	log.Infof("MaybeRemoveContentTreeConfig for %s", key)
+	log.Functionf("MaybeRemoveContentTreeConfig for %s", key)
 	m := lookupContentTreeConfig(ctx, key)
 	if m == nil {
-		log.Infof("MaybeRemoveContentTreeConfig: config doesn't exist for %s", key)
+		log.Functionf("MaybeRemoveContentTreeConfig: config doesn't exist for %s", key)
 		return false
 	}
 	unpublishContentTreeConfig(ctx, key)
-	log.Infof("MaybeRemoveContentTreeConfig for %s Done", key)
+	log.Functionf("MaybeRemoveContentTreeConfig for %s Done", key)
 	return true
 }
 
@@ -40,7 +40,7 @@ func lookupContentTreeConfig(ctx *baseOsMgrContext, key string) *types.ContentTr
 	pub := ctx.pubContentTreeConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Infof("lookupContentTreeConfig(%s) not found", key)
+		log.Functionf("lookupContentTreeConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.ContentTreeConfig)
@@ -52,7 +52,7 @@ func lookupContentTreeStatus(ctx *baseOsMgrContext, key string) *types.ContentTr
 	sub := ctx.subContentTreeStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Infof("lookupContentTreeStatus(%s) not found", key)
+		log.Functionf("lookupContentTreeStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.ContentTreeStatus)
@@ -62,14 +62,14 @@ func lookupContentTreeStatus(ctx *baseOsMgrContext, key string) *types.ContentTr
 func publishContentTreeConfig(ctx *baseOsMgrContext, config *types.ContentTreeConfig) {
 
 	key := config.Key()
-	log.Infof("publishContentTreeConfig(%s)", key)
+	log.Functionf("publishContentTreeConfig(%s)", key)
 	pub := ctx.pubContentTreeConfig
 	pub.Publish(key, *config)
 }
 
 func unpublishContentTreeConfig(ctx *baseOsMgrContext, key string) {
 
-	log.Infof("unpublishContentTreeConfig(%s)", key)
+	log.Functionf("unpublishContentTreeConfig(%s)", key)
 	pub := ctx.pubContentTreeConfig
 	c, _ := pub.Get(key)
 	if c == nil {
@@ -79,24 +79,35 @@ func unpublishContentTreeConfig(ctx *baseOsMgrContext, key string) {
 	pub.Unpublish(key)
 }
 
-func handleContentTreeStatusModify(ctxArg interface{}, key string,
+func handleContentTreeStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleContentTreeStatusModify: key:%s, name:%s",
+	log.Functionf("handleContentTreeStatusImpl: key:%s, name:%s",
 		key, status.DisplayName)
 	if status.ContentSha256 != "" {
 		baseOsHandleStatusUpdateImageSha(ctx, status.ContentSha256)
 	} else {
 		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}
-	log.Infof("handleContentTreeStatusModify done for %s", key)
+	log.Functionf("handleContentTreeStatusImpl done for %s", key)
 }
 
 func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleContentTreeStatusDelete for %s", key)
+	log.Functionf("handleContentTreeStatusDelete for %s", key)
 	ctx := ctxArg.(*baseOsMgrContext)
 	status := statusArg.(types.ContentTreeStatus)
 	if status.ContentSha256 != "" {
@@ -104,5 +115,5 @@ func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	} else {
 		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}
-	log.Infof("handleContentTreeStatusDelete done for %s", key)
+	log.Functionf("handleContentTreeStatusDelete done for %s", key)
 }

@@ -36,7 +36,7 @@ func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
 		}
 		return nil
 	}
-	log.Infof("checkAndCreatePidfile: found %s\n", filename)
+	log.Functionf("checkAndCreatePidfile: found %s\n", filename)
 	// Check if process still exists
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {

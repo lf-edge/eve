@@ -4,6 +4,7 @@
 package awsutil
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -26,6 +27,7 @@ type S3ctx struct {
 	ss3 *s3.S3
 	dn  *s3manager.Downloader
 	up  *s3manager.Uploader
+	ctx context.Context
 }
 
 type S3CredProvider struct {
@@ -43,7 +45,10 @@ func (p *S3CredProvider) IsExpired() bool {
 }
 
 func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
-	ctx := S3ctx{p: S3CredProvider{id: id, secret: secret}}
+	ctx := S3ctx{
+		p:   S3CredProvider{id: id, secret: secret},
+		ctx: aws.BackgroundContext(),
+	}
 	cred := credentials.NewCredentials(&ctx.p)
 
 	cfg := aws.NewConfig()
@@ -68,6 +73,12 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 	})
 
 	return &ctx
+}
+
+// WithContext can be used to pass a context e.g., for cancellation
+func (s *S3ctx) WithContext(cancelContext context.Context) *S3ctx {
+	s.ctx = cancelContext
+	return s
 }
 
 func (s *S3ctx) CreateBucket(bname string) error {

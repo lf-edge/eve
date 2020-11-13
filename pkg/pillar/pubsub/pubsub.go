@@ -17,9 +17,9 @@ import (
 
 // SubscriptionOptions options to pass when creating a Subscription
 type SubscriptionOptions struct {
-	CreateHandler  SubHandler
-	ModifyHandler  SubHandler
-	DeleteHandler  SubHandler
+	CreateHandler  SubCreateHandler
+	ModifyHandler  SubModifyHandler
+	DeleteHandler  SubDeleteHandler
 	RestartHandler SubRestartHandler
 	SyncHandler    SubRestartHandler
 	WarningTime    time.Duration
@@ -33,22 +33,16 @@ type SubscriptionOptions struct {
 	MyAgentName    string // For logging
 }
 
-// SubHandler is a generic handler to handle create, modify and delete
-// Usage:
-//  s1 := pubsublegacy.Subscribe("foo", fooStruct{}, true, &myctx)
-// Or
-//  s1 := pubsublegacy.Subscribe("foo", fooStruct{}, false, &myctx)
-//  s1.ModifyHandler = func(...), // Optional
-//  s1.DeleteHandler = func(...), // Optional
-//  s1.RestartHandler = func(...), // Optional
-//  [ Initialize myctx ]
-//  s1.Activate()
-//  ...
-//  select {
-//     case change := <- s1.C:
-//         s1.ProcessChange(change, ctx)
-//  }
-type SubHandler func(ctx interface{}, key string, status interface{})
+// SubCreateHandler is a handler to handle creates
+type SubCreateHandler func(ctx interface{}, key string, status interface{})
+
+// SubModifyHandler is a handler for modify notifications which carries
+// the oldStatus
+type SubModifyHandler func(ctx interface{}, key string, status interface{},
+	oldStatus interface{})
+
+// SubDeleteHandler is a handler to handle delete
+type SubDeleteHandler func(ctx interface{}, key string, status interface{})
 
 // SubRestartHandler generic handler for restarts
 type SubRestartHandler func(ctx interface{}, restarted bool)
@@ -94,6 +88,12 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 
 	topic := TypeToName(options.TopicImpl)
 	topicType := reflect.TypeOf(options.TopicImpl)
+
+	if options.ModifyHandler != nil && options.CreateHandler == nil {
+		return nil, fmt.Errorf("ModifyHandler but no CreateHandler for topic %s",
+			topic)
+	}
+
 	// Need some buffering to make sure that when we Close the subscription
 	// the goroutines exit
 	changes := make(chan Change, 3)
@@ -127,7 +127,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 	}
 	sub.driver = driver
 
-	sub.log.Infof("Subscribe(%s)\n", name)
+	sub.log.Functionf("Subscribe(%s)\n", name)
 	if options.Activate {
 		if err := sub.Activate(); err != nil {
 			return sub, err
@@ -175,7 +175,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 	// create the driver
 	name := pub.nameString()
 	global := options.AgentName == ""
-	pub.log.Debugf("publishImpl agentName(%s), agentScope(%s), topic(%s), nameString(%s), global(%v), persistent(%v)\n",
+	pub.log.Tracef("publishImpl agentName(%s), agentScope(%s), topic(%s), nameString(%s), global(%v), persistent(%v)\n",
 		options.AgentName, options.AgentScope, topic, name, global, options.Persistent)
 	driver, err := p.driver.Publisher(global, name, topic, options.Persistent, p.updaterList, pub, pub)
 	if err != nil {
@@ -187,7 +187,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 	if pub.logger.GetLevel() == logrus.TraceLevel {
 		pub.dump("after populate")
 	}
-	pub.log.Debugf("Publish(%s)\n", name)
+	pub.log.Tracef("Publish(%s)\n", name)
 
 	pub.publisher()
 

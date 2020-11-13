@@ -22,7 +22,7 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 	}
 	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.deviceReboot {
 		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) reboot", key)
-		log.Infof(infoStr)
+		log.Functionf(infoStr)
 		scheduleNodeReboot(ctxPtr, infoStr, types.BootReasonUpdate)
 	}
 }
@@ -34,7 +34,7 @@ func initiateBaseOsZedCloudTestComplete(ctxPtr *nodeagentContext) {
 	if !ctxPtr.updateInprogress {
 		return
 	}
-	log.Infof("initiateBaseOsZedCloudTestComplete(%s)", ctxPtr.curPart)
+	log.Functionf("initiateBaseOsZedCloudTestComplete(%s)", ctxPtr.curPart)
 	// get the current partition zboot config and status
 	zbootConfig := lookupZbootConfig(ctxPtr, ctxPtr.curPart)
 	zbootStatus := lookupZbootStatus(ctxPtr, ctxPtr.curPart)
@@ -46,7 +46,7 @@ func initiateBaseOsZedCloudTestComplete(ctxPtr *nodeagentContext) {
 		log.Errorf("zboot(%s) testComplete is already set", ctxPtr.curPart)
 		return
 	}
-	log.Infof("baseOs(%s) upgrade validation testComplete, in %s",
+	log.Functionf("baseOs(%s) upgrade validation testComplete, in %s",
 		zbootStatus.ShortVersion, ctxPtr.curPart)
 	ctxPtr.testComplete = true
 	zbootConfig.TestComplete = true
@@ -64,14 +64,14 @@ func doZbootBaseOsTestValidationComplete(ctxPtr *nodeagentContext,
 	}
 	// nothing to be done
 	if !status.TestComplete {
-		log.Debugf("%s: not TestComplete", key)
+		log.Tracef("%s: not TestComplete", key)
 		return
 	}
 	config := lookupZbootConfig(ctxPtr, status.PartitionLabel)
 	if config == nil || ctxPtr.updateComplete {
 		return
 	}
-	log.Infof("baseOs(%s) upgrade validation is acknowledged, Partition %s",
+	log.Functionf("baseOs(%s) upgrade validation is acknowledged, Partition %s",
 		status.ShortVersion, status.PartitionLabel)
 	config.TestComplete = false
 	ctxPtr.updateComplete = true

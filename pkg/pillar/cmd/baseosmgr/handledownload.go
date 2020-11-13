@@ -20,7 +20,7 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 
 	uuidStr := baseOsUUID.String()
 	ret := &types.RetStatus{}
-	log.Infof("checkContentTreeStatus for %s", uuidStr)
+	log.Functionf("checkContentTreeStatus for %s", uuidStr)
 
 	ret.Changed = false
 	ret.AllErrors = ""
@@ -32,14 +32,14 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 
 		contentID := ctc.ContentID
 
-		log.Infof("checkContentTreeStatus %s, content status %v",
+		log.Functionf("checkContentTreeStatus %s, content status %v",
 			contentID, cts.State)
 		if cts.State == types.INSTALLED {
 			ret.MinState = cts.State
 			cts.Progress = 100
 			// XXX TotalSize and CurrentSize?
 			ret.Changed = true
-			log.Infof("checkContentTreeStatus %s is already installed",
+			log.Functionf("checkContentTreeStatus %s is already installed",
 				contentID)
 			continue
 		}
@@ -50,7 +50,7 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 		}
 		contentStatus := lookupContentTreeStatus(ctx, ctc.Key())
 		if contentStatus == nil {
-			log.Infof("Content tree status not found. name: %s", ctc.RelativeURL)
+			log.Functionf("Content tree status not found. name: %s", ctc.RelativeURL)
 			ret.MinState = types.DOWNLOADING
 			cts.State = types.DOWNLOADING
 			ret.Changed = true
@@ -60,14 +60,14 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 		if contentStatus.FileLocation != cts.FileLocation {
 			cts.FileLocation = contentStatus.FileLocation
 			ret.Changed = true
-			log.Infof("checkContentTreeStatus(%s) from contentStatus set FileLocation to %s",
+			log.Functionf("checkContentTreeStatus(%s) from contentStatus set FileLocation to %s",
 				contentID, contentStatus.FileLocation)
 		}
 		if ret.MinState > contentStatus.State {
 			ret.MinState = contentStatus.State
 		}
 		if contentStatus.State != cts.State {
-			log.Infof("checkContentTreeStatus(%s) from ds set cts.State %d",
+			log.Functionf("checkContentTreeStatus(%s) from ds set cts.State %d",
 				contentID, contentStatus.State)
 			cts.State = contentStatus.State
 			ret.Changed = true
@@ -114,7 +114,7 @@ func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string
 		proceed bool
 		err     error
 	)
-	log.Infof("installDownloadedObjects(%s)", uuidStr)
+	log.Functionf("installDownloadedObjects(%s)", uuidStr)
 
 	for i := range *status {
 		ctsPtr := &(*status)[i]
@@ -131,7 +131,7 @@ func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string
 			proceed = true
 		}
 	}
-	log.Infof("installDownloadedObjects(%s) done %v", uuidStr, proceed)
+	log.Functionf("installDownloadedObjects(%s) done %v", uuidStr, proceed)
 	return changed, proceed, nil
 }
 
@@ -146,7 +146,7 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 		proceed bool
 	)
 
-	log.Infof("installDownloadedObject(%s, %v)",
+	log.Functionf("installDownloadedObject(%s, %v)",
 		contentID, ctsPtr.State)
 
 	if ctsPtr.State != types.LOADED {
@@ -157,7 +157,7 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 		log.Fatalf("XXX no image ID for LOADED %s",
 			contentID)
 	}
-	log.Infof("For %s reference ID for LOADED: %s",
+	log.Functionf("For %s reference ID for LOADED: %s",
 		contentID, refID)
 
 	// make sure we have a proper final destination point
@@ -173,7 +173,7 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 	// check if we have a result
 	wres := ctx.worker.Pop(contentID.String())
 	if wres != nil {
-		log.Infof("installDownloadedObject(%s): InstallWorkResult found", contentID)
+		log.Functionf("installDownloadedObject(%s): InstallWorkResult found", contentID)
 		if wres.Error != nil {
 			err := fmt.Errorf("installDownloadedObject(%s): InstallWorkResult error, exception while installing: %v", contentID, wres.Error)
 			log.Errorf(err.Error())
@@ -192,6 +192,6 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 	// do this as a background task
 	// XXX called twice!
 	AddWorkInstall(ctx, contentID.String(), refID, finalObjDir)
-	log.Infof("installDownloadedObject(%s) worker started", contentID)
+	log.Functionf("installDownloadedObject(%s) worker started", contentID)
 	return changed, proceed, nil
 }

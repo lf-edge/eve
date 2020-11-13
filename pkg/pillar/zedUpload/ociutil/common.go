@@ -9,7 +9,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	v1tarball "github.com/google/go-containerregistry/pkg/v1/tarball"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 func manifestsDescImg(image string, options []remote.Option) (name.Reference, *remote.Descriptor, v1.Image, []byte, []byte, int64, error) {
@@ -21,7 +21,7 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		err                              error
 		ref                              name.Reference
 	)
-	log.Infof("manifestsDescImg(%s)", image)
+	logrus.Infof("manifestsDescImg(%s)", image)
 
 	// FIXME tar archive size is 1024 bytes greater than the sizes of
 	// the underlying file. Currently, it has been added purely on the
@@ -31,16 +31,16 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 
 	ref, err = name.ParseReference(image)
 	if err != nil {
-		log.Errorf("error parsing image (%s): %v", image, err)
+		logrus.Errorf("error parsing image (%s): %v", image, err)
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("parsing reference %q: %v", image, err)
 	}
 
 	// resolve our platform
 	options = append(options, remote.WithPlatform(v1.Platform{Architecture: runtime.GOARCH, OS: runtime.GOOS}))
-	log.Debugf("options %#v", options)
+	logrus.Debugf("options %#v", options)
 
 	// first get the root manifest. This might be an index or a manifest
-	log.Infof("manifestsDescImg(%s) getting image ref %#v", image, ref)
+	logrus.Infof("manifestsDescImg(%s) getting image ref %#v", image, ref)
 	desc, err = remote.Get(ref, options...)
 	if err != nil {
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting manifest: %v", err)

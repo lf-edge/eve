@@ -148,7 +148,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	d := w.Description.(casIngestWorkDescription)
 	status := d.status
 
-	log.Infof("casIngestWorker has blobs: %v", status.Blobs)
+	log.Functionf("casIngestWorker has blobs: %v", status.Blobs)
 	blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
 
 	// find the blobs we need to load and indicate that they are being loaded
@@ -171,7 +171,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 			continue
 		}
 		found[blob.Sha256] = true
-		if blob.State < types.LOADING {
+		if blob.State == types.VERIFIED {
 			// Pay close attention: we copy the blob *before* changing it to loading.
 			// We want everything else to know that it is LOADING, but not the routine to
 			// ingest that we are about to call.
@@ -212,8 +212,7 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(casIngestWorkDescription)
-	// this might have changed, so we want to be careful about passing it; always look it up
-	updateContentTreeByID(ctx, d.status.Key())
+	updateStatusByBlob(ctx, d.status.Blobs...)
 	return nil
 }
 

@@ -21,18 +21,18 @@ var baseTableIndex = 500 // Number tables from here + ifindex
 // Call before setting up routeChanges, addrChanges, and linkChanges
 func PbrInit(ctx *zedrouterContext) {
 
-	log.Debugf("PbrInit()\n")
+	log.Tracef("PbrInit()\n")
 }
 
 // PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
 // XXX used by networkinstance only
 func PbrRouteAddAll(bridgeName string, port string) error {
-	log.Infof("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
+	log.Functionf("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
 
 	// for airgap internal switch case
 	if port == "" {
-		log.Infof("PbrRouteAddAll: for internal switch, skip for ACL and Route installation\n")
+		log.Functionf("PbrRouteAddAll: for internal switch, skip for ACL and Route installation\n")
 		return nil
 	}
 
@@ -79,7 +79,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		if rt.Flags != 0 {
 			myrt.Flags = 0
 		}
-		log.Infof("PbrRouteAddAll(%s, %s) adding %v\n",
+		log.Functionf("PbrRouteAddAll(%s, %s) adding %v\n",
 			bridgeName, port, myrt)
 		if err := netlink.RouteAdd(&myrt); err != nil {
 			errStr := fmt.Sprintf("Failed to add %v to %d: %s",
@@ -96,11 +96,11 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 // XXX used by networkinstance only
 // XXX can't we flush the table?
 func PbrRouteDeleteAll(bridgeName string, port string) error {
-	log.Infof("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
+	log.Functionf("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
 
 	// for airgap internal switch case
 	if port == "" {
-		log.Infof("PbrRouteDeleteAll: for internal switch, skip for ACL and Route deletion\n")
+		log.Functionf("PbrRouteDeleteAll: for internal switch, skip for ACL and Route deletion\n")
 		return nil
 	}
 
@@ -133,7 +133,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		if rt.Flags != 0 {
 			myrt.Flags = 0
 		}
-		log.Infof("PbrRouteDeleteAll(%s, %s) deleting %v\n",
+		log.Functionf("PbrRouteDeleteAll(%s, %s) deleting %v\n",
 			bridgeName, port, myrt)
 		if err := netlink.RouteDel(&myrt); err != nil {
 			errStr := fmt.Sprintf("Failed to delete %v from %d: %s",
@@ -169,11 +169,11 @@ func PbrRouteChange(ctx *zedrouterContext,
 	}
 	if linkType != "bridge" && !types.IsPort(*deviceNetworkStatus, ifname) {
 		// Ignore
-		log.Infof("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
+		log.Functionf("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
 			ifname, rt)
 		return
 	}
-	log.Debugf("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
+	log.Tracef("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
 
 	// Add to ifindex specific table and to any bridges used by network instances
 	myrt := rt
@@ -183,9 +183,9 @@ func PbrRouteChange(ctx *zedrouterContext,
 		myrt.Flags = 0
 	}
 	if change.Type == getRouteUpdateTypeDELROUTE() {
-		log.Infof("Received route del %v\n", rt)
+		log.Functionf("Received route del %v\n", rt)
 		if linkType == "bridge" {
-			log.Infof("Apply route del to bridge %s", ifname)
+			log.Functionf("Apply route del to bridge %s", ifname)
 			if err := netlink.RouteDel(&myrt); err != nil {
 				log.Errorf("Failed to remove %v from %d: %s\n",
 					myrt, myrt.Table, err)
@@ -194,7 +194,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 		// find all bridges for network instances and del for them
 		indicies := getAllNIindices(ctx, ifname)
 		if len(indicies) != 0 {
-			log.Infof("Apply route del to %v", indicies)
+			log.Functionf("Apply route del to %v", indicies)
 		}
 		for _, ifindex := range indicies {
 			myrt.Table = baseTableIndex + ifindex
@@ -204,13 +204,13 @@ func PbrRouteChange(ctx *zedrouterContext,
 			}
 		}
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
-		log.Infof("Received route add %v\n", rt)
+		log.Functionf("Received route add %v\n", rt)
 		if linkType == "bridge" {
-			log.Infof("Apply route add to bridge %s", ifname)
+			log.Functionf("Apply route add to bridge %s", ifname)
 			if err := netlink.RouteAdd(&myrt); err != nil {
 				// XXX ditto for ENXIO?? for del?
 				if isErrno(err, syscall.EEXIST) {
-					log.Infof("Failed to add %v to %d: %s\n",
+					log.Functionf("Failed to add %v to %d: %s\n",
 						myrt, myrt.Table, err)
 				} else {
 					log.Errorf("Failed to add %v to %d: %s\n",
@@ -221,7 +221,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 		// find all bridges for network instances and add for them
 		indicies := getAllNIindices(ctx, ifname)
 		if len(indicies) != 0 {
-			log.Infof("Apply route add to %v", indicies)
+			log.Functionf("Apply route add to %v", indicies)
 		}
 		for _, ifindex := range indicies {
 			myrt.Table = baseTableIndex + ifindex
@@ -244,7 +244,7 @@ func isErrno(err error, errno syscall.Errno) bool {
 
 func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	oifIndex int, ipnet *net.IPNet) error {
-	log.Debugf("AddOverlayRuleAndRoute: IIF index %d, Prefix %s, OIF index %d",
+	log.Tracef("AddOverlayRuleAndRoute: IIF index %d, Prefix %s, OIF index %d",
 		iifIndex, ipnet.String(), oifIndex)
 
 	r := netlink.NewRule()

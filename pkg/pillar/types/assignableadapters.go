@@ -90,58 +90,58 @@ var nilUUID = uuid.UUID{}
 // or the Physical Adapter has changed.
 func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOAdapter) bool {
 	if IoType(phyAdapter.Ptype) != ib.Type {
-		log.Infof("Type changed from %d to %d", ib.Type, phyAdapter.Ptype)
+		log.Functionf("Type changed from %d to %d", ib.Type, phyAdapter.Ptype)
 		return true
 	}
 	if phyAdapter.Phylabel != ib.Phylabel {
-		log.Infof("Name changed from %s to %s", ib.Phylabel, phyAdapter.Phylabel)
+		log.Functionf("Name changed from %s to %s", ib.Phylabel, phyAdapter.Phylabel)
 		return true
 	}
 	if phyAdapter.Phyaddr.PciLong != ib.PciLong {
-		log.Infof("PciLong changed from %s to %s",
+		log.Functionf("PciLong changed from %s to %s",
 			ib.PciLong, phyAdapter.Phyaddr.PciLong)
 		return true
 	}
 	if phyAdapter.Phyaddr.Ifname != ib.Ifname {
-		log.Infof("Ifname changed from %s to %s",
+		log.Functionf("Ifname changed from %s to %s",
 			ib.Ifname, phyAdapter.Phyaddr.Ifname)
 		return true
 	}
 	if phyAdapter.Phyaddr.Serial != ib.Serial {
-		log.Infof("Serial changed from %s to %s",
+		log.Functionf("Serial changed from %s to %s",
 			ib.Serial, phyAdapter.Phyaddr.Serial)
 		return true
 	}
 	if phyAdapter.Phyaddr.UsbAddr != ib.UsbAddr {
-		log.Infof("USB address changed from %s to %s",
+		log.Functionf("USB address changed from %s to %s",
 			ib.UsbAddr, phyAdapter.Phyaddr.UsbAddr)
 		return true
 	}
 	if phyAdapter.Phyaddr.Irq != ib.Irq {
-		log.Infof("Irq changed from %s to %s", ib.Irq, phyAdapter.Phyaddr.Irq)
+		log.Functionf("Irq changed from %s to %s", ib.Irq, phyAdapter.Phyaddr.Irq)
 		return true
 	}
 	if phyAdapter.Phyaddr.Ioports != ib.Ioports {
-		log.Infof("Ioports changed from %s to %s",
+		log.Functionf("Ioports changed from %s to %s",
 			ib.Ioports, phyAdapter.Phyaddr.Ioports)
 		return true
 	}
 	if phyAdapter.Logicallabel != ib.Logicallabel {
-		log.Infof("Logicallabel changed from %s to %s",
+		log.Functionf("Logicallabel changed from %s to %s",
 			ib.Logicallabel, phyAdapter.Logicallabel)
 		return true
 	}
 	if phyAdapter.Assigngrp != ib.AssignmentGroup {
-		log.Infof("Ifname changed from %s to %s",
+		log.Functionf("Ifname changed from %s to %s",
 			ib.AssignmentGroup, phyAdapter.Assigngrp)
 		return true
 	}
 	if phyAdapter.Usage != ib.Usage {
-		log.Infof("Usage changed from %d to %d", ib.Usage, phyAdapter.Usage)
+		log.Functionf("Usage changed from %d to %d", ib.Usage, phyAdapter.Usage)
 		return true
 	}
 	if phyAdapter.UsagePolicy.FreeUplink != ib.FreeUplink {
-		log.Infof("FreeUplink changed from %t to %t",
+		log.Functionf("FreeUplink changed from %t to %t",
 			ib.FreeUplink, phyAdapter.UsagePolicy.FreeUplink)
 		return true
 	}
@@ -254,38 +254,38 @@ func (aa AssignableAdapters) LogKey() string {
 func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBundle) {
 	curIbPtr := aa.LookupIoBundlePhylabel(ib.Phylabel)
 	if curIbPtr == nil {
-		log.Infof("AddOrUpdateIoBundle(%d %s %s) New bundle",
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) New bundle",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup)
 		aa.IoBundleList = append(aa.IoBundleList, ib)
 		return
 	}
-	log.Infof("AddOrUpdateIoBundle(%d %s %s) Update bundle; diff %+v",
+	log.Functionf("AddOrUpdateIoBundle(%d %s %s) Update bundle; diff %+v",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup,
 		cmp.Diff(*curIbPtr, ib))
 
 	// We preserve the most specific
 	if curIbPtr.UsedByUUID != nilUUID {
-		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve UsedByUUID %v",
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve UsedByUUID %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsedByUUID)
 		ib.UsedByUUID = curIbPtr.UsedByUUID
 	}
 	if curIbPtr.IsPort {
-		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve IsPort %t",
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve IsPort %t",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.IsPort)
 		ib.IsPort = curIbPtr.IsPort
 	}
 	if curIbPtr.IsPCIBack {
-		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve IsPCIBack %t",
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve IsPCIBack %t",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.IsPCIBack)
 		ib.IsPCIBack = curIbPtr.IsPCIBack
 	}
 	if curIbPtr.Unique != "" {
-		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Unique)
 		ib.Unique = curIbPtr.Unique
 	}
 	if curIbPtr.MacAddr != "" {
-		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve MacAddr %v",
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve MacAddr %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.MacAddr)
 		ib.MacAddr = curIbPtr.MacAddr
 	}

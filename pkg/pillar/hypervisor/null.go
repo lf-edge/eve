@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type domState struct {
@@ -107,10 +107,10 @@ func (ctx nullContext) Delete(domainName string, domainID int) error {
 
 func (ctx nullContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	if dom, found := ctx.doms[domainName]; found {
-		log.Infof("Null Domain %s is %v and has the following config %s\n", domainName, dom.state, dom.config)
+		logrus.Infof("Null Domain %s is %v and has the following config %s\n", domainName, dom.state, dom.config)
 		return dom.id, dom.state, nil
 	} else {
-		log.Errorf("Null Domain %s doesn't exist", domainName)
+		logrus.Errorf("Null Domain %s doesn't exist", domainName)
 		return 0, types.UNKNOWN, fmt.Errorf("null domain %s doesn't exist", domainName)
 	}
 }

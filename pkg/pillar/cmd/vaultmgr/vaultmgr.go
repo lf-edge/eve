@@ -154,7 +154,7 @@ func removeProtectorIfAny(vaultPath string) error {
 		return nil
 	}
 	if err == nil {
-		log.Infof("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
+		log.Functionf("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
 		args := getRemoveProtectorParams(protectorID[0][1])
 		if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
 			log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
@@ -162,7 +162,7 @@ func removeProtectorIfAny(vaultPath string) error {
 		}
 		policyID, err := getPolicyIDByProtectorID(protectorID[0][1])
 		if err == nil {
-			log.Infof("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
+			log.Functionf("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
 			args := getRemovePolicyParams(policyID[0][1])
 			if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
 				log.Errorf("Error changing policy key: %v, %v, %v", err, stdOut, stdErr)
@@ -217,11 +217,11 @@ func changeProtector(vaultPath string) error {
 		if stdOut, stdErr, err := execCmd(vault.FscryptPath,
 			getChangeProtectorParams(protectorID[0][1])...); err != nil {
 			log.Errorf("Error changing protector key: %v", err)
-			log.Debug(stdOut)
-			log.Debug(stdErr)
+			log.Trace(stdOut)
+			log.Trace(stdErr)
 			return err
 		}
-		log.Infof("Changed key for protector %s", (protectorID[0][1]))
+		log.Functionf("Changed key for protector %s", (protectorID[0][1]))
 	}
 	return err
 }
@@ -276,7 +276,7 @@ func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
 	mergedKey := []byte("")
 	mergedKey = append(mergedKey, key1[0:v1]...)
 	mergedKey = append(mergedKey, key2[v1:v2]...)
-	log.Info("Merging keys")
+	log.Function("Merging keys")
 	return mergedKey, nil
 }
 
@@ -289,7 +289,7 @@ func deriveVaultKey(cloudKeyOnlyMode, useSealedKey bool) ([]byte, error) {
 	}
 	//For pre 5.6.2 devices, remove once devices move to 5.6.2
 	if cloudKeyOnlyMode {
-		log.Infof("Using cloud key")
+		log.Functionf("Using cloud key")
 		return cloudKey, nil
 	}
 	tpmKey, err := retrieveTpmKey(useSealedKey)
@@ -351,11 +351,11 @@ func isDirEmpty(path string) bool {
 			return false
 		}
 		if len(files) == 0 {
-			log.Debugf("No files in %s", path)
+			log.Tracef("No files in %s", path)
 			return true
 		}
 	}
-	log.Debugf("Dir is not empty at %s", path)
+	log.Tracef("Dir is not empty at %s", path)
 	return false
 }
 
@@ -422,7 +422,7 @@ func isFscryptEnabled(vaultPath string) bool {
 func setupVault(vaultPath string, deprecated bool) error {
 	_, err := os.Stat(vaultPath)
 	if os.IsNotExist(err) && deprecated {
-		log.Infof("vault %s is marked deprecated, so not creating a new vault", vaultPath)
+		log.Functionf("vault %s is marked deprecated, so not creating a new vault", vaultPath)
 		return nil
 	}
 	if err != nil && !deprecated {
@@ -433,17 +433,17 @@ func setupVault(vaultPath string, deprecated bool) error {
 	}
 	args := getStatusParams(vaultPath)
 	if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
-		log.Infof("%v, %v, %v", stdOut, stdErr, err)
+		log.Functionf("%v, %v, %v", stdOut, stdErr, err)
 		if !isDirEmpty(vaultPath) || deprecated {
 			//Don't disturb existing installations
-			log.Infof("Not disturbing non-empty or deprecated vault(%s), deprecated=%v",
+			log.Functionf("Not disturbing non-empty or deprecated vault(%s), deprecated=%v",
 				vaultPath, deprecated)
 			return nil
 		}
 		return createVault(vaultPath)
 	}
 	//Already setup for encryption, go for unlocking
-	log.Infof("Unlocking %s", vaultPath)
+	log.Functionf("Unlocking %s", vaultPath)
 	//cloudKeyOnlyMode = false, useSealedKey=false if deprecated, true otherwise
 	if err := unlockVault(vaultPath, false, !deprecated); err != nil {
 		if !deprecated {
@@ -484,7 +484,7 @@ func publishUnknownVaultStatus(ctx *vaultMgrContext, vaultName string) {
 	status.SetErrorNow("Unsupported filesystem")
 
 	key := status.Key()
-	log.Debugf("Publishing VaultStatus %s\n", key)
+	log.Tracef("Publishing VaultStatus %s\n", key)
 	pub := ctx.pubVaultStatus
 	pub.Publish(key, status)
 }
@@ -529,7 +529,7 @@ func publishFscryptVaultStatus(ctx *vaultMgrContext,
 		}
 	}
 	key := status.Key()
-	log.Debugf("Publishing VaultStatus %s\n", key)
+	log.Tracef("Publishing VaultStatus %s\n", key)
 	pub := ctx.pubVaultStatus
 	pub.Publish(key, status)
 }
@@ -539,24 +539,24 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 	if err == nil {
 		if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
 			//fscrypt is setup, but not being used
-			log.Debug("Setting status to Error")
+			log.Trace("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Initialization failure"
 		} else {
 			//fscrypt is setup , and being used on /persist
-			log.Debug("Setting status to Enabled")
+			log.Trace("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
 		}
 	} else {
 		_, err := os.Stat(etpm.TpmDevicePath)
 		if err != nil {
 			//This is due to lack of TPM
-			log.Debug("Setting status to disabled, TPM is not in use")
+			log.Trace("Setting status to disabled, TPM is not in use")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 				"No active TPM found, but needed for key generation"
 		} else {
 			//This is due to ext3 partition
-			log.Debug("setting status to disabled, ext3 partition")
+			log.Trace("setting status to disabled, ext3 partition")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 				"File system is incompatible, needs a disruptive upgrade"
 		}
@@ -688,7 +688,7 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 	} else {
 		datasetStatus, err := vault.CheckOperStatus(log, vaultPath)
 		if err == nil {
-			log.Infof("checkOperStatus returns %s for %s", datasetStatus, vaultPath)
+			log.Functionf("checkOperStatus returns %s for %s", datasetStatus, vaultPath)
 			datasetStatus = processOperStatus(datasetStatus)
 		}
 		if datasetStatus != "" {
@@ -700,7 +700,7 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 		}
 	}
 	key := status.Key()
-	log.Debugf("Publishing VaultStatus %s\n", key)
+	log.Tracef("Publishing VaultStatus %s\n", key)
 	pub := ctx.pubVaultStatus
 	pub.Publish(key, status)
 }
@@ -748,10 +748,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			}
 			//We don't have deprecated vaults on ZFS
 		default:
-			log.Infof("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
+			log.Functionf("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
 		}
 	case "runAsService":
-		log.Infof("Starting %s\n", agentName)
+		log.Functionf("Starting %s\n", agentName)
 
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
@@ -774,7 +774,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			Persistent:    true,
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigModify,
+			CreateHandler: handleGlobalConfigCreate,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
 			WarningTime:   warningTime,
@@ -793,7 +793,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.EncryptedVaultKeyFromController{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleVaultKeyFromControllerModify,
+			CreateHandler: handleVaultKeyFromControllerCreate,
 			ModifyHandler: handleVaultKeyFromControllerModify,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
@@ -807,7 +807,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
-			log.Infof("waiting for GCInitialized")
+			log.Functionf("waiting for GCInitialized")
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
@@ -815,7 +815,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			}
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
-		log.Infof("processed GlobalConfig")
+		log.Functionf("processed GlobalConfig")
 
 		// initialize publishing handles
 		initializeSelfPublishHandles(ps, &ctx)
@@ -858,23 +858,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	return 0
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*vaultMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
+	log.Functionf("handleGlobalConfigImpl for %s\n", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -882,20 +891,29 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*vaultMgrContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	log.Functionf("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+	log.Functionf("handleGlobalConfigDelete done for %s\n", key)
 }
 
-// Handles both create and modify events
-func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
+func handleVaultKeyFromControllerCreate(ctxArg interface{}, key string,
 	keyArg interface{}) {
-	ctx := ctxArg.(*vaultMgrContext)
+	handleVaultKeyFromControllerImpl(ctxArg, key, keyArg)
+}
 
+func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
+	keyArg interface{}, oldStatusArg interface{}) {
+	handleVaultKeyFromControllerImpl(ctxArg, key, keyArg)
+}
+
+func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
+	keyArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
 	if !etpm.IsTpmEnabled() {
 		log.Notice("Receiving Vault key on device without active TPM usage. Ignoring")
 		return
@@ -909,7 +927,7 @@ func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
 		log.Warnf("Ignoring unknown vault %s", keyFromController.Name)
 		return
 	}
-	log.Debugf("Processing EncryptedVaultKeyFromController %s\n", key)
+	log.Tracef("Processing EncryptedVaultKeyFromController %s\n", key)
 	keyData := &attest.AttestVolumeKeyData{}
 	if err := proto.Unmarshal(keyFromController.EncryptedVaultKey, keyData); err != nil {
 		log.Errorf("Failed to unmarshal keyData %v", err)
@@ -928,7 +946,7 @@ func handleVaultKeyFromControllerModify(ctxArg interface{}, key string,
 		log.Errorf("Computed SHA is not matching provided SHA")
 		return
 	}
-	log.Infof("Computed and provided SHA are matching")
+	log.Functionf("Computed and provided SHA are matching")
 
 	//Try unlocking the vault now, in case it is not yet unlocked
 	if !ctx.defaultVaultUnlocked {
@@ -1001,7 +1019,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	keyFromDevice.Name = vaultName
 	keyFromDevice.EncryptedVaultKey = b
 	key := keyFromDevice.Key()
-	log.Debugf("Publishing EncryptedVaultKeyFromDevice %s\n", key)
+	log.Tracef("Publishing EncryptedVaultKeyFromDevice %s\n", key)
 	pub := ctx.pubVaultKeyFromDevice
 	pub.Publish(key, keyFromDevice)
 	return nil

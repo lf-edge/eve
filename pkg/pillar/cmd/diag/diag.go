@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -107,12 +108,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		return 0
 	}
 	if outputFile != "" {
-		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY|syscall.O_NONBLOCK, 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-	log.Infof("Starting %s", agentName)
+	log.Functionf("Starting %s", agentName)
 	ctx := diagContext{
 		forever:      *foreverPtr,
 		pacContents:  *pacContentsPtr,
@@ -131,7 +132,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			Persistent:    true,
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigModify,
+			CreateHandler: handleGlobalConfigCreate,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
 			WarningTime:   warningTime,
@@ -145,13 +146,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Wait for initial GlobalConfig
 	for !ctx.GCInitialized {
-		log.Infof("Waiting for GCInitialized")
+		log.Functionf("Waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		}
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
@@ -168,12 +169,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
-	log.Infof("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
+	log.Functionf("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
 	// XXX move to later for Get UUID if available
 
-	log.Infof("diag Run: Use V2 API %v", zedcloudCtx.V2API)
+	log.Functionf("diag Run: Use V2 API %v", zedcloudCtx.V2API)
 
 	if fileExists(types.DeviceCertName) {
 		// Load device cert
@@ -207,7 +208,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.LedBlinkCounter{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleLedBlinkModify,
+			CreateHandler: handleLedBlinkCreate,
 			ModifyHandler: handleLedBlinkModify,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
@@ -226,7 +227,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.DeviceNetworkStatus{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleDNSModify,
+			CreateHandler: handleDNSCreate,
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,
 			WarningTime:   warningTime,
@@ -247,7 +248,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			TopicImpl:     types.DevicePortConfigList{},
 			Activate:      false,
 			Ctx:           &ctx,
-			CreateHandler: handleDPCModify,
+			CreateHandler: handleDPCCreate,
 			ModifyHandler: handleDPCModify,
 		})
 	if err != nil {
@@ -260,7 +261,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedclient",
 		MyAgentName:   agentName,
-		CreateHandler: handleOnboardStatusModify,
+		CreateHandler: handleOnboardStatusCreate,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -315,15 +316,24 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
-// Handles both create and modify events
+func handleLedBlinkCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleLedBlinkImpl(ctxArg, key, configArg)
+}
+
 func handleLedBlinkModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleLedBlinkImpl(ctxArg, key, configArg)
+}
+
+func handleLedBlinkImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*diagContext)
 
 	if key != "ledconfig" {
-		log.Errorf("handleLedBlinkModify: ignoring %s", key)
+		log.Errorf("handleLedBlinkImpl: ignoring %s", key)
 		return
 	}
 	// Supress work and logging if no change
@@ -333,39 +343,49 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 	ctx.ledCounter = config.BlinkCounter
 	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 		ctx.UsableAddressCount)
-	log.Infof("counter %d usableAddr %d, derived %d",
+	log.Functionf("counter %d usableAddr %d, derived %d",
 		ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
 }
 
-// Handles both create and modify events
-func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNSCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDNSImpl(ctxArg, key, statusArg)
+}
+
+func handleDNSImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleDNSModify: ignoring %s", key)
+		log.Functionf("handleDNSImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDNSModify for %s", key)
+	log.Functionf("handleDNSImpl for %s", key)
 	// Since we report test status we compare all fields
 	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
-		log.Infof("handleDNSModify unchanged")
+		log.Functionf("handleDNSImpl unchanged")
 		return
 	}
-	log.Infof("handleDNSModify: changed %v",
+	log.Functionf("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.DeviceNetworkStatus, status))
 	*ctx.DeviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	log.Infof("handleDNSModify %d usable addresses", newAddrCount)
+	log.Functionf("handleDNSImpl %d usable addresses", newAddrCount)
 	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
 		ctx.UsableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 			ctx.UsableAddressCount)
-		log.Infof("counter %d usableAddr %d, derived %d",
+		log.Functionf("counter %d usableAddr %d, derived %d",
 			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	}
 
@@ -377,68 +397,90 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
-	log.Infof("handleDNSModify done for %s", key)
+	log.Functionf("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDNSDelete for %s", key)
+	log.Functionf("handleDNSDelete for %s", key)
 	ctx := ctxArg.(*diagContext)
 
 	if key != "global" {
-		log.Infof("handleDNSDelete: ignoring %s", key)
+		log.Functionf("handleDNSDelete: ignoring %s", key)
 		return
 	}
 	*ctx.DeviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	log.Infof("handleDNSDelete %d usable addresses", newAddrCount)
+	log.Functionf("handleDNSDelete %d usable addresses", newAddrCount)
 	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
 		ctx.UsableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
 			ctx.UsableAddressCount)
-		log.Infof("counter %d usableAddr %d, derived %d",
+		log.Functionf("counter %d usableAddr %d, derived %d",
 			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	}
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
-	log.Infof("handleDNSDelete done for %s", key)
+	log.Functionf("handleDNSDelete done for %s", key)
 }
 
-// Handles both create and modify events
-func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDPCCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDPCImpl(ctxArg, key, statusArg)
+}
+
+func handleDPCModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDPCImpl(ctxArg, key, statusArg)
+}
+
+func handleDPCImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleDPCModify: ignoring %s", key)
+		log.Functionf("handleDPCImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleDPCModify for %s", key)
+	log.Functionf("handleDPCImpl for %s", key)
 	if ctx.DevicePortConfigList.MostlyEqual(status) {
 		return
 	}
-	log.Infof("handleDPCModify: changed %v",
+	log.Functionf("handleDPCImpl: changed %v",
 		cmp.Diff(ctx.DevicePortConfigList, status))
 	*ctx.DevicePortConfigList = status
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
-	log.Infof("handleDPCModify done for %s", key)
+	log.Functionf("handleDPCImpl done for %s", key)
 }
 
 // Handles UUID change from process client
-func handleOnboardStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleOnboardStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.OnboardingStatus)
 	ctx := ctxArg.(*diagContext)
 	if cmp.Equal(ctx.devUUID, status.DeviceUUID) {
-		log.Infof("handleOnboardStatusModify no change to %v", ctx.devUUID)
+		log.Functionf("handleOnboardStatusImpl no change to %v", ctx.devUUID)
 		return
 	}
 	ctx.devUUID = status.DeviceUUID
-	log.Infof("handleOnboardStatusModify changed to %v", ctx.devUUID)
+	log.Functionf("handleOnboardStatusImpl changed to %v", ctx.devUUID)
 	printOutput(ctx)
 }
 
@@ -758,9 +800,9 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 			return false
 		}
 		localUDPAddr := net.UDPAddr{IP: localAddr}
-		log.Debugf("tryLookupIP: using intf %s source %v", ifname, localUDPAddr)
+		log.Tracef("tryLookupIP: using intf %s source %v", ifname, localUDPAddr)
 		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			log.Debugf("resolverDial %v %v", network, address)
+			log.Tracef("resolverDial %v %v", network, address)
 			d := net.Dialer{LocalAddr: &localUDPAddr}
 			return d.Dial(network, address)
 		}
@@ -772,7 +814,7 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 				ifname, ctx.serverName, err)
 			continue
 		}
-		log.Debugf("tryLookupIP: got %d addresses", len(ips))
+		log.Tracef("tryLookupIP: got %d addresses", len(ips))
 		if len(ips) == 0 {
 			fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s returned no answers\n",
 				ifname, ctx.serverName)
@@ -846,7 +888,7 @@ var prevConfigHash string
 
 func tryPostUUID(ctx *diagContext, ifname string) bool {
 
-	log.Debugf("tryPostUUID() sending hash %s", prevConfigHash)
+	log.Tracef("tryPostUUID() sending hash %s", prevConfigHash)
 	configRequest := &zconfig.ConfigRequest{
 		ConfigHash: prevConfigHash,
 	}
@@ -905,7 +947,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 
 func parsePrint(configURL string, resp *http.Response, contents []byte) {
 	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified len %d", len(contents))
+		log.Tracef("StatusNotModified len %d", len(contents))
 		return
 	}
 
@@ -921,14 +963,14 @@ func parsePrint(configURL string, resp *http.Response, contents []byte) {
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
-		log.Debugf("Same ConfigHash len %d", len(contents))
+		log.Tracef("Same ConfigHash len %d", len(contents))
 		return
 	}
-	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	log.Functionf("Change in ConfigHash from %s to %s", prevConfigHash, hash)
 	prevConfigHash = hash
 	config := configResponse.GetConfig()
 	uuidStr := strings.TrimSpace(config.GetId().Uuid)
-	log.Infof("Changed ConfigResponse with uuid %s", uuidStr)
+	log.Functionf("Changed ConfigResponse with uuid %s", uuidStr)
 }
 
 // From zedagent/handleconfig.go
@@ -1089,16 +1131,25 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	}
 }
 
-// Handles both create and modify events
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
 func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
@@ -1106,7 +1157,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
-	log.Infof("handleGlobalConfigModify done for %s", key)
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1114,12 +1165,12 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

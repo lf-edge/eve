@@ -19,7 +19,7 @@ import (
 // XXX add IPv6 support?
 func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 
-	log.Infof("GetDhcpInfo(%s)\n", us.IfName)
+	log.Functionf("GetDhcpInfo(%s)\n", us.IfName)
 	if us.Dhcp != types.DT_CLIENT {
 		return
 	}
@@ -28,7 +28,7 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 	}
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
-	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
+	log.Functionf("Calling dhcpcd -U -4 %s\n", us.IfName)
 	stdoutStderr, err := base.Exec(log, "dhcpcd", "-U", "-4", us.IfName).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
@@ -36,7 +36,7 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 		log.Errorln(errStr)
 		return
 	}
-	log.Debugf("dhcpcd -U got %v\n", string(stdoutStderr))
+	log.Tracef("dhcpcd -U got %v\n", string(stdoutStderr))
 	lines := strings.Split(string(stdoutStderr), "\n")
 	masklen := 0
 	var subnet net.IP
@@ -45,11 +45,11 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 		if len(items) != 2 {
 			continue
 		}
-		log.Debugf("Got <%s> <%s>\n", items[0], items[1])
+		log.Tracef("Got <%s> <%s>\n", items[0], items[1])
 		switch items[0] {
 		case "network_number":
 			network := trimQuotes(items[1])
-			log.Infof("GetDhcpInfo(%s) network_number %s\n", us.IfName,
+			log.Functionf("GetDhcpInfo(%s) network_number %s\n", us.IfName,
 				network)
 			ip := net.ParseIP(network)
 			if ip == nil {
@@ -59,7 +59,7 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 			subnet = ip
 		case "subnet_cidr":
 			str := trimQuotes(items[1])
-			log.Infof("GetDhcpInfo(%s) subnet_cidr %s\n", us.IfName,
+			log.Functionf("GetDhcpInfo(%s) subnet_cidr %s\n", us.IfName,
 				str)
 			masklen, err = strconv.Atoi(str)
 			if err != nil {
@@ -74,7 +74,7 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 // GetDNSInfo gets DNS info from /run files. Updates DomainName and DnsServers
 func GetDNSInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 
-	log.Infof("GetDNSInfo(%s)\n", us.IfName)
+	log.Functionf("GetDNSInfo(%s)\n", us.IfName)
 	if us.Dhcp != types.DT_CLIENT {
 		return
 	}
@@ -84,7 +84,7 @@ func GetDNSInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 		return
 	}
 	dc := netclone.DnsReadConfig(filename)
-	log.Infof("%s servers %v, search %v\n", filename, dc.Servers, dc.Search)
+	log.Functionf("%s servers %v, search %v\n", filename, dc.Servers, dc.Search)
 	for _, server := range dc.Servers {
 		// Might have port number
 		s := strings.Split(server, ":")

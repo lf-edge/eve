@@ -12,11 +12,10 @@ import (
 	"os"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type ctrdContext struct {
-	// XXX add log?
 	domCounter int
 	PCI        map[string]bool
 	ctrdClient *containerd.Client
@@ -36,7 +35,7 @@ func initContainerd() (*ctrdContext, error) {
 
 func newContainerd() Hypervisor {
 	if ret, err := initContainerd(); err != nil {
-		log.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
+		logrus.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above
 	} else {
 		return ret
@@ -138,7 +137,7 @@ func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState
 	}
 
 	if effectiveDomainID != domainID {
-		log.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
+		logrus.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
 			domainName, effectiveDomainID, domainID, status)
 	}
 
@@ -211,7 +210,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 			}
 			cpuTotal = metric.CPU.Usage.Total / nanoSecToSec / clockTicks
 		} else {
-			log.Errorf("GetDomsCPUMem failed with error %v", err)
+			logrus.Errorf("GetDomsCPUMem failed with error %v", err)
 		}
 
 		res[id] = types.DomainMetric{

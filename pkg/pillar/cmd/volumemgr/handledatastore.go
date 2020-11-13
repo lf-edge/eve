@@ -7,13 +7,22 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// Handles both create and modify events
+func handleDatastoreConfigCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleDatastoreConfigImpl(ctxArg, key, configArg)
+}
+
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleDatastoreConfigImpl(ctxArg, key, configArg)
+}
+
+func handleDatastoreConfigImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*volumemgrContext)
 	config := configArg.(types.DatastoreConfig)
-	log.Infof("handleDatastoreConfigModify for %s", key)
+	log.Functionf("handleDatastoreConfigImpl for %s", key)
 	updateStatusByDatastore(ctx, config)
-	log.Infof("handleDatastoreConfigModify for %s, done", key)
+	log.Functionf("handleDatastoreConfigImpl for %s, done", key)
 }

@@ -99,7 +99,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	}
 
 	if _, err := os.Stat(dirName); err != nil {
-		s.Log.Infof("Publish Create %s\n", dirName)
+		s.Log.Functionf("Publish Create %s\n", dirName)
 		if err := os.MkdirAll(dirName, 0700); err != nil {
 			errStr := fmt.Sprintf("Publish(%s): %s",
 				name, err)
@@ -114,7 +114,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		sockName = s.sockName(name)
 		dir := path.Dir(sockName)
 		if _, err := os.Stat(dir); err != nil {
-			s.Log.Infof("Publish Create %s\n", dir)
+			s.Log.Functionf("Publish Create %s\n", dir)
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)

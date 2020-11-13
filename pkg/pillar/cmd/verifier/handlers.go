@@ -33,23 +33,23 @@ func makeVerifyHandler() *verifyHandler {
 
 // Determine whether it is an create or modify
 func (v *verifyHandler) modify(ctxArg interface{},
-	key string, configArg interface{}) {
+	key string, configArg interface{}, oldConfigArg interface{}) {
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)
-	log.Infof("verifyHandler.modify(%s)", handlerKey)
+	log.Functionf("verifyHandler.modify(%s)", handlerKey)
 	h, ok := v.handlers[handlerKey]
 	if !ok {
 		log.Fatalf("verifyHandler.modify called on config that does not exist")
 	}
 	select {
 	case h <- Notify{}:
-		log.Infof("verifyHandler.modify(%s) sent notify", handlerKey)
+		log.Functionf("verifyHandler.modify(%s) sent notify", handlerKey)
 	default:
 		// handler is slow
 		log.Warnf("verifyHandler.modify(%s) NOT sent notify. Slow handler?", handlerKey)
 	}
-	log.Infof("verifyHandler.modify(%s) done", handlerKey)
+	log.Functionf("verifyHandler.modify(%s) done", handlerKey)
 }
 
 func (v *verifyHandler) create(ctxArg interface{},
@@ -57,7 +57,7 @@ func (v *verifyHandler) create(ctxArg interface{},
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)
-	log.Infof("verifyHandler.create(%s)", handlerKey)
+	log.Functionf("verifyHandler.create(%s)", handlerKey)
 	ctx := ctxArg.(*verifierContext)
 	h, ok := v.handlers[handlerKey]
 	if ok {
@@ -67,7 +67,7 @@ func (v *verifyHandler) create(ctxArg interface{},
 	v.handlers[handlerKey] = h1
 	switch typeName {
 	case "VerifyImageConfig":
-		log.Infof("Creating %s at %s", "runHandler",
+		log.Functionf("Creating %s at %s", "runHandler",
 			agentlog.GetMyStack())
 		go runHandler(ctx, key, h1)
 	default:
@@ -76,12 +76,12 @@ func (v *verifyHandler) create(ctxArg interface{},
 	h = h1
 	select {
 	case h <- Notify{}:
-		log.Infof("verifyHandler.create(%s) sent notify", handlerKey)
+		log.Functionf("verifyHandler.create(%s) sent notify", handlerKey)
 	default:
 		// Shouldn't happen since we just created channel
 		log.Fatalf("verifyHandler.create(%s) NOT sent notify", handlerKey)
 	}
-	log.Infof("verifyHandler.create(%s) done", handlerKey)
+	log.Functionf("verifyHandler.create(%s) done", handlerKey)
 }
 
 func (v *verifyHandler) delete(ctxArg interface{}, key string,
@@ -89,16 +89,16 @@ func (v *verifyHandler) delete(ctxArg interface{}, key string,
 
 	typeName := pubsub.TypeToName(configArg)
 	handlerKey := fmt.Sprintf("%s+%s", typeName, key)
-	log.Infof("verifyHandler.delete(%s)", handlerKey)
+	log.Functionf("verifyHandler.delete(%s)", handlerKey)
 	// Do we have a channel/goroutine?
 	h, ok := v.handlers[handlerKey]
 	if ok {
-		log.Debugf("Closing channel")
+		log.Tracef("Closing channel")
 		close(h)
 		delete(v.handlers, handlerKey)
 	} else {
-		log.Debugf("verifyHandler.delete: unknown %s", handlerKey)
+		log.Tracef("verifyHandler.delete: unknown %s", handlerKey)
 		return
 	}
-	log.Infof("verifyHandler.delete(%s) done", handlerKey)
+	log.Functionf("verifyHandler.delete(%s) done", handlerKey)
 }

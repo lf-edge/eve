@@ -12,7 +12,19 @@ func blobStatusGetAll(ctx *zedagentContext) map[string]*types.BlobStatus {
 	return blobShaAndBlobStatus
 }
 
-func handleBlobStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+func handleBlobStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleBlobStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBlobStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleBlobStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBlobStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	status := statusArg.(types.BlobStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()

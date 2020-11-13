@@ -21,17 +21,17 @@ func CheckAndGetNetworkProxy(log *base.LogObject, deviceNetworkStatus *types.Dev
 	ifname := status.IfName
 	proxyConfig := &status.ProxyConfig
 
-	log.Debugf("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
+	log.Tracef("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
 		ifname, proxyConfig.NetworkProxyEnable,
 		proxyConfig.NetworkProxyURL)
 
 	if proxyConfig.Pacfile != "" {
-		log.Debugf("CheckAndGetNetworkProxy(%s): already have Pacfile\n",
+		log.Tracef("CheckAndGetNetworkProxy(%s): already have Pacfile\n",
 			ifname)
 		return nil
 	}
 	if !proxyConfig.NetworkProxyEnable {
-		log.Debugf("CheckAndGetNetworkProxy(%s): not enabled\n",
+		log.Tracef("CheckAndGetNetworkProxy(%s): not enabled\n",
 			ifname)
 		return nil
 	}
@@ -54,7 +54,7 @@ func CheckAndGetNetworkProxy(log *base.LogObject, deviceNetworkStatus *types.Dev
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	log.Infof("CheckAndGetNetworkProxy(%s): DomainName %s\n",
+	log.Functionf("CheckAndGetNetworkProxy(%s): DomainName %s\n",
 		ifname, dn)
 	// Try http://wpad.%s/wpad.dat", dn where we the leading labels
 	// in DomainName until we succeed
@@ -71,7 +71,7 @@ func CheckAndGetNetworkProxy(log *base.LogObject, deviceNetworkStatus *types.Dev
 		log.Warnln(errStr)
 		i := strings.Index(dn, ".")
 		if i == -1 {
-			log.Infof("CheckAndGetNetworkProxy(%s): no dots in DomainName %s\n",
+			log.Functionf("CheckAndGetNetworkProxy(%s): no dots in DomainName %s\n",
 				ifname, dn)
 			log.Errorln(errStr)
 			return errors.New(errStr)
@@ -82,7 +82,7 @@ func CheckAndGetNetworkProxy(log *base.LogObject, deviceNetworkStatus *types.Dev
 		// since wpad.com isn't a useful place to look
 		count := strings.Count(dn, ".")
 		if count == 0 {
-			log.Infof("CheckAndGetNetworkProxy(%s): reached TLD in DomainName %s\n",
+			log.Functionf("CheckAndGetNetworkProxy(%s): reached TLD in DomainName %s\n",
 				ifname, dn)
 			log.Errorln(errStr)
 			return errors.New(errStr)
@@ -118,7 +118,7 @@ func getPacFile(log *base.LogObject, status *types.DeviceNetworkStatus, url stri
 	}
 	switch mimeType {
 	case "application/x-ns-proxy-autoconfig":
-		log.Infof("getPacFile(%s): fetched from URL %s: %s\n",
+		log.Functionf("getPacFile(%s): fetched from URL %s: %s\n",
 			ifname, url, string(contents))
 		encoded := base64.StdEncoding.EncodeToString(contents)
 		return encoded, nil

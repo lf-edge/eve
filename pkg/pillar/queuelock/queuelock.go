@@ -29,7 +29,7 @@ type Handle struct {
 
 // NewQueueLock creates a lock
 func NewQueueLock(log *base.LogObject) *Handle {
-	log.Infof("NewQueueLock()")
+	log.Functionf("NewQueueLock()")
 	handle := Handle{
 		next: make(chan uint, 1),
 		log:  log,
@@ -50,12 +50,12 @@ func (hdl *Handle) Enter(work uint) bool {
 	defer hdl.Unlock()
 	if hdl.isRunning {
 		hdl.enqueue(work)
-		hdl.log.Infof("Enter(%d) queued", work)
+		hdl.log.Functionf("Enter(%d) queued", work)
 		return false
 	}
 	hdl.isRunning = true
 	hdl.running = work
-	hdl.log.Infof("Enter(%d) ok", work)
+	hdl.log.Functionf("Enter(%d) ok", work)
 	return true
 }
 
@@ -74,14 +74,14 @@ func (hdl *Handle) Exit(work uint) {
 	hdl.isRunning = false
 	hdl.running = 0
 	if len(hdl.waiting) == 0 {
-		hdl.log.Infof("Exit(%d) no waiting", work)
+		hdl.log.Functionf("Exit(%d) no waiting", work)
 		return
 	}
-	hdl.log.Infof("Exit(%d) %d waiting", work, len(hdl.waiting))
+	hdl.log.Functionf("Exit(%d) %d waiting", work, len(hdl.waiting))
 	next := hdl.dequeue()
 	select {
 	case hdl.next <- next:
-		hdl.log.Infof("Exit() sent %d", next)
+		hdl.log.Functionf("Exit() sent %d", next)
 	default:
 		hdl.log.Panicf("Exit channel busy")
 	}
@@ -107,27 +107,27 @@ func (hdl *Handle) NumWaiters() int {
 // Caller must hold lock
 // Supress duplicates when adding
 func (hdl *Handle) enqueue(work uint) {
-	hdl.log.Infof("enqueue(%d) %d waiting", work, len(hdl.waiting))
+	hdl.log.Functionf("enqueue(%d) %d waiting", work, len(hdl.waiting))
 	for i := range hdl.waiting {
 		if hdl.waiting[i] == work {
-			hdl.log.Infof("queue(%d) duplicate at %d, %d waiting",
+			hdl.log.Functionf("queue(%d) duplicate at %d, %d waiting",
 				work, i, len(hdl.waiting))
 			return
 		}
 	}
 	hdl.waiting = append(hdl.waiting, work)
-	hdl.log.Infof("queue(%d) done, %d waiting", work, len(hdl.waiting))
+	hdl.log.Functionf("queue(%d) done, %d waiting", work, len(hdl.waiting))
 }
 
 // Caller must hold lock
 // Panic if empty
 func (hdl *Handle) dequeue() uint {
-	hdl.log.Infof("dequeue() %d waiting", len(hdl.waiting))
+	hdl.log.Functionf("dequeue() %d waiting", len(hdl.waiting))
 	if len(hdl.waiting) == 0 {
 		hdl.log.Panicf("dequeue empty waiting")
 	}
 	work := hdl.waiting[0]
 	hdl.waiting = hdl.waiting[1:]
-	hdl.log.Infof("dequeue -> %d, %d waiting", work, len(hdl.waiting))
+	hdl.log.Functionf("dequeue -> %d, %d waiting", work, len(hdl.waiting))
 	return work
 }

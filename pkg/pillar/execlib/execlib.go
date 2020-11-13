@@ -68,8 +68,8 @@ func New(ps *pubsub.PubSub, log *base.LogObject, agentName string, executor stri
 		MyAgentName:   agentName,
 		TopicImpl:     types.ExecStatus{},
 		Ctx:           &handle,
-		CreateHandler: handleStatus,
-		ModifyHandler: handleStatus,
+		CreateHandler: handleStatusCreate,
+		ModifyHandler: handleStatusModify,
 	})
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (hdl *ExecuteHandle) Execute(args ExecuteArgs) (string, error) {
 		Combined:  args.CombinedOutput,
 		DontWait:  args.DontWait,
 	}
-	hdl.log.Infof("publish %+v", config)
+	hdl.log.Functionf("publish %+v", config)
 	hdl.pubExecConfig.Publish(config.Key(), config)
 	if args.DontWait {
 		return "", nil
@@ -124,18 +124,28 @@ func (hdl *ExecuteHandle) Execute(args ExecuteArgs) (string, error) {
 	return status.Output, nil
 }
 
-func handleStatus(ctxArg interface{}, key string,
+func handleStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	hdl := ctxArg.(*ExecuteHandle)
-	hdl.log.Infof("handleStatus %s", key)
+	hdl.log.Functionf("handleStatusImpl %s", key)
 	if key != hdl.caller {
-		hdl.log.Infof("Mismatched key %s vs %s\n", key, hdl.caller)
+		hdl.log.Functionf("Mismatched key %s vs %s\n", key, hdl.caller)
 		return
 	}
 	status := statusArg.(types.ExecStatus)
 	if status.Sequence != hdl.sequence {
-		hdl.log.Infof("Mismatched sequence %d vs %d\n",
+		hdl.log.Functionf("Mismatched sequence %d vs %d\n",
 			status.Sequence, hdl.sequence)
 		return
 	}

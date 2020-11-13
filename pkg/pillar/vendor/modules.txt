@@ -150,7 +150,7 @@ github.com/containerd/containerd/version
 github.com/containerd/continuity/fs
 github.com/containerd/continuity/pathdriver
 github.com/containerd/continuity/sysx
-# github.com/containerd/fifo v0.0.0-20200410184934-f15a3290365b
+# github.com/containerd/fifo v0.0.0-20201026212402-0724c46b320c
 github.com/containerd/fifo
 # github.com/containerd/ttrpc v1.0.2
 github.com/containerd/ttrpc
@@ -160,7 +160,7 @@ github.com/containerd/typeurl
 github.com/cshari-zededa/eve-tpm2-tools/eventlog
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
-# github.com/deislabs/oras v0.8.2-0.20201002163557-6414398e5145
+# github.com/deislabs/oras v0.8.2-0.20201110191325-f1caa175232f
 github.com/deislabs/oras/pkg/artifact
 github.com/deislabs/oras/pkg/auth
 github.com/deislabs/oras/pkg/auth/docker
@@ -302,7 +302,7 @@ github.com/jackwakefield/gopac
 github.com/jmespath/go-jmespath
 # github.com/kr/fs v0.1.0
 github.com/kr/fs
-# github.com/lf-edge/edge-containers v0.0.0-20201015070651-e9dcf23f69f0
+# github.com/lf-edge/edge-containers v0.0.0-20201111200732-5491ea93dbe4
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/store

@@ -58,18 +58,18 @@ func checkPortAvailable(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("NetworkInstance(%s-%s), logicallabel: %s, currentUplinkIntf: %s",
+	log.Functionf("NetworkInstance(%s-%s), logicallabel: %s, currentUplinkIntf: %s",
 		status.DisplayName, status.UUID, status.Logicallabel,
 		status.CurrentUplinkIntf)
 
 	if status.CurrentUplinkIntf == "" {
-		log.Infof("CurrentUplinkIntf not specified\n")
+		log.Functionf("CurrentUplinkIntf not specified\n")
 		return nil
 	}
 
 	if allowSharedPort(status) {
 		if isSharedPortLabel(status.CurrentUplinkIntf) {
-			log.Infof("allowSharedPort: %t, isSharedPortLabel:%t",
+			log.Functionf("allowSharedPort: %t, isSharedPortLabel:%t",
 				allowSharedPort(status), isSharedPortLabel(status.CurrentUplinkIntf))
 			return nil
 		}
@@ -142,7 +142,7 @@ func checkPortAvailable(
 func disableIcmpRedirects(bridgeName string) {
 	sysctlSetting := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", bridgeName)
 	args := []string{"-w", sysctlSetting}
-	log.Infof("Calling command %s %v\n", "sysctl", args)
+	log.Functionf("Calling command %s %v\n", "sysctl", args)
 	out, err := base.Exec(log, "sysctl", args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
@@ -341,7 +341,7 @@ func doBridgeAclsDelete(
 	items := ctx.pubAppNetworkStatus.GetAll()
 	for _, ans := range items {
 		appNetStatus := ans.(types.AppNetworkStatus)
-
+		appID := appNetStatus.UUIDandVersion.UUID
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
 			if ulStatus.Network != status.UUID {
 				continue
@@ -349,51 +349,82 @@ func doBridgeAclsDelete(
 			if ulStatus.Bridge == "" {
 				continue
 			}
-			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
+			log.Functionf("NetworkInstance - deleting Acls for UL Interface(%s)",
 				ulStatus.Name)
 			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
 				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AllocatedIPAddr,
 				UpLinks: status.IfNameList}
-			ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
+			rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
+			ruleList, err := deleteACLConfiglet(aclArgs, rules.ACLRules)
 			if err != nil {
 				log.Errorf("NetworkInstance DeleteACL failed: %s\n",
 					err)
 			}
-			ulStatus.ACLRules = ruleList
+			setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 		}
 	}
 	return
 }
 
+func getNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string) types.ULNetworkACLs {
+	tmpMap := ctx.NLaclMap[appID]
+	if tmpMap == nil {
+		ctx.NLaclMap[appID] = make(map[string]types.ULNetworkACLs)
+	}
+
+	if _, ok := ctx.NLaclMap[appID][intf]; !ok {
+		ctx.NLaclMap[appID][intf] = types.ULNetworkACLs{}
+	}
+	return ctx.NLaclMap[appID][intf]
+}
+
+func setNetworkACLRules(ctx *zedrouterContext, appID uuid.UUID, intf string, rulelist types.IPTablesRuleList) {
+	tmpMap := ctx.NLaclMap[appID]
+	if tmpMap == nil {
+		ctx.NLaclMap[appID] = make(map[string]types.ULNetworkACLs)
+	}
+
+	if len(rulelist) == 0 {
+		delete(ctx.NLaclMap[appID], intf)
+	} else {
+		rlist := types.ULNetworkACLs{ACLRules: rulelist}
+		ctx.NLaclMap[appID][intf] = rlist
+	}
+}
+
 func handleNetworkInstanceModify(
 	ctxArg interface{},
 	key string,
-	configArg interface{}) {
+	configArg interface{},
+	oldConfigArg interface{}) {
 
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkInstanceStatus
 	config := configArg.(types.NetworkInstanceConfig)
 	status := lookupNetworkInstanceStatus(ctx, key)
 	if status != nil {
-		log.Infof("handleNetworkInstanceModify(%s)\n", key)
+		log.Functionf("handleNetworkInstanceModify(%s)\n", key)
 		status.ChangeInProgress = types.ChangeInProgressTypeModify
 		pub.Publish(status.Key(), *status)
 		doNetworkInstanceModify(ctx, config, status)
 		niUpdateNIprobing(ctx, status)
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		publishNetworkInstanceStatus(ctx, status)
-		log.Infof("handleNetworkInstanceModify(%s) done\n", key)
+		log.Functionf("handleNetworkInstanceModify(%s) done\n", key)
 	} else {
-		handleNetworkInstanceCreate(ctx, key, config)
+		log.Fatalf("handleNetworkInstanceModify(%s) no status", key)
 	}
 }
 
 func handleNetworkInstanceCreate(
-	ctx *zedrouterContext,
+	ctxArg interface{},
 	key string,
-	config types.NetworkInstanceConfig) {
+	configArg interface{}) {
 
-	log.Infof("handleNetworkInstanceCreate: (UUID: %s, name:%s)\n",
+	ctx := ctxArg.(*zedrouterContext)
+	config := configArg.(types.NetworkInstanceConfig)
+
+	log.Functionf("handleNetworkInstanceCreate: (UUID: %s, name:%s)\n",
 		key, config.DisplayName)
 
 	pub := ctx.pubNetworkInstanceStatus
@@ -425,14 +456,14 @@ func handleNetworkInstanceCreate(
 	pub.Publish(status.Key(), status)
 
 	if config.Activate {
-		log.Infof("handleNetworkInstanceCreate: Activating network instance")
+		log.Functionf("handleNetworkInstanceCreate: Activating network instance")
 		err := doNetworkInstanceActivate(ctx, &status)
 		if err != nil {
 			log.Errorf("doNetworkInstanceActivate(%s) failed: %s\n", key, err)
 			log.Error(err)
 			status.SetErrorNow(err.Error())
 		} else {
-			log.Infof("Activated network instance %s %s", status.UUID, status.DisplayName)
+			log.Functionf("Activated network instance %s %s", status.UUID, status.DisplayName)
 			status.Activated = true
 		}
 	}
@@ -441,18 +472,18 @@ func handleNetworkInstanceCreate(
 	publishNetworkInstanceStatus(ctx, &status)
 	// Hooks for updating dependent objects
 	checkAndRecreateAppNetwork(ctx, config.UUID)
-	log.Infof("handleNetworkInstanceCreate(%s) done\n", key)
+	log.Functionf("handleNetworkInstanceCreate(%s) done\n", key)
 }
 
 func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("handleNetworkInstanceDelete(%s)\n", key)
+	log.Functionf("handleNetworkInstanceDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkInstanceStatus
 	status := lookupNetworkInstanceStatus(ctx, key)
 	if status == nil {
-		log.Infof("handleNetworkInstanceDelete: unknown %s\n", key)
+		log.Functionf("handleNetworkInstanceDelete: unknown %s\n", key)
 		return
 	}
 	status.ChangeInProgress = types.ChangeInProgressTypeDelete
@@ -465,13 +496,13 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	pub.Unpublish(status.Key())
 
 	deleteNetworkInstanceMetrics(ctx, status.Key())
-	log.Infof("handleNetworkInstanceDelete(%s) done\n", key)
+	log.Functionf("handleNetworkInstanceDelete(%s) done\n", key)
 }
 
 func doNetworkInstanceCreate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("NetworkInstance(%s-%s): NetworkType: %d, IpType: %d\n",
+	log.Functionf("NetworkInstance(%s-%s): NetworkType: %d, IpType: %d\n",
 		status.DisplayName, status.UUID, status.Type, status.IpType)
 
 	if err := doNetworkInstanceSanityCheck(ctx, status); err != nil {
@@ -495,12 +526,12 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	status.BridgeMac = bridgeMac
 	publishNetworkInstanceStatus(ctx, status)
 
-	log.Infof("bridge created. BridgeMac: %s\n", bridgeMac)
+	log.Functionf("bridge created. BridgeMac: %s\n", bridgeMac)
 
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
 	}
-	log.Infof("IpAddress set for bridge\n")
+	log.Functionf("IpAddress set for bridge\n")
 
 	// Create a hosts directory for the new bridge
 	// Directory is /run/zedrouter/hosts.${BRIDGENAME}
@@ -530,7 +561,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 
 	// monitor the DNS and DHCP information
-	log.Infof("Creating %s at %s", "DNSMonitor", agentlog.GetMyStack())
+	log.Functionf("Creating %s at %s", "DNSMonitor", agentlog.GetMyStack())
 	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
@@ -555,7 +586,7 @@ func doNetworkInstanceSanityCheck(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d\n",
+	log.Functionf("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d\n",
 		status.DisplayName, status.UUID, status.Type, status.IpType)
 
 	err := checkNIphysicalPort(ctx, status)
@@ -694,9 +725,9 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 	config types.NetworkInstanceConfig,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("doNetworkInstanceModify: key %s\n", config.UUID)
+	log.Functionf("doNetworkInstanceModify: key %s\n", config.UUID)
 	if config.Type != status.Type {
-		log.Infof("doNetworkInstanceModify: key %s\n", config.UUID)
+		log.Functionf("doNetworkInstanceModify: key %s\n", config.UUID)
 		// We do not allow Type to change.
 
 		err := fmt.Errorf("Changing Type of NetworkInstance from %d to %d is not supported", status.Type, config.Type)
@@ -765,20 +796,20 @@ func getSwitchNetworkInstanceUsingIfname(
 		ifname2 := types.LogicallabelToIfName(ctx.deviceNetworkStatus,
 			status.Logicallabel)
 		if ifname2 != ifname {
-			log.Infof("maybeUpdateBridgeIPAddr - NI (%s) not using %s\n",
+			log.Functionf("maybeUpdateBridgeIPAddr - NI (%s) not using %s\n",
 				status.DisplayName, ifname)
 			continue
 		}
 
 		// Found Status using the Port.
-		log.Infof("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) using "+
+		log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) using "+
 			"logicallabel: %s, ifname: %s, type: %d\n",
 			status.DisplayName, status.Logicallabel, ifname, status.Type)
 
 		if status.Type == types.NetworkInstanceTypeSwitch {
 			return &status
 		}
-		log.Infof("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) "+
+		log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) "+
 			"not of type (%d) switch\n",
 			status.DisplayName, status.Type)
 		break
@@ -788,7 +819,7 @@ func getSwitchNetworkInstanceUsingIfname(
 
 func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 
-	log.Infof("restartDnsmasq(%s) ipsets %v\n",
+	log.Functionf("restartDnsmasq(%s) ipsets %v\n",
 		status.BridgeName, status.BridgeIPSets)
 	bridgeName := status.BridgeName
 	stopDnsmasq(bridgeName, false, true)
@@ -819,7 +850,7 @@ func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
 			}
 			addhostDnsmasq(bridge, ulStatus.Mac,
 				ulStatus.AllocatedIPAddr, status.UUIDandVersion.UUID.String())
-			log.Infof("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
+			log.Functionf("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
 		}
 	}
 }
@@ -830,22 +861,22 @@ func lookupOrAllocateIPv4(
 	status *types.NetworkInstanceStatus,
 	mac net.HardwareAddr) (string, error) {
 
-	log.Infof("lookupOrAllocateIPv4(%s-%s): mac:%s\n",
+	log.Functionf("lookupOrAllocateIPv4(%s-%s): mac:%s\n",
 		status.DisplayName, status.Key(), mac.String())
 	// Lookup to see if it exists
 	if ip, ok := status.IPAssignments[mac.String()]; ok {
-		log.Infof("found Ip addr ( %s) for mac(%s)\n",
+		log.Functionf("found Ip addr ( %s) for mac(%s)\n",
 			ip.String(), mac.String())
 		return ip.String(), nil
 	}
 
-	log.Infof("bridgeName %s Subnet %v range %v-%v\n",
+	log.Functionf("bridgeName %s Subnet %v range %v-%v\n",
 		status.BridgeName, status.Subnet,
 		status.DhcpRange.Start, status.DhcpRange.End)
 
 	if status.DhcpRange.Start == nil {
 		if status.Type == types.NetworkInstanceTypeSwitch {
-			log.Infof("%s-%s switch means no bridgeIpAddr",
+			log.Functionf("%s-%s switch means no bridgeIpAddr",
 				status.DisplayName, status.Key())
 			return "", nil
 		}
@@ -867,13 +898,13 @@ func lookupOrAllocateIPv4(
 	for status.DhcpRange.End == nil ||
 		bytes.Compare(a, status.DhcpRange.End) <= 0 {
 
-		log.Infof("lookupOrAllocateIPv4(%s) testing %s\n",
+		log.Functionf("lookupOrAllocateIPv4(%s) testing %s\n",
 			mac.String(), a.String())
 		if status.IsIpAssigned(a) {
 			a = addToIP(a, 1)
 			continue
 		}
-		log.Infof("lookupOrAllocateIPv4(%s) found free %s\n",
+		log.Functionf("lookupOrAllocateIPv4(%s) found free %s\n",
 			mac.String(), a.String())
 
 		recordIPAssignment(ctx, status, a, mac.String())
@@ -915,7 +946,7 @@ func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus,
 	mac net.HardwareAddr) error {
 
-	log.Infof("releaseIPv4(%s)\n", mac.String())
+	log.Functionf("releaseIPv4(%s)\n", mac.String())
 	// Lookup to see if it exists
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
@@ -970,11 +1001,11 @@ func doConfigureIpAddrOnInterface(
 func getPortIPv4Addr(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) (string, error) {
 	// Find any service which is associated with the appLink UUID
-	log.Infof("NetworkInstance UUID:%s, Name: %s, LogicalLabel: %s\n",
+	log.Functionf("NetworkInstance UUID:%s, Name: %s, LogicalLabel: %s\n",
 		status.UUID, status.DisplayName, status.Logicallabel)
 
 	if status.Logicallabel == "" {
-		log.Infof("no Logicallabel\n")
+		log.Functionf("no Logicallabel\n")
 		return "", nil
 	}
 
@@ -991,12 +1022,12 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		addrs = nil
 	}
 	for _, addr := range addrs {
-		log.Infof("found addr %s\n", addr.String())
+		log.Functionf("found addr %s\n", addr.String())
 		if addr.To4() != nil {
 			return addr.String(), nil
 		}
 	}
-	log.Infof("No IPv4 address on %s yet\n", status.Logicallabel)
+	log.Functionf("No IPv4 address on %s yet\n", status.Logicallabel)
 	return "", nil
 }
 
@@ -1004,12 +1035,12 @@ func setBridgeIPAddr(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("setBridgeIPAddr(%s-%s)\n",
+	log.Functionf("setBridgeIPAddr(%s-%s)\n",
 		status.DisplayName, status.Key())
 
 	if status.BridgeName == "" {
 		// Called too early
-		log.Infof("setBridgeIPAddr: don't yet have a bridgeName for %s\n",
+		log.Functionf("setBridgeIPAddr: don't yet have a bridgeName for %s\n",
 			status.UUID)
 		return nil
 	}
@@ -1022,7 +1053,7 @@ func setBridgeIPAddr(
 		errStr := fmt.Sprintf("Failed to get link for Bridge %s", status.BridgeName)
 		return errors.New(errStr)
 	}
-	log.Infof("Bridge: %s, Link: %+v\n", status.BridgeName, link)
+	log.Functionf("Bridge: %s, Link: %+v\n", status.BridgeName, link)
 
 	var ipAddr string
 	var err error
@@ -1035,7 +1066,7 @@ func setBridgeIPAddr(
 				err)
 			return err
 		}
-		log.Infof("Bridge: %s, Link: %s, ipAddr: %s\n",
+		log.Functionf("Bridge: %s, Link: %s, ipAddr: %s\n",
 			status.BridgeName, link, ipAddr)
 	}
 
@@ -1059,16 +1090,16 @@ func setBridgeIPAddr(
 			ipAddr = status.Gateway.String()
 			status.IPAssignments[bridgeMac.String()] = status.Gateway
 		}
-		log.Infof("BridgeMac: %s, ipAddr: %s\n",
+		log.Functionf("BridgeMac: %s, ipAddr: %s\n",
 			bridgeMac.String(), ipAddr)
 	}
 	status.BridgeIPAddr = ipAddr
 	publishNetworkInstanceStatus(ctx, status)
-	log.Infof("Published NetworkStatus. BridgeIpAddr: %s\n",
+	log.Functionf("Published NetworkStatus. BridgeIpAddr: %s\n",
 		status.BridgeIPAddr)
 
 	if status.BridgeIPAddr == "" {
-		log.Infof("Does not yet have a bridge IP address for %s\n",
+		log.Functionf("Does not yet have a bridge IP address for %s\n",
 			status.Key())
 		return nil
 	}
@@ -1081,7 +1112,7 @@ func setBridgeIPAddr(
 
 	// Create new radvd configuration and restart radvd if ipv6
 	if status.IsIPv6() {
-		log.Infof("Restart Radvd\n")
+		log.Functionf("Restart Radvd\n")
 		restartRadvdWithNewConfig(status.BridgeName)
 	}
 	return nil
@@ -1093,16 +1124,16 @@ func updateBridgeIPAddr(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("updateBridgeIPAddr(%s)\n", status.Key())
+	log.Functionf("updateBridgeIPAddr(%s)\n", status.Key())
 
 	old := status.BridgeIPAddr
 	err := setBridgeIPAddr(ctx, status)
 	if err != nil {
-		log.Infof("updateBridgeIPAddr: %s\n", err)
+		log.Functionf("updateBridgeIPAddr: %s\n", err)
 		return
 	}
 	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
-		log.Infof("updateBridgeIPAddr(%s) restarting dnsmasq\n",
+		log.Functionf("updateBridgeIPAddr(%s) restarting dnsmasq\n",
 			status.Key())
 		restartDnsmasq(ctx, status)
 	}
@@ -1118,7 +1149,7 @@ func maybeUpdateBridgeIPAddr(
 	if status == nil {
 		return
 	}
-	log.Infof("maybeUpdateBridgeIPAddr: found "+
+	log.Functionf("maybeUpdateBridgeIPAddr: found "+
 		"NetworkInstance %s", status.DisplayName)
 
 	if !status.Activated {
@@ -1134,7 +1165,7 @@ func maybeUpdateBridgeIPAddr(
 func doNetworkInstanceActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("doNetworkInstanceActivate NetworkInstance key %s type %d\n",
+	log.Functionf("doNetworkInstanceActivate NetworkInstance key %s type %d\n",
 		status.UUID, status.Type)
 
 	// Check that Port is either "uplink", "freeuplink", or
@@ -1155,7 +1186,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	} else {
 		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
 	}
-	log.Infof("IfNameList: %+v", status.IfNameList)
+	log.Functionf("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -1195,7 +1226,7 @@ func getIfNameListForLLOrIfname(
 	llOrIfname string) []string {
 
 	ifNameList := labelToIfNames(ctx, llOrIfname)
-	log.Infof("ifNameList: %+v", ifNameList)
+	log.Functionf("ifNameList: %+v", ifNameList)
 
 	filteredList := make([]string, 0)
 	for _, ifName := range ifNameList {
@@ -1208,23 +1239,23 @@ func getIfNameListForLLOrIfname(
 			// XXX That bug has been fixed. Retest without this code?
 			ifIndex, err := IfnameToIndex(log, ifName)
 			if err == nil {
-				log.Infof("ifName %s, ifindex: %d added to filteredList",
+				log.Functionf("ifName %s, ifindex: %d added to filteredList",
 					ifName, ifIndex)
 				filteredList = append(filteredList, ifName)
 			} else {
-				log.Infof("ifIndex not found for ifName(%s) - err: %s",
+				log.Functionf("ifIndex not found for ifName(%s) - err: %s",
 					ifName, err.Error())
 			}
 		} else {
-			log.Infof("DeviceNetworkStatus not found for ifName(%s)",
+			log.Functionf("DeviceNetworkStatus not found for ifName(%s)",
 				ifName)
 		}
 	}
 	if len(filteredList) > 0 {
-		log.Infof("filteredList: %+v", filteredList)
+		log.Functionf("filteredList: %+v", filteredList)
 		return filteredList
 	}
-	log.Infof("ifname or ifindex not found for any interface for logicallabel(%s)."+
+	log.Functionf("ifname or ifindex not found for any interface for logicallabel(%s)."+
 		"Returning the unfiltered list: %+v", llOrIfname, ifNameList)
 	return ifNameList
 }
@@ -1233,7 +1264,7 @@ func doNetworkInstanceInactivate(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("doNetworkInstanceInactivate NetworkInstance key %s type %d\n",
+	log.Functionf("doNetworkInstanceInactivate NetworkInstance key %s type %d\n",
 		status.UUID, status.Type)
 
 	bridgeInactivateforNetworkInstance(ctx, status)
@@ -1251,7 +1282,7 @@ func doNetworkInstanceDelete(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("doNetworkInstanceDelete NetworkInstance key %s type %d\n",
+	log.Functionf("doNetworkInstanceDelete NetworkInstance key %s type %d\n",
 		status.UUID, status.Type)
 
 	// Anything to do except the inactivate already done?
@@ -1380,7 +1411,7 @@ func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 func bridgeActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("bridgeActivate(%s)\n", status.DisplayName)
+	log.Functionf("bridgeActivate(%s)\n", status.DisplayName)
 
 	bridgeLink, err := findBridge(status.BridgeName)
 	if err != nil {
@@ -1409,7 +1440,7 @@ func bridgeActivate(ctx *zedrouterContext,
 			status.Logicallabel, ifname, status.BridgeName, err)
 		return errors.New(errStr)
 	}
-	log.Infof("bridgeActivate: added %s ifname %s to bridge %s\n",
+	log.Functionf("bridgeActivate: added %s ifname %s to bridge %s\n",
 		status.Logicallabel, ifname, status.BridgeName)
 	return nil
 }
@@ -1417,7 +1448,7 @@ func bridgeActivate(ctx *zedrouterContext,
 func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("bridgeInactivateforNetworkInstance(%s)\n", status.DisplayName)
+	log.Functionf("bridgeInactivateforNetworkInstance(%s)\n", status.DisplayName)
 	// Find logicallabel
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
 	alink, _ := netlink.LinkByName(ifname)
@@ -1431,10 +1462,10 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 	if err := netlink.LinkSetNoMaster(alink); err != nil {
 		errStr := fmt.Sprintf("LinkSetNoMaster %s ifname %s failed: %s",
 			status.Logicallabel, ifname, err)
-		log.Infoln(errStr)
+		log.Functionln(errStr)
 		return
 	}
-	log.Infof("bridgeInactivateforNetworkInstance: removed %s ifname %s from bridge\n",
+	log.Functionf("bridgeInactivateforNetworkInstance: removed %s ifname %s from bridge\n",
 		status.Logicallabel, ifname)
 }
 
@@ -1444,7 +1475,7 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 func natActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("natActivate(%s)\n", status.DisplayName)
+	log.Functionf("natActivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 
 	// status.IfNameList should not have more than one interface name.
@@ -1458,7 +1489,7 @@ func natActivate(ctx *zedrouterContext,
 		return err
 	}
 	for _, a := range status.IfNameList {
-		log.Infof("Adding iptables rules for %s \n", a)
+		log.Functionf("Adding iptables rules for %s \n", a)
 		err := iptables.IptableCmd(log, "-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
@@ -1479,7 +1510,7 @@ func natActivate(ctx *zedrouterContext,
 func natInactivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus, inActivateOld bool) {
 
-	log.Infof("natInactivate(%s)\n", status.DisplayName)
+	log.Functionf("natInactivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 	var oldUplinkIntf string
 	if inActivateOld {
@@ -1502,7 +1533,7 @@ func natInactivate(ctx *zedrouterContext,
 
 func natDelete(status *types.NetworkInstanceStatus) {
 
-	log.Infof("natDelete(%s)\n", status.DisplayName)
+	log.Functionf("natDelete(%s)\n", status.DisplayName)
 }
 
 func lookupNetworkInstanceStatusByBridgeName(ctx *zedrouterContext,
@@ -1566,7 +1597,7 @@ func vpnDelete(ctx *zedrouterContext,
 func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("Vpn network instance create: %s\n", status.DisplayName)
+	log.Functionf("Vpn network instance create: %s\n", status.DisplayName)
 
 	// parse and structure the config
 	vpnConfig, err := strongSwanConfigGet(ctx, status)
@@ -1593,7 +1624,7 @@ func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
 func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("Vpn network instance delete: %s\n", status.DisplayName)
+	log.Functionf("Vpn network instance delete: %s\n", status.DisplayName)
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Warnf("Vpn network instance delete: %v\n", err.Error())
@@ -1607,7 +1638,7 @@ func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
 func strongswanNetworkInstanceActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("Vpn network instance activate: %s\n", status.DisplayName)
+	log.Functionf("Vpn network instance activate: %s\n", status.DisplayName)
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Warnf("Vpn network instance activate: %v\n", err.Error())
@@ -1624,7 +1655,7 @@ func strongswanNetworkInstanceActivate(ctx *zedrouterContext,
 func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Infof("Vpn network instance inactivate: %s\n", status.DisplayName)
+	log.Functionf("Vpn network instance inactivate: %s\n", status.DisplayName)
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
@@ -1707,13 +1738,13 @@ func checkAndReprogramNetworkInstances(ctx *zedrouterContext) {
 			continue
 		}
 		if status.ProgUplinkIntf == status.CurrentUplinkIntf {
-			log.Infof("checkAndReprogramNetworkInstances: Uplink (%s) has not changed"+
+			log.Functionf("checkAndReprogramNetworkInstances: Uplink (%s) has not changed"+
 				" for network instance %s",
 				status.CurrentUplinkIntf, status.DisplayName)
 			continue
 		}
 
-		log.Infof("checkAndReprogramNetworkInstances: Changing Uplink to %s from %s for "+
+		log.Functionf("checkAndReprogramNetworkInstances: Changing Uplink to %s from %s for "+
 			"network instance %s", status.CurrentUplinkIntf, status.PrevUplinkIntf,
 			status.DisplayName)
 		doNetworkInstanceFallback(ctx, &status)
@@ -1724,14 +1755,14 @@ func doNetworkInstanceFallback(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("doNetworkInstanceFallback NetworkInstance key %s type %d\n",
+	log.Functionf("doNetworkInstanceFallback NetworkInstance key %s type %d\n",
 		status.UUID, status.Type)
 
 	var err error
 	// Get a list of IfNames to the ones we have an ifIndex for.
 	status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
 	publishNetworkInstanceStatus(ctx, status)
-	log.Infof("IfNameList: %+v", status.IfNameList)
+	log.Functionf("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
@@ -1776,8 +1807,9 @@ func doNetworkInstanceFallback(
 					ulConfig := &config.UnderlayNetworkList[i]
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
+					// XXX no change in config
 					doAppNetworkModifyUnderlayNetwork(
-						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+						ctx, &appNetworkStatus, ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)
@@ -1827,8 +1859,9 @@ func doNetworkInstanceFallback(
 					ulConfig := &config.UnderlayNetworkList[i]
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
+					// XXX no change in config
 					doAppNetworkModifyUnderlayNetwork(
-						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+						ctx, &appNetworkStatus, ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)

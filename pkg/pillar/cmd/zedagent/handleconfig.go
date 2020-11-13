@@ -89,7 +89,7 @@ func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 		AgentName:        agentName,
 	})
 
-	log.Infof("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v", zedcloudCtx.DevSerial,
+	log.Functionf("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial, zedcloud.UseV2API())
 
 	// XXX need to redo this since the root certificates can change
@@ -108,7 +108,7 @@ func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 	if err != nil {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
-	log.Infof("Read UUID %s", devUUID)
+	log.Functionf("Read UUID %s", devUUID)
 	zedcloudCtx.DevUUID = devUUID
 	zcdevUUID = devUUID
 	return &zedcloudCtx
@@ -154,7 +154,7 @@ func configTimerTask(handleChannel chan interface{},
 
 		case <-stillRunning.C:
 			if getconfigCtx.rebootFlag {
-				log.Infof("reboot flag set")
+				log.Functionf("reboot flag set")
 			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
@@ -162,7 +162,7 @@ func configTimerTask(handleChannel chan interface{},
 }
 
 func triggerGetConfig(tickerHandle interface{}) {
-	log.Infof("triggerGetConfig()")
+	log.Functionf("triggerGetConfig()")
 	flextimer.TickNow(tickerHandle)
 }
 
@@ -176,7 +176,7 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 		return
 	}
 	interval := time.Duration(configInterval) * time.Second
-	log.Infof("updateConfigTimer() change to %v", interval)
+	log.Functionf("updateConfigTimer() change to %v", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
@@ -192,7 +192,7 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 func getLatestConfig(url string, iteration int,
 	getconfigCtx *getconfigContext) bool {
 
-	log.Debugf("getLatestConfig(%s, %d)", url, iteration)
+	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
 	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 	// except http.StatusForbidden(which returns error
@@ -210,13 +210,13 @@ func getLatestConfig(url string, iteration int,
 		newCount := 2
 		switch rtf {
 		case types.SenderStatusUpgrade:
-			log.Infof("getLatestConfig : Controller upgrade in progress")
+			log.Functionf("getLatestConfig : Controller upgrade in progress")
 		case types.SenderStatusRefused:
-			log.Infof("getLatestConfig : Controller returned ECONNREFUSED")
+			log.Functionf("getLatestConfig : Controller returned ECONNREFUSED")
 		case types.SenderStatusCertInvalid:
 			log.Warnf("getLatestConfig : Controller certificate invalid time")
 		case types.SenderStatusCertMiss:
-			log.Infof("getLatestConfig : Controller certificate miss")
+			log.Functionf("getLatestConfig : Controller certificate miss")
 		default:
 			log.Errorf("getLatestConfig  failed: %s", err)
 		}
@@ -253,7 +253,7 @@ func getLatestConfig(url string, iteration int,
 				return false
 			}
 			if config != nil {
-				log.Info("Using saved config")
+				log.Function("Using saved config")
 				getconfigCtx.readSavedConfig = true
 				getconfigCtx.configGetStatus = types.ConfigGetReadSaved
 				return inhaleDeviceConfig(config, getconfigCtx,
@@ -274,7 +274,7 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified len %d", len(contents))
+		log.Tracef("StatusNotModified len %d", len(contents))
 		// Inform ledmanager about config received from cloud
 		utils.UpdateLedManagerConfig(log, 4)
 		getconfigCtx.ledManagerCount = 4
@@ -285,7 +285,7 @@ func getLatestConfig(url string, iteration int,
 		getconfigCtx.configGetStatus = types.ConfigGetSuccess
 		publishZedAgentStatus(getconfigCtx)
 
-		log.Debugf("Configuration from zedcloud is unchanged")
+		log.Tracef("Configuration from zedcloud is unchanged")
 		// Update modification time since checked by readSavedProtoMessage
 		touchReceivedProtoMessage()
 		return false
@@ -321,7 +321,7 @@ func getLatestConfig(url string, iteration int,
 	publishZedAgentStatus(getconfigCtx)
 
 	if !changed {
-		log.Debugf("Configuration from zedcloud is unchanged")
+		log.Tracef("Configuration from zedcloud is unchanged")
 		// Update modification time since checked by readSavedProtoMessage
 		touchReceivedProtoMessage()
 		return false
@@ -444,7 +444,7 @@ func readSavedProtoMessage(staleConfigTime uint32,
 var prevConfigHash string
 
 func generateConfigRequest(getconfigCtx *getconfigContext) ([]byte, *zconfig.ConfigRequest, error) {
-	log.Debugf("generateConfigRequest() sending hash %s", prevConfigHash)
+	log.Tracef("generateConfigRequest() sending hash %s", prevConfigHash)
 	configRequest := &zconfig.ConfigRequest{
 		ConfigHash: prevConfigHash,
 	}
@@ -473,10 +473,10 @@ func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool,
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
-		log.Debugf("Same ConfigHash %s len %d", hash, len(contents))
+		log.Tracef("Same ConfigHash %s len %d", hash, len(contents))
 		return false, nil, nil
 	}
-	log.Debugf("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	log.Tracef("Change in ConfigHash from %s to %s", prevConfigHash, hash)
 	prevConfigHash = hash
 	config := configResponse.GetConfig()
 	return true, config, nil
@@ -484,7 +484,7 @@ func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool,
 
 // Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext, usingSaved bool) bool {
-	log.Debugf("Inhaling config")
+	log.Tracef("Inhaling config")
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}
@@ -504,7 +504,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 			// not update the hostname nor LISP.
 			// XXX remove once zedcloud preserves state.
 			if id != zcdevUUID {
-				log.Infof("XXX Device UUID changed from %s to %s",
+				log.Functionf("XXX Device UUID changed from %s to %s",
 					zcdevUUID.String(), id.String())
 				zcdevUUID = id
 				ctx := getconfigCtx.zedagentCtx

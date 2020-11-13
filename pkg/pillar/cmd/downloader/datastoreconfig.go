@@ -7,15 +7,24 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// Handles both create and modify events
+func handleDatastoreConfigCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleDatastoreConfigImpl(ctxArg, key, configArg)
+}
+
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleDatastoreConfigImpl(ctxArg, key, configArg)
+}
+
+func handleDatastoreConfigImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
 	config := configArg.(types.DatastoreConfig)
-	log.Infof("handleDatastoreConfigModify for %s", key)
+	log.Functionf("handleDatastoreConfigImpl for %s", key)
 	checkAndUpdateDownloadableObjects(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s, done", key)
+	log.Functionf("handleDatastoreConfigImpl for %s, done", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
@@ -24,5 +33,5 @@ func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	config := configArg.(types.DatastoreConfig)
 	cipherBlock := config.CipherBlockStatus
 	ctx.pubCipherBlockStatus.Unpublish(cipherBlock.Key())
-	log.Infof("handleDatastoreConfigDelete for %s", key)
+	log.Functionf("handleDatastoreConfigDelete for %s", key)
 }

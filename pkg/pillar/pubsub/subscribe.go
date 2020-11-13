@@ -17,9 +17,9 @@ import (
 // `PubSub.Subscribe*`
 type SubscriptionImpl struct {
 	C                   <-chan Change
-	CreateHandler       SubHandler
-	ModifyHandler       SubHandler
-	DeleteHandler       SubHandler
+	CreateHandler       SubCreateHandler
+	ModifyHandler       SubModifyHandler
+	DeleteHandler       SubDeleteHandler
 	RestartHandler      SubRestartHandler
 	SynchronizedHandler SubRestartHandler
 	MaxProcessTimeWarn  time.Duration // If set generate warning if ProcessChange
@@ -60,7 +60,7 @@ func (sub *SubscriptionImpl) Close() error {
 	sub.driver.Stop()
 	items := sub.GetAll()
 	for key := range items {
-		sub.log.Infof("Close(%s) unloading key %s",
+		sub.log.Functionf("Close(%s) unloading key %s",
 			sub.nameString(), key)
 		handleDelete(sub, key)
 	}
@@ -83,7 +83,7 @@ func (sub *SubscriptionImpl) Close() error {
 func (sub *SubscriptionImpl) populate() {
 	name := sub.nameString()
 
-	sub.log.Infof("populate(%s)", name)
+	sub.log.Functionf("populate(%s)", name)
 
 	pairs, restarted, err := sub.driver.Load()
 	if err != nil {
@@ -92,13 +92,13 @@ func (sub *SubscriptionImpl) populate() {
 		return
 	}
 	for key, itemB := range pairs {
-		sub.log.Infof("populate(%s) key %s", name, key)
+		sub.log.Functionf("populate(%s) key %s", name, key)
 		handleModify(sub, key, itemB)
 	}
 	if restarted {
 		handleRestart(sub, true)
 	}
-	sub.log.Infof("populate(%s) done", name)
+	sub.log.Functionf("populate(%s) done", name)
 }
 
 // ProcessChange process a single change and its parameters. It
@@ -108,7 +108,7 @@ func (sub *SubscriptionImpl) populate() {
 //   fooAll := s1.GetAll()
 func (sub *SubscriptionImpl) ProcessChange(change Change) {
 	start := time.Now()
-	sub.log.Debugf("ProcessChange agentName(%s) agentScope(%s) topic(%s): %#v", sub.agentName, sub.agentScope, sub.topic, change)
+	sub.log.Tracef("ProcessChange agentName(%s) agentScope(%s) topic(%s): %#v", sub.agentName, sub.agentScope, sub.topic, change)
 
 	switch change.Operation {
 	case Restart:
@@ -182,26 +182,26 @@ func (sub *SubscriptionImpl) nameString() string {
 
 func (sub *SubscriptionImpl) dump(infoStr string) {
 	name := sub.nameString()
-	sub.log.Debugf("dump(%s) %s\n", name, infoStr)
+	sub.log.Tracef("dump(%s) %s\n", name, infoStr)
 	dumper := func(key string, val interface{}) bool {
 		_, err := json.Marshal(val)
 		if err != nil {
 			sub.log.Fatal("json Marshal in dump", err)
 		}
 		// DO NOT log Values. They may contain sensitive information.
-		sub.log.Debugf("\tkey %s", key)
+		sub.log.Tracef("\tkey %s", key)
 		return true
 	}
 	sub.km.key.Range(dumper)
-	sub.log.Debugf("\trestarted %t\n", sub.km.restarted)
-	sub.log.Debugf("\tsynchronized %t\n", sub.synchronized)
+	sub.log.Tracef("\trestarted %t\n", sub.km.restarted)
+	sub.log.Tracef("\tsynchronized %t\n", sub.synchronized)
 }
 
 // handlers
 func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Debugf("pubsub.handleModify(%s) key %s\n", name, key)
+	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
 	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
 	if err != nil {
 		errStr := fmt.Sprintf("handleModify(%s): json failed %s",
@@ -213,11 +213,11 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		if cmp.Equal(m, item) {
-			sub.log.Debugf("pubsub.handleModify(%s/%s) unchanged\n",
+			sub.log.Tracef("pubsub.handleModify(%s/%s) unchanged\n",
 				name, key)
 			return
 		}
-		sub.log.Debugf("pubsub.handleModify(%s/%s) replacing due to diff",
+		sub.log.Tracef("pubsub.handleModify(%s/%s) replacing due to diff",
 			name, key)
 		loggable, ok := item.(base.LoggableObject)
 		if ok {
@@ -225,7 +225,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
-		sub.log.Debugf("pubsub.handleModify(%s) add for key %s\n",
+		sub.log.Tracef("pubsub.handleModify(%s) add for key %s\n",
 			name, key)
 		created = true
 		loggable, ok := item.(base.LoggableObject)
@@ -239,18 +239,22 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	}
 	// Need a copy in case the caller will modify e.g., embedded maps
 	newItem := deepCopy(sub.log, item)
-	if created && sub.CreateHandler != nil {
-		(sub.CreateHandler)(sub.userCtx, key, newItem)
-	} else if sub.ModifyHandler != nil {
-		(sub.ModifyHandler)(sub.userCtx, key, newItem)
+	if created {
+		if sub.CreateHandler != nil {
+			(sub.CreateHandler)(sub.userCtx, key, newItem)
+		}
+	} else {
+		if sub.ModifyHandler != nil {
+			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+		}
 	}
-	sub.log.Debugf("pubsub.handleModify(%s) done for key %s\n", name, key)
+	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
 }
 
 func handleDelete(ctxArg interface{}, key string) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Debugf("pubsub.handleDelete(%s) key %s\n", name, key)
+	sub.log.Tracef("pubsub.handleDelete(%s) key %s\n", name, key)
 
 	m, ok := sub.km.key.Load(key)
 	if !ok {
@@ -263,7 +267,7 @@ func handleDelete(ctxArg interface{}, key string) {
 		loggable.LogDelete(sub.log)
 	}
 	// DO NOT log Values. They may contain sensitive information.
-	sub.log.Debugf("pubsub.handleDelete(%s) key %s", name, key)
+	sub.log.Tracef("pubsub.handleDelete(%s) key %s", name, key)
 	sub.km.key.Delete(key)
 	if sub.logger.GetLevel() == logrus.TraceLevel {
 		sub.dump("after handleDelete")
@@ -271,37 +275,37 @@ func handleDelete(ctxArg interface{}, key string) {
 	if sub.DeleteHandler != nil {
 		(sub.DeleteHandler)(sub.userCtx, key, m)
 	}
-	sub.log.Debugf("pubsub.handleDelete(%s) done for key %s\n", name, key)
+	sub.log.Tracef("pubsub.handleDelete(%s) done for key %s\n", name, key)
 }
 
 func handleRestart(ctxArg interface{}, restarted bool) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Debugf("pubsub.handleRestart(%s) restarted %v\n", name, restarted)
+	sub.log.Tracef("pubsub.handleRestart(%s) restarted %v\n", name, restarted)
 	if restarted == sub.km.restarted {
-		sub.log.Debugf("pubsub.handleRestart(%s) value unchanged\n", name)
+		sub.log.Tracef("pubsub.handleRestart(%s) value unchanged\n", name)
 		return
 	}
 	sub.km.restarted = restarted
 	if sub.RestartHandler != nil {
 		(sub.RestartHandler)(sub.userCtx, restarted)
 	}
-	sub.log.Debugf("pubsub.handleRestart(%s) done for restarted %v\n",
+	sub.log.Tracef("pubsub.handleRestart(%s) done for restarted %v\n",
 		name, restarted)
 }
 
 func handleSynchronized(ctxArg interface{}, synchronized bool) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Debugf("pubsub.handleSynchronized(%s) synchronized %v\n", name, synchronized)
+	sub.log.Tracef("pubsub.handleSynchronized(%s) synchronized %v\n", name, synchronized)
 	if synchronized == sub.synchronized {
-		sub.log.Debugf("pubsub.handleSynchronized(%s) value unchanged\n", name)
+		sub.log.Tracef("pubsub.handleSynchronized(%s) value unchanged\n", name)
 		return
 	}
 	sub.synchronized = synchronized
 	if sub.SynchronizedHandler != nil {
 		(sub.SynchronizedHandler)(sub.userCtx, synchronized)
 	}
-	sub.log.Debugf("pubsub.handleSynchronized(%s) done for synchronized %v\n",
+	sub.log.Tracef("pubsub.handleSynchronized(%s) done for synchronized %v\n",
 		name, synchronized)
 }

@@ -2,9 +2,9 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
-  - linuxkit/init:v0.5
+  - linuxkit/init:a68f9fa0c1d9dbfc9c23663749a0b7ac510cbe1c
   - linuxkit/runc:f79954950022fea76b8b6f10de58cb48e4fb3878
-  - linuxkit/containerd:6ef473a228db6f6ee163f9b9a051102a1552a4ef
+  - linuxkit/containerd:a4aa19c608556f7d786852557c36136255220c1f
   - linuxkit/getty:v0.5
   - linuxkit/memlogd:v0.5
   - GRUB_TAG
@@ -34,9 +34,9 @@ services:
      image: linuxkit/openntpd:v0.5
      cgroupsPath: /eve/services/ntpd
      oomScoreAdj: -999
-   - name: sshd
-     image: linuxkit/sshd:v0.5
-     cgroupsPath: /eve/services/sshd
+   - name: debug
+     image: DEBUG_TAG
+     cgroupsPath: /eve/services/debug
      oomScoreAdj: -999
    - name: wwan
      image: WWAN_TAG

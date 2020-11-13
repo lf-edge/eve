@@ -1,0 +1,37 @@
+#cloud-config
+packages:
+  - qemu-utils
+  - make
+  - docker.io
+  - git
+
+groups:
+  - docker
+
+users:
+  - name: eve
+    ssh-authorized-keys:
+      - @SSH_PUB_KEY@
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo, docker
+    shell: /bin/bash
+
+write_files:
+  - content: |
+      #!/bin/sh
+      echo Running rc.local as `id` > /dev/console
+      sudo -u eve -i ./run.sh > /dev/console 2>&1 &
+    path: /etc/rc.local
+    permissions: '0777'
+    owner: root:root
+
+runcmd:
+  - curl -L https://github.com/actions/runner/releases/download/v2.273.6/actions-runner-linux-@ZARCH@-2.273.6.tar.gz | sudo -u eve -i tar xzf -
+  - sudo -u eve -i ./config.sh --name @ZARCH@ --replace --unattended --url https://github.com/lf-edge/eve --token @GH_TOKEN@
+
+power_state:
+  delay: "+1"
+  mode: poweroff
+  message: Done installing EVE build environment
+  timeout: 3600
+  condition: True

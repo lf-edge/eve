@@ -19,7 +19,7 @@ import (
 
 // Publish publishes data to
 func Publish(log *base.LogObject, agent string, data interface{}) error {
-	log.Infof("publish(%s)", agent)
+	log.Functionf("publish(%s)", agent)
 	sockName := getSocketName(agent, data)
 
 	if _, err := os.Stat(sockName); err != nil {

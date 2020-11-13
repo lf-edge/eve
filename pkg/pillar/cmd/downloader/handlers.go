@@ -33,7 +33,7 @@ func makeDownloadHandler() *downloadHandler {
 func (d *downloadHandler) modify(ctxArg interface{},
 	key string, configArg interface{}) {
 
-	log.Infof("downloadHandler.modify(%s)", key)
+	log.Functionf("downloadHandler.modify(%s)", key)
 	config := configArg.(types.DownloaderConfig)
 	h, ok := d.handlers[config.Key()]
 	if !ok {
@@ -41,7 +41,7 @@ func (d *downloadHandler) modify(ctxArg interface{},
 	}
 	select {
 	case h <- Notify{}:
-		log.Infof("downloadHandler.modify(%s) sent notify", key)
+		log.Functionf("downloadHandler.modify(%s) sent notify", key)
 	default:
 		// handler is slow
 		log.Warnf("downloadHandler.modify(%s) NOT sent notify. Slow handler?", key)
@@ -51,7 +51,7 @@ func (d *downloadHandler) modify(ctxArg interface{},
 func (d *downloadHandler) create(ctxArg interface{},
 	key string, configArg interface{}) {
 
-	log.Infof("downloadHandler.create(%s)", key)
+	log.Functionf("downloadHandler.create(%s)", key)
 	ctx := ctxArg.(*downloaderContext)
 	config := configArg.(types.DownloaderConfig)
 	h, ok := d.handlers[config.Key()]
@@ -60,12 +60,12 @@ func (d *downloadHandler) create(ctxArg interface{},
 	}
 	h1 := make(chan Notify, 1)
 	d.handlers[config.Key()] = h1
-	log.Infof("Creating %s at %s", "runHandler", agentlog.GetMyStack())
+	log.Functionf("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, h1)
 	h = h1
 	select {
 	case h <- Notify{}:
-		log.Infof("downloadHandler.create(%s) sent notify", key)
+		log.Functionf("downloadHandler.create(%s) sent notify", key)
 	default:
 		// Shouldn't happen since we just created channel
 		log.Fatalf("downloadHandler.create(%s) NOT sent notify", key)
@@ -75,16 +75,16 @@ func (d *downloadHandler) create(ctxArg interface{},
 func (d *downloadHandler) delete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Infof("downloadHandler.delete(%s)", key)
+	log.Functionf("downloadHandler.delete(%s)", key)
 	// Do we have a channel/goroutine?
 	h, ok := d.handlers[key]
 	if ok {
-		log.Debugf("Closing channel")
+		log.Tracef("Closing channel")
 		close(h)
 		delete(d.handlers, key)
 	} else {
-		log.Debugf("downloadHandler.delete: unknown %s", key)
+		log.Tracef("downloadHandler.delete: unknown %s", key)
 		return
 	}
-	log.Infof("downloadHandler.delete(%s) done", key)
+	log.Functionf("downloadHandler.delete(%s) done", key)
 }

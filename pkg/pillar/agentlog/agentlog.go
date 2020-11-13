@@ -153,7 +153,7 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 	for {
 		select {
 		case sig := <-sigs:
-			log.Infof("handleSignals: received %v\n", sig)
+			log.Functionf("handleSignals: received %v\n", sig)
 			switch sig {
 			case syscall.SIGUSR1:
 				stacks := getStacks(true)
@@ -164,7 +164,7 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 				if err == nil {
 					for _, stack := range stackArray {
 						// This goes to /persist/agentdebug/<agentname>/sigusr1 file
-						sigUsr1File.WriteString(stack)
+						sigUsr1File.WriteString(stack + "\n\n")
 					}
 					sigUsr1File.Close()
 				} else {
@@ -477,7 +477,7 @@ func logGCStats(log *base.LogObject) {
 	var m dbg.GCStats
 
 	dbg.ReadGCStats(&m)
-	log.Infof("GCStats %+v\n", m)
+	log.Functionf("GCStats %+v\n", m)
 }
 
 // Print in sorted order based on top bytes
@@ -511,7 +511,7 @@ func logMemUsage(log *base.LogObject, file *os.File) {
 	var m runtime.MemStats
 
 	runtime.ReadMemStats(&m)
-	log.Infof("Alloc %d Mb, TotalAlloc %d Mb, Sys %d Mb, NumGC %d",
+	log.Functionf("Alloc %d Mb, TotalAlloc %d Mb, Sys %d Mb, NumGC %d",
 		roundToMb(m.Alloc), roundToMb(m.TotalAlloc), roundToMb(m.Sys), m.NumGC)
 
 	if file != nil {
@@ -621,7 +621,7 @@ func initImpl(agentName string, redirect bool) (*logrus.Logger, *base.LogObject)
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)
 		signal.Notify(sigs, syscall.SIGUSR2)
-		log.Infof("Creating %s at %s", "handleSignals", GetMyStack())
+		log.Functionf("Creating %s at %s", "handleSignals", GetMyStack())
 		go handleSignals(log, agentName, agentPid, sigs)
 		eh := func() { printStack(log, agentName, agentPid) }
 		logrus.RegisterExitHandler(eh)

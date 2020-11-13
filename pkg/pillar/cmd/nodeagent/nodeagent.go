@@ -165,6 +165,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent:    true,
 		Activate:      false,
 		Ctx:           ctxPtr,
+		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		SyncHandler:   handleGlobalConfigSynchronized,
@@ -179,7 +180,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !ctxPtr.GCInitialized {
-		log.Infof("Waiting for GCInitialized")
+		log.Functionf("Waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -191,7 +192,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Infof("processed GlobalConfig")
+	log.Functionf("processed GlobalConfig")
 
 	// get the last reboot reason
 	handleLastRebootReason(ctxPtr)
@@ -241,7 +242,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.VaultStatus{},
 		Activate:      false,
 		Ctx:           ctxPtr,
-		CreateHandler: handleVaultStatusModify,
+		CreateHandler: handleVaultStatusCreate,
 		ModifyHandler: handleVaultStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -257,7 +258,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// access the zboot APIs directly, baseosmgr is still not ready
 	ctxPtr.updateInprogress = zboot.IsCurrentPartitionStateInProgress()
-	log.Infof("Current partition: %s, inProgress: %v", ctxPtr.curPart,
+	log.Functionf("Current partition: %s, inProgress: %v", ctxPtr.curPart,
 		ctxPtr.updateInprogress)
 	publishNodeAgentStatus(ctxPtr)
 
@@ -279,7 +280,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Device is onboarded")
+	log.Functionf("Device is onboarded")
 
 	// if current partition state is not in-progress,
 	// nothing much to do. Zedcloud connectivity is tracked,
@@ -306,6 +307,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.ZbootStatus{},
 		Activate:      false,
 		Ctx:           ctxPtr,
+		CreateHandler: handleZbootStatusCreate,
 		ModifyHandler: handleZbootStatusModify,
 		DeleteHandler: handleZbootStatusDelete,
 		WarningTime:   warningTime,
@@ -324,6 +326,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TopicImpl:     types.ZedAgentStatus{},
 		Activate:      false,
 		Ctx:           ctxPtr,
+		CreateHandler: handleZedAgentStatusCreate,
 		ModifyHandler: handleZedAgentStatusModify,
 		DeleteHandler: handleZedAgentStatusDelete,
 		WarningTime:   warningTime,
@@ -335,7 +338,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctxPtr.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
-	log.Infof("zedbox event loop")
+	log.Functionf("zedbox event loop")
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -366,21 +369,31 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	ctxPtr := ctxArg.(*nodeagentContext)
 
-	log.Infof("handleGlobalConfigSynchronized(%v)", done)
+	log.Functionf("handleGlobalConfigSynchronized(%v)", done)
 	if done {
 		ctxPtr.GCInitialized = true
 	}
 }
 
-func handleGlobalConfigModify(ctxArg interface{},
-	key string, statusArg interface{}) {
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	ctxPtr := ctxArg.(*nodeagentContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s", key)
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigModify for %s", key)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		debugOverride, ctxPtr.agentBaseContext.Logger)
@@ -388,7 +401,7 @@ func handleGlobalConfigModify(ctxArg interface{},
 		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify(%s): done", key)
+	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{},
@@ -396,40 +409,62 @@ func handleGlobalConfigDelete(ctxArg interface{},
 
 	ctxPtr := ctxArg.(*nodeagentContext)
 	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Infof("handleGlobalConfigDelete for %s", key)
+	log.Functionf("handleGlobalConfigDelete for %s", key)
 	debug, _ = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		debugOverride, ctxPtr.agentBaseContext.Logger)
 	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
-	log.Infof("handleGlobalConfigDelete done for %s", key)
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
 // handle zedagent status events, for cloud connectivity
-func handleZedAgentStatusModify(ctxArg interface{},
-	key string, statusArg interface{}) {
+func handleZedAgentStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	ctxPtr := ctxArg.(*nodeagentContext)
 	status := statusArg.(types.ZedAgentStatus)
 	handleRebootCmd(ctxPtr, status)
 	updateZedagentCloudConnectStatus(ctxPtr, status)
-	log.Infof("handleZedAgentStatusModify(%s) done", key)
+	log.Functionf("handleZedAgentStatusImpl(%s) done", key)
 }
 
 func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	// do nothing
-	log.Infof("handleZedAgentStatusDelete(%s) done", key)
+	log.Functionf("handleZedAgentStatusDelete(%s) done", key)
 }
 
 // zboot status event handlers
-func handleZbootStatusModify(ctxArg interface{},
-	key string, statusArg interface{}) {
+func handleZbootStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleZbootStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZbootStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleZbootStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZbootStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	ctxPtr := ctxArg.(*nodeagentContext)
 	status := statusArg.(types.ZbootStatus)
 	if status.CurrentPartition && ctxPtr.updateInprogress &&
 		status.PartitionState == "active" {
-		log.Infof("CurPart(%s) transitioned to \"active\" state",
+		log.Functionf("CurPart(%s) transitioned to \"active\" state",
 			status.PartitionLabel)
 		ctxPtr.updateInprogress = false
 		ctxPtr.testComplete = false
@@ -438,7 +473,7 @@ func handleZbootStatusModify(ctxArg interface{},
 	}
 	doZbootBaseOsInstallationComplete(ctxPtr, key, status)
 	doZbootBaseOsTestValidationComplete(ctxPtr, key, status)
-	log.Debugf("handleZbootStatusModify(%s) done", key)
+	log.Tracef("handleZbootStatusImpl(%s) done", key)
 }
 
 func handleZbootStatusDelete(ctxArg interface{},
@@ -446,10 +481,10 @@ func handleZbootStatusDelete(ctxArg interface{},
 
 	ctxPtr := ctxArg.(*nodeagentContext)
 	if status := lookupZbootStatus(ctxPtr, key); status == nil {
-		log.Infof("handleZbootStatusDelete: unknown %s", key)
+		log.Functionf("handleZbootStatusDelete: unknown %s", key)
 		return
 	}
-	log.Infof("handleZbootStatusDelete(%s) done", key)
+	log.Functionf("handleZbootStatusDelete(%s) done", key)
 }
 
 // If we have a reboot reason from this or the other partition
@@ -540,7 +575,7 @@ func incrementRestartCounter() uint32 {
 				log.Errorf("incrementRestartCounter: %s", err)
 			} else {
 				restartCounter = uint32(c)
-				log.Infof("incrementRestartCounter: read %d", restartCounter)
+				log.Functionf("incrementRestartCounter: read %d", restartCounter)
 			}
 		}
 	}
@@ -580,7 +615,17 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 	pub.Publish(agentName, status)
 }
 
+func handleVaultStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleVaultStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVaultStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVaultStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*nodeagentContext)

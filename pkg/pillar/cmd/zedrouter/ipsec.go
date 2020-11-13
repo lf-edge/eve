@@ -112,7 +112,7 @@ func ipSecActivate(vpnConfig types.VpnConfig) error {
 		log.Errorf("%s for %s start\n", err.Error(), "ipsec")
 		return err
 	}
-	log.Infof("ipSec(%s) start OK\n", tunnelConfig.Name)
+	log.Functionf("ipSec(%s) start OK\n", tunnelConfig.Name)
 	return nil
 }
 
@@ -121,7 +121,7 @@ func ipSecInactivate(vpnConfig types.VpnConfig) error {
 		log.Errorf("%s for %s stop\n", err.Error(), "ipsec")
 		return err
 	}
-	log.Infof("ipSec stop OK\n")
+	log.Functionf("ipSec stop OK\n")
 	return nil
 }
 
@@ -131,7 +131,7 @@ func ipSecStatus() (string, error) {
 		log.Errorf("%s for %s status\n", err.Error(), "ipsec")
 		return "", err
 	}
-	log.Infof("ipSec() status %s\n", string(out))
+	log.Functionf("ipSec() status %s\n", string(out))
 	return string(out), nil
 }
 
@@ -140,7 +140,7 @@ func ipSecTunnelStateCheck(vpnRole string, tunnelName string) error {
 	if err := checkIpSecStatusCmd(tunnelName); err != nil {
 		return err
 	}
-	log.Infof("%s IpSec Tunnel State OK\n", tunnelName)
+	log.Functionf("%s IpSec Tunnel State OK\n", tunnelName)
 	return nil
 }
 
@@ -211,7 +211,7 @@ func ipTablesAwsClientRulesSet(tunnelName string,
 		return err
 	}
 
-	log.Infof("ipTablesAwsClientRuleSet(%s) OK\n", tunnelName)
+	log.Functionf("ipTablesAwsClientRuleSet(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -236,7 +236,7 @@ func ipTablesAwsClientRulesReset(tunnelName string,
 			err.Error(), "iptables", tunnelName)
 		return err
 	}
-	log.Infof("ipTablesAwsClientRulesReset(%s) OK\n", tunnelName)
+	log.Functionf("ipTablesAwsClientRulesReset(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -248,7 +248,7 @@ func ipTablesCounterRulesSet(policyBased bool,
 			return err
 		}
 	}
-	log.Infof("ipTablesCounterRuleSet(%s) OK\n", tunnelName)
+	log.Functionf("ipTablesCounterRuleSet(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -260,7 +260,7 @@ func ipTablesCounterRulesReset(policyBased bool,
 			return err
 		}
 	}
-	log.Infof("ipTablesCounterRulesReset(%s) OK\n", tunnelName)
+	log.Functionf("ipTablesCounterRulesReset(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -389,13 +389,13 @@ func ipTablesRuleCheck(vpnConfig types.VpnConfig) error {
 			"INPUT", gatewayConfig.IpAddr+"/32"); err != nil {
 			return err
 		}
-		log.Infof("pTable(%s) check OK\n", tunnelConfig.Name)
+		log.Functionf("pTable(%s) check OK\n", tunnelConfig.Name)
 	case AzureVpnClient:
-		log.Infof("ipTable(%s) check OK\n", tunnelConfig.Name)
+		log.Functionf("ipTable(%s) check OK\n", tunnelConfig.Name)
 	case OnPremVpnClient:
-		log.Infof("ipTable(%s) check OK\n", tunnelConfig.Name)
+		log.Functionf("ipTable(%s) check OK\n", tunnelConfig.Name)
 	case OnPremVpnServer:
-		log.Infof("ipTable(%s) check OK\n", tunnelConfig.Name)
+		log.Functionf("ipTable(%s) check OK\n", tunnelConfig.Name)
 	}
 	return nil
 }
@@ -451,7 +451,7 @@ func ipRouteCreate(vpnConfig types.VpnConfig) error {
 				err.Error(), "iproute", gatewayConfig.SubnetBlock)
 			return err
 		}
-		log.Infof("ipRoute(%s) add OK\n", tunnelConfig.Name)
+		log.Functionf("ipRoute(%s) add OK\n", tunnelConfig.Name)
 	} else {
 		// for server config, create all client subnet block routes
 		for _, clientConfig := range vpnConfig.ClientConfigList {
@@ -462,7 +462,7 @@ func ipRouteCreate(vpnConfig types.VpnConfig) error {
 					err.Error(), "iproute", clientConfig.SubnetBlock)
 				return err
 			}
-			log.Infof("ipRoute(%s) %s add OK\n",
+			log.Functionf("ipRoute(%s) %s add OK\n",
 				tunnelConfig.Name, clientConfig.SubnetBlock)
 		}
 	}
@@ -486,7 +486,7 @@ func ipRouteDelete(vpnConfig types.VpnConfig) error {
 					err.Error(), "iproute", gatewayConfig.SubnetBlock)
 				return err
 			}
-			log.Infof("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
+			log.Functionf("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
 				gatewayConfig.SubnetBlock)
 		}
 	} else {
@@ -499,7 +499,7 @@ func ipRouteDelete(vpnConfig types.VpnConfig) error {
 					err.Error(), "iproute", clientConfig.SubnetBlock)
 				return err
 			}
-			log.Infof("ipRoute(%s) %s delete OK\n",
+			log.Functionf("ipRoute(%s) %s delete OK\n",
 				tunnelConfig.Name, clientConfig.SubnetBlock)
 		}
 	}
@@ -528,7 +528,7 @@ func ipRouteCheck(vpnConfig types.VpnConfig) error {
 			log.Errorf("%s for ipRoute(%s) check fail\n", err, tunnelConfig.Name)
 			return err
 		}
-		log.Infof("ipRoute(%s) check OK\n", tunnelConfig.Name)
+		log.Functionf("ipRoute(%s) check OK\n", tunnelConfig.Name)
 	} else {
 		// for server config, check all client subnet block routes
 		for _, clientConfig := range vpnConfig.ClientConfigList {
@@ -545,7 +545,7 @@ func ipRouteCheck(vpnConfig types.VpnConfig) error {
 					err, tunnelConfig.Name)
 				return err
 			}
-			log.Infof("ipRoute(%s) %s check OK\n",
+			log.Functionf("ipRoute(%s) %s check OK\n",
 				tunnelConfig.Name, clientConfig.SubnetBlock)
 		}
 	}
@@ -575,7 +575,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 	tunnelConfig := clientConfig.TunnelConfig
 	portConfig := vpnConfig.PortConfig
 
-	log.Infof("%s: %s %s %s\n", tunnelConfig.Name, "ip link add",
+	log.Functionf("%s: %s %s %s\n", tunnelConfig.Name, "ip link add",
 		portConfig.IpAddr, gatewayConfig.IpAddr)
 	if vpnConfig.IsClient {
 		if _, err := base.Exec(log, "ip", "link", "add",
@@ -597,7 +597,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 	}
 
 	if vpnConfig.VpnRole == AwsVpnClient {
-		log.Infof("%s: %s %s %s\n", tunnelConfig.Name, "ip link addr",
+		log.Functionf("%s: %s %s %s\n", tunnelConfig.Name, "ip link addr",
 			tunnelConfig.LocalIpAddr, tunnelConfig.RemoteIpAddr)
 		if _, err := base.Exec(log, "ip", "addr", "add",
 			tunnelConfig.LocalIpAddr, "remote", tunnelConfig.RemoteIpAddr,
@@ -609,7 +609,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 		}
 	}
 
-	log.Infof("%s: %s %s\n", tunnelConfig.Name, "ip link mtu",
+	log.Functionf("%s: %s %s\n", tunnelConfig.Name, "ip link mtu",
 		tunnelConfig.Mtu)
 	if _, err := base.Exec(log, "ip", "link", "set",
 		tunnelConfig.Name, "up", "mtu", tunnelConfig.Mtu).Output(); err != nil {
@@ -618,7 +618,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 		return err
 	}
 
-	log.Infof("ipLink(%s) add OK\n", tunnelConfig.Name)
+	log.Functionf("ipLink(%s) add OK\n", tunnelConfig.Name)
 	return nil
 }
 
@@ -639,7 +639,7 @@ func ipLinkTunnelDelete(vpnConfig types.VpnConfig) error {
 			err.Error(), "ip link", tunnelConfig.Name)
 		return err
 	}
-	log.Infof("ipLink(%s) delete OK\n", tunnelConfig.Name)
+	log.Functionf("ipLink(%s) delete OK\n", tunnelConfig.Name)
 	return nil
 }
 
@@ -665,7 +665,7 @@ func ipLinkIntfStateCheck(tunnelName string) error {
 	if err := checkIntfStateCmd(tunnelName); err != nil {
 		return err
 	}
-	log.Infof("ipLink(%s) check OK\n", tunnelName)
+	log.Functionf("ipLink(%s) check OK\n", tunnelName)
 	return nil
 }
 
@@ -717,7 +717,7 @@ func ipSecConfigCreate(vpnConfig types.VpnConfig) error {
 		wildMatch := false
 		for _, clientConfig := range clientConfigList {
 			if match := isClientWildCard(clientConfig); match {
-				log.Infof("wildCard Client %s\n", clientConfig.IpAddr)
+				log.Functionf("wildCard Client %s\n", clientConfig.IpAddr)
 				if wildMatch {
 					continue
 				}
@@ -742,7 +742,7 @@ func ipSecConfigCreate(vpnConfig types.VpnConfig) error {
 		log.Errorf("%s for %s %s\n", err.Error(), "chmod", filename)
 		return err
 	}
-	log.Infof("ipSecConfigWrite(%s) OK\n", gatewayConfig.IpAddr)
+	log.Functionf("ipSecConfigWrite(%s) OK\n", gatewayConfig.IpAddr)
 	return nil
 }
 
@@ -761,7 +761,7 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnConfig) error {
 	wildMatch := false
 	for _, clientConfig := range clientConfigList {
 		if match := isClientWildCard(clientConfig); match {
-			log.Infof("wildCard Client %s\n", clientConfig.IpAddr)
+			log.Functionf("wildCard Client %s\n", clientConfig.IpAddr)
 			// contains the preshared key
 			if clientConfig.PreSharedKey == "" ||
 				wildMatch {
@@ -789,7 +789,7 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnConfig) error {
 		log.Errorf("%s for %s %s\n", err.Error(), "chmod", filename)
 		return err
 	}
-	log.Infof("ipSecSecretWrite(%s) OK\n", gatewayConfig.IpAddr)
+	log.Functionf("ipSecSecretWrite(%s) OK\n", gatewayConfig.IpAddr)
 	return nil
 }
 
@@ -815,7 +815,7 @@ func charonConfigReset() error {
 func sysctlConfigCreate(vpnConfig types.VpnConfig) error {
 
 	portConfig := vpnConfig.PortConfig
-	log.Infof("%s: %s config\n", portConfig.IfName, "sysctl")
+	log.Functionf("%s: %s config\n", portConfig.IfName, "sysctl")
 
 	writeStr := ""
 	if vpnConfig.PolicyBased {
@@ -826,7 +826,7 @@ func sysctlConfigCreate(vpnConfig types.VpnConfig) error {
 		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.IfName + ".disable_policy=1\n"
 		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
-			log.Infof("%s: %s config\n", tunnelConfig.Name, "sysctl")
+			log.Functionf("%s: %s config\n", tunnelConfig.Name, "sysctl")
 			writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".rp_filter=2"
 			writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".disable_policy=1"
 		}
@@ -836,7 +836,7 @@ func sysctlConfigCreate(vpnConfig types.VpnConfig) error {
 		log.Errorf("sysctlConfigWrite() Fail\n")
 		return err
 	}
-	log.Infof("sysctlConfigWrite() OK\n")
+	log.Functionf("sysctlConfigWrite() OK\n")
 	return nil
 }
 
@@ -850,7 +850,7 @@ func sysctlConfigSet() error {
 		log.Errorf("%s for %s set \n", err.Error(), "sysctl")
 		return err
 	}
-	log.Infof("sysctlConfigSet() OK\n")
+	log.Functionf("sysctlConfigSet() OK\n")
 	return nil
 }
 

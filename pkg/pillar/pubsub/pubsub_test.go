@@ -51,7 +51,7 @@ func TestHandleModify(t *testing.T) {
 	subCreateHandler := func(ctxArg interface{}, key string, status interface{}) {
 		created = true
 	}
-	subModifyHandler := func(ctxArg interface{}, key string, status interface{}) {
+	subModifyHandler := func(ctxArg interface{}, key string, status interface{}, oldStatus interface{}) {
 		modified = true
 	}
 
@@ -59,8 +59,8 @@ func TestHandleModify(t *testing.T) {
 		ctxArg         *SubscriptionImpl
 		key            string
 		item           interface{}
-		modifyHandler  SubHandler
-		createHandler  SubHandler
+		modifyHandler  SubModifyHandler
+		createHandler  SubCreateHandler
 		expectedCreate bool
 		expectedModify bool
 	}{
@@ -80,7 +80,7 @@ func TestHandleModify(t *testing.T) {
 			modifyHandler:  subModifyHandler,
 			createHandler:  nil,
 			expectedCreate: false,
-			expectedModify: true,
+			expectedModify: false,
 		},
 		"Create Handler and Modify Handler are nil": {
 			ctxArg:         subImpl,
@@ -89,6 +89,15 @@ func TestHandleModify(t *testing.T) {
 			modifyHandler:  nil,
 			createHandler:  nil,
 			expectedCreate: false,
+			expectedModify: false,
+		},
+		"Both Handlers are set": {
+			ctxArg:         subImpl,
+			key:            "key_3",
+			item:           item,
+			modifyHandler:  subModifyHandler,
+			createHandler:  subCreateHandler,
+			expectedCreate: true,
 			expectedModify: false,
 		},
 	}

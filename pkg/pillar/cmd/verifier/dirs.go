@@ -20,7 +20,7 @@ func createDownloadDirs() {
 	workingDirTypes := []string{getVerifierDir(), getVerifiedDir()}
 	for _, dirName := range workingDirTypes {
 		if _, err := os.Stat(dirName); err != nil {
-			log.Infof("Create %s", dirName)
+			log.Functionf("Create %s", dirName)
 			if err := os.MkdirAll(dirName, 0700); err != nil {
 				log.Fatal(err)
 			}

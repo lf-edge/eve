@@ -44,11 +44,11 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		select {
 		case <-triggerDeviceInfo:
 			start := time.Now()
-			log.Info("deviceInfoTask got message")
+			log.Function("deviceInfoTask got message")
 
 			PublishDeviceInfoToZedCloud(ctxPtr)
 			ctxPtr.iteration++
-			log.Info("deviceInfoTask done with message")
+			log.Function("deviceInfoTask done with message")
 			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishDeviceInfo", start,
 				warningTime, errorTime)
 		case <-stillRunning.C:
@@ -71,7 +71,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	deviceUUID := zcdevUUID.String()
 	ReportInfo.DevId = *proto.String(deviceUUID)
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
-	log.Infof("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
+	log.Functionf("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
 
@@ -175,7 +175,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 			}
 			if !bos.ErrorTime.IsZero() {
-				log.Debugf("reportMetrics sending error time %v error %v for %s",
+				log.Tracef("reportMetrics sending error time %v error %v for %s",
 					bos.ErrorTime, bos.Error,
 					bos.BaseOsVersion)
 				swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime)
@@ -217,7 +217,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			// Already reported above
 			continue
 		}
-		log.Debugf("reportMetrics sending unattached bos for %s",
+		log.Tracef("reportMetrics sending unattached bos for %s",
 			bos.BaseOsVersion)
 		swInfo := new(info.ZInfoDevSW)
 		swInfo.Status = bos.State.ZSwState()
@@ -228,7 +228,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
 		}
 		if !bos.ErrorTime.IsZero() {
-			log.Debugf("reportMetrics sending error time %v error %v for %s",
+			log.Tracef("reportMetrics sending error time %v error %v for %s",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
 			swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime)
 		}
@@ -254,8 +254,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Note that "domain" is returned in search, hence DNSdomain is
 	// not filled in.
 	dc := netclone.DnsReadConfig("/etc/resolv.conf")
-	log.Debugf("resolv.conf servers %v", dc.Servers)
-	log.Debugf("resolv.conf search %v", dc.Search)
+	log.Tracef("resolv.conf servers %v", dc.Servers)
+	log.Tracef("resolv.conf search %v", dc.Search)
 
 	ReportDeviceInfo.Dns = new(info.ZInfoDNS)
 	ReportDeviceInfo.Dns.DNSservers = dc.Servers
@@ -288,7 +288,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
 			if ib.AssignmentGroup != "" {
-				log.Infof("Nothing to report for %d %s",
+				log.Functionf("Nothing to report for %d %s",
 					ib.Type, ib.AssignmentGroup)
 				continue
 			}
@@ -313,7 +313,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
 		}
-		log.Debugf("AssignableAdapters for %s macs %v",
+		log.Tracef("AssignableAdapters for %s macs %v",
 			reportAA.Name, reportAA.IoAddressList)
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -323,9 +323,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if err != nil {
 		log.Fatalf("host.Info(): %s", err)
 	}
-	log.Debugf("uptime %d = %d days",
+	log.Tracef("uptime %d = %d days",
 		hinfo.Uptime, hinfo.Uptime/(3600*24))
-	log.Debugf("Booted at %v", time.Unix(int64(hinfo.BootTime), 0).UTC())
+	log.Tracef("Booted at %v", time.Unix(int64(hinfo.BootTime), 0).UTC())
 
 	bootTime, _ := ptypes.TimestampProto(
 		time.Unix(int64(hinfo.BootTime), 0).UTC())
@@ -356,8 +356,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.LastBootReason = info.BootReason(ctx.bootReason)
 	if ctx.bootReason != types.BootReasonNone {
 		// XXX Remove?
-		log.Debugf("Reporting BootReason %s", ctx.bootReason.String())
-		log.Debugf("Reporting RebootReason %s", ctx.rebootReason)
+		log.Tracef("Reporting BootReason %s", ctx.bootReason.String())
+		log.Tracef("Reporting RebootReason %s", ctx.rebootReason)
 	}
 
 	ReportDeviceInfo.LastRebootStack = ctx.rebootStack
@@ -399,7 +399,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// is deleted.
 	createAppInstances(ctx, ReportDeviceInfo)
 
-	log.Debugf("PublishDeviceInfoToZedCloud sending %v", ReportInfo)
+	log.Tracef("PublishDeviceInfoToZedCloud sending %v", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
@@ -561,7 +561,11 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 }
 
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
-	dpcl := ctx.devicePortConfigList
+	dpcl := types.DevicePortConfigList{}
+	item, err := ctx.subDevicePortConfigList.Get("global")
+	if err == nil {
+		dpcl = item.(types.DevicePortConfigList)
+	}
 	sainfo := new(info.SystemAdapterInfo)
 	sainfo.CurrentIndex = uint32(dpcl.CurrentIndex)
 	sainfo.Status = make([]*info.DevicePortStatus, len(dpcl.PortConfigList))
@@ -587,7 +591,7 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 		}
 		sainfo.Status[i] = dps
 	}
-	log.Debugf("encodeSystemAdapterInfo: %+v", sainfo)
+	log.Tracef("encodeSystemAdapterInfo: %+v", sainfo)
 	return sainfo
 }
 

@@ -96,7 +96,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		switch msg {
 		case "hello", "restarted", "complete":
-			log.Infof("Got message %s type %s\n", msg, t)
+			log.Functionf("Got message %s type %s\n", msg, t)
 
 		case "delete":
 			if count < 3 {
@@ -109,7 +109,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			if err != nil {
 				log.Errorf("base64: %s\n", err)
 			}
-			log.Infof("delete type %s key %s\n", t, key)
+			log.Functionf("delete type %s key %s\n", t, key)
 
 		case "update":
 			if count < 4 {
@@ -137,14 +137,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				if err := json.Unmarshal(val, &output); err != nil {
 					log.Fatal(err, "json Unmarshal")
 				}
-				log.Infof("update type %s key %s val %+v\n",
+				log.Functionf("update type %s key %s val %+v\n",
 					t, key, output)
 			case "json":
 				var out bytes.Buffer
 				if err = json.Indent(&out, val, "", "\t"); err != nil {
 					log.Fatalf("unable to indent json: %v", err)
 				}
-				log.Infof("update type %s key %s: %s\n", t, key, out.String())
+				log.Functionf("update type %s key %s: %s\n", t, key, out.String())
 			default:
 				log.Fatalf("unsupported format: %s", format)
 			}
@@ -187,32 +187,32 @@ func testPersistent(ps *pubsub.PubSub, agentName string, agentScope string, topi
 func handleCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleCreate(%s) type %T\n", key, statusArg)
+	log.Functionf("handleCreate(%s) type %T\n", key, statusArg)
 	switch statusArg.(type) {
 	case types.DevicePortConfigList:
 		dpcl := statusArg.(types.DevicePortConfigList)
-		log.Infof("DPCL %+v\n", dpcl)
+		log.Functionf("DPCL %+v\n", dpcl)
 	}
 }
 
 func handleModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	statusArg interface{}, oldStatusArg interface{}) {
 
-	log.Infof("handleModify(%s) type %T\n", key, statusArg)
+	log.Functionf("handleModify(%s) type %T\n", key, statusArg)
 	switch statusArg.(type) {
 	case types.DevicePortConfigList:
 		dpcl := statusArg.(types.DevicePortConfigList)
-		log.Infof("DPCL %+v\n", dpcl)
+		log.Functionf("DPCL %+v\n", dpcl)
 	}
 }
 
 func handleDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDelete(%s) type %T\n", key, statusArg)
+	log.Functionf("handleDelete(%s) type %T\n", key, statusArg)
 	switch statusArg.(type) {
 	case types.DevicePortConfigList:
 		dpcl := statusArg.(types.DevicePortConfigList)
-		log.Infof("DPCL %+v\n", dpcl)
+		log.Functionf("DPCL %+v\n", dpcl)
 	}
 }

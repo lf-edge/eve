@@ -18,15 +18,15 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
-	log.Infof("MaybeAddDomainConfig for %s displayName %s", key,
+	log.Functionf("MaybeAddDomainConfig for %s displayName %s", key,
 		displayName)
 
 	m := lookupDomainConfig(ctx, key)
 	if m != nil {
 		// Always update to pick up new disks, vifs, Activate etc
-		log.Infof("Domain config already exists for %s", key)
+		log.Functionf("Domain config already exists for %s", key)
 	} else {
-		log.Infof("Domain config add for %s", key)
+		log.Functionf("Domain config add for %s", key)
 	}
 	AppNum := 0
 	if ns != nil {
@@ -78,7 +78,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	publishDomainConfig(ctx, &dc)
 
-	log.Infof("MaybeAddDomainConfig done for %s", key)
+	log.Functionf("MaybeAddDomainConfig done for %s", key)
 	return nil
 }
 
@@ -87,7 +87,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 	pub := ctx.pubDomainConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Debugf("lookupDomainConfig(%s) not found", key)
+		log.Tracef("lookupDomainConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.DomainConfig)
@@ -99,7 +99,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 	sub := ctx.subDomainStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Debugf("lookupDomainStatus(%s) not found", key)
+		log.Tracef("lookupDomainStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.DomainStatus)
@@ -110,7 +110,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 	status *types.DomainConfig) {
 
 	key := status.Key()
-	log.Debugf("publishDomainConfig(%s)", key)
+	log.Tracef("publishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *status)
 }
@@ -118,7 +118,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 
 	key := uuidStr
-	log.Debugf("unpublishDomainConfig(%s)", key)
+	log.Tracef("unpublishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
 	c, _ := pub.Get(key)
 	if c == nil {
@@ -128,23 +128,33 @@ func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 	pub.Unpublish(key)
 }
 
+func handleDomainStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleDomainStatusImpl(ctxArg, key, statusArg)
+}
+
 func handleDomainStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleDomainStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleDomainStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.DomainStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleDomainStatusModify for %s", key)
+	log.Functionf("handleDomainStatusImpl for %s", key)
 	// Record DomainStatus.State even if Pending() to capture HALTING
 
 	updateAIStatusUUID(ctx, status.Key())
-	log.Infof("handleDomainStatusModify done for %s", key)
+	log.Functionf("handleDomainStatusImpl done for %s", key)
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDomainStatusDelete for %s", key)
+	log.Functionf("handleDomainStatusDelete for %s", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
-	log.Infof("handleDomainStatusDelete done for %s", key)
+	log.Functionf("handleDomainStatusDelete done for %s", key)
 }
