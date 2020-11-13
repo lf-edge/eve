@@ -1,4 +1,4 @@
-From 040adbffae4708b0d60968fa64a70f4c3c1a4afe Mon Sep 17 00:00:00 2001
+From b349935f4b117388d1bfccc317351a4a8986c0c2 Mon Sep 17 00:00:00 2001
 From: Stefano Stabellini <stefano.stabellini@xilinx.com>
 Date: Wed, 20 May 2020 16:42:15 -0700
 Subject: [PATCH 06/14] swiotlb-xen: add struct device* parameter to
