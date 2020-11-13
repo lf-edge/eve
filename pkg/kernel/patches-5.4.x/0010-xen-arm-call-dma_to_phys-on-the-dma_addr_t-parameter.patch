@@ -1,4 +1,4 @@
-From d8c281e30101602e180dde4c07cea42b494a8eb6 Mon Sep 17 00:00:00 2001
+From 5d3b3f66c96bf9727f583bba2cfb5abb6720f54e Mon Sep 17 00:00:00 2001
 From: Stefano Stabellini <stefano.stabellini@xilinx.com>
 Date: Wed, 20 May 2020 16:43:08 -0700
 Subject: [PATCH 10/14] xen/arm: call dma_to_phys on the dma_addr_t parameter

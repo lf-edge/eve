@@ -1,4 +1,4 @@
-From a40199e4f0732709e2cebccba08a8902a373a297 Mon Sep 17 00:00:00 2001
+From b707364ee32a1ed4dc481d5d537605b188f93404 Mon Sep 17 00:00:00 2001
 From: Florian Ferg <flfe@xxxxxxxxxxxxxxx>
 Date: Sat, 31 Oct 2020 19:50:37 -0400
 Subject: [PATCH 01/14] This patch adds the driver for the IXXAT USB-to-CAN

@@ -1,4 +1,4 @@
-From d79a9307d61f4ec2101653059306964b27f2b51b Mon Sep 17 00:00:00 2001
+From 1018b260310b463ac8ee7488e8f5758b8ca03780 Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
 Subject: [PATCH 12/14] Add stdout path overlay
