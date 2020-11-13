@@ -52,6 +52,17 @@ services:
         networks:
             - eve
 
+    newlogd:
+        image: NEWLOGD_TAG
+        privileged: true
+        volumes:
+            - persist:/persist
+            - config:/config
+            - run:/run
+        # network_mode: host
+        networks:
+            - eve
+
     ntpd:
         image: linuxkit/openntpd:v0.5
         privileged: true

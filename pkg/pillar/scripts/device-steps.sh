@@ -15,7 +15,7 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
-AGENTS0="zedagent logmanager ledmanager nim nodeagent domainmgr"
+AGENTS0="zedagent logmanager ledmanager nim nodeagent domainmgr loguploader"
 AGENTS1="zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
@@ -466,6 +466,13 @@ if ! pgrep logmanager >/dev/null; then
     $BINDIR/logmanager &
     wait_for_touch logmanager
     touch "$WATCHDOG_FILE/logmanager.touch"
+fi
+
+if ! pgrep loguploader >/dev/null; then
+    echo "$(date -Ins -u) Starting loguploader"
+    $BINDIR/loguploader &
+    wait_for_touch loguploader
+    touch "$WATCHDOG_FILE/loguploader.touch"
 fi
 
 for AGENT in $AGENTS1; do

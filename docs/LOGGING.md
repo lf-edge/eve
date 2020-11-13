@@ -40,7 +40,7 @@ The following diagram shows the flow of logs from containers to newlogd and to c
 
 All logs collected from various containers/services/kernel in the system will reach newlogd deamon. Newlogd formats the log entries and writes into temporary log files(with temporary file name suffix, e.g. 12345678) on disk in /persist/newlog/collect directory. The logs from device host side will be saved to file with name prefix with 'dev.log.' (filename dev.log.12345678) and logs from application/guest side will be saved to files with name prefix with 'app.APP-UUID.log.' (file app.APP-UUID.log.12345678) where APP-UUID is the application UUID assigned to guest application. The temporary file is kept on the disk until either the file size has exceeded 400 KBytes or the elasped time on the file has been opened for longer than 5 minutes.
 
-When the above log file is closed either due to size or time limit has reached, it will be moved and compressed with gzip protocol into either 'devUpload' or 'appUpload' directory. The size of the gzip file is limited to 50 KBytes due to the northbound queueing configuration. If the compressed file is larger than the limit, it will be split and compressed into two separate gzip files. The gzip filename is encoded with current timestamp in Unix seconds, such as 'dev.log.1600831551.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248.gz' for application logs. The metadata such as device-UUID, the image partition, and image version or app Name for application are encoded as part of the gzip metadata header along with the gzip file.
+When the above log file is closed either due to size or time limit has reached, it will be moved and compressed with gzip protocol into either 'devUpload' or 'appUpload' directory. The size of the gzip file is limited to 50 KBytes due to the northbound queueing configuration. If the compressed file is larger than the limit, it will be split and compressed into two separate gzip files. The gzip filename is encoded with current timestamp in Unix milliseconds, such as 'dev.log.1600831551491.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248917.gz' for application logs. The metadata such as device-UUID, the image partition, and image version or app Name for application are encoded as part of the gzip metadata header along with the gzip file.
 
 Upon the device restart, any unfinished temporary log files of previous life left in /persist/newlog/collect directory will be first moved and compressed by newlogd deamon into their upload gzip directories before any current log events are written onto the disk.
 
@@ -61,16 +61,17 @@ The upload is one gzip file at a time. The "loguploader" finds the earliest time
 
 For the case 1 and 2, "loguploader" will just come back to retry the same gzip file again (the earliest in timestamp). After it repeats this 3 times, the "uploader" will mark the controller as "unreachable". This "unreachable" status affects the disk space management by "newlogd" as mentioned above. For case 3, if it repeats continously for 10 times for the same gzip file, this gzip file will be moved into "/persist/newlog/failedUpload" directory, this is to prevent one bad file stops the other log files to be uploaded forever. There is no special action for case 4, the "loguploader" will come back to retry again later.
 
-The uploading is controlled on a scheduled timer. When the timer fires, the "loguploader" checks both "devUpload" and "appUpload" directories, and picks file the earliest in timestamp of the gzip filename in the directory for uploading. The duration of the timer delay stays the same for 30 minutes, then it is recalculated. The current EVE implementaion calculates the timer delay based on these conditions:
+The uploading is controlled on a scheduled timer. When the timer fires, the "loguploader" checks both "devUpload" and "appUpload" directories, and picks file the earliest in timestamp of the gzip filename in the directory for uploading. The duration of the timer delay stays the same for 20 minutes, then it is recalculated. The current EVE implementaion calculates the timer delay based on these conditions:
 
 * if the controller is in "unreachable" status, then the delay is set to a random in the range of 3 minutes to 15 minutes. This is mainly due to if the controller is out of reach for a while, many devices has many accumulated logs to be sent to the cloud, to space out the load in a longer duration will help the server side dealing with huge load in the initial startup stage.
-* the device boots up, the timer value is set to 90 seconds (the first 30 minutes)
+* the device boots up, the timer value is set to 90 seconds (the first 20 minutes)
 * the total number of gzip log files currently remains in the directories (the below timer value with 15% randomness):
   * 90 seconds if total file number is less than 5
   * 45 seconds if total file number is less than 25
   * 30 seconds if total file number is less than 50
   * 15 seconds if total file number is less than 200
-  * 8 seconds if total file number is more than 200
+  * 8 seconds if total file number is less than 1000
+  * 3 seconds if total file number is more than 1000
 * when the timer is recalculated with above criterion, one exception is that the new time delay will be allowed to go smaller or it will be kept the same as before if there exists more than 5 files in the directory. This is to prevent the total files in the directory oscillating around a high number which would cause a longer delay in uploading of gzip files.
 
 The "loguploader" collects stats of round-trip delay, controller CPU load percentage and log batch processing time. The current EVE implementation does not use those stats in calculating the uploading timer values.

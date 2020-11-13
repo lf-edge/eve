@@ -64,6 +64,8 @@ var deviceNetworkStatus = &types.DeviceNetworkStatus{}
 // XXX could alternatively access sub object when adding them.
 var clientMetrics types.MetricsMap
 var logmanagerMetrics types.MetricsMap
+var loguploaderMetrics types.MetricsMap
+var newlogMetrics types.NewlogMetrics
 var downloaderMetrics types.MetricsMap
 var networkMetrics types.NetworkMetrics
 var cipherMetricsDL types.CipherMetricsMap
@@ -101,6 +103,7 @@ type zedagentContext struct {
 	subAttestQuote            pubsub.Subscription
 	subEncryptedKeyFromDevice pubsub.Subscription
 	subLogMetrics             pubsub.Subscription
+	subNewlogMetrics          pubsub.Subscription
 	subBlobStatus             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            pubsub.Subscription
@@ -844,6 +847,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subLogMetrics = subLogMetrics
 	subLogMetrics.Activate()
 
+	// Subscribe to Newlog metrics from newlogd
+	subNewlogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "newlogd",
+		TopicImpl: types.NewlogMetrics{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subNewlogMetrics = subNewlogMetrics
+
 	subDiskMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
@@ -1006,6 +1021,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
+	// cloud metrics of loguploader
+	subLoguploaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "loguploader",
+		TopicImpl: cms,
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	subDownloaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
 		MyAgentName: agentName,
@@ -1158,6 +1183,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					err)
 			} else {
 				logmanagerMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-subLoguploaderMetrics.MsgChan():
+			subLoguploaderMetrics.ProcessChange(change)
+			m, err := subLoguploaderMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subLoguploaderMetrics.Get failed: %s",
+					err)
+			} else {
+				loguploaderMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-subNewlogMetrics.MsgChan():
+			subNewlogMetrics.ProcessChange(change)
+			m, err := subNewlogMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subNewlogMetrics.Get failed: %s",
+					err)
+			} else {
+				newlogMetrics = m.(types.NewlogMetrics)
 			}
 
 		case change := <-subDownloaderMetrics.MsgChan():

@@ -13,6 +13,7 @@ type Loginfo struct {
 	Level         string `json:"level"`
 	Time          string `json:"time"` // RFC3339 with Nanoseconds
 	Msg           string `json:"msg"`
+	Pid           int    `json:"pid"`
 	Function      string `json:"func"`
 	Filename      string `json:"file"`
 	Source        string `json:"source"`
