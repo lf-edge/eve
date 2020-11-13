@@ -382,7 +382,7 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring rpi,$(HV)),$(BOOT_PART)) | $(DIST)
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring arm64,$(ZARCH)),$(BOOT_PART)) | $(DIST)
 	cp pkg/eve/build.yml pkg/eve/runme.sh images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
