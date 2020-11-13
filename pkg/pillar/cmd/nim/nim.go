@@ -672,7 +672,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					handleInterfaceChange(&nimCtx, ifindex,
 						"LinkChange", true)
 					if isIfNameCrucial(&nimCtx.deviceNetworkContext, change.Attrs().Name) {
-						log.Functionf("Start network connectivity verfication because ifname %s port of DPC at index 0 changed", change.Attrs().Name)
+						log.Functionf("Start network connectivity verfication because ifname %s "+
+							"is crucial to network configuration", change.Attrs().Name)
 						devicenetwork.RestartVerify(&nimCtx.deviceNetworkContext, "HandleLinkChange")
 					}
 				}
@@ -781,12 +782,15 @@ func isIfNameCrucial(ctx *devicenetwork.DeviceNetworkContext, ifname string) boo
 		// Is part of DPC at CurrentIndex in DPCL?
 		portStatus := portConfigList[currentIndex].GetPortByIfName(ifname)
 		if portStatus != nil {
+			log.Functionf("Crucial port %s that is part of DPC at index %d of DPCL changed",
+				ifname, currentIndex)
 			return true
 		}
 
 		// Is part of DPC at index 0 in DPCL?
 		portStatus = portConfigList[0].GetPortByIfName(ifname)
 		if portStatus != nil {
+			log.Functionf("Crucial port %s that is part of DPC at index 0 of DPCL changed", ifname)
 			return true
 		}
 	}
