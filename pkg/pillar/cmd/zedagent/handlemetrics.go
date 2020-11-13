@@ -353,6 +353,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	if downloaderMetrics != nil {
 		cms = zedcloud.Append(cms, downloaderMetrics)
 	}
+	if loguploaderMetrics != nil {
+		cms = zedcloud.Append(cms, loguploaderMetrics)
+	}
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
 			Failures:          cm.FailureCount,
@@ -384,6 +387,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
 			&metric)
 	}
+
+	// XXX temp debug until newlog metric API is defined
+	log.Tracef("publishMetrics: newlog-metrics %+v", newlogMetrics)
 
 	// collect CipherMetric from agents and report
 	// Collect zedcloud metrics from ourselves and other agents

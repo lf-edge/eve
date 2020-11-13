@@ -197,6 +197,16 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 	}
 }
 
+// PrintStacks - for newlogd log init
+func PrintStacks(log *base.LogObject) {
+	stacks := getStacks(false)
+	stackArray := strings.Split(stacks, "\n\n")
+	log.Errorf("Fatal stack trace due to %s with %d stack traces", savedRebootReason, len(stackArray))
+	for _, stack := range stackArray {
+		log.Errorf("%v", stack)
+	}
+}
+
 // Print out our stack
 func printStack(log *base.LogObject, agentName string, agentPid int) {
 	stacks := getStacks(false)

@@ -66,4 +66,15 @@ const (
 	EveVersionFile = "/run/eve-release"
 	//DefaultVaultName is the name of the default vault
 	DefaultVaultName = "Application Data Store"
+
+	// NewlogDir - newlog directories
+	NewlogDir = "/persist/newlog"
+	// NewlogCollectDir - newlog collect directory for temp log files
+	NewlogCollectDir = NewlogDir + "/collect"
+	// NewlogUploadDevDir - newlog device gzip file directory ready for upload
+	NewlogUploadDevDir = NewlogDir + "/devUpload"
+	// NewlogUploadAppDir - newlog app gzip file directory ready for upload
+	NewlogUploadAppDir = NewlogDir + "/appUpload"
+	// ForceLegacylogFilename - transition flag to force using legacy log
+	ForceLegacylogFilename = IdentityDirname + "/Force-Use-Oldlog"
 )
