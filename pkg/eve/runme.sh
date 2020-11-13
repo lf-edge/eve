@@ -40,7 +40,7 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run lfedge/eve [-f fmt] version|rootfs|live|installer_raw|installer_iso
+Usage: docker run lfedge/eve [-f fmt] [--rpi] version|rootfs|live|installer_raw|installer_iso
 
 The artifact will be produced on stdout, so don't forget to redirect it to a file.
 
@@ -50,6 +50,8 @@ Optionally you can pass the following right before run in docker run:
 Passing -v <local folder>:/out makes sure the file created is given most appropriate name.
 
 -f fmt selects a packaging format: raw (default), qcow2 and gcp are all valid options.
+
+--rpi flag to create image for Raspberry Pi 4
 
 live and installer_raw support an optional last argument specifying the size of the image in Mb.
 __EOT__
@@ -73,7 +75,7 @@ do_version() {
 
 do_live() {
   PART_SPEC="efi conf imga"
-  [ -d /bits/boot ] && PART_SPEC="boot conf imga"
+  [ "$RPI" -eq 1 ] && PART_SPEC="boot conf imga"
   create_efi_raw "${1:-350}" "$PART_SPEC"
   dump "$OUTPUT_IMG" live.raw
 }
@@ -101,6 +103,10 @@ while true; do
           shift
           [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && bail "Unknown format: $FMT"
           ;;
+     --rpi)
+       RPI=1
+       shift
+       ;;
        *) break
           ;;
    esac
