@@ -23,6 +23,10 @@ jobs:
              docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
       - name: Build packages
         run: |
+          # FIXME: this needs to be updated in the build image
+          if [ "$(uname -m)" = aarch64 ]; then
+             sudo apt install -y jq
+          fi
           # GH Actions convert our annotated tags into plain ones,
           # so we need to convert it back (but only if it exists).
           if [ -n "$(git tag)" ]; then
