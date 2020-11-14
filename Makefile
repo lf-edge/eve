@@ -108,9 +108,9 @@ DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
-PART_SPEC_=efi conf imga
-PART_SPEC_rpi=boot conf imga
-PART_SPEC=$(PART_SPEC_$(findstring rpi,$(HV)))
+PART_SPEC_amd64=efi conf imga
+PART_SPEC_arm64=boot conf imga
+PART_SPEC=$(PART_SPEC_$(ZARCH))
 
 # public cloud settings (only CGP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
@@ -540,7 +540,7 @@ help:
 	@echo "   pkgs           builds all EVE packages"
 	@echo "   pkg/XXX        builds XXX EVE package"
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm, rpi)"
+	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp)"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
