@@ -1,4 +1,4 @@
-image: eve-kvmtool
+image: eve-kvm-tools
 org: lfedge
 network: yes
 config:
