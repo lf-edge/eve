@@ -25,16 +25,63 @@ WORKDIR /kvmtool
 RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
     make && make install DESTDIR=/usr HOME=
 
+# Building qemu in strip-down mirovm only mode
+RUN apk add curl
+# qemu 5.1 dependencies
+RUN apk add python3 glib-dev pixman-dev
+# qemu 5.2+ dependencies
+RUN apk add py3-setuptools bash perl
+# ninja dependencies 
+RUN apk add cmake g++
+
+# building ninja
+WORKDIR /ninja-1.10.1
+RUN curl -L https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz | tar -C / -xzvf -
+RUN cmake -Bbuild-cmake -H.
+RUN cmake --build build-cmake
+RUN cmake --install build-cmake --prefix /usr
+
+# building qemu
+WORKDIR /qemu-5.2.0-rc1
+RUN curl https://download.qemu.org/qemu-5.2.0-rc1.tar.xz | tar -C / -xJvf -
+
+COPY i386-softmmu.mak default-configs/devices/i386-softmmu.mak
+COPY meson.build hw/acpi/meson.build
+
+# --block-drv-whitelist=L --block-drv-rw-whitelist=L --block-drv-ro-whitelist=L
+# --enable-trace-backends
+# --with-coroutine
+# --disable-system
+# --audio-drv-list=none
+# ? --disable-vxhs
+# T --disable-slirp
+RUN ./configure --target-list=x86_64-softmmu --enable-kvm --without-default-devices --disable-tcg --disable-user --disable-linux-user --disable-bsd-user --disable-docs --disable-guest-agent --disable-guest-agent-msi --disable-pie --disable-modules --disable-module-upgrades --disable-debug-tcg --disable-debug-info --disable-sparse --disable-gnutls --disable-nettle --disable-gcrypt --disable-auth-pam --disable-sdl --disable-sdl-image --disable-gtk --disable-vte --disable-curses --disable-iconv --disable-vnc --disable-vnc-sasl --disable-vnc-jpeg --disable-vnc-png --disable-cocoa --disable-virtfs --disable-mpath --disable-xen --disable-xen-pci-passthrough --disable-brlapi --disable-curl --disable-membarrier --disable-fdt --disable-hax --disable-hvf --disable-whpx --disable-rdma --disable-pvrdma --disable-vde --disable-netmap --disable-linux-aio --disable-linux-io-uring --disable-cap-ng --disable-attr --disable-vhost-net --disable-vhost-vsock --disable-vhost-scsi --disable-vhost-crypto --disable-vhost-kernel --disable-vhost-user --disable-spice --disable-rbd --disable-libiscsi --disable-libnfs --disable-smartcard --disable-libusb --disable-live-block-migration --disable-usb-redir --disable-lzo --disable-snappy --disable-bzip2 --disable-lzfse --disable-zstd --disable-seccomp --disable-coroutine-pool --disable-glusterfs --disable-tpm --disable-libssh --disable-numa --disable-libxml2 --disable-tcmalloc --disable-jemalloc --disable-avx2 --disable-avx512f --disable-replication --disable-opengl --disable-virglrenderer --disable-xfsctl --disable-qom-cast-debug --disable-tools --disable-bochs --disable-cloop --disable-dmg --disable-qcow1 --disable-vdi --disable-vvfat --disable-qed --disable-parallels --disable-sheepdog --disable-crypto-afalg --disable-capstone --disable-debug-mutex --disable-libpmem --disable-xkbcommon
+
+# qemu's configure script takes presence of as sys/signal.h as
+# a hint to set HAVE_SYS_SIGNAL_H=y, meanwhile the only reason
+# musl has sys/signal.h to begin with is to warn not to use it
+RUN sed -ie '/^HAVE_SYS_SIGNAL_H=y/d' build/config-host.mak
+
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" V=1
+RUN strip build/qemu-system-x86_64
+
 FROM alpine:3.12
 
+# libgcc, pixman and glib are required for qemu
+# it maybe possible to get rid of libgcc & pixman
 RUN apk add --no-cache \
+            libgcc=9.3.0-r2 \
+            pixman=0.40.0-r2 \
+            glib=2.64.6-r0 \
             libvncserver=0.9.13-r1 \
             libaio=0.3.112-r1
 
 COPY --from=build /usr/bin/lkvm /usr/bin/lkvm
+COPY --from=build /qemu-5.2.0-rc1/build/qemu-system-x86_64 /usr/bin/qemu-system-x86_64
+COPY --from=build /qemu-5.2.0-rc1/build/pc-bios/optionrom/linuxboot_dma.bin /qemu-5.2.0-rc1/build/pc-bios/bios-microvm.bin /usr/share/qemu/
 RUN ln -sf lkvm /usr/bin/vm
 RUN ldd /usr/bin/lkvm
+RUN ldd /usr/bin/qemu-system-x86_64
 
-#ENTRYPOINT []
+ENTRYPOINT ["/bin/sh", "-c", "while true; do sleep 100000; done"]
 #CMD ["/usr/sbin/vm",]
-
