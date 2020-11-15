@@ -9,6 +9,9 @@ config:
     - /run:/run
     - /persist:/persist
     - /config:/config
+    - /:/hostfs
   net: host
   capabilities:
     - all
+  pid: host
+  userns: host
