@@ -26,16 +26,17 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
     make && make install DESTDIR=/usr HOME=
 
 # Building qemu in strip-down mirovm only mode
-RUN apk add curl
+RUN apk add --no-cache curl=7.69.1-r1
 # qemu 5.1 dependencies
-RUN apk add python3 glib-dev pixman-dev
+RUN apk add --no-cache python3=3.8.5-r0 glib-dev=2.64.6-r0 pixman-dev=0.40.0-r2
 # qemu 5.2+ dependencies
-RUN apk add py3-setuptools bash perl
-# ninja dependencies 
-RUN apk add cmake g++
+RUN apk add --no-cache py3-setuptools=47.0.0-r0 bash=5.0.17-r0 perl=5.30.3-r0
+# ninja dependencies
+RUN apk add --no-cache cmake=3.17.2-r0 g++=9.3.0-r2
 
 # building ninja
 WORKDIR /ninja-1.10.1
+# hadolint ignore=DL4006
 RUN curl -L https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz | tar -C / -xzvf -
 RUN cmake -Bbuild-cmake -H.
 RUN cmake --build build-cmake
@@ -43,6 +44,7 @@ RUN cmake --install build-cmake --prefix /usr
 
 # building qemu
 WORKDIR /qemu-5.2.0-rc1
+# hadolint ignore=DL4006
 RUN curl https://download.qemu.org/qemu-5.2.0-rc1.tar.xz | tar -C / -xJvf -
 
 COPY i386-softmmu.mak default-configs/devices/i386-softmmu.mak
