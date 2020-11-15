@@ -140,8 +140,8 @@ services:
         networks:
             - eve
 
-    kvmtool:
-        image: KVMTOOL_TAG
+    kvm-tools:
+        image: KVMTOOLS_TAG
         privileged: true
         volumes:
             - persist:/persist
