@@ -54,7 +54,7 @@ func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 		return nil
 	}
 	logger := logrus.StandardLogger()
-	// logger.SetLevel(logrus.TraceLevel)
+	logger.SetLevel(logrus.TraceLevel)
 	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	wp := worker.NewPoolWithGC(
 		logObject,
@@ -67,8 +67,8 @@ func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 
 // TestInOrder verifies that workers are spawned and return in order
 func TestInOrder(t *testing.T) {
-	numGoroutines := runtime.NumGoroutine()
 	origStacks := getStacks(true)
+	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(3)
 	testname := "testinorder"
 
@@ -135,6 +135,7 @@ func TestInOrder(t *testing.T) {
 	done = !ok
 	assert.True(t, done)
 	// Check that goroutines are gone
+	time.Sleep(time.Second)
 	newCount := runtime.NumGoroutine()
 	assert.Equal(t, numGoroutines, newCount)
 	if numGoroutines != newCount {
@@ -147,8 +148,8 @@ func TestInOrder(t *testing.T) {
 
 // TestNoLimit verifies that zero means no limit
 func TestNoLimit(t *testing.T) {
-	numGoroutines := runtime.NumGoroutine()
 	origStacks := getStacks(true)
+	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(0)
 	testname := "testnolimit"
 
@@ -220,6 +221,7 @@ func TestNoLimit(t *testing.T) {
 	done = !ok
 	assert.True(t, done)
 	// Check that goroutines are gone
+	time.Sleep(time.Second)
 	newCount := runtime.NumGoroutine()
 	assert.Equal(t, numGoroutines, newCount)
 	if numGoroutines != newCount {
@@ -232,8 +234,8 @@ func TestNoLimit(t *testing.T) {
 
 // TestNoblocking verifies that a short after a long completes first
 func TestNoblocking(t *testing.T) {
-	numGoroutines := runtime.NumGoroutine()
 	origStacks := getStacks(true)
+	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(3)
 	testname := "testnoblocking"
 
@@ -276,6 +278,7 @@ func TestNoblocking(t *testing.T) {
 	done = !ok
 	assert.True(t, done)
 	// Check that goroutines are gone
+	time.Sleep(time.Second)
 	newCount := runtime.NumGoroutine()
 	assert.Equal(t, numGoroutines, newCount)
 	if numGoroutines != newCount {
@@ -288,8 +291,8 @@ func TestNoblocking(t *testing.T) {
 
 // TestGC verifies that unused workers are deleted
 func TestGC(t *testing.T) {
-	numGoroutines := runtime.NumGoroutine()
 	origStacks := getStacks(true)
+	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(0)
 	testname := "testgc"
 
@@ -372,6 +375,7 @@ func TestGC(t *testing.T) {
 	assert.Equal(t, 0, wp.NumWorkers())
 
 	// Check that goroutines are gone
+	time.Sleep(time.Second)
 	newCount := runtime.NumGoroutine()
 	assert.Equal(t, numGoroutines, newCount)
 	if numGoroutines != newCount {
