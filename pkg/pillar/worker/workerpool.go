@@ -111,6 +111,15 @@ func (wp *Pool) NumPending() int {
 	return total
 }
 
+// NumResults returns the number of results waiting to be processed.
+func (wp *Pool) NumResults() int {
+	total := 0
+	for _, w := range wp.workers {
+		total += w.worker.NumResults()
+	}
+	return total
+}
+
 // NumWorkers returns the current number of workers
 func (wp *Pool) NumWorkers() int {
 	return len(wp.workers)
@@ -209,7 +218,9 @@ func (wp *Pool) purgeOld(startIndex int) {
 	wp.log.Tracef("purgeOld(%d) have %d", startIndex, len(wp.workers))
 	var newWorkers []myworker
 	for i, w := range wp.workers {
-		if i <= startIndex || time.Since(w.lastUsed) < wp.submitGCTime {
+		if i <= startIndex || time.Since(w.lastUsed) < wp.submitGCTime ||
+			w.worker.NumPending() != 0 || w.worker.NumResults() != 0 {
+
 			newWorkers = append(newWorkers, w)
 		} else {
 			wp.log.Tracef("purgeOld GC %d", i)

@@ -113,6 +113,13 @@ func (w *Worker) NumPending() int {
 	return int(w.requestCount) - int(w.resultCount)
 }
 
+// NumResults returns the number of results waiting to be processed.
+func (w *Worker) NumResults() int {
+	w.RLock()
+	defer w.RUnlock()
+	return len(w.resultMap)
+}
+
 // processWork calls the fn for each work until the requestChan is closed
 func (w *Worker) processWork(log Logger, ctx interface{}, requestChan <-chan Work, resultChan chan<- Processor) {
 

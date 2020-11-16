@@ -61,12 +61,13 @@ func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 		&ctx, maxPool, map[string]worker.Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		},
-		1, 10)
+		1, 2)
 	return &ctx, wp, &res
 }
 
 // TestInOrder verifies that workers are spawned and return in order
 func TestInOrder(t *testing.T) {
+	time.Sleep(time.Second)
 	origStacks := getStacks(true)
 	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(3)
@@ -106,19 +107,22 @@ func TestInOrder(t *testing.T) {
 
 	proc1 := <-wp.MsgChan()
 	proc1.Process(ctx, true)
+	res1 := wp.Pop(testname + "1")
+	assert.Equal(t, testname+"1", res1.Key)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc2 := <-wp.MsgChan()
 	proc2.Process(ctx, true)
+	res2 := wp.Pop(testname + "2")
+	assert.Equal(t, testname+"2", res2.Key)
 	assert.Equal(t, 1, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep2.generateOutput, res.Output)
 
 	proc3 := <-wp.MsgChan()
 	proc3.Process(ctx, true)
-	// this one uses the Pop, so we exercise it
 	res3 := wp.Pop(testname + "3")
 	assert.Equal(t, testname+"3", res3.Key)
 	assert.Equal(t, sleep3.generateOutput, res3.Output)
@@ -148,6 +152,7 @@ func TestInOrder(t *testing.T) {
 
 // TestNoLimit verifies that zero means no limit
 func TestNoLimit(t *testing.T) {
+	time.Sleep(time.Second)
 	origStacks := getStacks(true)
 	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(0)
@@ -234,6 +239,7 @@ func TestNoLimit(t *testing.T) {
 
 // TestNoblocking verifies that a short after a long completes first
 func TestNoblocking(t *testing.T) {
+	time.Sleep(time.Second)
 	origStacks := getStacks(true)
 	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(3)
@@ -291,6 +297,7 @@ func TestNoblocking(t *testing.T) {
 
 // TestGC verifies that unused workers are deleted
 func TestGC(t *testing.T) {
+	time.Sleep(time.Second)
 	origStacks := getStacks(true)
 	numGoroutines := runtime.NumGoroutine()
 	ctx, wp, res := setupPool(0)
@@ -328,17 +335,21 @@ func TestGC(t *testing.T) {
 	// Pick up 1 second one and two second one
 	proc2 := <-wp.MsgChan()
 	proc2.Process(ctx, true)
+	res2 := wp.Pop(testname + "2")
+	assert.Equal(t, testname+"2", res2.Key)
 	assert.Equal(t, 3, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc3 := <-wp.MsgChan()
 	proc3.Process(ctx, true)
+	res3 := wp.Pop(testname + "3")
+	assert.Equal(t, testname+"3", res3.Key)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"3", res.Key)
 	assert.Equal(t, sleep3.generateOutput, res.Output)
 
-	assert.Equal(t, 4, wp.NumWorkers())
+	assert.Equal(t, 3, wp.NumWorkers())
 	// Wait for GC timer
 	time.Sleep(10 * time.Second)
 
@@ -347,26 +358,144 @@ func TestGC(t *testing.T) {
 	assert.True(t, done)
 	assert.Nil(t, err)
 	assert.Equal(t, 2, wp.NumWorkers())
-	assert.Equal(t, 2, wp.NumPending())
+	assert.Equal(t, 3, wp.NumPending())
 
 	proc4 := <-wp.MsgChan()
 	proc4.Process(ctx, true)
+	res4 := wp.Pop(testname + "4")
+	assert.Equal(t, testname+"4", res4.Key)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"4", res.Key)
 	assert.Equal(t, sleep4.generateOutput, res.Output)
 
 	proc5 := <-wp.MsgChan()
 	proc5.Process(ctx, true)
+	res5 := wp.Pop(testname + "5")
+	assert.Equal(t, testname+"5", res5.Key)
 	assert.Equal(t, 1, wp.NumPending())
 	assert.Equal(t, testname+"5", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc1 := <-wp.MsgChan()
 	proc1.Process(ctx, true)
+	res1 := wp.Pop(testname + "1")
+	assert.Equal(t, testname+"1", res1.Key)
 	assert.Equal(t, 0, wp.NumPending())
 	assert.Equal(t, testname+"1", res.Key)
 	assert.Equal(t, sleep20.generateOutput, res.Output)
+	assert.Equal(t, 1, wp.NumWorkers())
+
+	wp.Done()
+	_, ok := <-wp.MsgChan()
+	done = !ok
+	assert.True(t, done)
+	assert.Equal(t, 0, wp.NumWorkers())
+
+	// Check that goroutines are gone
+	time.Sleep(time.Second)
+	newCount := runtime.NumGoroutine()
+	assert.Equal(t, numGoroutines, newCount)
+	if numGoroutines != newCount {
+		t.Logf("All goroutine stacks on entry: %v",
+			origStacks)
+		t.Logf("All goroutine stacks on exit: %v",
+			getStacks(true))
+	}
+}
+
+// TestNoGC verifies that workers with pending work are not delete
+func TestNoGC(t *testing.T) {
+	time.Sleep(time.Second)
+	origStacks := getStacks(true)
+	numGoroutines := runtime.NumGoroutine()
+	ctx, wp, res := setupPool(0)
+	testname := "testnogc"
+
+	t.Logf("Running test case %s", testname)
+	w1 := worker.Work{Kind: "test", Key: testname + "1", Description: sleep20}
+	done, err := wp.TrySubmit(w1)
+	assert.True(t, done)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, wp.NumWorkers())
+	assert.Equal(t, 1, wp.NumPending())
+
+	w2 := worker.Work{Kind: "test", Key: testname + "2", Description: sleep1}
+	done, err = wp.TrySubmit(w2)
+	assert.True(t, done)
+	assert.Nil(t, err)
 	assert.Equal(t, 2, wp.NumWorkers())
+	assert.Equal(t, 2, wp.NumPending())
+
+	w3 := worker.Work{Kind: "test", Key: testname + "3", Description: sleep3}
+	done, err = wp.TrySubmit(w3)
+	assert.True(t, done)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, wp.NumWorkers())
+	assert.Equal(t, 3, wp.NumPending())
+
+	w4 := worker.Work{Kind: "test", Key: testname + "4", Description: sleep4}
+	done, err = wp.TrySubmit(w4)
+	assert.True(t, done)
+	assert.Nil(t, err)
+	assert.Equal(t, 4, wp.NumWorkers())
+	assert.Equal(t, 4, wp.NumPending())
+
+	// Pick up 1 second one and two second one
+	proc2 := <-wp.MsgChan()
+	proc2.Process(ctx, true)
+	time.Sleep(10 * time.Second)
+	res2 := wp.Pop(testname + "2")
+	assert.Equal(t, testname+"2", res2.Key)
+	assert.Equal(t, 3, wp.NumPending())
+	assert.Equal(t, testname+"2", res.Key)
+	assert.Equal(t, sleep1.generateOutput, res.Output)
+
+	proc3 := <-wp.MsgChan()
+	proc3.Process(ctx, true)
+	time.Sleep(10 * time.Second)
+	res3 := wp.Pop(testname + "3")
+	assert.Equal(t, testname+"3", res3.Key)
+	assert.Equal(t, 2, wp.NumPending())
+	assert.Equal(t, testname+"3", res.Key)
+	assert.Equal(t, sleep3.generateOutput, res.Output)
+
+	assert.Equal(t, 3, wp.NumWorkers())
+	// Wait for GC timer
+	time.Sleep(10 * time.Second)
+
+	w5 := worker.Work{Kind: "test", Key: testname + "5", Description: sleep1}
+	done, err = wp.TrySubmit(w5)
+	assert.True(t, done)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, wp.NumWorkers())
+	assert.Equal(t, 3, wp.NumPending())
+
+	proc4 := <-wp.MsgChan()
+	proc4.Process(ctx, true)
+	time.Sleep(10 * time.Second)
+	res4 := wp.Pop(testname + "4")
+	assert.Equal(t, testname+"4", res4.Key)
+	assert.Equal(t, 2, wp.NumPending())
+	assert.Equal(t, testname+"4", res.Key)
+	assert.Equal(t, sleep4.generateOutput, res.Output)
+
+	proc1 := <-wp.MsgChan()
+	proc1.Process(ctx, true)
+	time.Sleep(10 * time.Second)
+	res1 := wp.Pop(testname + "1")
+	assert.Equal(t, testname+"1", res1.Key)
+	assert.Equal(t, 1, wp.NumPending())
+	assert.Equal(t, testname+"1", res.Key)
+	assert.Equal(t, sleep20.generateOutput, res.Output)
+
+	proc5 := <-wp.MsgChan()
+	proc5.Process(ctx, true)
+	res5 := wp.Pop(testname + "5")
+	assert.Equal(t, testname+"5", res5.Key)
+	assert.Equal(t, 0, wp.NumPending())
+	assert.Equal(t, testname+"5", res.Key)
+	assert.Equal(t, sleep1.generateOutput, res.Output)
+	assert.Equal(t, 1, wp.NumWorkers())
 
 	wp.Done()
 	_, ok := <-wp.MsgChan()
