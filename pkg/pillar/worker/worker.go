@@ -243,7 +243,7 @@ func (w *Worker) Pop(key string) *WorkResult {
 	w.Lock()
 	defer w.Unlock()
 	res := w.lookupResultLocked(key)
-	if w != nil {
+	if res != nil {
 		w.deleteResultLocked(key)
 	}
 	return res
