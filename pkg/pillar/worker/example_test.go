@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/sirupsen/logrus"
 )
@@ -35,7 +36,8 @@ func Example_workerprocess() {
 	}
 
 	// create a new worker that can handle jobs of Kind "install"
-	work := worker.NewWorker(logrus.New(), ctx, 5, map[string]worker.Handler{
+	logObject := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	work := worker.NewWorker(logObject, ctx, 5, map[string]worker.Handler{
 		kind: {Request: installWorker, Response: processInstallWorkResult},
 	})
 

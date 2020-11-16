@@ -44,6 +44,8 @@ var sleep20 = dummyDescription{
 	generateOutput: "sleep20",
 }
 
+var logObject *base.LogObject
+
 func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 	ctx := dummyContext{contextName: "testContext"}
 	var res worker.WorkResult
@@ -53,8 +55,9 @@ func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 	}
 	logger := logrus.StandardLogger()
 	// logger.SetLevel(logrus.TraceLevel)
+	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	wp := worker.NewPoolWithGC(
-		base.NewSourceLogObject(logger, "test", 1234),
+		logObject,
 		&ctx, maxPool, map[string]worker.Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		},
@@ -132,8 +135,9 @@ func TestInOrder(t *testing.T) {
 	done = !ok
 	assert.True(t, done)
 	// Check that goroutines are gone
-	assert.Equal(t, numGoroutines, runtime.NumGoroutine())
-	if numGoroutines != runtime.NumGoroutine() {
+	newCount := runtime.NumGoroutine()
+	assert.Equal(t, numGoroutines, newCount)
+	if numGoroutines != newCount {
 		t.Logf("All goroutine stacks on entry: %v",
 			origStacks)
 		t.Logf("All goroutine stacks on exit: %v",
@@ -216,8 +220,9 @@ func TestNoLimit(t *testing.T) {
 	done = !ok
 	assert.True(t, done)
 	// Check that goroutines are gone
-	assert.Equal(t, numGoroutines, runtime.NumGoroutine())
-	if numGoroutines != runtime.NumGoroutine() {
+	newCount := runtime.NumGoroutine()
+	assert.Equal(t, numGoroutines, newCount)
+	if numGoroutines != newCount {
 		t.Logf("All goroutine stacks on entry: %v",
 			origStacks)
 		t.Logf("All goroutine stacks on exit: %v",
@@ -271,8 +276,9 @@ func TestNoblocking(t *testing.T) {
 	done = !ok
 	assert.True(t, done)
 	// Check that goroutines are gone
-	assert.Equal(t, numGoroutines, runtime.NumGoroutine())
-	if numGoroutines != runtime.NumGoroutine() {
+	newCount := runtime.NumGoroutine()
+	assert.Equal(t, numGoroutines, newCount)
+	if numGoroutines != newCount {
 		t.Logf("All goroutine stacks on entry: %v",
 			origStacks)
 		t.Logf("All goroutine stacks on exit: %v",
@@ -366,8 +372,9 @@ func TestGC(t *testing.T) {
 	assert.Equal(t, 0, wp.NumWorkers())
 
 	// Check that goroutines are gone
-	assert.Equal(t, numGoroutines, runtime.NumGoroutine())
-	if numGoroutines != runtime.NumGoroutine() {
+	newCount := runtime.NumGoroutine()
+	assert.Equal(t, numGoroutines, newCount)
+	if numGoroutines != newCount {
 		t.Logf("All goroutine stacks on entry: %v",
 			origStacks)
 		t.Logf("All goroutine stacks on exit: %v",

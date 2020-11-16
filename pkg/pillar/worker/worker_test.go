@@ -19,6 +19,7 @@ import (
 )
 
 var timestamp time.Time
+var logObject *base.LogObject
 
 func TestWork(t *testing.T) {
 	testMatrix := map[string]struct {
@@ -57,8 +58,11 @@ func TestWork(t *testing.T) {
 		return nil
 	}
 
+	logger := logrus.StandardLogger()
+	// logger.SetLevel(logrus.TraceLevel)
+	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	worker := NewWorker(
-		base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234),
+		logObject,
 		&ctx, 1, map[string]Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		})
@@ -119,8 +123,11 @@ func TestLength(t *testing.T) {
 		res = r
 		return nil
 	}
+	logger := logrus.StandardLogger()
+	// logger.SetLevel(logrus.TraceLevel)
+	logObject = base.NewSourceLogObject(logger, "test", 1234)
 	worker := NewWorker(
-		base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234),
+		logObject,
 		&ctx, 1, map[string]Handler{
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		})
