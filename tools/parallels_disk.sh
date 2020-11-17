@@ -7,7 +7,7 @@ LIVE=$1
 SNAPSHOT_UUID=$2
 DISK_VIRTUAL_SIZE_BYTES=$3
 
-cat > "${LIVE}".hdd/DiskDescriptor.xml <<EOF
+cat > "${LIVE}".parallels/DiskDescriptor.xml <<EOF
 <?xml version='1.0' encoding='UTF-8'?>
 <Parallels_disk_image Version="1.0">
     <Disk_Parameters>
