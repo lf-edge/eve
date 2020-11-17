@@ -62,7 +62,7 @@ func setupPool(maxPool int) (*dummyContext, *worker.Pool, *worker.WorkResult) {
 			"test": {Request: dummyWorker, Response: dummyResponse},
 		},
 		1, 2)
-	return &ctx, wp, &res
+	return &ctx, wp.(*worker.Pool), &res
 }
 
 // TestInOrder verifies that workers are spawned and return in order

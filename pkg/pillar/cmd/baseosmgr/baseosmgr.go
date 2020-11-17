@@ -49,7 +49,7 @@ type baseOsMgrContext struct {
 	rebootTime           time.Time // From last reboot
 	rebootImage          string    // Image from which the last reboot happened
 
-	worker *worker.Pool // For background work
+	worker worker.Worker // For background work
 }
 
 var debug = false

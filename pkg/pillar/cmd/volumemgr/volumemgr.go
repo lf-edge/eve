@@ -70,7 +70,7 @@ type volumemgrContext struct {
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
 
-	worker *worker.Pool // For background work
+	worker worker.Worker // For background work
 
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
