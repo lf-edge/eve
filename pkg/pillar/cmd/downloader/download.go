@@ -110,11 +110,8 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		if resp.IsError() {
 			return "", err
 		}
-		asize, osize := resp.GetAsize(), resp.GetOsize()
-		log.Functionf("Done for %v: size %v/%v",
-			resp.GetLocalName(),
-			asize, osize)
-		status.Progress(100, osize, asize)
+		log.Functionf("Done for %v size %d",
+			resp.GetLocalName(), resp.GetAsize())
 		return req.GetContentType(), nil
 	}
 	// if we got here, channel was closed

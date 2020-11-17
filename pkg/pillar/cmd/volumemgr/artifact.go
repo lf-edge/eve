@@ -106,12 +106,17 @@ func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatu
 		return nil, fmt.Errorf("getManifestsForBlob: Exception while reading config bytes: %s",
 			err.Error())
 	}
+	blen := int64(len(configBytes))
 	// and the config file which was in the manifest
 	blobStatuses = append(blobStatuses, &types.BlobStatus{
-		Content:   configBytes,
-		State:     types.VERIFIED,
-		MediaType: string(v1types.OCIConfigJSON),
-		Sha256:    manifest.Config.Digest.Encoded(),
+		Content:     configBytes,
+		State:       types.VERIFIED,
+		Size:        uint64(blen),
+		CurrentSize: blen,
+		TotalSize:   blen,
+		Progress:    100,
+		MediaType:   string(v1types.OCIConfigJSON),
+		Sha256:      manifest.Config.Digest.Encoded(),
 	})
 	return blobStatuses, nil
 }

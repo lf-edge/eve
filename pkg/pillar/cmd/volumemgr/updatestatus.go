@@ -127,9 +127,9 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		leftToProcess := false
 
 		var (
-			currentSize, totalSize int64
-			blobErrors             = []string{}
-			blobErrorTime          time.Time
+			currentSize, totalSize, manifestTotalSize int64
+			blobErrors                                = []string{}
+			blobErrorTime                             time.Time
 		)
 		for _, blobSha := range status.Blobs {
 			// get the actual blobStatus
@@ -181,12 +181,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					AddBlobsToContentTreeStatus(ctx, status, addedBlobs...)
 				}
 				if blob.IsManifest() {
-					size := resolveManifestSize(ctx, *blob)
-					if size != blob.TotalSize {
-						blob.TotalSize = size
-						publishBlobStatus(ctx, blob)
-						changed = true
-					}
+					manifestTotalSize = resolveManifestSize(ctx, *blob)
 				}
 			}
 			// if any errors, catch them
@@ -203,6 +198,13 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			}
 		}
 
+		// The manifestTotalSize does not include the size of the
+		// manifest itself but we set it as an initial approximation
+		if totalSize < manifestTotalSize {
+			log.Functionf("doUpdateContentTree: manifestTotal %d total %d",
+				manifestTotalSize, totalSize)
+			totalSize = manifestTotalSize
+		}
 		// Check if sizes changed before setting changed
 		if status.CurrentSize != currentSize || status.TotalSize != totalSize {
 			changed = true
