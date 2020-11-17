@@ -1,0 +1,12 @@
+		if c.IIf != match.IIf || c.OIf != match.OIf {
+	var iif string
+		iif = bridgeName
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+	var iif string
+		iif = bridgeName
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+	var iif string
+		iif = bridgeName
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+	IIf    string
+			ac.IIf = items[i+1]
