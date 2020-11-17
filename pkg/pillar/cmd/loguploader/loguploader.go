@@ -239,7 +239,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// - if the device is disconnected from cloud for over 20 min, then when use random
 			//   interval between 3-15 min to retry, avoid overwhelming the cloud server once it is up
 			// - in normal uploading case, set interval depends on the number of gzip files left in
-			//   both dev/app directories, from 15 seconds upto to 2 minutes
+			//   both dev/app directories, from 15 seconds up to to 2 minutes
 			//
 			// at device starts, more logging activities, and slower timer. will see longer delays,
 			// as the device moves on, the log upload should catchup quickly
@@ -496,7 +496,7 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 				contSentFailure++
 				contSentSuccess = 0
 			}
-			// if resp code is 503, or continously 3 times unavilable failed, start to set the 'FailedToSend' status
+			// if resp code is 503, or continuously 3 times unavailable failed, start to set the 'FailedToSend' status
 			// 'newlogd' gzip directory space management and random spaced out uploading schedule is
 			// based on the 'FailedToSend' status
 			if (contSentFailure >= 3) && !ctx.metrics.FailedToSend {
@@ -694,7 +694,7 @@ func handle4xxlogfile(ctx *loguploaderContext, fName string, isApp bool) {
 		} else {
 			app4xxfile.logfileName = ""
 			app4xxfile.failureCnt = 0
-			ctx.metrics.AppMetrics.NumGZipFileDrop++
+			ctx.metrics.AppMetrics.NumGZipFileKeptLocal++
 			relocate = true
 		}
 	} else {
@@ -706,7 +706,7 @@ func handle4xxlogfile(ctx *loguploaderContext, fName string, isApp bool) {
 		} else {
 			dev4xxfile.logfileName = ""
 			dev4xxfile.failureCnt = 0
-			ctx.metrics.DevMetrics.NumGZipFileDrop++
+			ctx.metrics.DevMetrics.NumGZipFileKeptLocal++
 			relocate = true
 		}
 	}

@@ -20,7 +20,7 @@ while true;
 do
     sleep 10
     PID=$(pgrep /usr/bin/newlogd)
-    if [ "$NEWLOGD_RESTART_COUNT" -eq "0" ] && ( [ "$PID" != "$NEWLOGD_PID" ] || [ -z "$NEWLOGD_PID" ] ); then
+    if [ "$NEWLOGD_RESTART_COUNT" -eq "0" ] && { [ "$PID" != "$NEWLOGD_PID" ] || [ -z "$NEWLOGD_PID" ]; }; then
         ## restart it once to pickup the stack trace of newlogd
         /usr/bin/newlogd -r &
         NEWLOGD_RESTART_COUNT=$((NEWLOGD_RESTART_COUNT + 1))

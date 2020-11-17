@@ -18,21 +18,21 @@ const (
 
 type logfileMetrics struct {
 	// from newlogd
-	NumGZipFilesSent  uint64 // total gzip files uploaded, device
-	NumGZipBytesWrite uint64 // total gzip log in bytes, device
-	NumBytesWrite     uint64 // total log bytes write to file before gzip, device
-	NumGzipFileInDir  uint32 // current number of gzip files remain, device
-	NumInputEvent     uint64 // total event input from log source, device include kmessages
+	NumGZipFilesSent  uint64 // total gzip files uploaded
+	NumGZipBytesWrite uint64 // total gzip log in bytes
+	NumBytesWrite     uint64 // total log bytes write to file before gzip
+	NumGzipFileInDir  uint32 // current number of gzip files remain
+	NumInputEvent     uint64 // total event input from log source
 	// from loguploader
-	NumGZipFileRetry      uint64    // total gzip file upload retries, device
-	NumGZipFileDrop       uint32    // total gzip file upload 4xx failure and kept on device
+	NumGZipFileRetry      uint64    // total gzip file upload retries
+	NumGZipFileKeptLocal  uint32    // total gzip file upload 4xx failure and kept on device
 	RecentUploadTimestamp time.Time // uploaded to cloud the most recent log timestamp
-	LastGZipFileSendTime  time.Time // last upload gzip file time, device
+	LastGZipFileSendTime  time.Time // last upload gzip file time
 }
 
 type serverStats struct {
 	CurrCPULoadPCT  float32 // newlog server CPU percentage usage
-	AvgCPULoadPCT   float32 // newlog server CPU avarage load percentage
+	AvgCPULoadPCT   float32 // newlog server CPU average load percentage
 	CurrProcessMsec uint32  // newlog server process log duration in msec
 	AvgProcessMsec  uint32  // newlog server avg process log duration in msec
 }
