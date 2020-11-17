@@ -244,7 +244,8 @@ $(BUILD_VM).orig: | $(DIST)
 
 $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IMG) | $(DIST)
 	cp $@.orig $@.active
-	qemu-img resize $@.active 5G
+	# currently a fulle EVE build *almost* fits into 40Gb -- we need twice as much in a VM
+	qemu-img resize $@.active 100G
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$@.active -drive format=qcow2,file=$<
 	mv $@.active $@
 
