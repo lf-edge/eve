@@ -112,8 +112,13 @@ PART_SPEC_amd64=efi conf imga
 PART_SPEC_arm64=boot conf imga
 PART_SPEC=$(PART_SPEC_$(ZARCH))
 
-#parallels settings
-PARALLELS_UUID="{5fbaabe3-6958-40ff-92a7-860e329aab41}"
+# parallels settings
+# https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
+# predefined GUID according link ^
+PARALLELS_UUID={5fbaabe3-6958-40ff-92a7-860e329aab41}
+PARALLELS_VM_NAME=EVE_Live
+PARALLELS_CPUS=2 #num
+PARALLELS_MEMORY=2048 #in megabytes
 
 # public cloud settings (only CGP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
@@ -308,13 +313,20 @@ run-proxy:
 run-build-vm: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$(BUILD_VM)
 
-run-parallels-vm:
-	mkdir $(LIVE).hdd
-	qemu-img convert -O parallels $(LIVE).qcow2 $(LIVE).hdd/live.0.$(PARALLELS_UUID).hds
-	qemu-img info -f parallels --output json $(LIVE).hdd/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
-	prlctl create eve --distribution ubuntu --no-hdd --dst $(DIST)/
-	prlctl set eve --device-add hdd --image $(LIVE).hdd --nested-virt on --adaptive-hypervisor on
-	prlctl start eve
+run-live-parallels:
+	@[ -d "$(LIVE).parallels" ] || { echo "Please run: make live-parallels"; exit 1; }
+	@prlctl list -a | grep $(PARALLELS_VM_NAME) | grep "invalid" >/dev/null && prlctl unregister $(PARALLELS_VM_NAME) || echo "No invalid $(PARALLELS_VM_NAME) VM"
+	@if prlctl list --all | grep "$(PARALLELS_VM_NAME)"; then \
+		prlctl stop $(PARALLELS_VM_NAME) --kill; \
+		prlctl set $(PARALLELS_VM_NAME) --device-set hdd0 --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
+	else \
+		prlctl create $(PARALLELS_VM_NAME) --distribution ubuntu --no-hdd --dst $(DIST)/ ; \
+		prlctl set $(PARALLELS_VM_NAME) --device-add hdd --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
+		prlctl set $(PARALLELS_VM_NAME) --device-del net0 ; \
+		prlctl set $(PARALLELS_VM_NAME) --device-add net --type shared --adapter-type virtio --ipadd 192.168.1.0/24 --dhcp yes ; \
+		prlctl set $(PARALLELS_VM_NAME) --device-add net --type shared --adapter-type virtio --ipadd 192.168.2.0/24 --dhcp yes ; \
+		prlctl start $(PARALLELS_VM_NAME) ; \
+	fi
 
 # alternatively (and if you want greater control) you can replace the first command with
 #    gcloud auth activate-service-account --key-file=-
@@ -378,6 +390,12 @@ $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIS
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeiso.sh $| $@
+
+$(LIVE).parallels: $(LIVE).raw
+	rm -rf $@; mkdir $@
+	qemu-img resize -f raw $< ${MEDIA_SIZE}M
+	qemu-img convert -O parallels $< $@/live.0.$(PARALLELS_UUID).hds
+	qemu-img info -f parallels --output json $(LIVE).parallels/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
@@ -556,20 +574,21 @@ help:
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
 	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
-	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp)"
+	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp, parallels)"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
-	@echo "   run-compose       runs all EVE microservices via docker-compose deployment"
-	@echo "   run-build-vm      runs a build VM image"
-	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
-	@echo "   run-live-gcp      runs a full fledged virtual device on Google Compute Platform (provide your account details)"
-	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
-	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
-	@echo "   run-installer-iso runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
-	@echo "   run-installer-raw runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
-	@echo "   run-target        runs a full fledged virtual device on qemu from target.img (similar to run-live)"
+	@echo "   run-compose        runs all EVE microservices via docker-compose deployment"
+	@echo "   run-build-vm       runs a build VM image"
+	@echo "   run-live           runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo "   run-live-gcp       runs a full fledged virtual device on Google Compute Platform (provide your account details)"
+	@echo "   run-live-parallels runs a full fledged virtual device on Parallels Desktop"
+	@echo "   run-rootfs         runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
+	@echo "   run-grub           runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
+	@echo "   run-installer-iso  runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-installer-raw  runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-target         runs a full fledged virtual device on qemu from target.img (similar to run-live)"
 	@echo
 	@echo "make run is currently an alias for make run-live"
 	@echo
