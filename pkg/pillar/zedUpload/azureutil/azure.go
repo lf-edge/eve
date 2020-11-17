@@ -206,7 +206,7 @@ func putBlockBlob(b *storage.Blob, blob io.Reader) error {
 	blockList := []storage.Block{}
 
 	for blockNum := 0; ; blockNum++ {
-		id := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("1d%v", blockNum)))
+		id := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%16d", blockNum)))
 		data := chunk[:n]
 		err = b.PutBlock(id, data, nil)
 		if err != nil {
