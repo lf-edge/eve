@@ -25,7 +25,9 @@ jobs:
         run: |
           # FIXME: this needs to be updated in the build image
           if [ "$(uname -m)" = aarch64 ]; then
-             sudo apt install -y jq
+             sudo apt install -y jq || :
+             docker rmi -f `docker image ls -q` || :
+             docker system prune -f || :
           fi
           # GH Actions convert our annotated tags into plain ones,
           # so we need to convert it back (but only if it exists).
