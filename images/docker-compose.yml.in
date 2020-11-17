@@ -59,7 +59,6 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
-        # network_mode: host
         networks:
             - eve
 

@@ -39,7 +39,7 @@ const (
 	errorTime              = 3 * time.Minute
 	warningTime            = 40 * time.Second
 	metricsPublishInterval = 300 * time.Second
-	logfileDelay           = 300 // maxinum delay 5 minutes for log file collection
+	logfileDelay           = 300 // maximum delay 5 minutes for log file collection
 	stillRunningInerval    = 25 * time.Second
 
 	collectDir   = types.NewlogCollectDir
@@ -49,8 +49,8 @@ const (
 	appPrefix    = types.AppPrefix
 	tmpPrefix    = "TempFile"
 
-	maxLogFileSize   int32 = 550000 // maxinum collect file size in bytes
-	maxGzipFileSize  int64 = 50000  // maxinum gzipped file size for upload in bytes
+	maxLogFileSize   int32 = 550000 // maximum collect file size in bytes
+	maxGzipFileSize  int64 = 50000  // maximum gzipped file size for upload in bytes
 	defaultSyncCount       = 30     // default log events flush/sync to disk file
 
 	startCleanupTime int = 14400 // 10 hours disconnect
@@ -169,7 +169,7 @@ func main() {
 		// handle the write log messages to /persist/newlog/collect/ logfiles
 		go writelogFile(loggerChan, movefileChan)
 
-		// handle the kernal messages
+		// handle the kernel messages
 		go getKmessages(loggerChan)
 
 		// handle collect other container log messages from memlogd
@@ -188,7 +188,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	metricsPub.ClearRestarted()
+	err = metricsPub.ClearRestarted()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// domain-name to UUID and App-name mapping
 	domainUUID = make(map[string]appDomain)
@@ -235,7 +238,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.Activate()
+	err = subGlobalConfig.Activate()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	subUploadMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "loguploader",
@@ -264,7 +270,10 @@ func main() {
 		select {
 		case <-metricsPublishTimer.C:
 			getDevTop10Inputs()
-			metricsPub.Publish("global", logmetrics)
+			err = metricsPub.Publish("global", logmetrics)
+			if err != nil {
+				log.Error(err)
+			}
 			log.Tracef("newlodg main: Published newlog metrics at %s", time.Now().String())
 
 		case change := <-subDomainStatus.MsgChan():
@@ -331,14 +340,14 @@ func handleUploadMetricsImp(ctxArg interface{}, key string, statusArg interface{
 	logmetrics.DevMetrics.NumGZipFileRetry = status.DevMetrics.NumGZipFileRetry
 	logmetrics.DevMetrics.RecentUploadTimestamp = status.DevMetrics.RecentUploadTimestamp
 	logmetrics.DevMetrics.LastGZipFileSendTime = status.DevMetrics.LastGZipFileSendTime
-	logmetrics.DevMetrics.NumGZipFileDrop = status.DevMetrics.NumGZipFileDrop
+	logmetrics.DevMetrics.NumGZipFileKeptLocal = status.DevMetrics.NumGZipFileKeptLocal
 
 	logmetrics.AppMetrics.NumGZipFilesSent = status.AppMetrics.NumGZipFilesSent
 	logmetrics.AppMetrics.NumGzipFileInDir = status.AppMetrics.NumGzipFileInDir
 	logmetrics.AppMetrics.NumGZipFileRetry = status.AppMetrics.NumGZipFileRetry
 	logmetrics.AppMetrics.RecentUploadTimestamp = status.AppMetrics.RecentUploadTimestamp
 	logmetrics.AppMetrics.LastGZipFileSendTime = status.AppMetrics.LastGZipFileSendTime
-	logmetrics.AppMetrics.NumGZipFileDrop = status.AppMetrics.NumGZipFileDrop
+	logmetrics.AppMetrics.NumGZipFileKeptLocal = status.AppMetrics.NumGZipFileKeptLocal
 
 	log.Tracef("newlogd handleUploadMetricsModify changed to %+v", status)
 }
@@ -464,7 +473,10 @@ func getMemlogMsg(logChan chan inputEntry) {
 	readTimeout := 30 * time.Second
 
 	// have to write byte value 2 to trigger memlogd queue streaming
-	s.Write([]byte{writeByte})
+	_, err = s.Write([]byte{writeByte})
+	if err != nil {
+		log.Fatal("getMemlogMsg: write to memlogd failed:", err)
+	}
 
 	bufReader := bufio.NewReader(s)
 	for {
@@ -603,7 +615,10 @@ func startTmpfile(dirname, filename string) *os.File {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tmpFile.Chmod(0600)
+	err = tmpFile.Chmod(0600)
+	if err != nil {
+		log.Fatal(err)
+	}
 	return tmpFile
 }
 
@@ -759,7 +774,10 @@ func writelogEntry(stats *statsLogFile, logline string) int {
 	stats.size += int32(len)
 
 	if stats.index%syncToFileCnt == 0 {
-		stats.file.Sync()
+		err = stats.file.Sync()
+		if err != nil {
+			log.Error(err)
+		}
 	}
 	stats.index++
 	return len
@@ -948,12 +966,24 @@ func gzipToOutFile(content []byte, fName string, fHdr fileChanInfo, now time.Tim
 	}
 	gw.ModTime = now
 
-	gw.Write(content)
-	gw.Close()
+	_, err = gw.Write(content)
+	if err != nil {
+		log.Error(err)
+	}
+	err = gw.Close()
+	if err != nil {
+		log.Error(err)
+	}
 
 	tmpFileName := oTmpFile.Name()
-	oTmpFile.Sync()
-	oTmpFile.Close()
+	err = oTmpFile.Sync()
+	if err != nil {
+		log.Error(err)
+	}
+	err = oTmpFile.Close()
+	if err != nil {
+		log.Error(err)
+	}
 	f2, err := os.Stat(tmpFileName)
 	if err != nil {
 		log.Fatal("gzipToOutFile: ofile stat error", err)
@@ -1048,7 +1078,7 @@ func findMovePrevLogFiles(movefile chan fileChanInfo) string {
 		log.Fatal("findMovePrevLogFiles: read dir ", err)
 	}
 
-	// get EVE version and partition, UUID may not be avilable yet
+	// get EVE version and partition, UUID may not be available yet
 	getEveInfo()
 
 	// remove any gzip file the name starts them 'Tempfile', it crashed before finished rename in dev/app dir
@@ -1104,8 +1134,6 @@ func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, 
 	if err != nil {
 		log.Fatal("trigMoveToGzip: write metadata line ", err)
 	}
-
-	return
 }
 
 func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan chan fileChanInfo) {
@@ -1171,6 +1199,9 @@ func cleanGzipTempfiles(dir string) {
 		for _, f := range gfiles {
 			if !f.IsDir() && strings.HasPrefix(f.Name(), tmpPrefix) && len(f.Name()) > len(tmpPrefix) {
 				err = os.Remove(dir + "/" + f.Name())
+				if err != nil {
+					log.Error(err)
+				}
 			}
 		}
 	}
@@ -1190,27 +1221,27 @@ func checkWatchdogRestart(entry *inputEntry) {
 	}
 }
 
-func rankByInputCount(Frequencies map[string]uint64) PairList {
-	pl := make(PairList, len(Frequencies))
+func rankByInputCount(Frequencies map[string]uint64) pairList {
+	pl := make(pairList, len(Frequencies))
 	i := 0
 	for k, v := range Frequencies {
-		pl[i] = Pair{k, v}
+		pl[i] = pair{k, v}
 		i++
 	}
 	sort.Sort(sort.Reverse(pl))
 	return pl
 }
 
-type Pair struct {
+type pair struct {
 	Key   string
 	Value uint64
 }
 
-type PairList []Pair
+type pairList []pair
 
-func (p PairList) Len() int           { return len(p) }
-func (p PairList) Less(i, j int) bool { return p[i].Value < p[j].Value }
-func (p PairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p pairList) Len() int           { return len(p) }
+func (p pairList) Less(i, j int) bool { return p[i].Value < p[j].Value }
+func (p pairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // generate top 10 contributor in total bytes from services
 func getDevTop10Inputs() {
@@ -1241,6 +1272,10 @@ func getPtypeTimestamp(timeStr string) timestamp.Timestamp {
 // get available MBytes in '/persis' partition on device
 func getAvailableSpace() uint64 {
 	var stat syscall.Statfs_t
-	syscall.Statfs(types.PersistDir, &stat)
+	err := syscall.Statfs(types.PersistDir, &stat)
+	if err != nil {
+		log.Error(err)
+		return spaceAvailMB
+	}
 	return stat.Bavail * uint64(stat.Bsize) / uint64(1000000)
 }
