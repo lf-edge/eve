@@ -17,6 +17,8 @@ Welcome to EVE!
             destroy <qube>
             persist list
             persist attach <disk>
+            firewall drop
+            verbose on|off
 __EOT__
   exit 1
 }
@@ -80,6 +82,41 @@ case "$1" in
           ;;
   resume) [ -z "$2" ] && help
           ${CTR_CMD} t resume $2
+          ;;
+firewall) if [ "$2" = drop ]; then
+             nsenter -a -t "$(${CTR_CMD} t ls | awk '/^pillar /{print $2;}' 2>/dev/null)" sh -x <<__EOT__
+               iptables -P INPUT ACCEPT
+               iptables -P FORWARD ACCEPT
+               iptables -P OUTPUT ACCEPT
+               iptables -F
+               iptables -X
+               iptables -Z
+               iptables -t nat -F
+               iptables -t nat -X
+               iptables -t mangle -F
+               iptables -t mangle -X
+               iptables -t raw -F
+               iptables -t raw -X
+__EOT__
+          else
+             help
+          fi
+          ;;
+ verbose) # first lets find our piping process
+          for PIPE in $(pgrep cat); do
+             [ "$(readlink /proc/"$PIPE"/fd/0)" = /run/diag.pipe ] && break
+          done
+          # now lets see what to do with it
+          case "$2" in
+             on) dmesg -n8
+                 kill -CONT "$PIPE"
+                 ;;
+            off) dmesg -n1
+                 kill -STOP "$PIPE"
+                 ;;
+              *) help
+                 ;;
+          esac
           ;;
  persist) case "$2" in
                list) list_partitions
