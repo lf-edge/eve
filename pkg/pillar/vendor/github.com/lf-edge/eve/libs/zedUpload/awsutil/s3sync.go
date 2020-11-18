@@ -140,7 +140,7 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 		// using io.Pipe read/writer to stream gzip'ed file contents.
 		go func() {
 			gw := gzip.NewWriter(writer)
-			io.Copy(gw, creader)
+			_, _ = io.Copy(gw, creader)
 
 			file.Close()
 			gw.Close()
@@ -148,7 +148,7 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 		}()
 	} else {
 		go func() {
-			io.Copy(writer, creader)
+			_, _ = io.Copy(writer, creader)
 			file.Close()
 			writer.Close()
 		}()

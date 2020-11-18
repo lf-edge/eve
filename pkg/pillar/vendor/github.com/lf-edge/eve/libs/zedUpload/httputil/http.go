@@ -151,9 +151,9 @@ func ExecCmd(cmd, host, remoteFile, localFile string, objSize int64,
 		defer resp.Body.Close()
 		chunkSize := SingleMB
 		var written, copiedSize int64
-		var copyErr error
 		stats.Size = objSize
 		for {
+			var copyErr error
 			if written, copyErr = io.CopyN(local, resp.Body, chunkSize); copyErr != nil && copyErr != io.EOF {
 				stats.Error = copyErr
 				return stats
@@ -161,7 +161,6 @@ func ExecCmd(cmd, host, remoteFile, localFile string, objSize int64,
 			copiedSize += written
 			if written != chunkSize {
 				// Must have reached EOF
-				copyErr = nil
 				break
 			}
 			stats.Asize = copiedSize
@@ -188,13 +187,13 @@ func ExecCmd(cmd, host, remoteFile, localFile string, objSize int64,
 			stats.Error = err
 			return stats
 		}
-		_, err = io.Copy(part, file)
+		_, _ = io.Copy(part, file)
 		err = writer.Close()
 		if err != nil {
 			stats.Error = err
 			return stats
 		}
-		req, err := http.NewRequest(http.MethodPost, host, body)
+		req, _ := http.NewRequest(http.MethodPost, host, body)
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Accept", "*/*")
 		req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -213,7 +212,7 @@ func ExecCmd(cmd, host, remoteFile, localFile string, objSize int64,
 			}
 			resp.Body.Close()
 		}
-		Body, err := ioutil.ReadAll(resp.Body)
+		Body, _ := ioutil.ReadAll(resp.Body)
 		stats.Asize = int64(len(Body))
 		if prgNotify != nil {
 			select {

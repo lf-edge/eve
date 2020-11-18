@@ -131,10 +131,10 @@ func (ctx *DronaCtx) ListenAndServe() {
 	for {
 		select {
 		case req := <-ctx.reqChan:
-			ctx.handleRequest(req)
+			_ = ctx.handleRequest(req)
 
 		case <-ctx.quitChan:
-			ctx.handleQuit()
+			_ = ctx.handleQuit()
 			return
 		}
 	}

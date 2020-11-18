@@ -131,7 +131,6 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 			copiedSize += written
 			if written != chunkSize {
 				// Must have reached EOF
-				err = nil
 				break
 			}
 			stats.Asize = copiedSize
@@ -184,8 +183,7 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 			copiedSize += written
 			if written != chunkSize {
 				// Must have reached EOF
-				err = nil
-				break
+				return stats
 			}
 			stats.Asize = copiedSize
 			if prgNotify != nil {
@@ -195,7 +193,7 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 				}
 			}
 		}
-		return stats
+		// control never gets here - we will return from inside the loop.
 	case "stat":
 		file, err := client.Lstat(remoteFile)
 		if err != nil {
