@@ -399,6 +399,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// is deleted.
 	createAppInstances(ctx, ReportDeviceInfo)
 
+	// Add NetworkInstances to the DeviceInfo
+	createNetworkInstances(ctx, ReportDeviceInfo)
+
 	log.Tracef("PublishDeviceInfoToZedCloud sending %v", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
@@ -657,4 +660,19 @@ func createAppInstances(ctxPtr *zedagentContext,
 	}
 	ctxPtr.getconfigCtx.subAppInstanceStatus.Iterate(
 		addAppInstanceFunc)
+}
+
+func createNetworkInstances(ctxPtr *zedagentContext,
+	zinfoDevice *info.ZInfoDevice) {
+
+	addNetworkInstanceFunc := func(key string, value interface{}) bool {
+		nis := value.(types.NetworkInstanceStatus)
+		zinfoNetworkInst := new(info.ZInfoNetworkInstance)
+		zinfoNetworkInst.NetworkID = nis.Key()
+		zinfoNetworkInst.Displayname = nis.DisplayName
+		zinfoDevice.NetworkInstance = append(zinfoDevice.NetworkInstance,
+			zinfoNetworkInst)
+		return true
+	}
+	ctxPtr.subNetworkInstanceStatus.Iterate(addNetworkInstanceFunc)
 }

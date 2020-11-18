@@ -259,6 +259,8 @@ message ZInfoDevice {
   // to check check if this is empty - if yes, use the DevicePortStatus instead.
   repeated ZInfoNetwork network = 13;
 
+  repeated ZInfoNetworkInstance networkInstance = 14;
+
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
