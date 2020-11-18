@@ -53,15 +53,20 @@ RUN curl https://download.qemu.org/qemu-5.2.0-rc1.tar.xz | tar -C / -xJf -
 COPY i386-softmmu.mak default-configs/devices/i386-softmmu.mak
 COPY meson.build hw/acpi/meson.build
 
+# systemtap is not available on Alpine, so we're putting together dtrace tooling
+# by hand. More instruction on qemu systemtap probes here:
+#    https://www.berrange.com/posts/2019/02/18/easier-qemu-live-tracing-using-systemtap/
+COPY dtrace /usr/bin/dtrace
+COPY include /usr/include
+
 # --block-drv-whitelist=L --block-drv-rw-whitelist=L --block-drv-ro-whitelist=L
-# --enable-trace-backends
 # --with-coroutine
 # --disable-system
 # --audio-drv-list=none
 # ? --disable-vxhs
 # T --disable-slirp
 ENV CONF_aarch64 --enable-fdt=git
-ENV CONF_x86_64 --disable-tcg --disable-fdt --without-default-devices
+ENV CONF_x86_64 --disable-tcg --disable-fdt --without-default-devices --enable-trace-backends=dtrace
 
 RUN eval ./configure '$CONF_'$(uname -m) --target-list=$(uname -m)-softmmu --enable-kvm --disable-user --disable-linux-user --disable-bsd-user --disable-docs --disable-guest-agent --disable-guest-agent-msi --disable-pie --disable-modules --disable-module-upgrades --disable-debug-tcg --disable-debug-info --disable-sparse --disable-gnutls --disable-nettle --disable-gcrypt --disable-auth-pam --disable-sdl --disable-sdl-image --disable-gtk --disable-vte --disable-curses --disable-iconv --disable-vnc --disable-vnc-sasl --disable-vnc-jpeg --disable-vnc-png --disable-cocoa --disable-virtfs --disable-mpath --disable-xen --disable-xen-pci-passthrough --disable-brlapi --disable-curl --disable-membarrier --disable-hax --disable-hvf --disable-whpx --disable-rdma --disable-pvrdma --disable-vde --disable-netmap --disable-linux-aio --disable-linux-io-uring --disable-cap-ng --disable-attr --disable-vhost-net --disable-vhost-vsock --disable-vhost-scsi --disable-vhost-crypto --disable-vhost-kernel --disable-vhost-user --disable-spice --disable-rbd --disable-libiscsi --disable-libnfs --disable-smartcard --disable-libusb --disable-live-block-migration --disable-usb-redir --disable-lzo --disable-snappy --disable-bzip2 --disable-lzfse --disable-zstd --disable-seccomp --disable-coroutine-pool --disable-glusterfs --disable-tpm --disable-libssh --disable-numa --disable-libxml2 --disable-tcmalloc --disable-jemalloc --disable-avx2 --disable-avx512f --disable-replication --disable-opengl --disable-virglrenderer --disable-xfsctl --disable-qom-cast-debug --disable-tools --disable-bochs --disable-cloop --disable-dmg --disable-qcow1 --disable-vdi --disable-vvfat --disable-qed --disable-parallels --disable-sheepdog --disable-crypto-afalg --disable-capstone --disable-debug-mutex --disable-libpmem --disable-xkbcommon
 
