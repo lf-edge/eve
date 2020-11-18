@@ -244,6 +244,16 @@ message ZInfoAppInstance {
   string uuid = 1;
   string name = 2;
   string domainName = 3;
+  string taskid = 4;
+}
+
+// ZInfoDeviceTasks - send a summary of tasks so that controller knows
+// how many app instance tasks are still present on the device. Controller
+// can then use it to wait for an app to be fully deleted etc.
+message ZInfoDeviceTasks {
+  string id = 1;
+  string name = 2;
+  string status = 3;
 }
 
 enum ZSimcardState {
@@ -318,6 +328,7 @@ message ZInfoDevice {
   // Cellular / LTE related information
   repeated ZCellularModuleInfo cell_radios = 35;
   repeated ZSimcardInfo sims = 36;
+  repeated ZInfoDeviceTasks tasks = 37;
 }
 
 // Different reasons for a boot/reboot

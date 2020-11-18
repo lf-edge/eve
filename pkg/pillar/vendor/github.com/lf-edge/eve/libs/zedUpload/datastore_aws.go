@@ -363,9 +363,8 @@ type AwsTransportMethod struct {
 	bucket    string
 
 	//Auth
-	authType string
-	token    string
-	apiKey   string
+	token  string
+	apiKey string
 
 	failPostTime time.Time
 	ctx          *DronaCtx

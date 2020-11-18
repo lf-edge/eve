@@ -35,9 +35,6 @@ type SftpTransportMethod struct {
 	// optional, keytabs
 	keys []string
 
-	// optional hosttabs
-	htab []byte
-
 	failPostTime time.Time
 
 	ctx *DronaCtx

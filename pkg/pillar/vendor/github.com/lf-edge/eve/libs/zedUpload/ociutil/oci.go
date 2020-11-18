@@ -20,10 +20,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	digestTag = "digest-without-tag"
-)
-
 // UpdateStats single status update for an OCI transfer
 type UpdateStats struct {
 	Size  int64    // complete size to upload/download
@@ -333,13 +329,6 @@ func sendStats(prgChan NotifChan, stats UpdateStats) {
 		default: //ignore we cannot write
 		}
 	}
-}
-
-func max(x, y int64) int64 {
-	if x < y {
-		return y
-	}
-	return x
 }
 
 func options(username, apiKey string, client *http.Client) []remote.Option {
