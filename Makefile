@@ -124,9 +124,13 @@ QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
-QEMU_ACCEL_Y_Darwin=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
-QEMU_ACCEL_Y_Linux=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
-QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
+QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
+QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
+# -machine virt,gic_version=3
+QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
+QEMU_ACCEL__$(shell uname -s)_arm64=-machine virt,virtualization=true -cpu cortex-a57
+QEMU_ACCEL__$(shell uname -s)_amd64=-machine q35 -cpu SandyBridge
+QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s)_$(ZARCH))
 
 QEMU_OPTS_NET1=192.168.1.0/24
 QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
@@ -141,16 +145,14 @@ QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_C
 QEMU_OPTS_BIOS_=-bios $(DIST)/OVMF.fd
 QEMU_OPTS_BIOS=$(QEMU_OPTS_BIOS_$(PFLASH))
 
-# -machine virt,gic_version=3
-QEMU_OPTS_arm64= -machine virt,virtualization=true -cpu cortex-a57 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
-QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
+QEMU_OPTS_arm64= -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
-        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
+        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0,romfile="" \
+        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
-QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
+QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 # -device virtio-blk-device,drive=image -drive if=none,id=image,file=X
 # -device virtio-net-device,netdev=user0 -netdev user,id=user0,hostfwd=tcp::1234-:22
 
@@ -300,8 +302,8 @@ run-compose: images/docker-compose.yml images/version.yml
 run-proxy:
 	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &
 
-run-build-vm: $(BUILD_VM) $(BIOS_IMG) $(DEVICETREE_DTB)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$<
+run-build-vm: $(BIOS_IMG) $(DEVICETREE_DTB)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$(BUILD_VM)
 
 # alternatively (and if you want greater control) you can replace the first command with
 #    gcloud auth activate-service-account --key-file=-
