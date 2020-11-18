@@ -1,0 +1,24 @@
+From a539c2d1657822c873efbc35602b1d63321c3165 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@apache.org>
+Date: Thu, 17 Nov 2020 12:59:07 -0500
+Subject: [PATCH] Tiny workaround for missing __WORDSIZE on Alpine Linux
+
+Tiny workaround for missing __WORDSIZE on Alpine Linux
+
+Signed-off-by: Roman Shaposhnik <rvs@apache.org>
+---
+ hw/cfi_flash.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/hw/cfi_flash.c b/hw/cfi_flash.c
+index 35bb118..03a0909 100644
+--- a/hw/cfi_flash.c
++++ b/hw/cfi_flash.c
+@@ -1,6 +1,7 @@
+ #include <stdbool.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <bits/reg.h>
+ #include <linux/bitops.h>
+ #include <linux/err.h>
+ #include <linux/sizes.h>
