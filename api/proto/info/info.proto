@@ -253,7 +253,7 @@ message ZInfoAppInstance {
 message ZInfoDeviceTasks {
   string id = 1;
   string name = 2;
-  string status = 3;
+  ZSwState status = 3;
 }
 
 enum ZSimcardState {
