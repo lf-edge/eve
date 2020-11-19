@@ -321,6 +321,7 @@ The request body MUST indicate the type of information it is sending, and the co
 * Volume via `ZInfoVolume`: information about storage volumes on the Device.
 * Content tree via `ZInfoContentTree`: information about the root of immutable content trees on the Device.
 * List of blobs via `ZInfoBlobList`: information about the blobs (aka layers) which make up the nodes in a content tree.
+* List of tasks via `ZInfoDeviceTasks`: information about the containerd tasks present on the device.
 
 An information message is expected to be reliable. A Device MUST retry until it successfully delivers information messages. How often information messages are sent, retries and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
 
