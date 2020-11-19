@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
+	uuid "github.com/satori/go.uuid"
 )
 
 func runResolveHandler(ctx *downloaderContext, key string, c <-chan Notify) {
@@ -265,4 +266,21 @@ func maybeNameHasSha(name string) string {
 		return strings.ToUpper(parts[1])
 	}
 	return ""
+}
+
+//checkAndUpdateResolveConfig fires modify handler for ResolveConfig
+//we need to call it in case of no DatastoreConfig found
+func checkAndUpdateResolveConfig(ctx *downloaderContext, dsID uuid.UUID) {
+	log.Functionf("checkAndUpdateResolveConfig for %s", dsID)
+	resolveStatuses := ctx.pubResolveStatus.GetAll()
+	for _, v := range resolveStatuses {
+		status := v.(types.ResolveStatus)
+		if status.DatastoreID == dsID {
+			config := lookupDownloaderConfig(ctx, status.Key())
+			if config != nil {
+				resHandler.modify(ctx, status.Key(), *config, *config)
+			}
+		}
+	}
+	log.Functionf("checkAndUpdateResolveConfig for %s, done", dsID)
 }
