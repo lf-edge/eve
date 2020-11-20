@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
@@ -1580,13 +1581,25 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 		return errors.New("Invalid chain creation")
 	}
 
+	chainFlush := []string{"-t", "mangle", "--flush", name}
+
 	newChain := []string{"-t", "mangle", "-N", name}
 	log.Functionf("createMarkAndAcceptChain: Creating new chain (%s)", name)
 	err := iptables.IptableCmd(log, newChain...)
 	if err != nil {
-		log.Errorf("createMarkAndAcceptChain: New chain (%s) creation failed: %s",
+		// if chain already exists, we can skip this error
+		if !strings.Contains(err.Error(), "Chain already exists") {
+			log.Errorf("createMarkAndAcceptChain: New chain (%s) creation failed: %s",
+				name, err)
+			return err
+		}
+		log.Functionf("createMarkAndAcceptChain: Chain (%s) flushing and recreating of rules: %s",
 			name, err)
-		return err
+		if err := iptables.IptableCmd(log, chainFlush...); err != nil {
+			log.Errorf("createMarkAndAcceptChain: Flush exists chain (%s) failed: %s",
+				name, err)
+			return err
+		}
 	}
 
 	rule1 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
@@ -1604,7 +1617,6 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 	rule4 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
 	rule5 := []string{"-A", name, "-t", "mangle", "-j", "ACCEPT"}
 
-	chainFlush := []string{"-t", "mangle", "--flush", name}
 	chainDelete := []string{"-t", "mangle", "-X", name}
 
 	err = iptables.IptableCmd(log, rule1...)
