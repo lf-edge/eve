@@ -142,6 +142,10 @@ var mToF = []modelToFuncs{
 		// No dd disk light blinking on QEMU
 	},
 	{
+		model: "QEMU Standard PC (Q35 + ICH9, 2009)",
+		// No dd disk light blinking on QEMU
+	},
+	{
 		model:     "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
