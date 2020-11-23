@@ -5,14 +5,11 @@ RUN apk add --no-cache   \
         gcc=8.3.0-r0     \
         linux-headers=4.18.13-r1
 
-ENV GOFLAGS=-mod=vendor
-ENV GO111MODULE=on
-ENV CGO_ENABLED=1
-
 COPY ./  /newlog/.
 WORKDIR /newlog
 
-RUN go build -mod=vendor -o newlogd ./cmd
+RUN GO111MODULE=on CGO_ENABLED=1 go build -mod=vendor -o newlogd ./cmd
+RUN strip newlogd
 
 FROM alpine:3.8
 COPY --from=build /newlog/newlogd /usr/bin

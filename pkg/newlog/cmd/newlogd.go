@@ -682,7 +682,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 				Filename:  entry.filename,
 				Msgid:     msgIDCounter,
 				Function:  entry.function,
-				Timestamp: &timeS,
+				Timestamp: timeS,
 			}
 			mapJentry, _ := json.Marshal(mapLog)
 			logline := string(mapJentry) + "\n"
@@ -1260,12 +1260,12 @@ func getDevTop10Inputs() {
 	logmetrics.DevTop10InputBytesPCT = top10
 }
 
-func getPtypeTimestamp(timeStr string) timestamp.Timestamp {
+func getPtypeTimestamp(timeStr string) *timestamp.Timestamp {
 	t, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	tt := timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
+	tt := &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
 	return tt
 }
 
