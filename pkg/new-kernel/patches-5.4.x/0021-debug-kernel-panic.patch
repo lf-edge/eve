@@ -1,0 +1,73 @@
+From 034e258dd212410bb67a8ebaa50add885b58c2ad Mon Sep 17 00:00:00 2001
+From: Hariharasubramanian C S <cshari@zededa.com>
+Date: Tue, 24 Nov 2020 15:26:47 +0530
+Subject: [PATCH] Check for TPM driver handlers before invoking them
+
+During device shutdown, we observe kernel panic due to
+NULL pointer dereference with the following call trace:
+
+[ 1586.593561][ T8669] tpm2_del_space+0x28/0x73
+[ 1586.598718][ T8669] tpmrm_release+0x27/0x33
+[ 1586.603774][ T8669] __fput+0x109/0x1d
+[ 1586.608380][ T8669] task_work_run+0x7c/0x90
+[ 1586.613414][ T8669] prepare_exit_to_usermode+0xb8/0x128
+[ 1586.619522][ T8669] entry_SYSCALL_64_after_hwframe+0x44/0xa9
+[ 1586.626068][ T8669] RIP: 0033:0x4cb4bb
+
+This happens when driver has already unregistered its tpm_class_ops handlers
+in tpm_class_shutdown(), and we are still trying to invoke the tpm_class_ops
+handlers through TPM device handle closure. Putting in a check to proceed
+with cleanup only when we have proper tpm_class_ops handlers populated.
+
+Signed-off-by: Hariharasubramanian C S <cshari@zededa.com>
+---
+ drivers/char/tpm/tpm-chip.c   |  4 ++--
+ drivers/char/tpm/tpm2-space.c | 10 ++++++----
+ 2 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/char/tpm/tpm-chip.c b/drivers/char/tpm/tpm-chip.c
+index 8c77e88012e9..a410ca40a3c5 100644
+--- a/drivers/char/tpm/tpm-chip.c
++++ b/drivers/char/tpm/tpm-chip.c
+@@ -296,7 +296,7 @@ static int tpm_class_shutdown(struct device *dev)
+ 	struct tpm_chip *chip = container_of(dev, struct tpm_chip, dev);
+ 
+ 	down_write(&chip->ops_sem);
+-	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
++	if (chip->ops && (chip->flags & TPM_CHIP_FLAG_TPM2)) {
+ 		if (!tpm_chip_start(chip)) {
+ 			tpm2_shutdown(chip, TPM2_SU_CLEAR);
+ 			tpm_chip_stop(chip);
+@@ -479,7 +479,7 @@ static void tpm_del_char_device(struct tpm_chip *chip)
+ 
+ 	/* Make the driver uncallable. */
+ 	down_write(&chip->ops_sem);
+-	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
++	if (chip->ops && (chip->flags & TPM_CHIP_FLAG_TPM2)) {
+ 		if (!tpm_chip_start(chip)) {
+ 			tpm2_shutdown(chip, TPM2_SU_CLEAR);
+ 			tpm_chip_stop(chip);
+diff --git a/drivers/char/tpm/tpm2-space.c b/drivers/char/tpm/tpm2-space.c
+index 982d341d8837..626736e03e41 100644
+--- a/drivers/char/tpm/tpm2-space.c
++++ b/drivers/char/tpm/tpm2-space.c
+@@ -56,10 +56,12 @@ int tpm2_init_space(struct tpm_space *space)
+ void tpm2_del_space(struct tpm_chip *chip, struct tpm_space *space)
+ {
+ 	mutex_lock(&chip->tpm_mutex);
+-	if (!tpm_chip_start(chip)) {
+-		tpm2_flush_sessions(chip, space);
+-		tpm_chip_stop(chip);
+-	}
++	if (chip->ops) {
++		if (!tpm_chip_start(chip)) {
++			tpm2_flush_sessions(chip, space);
++			tpm_chip_stop(chip);
++		}
++        }
+ 	mutex_unlock(&chip->tpm_mutex);
+ 	kfree(space->context_buf);
+ 	kfree(space->session_buf);
+-- 
+2.20.1 (Apple Git-117)
+
