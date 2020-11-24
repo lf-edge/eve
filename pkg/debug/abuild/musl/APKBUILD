@@ -1,0 +1,205 @@
+# Contributor:
+# Maintainer: Timo Teräs <timo.teras@iki.fi>
+pkgname=musl
+pkgver=1.1.24
+pkgrel=9
+pkgdesc="the musl c library (libc) implementation"
+url="https://musl.libc.org/"
+arch="all"
+license="MIT"
+subpackages="$pkgname-libintl:libintl:noarch
+	$pkgname-dev
+	$pkgname-dbg
+	libc6-compat:compat:noarch
+	"
+case "$BOOTSTRAP" in
+nocc)	pkgname="musl-dev"; subpackages="";;
+nolibc) ;;
+*)	subpackages="$subpackages $pkgname-utils";;
+esac
+source="https://musl.libc.org/releases/musl-$pkgver.tar.gz
+	handle-aux-at_base.patch
+	0001-add-thumb2-support-to-arm-assembler-memcpy.patch
+	fix-wcwidth-wrongly-returning-0-for-most-of-planes-4.patch
+	add-missing-case-mapping-between-U-03F3-and-U-037F.patch
+	fix-cacosh-results-for-arguments-with-negative-imagi.patch
+	fix-incorrect-results-for-catanf-and-catanl-with-som.patch
+	fix-return-value-of-ungetc-when-argument-is-outside-.patch
+	fix-errno-for-posix_openpt-with-no-free-ptys-availab.patch
+	improve-strerror-speed.patch
+	ppc-pt_regs.patch
+	ppc64-fpregset_t.patch
+	fix-remaining-direct-use-of-stat-syscalls-outside.patch
+	set-AD-bit-in-dns-queries-suppress-for-internal-use.patch
+
+	0001-reorder-thread-list-unlink-in-pthread_exit-after-all.patch
+	0002-don-t-use-libc.threads_minus_1-as-relaxed-atomic-for.patch
+	0003-cut-down-size-of-some-libc-struct-members.patch
+	0004-restore-lock-skipping-for-processes-that-return-to-s.patch
+
+	ldconfig
+	__stack_chk_fail_local.c
+	getconf.c
+	getent.c
+	iconv.c
+	"
+
+# secfixes:
+#   1.1.23-r2:
+#     - CVE-2019-14697
+#   1.1.15-r4:
+#     - CVE-2016-8859
+
+builddir="$srcdir"/musl-$pkgver
+
+build() {
+	cd "$builddir"
+
+	[ "$BOOTSTRAP" = "nocc" ] && return 0
+
+	# provide minimal libssp_nonshared.a so we don't need libssp from gcc
+	${CROSS_COMPILE}gcc $CPPFLAGS $CFLAGS -c "$srcdir"/__stack_chk_fail_local.c -o __stack_chk_fail_local.o
+	${CROSS_COMPILE}ar r libssp_nonshared.a __stack_chk_fail_local.o
+
+	if [ "$BOOTSTRAP" != "nolibc" ]; then
+		# getconf/getent/iconv
+		local i
+		for i in getconf getent iconv ; do
+			${CROSS_COMPILE}gcc $CPPFLAGS $CFLAGS "$srcdir"/$i.c -o $i
+		done
+	fi
+
+        # drop -fomit-frame-pointer
+        sed -ie 's/omit-frame-pointer/no-omit-frame-pointer/' configure
+
+	# note: not autotools
+	LDFLAGS="$LDFLAGS -Wl,-soname,libc.musl-${CARCH}.so.1" \
+	./configure \
+		--build=$CBUILD \
+		--host=$CHOST \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--mandir=/usr/share/man \
+		--infodir=/usr/share/info \
+		--localstatedir=/var \
+		--enable-debug
+	make
+}
+
+package() {
+	cd "$builddir"
+
+	case "$CARCH" in
+	aarch64*)	ARCH="aarch64" ;;
+	arm*)		ARCH="arm" ;;
+	x86)		ARCH="i386" ;;
+	x86_64)		ARCH="x86_64" ;;
+	ppc)		ARCH="powerpc" ;;
+	ppc64*)		ARCH="powerpc64" ;;
+	s390*)		ARCH="s390x" ;;
+	mips64*)	ARCH="mips64" ;;
+	mips*)		ARCH="mips" ;;
+	esac
+
+	if [ "$BOOTSTRAP" = "nocc" ]; then
+		make ARCH="$ARCH" prefix=/usr DESTDIR="$pkgdir" install-headers
+	else
+		make DESTDIR="$pkgdir" install
+
+		cp libssp_nonshared.a "$pkgdir"/usr/lib
+
+		# make LDSO the be the real file, and libc the symlink
+		local LDSO=$(make -f Makefile --eval "$(echo -e 'print-ldso:\n\t@echo $$(basename $(LDSO_PATHNAME))')" print-ldso)
+		mv -f "$pkgdir"/usr/lib/libc.so "$pkgdir"/lib/"$LDSO"
+		ln -sf "$LDSO" "$pkgdir"/lib/libc.musl-${CARCH}.so.1
+		ln -sf ../../lib/"$LDSO" "$pkgdir"/usr/lib/libc.so
+		mkdir -p "$pkgdir"/usr/bin
+
+		cat >>"$pkgdir"/usr/bin/ldd <<-EOF
+		#!/bin/sh
+		exec /lib/$LDSO --list "\$@"
+		EOF
+		chmod 755 "$pkgdir"/usr/bin/ldd
+	fi
+
+}
+
+utils() {
+	depends="scanelf"
+	replaces="libiconv"
+	license="MIT BSD GPL2+"
+
+	mkdir -p "$subpkgdir"/usr "$subpkgdir"/sbin
+	mv "$pkgdir"/usr/bin "$subpkgdir"/usr/
+
+	install -D \
+		"$builddir"/getent \
+		"$builddir"/getconf \
+		"$builddir"/iconv \
+		"$subpkgdir"/usr/bin
+
+	install -D -m755 "$srcdir"/ldconfig "$subpkgdir"/sbin
+}
+
+# currently we don't want by default any NLS
+# and use GNU gettext where needed. the plan is to migrate to
+# musl gettext() later on as fully as possible.
+libintl() {
+	pkgdesc="musl libintl.h header"
+	mkdir -p "$subpkgdir"/usr/include
+	mv "$pkgdir"/usr/include/libintl.h \
+		"$subpkgdir"/usr/include/
+}
+
+compat() {
+	pkgdesc="compatibility libraries for glibc"
+
+	mkdir -p "$subpkgdir"/lib
+	# definitive source is https://sourceware.org/glibc/wiki/ABIList
+	case "$CARCH" in
+	aarch64)	_ld="lib/ld-linux-aarch64.so.1" ;;
+	armel)		_ld="lib/ld-linux.so.3" ;;
+	armhf)		_ld="lib/ld-linux-armhf.so.3" ;;
+	armv7)		_ld="lib/ld-linux-armhf.so.3" ;;
+	mips)		_ld="lib/ld.so.1" ;;
+	mips64)		_ld="lib64/ld.so.1" ;;
+	mipsel)		_ld="lib/ld.so.1" ;;
+	mips64el)	_ld="lib64/ld.so.1" ;;
+	ppc)		_ld="lib/ld.so.1" ;;
+	ppc64)		_ld="lib64/ld64.so.1" ;;
+	ppc64le)	_ld="lib64/ld64.so.2" ;;
+	s390x)		_ld="lib/ld64.so.1" ;;
+	x86)		_ld="lib/ld-linux.so.2" ;;
+	x86_64)		_ld="lib64/ld-linux-x86-64.so.2";;
+	esac
+	mkdir -p "$subpkgdir/${_ld%/*}"
+	ln -sf "/lib/libc.musl-${CARCH}.so.1" "$subpkgdir/$_ld"
+
+	for i in libc.so.6 libcrypt.so.1 libm.so.6 libpthread.so.0 librt.so.1 libutil.so.1; do
+		ln -sf "/lib/libc.musl-${CARCH}.so.1" "$subpkgdir/lib/$i"
+	done
+}
+
+sha512sums="8987f1e194ea616f34f4f21fe9def28fb7f81d7060e38619206c6349f79db3bbb76bae8b711f5f9b8ed038799c9aea1a4cbec69e0bc4131e246203e133149e77  musl-1.1.24.tar.gz
+6a7ff16d95b5d1be77e0a0fbb245491817db192176496a57b22ab037637d97a185ea0b0d19da687da66c2a2f5578e4343d230f399d49fe377d8f008410974238  handle-aux-at_base.patch
+2b26c20112e3984a2501bc6c2f5162c6e60d4a521d9367dc7721ec66c974986e9f98a67e9f4f4c1510e82a0ac47de783317ab254786837c2e86a54122efcc1dd  0001-add-thumb2-support-to-arm-assembler-memcpy.patch
+7a9d7f16461d1e7906764cc5366af057d9402556d7bb1d022016faa8a250947c0d901f84cf02200ebc2e153d572104529097fb6f3a65f67695912d0ea40eb2d4  fix-wcwidth-wrongly-returning-0-for-most-of-planes-4.patch
+402b663b5ff77bdde6f5ea9ccec60a16971e5e7881c29259273a167b5b4d9f81734751b7375e5cb856c1e3db86fc46ee2084a244a74ed3bd47a8f97b37e40fd9  add-missing-case-mapping-between-U-03F3-and-U-037F.patch
+40c369ca393970461f19371542fa5881d0745abaaf99d1f71a3093605a306ccbc1dc120c41a8cea1542be79a82918807749ede786f836406f6c1b3dc4ec2de32  fix-cacosh-results-for-arguments-with-negative-imagi.patch
+41934951bbc16f155d40824abf30d818b4c124f668f74f5a13674b5251650bb9d9bf9fde0b75462bb2a4b80dc00871ba122960fa027998e71970d533df1cb987  fix-incorrect-results-for-catanf-and-catanl-with-som.patch
+81bddb171fc2171a7aa86e74bf674e3a99508d27416dfc1cfcf2824f17b33ee7dda7c5968a8a69a542fdd6eecded5b8e3973e81079d9a061aa80142d08fc1a90  fix-return-value-of-ungetc-when-argument-is-outside-.patch
+144b4525483cbc97f0414955b7e5ce42c9ff69580e5be714b56330da30b0687911bd6019aef3c8611bd0a5bd7671d690b66b4920ae47cf3442a1c982ed000e22  fix-errno-for-posix_openpt-with-no-free-ptys-availab.patch
+4875efd7249613f696b4c470fb0aedf9968f1260cf35ef640666897d9ef2f3032588ac4c37659928ed45c1c010848ec2b19414ba5406f3bd7d745288b8b105d4  improve-strerror-speed.patch
+e7133ce2f0b172e2da03567e41f03bef58b6ff8eaac614494751228bcc102c39cbe312f0beb567c5f1c47c76feeff1e8d3b16284842c599029add4ad6d1d70ec  ppc-pt_regs.patch
+3de8e50519e33a55d2cc737b56011a7178d1c83230477d46e11e67195e08e74bff735c6013de6ff170bb2390e89bfca9919cc8728c064b3eeaab2035dd7e5c08  ppc64-fpregset_t.patch
+d277e45af78ed2bd9f556ae30636783fc401b4d0a339d6e37b77f18ed1486f48fc631e3455f8764ddbc7d9aba41a270ab345ec3495955dfd22b27a306441ba2a  fix-remaining-direct-use-of-stat-syscalls-outside.patch
+dd46ef77b71d34b6207611be59dd4555b4e53fd7169732b9e5ee9a66f1e8da69fcca6634f895b9d34d8861d37ac0eaa86618f5f3f3a81cf9c47321d1c5d37ee5  set-AD-bit-in-dns-queries-suppress-for-internal-use.patch
+0bb30198e92d26058f98f28be31bb8cee89a699e9fa9377315c9a86f504708ddb432d579bebfd4429da3fd5e6832e4166aa80d4d3f08658702206474fd1a8ffe  0001-reorder-thread-list-unlink-in-pthread_exit-after-all.patch
+c6cd692359961c382b7382c6eb819bf93ca8d687b7bd71e4d992acabc7003bd8388b22898059b6ac5abdf08c07020c8cbd2a5f908802258418079e096cdbc058  0002-don-t-use-libc.threads_minus_1-as-relaxed-atomic-for.patch
+416aa17d4211ebbca97b4ce47eea8d8375ac5e0b602a4806175bc172be21b8291ac08fdaf39203e3a083a067bbbfa999cfb875f739d5fa07871885ac02eba75a  0003-cut-down-size-of-some-libc-struct-members.patch
+f0e5ab79a793152c5e6c1c560b409ef062c8f9232c893b36c58b9667e5e0e86969555d8e2e9e17b59835ec7ed3c926a6ccce453824561ad82e47364c44374549  0004-restore-lock-skipping-for-processes-that-return-to-s.patch
+8d3a2d5315fc56fee7da9abb8b89bb38c6046c33d154c10d168fb35bfde6b0cf9f13042a3bceee34daf091bc409d699223735dcf19f382eeee1f6be34154f26f  ldconfig
+062bb49fa54839010acd4af113e20f7263dde1c8a2ca359b5fb2661ef9ed9d84a0f7c3bc10c25dcfa10bb3c5a4874588dff636ac43d5dbb3d748d75400756d0b  __stack_chk_fail_local.c
+0d80f37b34a35e3d14b012257c50862dfeb9d2c81139ea2dfa101d981d093b009b9fa450ba27a708ac59377a48626971dfc58e20a3799084a65777a0c32cbc7d  getconf.c
+378d70e65bcc65bb4e1415354cecfa54b0c1146dfb24474b69e418cdbf7ad730472cd09f6f103e1c99ba6c324c9560bccdf287f5889bbc3ef0bdf0e08da47413  getent.c
+9d42d66fb1facce2b85dad919be5be819ee290bd26ca2db00982b2f8e055a0196290a008711cbe2b18ec9eee8d2270e3b3a4692c5a1b807013baa5c2b70a2bbf  iconv.c"
