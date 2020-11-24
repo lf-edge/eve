@@ -89,7 +89,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     # We will unload them later (if they do unload it meands we didn't find zpools)
     modprobe zfs
 
-    P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
+    P3_FS_TYPE=$(lsblk -nf -o FSTYPE "$P3")
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
     # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
@@ -104,7 +104,14 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     #For systems with ext3 filesystem, try not to change to ext4, since it will brick
     #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
     #when we do usb install, this way the transition is more controlled.
-    #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
+    #Any fsck or mount error (ext3 or ext4), will lead to formatting P3 with ext4
+    if [ "$P3_FS_TYPE" = "ext3" ]; then
+	if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
+	       echo "P3 partition $P3 of type $P3_FS_TYPE mount failed, recreating it as $P3_FS_TYPE_DEFAULT"
+	       INIT_FS=1
+	       P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+	fi
+    fi
     if { [ "$P3_FS_TYPE" != ext3 ] && [ "$P3_FS_TYPE" != ext4 ]; } || ! "fsck.$P3_FS_TYPE" -y "$P3" ; then
        echo "P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
        INIT_FS=1
@@ -112,8 +119,8 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 
     case "$P3_FS_TYPE" in
-             ext3) mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR
-                   ;;
+             ext3) # Mounted above
+                  ;;
              ext4) #Use -F option twice, to avoid any user confirmation in mkfs
                    if [ "$INIT_FS" = 1 ]; then
                       mkfs -t ext4 -v -F -F -O encrypt "$P3"
@@ -138,6 +145,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     # this is safe, since if the mount fails the following will fail too
     # shellcheck disable=SC2046
     rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
+
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
 fi
