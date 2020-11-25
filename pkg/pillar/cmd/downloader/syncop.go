@@ -13,9 +13,9 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
@@ -51,7 +51,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
-	metricsUrl := dsCtx.DownloadURL
+	metricsURL := dsCtx.DownloadURL
 
 	// update status to DOWNLOADING
 	status.State = types.DOWNLOADING
@@ -114,7 +114,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
-		metricsUrl = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, config.Name)
+		metricsURL = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, config.Name)
 
 	case zconfig.DsType_DsAzureBlob.String():
 		auth = &zedUpload.AuthInput{
@@ -138,7 +138,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
-		serverURL, err = getServerUrl(dsCtx)
+		serverURL, err = getServerURL(dsCtx)
 		// failed to get server url
 		if err != nil {
 			errStr = errStr + "\n" + err.Error()
@@ -152,7 +152,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
-		serverURL, err = getServerUrl(dsCtx)
+		serverURL, err = getServerURL(dsCtx)
 		// failed to get server url
 		if err != nil {
 			errStr = errStr + "\n" + err.Error()
@@ -174,7 +174,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// Loop through all interfaces until a success
-	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
+	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		var ipSrc net.IP
 		if !config.AllowNonFreePort {
 			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
@@ -203,7 +203,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			dsCtx.Dpath, dsCtx.Region,
 			config.Size, ifname, ipSrc, remoteName, locFilename)
 		if err != nil {
-			sourceFailureError(ipSrc.String(), ifname, metricsUrl, err)
+			sourceFailureError(ipSrc.String(), ifname, metricsURL, err)
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
@@ -219,7 +219,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		status.Size = uint64(size)
 		status.ContentType = contentType
 		zedcloud.ZedCloudSuccess(log, ifname,
-			metricsUrl, 1024, size, downloadTime)
+			metricsURL, 1024, size, downloadTime)
 		if st.Progress(100, size, size) {
 			log.Noticef("updated sizes at end to %d/%d",
 				size, size)
@@ -235,7 +235,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
-func getServerUrl(dsCtx *types.DatastoreContext) (string, error) {
+func getServerURL(dsCtx *types.DatastoreContext) (string, error) {
 	u, err := url.Parse(dsCtx.DownloadURL)
 	if err != nil {
 		log.Errorf("URL Parsing failed: %s", err)

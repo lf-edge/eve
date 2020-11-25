@@ -10,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
+	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 

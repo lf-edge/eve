@@ -5,11 +5,12 @@ package zedUpload
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/zedUpload/sftputil"
 	"net"
 	"net/url"
 	"strings"
 	"time"
+
+	sftp "github.com/lf-edge/eve/libs/zedUpload/sftputil"
 )
 
 type SftpTransportMethod struct {

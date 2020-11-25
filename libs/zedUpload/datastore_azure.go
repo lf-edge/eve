@@ -11,7 +11,7 @@ import (
 
 	"time"
 
-	azure "github.com/lf-edge/eve/pkg/pillar/zedUpload/azureutil"
+	azure "github.com/lf-edge/eve/libs/zedUpload/azureutil"
 )
 
 func (ep *AzureTransportMethod) Action(req *DronaRequest) error {

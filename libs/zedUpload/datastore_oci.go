@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	ociutil "github.com/lf-edge/eve/pkg/pillar/zedUpload/ociutil"
+	ociutil "github.com/lf-edge/eve/libs/zedUpload/ociutil"
 )
 
 // OCITransportMethod transport method to send images from OCI distribution
