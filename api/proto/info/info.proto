@@ -244,12 +244,12 @@ message ZInfoAppInstance {
 }
 
 enum ZSimcardState {
-  SIM_NONE        = 0;
-  SIM_ASSIGNED    = 1;
-  SIM_PROVISIONED = 2;
-  SIM_ACTIVE      = 3;
-  SIM_SUSPENDED   = 4;
-  SIM_CANCELLED   = 5;
+  Z_SIMCARD_STATE_INVALID     = 0;
+  Z_SIMCARD_STATE_ASSIGNED    = 1;
+  Z_SIMCARD_STATE_PROVISIONED = 2;
+  Z_SIMCARD_STATE_ACTIVE      = 3;
+  Z_SIMCARD_STATE_SUSPENDED   = 4;
+  Z_SIMCARD_STATE_CANCELLED   = 5;
 }
 
 message ZSimcardInfo {
@@ -313,7 +313,7 @@ message ZInfoDevice {
   BootReason   last_boot_reason = 34;
 
   // Cellular / LTE related information
-  repeated ZCellularModuleInfo cellularInfo = 35;
+  repeated ZCellularModuleInfo cellular_info = 35;
 }
 
 // Different reasons for a boot/reboot
