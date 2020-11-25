@@ -65,7 +65,18 @@ $ brew install git make jq qemu
 ##### On Ubuntu Linux
 
 ```sh
-$ sudo apt-get install -y git make jq qemu-utils qemu-system-x86 qemu-system-aarch64
+$ sudo apt-get install -y git make jq qemu binfmt-support qemu-user-static \
+    qemu-utils qemu-system-x86 qemu-system-aarch64
+```
+
+#### Setup Docker
+
+##### Enable execution of different multi-architecture containers
+
+This step is required on **Linux** and is required to create eve bootable images with a different architecture than the host architecture.
+
+```sh
+$ docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 ```
 
 #### Get Project EVE
