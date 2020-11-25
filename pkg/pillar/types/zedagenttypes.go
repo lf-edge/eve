@@ -459,6 +459,7 @@ type ZedAgentStatus struct {
 	RebootCmd       bool
 	RebootReason    string     // Current reason to reboot
 	BootReason      BootReason // Current reason to reboot
+	MaintenanceMode bool       // Don't run apps etc
 }
 
 // Key :

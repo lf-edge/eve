@@ -50,8 +50,16 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	//  recover if the system got stuck after setting rebootFlag
 	parseConfigItems(config, getconfigCtx)
 
+	// Did MaintenanceMode change?
+	if ctx.apiMaintenanceMode != config.MaintenanceMode {
+		ctx.apiMaintenanceMode = config.MaintenanceMode
+		mergeMaintenanceMode(ctx)
+	}
+
 	if getconfigCtx.rebootFlag || ctx.deviceReboot {
 		log.Tracef("parseConfig: Ignoring config as rebootFlag set")
+	} else if ctx.maintenanceMode {
+		log.Functionf("parseConfig: Ignoring config due to maintenanceMode")
 	} else {
 		handleControllerCertsSha(ctx, config)
 		parseCipherContext(getconfigCtx, config)
@@ -1552,6 +1560,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				"SshAuthorizedKeys", oldSSHAuthorizedKeys, newSSHAuthorizedKeys)
 			ssh.UpdateSshAuthorizedKeys(log, newSSHAuthorizedKeys)
 		}
+		oldMaintenanceMode := oldGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
+		newMaintenanceMode := newGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
+		if oldMaintenanceMode != newMaintenanceMode {
+			ctx.zedagentCtx.gcpMaintenanceMode = newMaintenanceMode
+			mergeMaintenanceMode(ctx.zedagentCtx)
+		}
+
 		pub := ctx.zedagentCtx.pubGlobalConfig
 		err := pub.Publish("global", *gcPtr)
 		if err != nil {
@@ -1561,6 +1576,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		}
 		triggerPublishDevInfo(ctx.zedagentCtx)
 	}
+}
+
+// mergeMaintenanceMode handles the configItem override (unless NONE)
+// and the API setting
+func mergeMaintenanceMode(ctx *zedagentContext) {
+	switch ctx.gcpMaintenanceMode {
+	case types.TS_ENABLED:
+		ctx.maintenanceMode = true
+	case types.TS_DISABLED:
+		ctx.maintenanceMode = false
+	case types.TS_NONE:
+		ctx.maintenanceMode = ctx.apiMaintenanceMode
+	}
+	log.Noticef("Changed maintenanceMode to %t", ctx.maintenanceMode)
 }
 
 func publishAppInstanceConfig(getconfigCtx *getconfigContext,

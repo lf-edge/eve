@@ -632,6 +632,10 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.ZedAgentStatus)
+	if status.MaintenanceMode {
+		// Do not trigger GC
+		return
+	}
 	switch status.ConfigGetStatus {
 	case types.ConfigGetSuccess, types.ConfigGetReadSaved:
 		ctx.usingConfig = true
