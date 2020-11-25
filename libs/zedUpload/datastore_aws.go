@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	zedAWS "github.com/lf-edge/eve/pkg/pillar/zedUpload/awsutil"
+	zedAWS "github.com/lf-edge/eve/libs/zedUpload/awsutil"
 )
 
 //

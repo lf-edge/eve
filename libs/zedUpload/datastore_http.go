@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	zedHttp "github.com/lf-edge/eve/pkg/pillar/zedUpload/httputil"
+	zedHttp "github.com/lf-edge/eve/libs/zedUpload/httputil"
 )
 
 type HttpTransportMethod struct {
