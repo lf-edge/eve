@@ -51,19 +51,38 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 	return ret, reportedPids
 }
 
+const (
+	watchdogDirName = "/run/watchdog/pid/"
+	pidDirName      = "/run"
+)
+
 // getWatchedPids returns a map will all the pids watched by watchdog
 // based on /run/watchdog/pid/<foo> by reading the content of /run/<foo>
 func getWatchedPids() (map[int32]bool, error) {
-	pids := make(map[int32]bool)
+	return getWatchedPidsFromDir(watchdogDirName, pidDirName)
+}
 
-	watchdogDirName := "/run/watchdog/pid/" // XXX const
-	pidDirName := "/run"                    // XXX const
-	locations, err := ioutil.ReadDir(watchdogDirName)
+func getWatchedPidsFromDir(wDirname string, pDirname string) (map[int32]bool, error) {
+	pids := make(map[int32]bool)
+	locations, err := ioutil.ReadDir(wDirname)
 	if err != nil {
 		return pids, err
 	}
 	for _, location := range locations {
-		pidFile := path.Join(pidDirName, location.Name())
+		if location.IsDir() {
+			wsubdir := path.Join(wDirname, location.Name())
+			psubdir := path.Join(pDirname, location.Name())
+			p, err := getWatchedPidsFromDir(wsubdir, psubdir)
+			if err != nil {
+				continue
+			}
+			// copy map (entries)
+			for k, v := range p {
+				pids[k] = v
+			}
+			continue
+		}
+		pidFile := path.Join(pDirname, location.Name())
 
 		pidBytes, err := ioutil.ReadFile(pidFile)
 		if err != nil {
