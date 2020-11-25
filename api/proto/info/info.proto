@@ -244,7 +244,7 @@ message ZInfoAppInstance {
 }
 
 enum ZSimcardState {
-  SIM_INVALID     = 0;
+  SIM_NONE        = 0;
   SIM_ASSIGNED    = 1;
   SIM_PROVISIONED = 2;
   SIM_ACTIVE      = 3;
@@ -253,15 +253,17 @@ enum ZSimcardState {
 }
 
 message ZSimcardInfo {
-    string          imsi = 1;
-    string          iccid = 2;
-    ZSimcardState   state = 3;
+    string          name = 1;
+    string          imsi = 2;
+    string          iccid = 3;
+    ZSimcardState   state = 4;
 }
 
 message ZCellularModuleInfo {
-    string imei = 1;
-    string firmwareVersion = 2;
-    repeated ZSimcardInfo sims = 3;
+    string name = 1;
+    string imei = 2;
+    string firmware_version = 3;
+    repeated ZSimcardInfo sims = 4;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -311,7 +313,7 @@ message ZInfoDevice {
   BootReason   last_boot_reason = 34;
 
   // Cellular / LTE related information
-  ZCellularModuleInfo cellularInfo = 35;
+  repeated ZCellularModuleInfo cellularInfo = 35;
 }
 
 // Different reasons for a boot/reboot
