@@ -526,6 +526,7 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		RebootCmd:       ctx.rebootCmd,
 		RebootReason:    ctx.currentRebootReason,
 		BootReason:      ctx.currentBootReason,
+		MaintenanceMode: ctx.maintenanceMode,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)

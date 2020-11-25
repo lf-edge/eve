@@ -32,6 +32,7 @@
 | storage.apps.ignore.disk.check | boolean | false | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
 | timer.appcontainer.stats.interval | integer in seconds | 300 | collect application container stats |
 | timer.vault.ready.cutoff | integer in seconds | 300 | reboot after inaccessible vault |
+| maintenance.mode | "enabled" or "disabled" | "none" | don't run applications etc |
 
 
 In addition, there can be per-agent settings.
