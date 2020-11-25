@@ -1649,8 +1649,9 @@ func readRebootConfig() *types.DeviceOpsCmd {
 		rebootConfig := types.DeviceOpsCmd{}
 		err = json.Unmarshal(bytes, &rebootConfig)
 		if err != nil {
-			log.Errorf("rebootConfig json failed: %s", err)
-			return &types.DeviceOpsCmd{}
+			// Treat the same way as a missing file
+			log.Error(err)
+			return nil
 		}
 		return &rebootConfig
 	}
