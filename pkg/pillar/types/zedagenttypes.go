@@ -84,7 +84,6 @@ type BaseOsStatus struct {
 	UUIDandVersion        UUIDandVersion
 	BaseOsVersion         string
 	Activated             bool
-	Reboot                bool
 	TooEarly              bool // Failed since previous was inprogress/test
 	ContentTreeStatusList []ContentTreeStatus
 	PartitionLabel        string
@@ -454,12 +453,13 @@ const (
 
 // ZedAgentStatus :
 type ZedAgentStatus struct {
-	Name            string
-	ConfigGetStatus ConfigGetStatus
-	RebootCmd       bool
-	RebootReason    string     // Current reason to reboot
-	BootReason      BootReason // Current reason to reboot
-	MaintenanceMode bool       // Don't run apps etc
+	Name                 string
+	ConfigGetStatus      ConfigGetStatus
+	RebootCmd            bool
+	RebootReason         string     // Current reason to reboot
+	BootReason           BootReason // Current reason to reboot
+	MaintenanceMode      bool       // Don't run apps etc
+	ForceFallbackCounter int        // Try image fallback when counter changes
 }
 
 // Key :

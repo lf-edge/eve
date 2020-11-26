@@ -524,12 +524,13 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 	ctx := getconfigCtx.zedagentCtx
 	status := types.ZedAgentStatus{
-		Name:            agentName,
-		ConfigGetStatus: getconfigCtx.configGetStatus,
-		RebootCmd:       ctx.rebootCmd,
-		RebootReason:    ctx.currentRebootReason,
-		BootReason:      ctx.currentBootReason,
-		MaintenanceMode: ctx.maintenanceMode,
+		Name:                 agentName,
+		ConfigGetStatus:      getconfigCtx.configGetStatus,
+		RebootCmd:            ctx.rebootCmd,
+		RebootReason:         ctx.currentRebootReason,
+		BootReason:           ctx.currentBootReason,
+		MaintenanceMode:      ctx.maintenanceMode,
+		ForceFallbackCounter: ctx.forceFallbackCounter,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
