@@ -62,7 +62,8 @@ func UuidToNumAllocate(log *base.LogObject, pub pubsub.Publication, uuid uuid.UU
 	log.Functionf("UuidToNumAllocate(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
-		log.Fatalf("UuidToNumAllocate(%s) publish failed %v\n",
+		// Could be low on disk space
+		log.Errorf("UuidToNumAllocate(%s) publish failed %v\n",
 			uuid.String(), err)
 	}
 }
@@ -81,7 +82,8 @@ func UuidToNumFree(log *base.LogObject, pub pubsub.Publication, uuid uuid.UUID) 
 	log.Functionf("UuidToNumFree(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
-		log.Fatalf("UuidToNumFree(%s) publish failed %v\n",
+		// Could be low on disk space
+		log.Errorf("UuidToNumFree(%s) publish failed %v\n",
 			uuid.String(), err)
 	}
 }
