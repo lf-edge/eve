@@ -45,7 +45,7 @@ https://golang.org/dl/
 #### Get Docker
 
 ```sh
-https://store.docker.com/editions/community/docker-ce-desktop-mac
+https://docs.docker.com/engine/install/
 ```
 
 Make sure that Docker is up and running on your system. On MacOS just start a docker Application, on Linux make sure docker service is running. Regardless of how you start Docker you can make sure that it is ready for you by running the following command and making sure that it returns both a version of the client AND a version of the server:
