@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 func applyDefaultConfigItem(ctxPtr *ucContext) error {
@@ -29,6 +30,9 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 			if !cmp.Equal(oldConfigPtr, newConfigPtr) {
 				log.Noticef("Updated ConfigItemValueMap with new defaults. Diff: %+v",
 					cmp.Diff(oldConfigPtr, newConfigPtr))
+			} else {
+				log.Tracef("upgradeconverter.applyDefaultConfigItem done with no change")
+				return nil
 			}
 		}
 	} else {
@@ -42,9 +46,13 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 	if err != nil {
 		log.Fatalf("Failed to marshall new global config err %s", err)
 	}
-	err = ioutil.WriteFile(newConfigItemFile, data, 0644)
+	// Do a write plus rename so we don't leave a zero-length file if
+	// there is no space left; leave old file content instead
+	err = fileutils.WriteRename(newConfigItemFile, data)
 	if err != nil {
-		log.Fatalf("Failed to Save NewConfig. err %s", err)
+		// Could be low on disk space
+		log.Errorf("Failed to Save NewConfig: %s", err)
+		return err
 	}
 	log.Tracef("upgradeconverter.applyDefaultConfigItem done")
 	return nil

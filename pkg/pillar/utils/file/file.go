@@ -17,7 +17,7 @@ import (
 func WriteRename(fileName string, b []byte) error {
 	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	tmpfile, err := ioutil.TempFile(dirName, "pubsub")
+	tmpfile, err := ioutil.TempFile(dirName, "tmp")
 	if err != nil {
 		errStr := fmt.Sprintf("WriteRename(%s): %s",
 			fileName, err)
