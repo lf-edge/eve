@@ -254,16 +254,16 @@ enum ZSimcardState {
 
 message ZSimcardInfo {
     string          name = 1;
-    string          imsi = 2;
-    string          iccid = 3;
-    ZSimcardState   state = 4;
+    string          cell_module_name = 2;
+    string          imsi = 3;
+    string          iccid = 4;
+    ZSimcardState   state = 5;
 }
 
 message ZCellularModuleInfo {
     string name = 1;
     string imei = 2;
     string firmware_version = 3;
-    repeated ZSimcardInfo sims = 4;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -313,7 +313,8 @@ message ZInfoDevice {
   BootReason   last_boot_reason = 34;
 
   // Cellular / LTE related information
-  repeated ZCellularModuleInfo cellular_info = 35;
+  repeated ZCellularModuleInfo cell_radios = 35;
+  repeated ZSimcardInfo sims = 36;
 }
 
 // Different reasons for a boot/reboot
