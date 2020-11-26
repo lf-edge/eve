@@ -137,6 +137,9 @@ type zedagentContext struct {
 	maintenanceMode    bool
 	gcpMaintenanceMode types.TriState
 	apiMaintenanceMode bool
+
+	// Track the counter from force.fallback.counter to detect changes
+	forceFallbackCounter int
 }
 
 var debug = false

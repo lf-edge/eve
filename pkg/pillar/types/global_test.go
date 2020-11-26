@@ -168,6 +168,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		AppContainerStatsInterval,
 		VaultReadyCutOffTime,
 		Dom0DiskUsageMaxBytes,
+		ForceFallbackCounter,
 		// Bool Items
 		UsbAccess,
 		AllowAppVnc,
