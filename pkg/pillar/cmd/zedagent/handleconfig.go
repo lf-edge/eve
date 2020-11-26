@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 )
@@ -382,9 +383,10 @@ func writeSentAppInfoProtoMessage(contents []byte) {
 
 func writeProtoMessage(filename string, contents []byte) {
 	filename = checkpointDirname + "/" + filename
-	err := ioutil.WriteFile(filename, contents, 0744)
+	err := fileutils.WriteRename(filename, contents)
 	if err != nil {
-		log.Fatal("writeProtoMessage", err)
+		// Can occur if no space in filesystem
+		log.Errorf("writeProtoMessage failed: %s", err)
 		return
 	}
 }
@@ -394,13 +396,14 @@ func touchProtoMessage(filename string) {
 	filename = checkpointDirname + "/" + filename
 	_, err := os.Stat(filename)
 	if err != nil {
-		log.Warn("touchProtoMessage", err)
+		log.Warnf("touchProtoMessage stat failed: %s", err)
 		return
 	}
 	currentTime := time.Now()
 	err = os.Chtimes(filename, currentTime, currentTime)
 	if err != nil {
-		log.Fatal("touchProtoMessage", err)
+		// Can occur if no space in filesystem?
+		log.Errorf("touchProtoMessage failed: %s", err)
 	}
 }
 
