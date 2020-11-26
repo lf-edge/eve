@@ -1570,8 +1570,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		pub := ctx.zedagentCtx.pubGlobalConfig
 		err := pub.Publish("global", *gcPtr)
 		if err != nil {
-			// XXX - IS there a valid reason for this to Fail? If not, we should
-			//  fo log.Fatalf here..
+			// Could fail if no space in filesystem
 			log.Errorf("PublishToDir for globalConfig failed %s", err)
 		}
 		triggerPublishDevInfo(ctx.zedagentCtx)
@@ -1650,7 +1649,8 @@ func readRebootConfig() *types.DeviceOpsCmd {
 		rebootConfig := types.DeviceOpsCmd{}
 		err = json.Unmarshal(bytes, &rebootConfig)
 		if err != nil {
-			log.Fatal(err)
+			log.Errorf("rebootConfig json failed: %s", err)
+			return &types.DeviceOpsCmd{}
 		}
 		return &rebootConfig
 	}
@@ -1667,7 +1667,8 @@ func saveRebootConfig(reboot types.DeviceOpsCmd) {
 	}
 	err = fileutils.WriteRename(rebootConfigFilename, bytes)
 	if err != nil {
-		log.Fatal(err)
+		// Can fail if low on disk space
+		log.Error(err)
 	}
 }
 
