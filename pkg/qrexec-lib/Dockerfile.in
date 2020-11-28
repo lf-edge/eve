@@ -22,6 +22,7 @@ RUN mkdir -p /out/usr/include
 RUN mkdir -p /out/usr/share/pkgconfig
 
 WORKDIR /qubes-core-vchan-xen/u2mfn
+RUN git checkout 51c9221e0b904001a59d2dac910c28fdc31e18f7
 RUN make
 RUN cp libu2mfn.so /out/usr/lib
 
