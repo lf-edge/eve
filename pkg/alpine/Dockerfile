@@ -1,5 +1,5 @@
 ARG ALPINE_VERSION=3.9
-FROM lfedge/eve-alpine:ad1020939fb59dbdaa558a3da99649d81e341cac AS cache
+FROM lfedge/eve-alpine:5.16.0 AS cache
 
 FROM alpine:${ALPINE_VERSION} AS mirror
 ARG ALPINE_VERSION=3.9
@@ -22,12 +22,13 @@ RUN apk add --no-cache abuild gcc
 RUN abuild-keygen -a -i -n
 
 # create all the mirrors
+RUN mv /etc/apk/repositories /etc/apk/repositories.upstream
 RUN for p in /tmp/mirrors/[0-9]*; do v="$(basename "$p")" ;\
       build-cache.sh "$v" "/mirror/$v" $(cat "$p")        ;\
     done
 
 # set the default repository to use
-RUN mv /etc/apk/repositories /etc/apk/repositories.upstream && cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update
+RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update
 
 FROM alpine:${ALPINE_VERSION}
 
