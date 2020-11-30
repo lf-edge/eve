@@ -164,9 +164,7 @@ var mToF = []modelToFuncs{
 	},
 	{
 		// Last in table as a default
-		model:     "",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model: "",
 	},
 }
 
