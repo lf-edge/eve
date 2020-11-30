@@ -1,0 +1,145 @@
+From ca319096f95ee2d269d31cad888ec19dad89d516 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 30 Nov 2020 05:58:22 +0300
+Subject: [PATCH] tpm: Rework open/close/shutdown to avoid races
+
+Avoid race condition at shutdown by shutting downn the TPM 2.0
+devices synchronously. This eliminates the condition when the
+shutdown sequence sets chip->ops to NULL leading to the following:
+
+[ 1586.593561][ T8669] tpm2_del_space+0x28/0x73
+[ 1586.598718][ T8669] tpmrm_release+0x27/0x33wq
+[ 1586.603774][ T8669] __fput+0x109/0x1d
+[ 1586.608380][ T8669] task_work_run+0x7c/0x90
+[ 1586.613414][ T8669] prepare_exit_to_usermode+0xb8/0x128
+[ 1586.619522][ T8669] entry_SYSCALL_64_after_hwframe+0x44/0xa9
+[ 1586.626068][ T8669] RIP: 0033:0x4cb4bb
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ drivers/char/tpm/tpm-chip.c  |  2 ++
+ drivers/char/tpm/tpm-dev.c   | 19 ++++++++++++-------
+ drivers/char/tpm/tpmrm-dev.c |  3 +++
+ include/linux/tpm.h          |  6 ++++--
+ 4 files changed, 21 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/char/tpm/tpm-chip.c b/drivers/char/tpm/tpm-chip.c
+index 1838039b0333..db36c7be0c79 100644
+--- a/drivers/char/tpm/tpm-chip.c
++++ b/drivers/char/tpm/tpm-chip.c
+@@ -295,6 +295,7 @@ static int tpm_class_shutdown(struct device *dev)
+ {
+ 	struct tpm_chip *chip = container_of(dev, struct tpm_chip, dev);
+ 
++	wait_event_idle(chip->waitq, !atomic_read(&chip->refcount));
+ 	down_write(&chip->ops_sem);
+ 	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
+ 		if (!tpm_chip_start(chip)) {
+@@ -330,6 +331,7 @@ struct tpm_chip *tpm_chip_alloc(struct device *pdev,
+ 
+ 	mutex_init(&chip->tpm_mutex);
+ 	init_rwsem(&chip->ops_sem);
++	init_waitqueue_head(&chip->waitq);
+ 
+ 	chip->ops = ops;
+ 
+diff --git a/drivers/char/tpm/tpm-dev.c b/drivers/char/tpm/tpm-dev.c
+index e2c0baa69fef..0fab52a8d1b2 100644
+--- a/drivers/char/tpm/tpm-dev.c
++++ b/drivers/char/tpm/tpm-dev.c
+@@ -19,27 +19,31 @@ static int tpm_open(struct inode *inode, struct file *file)
+ {
+ 	struct tpm_chip *chip;
+ 	struct file_priv *priv;
++	int ret = 0;
+ 
+ 	chip = container_of(inode->i_cdev, struct tpm_chip, cdev);
+ 
+ 	/* It's assured that the chip will be opened just once,
+-	 * by the check of is_open variable, which is protected
+-	 * by driver_lock. */
+-	if (test_and_set_bit(0, &chip->is_open)) {
++	 * by the check of the chip reference count. */
++	if (atomic_fetch_inc(&chip->refcount)) {
+ 		dev_dbg(&chip->dev, "Another process owns this TPM\n");
+-		return -EBUSY;
++		ret = -EBUSY;
++		goto out;
+ 	}
+ 
+ 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+-	if (priv == NULL)
++	if (priv == NULL) {
++		ret = -ENOMEM;
+ 		goto out;
++	}
+ 
+ 	tpm_common_open(file, chip, priv, NULL);
+ 
+ 	return 0;
+ 
+  out:
+-	clear_bit(0, &chip->is_open);
++	atomic_dec(&chip->refcount);
++	wake_up_all(&chip->waitq);
+ 	return -ENOMEM;
+ }
+ 
+@@ -51,7 +55,8 @@ static int tpm_release(struct inode *inode, struct file *file)
+ 	struct file_priv *priv = file->private_data;
+ 
+ 	tpm_common_release(file, priv);
+-	clear_bit(0, &priv->chip->is_open);
++	atomic_dec(&priv->chip->refcount);
++	wake_up_all(&priv->chip->waitq);
+ 	kfree(priv);
+ 
+ 	return 0;
+diff --git a/drivers/char/tpm/tpmrm-dev.c b/drivers/char/tpm/tpmrm-dev.c
+index eef0fb06ea83..fb3cb7b03814 100644
+--- a/drivers/char/tpm/tpmrm-dev.c
++++ b/drivers/char/tpm/tpmrm-dev.c
+@@ -28,6 +28,7 @@ static int tpmrm_open(struct inode *inode, struct file *file)
+ 	}
+ 
+ 	tpm_common_open(file, chip, &priv->priv, &priv->space);
++	atomic_inc(&chip->refcount);
+ 
+ 	return 0;
+ }
+@@ -39,6 +40,8 @@ static int tpmrm_release(struct inode *inode, struct file *file)
+ 
+ 	tpm_common_release(file, fpriv);
+ 	tpm2_del_space(fpriv->chip, &priv->space);
++	atomic_dec(&fpriv->chip->refcount);
++	wake_up_all(&fpriv->chip->waitq);
+ 	kfree(priv);
+ 
+ 	return 0;
+diff --git a/include/linux/tpm.h b/include/linux/tpm.h
+index 77fdc988c610..590111bbd91c 100644
+--- a/include/linux/tpm.h
++++ b/include/linux/tpm.h
+@@ -21,6 +21,7 @@
+ #include <linux/acpi.h>
+ #include <linux/cdev.h>
+ #include <linux/fs.h>
++#include <linux/atomic.h>
+ #include <crypto/hash_info.h>
+ 
+ #define TPM_DIGEST_SIZE 20	/* Max TPM v1.2 PCR size */
+@@ -125,8 +126,9 @@ struct tpm_chip {
+ 
+ 	unsigned int flags;
+ 
+-	int dev_num;		/* /dev/tpm# */
+-	unsigned long is_open;	/* only one allowed */
++	int dev_num;		 /* /dev/tpm# */
++	atomic_t refcount;	 /* /dev/tmp# can only be opened once */
++	wait_queue_head_t waitq; /* Wait queue for synchronous ops */
+ 
+ 	char hwrng_name[64];
+ 	struct hwrng hwrng;
+-- 
+2.25.1
+
