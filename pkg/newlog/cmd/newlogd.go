@@ -174,6 +174,9 @@ func main() {
 
 		// handle collect other container log messages from memlogd
 		go getMemlogMsg(loggerChan)
+
+		// handle linux Syslog /dev/log messages
+		go getSyslogMsg(loggerChan)
 	}
 
 	stillRunning := time.NewTicker(stillRunningInerval)
@@ -447,8 +450,8 @@ func getKmessages(loggerChan chan inputEntry) {
 			content:   msg.Message,
 			timestamp: msg.Timestamp.Format(time.RFC3339Nano),
 		}
-		if msg.Priority >= 0 && msg.Priority < len(priorityStr) {
-			entry.severity = priorityStr[msg.Priority]
+		if msg.Priority >= 0 {
+			entry.severity = priorityStr[msg.Priority % 8]
 		}
 
 		logmetrics.NumKmessages++
@@ -1278,4 +1281,121 @@ func getAvailableSpace() uint64 {
 		return spaceAvailMB
 	}
 	return stat.Bavail * uint64(stat.Bsize) / uint64(1000000)
+}
+
+// getSyslogMsg - go routine to handle syslog input
+func getSyslogMsg(loggerChan chan inputEntry) {
+
+	sysfmt := regexp.MustCompile("<([0-9]+)>(.{15}|.{25}) (.*?): (.*)")
+	conn, err := listenUnix()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		n, _, err := conn.ReadFrom(buf)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		entry, err := newMessage(buf, n, sysfmt)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+
+		logmetrics.NumSyslogMessages++
+		logmetrics.DevMetrics.NumInputEvent++
+		log.Tracef("getSyslogMsg (%d) entry msg %s", logmetrics.NumSyslogMessages, entry.content)
+
+		loggerChan <- entry
+    }
+}
+
+//func listenUnix() (net.PacketConn, error) {
+func listenUnix() (*net.UnixConn, error) {
+	UnixPath := "/dev/log"
+	os.Remove(UnixPath)
+	a, err := net.ResolveUnixAddr("unixgram", UnixPath)
+	if err != nil {
+		return nil, err
+	}
+	unix, err := net.ListenUnixgram("unixgram", a)
+	if err != nil {
+		return nil, err
+	}
+	err = os.Chmod(UnixPath, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	return unix, nil
+}
+
+func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error) {
+	entry := inputEntry{}
+	res := sysfmt.FindSubmatch(pkt)
+	if len(res) != 5 {
+		return entry, fmt.Errorf("can't parse: %d %s", len(res), string(pkt))
+	}
+
+	var msgPid int
+	var tagpid, msgTag, msgPriority string
+	var msgRaw []byte
+
+	msgReceived := time.Now()
+	p, _ := strconv.ParseInt(string(res[1]), 10, 64)
+	msgPriority = priorityStr[p % 8]
+	misc := res[3]
+	// Check for either "hostname tagpid" or "tagpid"
+	a := bytes.SplitN(misc, []byte(" "), 2)
+	if len(a) == 2 {
+		tagpid = string(a[1])
+	} else {
+		//msg.Hostname = hostname
+		tagpid = string(a[0])
+	}
+
+	// tagpid is either "tag[pid]" or just "tag".
+	if n := strings.Index(tagpid, "["); n > 0 {
+		p, _ = strconv.ParseInt(tagpid[n+1:(len(tagpid)-1)], 10, 64)
+		msgPid = int(p)
+		msgTag = tagpid[:n]
+	} else {
+		msgTag = tagpid
+	}
+
+	// Raw message string excluding priority, timestamp, tag and pid.
+	n := bytes.Index(pkt, []byte("]: "))
+	if n > 0 {
+		if size > n + 2 {
+			msgRaw = bytes.TrimSpace(pkt[n+2 : size])
+		} else {
+			msgRaw = bytes.TrimSpace(pkt[n+2:])
+		}
+	} else {
+		n = bytes.Index(pkt, []byte(": "))
+		if n > 0 {
+			if size > n + 1 {
+				msgRaw = bytes.TrimSpace(pkt[n+1 : size])
+			} else {
+				msgRaw = bytes.TrimSpace(pkt[n+1:])
+			}
+		} else {
+			msgRaw = bytes.TrimSpace(pkt)
+		}
+	}
+
+	entry = inputEntry{
+		source:     msgTag,
+		severity:   msgPriority,
+		content:    string(msgRaw),
+		pid:        strconv.Itoa(msgPid),
+		timestamp:  msgReceived.Format(time.RFC3339Nano),
+	}
+
+	return entry, nil
 }
