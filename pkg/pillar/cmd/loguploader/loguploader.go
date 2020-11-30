@@ -567,7 +567,7 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 		log.Fatal("sendToCloud malloc error:")
 	}
 
-	var logsURL string
+	var logsURL, appLogURL string
 	var sentFailed, serviceUnavailable bool
 	if isApp {
 		fStr1 := strings.TrimPrefix(fName, types.AppPrefix)
@@ -577,8 +577,13 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 			log.Fatal(err)
 		}
 		appUUID := fStr[0]
-		appLogURL := fmt.Sprintf("apps/instanceid/%s/newlogs", appUUID)
-		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, true, devUUID, appLogURL)
+		if ctx.zedcloudCtx.V2API {
+			appLogURL = fmt.Sprintf("apps/instanceid/%s/newlogs", appUUID)
+		} else {
+			// XXX temp support for adam controller
+			appLogURL = fmt.Sprintf("apps/instanceid/id/%s/newlogs", appUUID)
+		}
+		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, ctx.zedcloudCtx.V2API, devUUID, appLogURL)
 	} else {
 		logsURL = newlogsDevURL
 	}
