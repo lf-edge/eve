@@ -52,4 +52,5 @@ jobs:
           make LINUXKIT_PKG_TARGET=push HV=kvm eve
       - name: Build EVE
         run: |
+          rm -rf dist
           make LINUXKIT_PKG_TARGET=push eve
