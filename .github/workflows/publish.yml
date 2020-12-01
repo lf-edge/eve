@@ -46,10 +46,10 @@ jobs:
                 docker system prune -f || :
              fi
           done
-      - name: Build EVE
-        run: |
-          make LINUXKIT_PKG_TARGET=push eve
       - name: Build EVE for KVM
         run: |
           rm -rf dist
           make LINUXKIT_PKG_TARGET=push HV=kvm eve
+      - name: Build EVE
+        run: |
+          make LINUXKIT_PKG_TARGET=push eve
