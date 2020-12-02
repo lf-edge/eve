@@ -1,0 +1,56 @@
+---
+name: Publish
+on:
+  push:
+    branches:
+      - "master"
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ARM64, ubuntu-20.04]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Login to DockerHUB
+        run: |
+          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
+             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+      - name: Build packages
+        run: |
+          # GH Actions convert our annotated tags into plain ones,
+          # so we need to convert it back (but only if it exists).
+          if [ -n "$(git tag)" ]; then
+             git config --global user.name "Edge Virtualization Engine"
+             git config --global user.email "eve@lfedge.org"
+             for t in $(git tag); do
+                git tag -a -m"Release $t" -f "$t" "$t"
+             done
+          fi
+          # sadly, our build sometimes times out on network access
+          # and running out of disk space: re-trying for 3 times
+          for i in 1 2 3; do
+             if make LINUXKIT_PKG_TARGET=push pkgs; then
+                break
+             else
+                # the most likely reason for 'make pkgs' to fail is
+                # the docker cache produced by the build exhausting
+                # disk space. So the following can't hurt before we
+                # retry:
+                docker rmi -f `docker image ls -q` || :
+                docker system prune -f || :
+             fi
+          done
+      - name: Build EVE for KVM
+        run: |
+          rm -rf dist
+          make LINUXKIT_PKG_TARGET=push HV=kvm eve
+      - name: Build EVE
+        run: |
+          rm -rf dist
+          make LINUXKIT_PKG_TARGET=push eve
