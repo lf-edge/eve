@@ -160,6 +160,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 	getSwInfo := func(partLabel string) *info.ZInfoDevSW {
 		swInfo := new(info.ZInfoDevSW)
+		tooEarly := false
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
@@ -184,6 +185,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.Status = info.ZSwState_INITIAL
 				swInfo.DownloadProgress = 0
 			}
+			tooEarly = bos.TooEarly
 		} else {
 			partStatus := getZbootPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
@@ -202,7 +204,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.DownloadProgress = 0
 			}
 		}
-		addUserSwInfo(ctx, swInfo)
+		addUserSwInfo(ctx, swInfo, tooEarly)
 		return swInfo
 	}
 
@@ -232,7 +234,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
 			swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime)
 		}
-		addUserSwInfo(ctx, swInfo)
+		addUserSwInfo(ctx, swInfo, bos.TooEarly)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
 			swInfo)
 	}
@@ -429,7 +431,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*
-func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
+func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW, tooEarly bool) {
+	log.Errorf("Device swInfo: %s", swInfo.String())
 	switch swInfo.Status {
 	case info.ZSwState_INITIAL:
 		// If Unused and partitionLabel is set them it
@@ -464,6 +467,10 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 		if swInfo.Activated {
 			swInfo.UserStatus = info.BaseOsStatus_DOWNLOAD_DONE
 			swInfo.SubStatusStr = "Downloaded and verified"
+			//} else if tooEarly { // To be uncommented after 'BaseOsSubStatus_UPDATE_DEFERRED' state is handled in controller
+			//	swInfo.UserStatus = info.BaseOsStatus_UPDATING
+			//	swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_DEFERRED
+			//	swInfo.SubStatusStr = "Waiting for current image to finish testing before updating again"
 		} else {
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
