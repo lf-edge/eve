@@ -40,6 +40,7 @@ const (
 	warningTime            = 40 * time.Second
 	metricsPublishInterval = 300 * time.Second
 	logfileDelay           = 300 // maximum delay 5 minutes for log file collection
+	fastlogfileDelay       = 10  // faster to close log file if fastUpload is enabled
 	stillRunningInerval    = 25 * time.Second
 
 	collectDir   = types.NewlogCollectDir
@@ -72,6 +73,9 @@ var (
 	syncToFileCnt int    // every 'N' log event count flush to log file
 	spaceAvailMB  uint64 // '/persist' disk space available
 	gzipFilesCnt  int64  // total gzip files written
+
+	logfileTimeout   int  // logfile maximum delay to close
+	enableFastUpload bool // enable fast upload to controller similar to previous log operation
 
 	subGlobalConfig  pubsub.Subscription
 
@@ -269,6 +273,10 @@ func main() {
 	schedResetTimer = time.NewTimer(1 * time.Second)
 	schedResetTimer.Stop()
 
+	// set default timeout of logfile delay
+	logfileTimeout = logfileDelay
+	logmetrics.LogfileTimeoutSec = logfileDelay
+
 	for {
 		select {
 		case <-metricsPublishTimer.C:
@@ -430,8 +438,21 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		log.Tracef("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	debug, _ := agentlog.HandleGlobalConfig(log, subGlobalConfig, agentName, false, logger)
-	log.Tracef("handleGlobalConfigModify done for %s, debug set %v", key, debug)
+	debug, gcp := agentlog.HandleGlobalConfig(log, subGlobalConfig, agentName, false, logger)
+
+	if gcp != nil {
+		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
+		if enableFastUpload != enabled {
+			if enabled {
+				logfileTimeout = fastlogfileDelay
+			} else {
+				logfileTimeout = logfileDelay
+			}
+			logmetrics.LogfileTimeoutSec = uint32(logfileTimeout)
+		}
+		enableFastUpload = enabled
+	}
+	log.Tracef("handleGlobalConfigModify done for %s, debug set %v, fastupload enabled %v", key, debug, enableFastUpload)
 }
 
 // getKmessages - goroutine to get from /dev/kmsg
@@ -653,7 +674,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 
 	devSourceBytes = make(map[string]uint64)
 	appStatsMap = make(map[string]statsLogFile)
-	checklogTimer := time.NewTimer(logfileDelay * time.Second)
+	checklogTimer := time.NewTimer(5 * time.Second)
 	devStats.file = devlogFile
 
 	// write the first log metadata to the first line of the logfile, will be extracted when
@@ -669,8 +690,8 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 		case <-checklogTimer.C:
 			timeIdx++
 			checkLogTimeExpire(fileinfo, &devStats, moveChan)
-			checklogTimer = time.NewTimer(15 * time.Second) // check the file time limit every 15 seconds
-			if timeIdx%120 == 0 {                           // every half an hour check space left
+			checklogTimer = time.NewTimer(5 * time.Second)  // check the file time limit every 5 seconds
+			if timeIdx%360 == 0 {                           // every half an hour check space left
 				spaceAvailMB = getAvailableSpace()
 			}
 
@@ -1141,13 +1162,13 @@ func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, 
 
 func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan chan fileChanInfo) {
 	// check device log file
-	if devStats.file != nil && int(time.Since(devStats.starttime).Seconds()) > logfileDelay {
+	if devStats.file != nil && devStats.size > 0 && int(time.Since(devStats.starttime).Seconds()) > logfileTimeout {
 		trigMoveToGzip(fileinfo, devStats, "", moveChan, true)
 	}
 
 	// check app log files
 	for appuuid, appM := range appStatsMap {
-		if appM.file != nil && int(time.Since(appM.starttime).Seconds()) > logfileDelay {
+		if appM.file != nil && appM.size > 0 && int(time.Since(appM.starttime).Seconds()) > logfileTimeout {
 			trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
 		}
 	}
@@ -1359,8 +1380,8 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 		tagpid = string(a[0])
 	}
 
-	// tagpid is either "tag[pid]" or just "tag".
-	if n := strings.Index(tagpid, "["); n > 0 {
+	// tagpid is either "tag[pid]" or "[pid]" or just "tag".
+	if n := strings.Index(tagpid, "["); n > 0 || strings.HasPrefix(tagpid, "[") && strings.HasSuffix(tagpid, "]") {
 		p, _ = strconv.ParseInt(tagpid[n+1:(len(tagpid)-1)], 10, 64)
 		msgPid = int(p)
 		msgTag = tagpid[:n]

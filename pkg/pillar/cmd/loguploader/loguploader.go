@@ -72,10 +72,11 @@ type loguploaderContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
 	usableAddrCount        int
-	GCInitialized          bool
 	metrics                types.NewlogMetrics
 	serverNameAndPort      string
 	metricsPub             pubsub.Publication
+	enableFastUpload       bool
+	scheduleTimer          *time.Timer
 }
 
 // Run - an loguploader run
@@ -202,11 +203,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	metricsPublishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	// a go routine to fetch gzip log file and upload to cloud
-	//go fetchAndSendlogs(loguploaderCtx)
-
 	var numLeftFiles, iteration, prevIntv int
-	scheduletimer := time.NewTimer(1200 * time.Second)
+	loguploaderCtx.scheduleTimer = time.NewTimer(1200 * time.Second)
 
 	// init the upload interface to 2 min
 	loguploaderCtx.metrics.CurrUploadIntvSec = defaultUploadIntv
@@ -233,18 +231,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			metricsPub.Publish("global", loguploaderCtx.metrics)
 			log.Tracef("Published newlog upload metrics at %s", time.Now().String())
 
-		case <-scheduletimer.C:
+		case <-loguploaderCtx.scheduleTimer.C:
 
 			// upload interval stays for 20 min once it calculates
 			// - if the device is disconnected from cloud for over 20 min, then when use random
 			//   interval between 3-15 min to retry, avoid overwhelming the cloud server once it is up
 			// - in normal uploading case, set interval depends on the number of gzip files left in
 			//   both dev/app directories, from 15 seconds up to to 2 minutes
+			// - if Configure Item has enabled fastUpload, check/upload every 3 sec
 			//
 			// at device starts, more logging activities, and slower timer. will see longer delays,
 			// as the device moves on, the log upload should catchup quickly
 			var interval int
-			if loguploaderCtx.metrics.FailedToSend &&
+			if loguploaderCtx.enableFastUpload {
+				loguploaderCtx.metrics.CurrUploadIntvSec = 3
+				uploadTimer.Stop()
+				uploadTimer = time.NewTimer(time.Duration(loguploaderCtx.metrics.CurrUploadIntvSec) * time.Second)
+			} else if loguploaderCtx.metrics.FailedToSend &&
 				time.Since(loguploaderCtx.metrics.FailSentStartTime).Nanoseconds()/int64(time.Second) > 1200 {
 				loguploaderCtx.metrics.CurrUploadIntvSec = uint32(rand.Intn(720) + 180)
 			} else {
@@ -276,7 +279,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				}
 			}
 			log.Tracef("loguploader Run: upload interval sec %d", loguploaderCtx.metrics.CurrUploadIntvSec)
-			scheduletimer = time.NewTimer(1800 * time.Second)
+			loguploaderCtx.scheduleTimer = time.NewTimer(1800 * time.Second)
 
 		case <-uploadTimer.C:
 			// Main upload
@@ -423,11 +426,17 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
-	if gcp != nil && !ctx.GCInitialized {
+	if gcp != nil {
 		ctx.globalConfig = gcp
-		ctx.GCInitialized = true
+		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
+		if enabled != ctx.enableFastUpload {
+			// reset the schedule for next 30 minutes
+			ctx.scheduleTimer.Stop()
+			ctx.scheduleTimer = time.NewTimer(1 * time.Second)
+		}
+		ctx.enableFastUpload = enabled
 	}
-	log.Tracef("handleGlobalConfigModify done for %s", key)
+	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, ctx.enableFastUpload)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string, statusArg interface{}) {
