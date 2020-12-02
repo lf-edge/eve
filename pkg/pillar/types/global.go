@@ -167,6 +167,8 @@ const (
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
 	// IgnoreDiskCheckForApps global setting key
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
+	// AllowLogFastupload global setting key
+	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -728,6 +730,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
+	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)

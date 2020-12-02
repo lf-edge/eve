@@ -53,6 +53,7 @@ type NewlogMetrics struct {
 	TotalBytesUpload  uint64 // total number of bytes uploaded to cloud
 	Num4xxResponses   uint32 // total 4xx response received
 	CurrUploadIntvSec uint32 // current upload interval in second
+	LogfileTimeoutSec uint32 // logfile delay time in second
 	MaxGzipSize       uint32 // largest gzip file size created
 	AvgGzipSize       uint32 // average gzip file size
 	// from newlogd

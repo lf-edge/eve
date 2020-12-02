@@ -173,6 +173,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		UsbAccess,
 		AllowAppVnc,
 		IgnoreDiskCheckForApps,
+		AllowLogFastupload,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		AllowNonFreeAppImages,

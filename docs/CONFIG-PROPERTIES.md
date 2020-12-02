@@ -34,6 +34,7 @@
 | timer.vault.ready.cutoff | integer in seconds | 300 | reboot after inaccessible vault |
 | maintenance.mode | "enabled" or "disabled" | "none" | don't run applications etc |
 | force.fallback.counter | integer | 0 | forces fallback to other image if counter is changed |
+| newlog.allow.fastupload | boolean | false | allow faster upload gzip logfiles to controller |
 
 
 In addition, there can be per-agent settings.

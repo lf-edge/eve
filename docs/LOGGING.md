@@ -78,6 +78,10 @@ The "loguploader" collects stats of round-trip delay, controller CPU load percen
 
 To prevent the log messages grow without bounds over time, the 'failedUpload' directory will only keep up to 1000 gzip files, each with maximum of 50K, to be under 50M in the directory. The '/persist' partition space is monitored, and if the available space is under 100M, the 'newlogd' will kick in the gzip file recycle operation just as the controller uplink is unreachable.
 
+## Upload log files faster
+
+There are cases, for example during EVE code testing, the default timers for logfile and uploading to controller are too slow. The runtime configuration-property "newlog.allow.fastupload" boolean can be set to speed it up. By setting this item to 'true', the maximum logfile duration is 10 seconds and the upload to controller is in 3 seconds interval. This newlog fastupload schedule is similar to the original logging operation.
+
 ## Log files still present in device
 
 Reboot reason and reboot stack files present in /persist and /persist/log directories. reboot-reaon, reboot-stack files present in /persist/log directory get appended with updates. The sames files in /persist directory keep getting overwritten with new content every time there is USR1 signal sent to a process or in the event of Fatal crash. These stack traces are also exported to cloud using logging mechanism.
