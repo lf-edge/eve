@@ -15,6 +15,8 @@ import (
 // SenderResult - Enum name for return extra sender results from SendOnAllIntf
 type SenderResult uint8
 
+// ######### TEST - DO NOT MERGE UP ############
+
 // Enum of http extra status for 'rtf'
 const (
 	SenderStatusNone                      SenderResult = iota
