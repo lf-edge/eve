@@ -438,6 +438,7 @@ enum BaseOsSubStatus {
   UPDATE_REBOOTING    = 4;      // subStatusProgress is time left
   UPDATE_TESTING      = 5;      // subStatusProgress is time left
   UPDATE_NEED_TEST_CONFIRM = 6; // waiting for controller to commit to new
+  UPDATE_DEFERRED = 7; // waiting for current update to finish
 }
 
 // Per filesystem/partition information
