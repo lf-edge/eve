@@ -252,11 +252,13 @@ const qemuDiskTemplate = `
   cache = "writeback"
   if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
-[device "virtio-disk{{.DiskID}}"]
-  driver = "virtio-blk-pci"
-  scsi = "off"
+[device "ahci.{{.PCIId}}"]
   bus = "pci.{{.PCIId}}"
-  addr = "0x0"
+  driver = "ahci"
+
+[device "virtio-disk{{.DiskID}}"]
+  driver = "ide-hd"
+  bus = "ahci.{{.PCIId}}.0"
   drive = "drive-virtio-disk{{.DiskID}}"
 {{end}}`
 
