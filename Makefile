@@ -53,7 +53,7 @@ ifeq ($(UNAME_S),Darwin)
 endif
 
 REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
-REPO_SHA=$(shell git describe --match v --abbrev=8 --always --dirty)
+REPO_SHA=$(shell git describe --match '$$^' --abbrev=8 --always --dirty)
 REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
 REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d.%H.%M"))
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
@@ -178,11 +178,21 @@ LINUXKIT_PKG_TARGET=build
 RESCAN_DEPS=FORCE
 FORCE_BUILD=--force
 
+# we use the following block to assign correct tag to the Docker registry artifact
 ifeq ($(LINUXKIT_PKG_TARGET),push)
-  EVE_REL:=$(REPO_TAG)
-  ifneq ($(EVE_REL),snapshot)
-    EVE_HASH:=$(EVE_REL)
-    EVE_REL:=$(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(EVE_HASH) ] && echo latest)
+  # only builds from master branch are allowed to be called snapshots
+  # everything else gets tagged with a branch name itself UNLESS
+  # we're building off of a annotated tag
+  EVE_REL_$(REPO_BRANCH)_$(REPO_TAG):=$(REPO_TAG)
+  EVE_REL_$(REPO_BRANCH)_snapshot:=$(REPO_BRANCH)
+  EVE_REL_master_snapshot:=snapshot
+  EVE_REL:=$(EVE_REL_$(REPO_BRANCH)_$(REPO_TAG))
+
+  # the only time we rebuild everything from scratch is when we're building 'latest' release
+  # in order to achieve that we have to force EVE_HASH to be the release version
+  ifeq ($(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(REPO_TAG) ] && echo latest),latest)
+    EVE_HASH:=$(REPO_TAG)
+    EVE_REL:=latest
   endif
 endif
 
