@@ -553,10 +553,12 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	if status.BridgeIPAddr != "" {
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			status.CurrentUplinkIntf)
+		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+			status.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
 			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
-			status.CurrentUplinkIntf, dnsServers)
+			status.CurrentUplinkIntf, dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
 
@@ -832,9 +834,11 @@ func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) 
 	// Use existing BridgeIPSets
 	dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 		status.CurrentUplinkIntf)
+	ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+		status.CurrentUplinkIntf)
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
-		status.Ipv4Eid, status.CurrentUplinkIntf, dnsServers)
+		status.Ipv4Eid, status.CurrentUplinkIntf, dnsServers, ntpServers)
 	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
 }
@@ -1785,10 +1789,12 @@ func doNetworkInstanceFallback(
 		if status.BridgeIPAddr != "" {
 			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
+			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
 				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
-				status.CurrentUplinkIntf, dnsServers)
+				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
 		}
 
@@ -1837,10 +1843,12 @@ func doNetworkInstanceFallback(
 		if status.BridgeIPAddr != "" {
 			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
+			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
 				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
-				status.CurrentUplinkIntf, dnsServers)
+				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
 		}
 

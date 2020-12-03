@@ -970,10 +970,12 @@ func appNetworkDoActivateUnderlayNetwork(
 		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netInstStatus.CurrentUplinkIntf)
+		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
 			newIpsets, false, netInstStatus.CurrentUplinkIntf,
-			dnsServers)
+			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
 	networkInstanceInfo.AddVif(log, vifName, appMac,
@@ -1370,9 +1372,12 @@ func doAppNetworkModifyUnderlayNetwork(
 		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
+		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
+			newIpsets, false, netstatus.CurrentUplinkIntf,
+			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
@@ -1539,9 +1544,12 @@ func appNetworkDoInactivateUnderlayNetwork(
 		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
+		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
+			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
+			newIpsets, false, netstatus.CurrentUplinkIntf,
+			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
 	netstatus.RemoveVif(log, ulStatus.Vif)

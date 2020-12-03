@@ -924,9 +924,10 @@ type NetworkPortStatus struct {
 	Free           bool
 	Dhcp           DhcpType
 	Subnet         net.IPNet
-	NtpServer      net.IP
+	NtpServer      net.IP // This comes from network instance configuration
 	DomainName     string
 	DNSServers     []net.IP // If not set we use Gateway as DNS server
+	NtpServers     []net.IP // This comes from DHCP done on uplink port
 	AddrInfoList   []AddrInfo
 	Up             bool
 	MacAddr        string
@@ -1296,6 +1297,21 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 			continue
 		}
 		for _, server := range us.DNSServers {
+			servers = append(servers, server)
+		}
+	}
+	return servers
+}
+
+// GetNTPServers returns all, or the ones on one interface if ifname is set
+func GetNTPServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
+
+	var servers []net.IP
+	for _, us := range globalStatus.Ports {
+		if ifname != "" && ifname != us.IfName {
+			continue
+		}
+		for _, server := range us.NtpServers {
 			servers = append(servers, server)
 		}
 	}
