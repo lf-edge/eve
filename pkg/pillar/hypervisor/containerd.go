@@ -124,6 +124,12 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 	return ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName)
 }
 
+func (ctx ctrdContext) Annotations(domainName string, domainID int) (map[string]string, error) {
+	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	return ctx.ctrdClient.CtrGetAnnotations(ctrdCtx, domainName)
+}
+
 func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()

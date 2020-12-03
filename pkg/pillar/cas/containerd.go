@@ -178,12 +178,6 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			continue
 		}
 
-		// Process the blob only if it isn't already loaded. It might be loaded but not
-		// yet marked in the blobstatus, so we wait
-		if blob.State == types.LOADING {
-			logrus.Infof("IngestBlob(%s): Not loading blob as it is marked as loading from a different thread", blob.Sha256)
-			continue
-		}
 		logrus.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
 
 		//Step 1.1: Read the blob from verified dir or provided content

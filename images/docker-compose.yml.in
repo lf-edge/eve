@@ -140,6 +140,16 @@ services:
         networks:
             - eve
 
+    kvm-tools:
+        image: KVMTOOLS_TAG
+        privileged: true
+        volumes:
+            - persist:/persist
+            - config:/config
+            - run:/run
+        networks:
+            - eve
+
     pillar:
         image: PILLAR_TAG
         # privileged: true

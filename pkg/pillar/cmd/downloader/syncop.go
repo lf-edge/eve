@@ -220,6 +220,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		status.ContentType = contentType
 		zedcloud.ZedCloudSuccess(log, ifname,
 			metricsUrl, 1024, size, downloadTime)
+		if st.Progress(100, size, size) {
+			log.Noticef("updated sizes at end to %d/%d",
+				size, size)
+		}
 		handleSyncOpResponse(ctx, config, status,
 			locFilename, key, "")
 		return

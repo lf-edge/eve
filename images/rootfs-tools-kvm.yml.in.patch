@@ -1,0 +1,12 @@
+--- images/rootfs.yml.in
++++ images/rootfs-tools-kvm.yml.in
+@@ -66,6 +66,9 @@
+      image: XENTOOLS_TAG
+      cgroupsPath: /eve/services/xen-tools
+      oomScoreAdj: -999
++   - name: kvm-tools
++     image: KVMTOOLS_TAG
++     cgroupsPath: /eve/services/kvmtool
+ files:
+    - path: /etc/eve-release
+      contents: 'EVE_VERSION'

@@ -45,11 +45,12 @@ type baseOsMgrContext struct {
 	subZbootConfig       pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
 	subNodeAgentStatus   pubsub.Subscription
+	subZedAgentStatus    pubsub.Subscription
 	rebootReason         string    // From last reboot
 	rebootTime           time.Time // From last reboot
 	rebootImage          string    // Image from which the last reboot happened
 
-	worker *worker.Pool // For background work
+	worker worker.Worker // For background work
 }
 
 var debug = false
@@ -137,6 +138,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
+
+		case change := <-ctx.subZedAgentStatus.MsgChan():
+			ctx.subZedAgentStatus.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
 			res.Process(&ctx, true)
@@ -355,6 +359,25 @@ func initializeNodeAgentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subNodeAgentStatus = subNodeAgentStatus
 	subNodeAgentStatus.Activate()
+
+	// subscribe to zedagent status events
+	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ZedAgentStatus{},
+		Activate:      false,
+		Ctx:           ctx,
+		CreateHandler: handleZedAgentStatusCreate,
+		ModifyHandler: handleZedAgentStatusModify,
+		DeleteHandler: handleZedAgentStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subZedAgentStatus = subZedAgentStatus
+	subZedAgentStatus.Activate()
 
 	// Look for ZbootConfig, from nodeagent
 	subZbootConfig, err := ps.NewSubscription(

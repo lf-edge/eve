@@ -1,5 +1,6 @@
 #cloud-config
 packages:
+  - jq
   - qemu-utils
   - make
   - docker.io

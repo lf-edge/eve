@@ -20,9 +20,9 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -35,6 +35,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -64,6 +65,7 @@ type modelToFuncs struct {
 	initFunc  BlinkInitFunc
 	blinkFunc Blink200msFunc
 	ledName   string
+	regexp    bool
 }
 
 // XXX introduce wildcard matching on model names? Just a default at the end
@@ -130,7 +132,8 @@ var mToF = []modelToFuncs{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
-		ledName:   "wifi_active"},
+		ledName:   "wifi_active",
+	},
 	{
 		model:     "LeMaker.HiKey-6220",
 		initFunc:  InitLedCmd,
@@ -138,8 +141,14 @@ var mToF = []modelToFuncs{
 		ledName:   "wifi_active",
 	},
 	{
-		model: "QEMU.Standard PC (i440FX + PIIX, 1996)",
+		model:  "QEMU.*",
+		regexp: true,
 		// No dd disk light blinking on QEMU
+	},
+	{
+		model:  "Parallels.*",
+		regexp: true,
+		// No dd disk light blinking on Parallels
 	},
 	{
 		model:     "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
@@ -200,25 +209,36 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	model := hardware.GetHardwareModel(log)
-	log.Functionf("Got HardwareModel %s", model)
+	log.Noticef("Got HardwareModel %s", model)
 
 	var blinkFunc Blink200msFunc
 	var initFunc BlinkInitFunc
 	var ledName string
+	setFuncs := func(m modelToFuncs) {
+		blinkFunc = m.blinkFunc
+		initFunc = m.initFunc
+		ledName = m.ledName
+	}
 	for _, m := range mToF {
-		if m.model == model {
-			blinkFunc = m.blinkFunc
-			initFunc = m.initFunc
-			ledName = m.ledName
+		if !m.regexp && m.model == model {
+			setFuncs(m)
 			log.Functionf("Found %v led %s for model %s",
 				blinkFunc, ledName, model)
 			break
 		}
+		if m.regexp {
+			if re, err := regexp.Compile(m.model); err != nil {
+				log.Errorf("Fail in regexp parse: %s", err)
+			} else if re.MatchString(model) {
+				setFuncs(m)
+				log.Functionf("Found %v led %s for model %s by pattern %s",
+					blinkFunc, ledName, model, m.model)
+				break
+			}
+		}
 		if m.model == "" {
 			log.Functionf("No blink function for %s", model)
-			blinkFunc = m.blinkFunc
-			initFunc = m.initFunc
-			ledName = m.ledName
+			setFuncs(m)
 			break
 		}
 	}

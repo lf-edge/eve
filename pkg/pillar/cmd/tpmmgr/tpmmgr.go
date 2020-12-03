@@ -18,6 +18,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"reflect"
 	"time"
 
@@ -62,17 +63,17 @@ const (
 
 var (
 	//location of the ecdh certificate
-	ecdhCertFile = types.PersistConfigDir + "/ecdh.cert.pem"
+	ecdhCertFile = types.CertificateDirname + "/ecdh.cert.pem"
 
 	//location of the attestation quote certificate
-	quoteCertFile = types.PersistConfigDir + "/attest.cert.pem"
+	quoteCertFile = types.CertificateDirname + "/attest.cert.pem"
 
 	//EkCertFile is location of the endorsement key certificate
-	EkCertFile = types.PersistConfigDir + "/ek.cert.pem"
+	EkCertFile = types.CertificateDirname + "/ek.cert.pem"
 
 	//location of private key for the quote certificate
 	//on devices without a TPM
-	quoteKeyFile = types.PersistConfigDir + "/attest.key.pem"
+	quoteKeyFile = types.CertificateDirname + "/attest.key.pem"
 
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
 	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
@@ -1197,6 +1198,16 @@ func saveTpmInfo(filename string) error {
 	return ioutil.WriteFile(filename, []byte(info), 0600)
 }
 
+//Create required directories, if not already created
+func initializeDirs() {
+	if _, err := os.Stat(types.CertificateDirname); err != nil {
+		log.Tracef("Create %s", types.CertificateDirname)
+		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
 // Run is the entry point for tpmmgr, from zedbox
 //nolint:funlen,gocognit,gocyclo
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
@@ -1216,6 +1227,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Error("Insufficient arguments")
 		return 1
 	}
+
 	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
@@ -1283,6 +1295,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 	case "runAsService":
 		log.Functionf("Starting %s", agentName)
+
+		//Create required directories if not present
+		initializeDirs()
 
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
@@ -1439,6 +1454,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			fmt.Printf("test passed")
 		}
 	case "createCerts":
+		//Create required directories if not present
+		initializeDirs()
+
 		//Create additional security keys if already not created, followed by security certificates
 		if err = createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
 			log.Errorf("Error in creating Endorsement key: %v ", err)

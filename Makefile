@@ -108,9 +108,17 @@ DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
-PART_SPEC_=efi conf imga
-PART_SPEC_rpi=boot conf imga
-PART_SPEC=$(PART_SPEC_$(findstring rpi,$(HV)))
+PART_SPEC_amd64=efi conf imga
+PART_SPEC_arm64=boot conf imga
+PART_SPEC=$(PART_SPEC_$(ZARCH))
+
+# parallels settings
+# https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
+# predefined GUID according link ^
+PARALLELS_UUID={5fbaabe3-6958-40ff-92a7-860e329aab41}
+PARALLELS_VM_NAME=EVE_Live
+PARALLELS_CPUS=2 #num
+PARALLELS_MEMORY=2048 #in megabytes
 
 # public cloud settings (only CGP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
@@ -124,9 +132,13 @@ QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
-QEMU_ACCEL_Y_Darwin=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
-QEMU_ACCEL_Y_Linux=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
-QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
+QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
+QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
+# -machine virt,gic_version=3
+QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
+QEMU_ACCEL__$(shell uname -s)_arm64=-machine virt,virtualization=true -cpu cortex-a57
+QEMU_ACCEL__$(shell uname -s)_amd64=-machine q35 -cpu SandyBridge
+QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s)_$(ZARCH))
 
 QEMU_OPTS_NET1=192.168.1.0/24
 QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
@@ -141,16 +153,14 @@ QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_C
 QEMU_OPTS_BIOS_=-bios $(DIST)/OVMF.fd
 QEMU_OPTS_BIOS=$(QEMU_OPTS_BIOS_$(PFLASH))
 
-# -machine virt,gic_version=3
-QEMU_OPTS_arm64= -machine virt,virtualization=true -cpu cortex-a57 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
-QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
+QEMU_OPTS_arm64= -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
-        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1
+        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0,romfile="" \
+        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
-QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
+QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 # -device virtio-blk-device,drive=image -drive if=none,id=image,file=X
 # -device virtio-net-device,netdev=user0 -netdev user,id=user0,hostfwd=tcp::1234-:22
 
@@ -244,7 +254,8 @@ $(BUILD_VM).orig: | $(DIST)
 
 $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IMG) | $(DIST)
 	cp $@.orig $@.active
-	qemu-img resize $@.active 5G
+	# currently a fulle EVE build *almost* fits into 40Gb -- we need twice as much in a VM
+	qemu-img resize $@.active 100G
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$@.active -drive format=qcow2,file=$<
 	mv $@.active $@
 
@@ -299,8 +310,23 @@ run-compose: images/docker-compose.yml images/version.yml
 run-proxy:
 	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &
 
-run-build-vm: $(BUILD_VM) $(BIOS_IMG) $(DEVICETREE_DTB)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$<
+run-build-vm: $(BIOS_IMG) $(DEVICETREE_DTB)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$(BUILD_VM)
+
+run-live-parallels:
+	@[ -d "$(LIVE).parallels" ] || { echo "Please run: make live-parallels"; exit 1; }
+	@prlctl list -a | grep $(PARALLELS_VM_NAME) | grep "invalid" >/dev/null && prlctl unregister $(PARALLELS_VM_NAME) || echo "No invalid $(PARALLELS_VM_NAME) VM"
+	@if prlctl list --all | grep "$(PARALLELS_VM_NAME)"; then \
+		prlctl stop $(PARALLELS_VM_NAME) --kill; \
+		prlctl set $(PARALLELS_VM_NAME) --device-set hdd0 --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
+	else \
+		prlctl create $(PARALLELS_VM_NAME) --distribution ubuntu --no-hdd --dst $(DIST)/ ; \
+		prlctl set $(PARALLELS_VM_NAME) --device-add hdd --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
+		prlctl set $(PARALLELS_VM_NAME) --device-del net0 ; \
+		prlctl set $(PARALLELS_VM_NAME) --device-add net --type shared --adapter-type virtio --ipadd 192.168.1.0/24 --dhcp yes ; \
+		prlctl set $(PARALLELS_VM_NAME) --device-add net --type shared --adapter-type virtio --ipadd 192.168.2.0/24 --dhcp yes ; \
+		prlctl start $(PARALLELS_VM_NAME) ; \
+	fi
 
 # alternatively (and if you want greater control) you can replace the first command with
 #    gcloud auth activate-service-account --key-file=-
@@ -365,6 +391,12 @@ $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIS
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeiso.sh $| $@
 
+$(LIVE).parallels: $(LIVE).raw
+	rm -rf $@; mkdir $@
+	qemu-img resize -f raw $< ${MEDIA_SIZE}M
+	qemu-img convert -O parallels $< $@/live.0.$(PARALLELS_UUID).hds
+	qemu-img info -f parallels --output json $(LIVE).parallels/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
+
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
 pkgs: FORCE_BUILD=
@@ -382,7 +414,7 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring rpi,$(HV)),$(BOOT_PART)) | $(DIST)
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring arm64,$(ZARCH)),$(BOOT_PART)) | $(DIST)
 	cp pkg/eve/build.yml pkg/eve/runme.sh images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
@@ -540,22 +572,23 @@ help:
 	@echo "   pkgs           builds all EVE packages"
 	@echo "   pkg/XXX        builds XXX EVE package"
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm, rpi)"
+	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
-	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp)"
+	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp, parallels)"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
-	@echo "   run-compose       runs all EVE microservices via docker-compose deployment"
-	@echo "   run-build-vm      runs a build VM image"
-	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
-	@echo "   run-live-gcp      runs a full fledged virtual device on Google Compute Platform (provide your account details)"
-	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
-	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
-	@echo "   run-installer-iso runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
-	@echo "   run-installer-raw runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
-	@echo "   run-target        runs a full fledged virtual device on qemu from target.img (similar to run-live)"
+	@echo "   run-compose        runs all EVE microservices via docker-compose deployment"
+	@echo "   run-build-vm       runs a build VM image"
+	@echo "   run-live           runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo "   run-live-gcp       runs a full fledged virtual device on Google Compute Platform (provide your account details)"
+	@echo "   run-live-parallels runs a full fledged virtual device on Parallels Desktop"
+	@echo "   run-rootfs         runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
+	@echo "   run-grub           runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
+	@echo "   run-installer-iso  runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-installer-raw  runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-target         runs a full fledged virtual device on qemu from target.img (similar to run-live)"
 	@echo
 	@echo "make run is currently an alias for make run-live"
 	@echo

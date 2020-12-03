@@ -12,6 +12,7 @@ config:
     - /tmp:/tmp
     - /dev:/dev
     - /sys:/sys
+    - /sys/fs/cgroup:/sys/fs/cgroup
     - /containers:/containers
     - /etc:/hostroot/etc
     - /etc/resolv.conf:/etc/resolv.conf

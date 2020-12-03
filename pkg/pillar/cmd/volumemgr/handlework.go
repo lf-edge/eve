@@ -171,13 +171,8 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 			continue
 		}
 		found[blob.Sha256] = true
-		if blob.State == types.VERIFIED {
-			// Pay close attention: we copy the blob *before* changing it to loading.
-			// We want everything else to know that it is LOADING, but not the routine to
-			// ingest that we are about to call.
+		if blob.State == types.LOADING {
 			loadBlobs = append(loadBlobs, *blob)
-			blob.State = types.LOADING
-			publishBlobStatus(ctx, blob)
 		}
 	}
 

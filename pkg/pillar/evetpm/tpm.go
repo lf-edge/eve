@@ -86,7 +86,7 @@ const (
 var (
 	//EcdhKeyFile is the location of the ecdh private key
 	//on devices without a TPM. It is not a constant due to test usage
-	EcdhKeyFile = types.PersistConfigDir + "/ecdh.key.pem"
+	EcdhKeyFile = types.CertificateDirname + "/ecdh.key.pem"
 
 	tpmHwInfo        = ""
 	pcrBank256Status = PCRBank256StatusUnknown

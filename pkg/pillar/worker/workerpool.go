@@ -35,20 +35,20 @@ type Pool struct {
 }
 
 type myworker struct {
-	worker   *Worker
+	worker   Worker
 	lastUsed time.Time // Last successful submit
 }
 
 // NewPool constructs a pool
 // If maxWorkers is set to zero it means unlimited
-func NewPool(log Logger, ctx interface{}, maxWorkers int, handlers map[string]Handler) *Pool {
+func NewPool(log Logger, ctx interface{}, maxWorkers int, handlers map[string]Handler) Worker {
 	return NewPoolWithGC(log, ctx, maxWorkers, handlers,
 		defaultPeriodicGCSeconds, defaultSubmitGCSeconds)
 }
 
 // NewPoolWithGC constructs a pool with non-default GC timers
 // If maxWorkers is set to zero it means unlimited
-func NewPoolWithGC(log Logger, ctx interface{}, maxWorkers int, handlers map[string]Handler, periodicGCSeconds int, submitGCSeconds int) *Pool {
+func NewPoolWithGC(log Logger, ctx interface{}, maxWorkers int, handlers map[string]Handler, periodicGCSeconds int, submitGCSeconds int) Worker {
 	length := maxWorkers
 	if length == 0 {
 		length = 10
@@ -87,7 +87,7 @@ func (wp *Pool) periodicGC() {
 	wp.log.Tracef("periodicGC done")
 }
 
-func (wp *Pool) mergeResult(w *Worker) {
+func (wp *Pool) mergeResult(w Worker) {
 	wp.log.Tracef("mergeResult starting")
 	ch := w.MsgChan()
 	for res := range ch {
@@ -111,13 +111,44 @@ func (wp *Pool) NumPending() int {
 	return total
 }
 
+// NumResults returns the number of results waiting to be processed.
+func (wp *Pool) NumResults() int {
+	total := 0
+	for _, w := range wp.workers {
+		total += w.worker.NumResults()
+	}
+	return total
+}
+
 // NumWorkers returns the current number of workers
 func (wp *Pool) NumWorkers() int {
 	return len(wp.workers)
 }
 
-// TrySubmit returns false if the number of workers is already at the max
-// returns JobInProgressError if a job with that key already in progress
+// Submit submits jobs to the WorkerPool. If it cannot find a worker in the pool
+// that can service it - i.e. both the number of workers is at the maximum and the
+// queues of all workers are full - then it waits one second and tries all available
+// workers again, in an infinite loop until it finds an available worker.
+// Returns nil if the new job was submitted, JobInProgressError if a job with that
+// key already ins progress, and other errors if it cannot proceed.
+func (wp *Pool) Submit(work Work) error {
+	for {
+		submitted, err := wp.TrySubmit(work)
+		if err != nil {
+			return err
+		}
+		// simple success case
+		if submitted {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+// TrySubmit submits jobs to the WorkerPool. If it cannot find a worker in the pool
+// that can service it - i.e. both the number of workers is at the maximum and the
+// queues of all workers are full - returns false.
+// returns JobInProgressError if a job with that key already in progress.
 func (wp *Pool) TrySubmit(work Work) (bool, error) {
 	for i, w := range wp.workers {
 		done, err := w.worker.TrySubmit(work)
@@ -160,6 +191,12 @@ func (wp *Pool) TrySubmit(work Work) (bool, error) {
 // MsgChan returns a channel to be used in a select loop.
 // This is a duplicate of C
 func (wp *Pool) MsgChan() <-chan Processor {
+	return wp.resultChan
+}
+
+// C returns a channel to be used in a select loop.
+// This is a duplicate of MsgChan
+func (wp *Pool) C() <-chan Processor {
 	return wp.resultChan
 }
 
@@ -209,7 +246,9 @@ func (wp *Pool) purgeOld(startIndex int) {
 	wp.log.Tracef("purgeOld(%d) have %d", startIndex, len(wp.workers))
 	var newWorkers []myworker
 	for i, w := range wp.workers {
-		if i <= startIndex || time.Since(w.lastUsed) < wp.submitGCTime {
+		if i <= startIndex || time.Since(w.lastUsed) < wp.submitGCTime ||
+			w.worker.NumPending() != 0 || w.worker.NumResults() != 0 {
+
 			newWorkers = append(newWorkers, w)
 		} else {
 			wp.log.Tracef("purgeOld GC %d", i)

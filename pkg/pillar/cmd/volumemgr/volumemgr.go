@@ -70,7 +70,7 @@ type volumemgrContext struct {
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
 
-	worker *worker.Pool // For background work
+	worker worker.Worker // For background work
 
 	verifierRestarted    bool // Wait for verifier to restart
 	contentTreeRestarted bool // Wait to receive all contentTree after restart
@@ -632,6 +632,10 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*volumemgrContext)
 	status := statusArg.(types.ZedAgentStatus)
+	if status.MaintenanceMode {
+		// Do not trigger GC
+		return
+	}
 	switch status.ConfigGetStatus {
 	case types.ConfigGetSuccess, types.ConfigGetReadSaved:
 		ctx.usingConfig = true

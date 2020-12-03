@@ -1,10 +1,17 @@
 ARG GOVER=1.14.4
+FROM lfedge/eve-alpine:e308c3ab4360639365e6084a75727ce5bf488adb as cache
+
+ARG GOVER=1.14.4
 FROM golang:${GOVER}-alpine as build
 ARG K3SVER=v1.18.4+k3s1
+
+COPY --from=cache /mirror/3.12 /mirror/3.12
+COPY --from=cache /mirror/3.12/rootfs/etc/apk/ /etc/apk/
+
 RUN apk add --no-cache --initdb \
         make=4.3-r0 \
         gcc=9.3.0-r2 \
-        musl-dev=1.1.24-r9 \
+        musl-dev=1.1.24-r10 \
         git=2.26.2-r0 \
         linux-headers=5.4.5-r1 \
         curl=7.69.1-r1 \

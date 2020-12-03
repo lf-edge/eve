@@ -1,0 +1,17 @@
+image: eve-kvm-tools
+org: lfedge
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /dev/pts:/dev/pts
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /persist:/persist
+    - /config:/config
+    - /:/hostfs
+  net: host
+  capabilities:
+    - all
+  pid: host
+  userns: host

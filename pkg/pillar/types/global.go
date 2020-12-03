@@ -157,6 +157,9 @@ const (
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
 
+	// ForceFallbackCounter global setting key
+	ForceFallbackCounter = "force.fallback.counter"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -172,6 +175,8 @@ const (
 	AllowNonFreeAppImages GlobalSettingKey = "network.allow.wwan.app.download"
 	// AllowNonFreeBaseImages global setting key
 	AllowNonFreeBaseImages GlobalSettingKey = "network.allow.wwan.baseos.download"
+	// MaintenanceMode global setting key
+	MaintenanceMode GlobalSettingKey = "maintenance.mode"
 
 	// String Items
 	// SSHAuthorizedKeys global setting key
@@ -717,6 +722,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -727,6 +733,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
 	configItemSpecMap.AddTriStateItem(AllowNonFreeAppImages, TS_ENABLED)
 	configItemSpecMap.AddTriStateItem(AllowNonFreeBaseImages, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)

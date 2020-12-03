@@ -76,6 +76,10 @@ message EdgeDevConfig {
   // be a hash of all of the controller certificates.
   string controllercert_confighash = 22;
   // deprecated 23;
+  // If maintence_mode is set the device will operate in a limited mode e.g.,
+  // not start applications etc as to enable inspection of its state and
+  // recover from bad state.
+  bool maintenance_mode = 24;
 }
 
 message ConfigRequest {

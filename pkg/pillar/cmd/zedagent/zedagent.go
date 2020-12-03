@@ -130,6 +130,16 @@ type zedagentContext struct {
 	specMap                 types.ConfigItemSpecMap
 	globalStatus            types.GlobalStatus
 	appContainerStatsTime   time.Time // last time the App Container stats uploaded
+	// The MaintenanceMode can come from GlobalConfig and from the config
+	// API. Those are merged into maintenanceMode
+	// TBD will be also decide locally to go into maintenanceMode based
+	// on out of disk space etc?
+	maintenanceMode    bool
+	gcpMaintenanceMode types.TriState
+	apiMaintenanceMode bool
+
+	// Track the counter from force.fallback.counter to detect changes
+	forceFallbackCounter int
 }
 
 var debug = false
@@ -1518,6 +1528,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	if gcp != nil && !ctx.GCInitialized {
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
+		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
+		mergeMaintenanceMode(ctx)
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }

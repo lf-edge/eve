@@ -988,6 +988,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportContentInfo.Sha256 = ctStatus.ContentSha256
 		ReportContentInfo.ProgressPercentage = uint32(ctStatus.Progress)
 		ReportContentInfo.GenerationCount = ctStatus.GenerationCounter
+		ReportContentInfo.ComponentShaList = ctStatus.Blobs
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Cinfo)
@@ -1124,6 +1125,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		ReportBlobInfo.State = blobStatus.State.ZSwState()
 		ReportBlobInfo.ProgressPercentage = blobStatus.GetDownloadedPercentage()
 		ReportBlobInfo.Usage = &info.UsageInfo{RefCount: uint32(blobStatus.RefCount)}
+		ReportBlobInfo.Resources = &info.ContentResources{CurSizeBytes: blobStatus.Size}
 	}
 	ReportBlobInfoList.Blob = append(ReportBlobInfoList.Blob, ReportBlobInfo)
 
