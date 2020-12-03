@@ -106,10 +106,11 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 func createDnsmasqConfiglet(
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
-	ipsets []string, Ipv4Eid bool, uplink string, dnsServers []net.IP) {
+	ipsets []string, Ipv4Eid bool, uplink string,
+	dnsServers []net.IP, ntpServers []net.IP) {
 
-	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v",
-		bridgeName, bridgeIPAddr, netconf, ipsets, uplink, dnsServers)
+	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v ntpServers %v",
+		bridgeName, bridgeIPAddr, netconf, ipsets, uplink, dnsServers, ntpServers)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
@@ -231,6 +232,14 @@ func createDnsmasqConfiglet(
 	if netconf.NtpServer != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
 			netconf.NtpServer.String()))
+	} else {
+		ntpStr := ""
+		for _, s := range ntpServers {
+			ntpStr += "," + s.String()
+		}
+		if len(ntpStr) != 0 {
+			file.WriteString("dhcp-option=option:ntp-server" + ntpStr + "\n")
+		}
 	}
 	if netconf.Subnet.IP != nil {
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()

@@ -66,6 +66,17 @@ func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 				log.Errorf("Failed to parse masklen %s\n", str)
 				continue
 			}
+		case "ntp_servers":
+			str := trimQuotes(items[1])
+			log.Functionf("GetDhcpInfo(%s) ntp_servers %s\n", us.IfName,
+				str)
+			servers := strings.Split(str, " ")
+			for _, server := range servers {
+				ip := net.ParseIP(server)
+				if ip != nil {
+					us.NtpServers = append(us.NtpServers, ip)
+				}
+			}
 		}
 	}
 	us.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
