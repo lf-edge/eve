@@ -66,7 +66,7 @@ if [ -n "$agent" ]; then
         # Note that panic stack trace might exist tagged with e.g. pillar.out
         # in /persist/rsyslog/syslog.txt but can't extract from other container's
         # files. Try to extract here
-        stack=$(awk '/pillar.out;panic/ {p=1} {if ($3 != "pillar.out") { p=0 }; if (p==1) {print}}' /persist/rsyslog/syslog.txt)
+        stack=$(awk '/pillar;panic/ {p=1} {if ($3 != "pillar") { p=0 }; if (p==1) {print}}' /persist/rsyslog/syslog.txt)
         if [ -n "$stack" ]; then
             echo "$stack" >>/persist/reboot-stack
         fi
