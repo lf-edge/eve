@@ -22,18 +22,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-func allowSharedPort(status *types.NetworkInstanceStatus) bool {
-	return status.Type != types.NetworkInstanceTypeSwitch
-}
-
 // isSharedPortLabel
 // port names "uplink" and "freeuplink" are actually built in labels
 //	we used for ports used by Dom0 itself to reach the cloud. But
-//  these can also be shared as L3 ports by the applications ie.,
-//	NI of kind Local can use them as well. Infact, except
-//  NetworkInstanceTypeSwitch, all other current types of network instance
-//  can share the port. Whether such ports can be used by network instance
-//  can be checked  using allowSharedPort() function
+//      these can also be shared by the applications.
 func isSharedPortLabel(label string) bool {
 	// XXX - I think we can get rid of these built-in labels (uplink/freeuplink).
 	//	This will be cleaned up as part of support for deviceConfig
@@ -67,74 +59,14 @@ func checkPortAvailable(
 		return nil
 	}
 
-	if allowSharedPort(status) {
-		if isSharedPortLabel(status.CurrentUplinkIntf) {
-			log.Functionf("allowSharedPort: %t, isSharedPortLabel:%t",
-				allowSharedPort(status), isSharedPortLabel(status.CurrentUplinkIntf))
-			return nil
-		}
-	} else {
-		if isSharedPortLabel(status.CurrentUplinkIntf) {
-			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive network instance %s-%s\n",
-				status.CurrentUplinkIntf, status.Key(), status.DisplayName)
-			log.Error(errStr)
-			return errors.New(errStr)
-		}
+	if isSharedPortLabel(status.CurrentUplinkIntf) {
+		return nil
 	}
 	portStatus := ctx.deviceNetworkStatus.GetPortByIfName(status.CurrentUplinkIntf)
 	if portStatus == nil {
 		errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
 			status.CurrentUplinkIntf, status.Key(), status.DisplayName)
 		return errors.New(errStr)
-	}
-
-	if allowSharedPort(status) {
-		// Make sure it is configured for IP or will be
-		if portStatus.Dhcp == types.DT_NONE {
-			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
-				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.CurrentUplinkIntf, status.UUID, status.DisplayName)
-			return errors.New(errStr)
-		}
-		// Make sure it is not used by a NetworkInstance of type Switch
-		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
-			if status == iterStatusEntry {
-				continue
-			}
-			if !iterStatusEntry.IsUsingIfName(status.CurrentUplinkIntf) {
-				continue
-			}
-			if !allowSharedPort(iterStatusEntry) {
-				errStr := fmt.Sprintf("Ifname %s already used by "+
-					"Switch NetworkInstance %s-%s. It cannot be used by "+
-					"any other Network Instance such as %s-%s\n",
-					status.CurrentUplinkIntf, iterStatusEntry.UUID,
-					iterStatusEntry.DisplayName,
-					status.UUID, status.DisplayName)
-				return errors.New(errStr)
-			}
-		}
-	} else {
-		// Make sure it will not be configured for IP
-		if portStatus.Dhcp != types.DT_NONE {
-			errStr := fmt.Sprintf("Port %s configured for shared use with DHCP type %d. "+
-				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.CurrentUplinkIntf, portStatus.Dhcp, status.UUID, status.DisplayName)
-			return errors.New(errStr)
-		}
-		// Make sure it is not used by any other NetworkInstance
-		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
-			if status == iterStatusEntry {
-				continue
-			}
-			if iterStatusEntry.IsUsingIfName(status.CurrentUplinkIntf) {
-				errStr := fmt.Sprintf("Ifname %s already used by NetworkInstance %s-%s. "+
-					"Cannot be used by Switch Network Instance %s-%s\n",
-					status.CurrentUplinkIntf, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
-					status.UUID, status.DisplayName)
-				return errors.New(errStr)
-			}
-		}
 	}
 	return nil
 }
@@ -156,6 +88,10 @@ func disableIcmpRedirects(bridgeName string) {
 func doCreateBridge(bridgeName string, bridgeNum int,
 	status *types.NetworkInstanceStatus) (error, string) {
 
+	if !strings.HasPrefix(status.BridgeName, "bn") {
+		log.Fatalf("bridgeCreate(%s) %s not possible",
+			status.DisplayName, status.BridgeName)
+	}
 	// Start clean
 	// delete the bridge
 	attrs := netlink.NewLinkAttrs()
@@ -196,8 +132,43 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 	}
 	index := bridgeLink.Attrs().Index
 	status.BridgeIfindex = index
-
 	return err, bridgeMac
+}
+
+// doLookupBridge is used for switch network instance where nim
+// has created the bridge. All such NIs have an external port.
+//	returns (bridgeName, bridgeMac-string, error)
+func doLookupBridge(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) (string, string, error) {
+
+	ifNameList := getIfNameListForLLOrIfname(ctx, status.Logicallabel)
+	if len(ifNameList) == 0 {
+		err := fmt.Errorf("doLookupBridge IfNameList empty for %s",
+			status.Key())
+		log.Error(err)
+		return "", "", err
+	}
+	ifname := ifNameList[0]
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		err = fmt.Errorf("doLookupBridge LinkByName(%s) failed: %v",
+			ifname, err)
+		log.Error(err)
+		return "", "", err
+	}
+	linkType := link.Type()
+	if linkType != "bridge" {
+		err = fmt.Errorf("doLookupBridge(%s) not a bridge", ifname)
+		log.Error(err)
+		return "", "", err
+	}
+	var macAddrStr string
+	macAddr := link.Attrs().HardwareAddr
+	if len(macAddr) != 0 {
+		macAddrStr = macAddr.String()
+	}
+	log.Noticef("doLookupBridge found %s, %s", ifname, macAddrStr)
+	return ifname, macAddrStr, nil
 }
 
 func networkInstanceBridgeDelete(
@@ -210,11 +181,16 @@ func networkInstanceBridgeDelete(
 		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
 	handleNetworkInstanceACLConfiglet("-D", aclArgs)
 
-	attrs := netlink.NewLinkAttrs()
-	attrs.Name = status.BridgeName
-	link := &netlink.Bridge{LinkAttrs: attrs}
-	// Remove link and associated addresses
-	netlink.LinkDel(link)
+	if !strings.HasPrefix(status.BridgeName, "bn") {
+		log.Noticef("networkInstanceBridgeDelete(%s) %s ignored",
+			status.DisplayName, status.BridgeName)
+	} else {
+		attrs := netlink.NewLinkAttrs()
+		attrs.Name = status.BridgeName
+		link := &netlink.Bridge{LinkAttrs: attrs}
+		// Remove link and associated addresses
+		netlink.LinkDel(link)
+	}
 
 	if status.BridgeNum != 0 {
 		status.BridgeName = ""
@@ -410,16 +386,46 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	// Allocate bridgeNum.
 	bridgeNum := bridgeNumAllocate(ctx, status.UUID)
-	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
-	status.BridgeName = bridgeName
-
-	// Create bridge
-	var err error
 	bridgeMac := ""
-	if err, bridgeMac = doCreateBridge(bridgeName, bridgeNum, status); err != nil {
+	var bridgeName string
+	var err error
+
+	switch status.Type {
+	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
+		bridgeName = fmt.Sprintf("bn%d", bridgeNum)
+		status.BridgeName = bridgeName
+		if err, bridgeMac = doCreateBridge(bridgeName, bridgeNum, status); err != nil {
+			return err
+		}
+
+	case types.NetworkInstanceTypeSwitch:
+		if status.CurrentUplinkIntf == "" {
+			// Create a local-only bridge
+			bridgeName = fmt.Sprintf("bn%d", bridgeNum)
+			status.BridgeName = bridgeName
+			if err, bridgeMac = doCreateBridge(bridgeName, bridgeNum, status); err != nil {
+				return err
+			}
+		} else {
+			// Find bridge created by nim
+			if bridgeName, bridgeMac, err = doLookupBridge(ctx, status); err != nil {
+				return err
+			}
+			status.BridgeName = bridgeName
+		}
+	}
+
+	// Get Ifindex of bridge and store it in network instance status
+	bridgeLink, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		err = fmt.Errorf("doNetworkInstanceCreate: LinkByName(%s) failed: %v",
+			bridgeName, err)
+		log.Error(err)
 		return err
 	}
+	status.BridgeIfindex = bridgeLink.Attrs().Index
+
 	status.BridgeMac = bridgeMac
 	publishNetworkInstanceStatus(ctx, status)
 
@@ -682,7 +688,7 @@ func checkNIphysicalPort(ctx *zedrouterContext, status *types.NetworkInstanceSta
 
 // getSwitchNetworkInstanceUsingIfname
 //		This function assumes if a port used by networkInstance of type SWITCH
-//		is not shared ie., is not used by any other network instance.
+//		is not shared by other switch network instances.
 func getSwitchNetworkInstanceUsingIfname(
 	ctx *zedrouterContext,
 	ifname string) (status *types.NetworkInstanceStatus) {
@@ -695,25 +701,40 @@ func getSwitchNetworkInstanceUsingIfname(
 		ifname2 := types.LogicallabelToIfName(ctx.deviceNetworkStatus,
 			status.Logicallabel)
 		if ifname2 != ifname {
-			log.Functionf("maybeUpdateBridgeIPAddr - NI (%s) not using %s\n",
+			log.Functionf("getSwitchNetworkInstanceUsingIfname: NI (%s) not using %s",
 				status.DisplayName, ifname)
 			continue
 		}
 
+		if status.Type != types.NetworkInstanceTypeSwitch {
+			log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) "+
+				"not of type (%d) switch\n",
+				status.DisplayName, status.Type)
+			continue
+		}
 		// Found Status using the Port.
 		log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) using "+
 			"logicallabel: %s, ifname: %s, type: %d\n",
 			status.DisplayName, status.Logicallabel, ifname, status.Type)
 
-		if status.Type == types.NetworkInstanceTypeSwitch {
-			return &status
-		}
-		log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) "+
-			"not of type (%d) switch\n",
-			status.DisplayName, status.Type)
-		break
+		return &status
 	}
 	return nil
+}
+
+// haveSwitchNetworkInstances returns true if we have one or more switch
+// network instances
+func haveSwitchNetworkInstances(ctx *zedrouterContext) bool {
+	sub := ctx.subNetworkInstanceConfig
+	items := sub.GetAll()
+
+	for _, c := range items {
+		config := c.(types.NetworkInstanceConfig)
+		if config.Type == types.NetworkInstanceTypeSwitch {
+			return true
+		}
+	}
+	return false
 }
 
 func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
@@ -908,8 +929,13 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		return "", nil
 	}
 
-	// Get IP address from Logicallabel
-	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
+	if len(status.IfNameList) == 0 {
+		errStr := fmt.Sprintf("IfNameList empty for %s",
+			status.BridgeName)
+		log.Warn(errStr)
+		return "", nil
+	}
+	ifname := status.IfNameList[0]
 	ifindex, err := IfnameToIndex(log, ifname)
 	if err != nil {
 		return "", err
@@ -967,11 +993,10 @@ func setBridgeIPAddr(
 		}
 		log.Functionf("Bridge: %s, Link: %s, ipAddr: %s\n",
 			status.BridgeName, link, ipAddr)
-	}
 
-	// If not we do a local allocation
-	// Assign the gateway Address as the bridge IP address
-	if ipAddr == "" {
+	default:
+		// If not we do a local allocation
+		// Assign the gateway Address as the bridge IP address
 		var bridgeMac net.HardwareAddr
 
 		switch link.(type) {
@@ -1322,6 +1347,11 @@ func bridgeActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
 	log.Functionf("bridgeActivate(%s)\n", status.DisplayName)
+	if !strings.HasPrefix(status.BridgeName, "bn") {
+		log.Noticef("bridgeActivate(%s) %s ignored",
+			status.DisplayName, status.BridgeName)
+		return nil
+	}
 
 	bridgeLink, err := findBridge(status.BridgeName)
 	if err != nil {
@@ -1329,8 +1359,13 @@ func bridgeActivate(ctx *zedrouterContext,
 			status.BridgeName, err)
 		return errors.New(errStr)
 	}
-	// Find logicallabel
-	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
+	// Find logicallabel for first in list
+	if len(status.IfNameList) == 0 {
+		errStr := fmt.Sprintf("IfNameList empty for %s",
+			status.BridgeName)
+		return errors.New(errStr)
+	}
+	ifname := status.IfNameList[0]
 	alink, _ := netlink.LinkByName(ifname)
 	if alink == nil {
 		errStr := fmt.Sprintf("Unknown Logicallabel %s, %s",
@@ -1355,12 +1390,26 @@ func bridgeActivate(ctx *zedrouterContext,
 	return nil
 }
 
+// bridgeInactivateforNetworkInstance deletes any bnX bridge but not
+// others created by nim
 func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
-	log.Functionf("bridgeInactivateforNetworkInstance(%s)\n", status.DisplayName)
+	log.Functionf("bridgeInactivateforNetworkInstance(%s) %s",
+		status.DisplayName, status.BridgeName)
+	if !strings.HasPrefix(status.BridgeName, "bn") {
+		log.Noticef("bridgeInactivateforNetworkInstance(%s) %s ignored",
+			status.DisplayName, status.BridgeName)
+		return
+	}
 	// Find logicallabel
-	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
+	if len(status.IfNameList) == 0 {
+		errStr := fmt.Sprintf("IfNameList empty for %s",
+			status.BridgeName)
+		log.Errorln(errStr)
+		return
+	}
+	ifname := status.IfNameList[0]
 	alink, _ := netlink.LinkByName(ifname)
 	if alink == nil {
 		errStr := fmt.Sprintf("Unknown logicallabel %s, %s",
@@ -1653,6 +1702,8 @@ func getAllNIindices(ctx *zedrouterContext, ifname string) []int {
 	return indicies
 }
 
+// checkAndReprogramNetworkInstances handles changes to CurrentUplinkIntf
+// when NeedIntfUpdate is set.
 func checkAndReprogramNetworkInstances(ctx *zedrouterContext) {
 	pub := ctx.pubNetworkInstanceStatus
 	instanceItems := pub.GetAll()
@@ -1736,6 +1787,7 @@ func doNetworkInstanceFallback(
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
 					// XXX no change in config
+					// XXX forcing a change
 					doAppNetworkModifyUnderlayNetwork(
 						ctx, &appNetworkStatus, ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
@@ -1800,4 +1852,34 @@ func doNetworkInstanceFallback(
 	status.NeedIntfUpdate = false
 	publishNetworkInstanceStatus(ctx, status)
 	return err
+}
+
+// uplinkToPhysdev checks if the ifname is a bridge and if so it
+// prepends a "k" to the name (assuming that ifname exists)
+// If any issues it returns the argument ifname
+func uplinkToPhysdev(ifname string) string {
+
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		err = fmt.Errorf("uplinkToPhysdev LinkByName(%s) failed: %v",
+			ifname, err)
+		log.Error(err)
+		return ifname
+	}
+	linkType := link.Type()
+	if linkType != "bridge" {
+		log.Functionf("uplinkToPhysdev(%s) not a bridge", ifname)
+		return ifname
+	}
+
+	kernIfname := "k" + ifname
+	_, err = netlink.LinkByName(kernIfname)
+	if err != nil {
+		err = fmt.Errorf("uplinkToPhysdev(%s) %s does not exist: %v",
+			ifname, kernIfname, err)
+		log.Error(err)
+		return ifname
+	}
+	log.Functionf("uplinkToPhysdev found %s", kernIfname)
+	return kernIfname
 }

@@ -224,8 +224,9 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					aclNum = 0
 				}
 
-				bnNum, err := bridgeStrToNum(bridgeName)
+				bnNum, err := bridgeStrToNum(ctx, bridgeName)
 				if err != nil {
+					log.Error(err)
 					continue
 				}
 				// temp print out log for the flow
@@ -265,8 +266,9 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			var dnsrec [2]map[string]dnsEntry
 			dnsrec[0] = make(map[string]dnsEntry) // store IPv4 addresses from dns
 			dnsrec[1] = make(map[string]dnsEntry) // store IPv6 addresses from dns
-			bnNum, err := bridgeStrToNum(bnx)
+			bnNum, err := bridgeStrToNum(ctx, bnx)
 			if err != nil {
+				log.Error(err)
 				continue
 			}
 
@@ -310,8 +312,9 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	// remove the dns data already uploaded
 	if dnsPacked {
 		for bnx := range instData.bnNet {
-			bnNum, err := bridgeStrToNum(bnx)
+			bnNum, err := bridgeStrToNum(ctx, bnx)
 			if err != nil {
+				log.Error(err)
 				continue
 			}
 			dnssys[bnNum].Snoop = nil
@@ -775,8 +778,8 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 		log.Functionf("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
 		pub := ctx.pubNetworkInstanceStatus
 		pub.Publish(netstatus.Key(), netstatus)
-		// trigger the AppInfo update to cloud
 		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, vifTrig)
+		checkAndPublishDhcpLeases(ctx)
 	}
 }
 
@@ -834,15 +837,17 @@ func dnsDataRemove(bnNum int) {
 	}
 }
 
-func bridgeStrToNum(bnStr string) (int, error) {
-	bnNumStr := strings.TrimPrefix(bnStr, "bn")
-	if len(bnNumStr) == len(bnStr) {
-		err := fmt.Errorf("bridge name:%s incorrect", bnStr)
-		return 0, err
+// brudgeStrToNum looks up the bridgeName to not depend on the names of
+// the bridges
+// XXX could the caller cache this?
+func bridgeStrToNum(ctx *zedrouterContext, bnStr string) (int, error) {
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
+		if status.BridgeName == bnStr {
+			return status.BridgeNum, nil
+		}
 	}
-	bnNum, err := strconv.Atoi(bnNumStr)
-	if err != nil {
-		return 0, err
-	}
-	return bnNum, nil
+	return 0, fmt.Errorf("No NetworkInstanceStatus for bridgeName %s", bnStr)
 }

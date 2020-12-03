@@ -24,6 +24,28 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 	// Call iptables once to get counters
 	ac := iptables.FetchIprulesCounters(log)
 
+	// If we have both ethN and kethN then rename ethN to eethN ('e' for EVE)
+	// and kethN to ethN (the actual port)
+	// This ensures that ethN has the total counters for the actual port
+	// The eethN counters are currently not used/reported, but could be
+	// used to indicate how much EVE is doing. However, we wouldn't have
+	// that separation for wlan and wwan interfaces.
+	for i := range network {
+		if !strings.HasPrefix(network[i].Name, "eth") {
+			continue
+		}
+		kernIfname := "k" + network[i].Name
+		for j := range network {
+			if network[j].Name != kernIfname {
+				continue
+			}
+			log.Functionf("getNetworkMetrics swapping %d and %d: %s and %s",
+				i, j, network[i].Name, network[j].Name)
+			network[j].Name = network[i].Name
+			network[i].Name = "e" + network[i].Name
+			break
+		}
+	}
 	for _, ni := range network {
 		metric := types.NetworkMetric{
 			IfName:   ni.Name,
