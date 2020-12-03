@@ -471,7 +471,8 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 // refreshes the LastSeen and does garbage collection based on that timestamp
 func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 	changed := updateAllLeases(ctx)
-	if !changed {
+	haveSwitch := haveSwitchNetworkInstances(ctx)
+	if !changed && !haveSwitch {
 		return
 	}
 	// Walk all and update all which gained or lost a lease
@@ -482,9 +483,25 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 		status := st.(types.AppNetworkStatus)
 		for i := range status.UnderlayNetworkList {
 			ulStatus := &status.UnderlayNetworkList[i]
-			l := findLease(ctx, status.Key(), ulStatus.Mac, true)
-			assigned := (l != nil)
-			if ulStatus.Assigned != assigned {
+			var assigned bool
+			var leasedIP net.IP
+			netconfig := lookupNetworkInstanceConfig(ctx,
+				ulStatus.Network.String())
+			if netconfig != nil && netconfig.Type == types.NetworkInstanceTypeSwitch {
+				leasedIP, assigned = lookupVifIPTrig(ctx, ulStatus.Mac)
+				log.Functionf("found %t IP %s for %s",
+					assigned, leasedIP.String(), ulStatus.Mac)
+			} else {
+				l := findLease(ctx, status.Key(), ulStatus.Mac, true)
+				assigned = (l != nil)
+				if assigned {
+					leasedIP = net.ParseIP(l.IPAddr)
+				}
+				log.Functionf("found %t IP %s for %s",
+					assigned, leasedIP.String(), ulStatus.Mac)
+			}
+			assignedIP := net.ParseIP(ulStatus.AllocatedIPAddr)
+			if ulStatus.Assigned != assigned || !assignedIP.Equal(leasedIP) {
 				log.Functionf("Changing(%s) %s mac %s to %t",
 					status.Key(), status.DisplayName,
 					ulStatus.Mac, assigned)
@@ -494,11 +511,18 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					changed = true
 					continue
 				}
-				leasedIP := net.ParseIP(l.IPAddr)
-				assignedIP := net.ParseIP(ulStatus.AllocatedIPAddr)
+				// Pick up from VIFIPTrig on change
+				if ulStatus.AllocatedIPAddr == "" {
+					ulStatus.IPAddrMisMatch = false
+					ulStatus.AllocatedIPAddr = leasedIP.String()
+					changed = true
+					log.Noticef("Setting IP to %s",
+						leasedIP.String())
+					continue
+				}
 				if !assignedIP.Equal(leasedIP) {
 					log.Errorf("IP address mismatch found - App: %s, Mac: %s, Allocated IP: %s, Leased IP: %s",
-						status.DisplayName, ulStatus.Mac, ulStatus.AllocatedIPAddr, l.IPAddr)
+						status.DisplayName, ulStatus.Mac, ulStatus.AllocatedIPAddr, leasedIP.String())
 					ulStatus.IPAddrMisMatch = true
 					// XXX Should we do the following at this point?
 					// 1) Stop dnsmasq corresponding to this network instance
@@ -542,6 +566,8 @@ func findLease(ctx *zedrouterContext, hostname string, mac string, ignoreExpired
 }
 
 // addOrUpdateLease returns true if something changed
+// XXX Assumes MAC addresses unique. take bridgename as argument to
+// keep separate per bridge?
 func addOrUpdateLease(ctx *zedrouterContext, lease dnsmasqLease) bool {
 	l := findLease(ctx, lease.Hostname, lease.MacAddr, false)
 	if l == nil {
@@ -696,6 +722,20 @@ func readLeases(bridgeName string) ([]dnsmasqLease, error) {
 		leases = append(leases, lease)
 	}
 	return leases, nil
+}
+
+// lookupVifIPTrig returns the IP address for the MAC address
+// XXX Assumes MAC addresses unique. take bridgename as argument to
+// XXX No subscribers. Use local map from (bridgename, mac) to IP? Used by
+// flowstats goroutine hence  would need lock.
+func lookupVifIPTrig(ctx *zedrouterContext, mac string) (net.IP, bool) {
+	pub := ctx.pubAppVifIPTrig
+	st, _ := pub.Get(mac)
+	if st == nil {
+		return net.IP{}, false
+	}
+	vifTrig := st.(types.VifIPTrig)
+	return vifTrig.IPAddr, true
 }
 
 // When we restart dnsmasq with smaller changes like chaging DNS server

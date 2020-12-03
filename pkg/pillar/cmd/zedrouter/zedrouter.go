@@ -946,7 +946,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	}
 	log.Functionf("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
-	// XXX appIPAddr is "" if bridge service
+	// appIPAddr is "" for switch NI. DHCP snoop will set AllocatedIPAddr later
 	ulStatus.AllocatedIPAddr = appIPAddr
 	hostsDirpath := runDirname + "/hosts." + bridgeName
 	if appIPAddr != "" {

@@ -141,6 +141,11 @@ func IfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 			return i, nil
 		}
 	}
+	return UpdateIfnameToIndex(log, ifname)
+}
+
+// UpdateIfnameToIndex ensures that we have current info for the name and index
+func UpdateIfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 	// Try a lookup to handle race
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
@@ -160,6 +165,7 @@ func IfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 // We skip things not considered to be device links, loopback, non-broadcast,
 // and children of a bridge master.
 // Match "vif.*" and "nbu.*" for name and skip those as well.
+// Plus we skip "keth.*" since those are internal
 // Returns (relevant, up)
 func RelevantLastResort(log *base.LogObject, link netlink.Link) (bool, bool) {
 	attrs := link.Attrs()
@@ -170,9 +176,9 @@ func RelevantLastResort(log *base.LogObject, link netlink.Link) (bool, bool) {
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
 	adminUpFlag := (linkFlags & net.FlagUp) != 0
 	upFlag := (attrs.OperState == netlink.OperUp)
-	isVif := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu") || strings.HasPrefix(ifname, "nbo")
+	exclude := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu") || strings.HasPrefix(ifname, "nbo") || strings.HasPrefix(ifname, "keth")
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
-		attrs.MasterIndex == 0 && !isVif {
+		attrs.MasterIndex == 0 && !exclude {
 
 		log.Functionf("Relevant %s adminUp %t operState %s\n",
 			ifname, adminUpFlag, attrs.OperState.String())

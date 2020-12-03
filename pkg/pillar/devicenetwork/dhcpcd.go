@@ -24,7 +24,7 @@ import (
 
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
 // Assumes that the caller has checked that the interfaces exist
-// We therefor skip any interfaces which do not exist
+// We therefore skip any interfaces which do not exist
 func UpdateDhcpClient(log *base.LogObject, newConfig, oldConfig types.DevicePortConfig) {
 
 	// Look for adds or changes

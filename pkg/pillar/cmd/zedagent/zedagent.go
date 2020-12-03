@@ -96,7 +96,6 @@ type zedagentContext struct {
 	subBaseOsStatus           pubsub.Subscription
 	subNetworkInstanceMetrics pubsub.Subscription
 	subAppFlowMonitor         pubsub.Subscription
-	subAppVifIPTrig           pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subEdgeNodeCert           pubsub.Subscription
@@ -524,22 +523,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subAppFlowMonitor.Activate()
 	flowQ = list.New()
 	log.Functionf("FlowStats: create subFlowStatus")
-
-	subAppVifIPTrig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedrouter",
-		MyAgentName:   agentName,
-		TopicImpl:     types.VifIPTrig{},
-		Activate:      false,
-		Ctx:           &zedagentCtx,
-		CreateHandler: handleAppVifIPTrigCreate,
-		ModifyHandler: handleAppVifIPTrigModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	subAppVifIPTrig.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1244,9 +1227,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subAppFlowMonitor.MsgChan():
 			log.Tracef("FlowStats: change called")
 			subAppFlowMonitor.ProcessChange(change)
-
-		case change := <-subAppVifIPTrig.MsgChan():
-			subAppVifIPTrig.ProcessChange(change)
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)

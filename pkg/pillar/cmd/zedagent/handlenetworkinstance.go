@@ -7,7 +7,6 @@ package zedagent
 
 import (
 	"bytes"
-	"net"
 	"strings"
 	"time"
 
@@ -456,43 +455,6 @@ func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Functionf("handleAppFlowMonitorDelete(%s)", key)
-}
-
-func handleAppVifIPTrigCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleAppVifIPTrigImpl(ctxArg, key, statusArg)
-}
-
-func handleAppVifIPTrigModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handleAppVifIPTrigImpl(ctxArg, key, statusArg)
-}
-
-func handleAppVifIPTrigImpl(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Functionf("handleAppVifIPTrigImpl(%s)", key)
-	ctx := ctxArg.(*zedagentContext)
-	trig := statusArg.(types.VifIPTrig)
-	findVifAndTrigAppInfoUpload(ctx, trig.MacAddr, trig.IPAddr)
-}
-
-func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string, ipAddr net.IP) {
-	sub := ctx.getconfigCtx.subAppInstanceStatus
-	items := sub.GetAll()
-
-	for _, st := range items {
-		aiStatus := st.(types.AppInstanceStatus)
-		log.Tracef("findVifAndTrigAppInfoUpload: mac address %s match, ip %v, publish the info to cloud", macAddr, ipAddr)
-		uuidStr := aiStatus.Key()
-		aiStatusPtr := &aiStatus
-		if aiStatusPtr.MaybeUpdateAppIPAddr(macAddr, ipAddr.String()) {
-			log.Functionf("findVifAndTrigAppInfoUpload: underlay %v", aiStatusPtr.UnderlayNetworks)
-			PublishAppInfoToZedCloud(ctx, uuidStr, aiStatusPtr, ctx.assignableAdapters, ctx.iteration)
-			ctx.iteration++
-			break
-		}
-	}
 }
 
 func aclActionToProtoAction(action types.ACLActionType) flowlog.ACLAction {
