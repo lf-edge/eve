@@ -148,16 +148,20 @@ func lookupContentTreeStatusAny(ctx *volumemgrContext, key string) *types.Conten
 	return nil
 }
 
-func getAllAppContentTreeStatus(ctx *volumemgrContext) map[string]*types.ContentTreeStatus {
-	log.Tracef("getAllAppContentTreeStatus")
-	pub := ctx.publication(types.ContentTreeStatus{}, types.AppImgObj)
-	contentIDAndContentTreeStatusIntf := pub.GetAll()
+func getAllContentTreeStatus(ctx *volumemgrContext) map[string]*types.ContentTreeStatus {
+	log.Tracef("getAllContentTreeStatus")
 	contentIDAndContentTreeStatus := make(map[string]*types.ContentTreeStatus)
-	for contentIDKey, contentTreeStatusIntf := range contentIDAndContentTreeStatusIntf {
-		contentTreeStatus := contentTreeStatusIntf.(types.ContentTreeStatus)
-		contentIDAndContentTreeStatus[contentIDKey] = &contentTreeStatus
+
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		allContentTreeStatus := pub.GetAll()
+		for key, item := range allContentTreeStatus {
+			contentTreeStatus := item.(types.ContentTreeStatus)
+			contentIDAndContentTreeStatus[key] = &contentTreeStatus
+		}
 	}
-	log.Tracef("getAllAppContentTreeStatus")
+
+	log.Tracef("getAllContentTreeStatus: Done")
 	return contentIDAndContentTreeStatus
 }
 

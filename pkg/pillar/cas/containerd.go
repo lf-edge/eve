@@ -692,15 +692,16 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(root.Sha256))
 	mediaType := root.MediaType
 	imageHash, err := c.GetImageHash(reference)
-	logrus.Infof("IngestBlobsAndCreateImage: creating/updating reference: %s for rootBlob %s", reference, rootBlobSha)
 	if err != nil || imageHash == "" {
+		logrus.Infof("IngestBlobsAndCreateImage: creating reference: %s for rootBlob %s", reference, rootBlobSha)
 		if err := c.CreateImage(reference, mediaType, rootBlobSha); err != nil {
-			err = fmt.Errorf("IngestBlobsAndCreateImage: could not reference %s with rootBlob %s: %v",
+			err = fmt.Errorf("IngestBlobsAndCreateImage: could not create reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			logrus.Errorf(err.Error())
 			return nil, err
 		}
 	} else {
+		logrus.Infof("IngestBlobsAndCreateImage: updating reference: %s for rootBlob %s", reference, rootBlobSha)
 		if err := c.ReplaceImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not update reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
