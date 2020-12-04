@@ -564,7 +564,7 @@ func gcBlobStatus(ctx *volumemgrContext) {
 //gcImagesFromCAS gc all unused images from CAS
 func gcImagesFromCAS(ctx *volumemgrContext) {
 	log.Functionf("gcImagesFromCAS")
-	contentIDAndContentTreeStatus := getAllAppContentTreeStatus(ctx)
+	contentIDAndContentTreeStatus := getAllContentTreeStatus(ctx)
 	referenceMap := make(map[string]interface{})
 	for _, contentTreeStatus := range contentIDAndContentTreeStatus {
 		referenceMap[contentTreeStatus.ReferenceID()] = true
