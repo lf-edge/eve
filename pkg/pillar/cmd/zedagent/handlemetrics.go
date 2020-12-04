@@ -919,7 +919,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 						networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
 					}
 				}
-				log.Errorf("XXXXX NTP: %v", networkInfo.NtpServers)
 			}
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
 				networkInfo)
