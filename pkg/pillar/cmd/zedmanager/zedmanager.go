@@ -44,6 +44,7 @@ type zedmanagerContext struct {
 	pubDomainConfig      pubsub.Publication
 	subDomainStatus      pubsub.Subscription
 	subGlobalConfig      pubsub.Subscription
+	subHostMemory        pubsub.Subscription
 	globalConfig         *types.ConfigItemValueMap
 	pubUuidToNum         pubsub.Publication
 	GCInitialized        bool
@@ -235,6 +236,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
+	subHostMemory, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.HostMemory{},
+		Activate:    true,
+		Ctx:         &ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subHostMemory = subHostMemory
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -259,6 +274,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDomainStatus.MsgChan():
 			subDomainStatus.ProcessChange(change)
+
+		case change := <-subHostMemory.MsgChan():
+			subHostMemory.ProcessChange(change)
 
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
@@ -376,6 +394,7 @@ func handleCreate(ctxArg interface{}, key string,
 	status := types.AppInstanceStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		DisplayName:    config.DisplayName,
+		FixedResources: config.FixedResources,
 		State:          types.INITIAL,
 	}
 
@@ -437,6 +456,19 @@ func handleCreate(ctxArg interface{}, key string,
 	if config.FixedResources.VCpus == 0 {
 		errStr := "Invalid Cpu count - 0\n"
 		allErrors += errStr
+	}
+
+	if !ctx.globalConfig.GlobalValueBool(types.IgnoreMemoryCheckForApps) {
+		remaining, err := getRemainingMemory(ctx)
+		if err != nil {
+			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
+				err)
+			allErrors += errStr
+		} else if remaining < uint64(config.FixedResources.Memory)<<10 {
+			errStr := fmt.Sprintf("Remaining memory bytes %d app instance needs %d\n",
+				remaining, config.FixedResources.Memory<<10)
+			allErrors += errStr
+		}
 	}
 
 	// if some error, return
