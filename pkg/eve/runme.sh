@@ -21,7 +21,11 @@ dump() {
             INAME="$INAME.qcow2"
             ONAME="$ONAME.qcow2"
             ;;
-       gcp) mv "$INAME" disk.raw
+     parallels) qemu-img convert -c -f raw -O parallels "$INAME" "$INAME.parallels"
+            INAME="$INAME.parallels"
+            ONAME="$ONAME.parallels"
+            ;;
+     gcp) mv "$INAME" disk.raw
             tar --mode=644 --owner=root --group=root -S -h -czvf "$INAME.img.tar.gz" "disk.raw"
             INAME="$INAME.img.tar.gz"
             ONAME="$ONAME.img.tar.gz"
@@ -49,7 +53,7 @@ Optionally you can pass the following right before run in docker run:
  -v <local folder>:/out or -v <local empty file>:/out/f to redirect output from stdout
 Passing -v <local folder>:/out makes sure the file created is given most appropriate name.
 
--f fmt selects a packaging format: raw (default), qcow2 and gcp are all valid options.
+-f fmt selects a packaging format: raw (default), qcow2, parallels and gcp are all valid options.
 
 live and installer_raw support an optional last argument specifying the size of the image in Mb.
 __EOT__
