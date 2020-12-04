@@ -204,7 +204,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		time.Duration(max))
 
 	var numLeftFiles, iteration, prevIntv int
-	loguploaderCtx.scheduleTimer = time.NewTimer(1200 * time.Second)
+	var initSched time.Duration
+	if loguploaderCtx.enableFastUpload {
+		initSched = 1
+	} else {
+		initSched = 1200
+	}
+	loguploaderCtx.scheduleTimer = time.NewTimer(initSched * time.Second)
 
 	// init the upload interface to 2 min
 	loguploaderCtx.metrics.CurrUploadIntvSec = defaultUploadIntv
@@ -431,7 +437,9 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
 		if enabled != ctx.enableFastUpload {
 			// reset the schedule for next 30 minutes
-			ctx.scheduleTimer.Stop()
+			if ctx.scheduleTimer != nil {
+				ctx.scheduleTimer.Stop()
+			}
 			ctx.scheduleTimer = time.NewTimer(1 * time.Second)
 		}
 		ctx.enableFastUpload = enabled
