@@ -907,6 +907,20 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				aiStatus.Key(), aiStatus.DisplayName,
 				ifname, name)
 			networkInfo.DevName = *proto.String(name)
+			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, ifname)
+			if niStatus != nil {
+				networkInfo.NtpServers = []string{}
+				if niStatus.NtpServer != nil {
+					networkInfo.NtpServers = append(networkInfo.NtpServers, niStatus.NtpServer.String())
+				} else {
+					ntpServers := types.GetNTPServers(*deviceNetworkStatus,
+						niStatus.CurrentUplinkIntf)
+					for _, server := range ntpServers {
+						networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
+					}
+				}
+				log.Errorf("XXXXX NTP: %v", networkInfo.NtpServers)
+			}
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
 				networkInfo)
 		}
@@ -1160,6 +1174,18 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
 			true)
 	}
+}
+
+func appIfnameToNetworkInstance(ctx *zedagentContext,
+	aiStatus *types.AppInstanceStatus, vifname string) *types.NetworkInstanceStatus {
+	for _, ulStatus := range aiStatus.UnderlayNetworks {
+		if ulStatus.VifUsed == vifname {
+			status, _ := ctx.subNetworkInstanceStatus.Get(ulStatus.Network.String())
+			niStatus := status.(types.NetworkInstanceStatus)
+			return &niStatus
+		}
+	}
+	return nil
 }
 
 func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {

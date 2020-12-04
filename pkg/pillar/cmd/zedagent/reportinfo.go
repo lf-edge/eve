@@ -564,6 +564,10 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	networkInfo.NetworkErr = encodeTestResults(port.TestResults)
 
 	networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
+	networkInfo.NtpServers = []string{}
+	for _, server := range port.NtpServers {
+		networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
+	}
 	return networkInfo
 }
 
