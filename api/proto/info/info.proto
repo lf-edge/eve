@@ -244,15 +244,14 @@ message ZInfoAppInstance {
   string uuid = 1;
   string name = 2;
   string domainName = 3;
-  string taskid = 4;
 }
 
 // ZInfoDeviceTasks - send a summary of tasks so that controller knows
 // how many app instance tasks are still present on the device. Controller
 // can then use it to wait for an app to be fully deleted etc.
 message ZInfoDeviceTasks {
-  string id = 1;
-  string name = 2;
+  string name = 1;
+  string namespace = 2;
   ZSwState status = 3;
 }
 
