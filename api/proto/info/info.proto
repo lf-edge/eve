@@ -122,6 +122,9 @@ message ZInfoNetwork {
 
   // IP address leased by dnsmasq to app does not match the IP address allocated by zedrouter
   bool ip_addr_mis_match = 14;
+
+  // IP addresses of NTP servers being used
+  repeated string ntp_servers = 15;
 }
 
 // From an IP address-based geolocation service
