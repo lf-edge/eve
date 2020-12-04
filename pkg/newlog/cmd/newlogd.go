@@ -74,7 +74,6 @@ var (
 	spaceAvailMB  uint64 // '/persist' disk space available
 	gzipFilesCnt  int64  // total gzip files written
 
-	logfileTimeout   int  // logfile maximum delay to close
 	enableFastUpload bool // enable fast upload to controller similar to previous log operation
 
 	subGlobalConfig  pubsub.Subscription
@@ -274,8 +273,11 @@ func main() {
 	schedResetTimer.Stop()
 
 	// set default timeout of logfile delay
-	logfileTimeout = logfileDelay
-	logmetrics.LogfileTimeoutSec = logfileDelay
+	if enableFastUpload {
+		logmetrics.LogfileTimeoutSec = uint32(fastlogfileDelay)
+	} else {
+		logmetrics.LogfileTimeoutSec = uint32(logfileDelay)
+	}
 
 	for {
 		select {
@@ -444,11 +446,10 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
 		if enableFastUpload != enabled {
 			if enabled {
-				logfileTimeout = fastlogfileDelay
+				logmetrics.LogfileTimeoutSec = uint32(fastlogfileDelay)
 			} else {
-				logfileTimeout = logfileDelay
+				logmetrics.LogfileTimeoutSec = uint32(logfileDelay)
 			}
-			logmetrics.LogfileTimeoutSec = uint32(logfileTimeout)
 		}
 		enableFastUpload = enabled
 	}
@@ -1162,13 +1163,13 @@ func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, 
 
 func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan chan fileChanInfo) {
 	// check device log file
-	if devStats.file != nil && devStats.size > 0 && int(time.Since(devStats.starttime).Seconds()) > logfileTimeout {
+	if devStats.file != nil && devStats.size > 0 && uint32(time.Since(devStats.starttime).Seconds()) > logmetrics.LogfileTimeoutSec {
 		trigMoveToGzip(fileinfo, devStats, "", moveChan, true)
 	}
 
 	// check app log files
 	for appuuid, appM := range appStatsMap {
-		if appM.file != nil && appM.size > 0 && int(time.Since(appM.starttime).Seconds()) > logfileTimeout {
+		if appM.file != nil && appM.size > 0 && uint32(time.Since(appM.starttime).Seconds()) > logmetrics.LogfileTimeoutSec {
 			trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
 		}
 	}
