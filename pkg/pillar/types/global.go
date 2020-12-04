@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"io/ioutil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -35,6 +36,18 @@ const (
 	// HourInSec is number of seconds in a minute
 	HourInSec = 60 * MinuteInSec
 )
+
+// getEveMemoryLimitInBytes returns memory limit
+// reserved for eve in bytes
+func getEveMemoryLimitInBytes() (uint32, error) {
+	dataBytes, err := ioutil.ReadFile(EveMemoryLimitFile)
+	if err != nil {
+		return 0, err
+	}
+	dataString := strings.TrimSpace(string(dataBytes))
+	dataUint64, err := strconv.ParseUint(dataString, 10, 32)
+	return uint32(dataUint64), err
+}
 
 // ConfigItemStatus - Status of Config Items
 type ConfigItemStatus struct {
@@ -165,6 +178,10 @@ const (
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
+	// EveMemoryLimitInBytes global setting key
+	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
+	// IgnoreMemoryCheckForApps global setting key
+	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
 	// AllowLogFastupload global setting key
@@ -684,6 +701,10 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 
 // NewConfigItemSpecMap - Creates a specmap based on default values
 func NewConfigItemSpecMap() ConfigItemSpecMap {
+	eveMemoryLimitInBytes, err := getEveMemoryLimitInBytes()
+	if err != nil {
+		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
+	}
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -725,10 +746,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, eveMemoryLimitInBytes,
+		eveMemoryLimitInBytes, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
+	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
 
