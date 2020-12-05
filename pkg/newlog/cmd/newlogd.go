@@ -46,6 +46,7 @@ const (
 	collectDir   = types.NewlogCollectDir
 	uploadDevDir = types.NewlogUploadDevDir
 	uploadAppDir = types.NewlogUploadAppDir
+	panicFileDir = types.NewlogDir + "/panicStacks"
 	devPrefix    = types.DevPrefix
 	appPrefix    = types.AppPrefix
 	tmpPrefix    = "TempFile"
@@ -158,6 +159,7 @@ func main() {
 
 	loggerChan := make(chan inputEntry, 10)
 	movefileChan := make(chan fileChanInfo, 5)
+	panicFileChan := make(chan []byte, 2)
 
 	var forceUseLegacylog bool
 	if _, err := os.Stat(types.ForceLegacylogFilename); err == nil {
@@ -176,7 +178,7 @@ func main() {
 		go getKmessages(loggerChan)
 
 		// handle collect other container log messages from memlogd
-		go getMemlogMsg(loggerChan)
+		go getMemlogMsg(loggerChan, panicFileChan)
 
 		// handle linux Syslog /dev/log messages
 		go getSyslogMsg(loggerChan)
@@ -306,6 +308,10 @@ func main() {
 			doMoveCompressFile(tmpLogfileInfo)
 			// do space management/clean
 			mayDoSpaceCleanup(tmpLogfileInfo.isApp)
+
+		case panicBuf := <- panicFileChan:
+			// save panic stack into files
+			savePanicFiles(panicBuf)
 
 		case <-schedResetTimer.C:
 			syncToFileCnt = defaultSyncCount
@@ -485,7 +491,7 @@ func getKmessages(loggerChan chan inputEntry) {
 }
 
 // getMemlogMsg - goroutine to get messages from memlogd queue
-func getMemlogMsg(logChan chan inputEntry) {
+func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 	sockName := fmt.Sprintf("/run/%s.sock", "memlogdq")
 	s, err := net.Dial("unix", sockName)
 	if err != nil {
@@ -503,6 +509,8 @@ func getMemlogMsg(logChan chan inputEntry) {
 		log.Fatal("getMemlogMsg: write to memlogd failed:", err)
 	}
 
+	var panicStackCount int
+	var panicBuf []byte
 	bufReader := bufio.NewReader(s)
 	for {
 		if err = s.SetDeadline(time.Now().Add(readTimeout)); err != nil {
@@ -566,7 +574,7 @@ func getMemlogMsg(logChan chan inputEntry) {
 		}
 
 		// if we are in watchdog going down. fsync often
-		checkWatchdogRestart(&entry)
+		checkWatchdogRestart(&entry, &panicStackCount, &panicBuf, string(bytes), panicFileChan)
 
 		logChan <- entry
 	}
@@ -709,7 +717,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 				Function:  entry.function,
 				Timestamp: timeS,
 			}
-			mapJentry, _ := json.Marshal(mapLog)
+			mapJentry, _ := json.Marshal(&mapLog)
 			logline := string(mapJentry) + "\n"
 			msgIDCounter++
 			if appuuid != "" {
@@ -1191,7 +1199,7 @@ func formatAndGetMeta(appuuid string) string {
 		Image:      devMetaData.curPart,
 		EveVersion: devMetaData.imageVer,
 	}
-	mapJmeta, _ := json.Marshal(metaStr)
+	mapJmeta, _ := json.Marshal(&metaStr)
 	return string(mapJmeta)
 }
 
@@ -1233,7 +1241,7 @@ func cleanGzipTempfiles(dir string) {
 }
 
 // flush more often when we are going down by reading from watchdog log message itself
-func checkWatchdogRestart(entry *inputEntry) {
+func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, buf *[]byte, origMsg string, panicFileChan chan []byte) {
 	// source can be watchdog or watchdog.err
 	if strings.HasPrefix(entry.source, "watchdog") {
 		if strings.Contains(entry.content, "Retry timed-out at") {
@@ -1242,6 +1250,122 @@ func checkWatchdogRestart(entry *inputEntry) {
 
 			// in case if the system does not go down, fire a timer to reset it to normal sync count
 			schedResetTimer = time.NewTimer(300 * time.Second)
+		}
+		return
+	}
+
+	if entry.source == "pillar" && strings.Contains(origMsg, "pillar;panic") && !strings.Contains(entry.content, "rebootReason") {
+		*panicStackCount = 1
+		*buf = append(*buf, []byte(origMsg)...)
+	} else if *panicStackCount > 0 {
+		if entry.source == "pillar" {
+			*buf = append(*buf, []byte(origMsg)...)
+		}
+
+		*panicStackCount++
+		if *panicStackCount > 15 {
+			*panicStackCount = 0
+			panicFileChan <- *buf
+			*buf = nil
+		}
+	}
+}
+
+func savePanicFiles(panicbuf []byte) {
+	var reason string
+	panicStr := string(panicbuf)
+	strs := strings.Split(panicStr, "\n")
+	if len(strs) > 1 {
+		reason = strs[0]
+		f1, err := os.OpenFile("/persist/reboot-reason", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		defer f1.Close()
+		if _, err := f1.WriteString(reason); err != nil {
+			log.Error(err)
+		}
+	}
+
+	f2, err := os.OpenFile("/persist/reboot-stack", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	defer f2.Close()
+	if _, err := f2.WriteString(panicStr); err != nil {
+		log.Error(err)
+	}
+
+	// save to /persist/newlog/panicStacks directory for maximum of 100 files
+	if _, err := os.Stat(panicFileDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(panicFileDir, 0755); err != nil {
+			log.Error(err)
+			return
+		}
+	}
+
+	now := time.Now()
+	timeStr := strconv.Itoa(int(now.Unix()))
+	fileName := panicFileDir + "/pillar-panic-stack." + timeStr
+	pfile, err := os.Create(fileName)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	defer pfile.Close()
+
+	_, err = pfile.WriteString(logmetaData + "\n")
+	if err != nil {
+		log.Error(err)
+	}
+	_, err = pfile.WriteString(panicStr)
+	if err != nil {
+		log.Error(err)
+	}
+
+	cleanPanicFileDir()
+}
+
+// clean up the old panic files if the directory has more than 100 files
+func cleanPanicFileDir() {
+	if _, err := os.Stat(panicFileDir); err != nil {
+		return
+	}
+
+	files, err := ioutil.ReadDir(panicFileDir)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	if len(files) <= 100 {
+		return
+	}
+
+	var minNum int
+	var getFileName string
+	for _, f := range files {
+		p := strings.Split(f.Name(), ".")
+		if len(p) != 2 {
+			continue
+		}
+		fnumber, err := strconv.Atoi(p[1])
+		if err != nil {
+			continue
+		}
+		if minNum == 0 || fnumber < minNum {
+			minNum = fnumber
+			getFileName = f.Name()
+		}
+	}
+
+	if getFileName != "" {
+		err := os.Remove(panicFileDir + "/" + getFileName)
+		if err != nil {
+			log.Error(err)
+			return
 		}
 	}
 }
