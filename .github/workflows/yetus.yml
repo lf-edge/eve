@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Yetus
-        uses: apache/yetus-test-patch-action@main
+        uses: apache/yetus-test-patch-action@0.13.0
         with:
           basedir: ./src
           bufbasedir: api/proto

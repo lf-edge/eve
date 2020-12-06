@@ -49,32 +49,9 @@ jobs:
             mkdir circle ; cp dist/amd64/installer/*.squash circle
       - store_artifacts:
           path: circle
-  yetus:
-    docker:
-      - image: apache/yetus:0.12.0
-    steps:
-      - checkout
-      # create a fake artifact so that Apache Yetus knows the URL
-      - run:
-          name: make artifact dir
-          command: mkdir -p /tmp/yetus-out
-      - run:
-          name: bootstrap artifacts
-          command: echo "bootstrap" > /tmp/yetus-out/bootstrap
-      - store_artifacts:
-          path: /tmp/yetus-out
-      # now actually run Apache Yetus precommit
-      - run:
-          name: yetus
-          command: make yetus
-      - store_test_results:
-          path: /tmp/yetus-out
-      - store_artifacts:
-          path: /tmp/yetus-out
 workflows:
   version: 2.1
   build-stuff:
     jobs:
-      - yetus
       - test
       - build
