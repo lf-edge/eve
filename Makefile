@@ -243,7 +243,11 @@ clean:
 
 yetus:
 	@echo Running yetus
-	build-tools/src/yetus/test-patch.sh
+	docker run -it --rm -v $(CURDIR):/src:delegated -v /tmp:/tmp apache/yetus:0.13.0 \
+		--basedir=/src \
+		--dirty-workspace \
+		--empty-patch \
+		--plugins=all
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
