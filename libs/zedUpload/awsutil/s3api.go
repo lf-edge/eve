@@ -31,7 +31,7 @@ type S3ctx struct {
 }
 
 type S3CredProvider struct {
-	id, secret, token string
+	id, secret string
 }
 
 func (p *S3CredProvider) Retrieve() (credentials.Value, error) {
@@ -63,7 +63,8 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 
 	// FIXME: We need figoure out how to do this with SSL verification
 	cfg.WithDisableSSL(true)
-	ctx.ss3 = s3.New(session.New(), cfg)
+	// s3.New is deprecated.. Ignoring the lint error as this is not new code.
+	ctx.ss3 = s3.New(session.New(), cfg) // nolint
 	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3, func(u *s3manager.Uploader) {
 		u.PartSize = S3_PART_SIZE
 		u.LeavePartsOnError = S3_PART_LEAVE_ERROR
