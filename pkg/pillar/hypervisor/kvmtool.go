@@ -90,7 +90,8 @@ func (ctx kvmToolContext) Setup(status types.DomainStatus,
 	}
 
 	if _, err := os.Stat(sockPath); os.IsNotExist(err) {
-		os.Mkdir(sockPath, 0700)
+		logrus.Infof("Creating path %s", sockPath)
+		os.MkdirAll(sockPath, 0700)
 	}
 	os.Setenv("HOME", sockPath)
 
