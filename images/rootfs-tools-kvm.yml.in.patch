@@ -6,7 +6,7 @@
       oomScoreAdj: -999
 +   - name: kvm-tools
 +     image: KVMTOOLS_TAG
-+     cgroupsPath: /eve/services/kvmtool
++     cgroupsPath: /eve/services/kvm-tools
  files:
     - path: /etc/eve-release
       contents: 'EVE_VERSION'

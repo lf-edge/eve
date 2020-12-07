@@ -69,6 +69,10 @@ services:
      image: XENTOOLS_TAG
      cgroupsPath: /eve/services/xen-tools
      oomScoreAdj: -999
+   - name: kvm-tools
+     image: KVMTOOLS_TAG
+     cgroupsPath: /eve/services/kvm-tools
+     oomScoreAdj: -999
 files:
    - path: /etc/eve-release
      contents: 'EVE_VERSION'
