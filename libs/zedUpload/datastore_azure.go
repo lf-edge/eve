@@ -207,7 +207,6 @@ func (ep *AzureTransportMethod) NewRequest(opType SyncOpType, objname, objloc st
 type AzureTransportMethod struct {
 	transport SyncTransportType
 	aurl      string
-	region    string
 	container string
 
 	//Auth

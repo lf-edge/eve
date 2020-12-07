@@ -72,9 +72,6 @@ type DronaRequest struct {
 
 	startTime, endTime time.Time
 
-	// Download counter
-	retry int
-
 	// Image Sha256
 	ImageSha256 string
 
@@ -131,12 +128,6 @@ func (req *DronaRequest) setInprogress() {
 	req.Lock()
 	defer req.Unlock()
 	req.inprogress = true
-}
-
-func (req *DronaRequest) setStatus(status error) {
-	req.Lock()
-	defer req.Unlock()
-	req.status = fmt.Sprintf("%v", status)
 }
 
 func (req *DronaRequest) clearInprogress() {
@@ -226,11 +217,7 @@ func (req *DronaRequest) GetChunkDetails() (int64, []byte, bool) {
 func (req *DronaRequest) IsError() bool {
 	req.Lock()
 	defer req.Unlock()
-	if req.status == "" {
-		return false
-	}
-
-	return true
+	return req.status != ""
 }
 
 // Return the status
@@ -338,10 +325,6 @@ func (req *DronaRequest) postOnChannel() error {
 	default:
 		return SyncerRetry
 	}
-}
-
-func (req *DronaRequest) post() {
-	_ = req.postOnChannel()
 }
 
 // Cancel checks if WithCancel was used.

@@ -193,7 +193,7 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 				}
 			}
 		}
-		return stats
+		// we will never here - we will return from inside the loop.
 	case "stat":
 		file, err := client.Lstat(remoteFile)
 		if err != nil {
