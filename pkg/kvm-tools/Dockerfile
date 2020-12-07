@@ -15,9 +15,19 @@ RUN apk add --no-cache       \
       zlib-dev=1.2.11-r3     \
       zlib-static=1.2.11-r3  \
       linux-headers=5.4.5-r1 \
+      mkinitfs=3.4.5-r3      \
       libvncserver-dev=0.9.13-r1
 
 RUN if [ $(uname -m) == aarch64 ]; then apk add --no-cache dtc=1.6.0-r0 dtc-dev=1.6.0-r0 ;fi
+
+RUN rm -f /sbin/poweroff /etc/mkinitfs/features.d/base.files
+COPY initrd/base.files /etc/mkinitfs/features.d/base.files
+COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
+COPY initrd/poweroff /sbin/poweroff
+COPY initrd/chroot2.c /tmp/
+COPY initrd/00000080 /etc/acpi/PWRF/
+RUN gcc -s -o /chroot2 /tmp/chroot2.c
+RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
 RUN tar xzvf kvmtool.tar.gz > /dev/null 2>&1 ;\
     mv kvmtool-${KVMTOOL_VERSION} kvmtool
@@ -99,6 +109,7 @@ RUN if [ $(uname -m) == aarch64 ]; then apk add --no-cache libfdt=1.6.0-r0 libst
 COPY --from=build /usr/bin/lkvm /usr/bin/lkvm
 COPY --from=build /qemu-5.2.0-rc1/build/qemu-system-* /usr/bin/
 COPY --from=build /bios /usr/share/qemu
+COPY --from=build /runx-initrd /boot/runx-initrd
 RUN ln -sf lkvm /usr/bin/vm
 RUN ldd /usr/bin/lkvm
 RUN ldd /usr/bin/qemu-system-$(uname -m)

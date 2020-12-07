@@ -1,0 +1,104 @@
+#!/bin/sh
+
+# first make sure busybox gets expanded into the glory that is UNIX
+/bin/busybox --install /bin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /dev
+
+root=$(grep -o '\broot=[^ ]*'/proc/cmdline | cut -d = -f 2)
+if test -z "${root}"
+then
+    exit 1
+fi
+
+mkdir /mnt >/dev/null 2>&1
+if [ "${root}" = "9p-kvm" ]; then
+    mount -t 9p -o msize=131072,trans=virtio,version=9p2000.L,cache=mmap hostshare /mnt
+else
+    mount "${root}" /mnt
+fi
+
+mkdir /mnt/rootfs/dev >/dev/null 2>&1
+mkdir /mnt/rootfs/sys >/dev/null 2>&1
+mkdir /mnt/rootfs/proc >/dev/null 2>&1
+mkdir /dev/pts >/dev/null 2>&1
+mkdir /dev/shm >/dev/null 2>&1
+mkdir /dev/mqueue >/dev/null 2>&1
+if [ -d /mnt/rootfs/dev/eve ]; then
+   mkdir -p /dev/eve
+   mount -o bind /mnt/rootfs/dev/eve /dev/eve
+fi
+mount -o rbind /dev /mnt/rootfs/dev
+mount -o bind /sys /mnt/rootfs/sys
+mount -o bind /proc /mnt/rootfs/proc
+mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
+mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
+mount -t tmpfs -o nodev,nosuid,noexec,size=20% tmp /mnt/rootfs/tmp
+mount -t mqueue -o nodev,nosuid,noexec none /mnt/rootfs/dev/mqueue
+ln -s /proc/self/fd /mnt/rootfs/dev/fd
+ln -s /proc/self/fd/0 /mnt/rootfs/dev/stdin
+ln -s /proc/self/fd/1 /mnt/rootfs/dev/stdout
+ln -s /proc/self/fd/2 /mnt/rootfs/dev/stderr
+
+ip=$(grep -o '\bip=[^ ]*' /proc/cmdline | cut -d = -f 2)
+gw=$(grep -o '\bgw=[^ ]*' /proc/cmdline | cut -d = -f 2)
+route=$(grep -o '\broute=[^ ]*' /proc/cmdline | cut -d = -f 2)
+pvcalls=$(grep  'pvcalls=1' /proc/cmdline)
+dhcp=$(grep  'dhcp=1' /proc/cmdline)
+if test "${pvcalls}"
+then
+    mkdir -p /mnt/rootfs/etc
+    echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
+    echo "options use-vc" >> /mnt/rootfs/etc/resolv.conf
+elif test "${ip}"
+then
+    # ipv4
+    if [ "${ip}" != "${ip#*[0-9].[0-9]}" ]
+    then
+        ifconfig eth0 "${ip}" up
+        if [ "${route}" ] && [ "${gw}" ]
+        then
+            route add -net "${route}" gw "${gw}" eth0
+        fi
+        mkdir -p /mnt/rootfs/etc
+        echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
+        # ipv6
+    elif [ "${ip}" != "${ip#*:[0-9a-fA-F]}" ]
+    then
+        ifconfig eth0 add "${ip}" up
+        if [ "${route}" ] && [ "${gw}" ]
+        then
+           route -A inet6 add "${route}" gw "${gw}" eth0
+        fi
+        mkdir -p /mnt/rootfs/etc
+        echo "nameserver 2001:4860:4860::8888" > /mnt/rootfs/etc/resolv.conf
+    fi
+elif test "$dhcp"
+then
+    ip link set dev lo up
+    mkdir -p /mnt/rootfs/etc
+    echo "127.0.0.1 localhost" > /mnt/rootfs/etc/hosts
+    echo "::1 localhost" >> /mnt/rootfs/etc/hosts
+    for i in $(cd /sys/class/net && echo eth*); do
+        ip link set dev "${i}" up
+        udhcpc --interface="${i}" --script=/udhcpc_script.sh -O staticroutes
+    done
+fi
+
+# Mounting requested volumes
+echo "Executing /mount_disk.sh"
+/mount_disk.sh
+
+# Commence launch sequence
+#shellcheck disable=SC1091
+. /mnt/environment
+
+echo "Run acpid daemon"
+acpid -l /proc/self/fd/1
+
+cmd=$(cat /mnt/cmdline)
+echo "Executing "${cmd}""
+#shellcheck disable=SC2086
+eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" "${cmd}" <> /dev/console 2>&1

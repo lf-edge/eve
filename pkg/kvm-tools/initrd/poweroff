@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# when the earth is on the move, the safest place to be is /proc
+cd /proc || kill -9 1
+
+# first, try an oderly shutdown of processes
+for p in [0-9]*; do
+   [ "$p" -eq "$$" ] && continue
+   kill "$p"
+done
+
+sleep 60
+
+# now go for an actual kill
+for p in [0-9]*; do
+   [ "$p" -eq 1 ] || [ "$p" -eq "$$" ] && continue
+   kill -9 "$p"
+done
+
+# unmount all disks
+/bin/umount -a -r
+
+# and finally kill the "init"
+kill -9 1
