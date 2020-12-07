@@ -919,6 +919,15 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 						networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
 					}
 				}
+
+				networkInfo.DefaultRouters = []string{niStatus.Gateway.String()}
+				networkInfo.Dns = &info.ZInfoDNS{
+					DNSservers: []string{},
+				}
+				networkInfo.Dns.DNSservers = []string{}
+				for _, dnsServer := range niStatus.DnsServers {
+					networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers, dnsServer.String())
+				}
 			}
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
 				networkInfo)
