@@ -439,7 +439,7 @@ func validatePartition(ctx *baseOsMgrContext,
 // Returns changed, proceed as above
 func validateAndAssignPartition(ctx *baseOsMgrContext,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
-	var curPartState, curPartVersion, otherPartVersion string
+	var curPartState, curPartVersion string
 
 	log.Functionf("validateAndAssignPartition(%s) for %s",
 		config.Key(), config.BaseOsVersion)
@@ -453,9 +453,6 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		curPartVersion = curPartStatus.ShortVersion
 		curPartState = curPartStatus.PartitionState
 	}
-	if otherPartStatus != nil {
-		otherPartVersion = otherPartStatus.ShortVersion
-	}
 	otherPartState := getPartitionState(ctx, otherPartName)
 	if curPartState == "inprogress" || otherPartState == "active" {
 		// Must still be testing the current version; don't overwrite
@@ -463,14 +460,9 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		// If there is no change to the other we don't log error
 		// but still retry later
 		status.TooEarly = true
-		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: deferred",
+		log.Errorf("Attempt to install baseOs update %s while testing is in progress for %s: deferred",
 			config.BaseOsVersion, curPartVersion)
-		if otherPartVersion == config.BaseOsVersion {
-			log.Functionln(errStr)
-		} else {
-			log.Error(errStr)
-			status.SetErrorNow(errStr)
-		}
+
 		changed = true
 		return changed, proceed
 	}
