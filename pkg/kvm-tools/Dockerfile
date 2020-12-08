@@ -26,6 +26,7 @@ COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
 COPY initrd/poweroff /sbin/poweroff
 COPY initrd/chroot2.c /tmp/
 COPY initrd/00000080 /etc/acpi/PWRF/
+COPY init.sh /
 RUN gcc -s -o /chroot2 /tmp/chroot2.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
@@ -114,5 +115,4 @@ RUN ln -sf lkvm /usr/bin/vm
 RUN ldd /usr/bin/lkvm
 RUN ldd /usr/bin/qemu-system-$(uname -m)
 
-ENTRYPOINT ["/bin/sh", "-c", "while true; do sleep 100000; done"]
-#CMD ["/usr/sbin/vm",]
+ENTRYPOINT ["/bin/init.sh"]
