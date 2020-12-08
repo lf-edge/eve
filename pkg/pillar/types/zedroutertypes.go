@@ -309,7 +309,6 @@ func NewIntfStatusMap() *IntfStatusMap {
 // It includes test results hence is misnamed - should have a separate status
 // This is only published under the key "global"
 type DevicePortConfigList struct {
-	Key            string // Assume "gobal" if empty
 	CurrentIndex   int
 	PortConfigList []DevicePortConfig
 }
@@ -335,11 +334,7 @@ func (config DevicePortConfigList) MostlyEqual(config2 DevicePortConfigList) boo
 
 // PubKey is used for pubsub
 func (config DevicePortConfigList) PubKey() string {
-	if config.Key == "" {
-		return "global"
-	} else {
-		return config.Key
-	}
+	return "global"
 }
 
 // LogCreate :
