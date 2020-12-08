@@ -73,11 +73,15 @@ func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
 	}
 	config := LastResortDevicePortConfig(ctx, ports)
 	config.Key = "lastresort"
-	ctx.PubDevicePortConfig.Publish("lastresort", config)
+	if ctx.PubDevicePortConfig != nil {
+		ctx.PubDevicePortConfig.Publish("lastresort", config)
+	}
 }
 
 func RemoveLastResortPortConfig(ctx *DeviceNetworkContext) {
-	ctx.PubDevicePortConfig.Unpublish("lastresort")
+	if ctx.PubDevicePortConfig != nil {
+		ctx.PubDevicePortConfig.Unpublish("lastresort")
+	}
 }
 
 func SetupVerify(ctx *DeviceNetworkContext, index int) {
