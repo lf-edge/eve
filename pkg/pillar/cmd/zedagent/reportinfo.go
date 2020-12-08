@@ -467,10 +467,10 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW, tooEarly bool)
 		if swInfo.Activated {
 			swInfo.UserStatus = info.BaseOsStatus_DOWNLOAD_DONE
 			swInfo.SubStatusStr = "Downloaded and verified"
-			//} else if tooEarly { // To be uncommented after 'BaseOsSubStatus_UPDATE_DEFERRED' state is handled in controller
-			//	swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			//	swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_DEFERRED
-			//	swInfo.SubStatusStr = "Waiting for current image to finish testing before updating again"
+		} else if tooEarly {
+			swInfo.UserStatus = info.BaseOsStatus_UPDATING
+			swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_DEFERRED
+			swInfo.SubStatusStr = "Waiting for current image to finish testing before updating again"
 		} else {
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
