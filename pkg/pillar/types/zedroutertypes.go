@@ -963,10 +963,11 @@ type AddrInfo struct {
 // DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
 // It is published under the key "global" only
 type DeviceNetworkStatus struct {
-	Version DevicePortConfigVersion // From DevicePortConfig
-	Testing bool                    // Ignore since it is not yet verified
-	State   PendDPCStatus           // Details about testing state
-	Ports   []NetworkPortStatus
+	Version      DevicePortConfigVersion // From DevicePortConfig
+	Testing      bool                    // Ignore since it is not yet verified
+	State        PendDPCStatus           // Details about testing state
+	CurrentIndex int                     // For logs
+	Ports        []NetworkPortStatus
 }
 
 // Key is used for pubsub
@@ -984,6 +985,7 @@ func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("testing-bool", status.Testing).
 		AddField("ports-int64", len(status.Ports)).
 		AddField("state", status.State.String()).
+		AddField("current-index-int64", status.CurrentIndex).
 		Noticef("DeviceNetworkStatus create")
 	for _, p := range status.Ports {
 		// XXX different logobject for a particular port?
@@ -1006,19 +1008,18 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 	}
 	if oldStatus.Testing != status.Testing ||
 		oldStatus.State != status.State ||
+		oldStatus.CurrentIndex != status.CurrentIndex ||
 		len(oldStatus.Ports) != len(status.Ports) {
 
 		logObject.CloneAndAddField("testing-bool", status.Testing).
 			AddField("ports-int64", len(status.Ports)).
 			AddField("state", status.State.String()).
+			AddField("current-index-int64", status.CurrentIndex).
 			AddField("old-testing-bool", oldStatus.Testing).
 			AddField("old-ports-int64", len(oldStatus.Ports)).
 			AddField("old-state", oldStatus.State.String()).
+			AddField("old-current-index-int64", oldStatus.CurrentIndex).
 			Noticef("DeviceNetworkStatus modify")
-	} else {
-		// XXX remove?
-		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Noticef("DeviceNetworkStatus modify other change")
 	}
 	// XXX which fields to compare/log?
 	for i, p := range status.Ports {
@@ -1039,6 +1040,10 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed).
 				Noticef("DeviceNetworkStatus port modify")
+		} else {
+			logObject.CloneAndAddField("ifname", p.IfName).
+				AddField("diff", cmp.Diff(op, p)).
+				Noticef("DeviceNetworkStatus port modify other change")
 		}
 	}
 }
