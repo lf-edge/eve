@@ -73,6 +73,9 @@ if [ -n "$agent" ]; then
     fi
 fi
 
+# printing reboot-reason to the console
+echo "Rebooting EVE. Reason: $(cat /persist/reboot-reason)" > /dev/console
+
 if [ -n "$bootReason" ]; then
     # Do not overwrite an existing file since it is likely to be more
     # specific like Fatal
