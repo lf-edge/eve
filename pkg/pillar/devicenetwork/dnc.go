@@ -87,7 +87,7 @@ func RemoveLastResortPortConfig(ctx *DeviceNetworkContext) {
 func SetupVerify(ctx *DeviceNetworkContext, index int) {
 
 	log := ctx.Log
-	log.Functionf("SetupVerify: Setting up verification for DPC at index %d",
+	log.Noticef("SetupVerify: Setting up verification for DPC at index %d",
 		index)
 	ctx.NextDPCIndex = index
 	ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
@@ -127,6 +127,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 			ctx.DeviceNetworkStatus.Testing = false
 			log.Functionf("PublishDeviceNetworkStatus: %+v\n",
 				ctx.DeviceNetworkStatus)
+			ctx.DeviceNetworkStatus.CurrentIndex = ctx.DevicePortConfigList.CurrentIndex
 			ctx.PubDeviceNetworkStatus.Publish("global",
 				*ctx.DeviceNetworkStatus)
 		}
@@ -375,7 +376,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.Pending.PendDNS)
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
-		log.Functionf("VerifyDevicePortConfig: %s for %d",
+		log.Noticef("VerifyDevicePortConfig: %s for index %d",
 			res.String(), ctx.NextDPCIndex)
 		switch res {
 		case types.DPC_PCI_WAIT:
