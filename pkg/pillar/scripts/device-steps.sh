@@ -145,7 +145,13 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
 fi
 
 if [ -f $PERSISTDIR/reboot-reason ]; then
-    echo "Reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
+    echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" > /dev/console
+else
+  if [ -f $FIRSTBOOTFILE ]; then
+      exho "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" > /dev/console
+  else
+      echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" > /dev/console
+  fi
 fi
 
 # Copy any GlobalConfig from /config

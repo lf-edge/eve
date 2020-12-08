@@ -264,6 +264,14 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 		fmt.Printf("printToFile failed %s\n", err)
 	}
 
+	// Printing the reboot reason to the console
+	filename = "/dev/console"
+	err = printToFile(filename, fmt.Sprintf("Rebooting EVE. Reason: %s", reason))
+
+	if err != nil {
+		// Note: can not use log here since we are called from a log hook!
+		fmt.Printf("printToFile failed %s\n", err)
+	}
 	if !normal {
 		agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir,
 			agentName)
