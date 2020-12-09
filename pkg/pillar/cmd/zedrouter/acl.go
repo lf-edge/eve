@@ -361,6 +361,14 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 				"-p", "tcp", "--sport", "domain"}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", "169.254.169.254",
+				"-p", "tcp", "--dport", "http"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", "169.254.169.254",
+				"-p", "tcp", "--sport", "http"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2)
 		} else if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
 			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
 				"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp"}
@@ -409,6 +417,15 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 				"--physdev-out", aclArgs.VifName}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName,
+				"-d", "169.254.169.254",
+				"-p", "tcp", "--dport", "http"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName,
+				"-s", "169.254.169.254",
+				"-p", "tcp", "--sport", "http"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2)
 		}
 	}
 	// The same rules as above for IPv4.
@@ -447,6 +464,14 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", "169.254.169.254",
+				"-p", "tcp", "--dport", "http"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", "169.254.169.254",
+				"-p", "tcp", "--sport", "http"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2)
+
 			aclRule5.Table = "mangle"
 			aclRule5.Chain = "PREROUTING"
 			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
@@ -463,6 +488,16 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 			chainName = fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 7)
 			createMarkAndAcceptChain(aclArgs, chainName, 7)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+				"-d", "169.254.169.254",
+				"-p", "tcp", "--dport", "http"}
+			chainName = fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 8)
+			createMarkAndAcceptChain(aclArgs, chainName, 8)
 			aclRule5.Action = []string{"-j", chainName}
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)
@@ -511,6 +546,16 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 			chainName = fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 7)
 			createMarkAndAcceptChain(aclArgs, chainName, 7)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+				"-d", "169.254.169.254",
+				"-p", "tcp", "--dport", "http"}
+			chainName = fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 8)
+			createMarkAndAcceptChain(aclArgs, chainName, 8)
 			aclRule5.Action = []string{"-j", chainName}
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)

@@ -1569,6 +1569,22 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 	return ipVer
 }
 
+func lookupNetworkInstanceStatusByAppIP(ctx *zedrouterContext,
+	ip net.IP) *types.NetworkInstanceStatus {
+
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
+		for _, a := range status.IPAssignments {
+			if ip.Equal(a) {
+				return &status
+			}
+		}
+	}
+	return nil
+}
+
 // ==== Vpn
 func vpnCreate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
