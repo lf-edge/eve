@@ -677,6 +677,22 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 	return &status
 }
 
+func lookupAppNetworkStatusByAppIP(ctx *zedrouterContext, ip net.IP) *types.AppNetworkStatus {
+
+	ipStr := ip.String()
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if ipStr == ulStatus.AllocatedIPAddr {
+				return &status
+			}
+		}
+	}
+	return nil
+}
+
 func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetworkConfig {
 
 	sub := ctx.subAppNetworkConfig

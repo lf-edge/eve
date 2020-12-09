@@ -1191,7 +1191,6 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
 	}
 	log.Functionf("IfNameList: %+v", status.IfNameList)
-
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
 		err = bridgeActivate(ctx, status)
@@ -1200,8 +1199,18 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	case types.NetworkInstanceTypeLocal:
 		err = natActivate(ctx, status)
+		if err == nil {
+			err = createServer4(ctx, status.BridgeIPAddr,
+				status.BridgeName)
+		}
+
 	case types.NetworkInstanceTypeCloud:
 		err = vpnActivate(ctx, status)
+		if err == nil {
+			err = createServer4(ctx, status.BridgeIPAddr,
+				status.BridgeName)
+		}
+
 	default:
 		errStr := fmt.Sprintf("doNetworkInstanceActivate: NetworkInstance %d not yet supported",
 			status.Type)
@@ -1275,8 +1284,10 @@ func doNetworkInstanceInactivate(
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
 		natInactivate(ctx, status, false)
+		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	case types.NetworkInstanceTypeCloud:
 		vpnInactivate(ctx, status)
+		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	}
 
 	return
@@ -1567,6 +1578,22 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 		return ipVer
 	}
 	return ipVer
+}
+
+func lookupNetworkInstanceStatusByAppIP(ctx *zedrouterContext,
+	ip net.IP) *types.NetworkInstanceStatus {
+
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
+		for _, a := range status.IPAssignments {
+			if ip.Equal(a) {
+				return &status
+			}
+		}
+	}
+	return nil
 }
 
 // ==== Vpn
