@@ -69,7 +69,7 @@ func (ctx kvmToolContext) Setup(status types.DomainStatus,
 	if config.IsContainer {
 		args = append(args, "--kernel", "/hostfs/boot/kernel")
 		args = append(args, "--initrd", "/boot/runx-initrd")
-		args = append(args, "--params", " console=hvc0 root=9p-kvm dhcp=1")
+		args = append(args, "--params", " console=ttyS0 root=9p-kvm dhcp=1")
 	}
 
 	for _, ds := range diskStatusList {
