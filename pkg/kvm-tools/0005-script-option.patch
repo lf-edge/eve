@@ -1,0 +1,62 @@
+diff --git a/virtio/net.c b/virtio/net.c
+index 1ee3c19..ac19592 100644
+--- a/virtio/net.c
++++ b/virtio/net.c
+@@ -293,14 +293,14 @@ static int virtio_net_request_tap(struct net_dev *ndev, struct ifreq *ifr,
+ 	return ret;
+ }
+ 
+-static int virtio_net_exec_script(const char* script, const char *tap_name)
++static int virtio_net_exec_script(const char* script, const char *tap_name, const char *opt)
+ {
+ 	pid_t pid;
+ 	int status;
+ 
+ 	pid = fork();
+ 	if (pid == 0) {
+-		execl(script, script, tap_name, NULL);
++		execl(script, script, tap_name, opt, NULL);
+ 		_exit(1);
+ 	} else {
+ 		waitpid(pid, &status, 0);
+@@ -328,7 +328,7 @@ static bool virtio_net__tap_init(struct net_dev *ndev)
+ 		pr_warning("Config tap device TUNSETVNETHDRSZ error");
+ 
+ 	if (strcmp(params->script, "none")) {
+-		if (virtio_net_exec_script(params->script, ndev->tap_name) < 0)
++		if (virtio_net_exec_script(params->script, ndev->tap_name, params->script_option) < 0)
+ 			goto fail;
+ 	} else if (!skipconf) {
+ 		memset(&ifr, 0, sizeof(ifr));
+@@ -835,7 +835,9 @@ static int set_net_param(struct kvm *kvm, struct virtio_net_params *p,
+ 		} else
+ 			die("Unknown network mode %s, please use user, tap or none", kvm->cfg.network);
+ 	} else if (strcmp(param, "script") == 0) {
+-		p->script = strdup(val);
++        p->script = strdup(val);
++    } else if (strcmp(param, "script_option") == 0) {
++	    p->script_option = strdup(val);
+ 	} else if (strcmp(param, "downscript") == 0) {
+ 		p->downscript = strdup(val);
+ 	} else if (strcmp(param, "guest_ip") == 0) {
+@@ -1032,7 +1034,7 @@ int virtio_net__exit(struct kvm *kvm)
+ 		/* Cleanup any tap device which attached to bridge */
+ 		if (ndev->mode == NET_MODE_TAP &&
+ 		    strcmp(params->downscript, "none"))
+-			virtio_net_exec_script(params->downscript, ndev->tap_name);
++			virtio_net_exec_script(params->downscript, ndev->tap_name, params->script_option);
+ 
+ 		list_del(&ndev->list);
+ 		free(ndev);
+diff --git a/include/kvm/virtio-net.h b/include/kvm/virtio-net.h
+index d136a09..20531d8 100644
+--- a/include/kvm/virtio-net.h
++++ b/include/kvm/virtio-net.h
+@@ -9,6 +9,7 @@ struct virtio_net_params {
+ 	const char *guest_ip;
+ 	const char *host_ip;
+ 	const char *script;
++	const char *script_option;
+ 	const char *downscript;
+ 	const char *trans;
+ 	const char *tapif;

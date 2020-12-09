@@ -85,7 +85,7 @@ func (ctx kvmToolContext) Setup(status types.DomainStatus,
 	}
 
 	for _, net := range config.VifList {
-		str := fmt.Sprintf("trans=virtio,guest_mac=%s,mode=user", net.Mac)
+		str := fmt.Sprintf("trans=virtio,guest_mac=%s,mode=tap,tapif=%s,script=/etc/kvmtool/scripts/kvmtool-ifup,script_option=%s", net.Mac, net.Vif, net.Bridge)
 		args = append(args, "--network", str)
 	}
 

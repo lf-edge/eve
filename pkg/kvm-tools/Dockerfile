@@ -26,7 +26,6 @@ COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
 COPY initrd/poweroff /sbin/poweroff
 COPY initrd/chroot2.c /tmp/
 COPY initrd/00000080 /etc/acpi/PWRF/
-COPY init.sh /
 RUN gcc -s -o /chroot2 /tmp/chroot2.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
@@ -39,6 +38,7 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch          ; \
     patch -p1 < /0002-alpine-define-workaround.patch               ; \
     patch -p1 < /0003-kvm.h-Change-the-control-socket-path.patch   ; \
     patch -p1 < /0004-pci-Deactivate-BARs-before-reactivating.patch ; \
+    patch -p1 < /0005-script-option.patch ;\
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/usr HOME=
 
 # Building qemu in strip-down mirovm only mode
@@ -112,8 +112,10 @@ COPY --from=build /usr/bin/lkvm /usr/bin/lkvm
 COPY --from=build /qemu-5.2.0-rc1/build/qemu-system-* /usr/bin/
 COPY --from=build /bios /usr/share/qemu
 COPY --from=build /runx-initrd /boot/runx-initrd
+COPY init.sh /
+COPY kvmtool-ifup /etc/kvmtool/scripts/
 RUN ln -sf lkvm /usr/bin/vm
 RUN ldd /usr/bin/lkvm
 RUN ldd /usr/bin/qemu-system-$(uname -m)
 
-ENTRYPOINT ["/bin/init.sh"]
+ENTRYPOINT ["/init.sh"]
