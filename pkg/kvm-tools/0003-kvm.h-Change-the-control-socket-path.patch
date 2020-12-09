@@ -1,0 +1,42 @@
+From cb53aaf2fe9a7e797ff7d97c386587935f5bd992 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Wed, 9 Dec 2020 11:13:21 +0300
+Subject: [PATCH] kvm.h: Change the control socket path
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ include/kvm/kvm.h | 4 ++--
+ main.c            | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/include/kvm/kvm.h b/include/kvm/kvm.h
+index 53373b0..aa99ae1 100644
+--- a/include/kvm/kvm.h
++++ b/include/kvm/kvm.h
+@@ -19,8 +19,8 @@
+ #define SIGKVMPAUSE		(SIGRTMIN + 1)
+ #define SIGKVMTASK		(SIGRTMIN + 2)
+ 
+-#define KVM_PID_FILE_PATH	"/.lkvm/"
+-#define HOME_DIR		getenv("HOME")
++#define KVM_PID_FILE_PATH	"/lkvm/"
++#define SOCK_DIR		"/run/hypervisor/"
+ #define KVM_BINARY_NAME		"lkvm"
+ 
+ #ifndef PAGE_SIZE
+diff --git a/main.c b/main.c
+index 05bc82c..3aacbf4 100644
+--- a/main.c
++++ b/main.c
+@@ -13,7 +13,7 @@ static int handle_kvm_command(int argc, char **argv)
+ 
+ int main(int argc, char *argv[])
+ {
+-	kvm__set_dir("%s/%s", HOME_DIR, KVM_PID_FILE_PATH);
++	kvm__set_dir("%s/%s", SOCK_DIR, KVM_PID_FILE_PATH);
+ 
+ 	return handle_kvm_command(argc - 1, &argv[1]);
+ }
+-- 
+2.25.1
+
