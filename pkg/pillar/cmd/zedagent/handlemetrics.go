@@ -405,7 +405,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		CurrentProcessDelay: newlogMetrics.ServerStats.CurrProcessMsec,
 		AverageProcessDelay: newlogMetrics.ServerStats.AvgProcessMsec,
 	}
-	nlm.FailSentStartTime, _ = ptypes.TimestampProto(newlogMetrics.FailSentStartTime)
+	if !newlogMetrics.FailSentStartTime.IsZero() {
+		nlm.FailSentStartTime, _ = ptypes.TimestampProto(newlogMetrics.FailSentStartTime)
+	}
 
 	devM := &zmet.LogfileMetrics{
 		NumGzipFileSent:      newlogMetrics.DevMetrics.NumGZipFilesSent,
@@ -416,8 +418,12 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		NumGzipFileRetry:     newlogMetrics.DevMetrics.NumGZipFileRetry,
 		NumGzipFileKeptLocal: newlogMetrics.DevMetrics.NumGZipFileKeptLocal,
 	}
-	devM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.RecentUploadTimestamp)
-	devM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.LastGZipFileSendTime)
+	if !newlogMetrics.DevMetrics.RecentUploadTimestamp.IsZero() {
+		devM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.RecentUploadTimestamp)
+	}
+	if !newlogMetrics.DevMetrics.LastGZipFileSendTime.IsZero() {
+		devM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.LastGZipFileSendTime)
+	}
 	nlm.DeviceMetrics = devM
 
 	appM := &zmet.LogfileMetrics{
@@ -429,8 +435,12 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		NumGzipFileRetry:     newlogMetrics.AppMetrics.NumGZipFileRetry,
 		NumGzipFileKeptLocal: newlogMetrics.AppMetrics.NumGZipFileKeptLocal,
 	}
-	appM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.RecentUploadTimestamp)
-	appM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.LastGZipFileSendTime)
+	if !newlogMetrics.AppMetrics.RecentUploadTimestamp.IsZero() {
+		appM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.RecentUploadTimestamp)
+	}
+	if !newlogMetrics.AppMetrics.LastGZipFileSendTime.IsZero() {
+		appM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.LastGZipFileSendTime)
+	}
 	nlm.AppMetrics = appM
 
 	nlm.Top10InputSources = make(map[string]uint32)
