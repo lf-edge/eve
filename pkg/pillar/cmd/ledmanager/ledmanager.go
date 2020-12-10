@@ -151,6 +151,11 @@ var mToF = []modelToFuncs{
 		// No dd disk light blinking on Parallels
 	},
 	{
+		model:  "Google.*",
+		regexp: true,
+		// No dd disk light blinking on Google
+	},
+	{
 		model:     "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
