@@ -77,7 +77,7 @@ func (ctx kvmToolContext) Setup(status types.DomainStatus,
 			continue
 		}
 		if ds.Devtype == "9P" {
-			args = append(args, "--9p", ds.FileLocation)
+			args = append(args, "--9p", fmt.Sprintf("%s,hostshare", ds.FileLocation))
 		}
 		if ds.Devtype == "hdd" {
 			args = append(args, "--disk", ds.FileLocation)
