@@ -74,12 +74,14 @@ var (
 	syncToFileCnt int    // every 'N' log event count flush to log file
 	spaceAvailMB  uint64 // '/persist' disk space available
 	gzipFilesCnt  int64  // total gzip files written
+	panicBuf      []byte // buffer to save panic crash stack
 
 	enableFastUpload bool // enable fast upload to controller similar to previous log operation
 
 	subGlobalConfig  pubsub.Subscription
 
 	schedResetTimer *time.Timer // after detect log has watchdog going down message, reset the file flush count
+	panicWriteTimer *time.Timer // after detect pillar panic, in case no other log comes in, write the panic files
 
 	// per app writelog stats
 	appStatsMap map[string]statsLogFile
@@ -273,6 +275,8 @@ func main() {
 
 	schedResetTimer = time.NewTimer(1 * time.Second)
 	schedResetTimer.Stop()
+	panicWriteTimer = time.NewTimer(1 * time.Second)
+	panicWriteTimer.Stop()
 
 	// set default timeout of logfile delay
 	if enableFastUpload {
@@ -312,6 +316,12 @@ func main() {
 		case panicBuf := <- panicFileChan:
 			// save panic stack into files
 			savePanicFiles(panicBuf)
+
+		case <- panicWriteTimer.C:
+			if len(panicBuf) > 0 {
+				savePanicFiles(panicBuf)
+				panicBuf = nil
+			}
 
 		case <-schedResetTimer.C:
 			syncToFileCnt = defaultSyncCount
@@ -510,7 +520,6 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 	}
 
 	var panicStackCount int
-	var panicBuf []byte
 	bufReader := bufio.NewReader(s)
 	for {
 		if err = s.SetDeadline(time.Now().Add(readTimeout)); err != nil {
@@ -574,7 +583,7 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 		}
 
 		// if we are in watchdog going down. fsync often
-		checkWatchdogRestart(&entry, &panicStackCount, &panicBuf, string(bytes), panicFileChan)
+		checkWatchdogRestart(&entry, &panicStackCount, string(bytes), panicFileChan)
 
 		logChan <- entry
 	}
@@ -1241,7 +1250,7 @@ func cleanGzipTempfiles(dir string) {
 }
 
 // flush more often when we are going down by reading from watchdog log message itself
-func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, buf *[]byte, origMsg string, panicFileChan chan []byte) {
+func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, origMsg string, panicFileChan chan []byte) {
 	// source can be watchdog or watchdog.err
 	if strings.HasPrefix(entry.source, "watchdog") {
 		if strings.Contains(entry.content, "Retry timed-out at") {
@@ -1256,17 +1265,25 @@ func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, buf *[]byte, 
 
 	if entry.source == "pillar" && strings.Contains(origMsg, "pillar;panic") && !strings.Contains(entry.content, "rebootReason") {
 		*panicStackCount = 1
-		*buf = append(*buf, []byte(origMsg)...)
+		panicBuf = append(panicBuf, []byte(origMsg)...)
+		// in case there is only few log messages after this, kick off a timer to write the panic files
+		panicWriteTimer = time.NewTimer(10 * time.Second)
 	} else if *panicStackCount > 0 {
+		var done bool
 		if entry.source == "pillar" {
-			*buf = append(*buf, []byte(origMsg)...)
+			panicBuf = append(panicBuf, []byte(origMsg)...)
+		} else {
+			// conclude the capture when log source is not 'pillar'
+			done = true
 		}
 
 		*panicStackCount++
-		if *panicStackCount > 15 {
+
+		if *panicStackCount > 15 || done {
+			panicWriteTimer.Stop()
 			*panicStackCount = 0
-			panicFileChan <- *buf
-			*buf = nil
+			panicFileChan <- panicBuf
+			panicBuf = nil
 		}
 	}
 }

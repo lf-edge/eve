@@ -86,6 +86,10 @@ There are cases, for example during EVE code testing, the default timers for log
 
 Reboot reason and reboot stack files present in /persist and /persist/log directories. reboot-reaon, reboot-stack files present in /persist/log directory get appended with updates. The sames files in /persist directory keep getting overwritten with new content every time there is USR1 signal sent to a process or in the event of Fatal crash. These stack traces are also exported to cloud using logging mechanism.
 
+## Panic Stack Files saved on device
+
+Pillar process crash stack from the log is also saved into directory /persist/newlog/panicStacks. Although the pillar crash stacks will show up in controller side after uploaded, for development purpose, it is easier to go into this directory to directly display the crash stacks. The panic stack files will be kept up to the maximum of 100.
+
 ## Object life cycle events and relations
 
 Objects in EVE software can transition through many different states. These state transitions can be easily logged/tracked using object logging infrastructure that we have.

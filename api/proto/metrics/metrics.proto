@@ -127,6 +127,7 @@ message deviceMetric {
   logMetric log = 12;
   repeated CipherMetric cipher = 13;  // Object decryption
   AclMetric acl = 14;
+  newlogMetric newlog = 15;
 }
 
 message AclMetric {
@@ -397,4 +398,55 @@ message ZMetricMsg {
   repeated ZMetricVolume vm = 8;
 
   repeated ZMetricProcess pr = 9;
+}
+
+// newlogMetric - stats for newlog
+message newlogMetric {
+  // Status of failed to send to controller and start time of fail to send
+  bool   failedToSend = 1;
+  google.protobuf.Timestamp failSentStartTime = 2;
+  // Stats on total bytes uploaded to controller, the total 4xx responses
+  // current upload interval in seconds, and current logfile timeout value in seconds
+  // maximum gzip file size so far, and average gzip file size
+  uint64 totalBytesUpload = 3;
+  uint32 num4xxResponses = 4;
+  uint32 currentUploadIntv = 5;
+  uint32 logfileTimeout = 6;
+  uint32 maxGzipFileSize = 7;
+  uint32 avgGzipFileSize = 8;
+  // Stats for upload to controller letency
+  // the min, max and average upload delay in msec, and the last upload delay in msec
+  uint32 mimUploadMsec = 9;
+  uint32 maxUploadMsec = 10;
+  uint32 avgUploadMsec = 11;
+  uint32 lastUploadMsec = 12;
+  // Stats for controller server, the current and average CPU ussage in percentage
+  // and the current and average processing delay in msec (from receiving newlog batch to reply to device)
+  float  currentCPULoadPct = 13;
+  float  averageCPULoadPct = 14;
+  uint32 currentProcessDelay = 15;
+  uint32 averageProcessDelay = 16;
+  //
+  logfileMetrics deviceMetrics = 17;
+  logfileMetrics appMetrics = 18;
+  // top 10 device log (not app) source in total bytes in percentage
+  map <string, uint32> top10_input_sources = 19;
+}
+
+// logfileMetrics - is shared for both device log and application log
+message logfileMetrics {
+  //  Stats for gzip files been sent to controller, total bytes written into gzip files
+  //  total bytes written into logfiles before compressed, number of gzip files currently
+  //  remain in the gzip directory and total input events
+  uint64 numGzipFileSent = 1;
+  uint64 numGzipBytesWrite = 2;
+  uint64 numBytesWrite = 3;
+  uint32 numGzipFileInDir = 4;
+  uint64 numInputEvent = 5;
+  // Stats for log upload file retries, the number of files can not be sent and kept on device
+  // the most recent gzip file sent timestamp of the gzip file and the timestamp for sending that file
+  uint64 numGzipFileRetry = 6;
+  uint32 numGzipFileKeptLocal = 7;
+  google.protobuf.Timestamp recentGzipFileTime = 8;
+  google.protobuf.Timestamp lastGzipFileSendTime = 9;
 }
