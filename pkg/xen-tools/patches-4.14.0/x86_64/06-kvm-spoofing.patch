@@ -1,0 +1,45 @@
+diff -rc a/tools/qemu-xen/target/i386/cpu.c b/tools/qemu-xen/target/i386/cpu.c
+*** a/tools/qemu-xen/target/i386/cpu.c	Thu Jul  2 21:00:27 2020
+--- b/tools/qemu-xen/target/i386/cpu.c	Tue Dec  8 22:58:27 2020
+***************
+*** 6346,6352 ****
+          }
+      }
+  
+!     if (!kvm_enabled() || !cpu->expose_kvm) {
+          env->features[FEAT_KVM] = 0;
+      }
+  
+--- 6346,6352 ----
+          }
+      }
+  
+!     if (!kvm_enabled()) {
+          env->features[FEAT_KVM] = 0;
+      }
+  
+diff -rc a/tools/qemu-xen/target/i386/kvm.c b/tools/qemu-xen/target/i386/kvm.c
+*** a/tools/qemu-xen/target/i386/kvm.c	Thu Jul  2 21:00:27 2020
+--- b/tools/qemu-xen/target/i386/kvm.c	Tue Dec  8 22:50:03 2020
+***************
+*** 1527,1532 ****
+--- 1527,1545 ----
+          c->function = KVM_CPUID_FEATURES | kvm_base;
+          c->eax = env->features[FEAT_KVM];
+          c->edx = env->features[FEAT_KVM_HINTS];
++     } else {
++         memcpy(signature, "EVEEVEEVE\0\0\0", 12);
++         c = &cpuid_data.entries[cpuid_i++];
++         c->function = KVM_CPUID_SIGNATURE | kvm_base;
++         c->eax = KVM_CPUID_FEATURES | kvm_base;
++         c->ebx = signature[0];
++         c->ecx = signature[1];
++         c->edx = signature[2];
++ 
++         c = &cpuid_data.entries[cpuid_i++];
++         c->function = KVM_CPUID_FEATURES | kvm_base;
++         c->eax = env->features[FEAT_KVM];
++         c->edx = env->features[FEAT_KVM_HINTS];
+      }
+  
+      cpu_x86_cpuid(env, 0, 0, &limit, &unused, &unused, &unused);
