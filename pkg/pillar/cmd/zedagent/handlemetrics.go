@@ -1254,6 +1254,9 @@ func appIfnameToNetworkInstance(ctx *zedagentContext,
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.VifUsed == vifname {
 			status, _ := ctx.subNetworkInstanceStatus.Get(ulStatus.Network.String())
+			if status == nil {
+				return nil
+			}
 			niStatus := status.(types.NetworkInstanceStatus)
 			return &niStatus
 		}
