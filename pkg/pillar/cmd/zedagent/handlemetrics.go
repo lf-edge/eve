@@ -388,8 +388,57 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			&metric)
 	}
 
-	// XXX temp debug until newlog metric API is defined
-	log.Tracef("publishMetrics: newlog-metrics %+v", newlogMetrics)
+	nlm := &zmet.NewlogMetric{
+		FailedToSend:        newlogMetrics.FailedToSend,
+		TotalBytesUpload:    newlogMetrics.TotalBytesUpload,
+		Num4XxResponses:     newlogMetrics.Num4xxResponses,
+		CurrentUploadIntv:   newlogMetrics.CurrUploadIntvSec,
+		LogfileTimeout:      newlogMetrics.LogfileTimeoutSec,
+		MaxGzipFileSize:     newlogMetrics.MaxGzipSize,
+		AvgGzipFileSize:     newlogMetrics.AvgGzipSize,
+		MimUploadMsec:       newlogMetrics.Latency.MinUploadMsec,
+		MaxUploadMsec:       newlogMetrics.Latency.MaxUploadMsec,
+		AvgUploadMsec:       newlogMetrics.Latency.AvgUploadMsec,
+		LastUploadMsec:      newlogMetrics.Latency.CurrUploadMsec,
+		CurrentCPULoadPct:   newlogMetrics.ServerStats.CurrCPULoadPCT,
+		AverageCPULoadPct:   newlogMetrics.ServerStats.AvgCPULoadPCT,
+		CurrentProcessDelay: newlogMetrics.ServerStats.CurrProcessMsec,
+		AverageProcessDelay: newlogMetrics.ServerStats.AvgProcessMsec,
+	}
+	nlm.FailSentStartTime, _ = ptypes.TimestampProto(newlogMetrics.FailSentStartTime)
+
+	devM := &zmet.LogfileMetrics{
+		NumGzipFileSent:      newlogMetrics.DevMetrics.NumGZipFilesSent,
+		NumGzipBytesWrite:    newlogMetrics.DevMetrics.NumGZipBytesWrite,
+		NumBytesWrite:        newlogMetrics.DevMetrics.NumBytesWrite,
+		NumGzipFileInDir:     newlogMetrics.DevMetrics.NumGzipFileInDir,
+		NumInputEvent:        newlogMetrics.DevMetrics.NumInputEvent,
+		NumGzipFileRetry:     newlogMetrics.DevMetrics.NumGZipFileRetry,
+		NumGzipFileKeptLocal: newlogMetrics.DevMetrics.NumGZipFileKeptLocal,
+	}
+	devM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.RecentUploadTimestamp)
+	devM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.LastGZipFileSendTime)
+	nlm.DeviceMetrics = devM
+
+	appM := &zmet.LogfileMetrics{
+		NumGzipFileSent:      newlogMetrics.AppMetrics.NumGZipFilesSent,
+		NumGzipBytesWrite:    newlogMetrics.AppMetrics.NumGZipBytesWrite,
+		NumBytesWrite:        newlogMetrics.AppMetrics.NumBytesWrite,
+		NumGzipFileInDir:     newlogMetrics.AppMetrics.NumGzipFileInDir,
+		NumInputEvent:        newlogMetrics.AppMetrics.NumInputEvent,
+		NumGzipFileRetry:     newlogMetrics.AppMetrics.NumGZipFileRetry,
+		NumGzipFileKeptLocal: newlogMetrics.AppMetrics.NumGZipFileKeptLocal,
+	}
+	appM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.RecentUploadTimestamp)
+	appM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.LastGZipFileSendTime)
+	nlm.AppMetrics = appM
+
+	nlm.Top10InputSources = make(map[string]uint32)
+	for source, val := range newlogMetrics.DevTop10InputBytesPCT {
+		nlm.Top10InputSources[source] = val
+	}
+	ReportDeviceMetric.Newlog = nlm
+	log.Tracef("publishMetrics: newlog-metrics %+v", nlm)
 
 	// collect CipherMetric from agents and report
 	// Collect zedcloud metrics from ourselves and other agents
