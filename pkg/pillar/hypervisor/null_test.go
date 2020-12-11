@@ -5,10 +5,11 @@ package hypervisor
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 func init() {

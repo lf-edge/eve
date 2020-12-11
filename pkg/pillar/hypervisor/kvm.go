@@ -5,10 +5,6 @@ package hypervisor
 
 import (
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -17,6 +13,11 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 //TBD: Have a better way to calculate this number.
@@ -446,6 +447,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		Machine               string
 		PCIId, DiskID, SATAId int
 		AioType               string
+		LunWWN                string
 		types.DiskStatus
 	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "threads"}
 
@@ -473,6 +475,12 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).
 		Parse(qemuDiskTemplate)
 	for _, ds := range diskStatusList {
+		// ... create volume
+		var err error
+		if diskContext.LunWWN, err = vhostCreate(); err != nil {
+			logError("Failed to create VHost fabric %v", err)
+		}
+
 		if ds.Devtype == "" {
 			continue
 		}

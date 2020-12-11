@@ -115,6 +115,8 @@ type VolumeStatus struct {
 	LastUse                 time.Time
 	PreReboot               bool // Was volume last use prior to device reboot?
 	ReferenceName           string
+	VhostLunWWN				string
+	VhostTargetWWN			string
 
 	ErrorAndTimeWithSource
 }
