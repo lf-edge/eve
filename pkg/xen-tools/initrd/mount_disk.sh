@@ -1,7 +1,7 @@
 #!/bin/sh
 
 mountPointLineNo=1
-find /sys/block/ -maxdepth 1 -name '*vd*' -exec basename '{}' ';'| while read -r disk ; do
+find /sys/block/ -maxdepth 1 -name '*sd*' -exec basename '{}' ';'| while read -r disk ; do
   echo "Processing $disk"
   targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
   if [ -z "$targetDir" ]
