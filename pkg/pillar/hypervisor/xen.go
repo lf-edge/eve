@@ -102,7 +102,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	switch config.VirtualizationMode {
 	case types.PV:
-		xen_type = "pvh"
+		xen_type = "pv"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
 		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
 	case types.HVM:
