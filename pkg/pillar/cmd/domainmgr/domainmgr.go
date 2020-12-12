@@ -1616,6 +1616,11 @@ func handleModify(ctx *domainContext, key string,
 			status.ClearError()
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status, false)
+			if status.HasError() {
+				log.Errorf("doInactivate failed: Error (%s) Aborting the modify of %s",
+					status.Error, status.DisplayName)
+				return
+			}
 		}
 		// Update disks based on any change to volumes
 		if err := configToStatus(ctx, *config, status); err != nil {
@@ -1638,10 +1643,20 @@ func handleModify(ctx *domainContext, key string,
 			status.ClearError()
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status, false)
+			if status.HasError() {
+				log.Errorf("doInactivate failed: Error (%s) Aborting the modify of %s",
+					status.Error, status.DisplayName)
+				return
+			}
 			updateStatusFromConfig(status, *config)
 			changed = true
 		} else if status.Activated {
 			doInactivate(ctx, status, false)
+			if status.HasError() {
+				log.Errorf("doInactivate failed: Error (%s) Aborting the modify of %s",
+					status.Error, status.DisplayName)
+				return
+			}
 			updateStatusFromConfig(status, *config)
 			changed = true
 		}
@@ -1763,7 +1778,17 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 
 	if status.Activated {
+		if status.HasError() {
+			log.Functionf("handleDelete(%v) clearing existing error for %s",
+				status.UUIDandVersion, status.DisplayName)
+			status.ClearError()
+			publishDomainStatus(ctx, status)
+		}
 		doInactivate(ctx, status, true)
+		if status.HasError() {
+			log.Errorf("doInactivate failed: Aborting the delete of %s", status.DisplayName)
+			return
+		}
 	} else {
 		pciUnassign(ctx, status, true)
 	}
