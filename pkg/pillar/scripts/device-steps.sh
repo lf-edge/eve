@@ -146,12 +146,10 @@ fi
 
 if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" > /dev/console
+elif [ -f $FIRSTBOOTFILE ]; then
+    exho "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" > /dev/console
 else
-  if [ -f $FIRSTBOOTFILE ]; then
-      exho "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" > /dev/console
-  else
-      echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" > /dev/console
-  fi
+    echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" > /dev/console
 fi
 
 # Copy any GlobalConfig from /config

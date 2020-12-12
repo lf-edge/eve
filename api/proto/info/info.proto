@@ -287,6 +287,10 @@ message ZInfoDevice {
   uint64 memory = 8;   // in Mbytes
   uint64 storage = 9;  // in MBytes for the currently active image filesystem
 
+  // Value of'Power_Cycle_Count' from SMART.
+  // -1 is assigned if SMART is disabled or 'Power_Cycle_Count' is unavailable.
+  int64 powerCycleCounter = 10;
+
   ZInfoManufacturer minfo = 11;
 
   // OBSOLETE. The information will be provided by DevicePort instead.
