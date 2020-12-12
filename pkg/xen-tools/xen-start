@@ -31,8 +31,15 @@ echo running > "/run/tasks/$1"
 # FIXME: this really needs to be managed by runc
 keyctl link @u @s
 
+# if HVM capabilities exist, we run PV guests as PVH
+if grep -q 'type.*=.*"pv"' "$2"; then
+   # shellcheck disable=SC2089
+   xl info | grep -q 'virt_caps.*hvm' && EXTRA_ARGS='type="pvh"'
+fi
+
 # create domain in a paused state
-xl create "$2" -p || bail "xl created failed"
+# shellcheck disable=SC2090
+xl create "$2" -p $EXTRA_ARGS || bail "xl created failed"
 
 # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
 ID=$(domID "$1")
