@@ -7,7 +7,9 @@ package zedagent
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -30,6 +32,7 @@ import (
 
 var (
 	nilIPInfo = ipinfo.IPInfo{}
+	smartData = types.NewSmartDataWithDefaults()
 )
 
 func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) {
@@ -107,6 +110,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Ncpu = *proto.Uint32(metric.Ncpus)
 		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
+
+	ReportDeviceInfo.PowerCycleCounter = smartData.PowerCycleCount
 	// Find all disks and partitions
 	for _, diskMetric := range getAllDiskMetrics(ctx) {
 		var diskPath, mountPath string
@@ -667,4 +672,19 @@ func createAppInstances(ctxPtr *zedagentContext,
 	}
 	ctxPtr.getconfigCtx.subAppInstanceStatus.Iterate(
 		addAppInstanceFunc)
+}
+
+func parseSMARTData() {
+	filename := "/run/SMART_details.json"
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Errorf("parseSMARTData: exception while opening %s. %s", filename, err.Error())
+		return
+	}
+
+	if err := json.Unmarshal(data, &smartData); err != nil {
+		log.Errorf("parseSMARTData: exception while parsing SMART data. %s", err.Error())
+		return
+	}
+	smartData.RawData = string(data)
 }

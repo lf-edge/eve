@@ -1073,6 +1073,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 
+	//Parse SMART data
+	go parseSMARTData()
+
 	// Use a go routine to make sure we have wait/timeout without
 	// blocking the main select loop
 	log.Functionf("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
