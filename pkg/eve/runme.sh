@@ -78,8 +78,19 @@ do_version() {
 do_live() {
   PART_SPEC="efi conf imga"
   [ -d /bits/boot ] && PART_SPEC="boot conf imga"
+  # each live image is expected to have a soft serial number that
+  # typically gets provisioned by an installer -- since we're
+  # shortcutting the installer step here we need to generate it
+  # if it is missing in CONFIG partition
+  if mcopy -o -i /bits/config.img ::/soft_serial /tmp; then
+     IMAGE_UUID=$(cat /tmp/soft_serial)
+  else
+     IMAGE_UUID=$(uuidgen | tee /tmp/soft_serial)
+     mcopy -o -i /bits/config.img /tmp/soft_serial ::/soft_serial
+  fi
   create_efi_raw "${1:-350}" "$PART_SPEC"
   dump "$OUTPUT_IMG" live.raw
+  echo "$IMAGE_UUID" >&2
 }
 
 do_installer_raw() {
