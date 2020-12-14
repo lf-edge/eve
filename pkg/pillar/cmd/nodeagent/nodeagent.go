@@ -95,6 +95,8 @@ type nodeagentContext struct {
 	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
 	vaultOperational            bool
+	maintMode                   bool                        // whether Maintenance mode should be triggered
+	maintModeReason             types.MaintenanceModeReason //reason for entering Maintenance mode
 
 	// Some contants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -599,17 +601,19 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 	pub := ctxPtr.pubNodeAgentStatus
 	ctxPtr.lastLock.Lock()
 	status := types.NodeAgentStatus{
-		Name:              agentName,
-		CurPart:           ctxPtr.curPart,
-		RemainingTestTime: ctxPtr.remainingTestTime,
-		UpdateInprogress:  ctxPtr.updateInprogress,
-		DeviceReboot:      ctxPtr.deviceReboot,
-		RebootReason:      ctxPtr.rebootReason,
-		BootReason:        ctxPtr.bootReason,
-		RebootStack:       ctxPtr.rebootStack,
-		RebootTime:        ctxPtr.rebootTime,
-		RebootImage:       ctxPtr.rebootImage,
-		RestartCounter:    ctxPtr.restartCounter,
+		Name:                       agentName,
+		CurPart:                    ctxPtr.curPart,
+		RemainingTestTime:          ctxPtr.remainingTestTime,
+		UpdateInprogress:           ctxPtr.updateInprogress,
+		DeviceReboot:               ctxPtr.deviceReboot,
+		RebootReason:               ctxPtr.rebootReason,
+		BootReason:                 ctxPtr.bootReason,
+		RebootStack:                ctxPtr.rebootStack,
+		RebootTime:                 ctxPtr.rebootTime,
+		RebootImage:                ctxPtr.rebootImage,
+		RestartCounter:             ctxPtr.restartCounter,
+		LocalMaintenanceMode:       ctxPtr.maintMode,
+		LocalMaintenanceModeReason: ctxPtr.maintModeReason,
 	}
 	ctxPtr.lastLock.Unlock()
 	pub.Publish(agentName, status)

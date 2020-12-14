@@ -111,10 +111,19 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 	vaultCutOffTime := ctxPtr.globalConfig.GlobalValueInt(types.VaultReadyCutOffTime)
 	timePassed := ctxPtr.timeTickCount
 	if timePassed > vaultCutOffTime {
-		errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds, rebooting",
-			vaultCutOffTime, timePassed-vaultCutOffTime)
-		log.Errorf(errStr)
-		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonVaultFailure)
+		if ctxPtr.updateInprogress {
+			// fail the upgrade by rebooting now
+			errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds, rebooting",
+				vaultCutOffTime, timePassed-vaultCutOffTime)
+			log.Errorf(errStr)
+			scheduleNodeReboot(ctxPtr, errStr, types.BootReasonVaultFailure)
+		} else {
+			// there is no image update in progress, this happened after a normal
+			// reboot. enter maintenance mode
+			ctxPtr.maintMode = true
+			ctxPtr.maintModeReason = types.MaintenanceModeReasonVaultLockedUp
+			publishNodeAgentStatus(ctxPtr)
+		}
 	} else {
 		log.Functionf("handleRebootOnVaultLocked %d seconds remaining",
 			vaultCutOffTime-timePassed)

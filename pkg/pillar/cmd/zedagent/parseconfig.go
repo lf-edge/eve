@@ -1592,13 +1592,27 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 func mergeMaintenanceMode(ctx *zedagentContext) {
 	switch ctx.gcpMaintenanceMode {
 	case types.TS_ENABLED:
+		// Overrides everything, and sets maintenance mode
 		ctx.maintenanceMode = true
+		ctx.maintModeReason = types.MaintenanceModeReasonUserRequested
 	case types.TS_DISABLED:
+		// Overrides everything, and resets maintenance mode
 		ctx.maintenanceMode = false
+		ctx.maintModeReason = types.MaintenanceModeReasonNone
 	case types.TS_NONE:
-		ctx.maintenanceMode = ctx.apiMaintenanceMode
+		// Now, look at user config and local triggers
+		ctx.maintenanceMode = ctx.apiMaintenanceMode || ctx.localMaintenanceMode
+		if ctx.apiMaintenanceMode {
+			// set reason as user requested
+			ctx.maintModeReason = types.MaintenanceModeReasonUserRequested
+		} else if ctx.localMaintenanceMode {
+			// set reason to reflect exact local reason
+			ctx.maintModeReason = ctx.localMaintModeReason
+		}
 	}
-	log.Noticef("Changed maintenanceMode to %t", ctx.maintenanceMode)
+	log.Noticef("Changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
+		ctx.maintenanceMode, ctx.maintModeReason.String(), ctx.gcpMaintenanceMode,
+		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
 }
 
 func publishAppInstanceConfig(getconfigCtx *getconfigContext,
