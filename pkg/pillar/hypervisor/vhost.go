@@ -28,5 +28,6 @@ func vhostCreate(status types.DiskStatus) (string, error) {
 		}
 	}
 
+	logError("Create vhost for %v, wwn %v", status.DisplayName, wwn)
 	return wwn, nil
 }

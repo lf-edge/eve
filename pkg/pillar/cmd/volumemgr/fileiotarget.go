@@ -10,7 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// argetCreate - Create fileio target for volume
+// TargetCreate - Create fileio target for volume
 func TargetCreate(status types.VolumeStatus) error {
 
 	var script = [...]string{
@@ -27,6 +27,8 @@ func TargetCreate(status types.VolumeStatus) error {
 			log.Error(fmt.Sprintf("Failed to execute command [%s]: %v", cmd, err))
 		}
 	}
+
+	log.Error(fmt.Sprintf("Create target fileIO for [%v]:[%v] size=[%v] UUID:%v", status.DisplayName, status.PathName(), status.MaxVolSize, status.VolumeID))
 
 	return nil
 }
