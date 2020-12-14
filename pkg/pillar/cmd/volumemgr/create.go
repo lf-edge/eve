@@ -118,6 +118,11 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		return created, filelocation, err
 	}
 	log.Functionf("createContainerVolume(%s) DONE", status.Key())
+
+	if err := TargetCreate(status); err != nil {
+		log.Errorf("Failed to create FileIO target %v", err)
+	}
+
 	return true, filelocation, nil
 }
 

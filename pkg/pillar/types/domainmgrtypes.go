@@ -290,6 +290,8 @@ type DiskStatus struct {
 	DisplayName  string
 	Devtype      string // XXX used internally by hypervisor; deprecate?
 	Vdev         string // Allocated
+	DiskSize	 uint64 //in byte
+	LunWWN		 int 	// Lun wwn (vhost)
 }
 
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
