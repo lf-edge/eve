@@ -23,9 +23,15 @@ message OSVerDetails {
 
 message BaseOSConfig {
   UUIDandVersion uuidandversion = 1;
+
+  // volumeID will supersede drives. Drives still
+  // exist for backward compatibility.
+  // Drives will be deprecated in the future.
   repeated Drive drives = 3;
   bool activate = 4;
 
   string baseOSVersion = 10;
   // deprecated 11; OSVerDetails baseOSDetails
+
+  string volumeID = 12; // UUID for Volume with BaseOS image
 }
