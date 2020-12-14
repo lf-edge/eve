@@ -47,6 +47,8 @@ const (
 	uploadDevDir = types.NewlogUploadDevDir
 	uploadAppDir = types.NewlogUploadAppDir
 	panicFileDir = types.NewlogDir + "/panicStacks"
+	symlinkFile  = collectDir + "/sym.dev.log"
+	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
 	devPrefix    = types.DevPrefix
 	appPrefix    = types.AppPrefix
 	tmpPrefix    = "TempFile"
@@ -653,7 +655,7 @@ func getSourceFromMsg(msg string) (string, string, string) {
 	return lines2[n-1], lines2[n-2], content
 }
 
-func startTmpfile(dirname, filename string) *os.File {
+func startTmpfile(dirname, filename string, isApp bool) *os.File {
 	tmpFile, err := ioutil.TempFile(dirname, filename)
 	if err != nil {
 		log.Fatal(err)
@@ -661,6 +663,20 @@ func startTmpfile(dirname, filename string) *os.File {
 	err = tmpFile.Chmod(0600)
 	if err != nil {
 		log.Fatal(err)
+	}
+	// make symbolic link for device temp logfiles
+	if !isApp {
+		if err := os.Remove(tmpSymlink); err != nil && !os.IsNotExist(err) { // remove a stale one
+			log.Error(err)
+		}
+		err = os.Symlink(tmpFile.Name(), tmpSymlink)
+		if err != nil {
+			log.Error(err)
+		}
+		err = os.Rename(tmpSymlink, symlinkFile)
+		if err != nil {
+			log.Error(err)
+		}
 	}
 	return tmpFile
 }
@@ -685,7 +701,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 	logmetaData = findMovePrevLogFiles(moveChan)
 
 	// new logfile
-	devlogFile := startTmpfile(collectDir, devPrefix)
+	devlogFile := startTmpfile(collectDir, devPrefix, false)
 	defer devlogFile.Close()
 
 	var fileinfo fileChanInfo
@@ -779,7 +795,7 @@ func checkAppEntry(entry *inputEntry) string {
 func getAppStatsMap(appuuid string) statsLogFile {
 	if _, ok := appStatsMap[appuuid]; !ok {
 		applogname := appPrefix + appuuid + ".log"
-		applogfile := startTmpfile(collectDir, applogname)
+		applogfile := startTmpfile(collectDir, applogname, true)
 
 		appM := statsLogFile{
 			file:      applogfile,
@@ -1170,7 +1186,7 @@ func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, 
 
 	// reset stats data and create new logfile for device
 	stats.size = 0
-	stats.file = startTmpfile(collectDir, devPrefix)
+	stats.file = startTmpfile(collectDir, devPrefix, isApp)
 	stats.starttime = time.Now()
 
 	_, err := stats.file.WriteString(logmetaData + "\n") // write the metadata in the first line of logfile
