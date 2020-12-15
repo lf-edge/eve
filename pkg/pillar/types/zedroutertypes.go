@@ -1290,7 +1290,7 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 
 	var servers []net.IP
 	for _, us := range globalStatus.Ports {
-		if !us.IsMgmt && ifname == "" {
+		if !us.IsMgmt {
 			continue
 		}
 		if ifname != "" && ifname != us.IfName {
@@ -1411,7 +1411,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, phylabelOr
 	}
 	for _, us := range globalStatus.Ports {
 		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt && ifname == "" {
+			!us.IsMgmt {
 			continue
 		}
 		if free && !us.Free {
@@ -1541,7 +1541,7 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 }
 
 // Returns addresses based on free, ifname, and whether or not we want
-// IPv6 link-locals. Only applies to management ports unless ifname is set.
+// IPv6 link-locals. Only applies to management ports.
 // If free is not set, the addresses from the free management ports are first.
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 	phylabelOrIfname string, includeLinkLocal bool) ([]net.IP, error) {
@@ -1559,7 +1559,7 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt && ifname == "" {
+			!us.IsMgmt {
 			continue
 		}
 		// If ifname is set it should match

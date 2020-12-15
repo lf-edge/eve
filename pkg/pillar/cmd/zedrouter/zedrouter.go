@@ -451,13 +451,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("Zedrouter has restarted. Entering main Select loop")
 
-	if err := createServerIntf(&zedrouterCtx); err != nil {
-		log.Fatal(err)
-	}
-	if err := createServer(&zedrouterCtx); err != nil {
-		log.Fatal(err)
-	}
-
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -682,22 +675,6 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 	}
 	status := st.(types.AppNetworkStatus)
 	return &status
-}
-
-func lookupAppNetworkStatusByAppIP(ctx *zedrouterContext, ip net.IP) *types.AppNetworkStatus {
-
-	ipStr := ip.String()
-	pub := ctx.pubAppNetworkStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.AppNetworkStatus)
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ipStr == ulStatus.AllocatedIPAddr {
-				return &status
-			}
-		}
-	}
-	return nil
 }
 
 func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetworkConfig {
