@@ -114,7 +114,7 @@ while true; do
              shift
           fi
           shift
-          [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && bail "Unknown format: $FMT"
+          [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && [ "$FMT" != "parallels" ] && bail "Unknown format: $FMT"
           ;;
        *) break
           ;;
