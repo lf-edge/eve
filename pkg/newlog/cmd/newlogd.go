@@ -551,6 +551,7 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			logmetrics.AppMetrics.NumInputEvent++
 			isApp = true
 		} else {
+			logInfo.Msg = origMsg
 			logmetrics.DevMetrics.NumInputEvent++
 		}
 		if !ok {
