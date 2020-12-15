@@ -1,0 +1,61 @@
+From 59ab1a96357ccc470294663e0ceeeaab0c0b7ddd Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Wed, 4 Nov 2020 04:16:57 -0500
+Subject: [PATCH] fget: Do not loop with rcu lock held
+
+Do not loop wint the RCU lock held
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ fs/file.c | 34 ++++++++++++++++++++--------------
+ 1 file changed, 20 insertions(+), 14 deletions(-)
+
+diff --git a/fs/file.c b/fs/file.c
+index 5a0fa61504ff..c9ac0232df20 100644
+--- a/fs/file.c
++++ b/fs/file.c
+@@ -715,21 +715,27 @@ static struct file *__fget(unsigned int fd, fmode_t mask, unsigned int refs)
+ {
+ 	struct files_struct *files = current->files;
+ 	struct file *file;
++	bool again = false;
+ 
+-	rcu_read_lock();
+-loop:
+-	file = fcheck_files(files, fd);
+-	if (file) {
+-		/* File object ref couldn't be taken.
+-		 * dup2() atomicity guarantee is the reason
+-		 * we loop to catch the new file (or NULL pointer)
+-		 */
+-		if (file->f_mode & mask)
+-			file = NULL;
+-		else if (!get_file_rcu_many(file, refs))
+-			goto loop;
+-	}
+-	rcu_read_unlock();
++	do {
++		rcu_read_lock();
++
++		file = fcheck_files(files, fd);
++		if (file) {
++			/* File object ref couldn't be taken.
++			* dup2() atomicity guarantee is the reason
++			* we loop to catch the new file (or NULL pointer)
++			*/
++			if (file->f_mode & mask)
++				file = NULL;
++			else if (!get_file_rcu_many(file, refs))
++				again = true;
++		}
++		rcu_read_unlock();
++
++		if (unlikely(again))
++			schedule();
++	} while (again);
+ 
+ 	return file;
+ }
+-- 
+2.26.2
+
