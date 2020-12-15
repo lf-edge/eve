@@ -21,7 +21,7 @@ dump() {
             INAME="$INAME.qcow2"
             ONAME="$ONAME.qcow2"
             ;;
-     parallels) qemu-img convert -c -f raw -O parallels "$INAME" "$INAME.parallels"
+     parallels) qemu-img convert -f raw -O parallels "$INAME" "$INAME.parallels"
             INAME="$INAME.parallels"
             ONAME="$ONAME.parallels"
             ;;
