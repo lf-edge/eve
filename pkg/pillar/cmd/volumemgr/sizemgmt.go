@@ -10,47 +10,61 @@ import (
 	"github.com/shirou/gopsutil/disk"
 )
 
-// getRemainingVolumeDiskSpace returns how many bytes remain for volume usage
-// plus a string for printing the current volume disk usage (latter used
-// if there isn't enough)
-func getRemainingVolumeDiskSpace(ctxPtr *volumemgrContext) (uint64, string, error) {
+// getRemainingDiskSpace returns how many bytes remain for volume and content
+// tree usage plus a string for printing the current volume and content tree
+// disk usage (latter used if there isn't enough)
+func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, string, error) {
 
-	var totalVolumeDiskSize uint64
-	volumeDiskSizeList := "" // In case caller wants to print an error
+	var totalDiskSize uint64
+	diskSizeList := "" // In case caller wants to print an error
 
-	pub := ctxPtr.pubVolumeStatus
-	items := pub.GetAll()
-	for _, iterStatusJSON := range items {
-		iterStatus := iterStatusJSON.(types.VolumeStatus)
-		if iterStatus.State < types.CREATED_VOLUME {
-			log.Tracef("Volume %s State %d < CREATED_VOLUME",
-				iterStatus.Key(), iterStatus.State)
+	pubContentTree := ctxPtr.pubContentTreeStatus
+	itemsContentTree := pubContentTree.GetAll()
+	for _, iterContentTreeStatusJSON := range itemsContentTree {
+		iterContentTreeStatus := iterContentTreeStatusJSON.(types.ContentTreeStatus)
+		if iterContentTreeStatus.State < types.LOADED {
+			log.Tracef("Content tree %s State %d < LOADED",
+				iterContentTreeStatus.Key(), iterContentTreeStatus.State)
 			continue
 		}
-		totalVolumeDiskSize += iterStatus.MaxVolSize
-		volumeDiskSizeList += fmt.Sprintf("Volume: %s (Size: %d)\n",
-			iterStatus.Key(), iterStatus.MaxVolSize)
+		totalDiskSize += uint64(iterContentTreeStatus.CurrentSize)
+		diskSizeList += fmt.Sprintf("Content tree: %s (Size: %d)\n",
+			iterContentTreeStatus.Key(), iterContentTreeStatus.CurrentSize)
+	}
+
+	pubVolume := ctxPtr.pubVolumeStatus
+	itemsVolume := pubVolume.GetAll()
+	for _, iterVolumeStatusJSON := range itemsVolume {
+		iterVolumeStatus := iterVolumeStatusJSON.(types.VolumeStatus)
+		if iterVolumeStatus.State < types.CREATED_VOLUME {
+			log.Tracef("Volume %s State %d < CREATED_VOLUME",
+				iterVolumeStatus.Key(), iterVolumeStatus.State)
+			continue
+		}
+		totalDiskSize += iterVolumeStatus.MaxVolSize
+		diskSizeList += fmt.Sprintf("Volume: %s (Size: %d)\n",
+			iterVolumeStatus.Key(), iterVolumeStatus.MaxVolSize)
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
 		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
 		log.Error(err)
-		return 0, volumeDiskSizeList, err
+		return 0, diskSizeList, err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
 	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
-	var allowedDeviceDiskSizeForVolumes uint64
+	var allowedDeviceDiskSize uint64
 	if deviceDiskSize < diskReservedForDom0 {
 		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
 			deviceDiskSize, diskReservedForDom0)
-		log.Errorf("***getRemainingVolumeDiskSpace: err: %s", err)
-		return uint64(0), volumeDiskSizeList, err
+		log.Errorf("***getRemainingDiskSpace: err: %s", err)
+		return uint64(0), diskSizeList, err
 	}
-	allowedDeviceDiskSizeForVolumes = deviceDiskSize - diskReservedForDom0
-	if allowedDeviceDiskSizeForVolumes < totalVolumeDiskSize {
-		return 0, volumeDiskSizeList, nil
+	allowedDeviceDiskSize = deviceDiskSize - diskReservedForDom0
+	if allowedDeviceDiskSize < totalDiskSize {
+		return 0, diskSizeList, nil
 	} else {
-		return allowedDeviceDiskSizeForVolumes - totalVolumeDiskSize, volumeDiskSizeList, nil
+		return allowedDeviceDiskSize - totalDiskSize, diskSizeList, nil
 	}
 }
 
