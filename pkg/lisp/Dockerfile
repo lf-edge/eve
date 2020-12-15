@@ -15,15 +15,22 @@ WORKDIR /lisp
 RUN go build -mod=vendor -o lisp-ztr ./cmd/lisp-ztr
 RUN strip lisp-ztr
 
-FROM alpine:3.8 AS lisp
+FROM alpine:3.11 AS lisp
 ENV LISP_VERSION=release-0.488
 
 ADD https://github.com/farinacci/lispers.net/archive/${LISP_VERSION}.tar.gz /tmp/
 ADD patches /tmp/patches
+ADD pyfakes /usr/bin/pyflakes
 
-RUN apk add --no-cache py2-pyflakes py2-pip gcc linux-headers  \
-    libc-dev python python-dev libffi-dev openssl-dev libpcap-dev
-RUN ln -s pyflakes-2 /usr/bin/pyflakes
+RUN apk add --no-cache           \
+        py2-pip=18.1-r0          \
+        gcc=9.3.0-r0             \
+        linux-headers=4.19.36-r0 \
+        libc-dev=0.7.2-r0        \
+        python2-dev=2.7.18-r0    \
+        libffi-dev=3.2.1-r6      \
+        openssl-dev=1.1.1i-r0    \
+        libpcap-dev=1.9.1-r0
 RUN tar -C /tmp -xzvf /tmp/${LISP_VERSION}.tar.gz && \
     cd /tmp/lispers.net-${LISP_VERSION} && \
     for p in /tmp/patches/* ; do patch -p1 < $p ; done && \
@@ -31,18 +38,18 @@ RUN tar -C /tmp -xzvf /tmp/${LISP_VERSION}.tar.gz && \
     mkdir /lisp ; tar -C /lisp -xzvf latest/lispers.net.tgz
 
 RUN pip install --upgrade pip && pip install -r /lisp/pip-requirements.txt
-RUN apk del py2-pip py2-pyflakes
+RUN apk del py2-pip
 
 # Putting it all together
-FROM alpine:3.8
+FROM alpine:3.11
 
-RUN apk add --no-cache \
-        libffi=3.2.1-r4    \
-        libpcap=1.8.1-r1   \
-        python=2.7.15-r3   \
-        openssl=1.0.2u-r0  \
-        iproute2=4.13.0-r0 \
-        keyutils=1.5.10-r0 \
+RUN apk add --no-cache     \
+        libffi=3.2.1-r6    \
+        libpcap=1.9.1-r0   \
+        python2=2.7.18-r0  \
+        openssl=1.1.1i-r0  \
+        iproute2=5.4.0-r1  \
+        keyutils=1.6.1-r0  \
         tini=0.18.0-r0
 
 COPY --from=lisp /lisp /lisp/
