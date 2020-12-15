@@ -1,0 +1,23 @@
+From 9a3a98bfc7bcffa4c7457701331f68933bb5bad5 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Sun, 1 Nov 2020 01:43:12 -0500
+Subject: [PATCH 13/14] Add Xen make target
+
+---
+ arch/arm/boot/dts/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
+index fa6db6eed3e2..cbca43456352 100644
+--- a/arch/arm/boot/dts/Makefile	2020-12-15 19:34:59.008957000 +0000
++++ b/arch/arm/boot/dts/Makefile	2020-12-15 19:36:47.756054000 +0000
+@@ -93,6 +93,7 @@
+ 	bcm2837-rpi-3-b-plus.dtb \
+ 	bcm2837-rpi-cm3-io3.dtb \
+ 	bcm2711-rpi-4-b.dtb \
++	pi4-64-xen-overlay.dtb \
+ 	bcm2835-rpi-zero.dtb \
+ 	bcm2835-rpi-zero-w.dtb
+ dtb-$(CONFIG_ARCH_BCM_5301X) += \
+--
+2.26.2

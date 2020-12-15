@@ -1,0 +1,76 @@
+From edc74d6b1b2a079df81122928a66013169b031b9 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Wed, 16 Dec 2020 03:45:04 +0000
+Subject: [PATCH] get_fs()/set_fs() have been deprecated on x86
+
+---
+ os_dep/osdep_service.c | 10 ----------
+ 1 file changed, 10 deletions(-)
+
+diff --git a/os_dep/osdep_service.c b/os_dep/osdep_service.c
+index c27d3b0..c192040 100755
+--- a/os_dep/osdep_service.c
++++ b/os_dep/osdep_service.c
+@@ -2193,15 +2193,12 @@ static int isFileReadable(const char *path, u32 *sz)
+ {
+ 	struct file *fp;
+ 	int ret = 0;
+-	mm_segment_t oldfs;
+ 	char buf;
+ 
+ 	fp = filp_open(path, O_RDONLY, 0);
+ 	if (IS_ERR(fp))
+ 		ret = PTR_ERR(fp);
+ 	else {
+-		oldfs = get_fs();
+-
+ 		if (1 != readFile(fp, &buf, 1))
+ 			ret = PTR_ERR(fp);
+ 
+@@ -2213,7 +2210,6 @@ static int isFileReadable(const char *path, u32 *sz)
+ 			#endif
+ 		}
+ 
+-		set_fs(oldfs);
+ 		filp_close(fp, NULL);
+ 	}
+ 	return ret;
+@@ -2229,7 +2225,6 @@ static int isFileReadable(const char *path, u32 *sz)
+ static int retriveFromFile(const char *path, u8 *buf, u32 sz)
+ {
+ 	int ret = -1;
+-	mm_segment_t oldfs;
+ 	struct file *fp;
+ 
+ 	if (path && buf) {
+@@ -2237,9 +2232,7 @@ static int retriveFromFile(const char *path, u8 *buf, u32 sz)
+ 		if (0 == ret) {
+ 			RTW_INFO("%s openFile path:%s fp=%p\n", __FUNCTION__, path , fp);
+ 
+-			oldfs = get_fs();
+ 			ret = readFile(fp, buf, sz);
+-			set_fs(oldfs);
+ 			closeFile(fp);
+ 
+ 			RTW_INFO("%s readFile, ret:%d\n", __FUNCTION__, ret);
+@@ -2263,7 +2256,6 @@ static int retriveFromFile(const char *path, u8 *buf, u32 sz)
+ static int storeToFile(const char *path, u8 *buf, u32 sz)
+ {
+ 	int ret = 0;
+-	mm_segment_t oldfs;
+ 	struct file *fp;
+ 
+ 	if (path && buf) {
+@@ -2271,9 +2263,7 @@ static int storeToFile(const char *path, u8 *buf, u32 sz)
+ 		if (0 == ret) {
+ 			RTW_INFO("%s openFile path:%s fp=%p\n", __FUNCTION__, path , fp);
+ 
+-			oldfs = get_fs();
+ 			ret = writeFile(fp, buf, sz);
+-			set_fs(oldfs);
+ 			closeFile(fp);
+ 
+ 			RTW_INFO("%s writeFile, ret:%d\n", __FUNCTION__, ret);
+-- 
+2.20.1
+

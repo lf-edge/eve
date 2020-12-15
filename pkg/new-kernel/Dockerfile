@@ -35,8 +35,8 @@ RUN apk add \
     zlib-dev \
     openssl
 
-ARG KERNEL_VERSION_aarch64=5.4.72
-ARG KERNEL_VERSION_x86_64=5.4.72
+ARG KERNEL_VERSION_aarch64=5.10.1
+ARG KERNEL_VERSION_x86_64=5.10.1
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -116,15 +116,17 @@ RUN apk add --no-cache \
     attr-dev=2.4.47-r7 \
     autoconf=2.69-r2 \
     file=5.36-r0 \
+    coreutils=8.30-r0 \
     libtirpc-dev=1.0.3-r0 \
     libtool=2.4.6-r5 \
     util-linux-dev=2.33-r0
-ENV ZFS_VERSION=0.8.4
+ENV ZFS_VERSION=2.0.0
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
 
 WORKDIR /tmp/zfs
 RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+RUN sed -ie '/Linux-Maximum:/s/^.*$/Linux-Maximum: 5.10/' META
 RUN ./autogen.sh && \
     ./configure --with-linux=/linux && \
     ./scripts/make_gitrev.sh && \
@@ -142,7 +144,7 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
 #  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
 RUN if [ "$(uname -m)" != aarch64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
-       (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c) &&\
+       (cd /tmp/rtl8821CU && git checkout 2dc966f0dc99 && patch -p1 < /rtl8821CU.patch ) &&\
        make -C /tmp/rtl8821CU KSRC=/linux modules &&\
        install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
      fi
