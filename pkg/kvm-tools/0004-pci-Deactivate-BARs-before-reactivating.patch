@@ -1,0 +1,33 @@
+From 2ee3833e794f6a61071975bb86fcf0ac1b30af0e Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 14 Dec 2020 18:58:02 +0300
+Subject: [PATCH kvmtool] pci: Deactivate BARs before reactivating
+
+Deactivate BARs before reactivating them to avoid breakage.
+Some firmware components do not check whether the COMMAND
+register contains any values before writing BARs which leads
+to kvmtool errors during subsequent BAR deactivation
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ pci.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/pci.c b/pci.c
+index 2e2c027..515d9dc 100644
+--- a/pci.c
++++ b/pci.c
+@@ -320,10 +320,6 @@ static void pci_config_bar_wr(struct kvm *kvm,
+ 	 */
+ 	if (value == 0xffffffff) {
+ 		value = ~(pci__bar_size(pci_hdr, bar_num) - 1);
+-		/* Preserve the special bits. */
+-		value = (value & mask) | (pci_hdr->bar[bar_num] & ~mask);
+-		pci_hdr->bar[bar_num] = value;
+-		return;
+ 	}
+ 
+ 	value = (value & mask) | (pci_hdr->bar[bar_num] & ~mask);
+-- 
+2.25.1
+

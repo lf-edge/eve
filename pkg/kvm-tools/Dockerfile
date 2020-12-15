@@ -35,9 +35,10 @@ RUN tar xzvf kvmtool.tar.gz > /dev/null 2>&1 ;\
 
 WORKDIR /kvmtool
 
-RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch        ;\
-    patch -p1 < /0002-alpine-define-workaround.patch             ;\
-    patch -p1 < /0003-kvm.h-Change-the-control-socket-path.patch ;\
+RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch          ; \
+    patch -p1 < /0002-alpine-define-workaround.patch               ; \
+    patch -p1 < /0003-kvm.h-Change-the-control-socket-path.patch   ; \
+    patch -p1 < /0004-pci-Deactivate-BARs-before-reactivating.patch ; \
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/usr HOME=
 
 # Building qemu in strip-down mirovm only mode
