@@ -29,7 +29,7 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/usr HOME=
 
 # Building qemu in strip-down mirovm only mode
-RUN apk add --no-cache curl=7.69.1-r1
+RUN apk add --no-cache curl=7.69.1-r3
 # qemu 5.1 dependencies
 RUN apk add --no-cache python3=3.8.5-r0 glib-dev=2.64.6-r0 pixman-dev=0.40.0-r2
 # qemu 5.2+ dependencies
