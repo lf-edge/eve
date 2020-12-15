@@ -11,7 +11,7 @@ import (
 )
 
 // VhostCreate - Create vhost fabric for volume
-func vhostCreate(status types.DiskStatus) (string, error) {
+func VhostCreate(status types.DiskStatus) (string, error) {
 	var wwn = "naa.60014059811d880b"
 	var wwnNexus = "naa.60014059811d865d"
 

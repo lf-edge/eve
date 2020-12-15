@@ -469,7 +469,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		Parse(qemuDiskTemplate)
 	for _, ds := range diskStatusList {
 		var err error
-		if diskContext.LunWWN, err = vhostCreate(ds); err != nil {
+		if diskContext.LunWWN, err = VhostCreate(ds); err != nil {
 			logError("Failed to create VHost fabric %v", err)
 		}
 
