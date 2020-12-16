@@ -144,6 +144,10 @@ const (
 	AppDiskMetricType LogObjectType = "app_disk_metric"
 	// ProcessMetricLogType:
 	ProcessMetricLogType LogObjectType = "process_metric"
+	// SigUSR1StacksType:
+	SigUSR1StacksType LogObjectType = "sigusr1_stacks"
+	// FatalStacksType:
+	FatalStacksType LogObjectType = "fatal_stacks"
 )
 
 // RelationObjectType :
@@ -192,9 +196,8 @@ func (object *LogObject) mapKey(key string) string {
 // objType -> [MANDATORY] volume configuration, app configuration, app status, image etc
 // objName -> App instance name, name of file being downloaded etc
 // objUUID -> UUID of the object if present (App instance UUID) or Zero/uninitialized UUID if not present
-// key     -> [MANDATORY] Key used for storing internal data. This should be the same Key your LoggableObject.Key()
-// would return. LogObject craeted here and the corresponding LoggableObject are linked using this key.
-// objType and objName are mandatory parameters
+// key     -> [MANDATORY] Key used for storing internal data. This should be the same Key that your LoggableObject.Key()
+// would return. LogObject created here and the corresponding LoggableObject are linked using this key.
 func NewLogObject(logBase *LogObject, objType LogObjectType, objName string, objUUID uuid.UUID, key string) *LogObject {
 	if logBase == nil {
 		logrus.Fatalf("No logBase for %s/%s/%s/%s", string(objType),

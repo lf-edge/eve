@@ -18,6 +18,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -171,11 +172,15 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 					log.Errorf("handleSignals: Error opening file %s with: %s", sigUsr1FileName, err)
 				}
 
-				log.Warnf("SIGUSR1 triggered with %d stacks", len(stackArray))
-				for _, stack := range stackArray {
-					log.Warnf("%v", stack)
+				usr1LogObject := base.EnsureLogObject(log, base.SigUSR1StacksType,
+					"", uuid.UUID{}, string(base.SigUSR1StacksType))
+				if usr1LogObject != nil {
+					log.Warnf("SIGUSR1 triggered with %d stacks", len(stackArray))
+					for _, stack := range stackArray {
+						usr1LogObject.Warnf("%v", stack)
+					}
+					log.Warnf("SIGUSR1: end of stacks")
 				}
-				log.Warnf("SIGUSR1: end of stacks")
 			case syscall.SIGUSR2:
 				log.Warnf("SIGUSR2 triggered memory info:\n")
 				sigUsr2File, err := os.OpenFile(sigUsr2FileName,
@@ -211,12 +216,16 @@ func PrintStacks(log *base.LogObject) {
 func printStack(log *base.LogObject, agentName string, agentPid int) {
 	stacks := getStacks(false)
 	stackArray := strings.Split(stacks, "\n\n")
-	log.Errorf("Fatal stack trace due to %s with %d stack traces",
-		savedRebootReason, len(stackArray))
-	for _, stack := range stackArray {
-		log.Errorf("%v", stack)
+	fatalLogObject := base.EnsureLogObject(log, base.FatalStacksType,
+		"", uuid.UUID{}, string(base.FatalStacksType))
+	if fatalLogObject != nil {
+		log.Errorf("Fatal stack trace due to %s with %d stack traces",
+			savedRebootReason, len(stackArray))
+		for _, stack := range stackArray {
+			fatalLogObject.Warnf("%v", stack)
+		}
+		log.Errorf("Fatal: end of stacks")
 	}
-	log.Errorf("Fatal: end of stacks")
 	RebootStack(log, stacks, agentName, agentPid)
 }
 
