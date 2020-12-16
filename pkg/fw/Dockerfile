@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     linux-firmware-mrvl \
     linux-firmware-rtlwifi \
     linux-firmware-rsi \
+    linux-firmware-bnx2x \
     linux-firmware-other
 
 FROM scratch
@@ -17,6 +18,8 @@ COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
 COPY --from=build /lib/firmware/rtlwifi /lib/firmware/rtlwifi
 COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
+# HPE - ProLiant DL380 Gen10
+COPY --from=build /lib/firmware/bnx2x/bnx2x-e2-* /lib/firmware/bnx2x/
 # Dell Edge Gateway 300x firmware
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
 # FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
