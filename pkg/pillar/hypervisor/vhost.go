@@ -12,8 +12,9 @@ import (
 
 // VhostCreate - Create vhost fabric for volume
 func VhostCreate(status types.DiskStatus) (string, error) {
-	var wwn = "naa.60014059811d880b"
-	var wwnNexus = "naa.60014059811d865d"
+	var x = GenerateWWN(status.DisplayName)
+	var wwn = x.DeviceWWN()
+	var wwnNexus = x.NexusWWN()
 
 	var script = [...]string{
 		fmt.Sprintf(`mkdir -p /sys/kernel/config/target/vhost/%v/tpgt_1/lun/lun_0`, wwn),
