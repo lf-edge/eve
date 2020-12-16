@@ -547,7 +547,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
-		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.ContentTreeStatus{},
 		Activate:      false,
 		Ctx:           &zedagentCtx,

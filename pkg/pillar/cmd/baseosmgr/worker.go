@@ -58,7 +58,7 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 
 	log.Functionf("installWorker to install %s to %s", d.ref, d.target)
 	err := zboot.WriteToPartition(log, d.ref, d.target)
-	log.Functionf("installWorker DONE install %s to %s: err %s",
+	log.Functionf("installWorker DONE install %s to %s: err %v",
 		d.ref, d.target, err)
 
 	if err != nil {

@@ -14,82 +14,43 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 )
 
-func handleContentTreeCreateAppImg(ctxArg interface{}, key string,
+func handleContentTreeCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Functionf("handleContentTreeCreateAppImg(%s)", key)
+	log.Functionf("handleContentTreeCreate(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	status := createContentTreeStatus(ctx, config, types.AppImgObj)
+	status := createContentTreeStatus(ctx, config)
 	updateContentTree(ctx, status)
-	log.Functionf("handleContentTreeCreateAppImg(%s) Done", key)
+	log.Functionf("handleContentTreeCreate(%s) Done", key)
 }
 
-func handleContentTreeModifyAppImg(ctxArg interface{}, key string,
+func handleContentTreeModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 
-	log.Functionf("handleContentTreeModifyAppImg(%s)", key)
+	log.Functionf("handleContentTreeModify(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	status := lookupContentTreeStatus(ctx, config.Key(), types.AppImgObj)
+	status := lookupContentTreeStatus(ctx, config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 	updateContentTree(ctx, status)
-	log.Functionf("handleContentTreeAppImg(%s) Done", key)
+	log.Functionf("handleContentTree(%s) Done", key)
 }
 
-func handleContentTreeDeleteAppImg(ctxArg interface{}, key string,
+func handleContentTreeDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Functionf("handleContentTreeDeleteAppImg(%s)", key)
+	log.Functionf("handleContentTreeDelete(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	status := lookupContentTreeStatus(ctx, config.Key(), types.AppImgObj)
+	status := lookupContentTreeStatus(ctx, config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
 	deleteContentTree(ctx, status)
-	log.Functionf("handleContentTreeDeleteAppImg(%s) Done", key)
-}
-
-func handleContentTreeCreateBaseOs(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Functionf("handleContentTreeCreateBaseOs(%s)", key)
-	config := configArg.(types.ContentTreeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	status := createContentTreeStatus(ctx, config, types.BaseOsObj)
-	updateContentTree(ctx, status)
-	log.Functionf("handleContentTreeCreateBaseOs(%s) Done", key)
-}
-
-func handleContentTreeModifyBaseOs(ctxArg interface{}, key string,
-	configArg interface{}, oldConfigArg interface{}) {
-
-	log.Functionf("handleContentTreeModifyBaseOs(%s)", key)
-	config := configArg.(types.ContentTreeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	status := lookupContentTreeStatus(ctx, config.Key(), types.BaseOsObj)
-	if status == nil {
-		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
-	}
-	updateContentTree(ctx, status)
-	log.Functionf("handleContentTreeModifyBaseOs(%s) Done", key)
-}
-
-func handleContentTreeDeleteBaseOs(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Functionf("handleContentTreeDeleteBaseOs(%s)", key)
-	config := configArg.(types.ContentTreeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	status := lookupContentTreeStatus(ctx, config.Key(), types.BaseOsObj)
-	if status == nil {
-		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
-	}
-	deleteContentTree(ctx, status)
-	log.Functionf("handleContentTreeDeleteBaseOs(%s) Done", key)
+	log.Functionf("handleContentTreeDelete(%s) Done", key)
 }
 
 func handleContentTreeRestart(ctxArg interface{}, done bool) {
@@ -102,7 +63,7 @@ func publishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeSt
 
 	key := status.Key()
 	log.Tracef("publishContentTreeStatus(%s)", key)
-	pub := ctx.publication(types.ContentTreeStatus{}, status.ObjType)
+	pub := ctx.pubContentTreeStatus
 	pub.Publish(key, *status)
 	log.Tracef("publishContentTreeStatus(%s) Done", key)
 }
@@ -111,7 +72,7 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 
 	key := status.Key()
 	log.Tracef("unpublishContentTreeStatus(%s)", key)
-	pub := ctx.publication(types.ContentTreeStatus{}, status.ObjType)
+	pub := ctx.pubContentTreeStatus
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Errorf("unpublishContentTreeStatus(%s) not found", key)
@@ -121,18 +82,17 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 	log.Tracef("unpublishContentTreeStatus(%s) Done", key)
 }
 
-func lookupContentTreeStatus(ctx *volumemgrContext,
-	key, objType string) *types.ContentTreeStatus {
+func lookupContentTreeStatus(ctx *volumemgrContext, key string) *types.ContentTreeStatus {
 
-	log.Tracef("lookupContentTreeStatus(%s/%s)", key, objType)
-	pub := ctx.publication(types.ContentTreeStatus{}, objType)
+	log.Tracef("lookupContentTreeStatus(%s)", key)
+	pub := ctx.pubContentTreeStatus
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Tracef("lookupContentTreeStatus(%s/%s) not found", key, objType)
+		log.Tracef("lookupContentTreeStatus(%s) not found", key)
 		return nil
 	}
 	status := c.(types.ContentTreeStatus)
-	log.Tracef("lookupContentTreeStatus(%s/%s) Done", key, objType)
+	log.Tracef("lookupContentTreeStatus(%s) Done", key)
 	return &status
 }
 
@@ -140,52 +100,42 @@ func lookupContentTreeStatus(ctx *volumemgrContext,
 // for all objTypes
 func lookupContentTreeStatusAny(ctx *volumemgrContext, key string) *types.ContentTreeStatus {
 
-	for _, objType := range ctObjTypes {
-		status := lookupContentTreeStatus(ctx, key, objType)
-		if status != nil {
-			return status
-		}
-	}
-	return nil
+	return lookupContentTreeStatus(ctx, key)
 }
 
 func getAllContentTreeStatus(ctx *volumemgrContext) map[string]*types.ContentTreeStatus {
 	log.Tracef("getAllContentTreeStatus")
 	contentIDAndContentTreeStatus := make(map[string]*types.ContentTreeStatus)
 
-	for _, objType := range ctObjTypes {
-		pub := ctx.publication(types.ContentTreeStatus{}, objType)
-		allContentTreeStatus := pub.GetAll()
-		for key, item := range allContentTreeStatus {
-			contentTreeStatus := item.(types.ContentTreeStatus)
-			contentIDAndContentTreeStatus[key] = &contentTreeStatus
-		}
+	pub := ctx.pubContentTreeStatus
+	allContentTreeStatus := pub.GetAll()
+	for key, item := range allContentTreeStatus {
+		contentTreeStatus := item.(types.ContentTreeStatus)
+		contentIDAndContentTreeStatus[key] = &contentTreeStatus
 	}
 
 	log.Tracef("getAllContentTreeStatus: Done")
 	return contentIDAndContentTreeStatus
 }
 
-func lookupContentTreeConfig(ctx *volumemgrContext,
-	key, objType string) *types.ContentTreeConfig {
+func lookupContentTreeConfig(ctx *volumemgrContext, key string) *types.ContentTreeConfig {
 
-	log.Tracef("lookupContentTreeConfig(%s/%s)", key, objType)
-	sub := ctx.subscription(types.ContentTreeConfig{}, objType)
+	log.Tracef("lookupContentTreeConfig(%s)", key)
+	sub := ctx.subContentTreeConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Tracef("lookupContentTreeConfig(%s/%s) not found", key, objType)
+		log.Tracef("lookupContentTreeConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.ContentTreeConfig)
-	log.Tracef("lookupContentTreeConfig(%s/%s) Done", key, objType)
+	log.Tracef("lookupContentTreeConfig(%s) Done", key)
 	return &config
 }
 
-func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConfig,
-	objType string) *types.ContentTreeStatus {
+func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConfig) *types.ContentTreeStatus {
 
-	log.Functionf("createContentTreeStatus for %v objType %s", config.ContentID, objType)
-	status := lookupContentTreeStatus(ctx, config.Key(), objType)
+	log.Functionf("createContentTreeStatus for %v", config.ContentID)
+	status := lookupContentTreeStatus(ctx, config.Key())
 	if status == nil {
 		// need to save the datastore type
 		var datastoreType string
@@ -207,7 +157,6 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 			MaxDownloadSize:   config.MaxDownloadSize,
 			GenerationCounter: config.GenerationCounter,
 			DisplayName:       config.DisplayName,
-			ObjType:           objType,
 			State:             types.INITIAL,
 			Blobs:             []string{},
 		}

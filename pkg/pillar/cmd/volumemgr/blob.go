@@ -13,8 +13,7 @@ import (
 
 // downloadBlob download a blob from a content tree
 // returns whether or not the BlobStatus has changed
-// The objType is only used to check the free vs. non-free policy for downloads
-func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus) bool {
+func downloadBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 
 	changed := false
 	// Make sure we kick the downloader and have a refcount
@@ -34,7 +33,7 @@ func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus)
 				return true
 			}
 		}
-		AddOrRefcountDownloaderConfig(ctx, objType, *blob)
+		AddOrRefcountDownloaderConfig(ctx, *blob)
 		blob.HasDownloaderRef = true
 		changed = true
 	}

@@ -179,8 +179,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		AllowLogFastupload,
 		// TriState Items
 		NetworkFallbackAnyEth,
-		AllowNonFreeAppImages,
-		AllowNonFreeBaseImages,
+		AllowNonFreeImages,
 		MaintenanceMode,
 		// String Items
 		SSHAuthorizedKeys,

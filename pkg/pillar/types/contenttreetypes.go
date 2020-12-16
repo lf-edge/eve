@@ -114,7 +114,6 @@ type ContentTreeStatus struct {
 	CurrentSize       int64  // current total downloaded size as reported by the downloader
 	Progress          uint   // In percent i.e., 0-100
 	FileLocation      string // Location of filestystem
-	ObjType           string
 	NameIsURL         bool
 	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
 	Blobs []string
@@ -178,7 +177,6 @@ func (status ContentTreeStatus) LogCreate(logBase *base.LogObject) {
 		AddField("state", status.State.String()).
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
-		AddField("objtype", status.ObjType).
 		Noticef("Content tree status create")
 }
 
@@ -207,7 +205,6 @@ func (status ContentTreeStatus) LogModify(logBase *base.LogObject, old interface
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-progress", oldStatus.Progress).
 			AddField("old-filelocation", oldStatus.FileLocation).
-			AddField("objtype", status.ObjType).
 			Noticef("Content tree status modify")
 	} else {
 		// XXX remove?
@@ -225,7 +222,6 @@ func (status ContentTreeStatus) LogDelete(logBase *base.LogObject) {
 		AddField("state", status.State.String()).
 		AddField("progress", status.Progress).
 		AddField("filelocation", status.FileLocation).
-		AddField("objtype", status.ObjType).
 		Noticef("Content tree status delete")
 
 	base.DeleteLogObject(logBase, status.LogKey())

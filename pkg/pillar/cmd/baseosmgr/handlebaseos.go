@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	uuid "github.com/satori/go.uuid"
 )
@@ -175,6 +176,30 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		config.BaseOsVersion, config.Activate, uuidStr)
 
 	changed := false
+
+	// check if the ContentSha256 and RelativeURL need to be updated
+	// we only update to latch it from empty, and if it matches exactly
+	cts := lookupContentTreeStatus(ctx, uuidStr)
+	log.Functionf("doBaseOsStatusUpdate(%s) ContentTreeStatus %#v", config.BaseOsVersion, cts)
+	if cts != nil && cts.ContentSha256 != "" {
+		updated := false
+		// we cannot just change it on the fly, because status.ContentTreeStatusList is
+		// []ContentTreeStatus and not []*ContentTreeStatus
+		var ctsList []types.ContentTreeStatus
+		for _, baseCts := range status.ContentTreeStatusList {
+			if baseCts.ContentID == cts.ContentID && baseCts.ContentSha256 == "" {
+				baseCts.ContentSha256 = cts.ContentSha256
+				baseCts.RelativeURL = cts.RelativeURL
+				updated = true
+			}
+			ctsList = append(ctsList, baseCts)
+		}
+		status.ContentTreeStatusList = ctsList
+		if updated {
+			log.Functionf("doBaseOsStatusUpdate(%s) Updating BaseOsStatus %#v", config.BaseOsVersion, status)
+			publishBaseOsStatus(ctx, status)
+		}
+	}
 
 	// XXX status should tell us this since we baseOsGetActivationStatus
 	// Are we already running this version? If so nothing to do.
@@ -361,11 +386,21 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 
 	for i, ctc := range config.ContentTreeConfigList {
 		cts := &status.ContentTreeStatusList[i]
-		if cts.RelativeURL != ctc.RelativeURL || !uuid.Equal(cts.ContentID, ctc.ContentID) {
+		// check that the contenttreeconfig and contenttreestatus have matching content ID
+		// and matching Relative URL. However, we tolerate the mismatched URL if it is because
+		// the ContentTreeStatus had the latched hash for it but the config has no sha (the config does not get updated).
+		shaifiedURL := ctc.RelativeURL
+		matchedURL := cts.RelativeURL == ctc.RelativeURL
+		if !matchedURL && ctc.ContentSha256 == "" {
+			shaifiedURL = utils.MaybeInsertSha(ctc.RelativeURL, cts.ContentSha256)
+			matchedURL = cts.RelativeURL == shaifiedURL
+		}
+		log.Functionf("doBaseOsInstall(%s): ContentTreeStatus at position %d %#v %s", uuidStr, i, cts, shaifiedURL)
+		if !uuid.Equal(cts.ContentID, ctc.ContentID) || !matchedURL {
 			// Report to zedcloud
-			errString := fmt.Sprintf("%s, for %s, Content tree config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
+			errString := fmt.Sprintf("%s, for %s, Content tree config mismatch:\n\t%s / %s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				config.BaseOsVersion,
-				ctc.RelativeURL, cts.RelativeURL,
+				ctc.RelativeURL, shaifiedURL, cts.RelativeURL,
 				ctc.ContentID, cts.ContentID)
 			log.Error(errString)
 			status.SetErrorNow(errString)
