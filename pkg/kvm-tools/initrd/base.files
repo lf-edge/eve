@@ -6,6 +6,7 @@
 /lib/mdev
 /etc/modprobe.d/*.conf
 /etc/mdev.conf
+/init-initrd
 /chroot2
 /mount_disk.sh
 /udhcpc_script.sh

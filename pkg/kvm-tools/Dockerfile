@@ -25,9 +25,11 @@ COPY initrd/base.files /etc/mkinitfs/features.d/base.files
 COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
 COPY initrd/poweroff /sbin/poweroff
 COPY initrd/chroot2.c /tmp/
+COPY initrd/micro-init.c /tmp/
 COPY initrd/00000080 /etc/acpi/PWRF/
 RUN gcc -s -o /chroot2 /tmp/chroot2.c
-RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
+RUN gcc -s -o /micro-init /tmp/micro-init.c
+RUN mkinitfs -n -F base -i /micro-init -o /runx-initrd
 
 RUN tar xzvf kvmtool.tar.gz > /dev/null 2>&1 ;\
     mv kvmtool-${KVMTOOL_VERSION} kvmtool
