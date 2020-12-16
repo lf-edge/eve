@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -47,7 +48,7 @@ const (
 	uploadDevDir = types.NewlogUploadDevDir
 	uploadAppDir = types.NewlogUploadAppDir
 	panicFileDir = types.NewlogDir + "/panicStacks"
-	symlinkFile  = collectDir + "/sym.dev.log"
+	symlinkFile  = collectDir + "/current.device.log"
 	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
 	devPrefix    = types.DevPrefix
 	appPrefix    = types.AppPrefix
@@ -669,7 +670,7 @@ func startTmpfile(dirname, filename string, isApp bool) *os.File {
 		if err := os.Remove(tmpSymlink); err != nil && !os.IsNotExist(err) { // remove a stale one
 			log.Error(err)
 		}
-		err = os.Symlink(tmpFile.Name(), tmpSymlink)
+		err = os.Symlink(path.Base(tmpFile.Name()), tmpSymlink)
 		if err != nil {
 			log.Error(err)
 		}
