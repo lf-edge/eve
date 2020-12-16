@@ -45,7 +45,6 @@ var volumeFormat = make(map[string]zconfig.Format)
 type volumemgrContext struct {
 	ps                         *pubsub.PubSub
 	subBaseOsContentTreeConfig pubsub.Subscription
-	pubBaseOsContentTreeStatus pubsub.Publication
 	subGlobalConfig            pubsub.Subscription
 	subZedAgentStatus          pubsub.Subscription
 
@@ -183,9 +182,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.pubResolveConfig = pubResolveConfig
 
 	pubContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.ContentTreeStatus{},
+		AgentName: agentName,
+		TopicType: types.ContentTreeStatus{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -221,16 +219,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	ctx.pubContentTreeToHash = pubContentTreeToHash
-
-	pubBaseOsContentTreeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.BaseOsObj,
-		TopicType:  types.ContentTreeStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsContentTreeStatus = pubBaseOsContentTreeStatus
 
 	pubBlobStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -341,9 +329,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subResolveStatus.Activate()
 
 	subContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler:  handleContentTreeCreateAppImg,
-		ModifyHandler:  handleContentTreeModifyAppImg,
-		DeleteHandler:  handleContentTreeDeleteAppImg,
+		CreateHandler:  handleContentTreeCreate,
+		ModifyHandler:  handleContentTreeModify,
+		DeleteHandler:  handleContentTreeDelete,
 		RestartHandler: handleContentTreeRestart,
 		WarningTime:    warningTime,
 		ErrorTime:      errorTime,
@@ -394,9 +382,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subVolumeRefConfig.Activate()
 
 	subBaseOsContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeCreateBaseOs,
-		ModifyHandler: handleContentTreeModifyBaseOs,
-		DeleteHandler: handleContentTreeDeleteBaseOs,
+		CreateHandler: handleContentTreeCreate,
+		ModifyHandler: handleContentTreeModify,
+		DeleteHandler: handleContentTreeDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "baseosmgr",

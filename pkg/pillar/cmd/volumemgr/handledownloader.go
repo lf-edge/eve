@@ -11,8 +11,7 @@ import (
 )
 
 // AddOrRefcountDownloaderConfig used to publish the downloader config
-// The objType is only used to determine the free/not-free download setting
-func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob types.BlobStatus) {
+func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus) {
 
 	log.Functionf("AddOrRefcountDownloaderConfig for %s", blob.Sha256)
 
@@ -56,7 +55,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, objType string, blob t
 		DatastoreID:      blob.DatastoreID,
 		Name:             blob.RelativeURL,
 		ImageSha256:      blob.Sha256,
-		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig, objType),
+		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig),
 		Size:             size,
 		Target:           locFilename,
 		RefCount:         refCount,

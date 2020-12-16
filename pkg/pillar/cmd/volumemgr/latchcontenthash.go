@@ -7,9 +7,8 @@
 package volumemgr
 
 import (
-	"strings"
-
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -115,7 +114,7 @@ func maybeLatchContentTreeHash(ctx *volumemgrContext, status *types.ContentTreeS
 			status.ContentID, status.DisplayName, imageSha)
 		status.ContentSha256 = imageSha
 		if status.IsContainer() {
-			newName := maybeInsertSha(status.RelativeURL, imageSha)
+			newName := utils.MaybeInsertSha(status.RelativeURL, imageSha)
 			if newName != status.RelativeURL {
 				log.Functionf("Changing content tree name from %s to %s",
 					status.RelativeURL, newName)
@@ -128,20 +127,4 @@ func maybeLatchContentTreeHash(ctx *volumemgrContext, status *types.ContentTreeS
 			status.ContentID, status.DisplayName,
 			imageSha, status.ContentSha256)
 	}
-}
-
-// Check if the OCI name does not include an explicit sha and if not
-// return the name with the sha inserted.
-// Note that the sha must be lower case in the OCI reference.
-func maybeInsertSha(name string, sha string) string {
-	if strings.Index(name, "@") != -1 {
-		// Already has a sha
-		return name
-	}
-	sha = strings.ToLower(sha)
-	last := strings.LastIndex(name, ":")
-	if last == -1 {
-		return name + "@sha256:" + sha
-	}
-	return name[:last] + "@sha256:" + sha
 }

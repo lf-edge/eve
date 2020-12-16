@@ -97,7 +97,7 @@ func handleContentTreeStatusImpl(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeStatusImpl: key:%s, name:%s",
 		key, status.DisplayName)
 	if status.ContentSha256 != "" {
-		baseOsHandleStatusUpdateImageSha(ctx, status.ContentSha256)
+		baseOsHandleStatusUpdateUUID(ctx, status.Key())
 	} else {
 		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}
@@ -111,7 +111,7 @@ func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*baseOsMgrContext)
 	status := statusArg.(types.ContentTreeStatus)
 	if status.ContentSha256 != "" {
-		baseOsHandleStatusUpdateImageSha(ctx, status.ContentSha256)
+		baseOsHandleStatusUpdateUUID(ctx, status.Key())
 	} else {
 		log.Warnf("Unknown content tree: %s", status.ContentID.String())
 	}

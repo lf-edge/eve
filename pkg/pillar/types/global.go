@@ -192,10 +192,8 @@ const (
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
-	// AllowNonFreeAppImages global setting key
-	AllowNonFreeAppImages GlobalSettingKey = "network.allow.wwan.app.download"
-	// AllowNonFreeBaseImages global setting key
-	AllowNonFreeBaseImages GlobalSettingKey = "network.allow.wwan.baseos.download"
+	// AllowNonFreeImages global setting key
+	AllowNonFreeImages GlobalSettingKey = "network.allow.wwan.download"
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
 
@@ -761,8 +759,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
-	configItemSpecMap.AddTriStateItem(AllowNonFreeAppImages, TS_ENABLED)
-	configItemSpecMap.AddTriStateItem(AllowNonFreeBaseImages, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(AllowNonFreeImages, TS_ENABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items

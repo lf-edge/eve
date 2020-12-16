@@ -182,7 +182,6 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	for i, ctc := range config.ContentTreeConfigList {
 		cts := &status.ContentTreeStatusList[i]
 		cts.UpdateFromContentTreeConfig(ctc)
-		cts.ObjType = types.BaseOsObj
 	}
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)
@@ -428,7 +427,6 @@ func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 		pubsub.SubscriptionOptions{
 			AgentName:     "volumemgr",
 			MyAgentName:   agentName,
-			AgentScope:    types.BaseOsObj,
 			TopicImpl:     types.ContentTreeStatus{},
 			Activate:      false,
 			Ctx:           ctx,

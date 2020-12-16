@@ -73,7 +73,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				status.State = types.RESOLVED_TAG
 				status.ContentSha256 = foundSha
 				status.HasResolverRef = false
-				status.RelativeURL = maybeInsertSha(status.RelativeURL, status.ContentSha256)
+				status.RelativeURL = utils.MaybeInsertSha(status.RelativeURL, status.ContentSha256)
 				latchContentTreeHash(ctx, status.ContentID,
 					status.ContentSha256, uint32(status.GenerationCounter))
 				maybeLatchContentTreeHash(ctx, status)
@@ -149,7 +149,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				// any state less than downloaded, we ask for download, so that we have the refcount;
 				// downloadBlob() is smart enough to look for existing references
 				log.Tracef("doUpdateContentTree: blob sha %s download state %v less than DOWNLOADED", blob.Sha256, blob.State)
-				if downloadBlob(ctx, status.ObjType, blob) {
+				if downloadBlob(ctx, blob) {
 					publishBlobStatus(ctx, blob)
 					changed = true
 				}
@@ -549,45 +549,40 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	return changed, false
 }
 
-// Really a constant
-var ctObjTypes = []string{types.AppImgObj, types.BaseOsObj}
-
 // updateStatus updates all VolumeStatus/ContentTreeStatus which include a blob
 // that has Sha256 from sha slice
 func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 
 	log.Functionf("updateStatusByBlob(%s)", sha)
 	found := false
-	for _, objType := range ctObjTypes {
-		pub := ctx.publication(types.ContentTreeStatus{}, objType)
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.ContentTreeStatus)
-			var hasSha bool
-		blobLoop:
-			for _, blobSha := range status.Blobs {
-				for _, s := range sha {
-					if blobSha == s {
-						log.Tracef("Found blob %s on ContentTreeStatus %s",
-							sha, status.Key())
-						hasSha = true
-						break blobLoop
-					}
+	pub := ctx.pubContentTreeStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.ContentTreeStatus)
+		var hasSha bool
+	blobLoop:
+		for _, blobSha := range status.Blobs {
+			for _, s := range sha {
+				if blobSha == s {
+					log.Tracef("Found blob %s on ContentTreeStatus %s",
+						sha, status.Key())
+					hasSha = true
+					break blobLoop
 				}
 			}
-			if hasSha {
-				found = true
-				if changed, _ := doUpdateContentTree(ctx, &status); changed {
-					log.Functionf("updateStatusByBlob(%s) publishing ContentTreeStatus",
-						status.Key())
-					publishContentTreeStatus(ctx, &status)
-				}
-				// Volume status referring to this content UUID needs to get updated
-				log.Functionf("updateStatusByBlob(%s) updating volume status from content ID %v",
-					status.Key(), status.ContentID)
-				updateVolumeStatusFromContentID(ctx,
-					status.ContentID)
+		}
+		if hasSha {
+			found = true
+			if changed, _ := doUpdateContentTree(ctx, &status); changed {
+				log.Functionf("updateStatusByBlob(%s) publishing ContentTreeStatus",
+					status.Key())
+				publishContentTreeStatus(ctx, &status)
 			}
+			// Volume status referring to this content UUID needs to get updated
+			log.Functionf("updateStatusByBlob(%s) updating volume status from content ID %v",
+				status.Key(), status.ContentID)
+			updateVolumeStatusFromContentID(ctx,
+				status.ContentID)
 		}
 	}
 	if !found {
@@ -598,31 +593,29 @@ func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 // updateStatusByDatastore update any datastore missing status
 func updateStatusByDatastore(ctx *volumemgrContext, datastore types.DatastoreConfig) {
 	log.Functionf("updateStatusByDatastore(%s)", datastore.UUID)
-	for _, objType := range ctObjTypes {
-		pub := ctx.publication(types.ContentTreeStatus{}, objType)
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.ContentTreeStatus)
+	pub := ctx.pubContentTreeStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.ContentTreeStatus)
 
-			// if it does not match the UUID, or it already has the type, ignore it
-			if status.DatastoreID != datastore.UUID || status.DatastoreType != "" {
-				continue
-			}
-			// set the type
-			log.Functionf("Setting datastore type %s for datastore %s on ContentTreeStatus %s",
-				datastore.DsType, datastore.UUID, status.Key())
-			status.DatastoreType = datastore.DsType
-			if changed, _ := doUpdateContentTree(ctx, &status); changed {
-				log.Functionf("updateStatusByDatastore(%s) publishing ContentTreeStatus",
-					status.Key())
-				publishContentTreeStatus(ctx, &status)
-			}
-			// Volume status referring to this content UUID needs to get updated
-			log.Functionf("updateStatusByDatastore(%s) updating volume status from content ID %v",
-				status.Key(), status.ContentID)
-			updateVolumeStatusFromContentID(ctx,
-				status.ContentID)
+		// if it does not match the UUID, or it already has the type, ignore it
+		if status.DatastoreID != datastore.UUID || status.DatastoreType != "" {
+			continue
 		}
+		// set the type
+		log.Functionf("Setting datastore type %s for datastore %s on ContentTreeStatus %s",
+			datastore.DsType, datastore.UUID, status.Key())
+		status.DatastoreType = datastore.DsType
+		if changed, _ := doUpdateContentTree(ctx, &status); changed {
+			log.Functionf("updateStatusByDatastore(%s) publishing ContentTreeStatus",
+				status.Key())
+			publishContentTreeStatus(ctx, &status)
+		}
+		// Volume status referring to this content UUID needs to get updated
+		log.Functionf("updateStatusByDatastore(%s) updating volume status from content ID %v",
+			status.Key(), status.ContentID)
+		updateVolumeStatusFromContentID(ctx,
+			status.ContentID)
 	}
 }
 
@@ -630,25 +623,23 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 
 	log.Functionf("updateContentTreeStatus(%s)", contentID)
 	found := false
-	for _, objType := range ctObjTypes {
-		pub := ctx.publication(types.ContentTreeStatus{}, objType)
-		items := pub.GetAll()
-		for _, st := range items {
-			status := st.(types.ContentTreeStatus)
-			if status.ContentSha256 == contentSha256 {
-				log.Functionf("Found ContentTreeStatus %s",
-					status.Key())
-				found = true
-				changed, _ := doUpdateContentTree(ctx, &status)
-				if changed {
-					publishContentTreeStatus(ctx, &status)
-				}
-				// Volume status referring to this content UUID needs to get updated
-				log.Functionf("updateContentTreeStatus(%s) updating volume status from content ID %v",
-					status.Key(), status.ContentID)
-				updateVolumeStatusFromContentID(ctx,
-					status.ContentID)
+	pub := ctx.pubContentTreeStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.ContentTreeStatus)
+		if status.ContentSha256 == contentSha256 {
+			log.Functionf("Found ContentTreeStatus %s",
+				status.Key())
+			found = true
+			changed, _ := doUpdateContentTree(ctx, &status)
+			if changed {
+				publishContentTreeStatus(ctx, &status)
 			}
+			// Volume status referring to this content UUID needs to get updated
+			log.Functionf("updateContentTreeStatus(%s) updating volume status from content ID %v",
+				status.Key(), status.ContentID)
+			updateVolumeStatusFromContentID(ctx,
+				status.ContentID)
 		}
 	}
 	if !found {

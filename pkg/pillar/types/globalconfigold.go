@@ -57,8 +57,7 @@ type OldGlobalConfig struct {
 
 	// These settings control how the EVE microservices
 	// will use free and non-free (e.g., WWAN) ports for image downloads.
-	AllowNonFreeAppImages  TriState // For app images
-	AllowNonFreeBaseImages TriState // For baseos images
+	AllowNonFreeImages TriState
 
 	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
 	// dom0. The rest is available for Apps.
@@ -118,8 +117,7 @@ var globalConfigDefaults = OldGlobalConfig{
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
 
-	AllowNonFreeAppImages:  TS_ENABLED,
-	AllowNonFreeBaseImages: TS_ENABLED,
+	AllowNonFreeImages: TS_ENABLED,
 
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
@@ -194,11 +192,8 @@ func ApplyDefaults(newgc OldGlobalConfig) OldGlobalConfig {
 	if newgc.DefaultRemoteLogLevel == "" {
 		newgc.DefaultRemoteLogLevel = globalConfigDefaults.DefaultRemoteLogLevel
 	}
-	if newgc.AllowNonFreeAppImages == TS_NONE {
-		newgc.AllowNonFreeAppImages = globalConfigDefaults.AllowNonFreeAppImages
-	}
-	if newgc.AllowNonFreeBaseImages == TS_NONE {
-		newgc.AllowNonFreeBaseImages = globalConfigDefaults.AllowNonFreeBaseImages
+	if newgc.AllowNonFreeImages == TS_NONE {
+		newgc.AllowNonFreeImages = globalConfigDefaults.AllowNonFreeImages
 	}
 
 	if newgc.Dom0MinDiskUsagePercent == 0 {
@@ -339,8 +334,7 @@ func (config OldGlobalConfig) MoveBetweenConfigs() *ConfigItemValueMap {
 	newConfig.SetGlobalValueInt(NetworkSendTimeout, config.NetworkSendTimeout)
 
 	newConfig.SetGlobalValueTriState(NetworkFallbackAnyEth, config.NetworkFallbackAnyEth)
-	newConfig.SetGlobalValueTriState(AllowNonFreeAppImages, config.AllowNonFreeAppImages)
-	newConfig.SetGlobalValueTriState(AllowNonFreeBaseImages, config.AllowNonFreeBaseImages)
+	newConfig.SetGlobalValueTriState(AllowNonFreeImages, config.AllowNonFreeImages)
 
 	newConfig.SetGlobalValueBool(AllowAppVnc, config.AllowAppVnc)
 	newConfig.SetGlobalValueBool(UsbAccess, config.UsbAccess)

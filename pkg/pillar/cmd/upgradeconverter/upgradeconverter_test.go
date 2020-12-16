@@ -35,7 +35,7 @@ func oldGlobalConfig() types.OldGlobalConfig {
 	// Set Some values
 	config.ConfigInterval = 300
 	config.AllowAppVnc = true
-	config.AllowNonFreeBaseImages = types.TS_NONE
+	config.AllowNonFreeImages = types.TS_NONE
 	config.DefaultLogLevel = "debug"
 	config.AgentSettings["zedagent"] = types.PerAgentSettings{
 		LogLevel: "info", RemoteLogLevel: "fatal"}
@@ -46,7 +46,7 @@ func newConfigItemValueMap() types.ConfigItemValueMap {
 	config := types.DefaultConfigItemValueMap()
 	config.SetGlobalValueInt(types.ConfigInterval, 400)
 	config.SetGlobalValueBool(types.AllowAppVnc, false)
-	config.SetGlobalValueTriState(types.AllowNonFreeBaseImages,
+	config.SetGlobalValueTriState(types.AllowNonFreeImages,
 		types.TS_ENABLED)
 	config.SetGlobalValueString(types.DefaultLogLevel, "warn")
 	config.SetAgentSettingStringValue("zedagent", types.LogLevel, "debug")
@@ -323,7 +323,7 @@ func Test_MoveConfigItem(t *testing.T) {
 func Test_ApplyDefaultConfigItem(t *testing.T) {
 	oldConfig := newConfigItemValueMap()
 	delete(oldConfig.GlobalSettings, types.DefaultLogLevel)
-	delete(oldConfig.GlobalSettings, types.AllowNonFreeBaseImages)
+	delete(oldConfig.GlobalSettings, types.AllowNonFreeImages)
 	delete(oldConfig.GlobalSettings, types.UsbAccess)
 	delete(oldConfig.GlobalSettings, types.DiskScanMetricInterval)
 	defaultConfig := types.DefaultConfigItemValueMap()

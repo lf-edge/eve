@@ -1,7 +1,6 @@
 // Copyright (c) 2017-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
-
-package volumemgr
+package utils
 
 import (
 	"testing"
@@ -32,7 +31,7 @@ func TestMaybeInsertSha(t *testing.T) {
 	}
 	for testname, test := range testInsertSHA {
 		t.Logf("Running test case %s", testname)
-		output := maybeInsertSha(test.imageName, test.imageSHA)
+		output := MaybeInsertSha(test.imageName, test.imageSHA)
 		if output != test.expectedImageName {
 			t.Errorf("Image name ( %v ) != Expected name ( %v )", output, test.expectedImageName)
 		}

@@ -13,11 +13,10 @@ func MaybeAddResolveConfig(ctx *volumemgrContext, cs types.ContentTreeStatus) {
 
 	log.Functionf("MaybeAddResolveConfig for %s", cs.ContentID)
 	resolveConfig := types.ResolveConfig{
-		DatastoreID: cs.DatastoreID,
-		Name:        cs.RelativeURL,
-		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
-			cs.ObjType),
-		Counter: uint32(cs.GenerationCounter),
+		DatastoreID:      cs.DatastoreID,
+		Name:             cs.RelativeURL,
+		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig),
+		Counter:          uint32(cs.GenerationCounter),
 	}
 	publishResolveConfig(ctx, &resolveConfig)
 	log.Functionf("MaybeAddResolveConfig for %s Done", cs.ContentID)
