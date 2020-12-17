@@ -397,6 +397,8 @@ func (mmr MaintenanceModeReason) String() string {
 	switch mmr {
 	case MaintenanceModeReasonNone:
 		return "MaintenanceModeReasonNone"
+	case MaintenanceModeReasonUserRequested:
+		return "MaintenanceModeReasonUserRequested"
 	case MaintenanceModeReasonVaultLockedUp:
 		return "MaintenanceModeReasonVaultLockedUp"
 	default:
