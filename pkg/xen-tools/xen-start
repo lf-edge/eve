@@ -8,17 +8,13 @@ bail() {
 domID() {
    # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
    # shellcheck disable=SC2034
-   for i in 1 2 3; do
+   for _ in 1 2 3; do
      ID=$(xl domid "$1")
      sleep 8
      [ -z "$ID" ] || break
    done >/dev/null 2>&1
 
-   if [ -z "$ID" ]; then
-      bail "Couldn't find domain $1"
-   else
-      echo "$ID"
-   fi
+   echo "$ID"
 }
 
 # pre-flight checks
@@ -49,16 +45,16 @@ xl unpause "$ID" || bail "xl unpause failed"
 
 # now star polling for domain status (11 sec interval) in the background
 # (note our use of mv to make sure file reads on the other side are atomic)
-echo 0 > /dev/unknownStateCounter
 (while true; do
    sleep 11
    /etc/xen/scripts/xen-info "$1" > "/run/tasks/$1.tmp"
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
 done) &
 
-# and start watching over the console (note that we loop forever
-# in anticipation of potential domain reboots)
+# and start watching over the console: note that we loop forever
+# in anticipation of potential domain reboots - we rely on xen-info
+# to declare domain broken if it can't be found for a long time
 while true; do
-   ID=$(domID "$1")
-   xl console "$ID" < /dev/null
+   xl console "$1" < /dev/null
+   sleep 5
 done

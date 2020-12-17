@@ -7,6 +7,7 @@
 /etc/modprobe.d/*.conf
 /etc/mdev.conf
 /chroot2
+/hacf
 /mount_disk.sh
 /udhcpc_script.sh
 /mnt

@@ -426,7 +426,14 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 	return nil
 }
 
-func (ctx xenContext) Delete(domainName string, domainID int) error {
+func (ctx xenContext) Delete(domainName string, domainID int) (result error) {
+	// regardless of happens to everything else, we have to try and delete the task
+	defer func() {
+		if err := ctx.ctrdContext.Delete(domainName, domainID); err != nil {
+			result = fmt.Errorf("%w; couldn't delete task %s: %v", result, domainName, err)
+		}
+	}()
+
 	logrus.Infof("xlDestroy %s %d\n", domainName, domainID)
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()
@@ -437,14 +444,9 @@ func (ctx xenContext) Delete(domainName string, domainID int) error {
 		logrus.Errorln("xl destroy output ", stdOut, stdErr)
 		return fmt.Errorf("xl destroy failed: %s %s", stdOut, stdErr)
 	}
+
 	logrus.Infof("xl destroy done %s %d\n", domainName, domainID)
-
-	// now lets take care of the task itself
-	if err := ctx.ctrdContext.Stop(domainName, domainID, true); err != nil {
-		return err
-	}
-
-	return ctx.ctrdContext.Delete(domainName, domainID)
+	return nil
 }
 
 func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState, error) {
@@ -467,7 +469,6 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 		"running": types.RUNNING,
 		"paused":  types.PAUSED,
 		"halting": types.HALTING,
-		"broken":  types.BROKEN,
 	}
 	effectiveDomainState, matched := stateMap[strings.TrimSpace(string(status))]
 	if !matched {
