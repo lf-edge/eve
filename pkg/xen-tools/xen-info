@@ -1,5 +1,9 @@
 #!/bin/sh
 
+DEV_PREFIX=/mnt/rootfs/dev/eve
+SC="$DEV_PREFIX/unknownStateCounter"
+STATUS="$DEV_PREFIX/status"
+
 UnknownStateThreshold=10
 bail() {
    echo "$@"
@@ -8,65 +12,63 @@ bail() {
 
 handleUnknownState() {
   # checking if we have unknownStateCounter, if not initializing it.
-  if [ ! -e /dev/unknownStateCounter ]; then
-    echo 0 > /dev/unknownStateCounter
+  if [ ! -e "$SC" ]; then
+    echo 0 > "$SC"
   fi
 
-  unknownStateCounter=$(cat /dev/unknownStateCounter)
+  unknownStateCounter=$(cat "$SC")
 
   if [ "$unknownStateCounter" -ge "$UnknownStateThreshold" ]; then
     # Number of times we got unknown state is > UnknownStateThreshold, so declaring the state as broken
-    echo broken > /dev/status
+    echo broken > "$STATUS"
   else
     # Number of times we got unknown state is <= UnknownStateThreshold, so declaring the state as running
-    echo running > /dev/status
+    echo running > "$STATUS"
   fi
 
   unknownStateCounter=$((unknownStateCounter + 1))
-  echo $unknownStateCounter > /dev/unknownStateCounter
+  echo $unknownStateCounter > "$SC"
 }
 
 handleKnownState() {
   # resetting unknownStateCounter
-  echo 0 > /dev/unknownStateCounter
-  echo "$1" > /dev/status
+  echo 0 > "$SC"
+  echo "$1" > "$STATUS"
 
   # an additional check we do for running domains is to make sure device model is still around
   if [ "$1" = running ] &&
-     DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid") &&
+     DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid" 2>/dev/null) &&
      ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
-     echo broken > /dev/status
+     echo broken > "$STATUS"
   fi
 }
 
 # pre-flight checks
 [ $# -ne 1 ] && bail "Usage: $0 <domain name>"
+mkdir -p "$DEV_PREFIX" 2>/dev/null || :
 
 # find the domain
 # Sometimes after EVE reboot, we called xen-info before xen-start finished executing,
 # which led to domian not found error. To prevent that, we wait for sometime for the domain to come up.
-waited=0
-ID=$(xl domid "$1" 2>/dev/null)
-while [ -z "$ID" ] && [ "$waited" -lt 60 ]; do
-        ID=$(xl domid "$1" 2>/dev/null)
-        if [ -z "$ID" ]; then
-          sleep 3
-          waited=$((waited + 3))
-        fi
+# shellcheck disable=SC2034
+for _ in 1 2 3; do
+  ID=$(xl domid "$1" 2>/dev/null)
+  [ -z "$ID" ] || break
+  sleep 3
 done
-[ -z "$ID" ] && bail "Couldn't find domain ID for domain $1"
 
 # we expect to get rbpscd where every letter can also be a dash (-)
 # Name    ID    Mem    VCPUs    State    Time(s)
-case $(xl list "$ID" | awk '{st=$5;} END {print st;}') in
-   *d) handleKnownState halting ;;
-  *c*) handleKnownState broken  ;;
-  *s*) handleKnownState halting ;;
-  *p*) handleKnownState paused  ;;
-  *b*) handleKnownState running ;;
-   r*) handleKnownState running ;;
-    *) handleUnknownState ;;
+case $(xl list "${ID:- }" 2>/dev/null | awk '{st=$5;} END {print st;}') in
+   *c*) handleKnownState broken  ;;
+    *d) handleKnownState halting ;;
+   *s*) handleKnownState halting ;;
+   *p*) handleKnownState paused  ;;
+   *b*) handleKnownState running ;;
+    r*) handleKnownState running ;;
+------) handleUnknownState ;;
+     *) handleKnownState broken  ;;
 esac
 
 # finally print the current status
-cat /dev/status
+cat "$STATUS"

@@ -103,3 +103,6 @@ cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
 #shellcheck disable=SC2086
 eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $cmd <> /dev/console 2>&1
+
+# once the command exits -- the only thing left is shut everything down
+/sbin/poweroff

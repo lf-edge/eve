@@ -682,7 +682,14 @@ func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
 	return nil
 }
 
-func (ctx kvmContext) Delete(domainName string, domainID int) error {
+func (ctx kvmContext) Delete(domainName string, domainID int) (result error) {
+	// regardless of happens to everything else, we have to try and delete the task
+	defer func() {
+		if err := ctx.ctrdContext.Delete(domainName, domainID); err != nil {
+			result = fmt.Errorf("%w; couldn't delete task %s: %v", result, domainName, err)
+		}
+	}()
+
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
 	execStop(getQmpExecutorSocket(domainName))
 	if err := execQuit(getQmpExecutorSocket(domainName)); err != nil {
@@ -693,11 +700,7 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
 
-	if err := ctx.ctrdContext.Stop(domainName, domainID, true); err != nil {
-		return err
-	}
-
-	return ctx.ctrdContext.Delete(domainName, domainID)
+	return nil
 }
 
 func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState, error) {
@@ -712,8 +715,6 @@ func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState,
 	stateMap := map[string]types.SwState{
 		"finish-migrate": types.PAUSED,
 		"inmigrate":      types.PAUSING,
-		"internal-error": types.BROKEN,
-		"io-error":       types.BROKEN,
 		"paused":         types.PAUSED,
 		"postmigrate":    types.PAUSED,
 		"prelaunch":      types.PAUSED,
@@ -723,7 +724,6 @@ func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState,
 		"shutdown":       types.HALTING,
 		"suspended":      types.PAUSED,
 		"watchdog":       types.PAUSING,
-		"guest-panicked": types.BROKEN,
 		"colo":           types.PAUSED,
 		"preconfig":      types.PAUSED,
 	}
