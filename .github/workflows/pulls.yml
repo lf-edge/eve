@@ -1,5 +1,5 @@
 ---
-name: EVE
+name: PRs
 on:
   pull_request_target:
     branches:
@@ -40,7 +40,9 @@ jobs:
           PR_ID: ${{ github.event.pull_request.number  }}
         run: |
           make pkgs
-          echo "VERSION=0.0.0-pr-$PR_ID" >> $GITHUB_ENV
+          COMMIT_ID=$(git describe --abbrev=8 --always)
+          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
+          echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
       - name: Build EVE
         run: |
           make ROOTFS_VERSION="$VERSION" eve
@@ -51,8 +53,8 @@ jobs:
       - name: Export docker container
         run: |
           for i in xen kvm; do
-             docker tag "lfedge/eve:$VERSION-$i" "evebuild/danger:$VERSION-$i"
-             IMGS="$IMGS evebuild/danger:$VERSION-$i"
+             docker tag "lfedge/eve:$VERSION-$i" "$TAG-$i"
+             IMGS="$IMGS $TAG-$i"
           done
           docker save $IMGS > eve.tar
       - name: Upload EVE

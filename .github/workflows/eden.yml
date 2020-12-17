@@ -1,6 +1,8 @@
 ---
 name: Eden
 on:
+  push:
+    branches: [master]
   pull_request_review:
     branches: [master]
     types: [submitted]
@@ -8,7 +10,7 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-20.04
-    if: ${{ github.event.review.state == 'approved' }}
+    if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' }}
     steps:
       - name: setup
         run: |
@@ -29,7 +31,7 @@ jobs:
           path: 'eve'
       - name: fetch or build eve
         env:
-          TAG: 0.0.0-pr-${{ github.event.pull_request.number }}
+          TAG: pr${{ github.event.pull_request.number }}
           CACHE: evebuild/danger
         run: |
           if docker pull "$CACHE:$TAG-kvm"; then
