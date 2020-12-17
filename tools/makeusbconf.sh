@@ -71,5 +71,5 @@ else
    IMAGE_BIND_OPT="-v"
 fi
 
-(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run -i "$IMAGE_BIND_OPT" "$IMAGE:/output.img" "${MKFLASH_TAG}" /output.img usb_conf
+(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run -i --rm "$IMAGE_BIND_OPT" "$IMAGE:/output.img" "${MKFLASH_TAG}" /output.img usb_conf
 cleanup

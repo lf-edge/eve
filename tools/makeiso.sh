@@ -11,4 +11,4 @@ if [ ! -d "$SOURCE" ] || [ $# -ne 2 ]; then
 fi
 
 : > "$ISO"
-docker run -v "$SOURCE:/bits" -v "$ISO:/output.iso" "$MKIMAGE_TAG"
+docker run --rm -v "$SOURCE:/bits" -v "$ISO:/output.iso" "$MKIMAGE_TAG"
