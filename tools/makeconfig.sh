@@ -17,7 +17,7 @@ fi
 shift 2
 
 : > "$IMAGE"
-(tar -chf - "$@") | docker run -i -e ROOTFS_VERSION="$ROOTFS_VERSION" -e ZARCH="$ZARCH" -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img
+(tar -chf - "$@") | docker run -i --rm -e ROOTFS_VERSION="$ROOTFS_VERSION" -e ZARCH="$ZARCH" -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img
 
 if [ ! -s "$IMAGE" ]; then
    echo "$IMAGE was not written."
