@@ -125,6 +125,7 @@ if [ ! -e /dev/root ]; then
       /mnt/containers/onboot/*rngd/rootfs/sbin/rngd -1
    mount --bind /mnt/lib/modules /lib/modules &&
       modprobe usbhid && modprobe usbkbd
+   modprobe -a $(echo "$KOPT_modules" | tr ',' ' ' ) 2> /dev/null
 fi
 
 # lets see if we're told on which disk to install...
@@ -142,6 +143,10 @@ fi
 
 # ...if we didn't find a single free disk - bail
 [ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
+
+# we allow for P3 partition to reside on a separate disk
+INSTALL_PERSIST=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p'`
+INSTALL_PERSIST=${INSTALL_PERSIST:-$INSTALL_DEV}
 
 # now lets figure out whether we have installation material
 mkdir /parts || :
@@ -163,8 +168,21 @@ grep -q eve_install_skip_config /proc/cmdline && trunc /parts/persist.img
 # we may be asked to pause before install procedure
 grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
 
+# FIXME: gross hack to allow P3 partition on a disk different from a bootable one
+# this needs to go away the moment we implement LVM or ZFS
+if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
+   # apparently sgdisk -Z doesn't clear MBR and keeps complaining
+   PDEV="/dev/$INSTALL_PERSIST"
+   dd if=/dev/zero of="$PDEV" bs=512 count=1 conv=notrunc
+   sgdisk -Z --clear "$PDEV" 2>/dev/null || :
+   sgdisk --new 1:2048:0 --typecode=1:5f24425a-2dfa-11e8-a270-7b663faccc2c --change-name=1:P3 "$PDEV"
+   sgdisk -v "$PDEV"
+   # force make-raw to skip persist
+   MAKE_RAW_PARTS="efi imga imgb conf"
+fi
+
 # do the install (unless we're only here to collect the black box)
-grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
+grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
 
 # now the disk is ready - mount partitions
 mount_part P3 "$INSTALL_DEV" 2>/dev/null
