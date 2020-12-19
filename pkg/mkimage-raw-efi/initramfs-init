@@ -351,6 +351,7 @@ for opt; do
 		$i)	eval "KOPT_${i}=yes";;
 		no$i)	eval "KOPT_${i}=no";;
 		esac
+		eval export "KOPT_${i}"
 	done
 done
 
