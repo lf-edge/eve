@@ -45,7 +45,7 @@ func (config DomainConfig) Key() string {
 // VirtualizationModeOrDefault sets the default to PV
 func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	switch config.VirtualizationMode {
-	case PV, HVM, FML, NOHYPER:
+	case PV, HVM, FML, NOHYPER, LEGACY:
 		return config.VirtualizationMode
 	default:
 		return PV
@@ -142,6 +142,7 @@ const (
 	Filler
 	FML
 	NOHYPER
+	LEGACY
 )
 
 // Task represents any runnable entity on EVE
