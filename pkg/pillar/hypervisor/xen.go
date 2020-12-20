@@ -331,7 +331,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 				logrus.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
 			}
-			if ib.UsbAddr != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.LEGACY ||config.VirtualizationMode == types.PV) {
+			if ib.UsbAddr != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.LEGACY || config.VirtualizationMode == types.PV) {
 				logrus.Infof("Adding USB <%s>\n", ib.UsbAddr)
 				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
 			}
