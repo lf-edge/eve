@@ -110,6 +110,10 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		if config.Kernel != "" {
 			kernel = config.Kernel
 		}
+	case types.LEGACY:
+		xen_type = "hvm"
+		vif_type = "ioemu"
+		xen_global = "hdtype = \"ahci\"\n"
 	case types.FML:
 		xen_type = "hvm"
 		vif_type = "ioemu"
@@ -323,11 +327,11 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 				logrus.Infof("Adding ioport <%s>\n", ib.Ioports)
 				ioportsAssignments = addNoDuplicate(ioportsAssignments, ib.Ioports)
 			}
-			if ib.Serial != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.FML) {
+			if ib.Serial != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.FML || config.VirtualizationMode == types.LEGACY) {
 				logrus.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
 			}
-			if ib.UsbAddr != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.PV) {
+			if ib.UsbAddr != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.LEGACY ||config.VirtualizationMode == types.PV) {
 				logrus.Infof("Adding USB <%s>\n", ib.UsbAddr)
 				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
 			}

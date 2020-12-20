@@ -252,13 +252,21 @@ const qemuDiskTemplate = `
   cache = "writeback"
   if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
+{{- if eq .Devtype "legacy"}}
 [device "ahci.{{.PCIId}}"]
   bus = "pci.{{.PCIId}}"
   driver = "ahci"
 
-[device "virtio-disk{{.DiskID}}"]
+[device "ahci-disk{{.DiskID}}"]
   driver = "ide-hd"
   bus = "ahci.{{.PCIId}}.0"
+{{- else}}
+[device "virtio-disk{{.DiskID}}"]
+  driver = "virtio-blk-pci"
+  scsi = "off"
+  bus = "pci.{{.PCIId}}"
+  addr = "0x0"
+{{- end}}
   drive = "drive-virtio-disk{{.DiskID}}"
 {{end}}`
 
@@ -279,7 +287,7 @@ const qemuNetTemplate = `
   downscript = "no"
 
 [device "net{{.NetID}}"]
-  driver = "virtio-net-pci"
+  driver = "{{.Driver}}"
   netdev = "hostnet{{.NetID}}"
   mac = "{{.Mac}}"
   bus = "pci.{{.PCIId}}"
@@ -487,7 +495,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}
-		if diskContext.Devtype == "cdrom" {
+		if diskContext.Devtype == "cdrom"  {
 			diskContext.SATAId = diskContext.SATAId + 1
 		} else {
 			diskContext.PCIId = diskContext.PCIId + 1
@@ -498,6 +506,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	// render network device model settings
 	netContext := struct {
 		PCIId, NetID     int
+		Driver           string
 		Mac, Bridge, Vif string
 	}{PCIId: diskContext.PCIId, NetID: 0}
 	t, _ = template.New("qemuNet").Parse(qemuNetTemplate)
@@ -505,6 +514,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		netContext.Mac = net.Mac
 		netContext.Bridge = net.Bridge
 		netContext.Vif = net.Vif
+		if config.VirtualizationMode == types.LEGACY {
+			netContext.Driver = "e1000"
+		} else {
+			netContext.Driver = "virtio-net-pci"
+		}
 		if err := t.Execute(file, netContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}

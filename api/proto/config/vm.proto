@@ -18,6 +18,7 @@ enum VmMode {
   Filler = 2; // PVH = 2;
   FML = 3; // Experimental machine learning mode
   NOHYPER = 4; // Do not use a hypervisor
+  LEGACY = 5; // HVM, but with fully emulated legacy I/O (IDE disks and e1000 net)
 }
 
 message VmConfig {

@@ -1533,7 +1533,11 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			ds.Devtype = ""
 			need9P = true
 		} else {
-			ds.Devtype = "hdd"
+			if config.VirtualizationMode == types.LEGACY {
+				ds.Devtype = "legacy"
+			} else {
+				ds.Devtype = "hdd"
+			}
 		}
 		// map from i=1 to xvdb, 2 to xvdc etc
 		ds.Vdev = fmt.Sprintf("xvd%c", int('a')+i)
