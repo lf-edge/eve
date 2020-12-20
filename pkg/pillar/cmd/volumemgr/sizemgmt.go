@@ -10,13 +10,12 @@ import (
 	"github.com/shirou/gopsutil/disk"
 )
 
-// getRemainingDiskSpace returns how many bytes remain for volume and content
-// tree usage plus a string for printing the current volume and content tree
+// getRemainingDiskSpace returns how many bytes remain for volume
+// and content tree usage
 // disk usage (latter used if there isn't enough)
-func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, string, error) {
+func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 
 	var totalDiskSize uint64
-	diskSizeList := "" // In case caller wants to print an error
 
 	pubContentTree := ctxPtr.pubContentTreeStatus
 	itemsContentTree := pubContentTree.GetAll()
@@ -28,8 +27,6 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, string, error) {
 			continue
 		}
 		totalDiskSize += uint64(iterContentTreeStatus.CurrentSize)
-		diskSizeList += fmt.Sprintf("Content tree: %s (Size: %d)\n",
-			iterContentTreeStatus.Key(), iterContentTreeStatus.CurrentSize)
 	}
 
 	pubVolume := ctxPtr.pubVolumeStatus
@@ -42,14 +39,12 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, string, error) {
 			continue
 		}
 		totalDiskSize += iterVolumeStatus.MaxVolSize
-		diskSizeList += fmt.Sprintf("Volume: %s (Size: %d)\n",
-			iterVolumeStatus.Key(), iterVolumeStatus.MaxVolSize)
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
 		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
 		log.Error(err)
-		return 0, diskSizeList, err
+		return 0, err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
 	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
@@ -58,13 +53,13 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, string, error) {
 		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
 			deviceDiskSize, diskReservedForDom0)
 		log.Errorf("***getRemainingDiskSpace: err: %s", err)
-		return uint64(0), diskSizeList, err
+		return uint64(0), err
 	}
 	allowedDeviceDiskSize = deviceDiskSize - diskReservedForDom0
 	if allowedDeviceDiskSize < totalDiskSize {
-		return 0, diskSizeList, nil
+		return 0, nil
 	} else {
-		return allowedDeviceDiskSize - totalDiskSize, diskSizeList, nil
+		return allowedDeviceDiskSize - totalDiskSize, nil
 	}
 }
 

@@ -21,16 +21,15 @@ func downloadBlob(ctx *volumemgrContext, objType string, blob *types.BlobStatus)
 	if !blob.HasDownloaderRef {
 		if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
 			// Check disk usage
-			remaining, diskSizeList, err := getRemainingDiskSpace(ctx)
+			remaining, err := getRemainingDiskSpace(ctx)
 			if err != nil {
 				errStr := fmt.Sprintf("getRemainingDiskSpace failed: %s\n",
 					err)
 				blob.SetError(errStr, time.Now())
 				return true
 			} else if remaining < blob.Size {
-				errStr := fmt.Sprintf("Remaining disk space %d blob needs %d\n"+
-					"Current disk size list:\n%s\n",
-					remaining, blob.Size, diskSizeList)
+				errStr := fmt.Sprintf("Remaining disk space %d blob needs %d\n",
+					remaining, blob.Size)
 				blob.SetError(errStr, time.Now())
 				return true
 			}
