@@ -1,0 +1,39 @@
+commit dd7076bed514bdc6230610d7d8e92be6264b54f9
+Author: Stefano Stabellini <sstabellini@kernel.org>
+Date:   Thu Dec 17 18:27:32 2020 -0800
+
+    Xen SMBIOS property add
+
+diff --git a/arch/arm/xen/enlighten.c b/arch/arm/xen/enlighten.c
+index 60e901cd0de6..948786d28bb3 100644
+--- a/arch/arm/xen/enlighten.c
++++ b/arch/arm/xen/enlighten.c
+@@ -33,6 +33,7 @@
+ #include <linux/timekeeping.h>
+ #include <linux/timekeeper_internal.h>
+ #include <linux/acpi.h>
++#include <linux/efi.h>
+ 
+ #include <linux/mm.h>
+ 
+@@ -62,6 +63,8 @@ static __read_mostly unsigned int xen_events_irq;
+ uint32_t xen_start_flags;
+ EXPORT_SYMBOL(xen_start_flags);
+ 
++uint64_t smbios_addr;
++
+ int xen_unmap_domain_gfn_range(struct vm_area_struct *vma,
+ 			       int nr, struct page **pages)
+ {
+@@ -303,6 +306,11 @@ static void __init xen_dt_guest_init(void)
+ 	}
+ 
+ 	xen_events_irq = irq_of_parse_and_map(xen_node, 0);
++
++	if (!of_property_read_u64(xen_node, "xen,smbios", &smbios_addr)) {
++		efi.smbios = smbios_addr;
++		set_bit(EFI_CONFIG_TABLES, &efi.flags);
++	}
+ }
+ 
+ static int __init xen_guest_init(void)
