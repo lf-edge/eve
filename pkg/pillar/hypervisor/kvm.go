@@ -494,7 +494,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}
-		if diskContext.Devtype == "cdrom"  {
+		if diskContext.Devtype == "cdrom" {
 			diskContext.SATAId = diskContext.SATAId + 1
 		} else {
 			diskContext.PCIId = diskContext.PCIId + 1
