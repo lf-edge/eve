@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"text/template"
 	"time"
 )
@@ -837,19 +836,6 @@ func getQmpExecutorSocket(domainName string) string {
 
 func getQmpListenerSocket(domainName string) string {
 	return kvmStateDir + domainName + "/listener.qmp"
-}
-
-func getOsVersion() string {
-	var uname syscall.Utsname
-
-	syscall.Uname(&uname)
-	b := make([]rune, len(uname.Release[:]))
-
-	for i, v := range uname.Release {
-		b[i] = rune(v)
-	}
-
-	return string(b)
 }
 
 func kernelVersionTag(major uint64, minor uint64, patch uint64) uint64 {
