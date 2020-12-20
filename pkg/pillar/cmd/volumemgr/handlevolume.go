@@ -64,7 +64,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 	publishVolumeStatus(ctx, status)
 	if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
 		// Check disk usage
-		remaining, diskSizeList, err := getRemainingDiskSpace(ctx)
+		remaining, err := getRemainingDiskSpace(ctx)
 		if err != nil {
 			errStr := fmt.Sprintf("getRemainingDiskSpace failed: %s\n",
 				err)
@@ -76,9 +76,8 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 			}
 			return
 		} else if remaining < status.MaxVolSize {
-			errStr := fmt.Sprintf("Remaining disk space %d volume needs %d\n"+
-				"Current disk size list:\n%s\n",
-				remaining, status.MaxVolSize, diskSizeList)
+			errStr := fmt.Sprintf("Remaining disk space %d volume needs %d\n",
+				remaining, status.MaxVolSize)
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)
