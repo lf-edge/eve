@@ -1,0 +1,68 @@
+commit cf280c10471878c1861e5ee156fa54a80e0f85a4
+Author: Stefano Stabellini <sstabellini@kernel.org>
+Date:   Thu Dec 17 18:29:39 2020 -0800
+
+    Pass SMBIOS address to Dom0
+
+diff --git a/arch/arm/domain_build.c b/arch/arm/domain_build.c
+index e824ba34b0..835f14c42a 100644
+--- a/arch/arm/domain_build.c
++++ b/arch/arm/domain_build.c
+@@ -80,6 +80,12 @@ unsigned int __init dom0_max_vcpus(void)
+     return opt_dom0_max_vcpus;
+ }
+ 
++static unsigned long __initdata smbios_addr;
++void __init dmi_efi_get_table(const void *smbios, const void *smbios3)
++{
++    smbios_addr = (unsigned long)smbios;
++}
++
+ struct vcpu *__init alloc_dom0_vcpu0(struct domain *dom0)
+ {
+     return vcpu_create(dom0, 0);
+@@ -751,6 +757,13 @@ static int __init make_hypervisor_node(struct domain *d,
+     if ( res )
+         return res;
+ 
++    if ( smbios_addr != 0 )
++    {
++        res = fdt_property_u64(fdt, "xen,smbios", smbios_addr);
++        if ( res )
++            return res;
++    }
++
+     /* Cannot use fdt_property_string due to embedded nulls */
+     res = fdt_property(fdt, "compatible", compat, sizeof(compat));
+     if ( res )
+@@ -2575,6 +2588,13 @@
+     if ( rc < 0 )
+         return rc;
+ 
++    if ( smbios_addr != 0 )
++    {
++        map_regions_p2mt(d,
++                         gaddr_to_gfn(smbios_addr), 1,
++                         maddr_to_mfn(smbios_addr), p2m_mmio_direct_c);
++    }
++
+     return construct_domain(d, &kinfo);
+ }
+ 
+diff --git a/common/efi/boot.c b/common/efi/boot.c
+index 63e289ab85..0cf2202d58 100644
+--- a/common/efi/boot.c
++++ b/common/efi/boot.c
+@@ -855,12 +855,10 @@ static void __init efi_tables(void)
+ 	       efi.smbios3 = (long)efi_ct[i].VendorTable;
+     }
+ 
+-#ifndef CONFIG_ARM /* TODO - disabled until implemented on ARM */
+     dmi_efi_get_table(efi.smbios != EFI_INVALID_TABLE_ADDR
+                       ? (void *)(long)efi.smbios : NULL,
+                       efi.smbios3 != EFI_INVALID_TABLE_ADDR
+                       ? (void *)(long)efi.smbios3 : NULL);
+-#endif
+ }
+ 
+ static void __init setup_efi_pci(void)
