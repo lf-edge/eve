@@ -121,6 +121,11 @@ PARALLELS_VM_NAME=EVE_Live
 PARALLELS_CPUS=2 #num
 PARALLELS_MEMORY=2048 #in megabytes
 
+# VirtualBox settings
+VB_VM_NAME=EVE_Live
+VB_CPUS=2 #num
+VB_MEMORY=2048 #in megabytes
+
 # public cloud settings (only CGP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
 CLOUD_IMG_NAME=$(subst .,-,live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH))
@@ -324,6 +329,17 @@ run-proxy:
 run-build-vm: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$(BUILD_VM)
 
+run-live-vb:
+	@[ -f "$(LIVE).vdi" ] || { echo "Please run: make live-vdi"; exit 1; }
+	VBoxManage list vms | grep $(VB_VM_NAME) >/dev/null &&  VBoxManage unregistervm $(VB_VM_NAME) --delete || echo "No VMs with $(VB_VM_NAME) name"
+	VBoxManage createvm --name $(VB_VM_NAME) --register --basefolder $(DIST)/
+	VBoxManage modifyvm $(VB_VM_NAME) --cpus $(VB_CPUS) --memory $(VB_MEMORY) --vram 16 --ostype Ubuntu_64  --mouse usbtablet --graphicscontroller vmsvga
+	VBoxManage modifyvm $(VB_VM_NAME) --nic1 natnetwork --nat-network1 natnet1 --cableconnected1 on
+	VBoxManage modifyvm $(VB_VM_NAME) --nic2 natnetwork --nat-network2 natnet2 --cableconnected2 on
+	VBoxManage storagectl $(VB_VM_NAME) --name "SATA Controller" --add sata  --controller IntelAHCI --bootable on
+	VBoxManage storageattach $(VB_VM_NAME)  --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium $(LIVE).vdi
+	VBoxManage startvm  $(VB_VM_NAME)
+
 run-live-parallels:
 	@[ -d "$(LIVE).parallels" ] || { echo "Please run: make live-parallels"; exit 1; }
 	@prlctl list -a | grep $(PARALLELS_VM_NAME) | grep "invalid" >/dev/null && prlctl unregister $(PARALLELS_VM_NAME) || echo "No invalid $(PARALLELS_VM_NAME) VM"
@@ -401,6 +417,10 @@ $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIS
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeiso.sh $| $@
+
+$(LIVE).vdi: $(LIVE).raw
+	qemu-img resize -f raw $< ${MEDIA_SIZE}M
+	qemu-img convert -O vdi $< $@
 
 $(LIVE).parallels: $(LIVE).raw
 	rm -rf $@; mkdir $@
@@ -585,7 +605,7 @@ help:
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
 	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
-	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp, parallels)"
+	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
@@ -593,8 +613,8 @@ help:
 	@echo "   run-compose        runs all EVE microservices via docker-compose deployment"
 	@echo "   run-build-vm       runs a build VM image"
 	@echo "   run-live           runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
-	@echo "   run-live-gcp       runs a full fledged virtual device on Google Compute Platform (provide your account details)"
 	@echo "   run-live-parallels runs a full fledged virtual device on Parallels Desktop"
+	@echo "   run-live-vb        runs a full fledged virtual device on VirtualBox"
 	@echo "   run-rootfs         runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
 	@echo "   run-grub           runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-installer-iso  runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
