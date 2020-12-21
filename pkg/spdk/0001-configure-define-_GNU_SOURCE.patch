@@ -1,0 +1,29 @@
+From de7cb8049be2fe1e70075a0cd5e4d221d38f1131 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 10:49:21 +0300
+Subject: [PATCH] configure: define _GNU_SOURCE
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ configure | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/configure b/configure
+index 97ae9e100..d409a27b6 100755
+--- a/configure
++++ b/configure
+@@ -443,9 +443,9 @@ for i in "$@"; do
+ done
+ 
+ if [[ $arch == x86_64* ]]; then
+-	BUILD_CMD=($CC -o /dev/null -x c $CPPFLAGS $CFLAGS $LDFLAGS -march=native)
++	BUILD_CMD=($CC -o /dev/null -x c $CPPFLAGS $CFLAGS $LDFLAGS -D_GNU_SOURCE -march=native)
+ else
+-	BUILD_CMD=($CC -o /dev/null -x c $CPPFLAGS $CFLAGS $LDFLAGS)
++	BUILD_CMD=($CC -o /dev/null -x c $CPPFLAGS $CFLAGS $LDFLAGS -D_GNU_SOURCE)
+ fi
+ BUILD_CMD+=(-I/usr/local/include -L/usr/local/lib)
+ 
+-- 
+2.25.1
+

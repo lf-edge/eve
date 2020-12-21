@@ -1,0 +1,28 @@
+From 3ac5cec8a66ff6c909d4e32a2cf016d31a22f6d9 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 11 Jan 2021 21:18:17 +0300
+Subject: [PATCH] bdev: Make the buffer sizes 8 times less than default
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ lib/bdev/bdev.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/bdev/bdev.c b/lib/bdev/bdev.c
+index cdcb44a4a..95ffc3bc2 100644
+--- a/lib/bdev/bdev.c
++++ b/lib/bdev/bdev.c
+@@ -61,8 +61,8 @@ int __itt_init_ittlib(const char *, __itt_group_id);
+ #define SPDK_BDEV_IO_POOL_SIZE			(64 * 1024 - 1)
+ #define SPDK_BDEV_IO_CACHE_SIZE			256
+ #define SPDK_BDEV_AUTO_EXAMINE			true
+-#define BUF_SMALL_POOL_SIZE			8191
+-#define BUF_LARGE_POOL_SIZE			1023
++#define BUF_SMALL_POOL_SIZE			1023
++#define BUF_LARGE_POOL_SIZE			127
+ #define NOMEM_THRESHOLD_COUNT			8
+ #define ZERO_BUFFER_SIZE			0x100000
+ 
+-- 
+2.25.1
+

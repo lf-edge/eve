@@ -1,0 +1,27 @@
+From ef5c1218fb6475b0d3034f8edfb825d5d40c66ad Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 11 Jan 2021 14:16:54 +0300
+Subject: [PATCH] scripts: Only modprobe uio when needed
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ scripts/setup.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/setup.sh b/scripts/setup.sh
+index 6a04f0044..d4bbc61e7 100755
+--- a/scripts/setup.sh
++++ b/scripts/setup.sh
+@@ -280,8 +280,8 @@ function configure_linux_pci() {
+ 	igb_uio_fallback=""
+ 
+ 	# igb_uio is a common driver to override with and it depends on uio.
+-	modprobe uio
+ 	if [[ -r "$rootdir/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko" ]]; then
++		modprobe uio
+ 		igb_uio_fallback=$rootdir/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko
+ 		insmod "$igb_uio_fallback" || true
+ 	fi
+-- 
+2.25.1
+

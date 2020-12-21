@@ -62,9 +62,9 @@ services:
      image: WATCHDOG_TAG
      cgroupsPath: /eve/services/watchdog
      oomScoreAdj: -1000
-   - name: xen-tools
-     image: XENTOOLS_TAG
-     cgroupsPath: /eve/services/xen-tools
+   - name: spdk
+     image: SPDK_TAG
+     cgroupsPath: /eve/services/spdk
      oomScoreAdj: -999
 files:
    - path: /etc/eve-release

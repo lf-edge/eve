@@ -1,0 +1,76 @@
+From 18b85cbb1e225e934a8ba743d4949f9797e8d3bc Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 16:55:26 +0300
+Subject: [PATCH] spdk_top: Use qsort() instead of qsort_r()
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ app/spdk_top/spdk_top.c | 38 +++++++++++++++++++++++++++++++++-----
+ 1 file changed, 33 insertions(+), 5 deletions(-)
+
+diff --git a/app/spdk_top/spdk_top.c b/app/spdk_top/spdk_top.c
+index 8531cd32a..f6495fa75 100644
+--- a/app/spdk_top/spdk_top.c
++++ b/app/spdk_top/spdk_top.c
+@@ -1022,6 +1022,37 @@ sort_pollers(const void *p1, const void *p2, void *arg)
+ 	}
+ }
+ 
++#ifdef __FreeBSD__
++static int
++sort_pollers_by_name(const void *p1, const void *p2)
++{
++	enum sort_type sorting = BY_NAME;
++	return sort_pollers(&sorting, p1, p2);
++}
++
++static int
++sort_pollers_use_global(const void *p1, const void *p2)
++{
++	enum sort_type sorting = USE_GLOBAL;
++	return sort_pollers(&sorting, p1, p2);
++}
++#else
++
++static int
++sort_pollers_by_name(const void *p1, const void *p2)
++{
++	enum sort_type sorting = BY_NAME;
++	return sort_pollers(p1, p2, &sorting);
++}
++
++static int
++sort_pollers_use_global(const void *p1, const void *p2)
++{
++	enum sort_type sorting = USE_GLOBAL;
++	return sort_pollers(p1, p2, &sorting);
++}
++#endif
++
+ static void
+ copy_pollers(struct rpc_pollers *pollers, uint64_t pollers_count, enum spdk_poller_type type,
+ 	     struct rpc_poller_thread_info *thread, uint64_t *current_count, bool reset_last_counter,
+@@ -1060,7 +1091,6 @@ refresh_pollers_tab(uint8_t current_page)
+ 	/* Init g_last_page with value != 0 to force store_last_run_counter() call in copy_pollers()
+ 	 * so that initial values for run_counter are stored in g_run_counter_history */
+ 	static uint8_t g_last_page = 0xF;
+-	enum sort_type sorting;
+ 	char run_count[MAX_TIME_STR_LEN], period_ticks[MAX_PERIOD_STR_LEN];
+ 	struct rpc_poller_info *pollers[RPC_MAX_POLLERS];
+ 	bool reset_last_counter = false;
+@@ -1104,10 +1134,8 @@ refresh_pollers_tab(uint8_t current_page)
+ 
+ 	/* Timed pollers can switch their possition on a list because of how they work.
+ 	 * Let's sort them by name first so that they won't switch on data refresh */
+-	sorting = BY_NAME;
+-	qsort_r(pollers, count, sizeof(pollers[0]), sort_pollers, (void *)&sorting);
+-	sorting = USE_GLOBAL;
+-	qsort_r(pollers, count, sizeof(pollers[0]), sort_pollers, (void *)&sorting);
++	qsort(pollers, count, sizeof(pollers[0]), sort_pollers_by_name);
++	qsort(pollers, count, sizeof(pollers[0]), sort_pollers_use_global);
+ 
+ 	/* Display info */
+ 	for (i = current_page * g_max_data_rows;
+-- 
+2.25.1
+

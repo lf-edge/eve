@@ -1,0 +1,153 @@
+#Build SPDK
+FROM alpine:3.12 as build
+RUN apk add --no-cache linux-headers=5.4.5-r1 \
+                       bash=5.0.17-r0     \
+                       gcc=9.3.0-r2 \
+                       g++=9.3.0-r2 \
+                       nasm=2.14.02-r0 \
+                       autoconf=2.69-r2 \
+                       automake=1.16.2-r0 \
+                       libtool=2.4.6-r7 \
+                       gawk=5.1.0-r0 \
+                       meson=0.54.2-r1 \
+                       libc-dev=0.7.2-r3 \
+                       bsd-compat-headers=0.7.2-r3 \
+                       patch=2.7.6-r6 \
+                       argp-standalone=1.3-r4 \
+                       libexecinfo-dev=1.1-r1 \
+                       util-linux-dev=2.35.2-r0 \
+                       libressl-dev=3.1.2-r0 \
+                       libaio-dev=0.3.112-r1 \
+                       ncurses-dev=6.2_p20200523-r0 \
+                       cunit-dev=2.1.3-r2 \
+                       glib-dev=2.64.6-r0 \
+                       libusb-dev=1.0.23-r0 \
+                       pixman-dev=0.40.0-r2 \
+                       yajl-dev=2.1.0-r1 \
+                       libcap-ng-dev=0.7.10-r1 \
+                       attr-dev=2.4.48-r0 \
+                       file=5.38-r0 \
+                       git=2.26.2-r0 \
+                       make=4.3-r0
+
+ENV CC gcc
+COPY *patch /
+
+RUN mkdir -p /out
+
+ENV LIBURING_VERSION 0.7
+ENV SPDK_VER 20.10
+ENV DPDK_VER 20.11
+ENV ISAL_VER 2.30.0
+ENV QEMU_VER 5.2.0
+ENV KERNEL_VER 5.4.51-linuxkit
+
+ENV LIBURING_SOURCE=https://git.kernel.dk/cgit/liburing/snapshot/liburing-${LIBURING_VERSION}.tar.bz2
+
+# Download and verify liburing
+RUN wget https://git.kernel.dk/cgit/liburing/snapshot/liburing-${LIBURING_VERSION}.tar.bz2
+RUN tar xvf /liburing-${LIBURING_VERSION}.tar.bz2
+
+WORKDIR /liburing-${LIBURING_VERSION}
+
+RUN ./configure --prefix=/usr
+RUN make src && make install && make install DESTDIR=/out
+
+WORKDIR /
+RUN git clone --depth 1 https://github.com/spdk/spdk.git --branch v${SPDK_VER}
+WORKDIR /spdk
+RUN git submodule update --init
+
+WORKDIR /
+RUN wget https://download.qemu.org/qemu-${QEMU_VER}.tar.xz 
+RUN tar xvf qemu-${QEMU_VER}.tar.xz
+
+WORKDIR /spdk/dpdk
+RUN patch -p1 < /0001-eal_file-Add-missing-headers.patch
+RUN patch -p1 < /0002-iDo-not-undef-_GNU_SOURCE.patch
+RUN patch -p1 < /0003-pmdinfogen-define-_GNU_SOURCE-in-cflags.patch
+RUN patch -p1 < /0004-rte_config-Do-not-call-backtrace.patch
+RUN patch -p1 < /0005-buildtools-Fix-mktemp-template.patch
+RUN patch -p1 < /0006-pci-Switch-to-plain-out-b-w-l-functions-for-IO.patch
+
+WORKDIR /spdk
+RUN patch -p1 < /0001-configure-define-_GNU_SOURCE.patch
+RUN patch -p1 < /0002-queue-Remove-queue-extrasw.patch
+RUN patch -p1 < /0003-math-Remove-target_clones.patch
+RUN patch -p1 < /0004-spdk_top-Use-qsort-instead-of-qsort_r.patch
+RUN patch -p1 < /0005-spdk-Rework-symlink-creation.patch
+RUN patch -p1 < /0006-scripts-Only-modprobe-uio-when-needed.patch
+RUN patch -p1 < /0007-scripts-Change-echo-parameters.patch
+RUN patch -p1 < /0008-bdev-Make-the-buffer-sizes-8-times-less-than-default.patch
+RUN patch -p1 < /0009-scripts-Disable-PCI-rescanning.patch
+
+RUN ./configure --prefix=/usr/ --with-vhost --with-uring --with-shared && \
+    make && make install && make install DESTDIR=/out
+RUN cp -Ra build/bin/* /out/usr/bin
+RUN cp -Ra dpdk/build/lib/* /out/usr/lib/
+
+WORKDIR /qemu-${QEMU_VER}
+RUN ./configure --prefix=/usr --enable-libusb --enable-linux-aio \
+    --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
+    --enable-vhost-user --enable-linux-io-uring --enable-kvm --enable-virtfs \
+    --target-list=$(uname -m)-softmmu --disable-xkbcommon
+RUN make
+RUN make && make install DESTDIR=/out
+
+# Filter out unneeded stuff
+RUN rm -rf /out/usr/man /out/usr/include /out/usr/lib/pkgconfig /out/usr/lib/*.a /out/usr/share/dpdk/
+RUN mkdir -p /out/usr/share/spdk/include/spdk/
+RUN cp -Ra /spdk/include/spdk/pci_ids.h /out/usr/share/spdk/include/spdk/pci_ids.h
+RUN if [ $(uname -m) = x86_64 ]; then rm -rf /out/usr/share/qemu/edk2-{arm,aarch64}-*.fd; fi
+RUN if [ $(uname -m) = aarc64 ]; then rm -rf /out/usr/share/qemu/edk2-{i386,x86_64}-*.fd; fi
+RUN rm -rf /out/usr/share/qemu/s390* /out/usr/share/qemu/openbios* /out/usr/share/qemu/u-boot* /out/usr/share/qemu/*.dtb
+RUN rm -rf /out/usr/bin/dpdk-test*
+
+RUN strip /out/usr/lib/* || :
+RUN strip /out/usr/bin/* || :
+
+RUN mkdir -p /out/usr/share/spdk/
+RUN cp -Rpv /spdk/scripts/ /out/usr/share/spdk/scripts/
+RUN rm -rf /out/usr/share/spdk/scripts/test/
+
+#Pull a selected set of artifacts into the final stage.
+FROM alpine:3.12
+
+RUN apk add --no-cache  \
+    --force-overwrite   \
+    bash=5.0.17-r0      \
+    libaio=0.3.112-r1   \
+    libbz2=1.0.8-r1     \
+    glib=2.64.6-r0      \
+    pixman=0.40.0-r2    \
+    yajl=2.1.0-r1       \
+    keyutils=1.6.1-r1   \
+    libusb=1.0.23-r0    \
+    xz-libs=5.2.5-r0    \
+    libuuid=2.35.2-r0   \
+    pciutils=3.6.4-r0   \
+    kmod=27-r0          \
+    libgcc=9.3.0-r2     \
+    bridge-utils=1.6-r0 \
+    python3=3.8.5-r0
+
+RUN if [ $(uname -m) == aarch64 ]; then apk add --no-cache libfdt=1.6.0-r0 libstdc++=9.3.0-r2 ;fi
+
+COPY --from=build /out/ /
+COPY init.sh /
+COPY run-qemu.py /usr/bin
+COPY qemu-ifup /usr/bin
+RUN chmod 0774 /init.sh
+RUN chmod 0774 /usr/bin/run-qemu.py  /usr/bin/qemu-ifup
+
+RUN ldd /usr/bin/vhost
+
+# Adjust /var/run, /var/lib and /var/lock to be shared
+RUN mv /var /var.template && ln -s /run /var
+
+# Add a few mountpoints so we can use lowerfs in R/O mode
+RUN mkdir /persist /hostfs
+
+ENTRYPOINT []
+WORKDIR /
+CMD ["/init.sh"]

@@ -4,6 +4,7 @@ volumes:
     persist: {}
     config: {}
     run: {}
+    modules: {}
 
 networks:
     # eve-host:
@@ -146,6 +147,17 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        networks:
+            - eve
+
+    spdk:
+        image: SPDK_TAG
+        privileged: true
+        volumes:
+            - persist:/persist
+            - config:/config
+            - run:/run
+            - modules:/lib/modules
         networks:
             - eve
 

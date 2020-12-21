@@ -1,0 +1,24 @@
+From 4ea0026f178143285f4d0b5e8ead683e443f2a82 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 05:44:10 +0300
+Subject: [PATCH] pmdinfogen: define _GNU_SOURCE in cflags
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ buildtools/pmdinfogen/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/buildtools/pmdinfogen/meson.build b/buildtools/pmdinfogen/meson.build
+index 670528fac..d54507555 100644
+--- a/buildtools/pmdinfogen/meson.build
++++ b/buildtools/pmdinfogen/meson.build
+@@ -10,5 +10,6 @@ pmdinfogen_inc += include_directories('../../lib/librte_eal/include')
+ pmdinfogen_inc += include_directories('../../lib/librte_pci')
+ pmdinfogen = executable('pmdinfogen',
+ 	'pmdinfogen.c',
++	c_args: '-D_GNU_SOURCE',
+ 	include_directories: pmdinfogen_inc,
+ 	native: true)
+-- 
+2.25.1
+

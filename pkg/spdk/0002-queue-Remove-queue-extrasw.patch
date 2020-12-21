@@ -1,0 +1,95 @@
+From bf96a4ed3d408df5ec34395a52c0dcc2da14794d Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 13:40:37 +0300
+Subject: [PATCH 1/2] queue: Remove queue-extrasw
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ include/spdk/queue.h        |  1 -
+ include/spdk/queue_extras.h | 16 +++++++++++-----
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/include/spdk/queue.h b/include/spdk/queue.h
+index 24e2e2e20..b1021fd2c 100644
+--- a/include/spdk/queue.h
++++ b/include/spdk/queue.h
+@@ -38,7 +38,6 @@
+ extern "C" {
+ #endif
+ 
+-#include <sys/cdefs.h>
+ #include <sys/queue.h>
+ 
+ /*
+diff --git a/include/spdk/queue_extras.h b/include/spdk/queue_extras.h
+index 904625e4d..5f545f7f2 100644
+--- a/include/spdk/queue_extras.h
++++ b/include/spdk/queue_extras.h
+@@ -110,6 +110,7 @@
+ /*
+  * Singly-linked Tail queue declarations.
+  */
++#ifndef STAILQ_HEAD
+ #define	STAILQ_HEAD(name, type)						\
+ struct name {								\
+ 	struct type *stqh_first;/* first element */			\
+@@ -126,11 +127,6 @@ struct name {								\
+ 
+ #define	STAILQ_FIRST(head)	((head)->stqh_first)
+ 
+-#define	STAILQ_FOREACH_FROM(var, head, field)				\
+-	for ((var) = ((var) ? (var) : STAILQ_FIRST((head)));		\
+-	   (var);							\
+-	   (var) = STAILQ_NEXT((var), field))
+-
+ #define	STAILQ_FOREACH_SAFE(var, head, field, tvar)			\
+ 	for ((var) = STAILQ_FIRST((head));				\
+ 	    (var) && ((tvar) = STAILQ_NEXT((var), field), 1);		\
+@@ -152,6 +148,12 @@ struct name {								\
+ 	     STAILQ_NEXT(STAILQ_NEXT(elm, field), field)) == NULL)	\
+ 		(head)->stqh_last = &STAILQ_NEXT((elm), field);		\
+ } while (0)
++#endif
++
++#define	STAILQ_FOREACH_FROM(var, head, field)				\
++	for ((var) = ((var) ? (var) : STAILQ_FIRST((head)));		\
++	   (var);							\
++	   (var) = STAILQ_NEXT((var), field))
+ 
+ #define STAILQ_SWAP(head1, head2, type) do {				\
+ 	struct type *swap_first = STAILQ_FIRST(head1);			\
+@@ -169,6 +171,7 @@ struct name {								\
+ /*
+  * List declarations.
+  */
++#ifndef LIST_HEAD
+ #define	LIST_HEAD(name, type)						\
+ struct name {								\
+ 	struct type *lh_first;	/* first element */			\
+@@ -236,6 +239,7 @@ struct {								\
+ #define	LIST_PREV(elm, head, type, field)				\
+ 	((elm)->field.le_prev == &LIST_FIRST((head)) ? NULL :		\
+ 	    SPDK_CONTAINEROF((elm)->field.le_prev, struct type, field.le_next))
++#endif
+ 
+ #define LIST_SWAP(head1, head2, type, field) do {			\
+ 	struct type *swap_tmp = LIST_FIRST((head1));			\
+@@ -281,6 +285,7 @@ struct {								\
+ #define	QMD_TAILQ_CHECK_PREV(elm, field)
+ #endif /* (_KERNEL && INVARIANTS) */
+ 
++#ifndef TAILQ_FIRST
+ #define	TAILQ_EMPTY(head)	((head)->tqh_first == NULL)
+ 
+ #define	TAILQ_FIRST(head)	((head)->tqh_first)
+@@ -322,6 +327,7 @@ struct {								\
+ 
+ #define	TAILQ_PREV(elm, headname, field)				\
+ 	(*(((struct headname *)((elm)->field.tqe_prev))->tqh_last))
++#endif
+ 
+ #define TAILQ_SWAP(head1, head2, type, field) do {			\
+ 	struct type *swap_first = (head1)->tqh_first;			\
+-- 
+2.25.1
+

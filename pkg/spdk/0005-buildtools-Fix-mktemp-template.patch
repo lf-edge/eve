@@ -1,0 +1,26 @@
+From a965bedc039a36f9245a789ba53d18d8d1e646e4 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 09:45:17 +0300
+Subject: [PATCH] buildtools: Fix mktemp template
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ buildtools/check-symbols.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/buildtools/check-symbols.sh b/buildtools/check-symbols.sh
+index e407553a3..83b3a0182 100755
+--- a/buildtools/check-symbols.sh
++++ b/buildtools/check-symbols.sh
+@@ -18,7 +18,7 @@ then
+ 	exit 0
+ fi
+ 
+-DUMPFILE=$(mktemp -t dpdk.${0##*/}.XXX.objdump)
++DUMPFILE=$(mktemp -t dpdk.${0##*/}.objdump.XXXXXX)
+ trap 'rm -f "$DUMPFILE"' EXIT
+ objdump -t $OBJFILE >$DUMPFILE
+ 
+-- 
+2.25.1
+

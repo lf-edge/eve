@@ -1,0 +1,26 @@
+From f2355a98a6d524c60894057e35d344b3f71fb3a7 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 04:12:41 +0300
+Subject: [PATCH] eal_file: Add missing headers
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ lib/librte_eal/unix/eal_file.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/lib/librte_eal/unix/eal_file.c b/lib/librte_eal/unix/eal_file.c
+index 1b26475..d2c8625 100644
+--- a/lib/librte_eal/unix/eal_file.c
++++ b/lib/librte_eal/unix/eal_file.c
+@@ -5,6 +5,8 @@
+ #include <sys/file.h>
+ #include <sys/mman.h>
+ #include <unistd.h>
++#include <sys/stat.h>
++#include <fcntl.h>
+ 
+ #include <rte_errno.h>
+ 
+-- 
+2.25.1
+

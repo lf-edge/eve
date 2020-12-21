@@ -1,0 +1,39 @@
+From e3dc7e24863c13d302a13388fd1bede77bc21aac Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 14:06:31 +0300
+Subject: [PATCH 2/2] math: Remove target_clones
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ lib/util/math.c | 8 --------
+ 1 file changed, 8 deletions(-)
+
+diff --git a/lib/util/math.c b/lib/util/math.c
+index 7d1852421..e86c2fede 100644
+--- a/lib/util/math.c
++++ b/lib/util/math.c
+@@ -37,10 +37,6 @@
+ /* The following will automatically generate several version of
+  * this function, targeted at different architectures. This
+  * is only supported by GCC 6 or newer. */
+-#if defined(__GNUC__) && __GNUC__ >= 6 && !defined(__clang__) \
+-	&& (defined(__i386__) || defined(__x86_64__))
+-__attribute__((target_clones("bmi", "arch=core2", "arch=atom", "default")))
+-#endif
+ uint32_t
+ spdk_u32log2(uint32_t x)
+ {
+@@ -54,10 +50,6 @@ spdk_u32log2(uint32_t x)
+ /* The following will automatically generate several version of
+  * this function, targeted at different architectures. This
+  * is only supported by GCC 6 or newer. */
+-#if defined(__GNUC__) && __GNUC__ >= 6 && !defined(__clang__) \
+-	&& (defined(__i386__) || defined(__x86_64__))
+-__attribute__((target_clones("bmi", "arch=core2", "arch=atom", "default")))
+-#endif
+ uint64_t
+ spdk_u64log2(uint64_t x)
+ {
+-- 
+2.25.1
+

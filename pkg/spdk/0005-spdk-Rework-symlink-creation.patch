@@ -1,0 +1,31 @@
+From bdcdc6aae68c7e5f782d5ab679e11afd84a4a6fe Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 17:59:42 +0300
+Subject: [PATCH] spdk: Rework symlink creation
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ mk/spdk.common.mk | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/mk/spdk.common.mk b/mk/spdk.common.mk
+index 3fc04792f..60cd54c2f 100644
+--- a/mk/spdk.common.mk
++++ b/mk/spdk.common.mk
+@@ -303,11 +303,11 @@ UNINSTALL_LIB=\
+ ifeq ($(OS),FreeBSD)
+ INSTALL_REL_SYMLINK := install -l rs
+ else
+-INSTALL_REL_SYMLINK := ln -sf -r
++INSTALL_REL_SYMLINK := ln -sf
+ endif
+ 
+ define spdk_install_lib_symlink
+-	$(INSTALL_REL_SYMLINK) $(DESTDIR)$(libdir)/$(1) $(DESTDIR)$(libdir)/$(2)
++	$(INSTALL_REL_SYMLINK) $(1) $(DESTDIR)$(libdir)/$(2)
+ endef
+ 
+ INSTALL_SHARED_LIB=\
+-- 
+2.25.1
+

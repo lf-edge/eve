@@ -1,0 +1,26 @@
+From b355134cbe80593e6ab9cc09146d18b2bd631731 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 11 Jan 2021 16:57:02 +0300
+Subject: [PATCH] scripts: Change echo parameters
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ scripts/setup.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/setup.sh b/scripts/setup.sh
+index d4bbc61e7..63e0196ea 100755
+--- a/scripts/setup.sh
++++ b/scripts/setup.sh
+@@ -333,7 +333,7 @@ function configure_linux_pci() {
+ 	done
+ 	wait
+ 
+-	echo "1" > "/sys/bus/pci/rescan"
++	echo "1" > /sys/bus/pci/rescan
+ }
+ 
+ function cleanup_linux() {
+-- 
+2.25.1
+

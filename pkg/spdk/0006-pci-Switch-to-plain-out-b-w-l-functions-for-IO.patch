@@ -1,0 +1,42 @@
+From 185fb0f0b677e46d919beccc7b2d1427efccb93e Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Mon, 21 Dec 2020 09:56:22 +0300
+Subject: [PATCH] pci: Switch to plain out{b,w,l} functions for IO
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ drivers/bus/pci/linux/pci_uio.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/bus/pci/linux/pci_uio.c b/drivers/bus/pci/linux/pci_uio.c
+index f3305a2f2..dbf29cda8 100644
+--- a/drivers/bus/pci/linux/pci_uio.c
++++ b/drivers/bus/pci/linux/pci_uio.c
+@@ -535,21 +535,21 @@ pci_uio_ioport_write(struct rte_pci_ioport *p,
+ 		if (len >= 4) {
+ 			size = 4;
+ #if defined(RTE_ARCH_X86)
+-			outl_p(*(const uint32_t *)s, reg);
++			outl(*(const uint32_t *)s, reg);
+ #else
+ 			*(volatile uint32_t *)reg = *(const uint32_t *)s;
+ #endif
+ 		} else if (len >= 2) {
+ 			size = 2;
+ #if defined(RTE_ARCH_X86)
+-			outw_p(*(const uint16_t *)s, reg);
++			outw(*(const uint16_t *)s, reg);
+ #else
+ 			*(volatile uint16_t *)reg = *(const uint16_t *)s;
+ #endif
+ 		} else {
+ 			size = 1;
+ #if defined(RTE_ARCH_X86)
+-			outb_p(*s, reg);
++			outb(*s, reg);
+ #else
+ 			*(volatile uint8_t *)reg = *s;
+ #endif
+-- 
+2.25.1
+
