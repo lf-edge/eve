@@ -1,0 +1,54 @@
+From 3c512bd3dbbbd21e0ae87998cdc17b7c2969babe Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Wed, 5 Aug 2020 12:58:23 -0600
+Subject: [PATCH 24/30] io_uring: set ctx sq/cq entry count earlier
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+commit bd74048108c179cea0ff52979506164c80f29da7 upstream.
+
+If we hit an earlier error path in io_uring_create(), then we will have
+accounted memory, but not set ctx->{sq,cq}_entries yet. Then when the
+ring is torn down in error, we use those values to unaccount the memory.
+
+Ensure we set the ctx entries before we're able to hit a potential error
+path.
+
+Cc: stable@vger.kernel.org
+Reported-by: Tomáš Chaloupka <chalucha@gmail.com>
+Tested-by: Tomáš Chaloupka <chalucha@gmail.com>
+Reviewed-by: Stefano Garzarella <sgarzare@redhat.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ fs/io_uring.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index 046042025025..dc3bb06efdd6 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -3857,6 +3857,10 @@ static int io_allocate_scq_urings(struct io_ring_ctx *ctx,
+ 	struct io_rings *rings;
+ 	size_t size, sq_array_offset;
+ 
++	/* make sure these are sane, as we already accounted them */
++	ctx->sq_entries = p->sq_entries;
++	ctx->cq_entries = p->cq_entries;
++
+ 	size = rings_size(p->sq_entries, p->cq_entries, &sq_array_offset);
+ 	if (size == SIZE_MAX)
+ 		return -EOVERFLOW;
+@@ -3873,8 +3877,6 @@ static int io_allocate_scq_urings(struct io_ring_ctx *ctx,
+ 	rings->cq_ring_entries = p->cq_entries;
+ 	ctx->sq_mask = rings->sq_ring_mask;
+ 	ctx->cq_mask = rings->cq_ring_mask;
+-	ctx->sq_entries = rings->sq_ring_entries;
+-	ctx->cq_entries = rings->cq_ring_entries;
+ 
+ 	size = array_size(sizeof(struct io_uring_sqe), p->sq_entries);
+ 	if (size == SIZE_MAX) {
+-- 
+2.25.1
+

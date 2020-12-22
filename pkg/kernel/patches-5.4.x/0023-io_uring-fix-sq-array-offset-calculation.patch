@@ -1,0 +1,49 @@
+From 0b1799662a61a71d6f986a831ba48c8af116a29e Mon Sep 17 00:00:00 2001
+From: Dmitry Vyukov <dvyukov@google.com>
+Date: Sat, 11 Jul 2020 11:31:11 +0200
+Subject: [PATCH 23/30] io_uring: fix sq array offset calculation
+
+[ Upstream commit b36200f543ff07a1cb346aa582349141df2c8068 ]
+
+rings_size() sets sq_offset to the total size of the rings (the returned
+value which is used for memory allocation). This is wrong: sq array should
+be located within the rings, not after them. Set sq_offset to where it
+should be.
+
+Fixes: 75b28affdd6a ("io_uring: allocate the two rings together")
+Signed-off-by: Dmitry Vyukov <dvyukov@google.com>
+Acked-by: Hristo Venev <hristo@venev.name>
+Cc: io-uring@vger.kernel.org
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Sasha Levin <sashal@kernel.org>
+---
+ fs/io_uring.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index c1aaee061dae..046042025025 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -3391,6 +3391,9 @@ static unsigned long rings_size(unsigned sq_entries, unsigned cq_entries,
+ 		return SIZE_MAX;
+ #endif
+ 
++	if (sq_offset)
++		*sq_offset = off;
++
+ 	sq_array_size = array_size(sizeof(u32), sq_entries);
+ 	if (sq_array_size == SIZE_MAX)
+ 		return SIZE_MAX;
+@@ -3398,9 +3401,6 @@ static unsigned long rings_size(unsigned sq_entries, unsigned cq_entries,
+ 	if (check_add_overflow(off, sq_array_size, &off))
+ 		return SIZE_MAX;
+ 
+-	if (sq_offset)
+-		*sq_offset = off;
+-
+ 	return off;
+ }
+ 
+-- 
+2.25.1
+

@@ -1,0 +1,32 @@
+From a02df82a59c3dbc7bf657efca82e1641ca472eb4 Mon Sep 17 00:00:00 2001
+From: Liu Yong <pkfxxxing@gmail.com>
+Date: Wed, 12 Aug 2020 23:56:44 -0700
+Subject: [PATCH 22/30] fs/io_uring.c: Fix uninitialized variable is referenced
+ in io_submit_sqe
+
+the commit <a4d61e66ee4a> ("<io_uring: prevent re-read of sqe->opcode>")
+caused another vulnerability. After io_get_req(), the sqe_submit struct
+in req is not initialized, but the following code defaults that
+req->submit.opcode is available.
+
+Signed-off-by: Liu Yong <pkfxxxing@gmail.com>
+Signed-off-by: Sasha Levin <sashal@kernel.org>
+---
+ fs/io_uring.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index be3d595a607f..c1aaee061dae 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -2559,6 +2559,7 @@ static void io_submit_sqe(struct io_ring_ctx *ctx, struct sqe_submit *s,
+ 		goto err;
+ 	}
+ 
++	memcpy(&req->submit, s, sizeof(*s));
+ 	ret = io_req_set_file(ctx, s, state, req);
+ 	if (unlikely(ret)) {
+ err_req:
+-- 
+2.25.1
+

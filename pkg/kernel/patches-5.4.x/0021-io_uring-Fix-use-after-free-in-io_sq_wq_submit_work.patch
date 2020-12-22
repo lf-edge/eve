@@ -1,0 +1,32 @@
+From e8053c68337ec5566be00fd0eed74273e6852b04 Mon Sep 17 00:00:00 2001
+From: Guoyu Huang <hgy5945@gmail.com>
+Date: Wed, 5 Aug 2020 13:10:25 -0600
+Subject: [PATCH 21/30] io_uring: Fix use-after-free in io_sq_wq_submit_work()
+
+when ctx->sqo_mm is zero, io_sq_wq_submit_work() frees 'req'
+without deleting it from 'task_list'. After that, 'req' is
+accessed in io_ring_ctx_wait_and_kill() which lead to
+a use-after-free.
+
+Signed-off-by: Guoyu Huang <hgy5945@gmail.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ fs/io_uring.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index 8bb5e19b7c3c..be3d595a607f 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -2232,6 +2232,7 @@ static void io_sq_wq_submit_work(struct work_struct *work)
+ 		if (io_req_needs_user(req) && !cur_mm) {
+ 			if (!mmget_not_zero(ctx->sqo_mm)) {
+ 				ret = -EFAULT;
++				goto end_req;
+ 			} else {
+ 				cur_mm = ctx->sqo_mm;
+ 				use_mm(cur_mm);
+-- 
+2.25.1
+
