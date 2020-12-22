@@ -10,6 +10,7 @@ GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
+ROOTFS_SIZE_MB:=350
 
 export CGO_ENABLED GOOS GOARCH PATH
 
@@ -570,8 +571,8 @@ $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml $(SS
 $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@[ $$(wc -c < "$@") -gt $$(( ${ROOTFS_SIZE_MB} * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than ${ROOTFS_SIZE_MB} (bigger than the allocated partition)" && exit 1 || :
 
 %-show-tag:
 	@$(LINUXKIT) pkg show-tag pkg/$*
