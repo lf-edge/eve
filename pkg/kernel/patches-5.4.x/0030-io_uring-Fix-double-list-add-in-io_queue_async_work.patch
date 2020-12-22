@@ -1,0 +1,80 @@
+From ee413b2915bfdcb83972f9fd426409600eedc309 Mon Sep 17 00:00:00 2001
+From: Muchun Song <songmuchun@bytedance.com>
+Date: Wed, 7 Oct 2020 11:16:35 +0800
+Subject: [PATCH 30/30] io_uring: Fix double list add in io_queue_async_work()
+
+If we queue work in io_poll_wake(), it will leads to list double
+add. So we should add the list when the callback func is the
+io_sq_wq_submit_work.
+
+The following oops was seen:
+
+    list_add double add: new=ffff9ca6a8f1b0e0, prev=ffff9ca62001cee8,
+    next=ffff9ca6a8f1b0e0.
+    ------------[ cut here ]------------
+    kernel BUG at lib/list_debug.c:31!
+    Call Trace:
+     <IRQ>
+     io_poll_wake+0xf3/0x230
+     __wake_up_common+0x91/0x170
+     __wake_up_common_lock+0x7a/0xc0
+     io_commit_cqring+0xea/0x280
+     ? blkcg_iolatency_done_bio+0x2b/0x610
+     io_cqring_add_event+0x3e/0x60
+     io_complete_rw+0x58/0x80
+     dio_complete+0x106/0x250
+     blk_update_request+0xa0/0x3b0
+     blk_mq_end_request+0x1a/0x110
+     blk_mq_complete_request+0xd0/0xe0
+     nvme_irq+0x129/0x270 [nvme]
+     __handle_irq_event_percpu+0x7b/0x190
+     handle_irq_event_percpu+0x30/0x80
+     handle_irq_event+0x3c/0x60
+     handle_edge_irq+0x91/0x1e0
+     do_IRQ+0x4d/0xd0
+     common_interrupt+0xf/0xf
+
+Fixes: 1c4404efcf2c ("io_uring: make sure async workqueue is canceled on exit")
+Reported-by: Jiachen Zhang <zhangjiachen.jaycee@bytedance.com>
+Signed-off-by: Muchun Song <songmuchun@bytedance.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ fs/io_uring.c | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index 242612fe9b48..4127ea027a14 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -514,12 +514,14 @@ static inline void io_queue_async_work(struct io_ring_ctx *ctx,
+ 		}
+ 	}
+ 
+-	req->files = current->files;
++	if (req->work.func == io_sq_wq_submit_work) {
++		req->files = current->files;
+ 
+-	spin_lock_irqsave(&ctx->task_lock, flags);
+-	list_add(&req->task_list, &ctx->task_list);
+-	req->work_task = NULL;
+-	spin_unlock_irqrestore(&ctx->task_lock, flags);
++		spin_lock_irqsave(&ctx->task_lock, flags);
++		list_add(&req->task_list, &ctx->task_list);
++		req->work_task = NULL;
++		spin_unlock_irqrestore(&ctx->task_lock, flags);
++	}
+ 
+ 	queue_work(ctx->sqo_wq[rw], &req->work);
+ }
+@@ -668,6 +670,7 @@ static struct io_kiocb *io_get_req(struct io_ring_ctx *ctx,
+ 		state->cur_req++;
+ 	}
+ 
++	INIT_LIST_HEAD(&req->task_list);
+ 	req->file = NULL;
+ 	req->ctx = ctx;
+ 	req->flags = 0;
+-- 
+2.25.1
+

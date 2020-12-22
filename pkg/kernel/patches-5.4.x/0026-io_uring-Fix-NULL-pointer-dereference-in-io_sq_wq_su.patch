@@ -1,0 +1,94 @@
+From 54ee77961e795d9747be3c164d631148057887c0 Mon Sep 17 00:00:00 2001
+From: Xin Yin <yinxin_1989@aliyun.com>
+Date: Tue, 1 Sep 2020 20:12:52 -0600
+Subject: [PATCH 26/30] io_uring: Fix NULL pointer dereference in
+ io_sq_wq_submit_work()
+
+the commit <1c4404efcf2c0> ("<io_uring: make sure async workqueue
+is canceled on exit>") caused a crash in io_sq_wq_submit_work().
+when io_ring-wq get a req form async_list, which not have been
+added to task_list. Then try to delete the req from task_list will caused
+a "NULL pointer dereference".
+
+Ensure add req to async_list and task_list at the sametime.
+
+The crash log looks like this:
+[95995.973638] Unable to handle kernel NULL pointer dereference at virtual address 00000000
+[95995.979123] pgd = c20c8964
+[95995.981803] [00000000] *pgd=1c72d831, *pte=00000000, *ppte=00000000
+[95995.988043] Internal error: Oops: 817 [#1] SMP ARM
+[95995.992814] Modules linked in: bpfilter(-)
+[95995.996898] CPU: 1 PID: 15661 Comm: kworker/u8:5 Not tainted 5.4.56 #2
+[95996.003406] Hardware name: Amlogic Meson platform
+[95996.008108] Workqueue: io_ring-wq io_sq_wq_submit_work
+[95996.013224] PC is at io_sq_wq_submit_work+0x1f4/0x5c4
+[95996.018261] LR is at walk_stackframe+0x24/0x40
+[95996.022685] pc : [<c059b898>]    lr : [<c030da7c>]    psr: 600f0093
+[95996.028936] sp : dc6f7e88  ip : dc6f7df0  fp : dc6f7ef4
+[95996.034148] r10: deff9800  r9 : dc1d1694  r8 : dda58b80
+[95996.039358] r7 : dc6f6000  r6 : dc6f7ebc  r5 : dc1d1600  r4 : deff99c0
+[95996.045871] r3 : 0000cb5d  r2 : 00000000  r1 : ef6b9b80  r0 : c059b88c
+[95996.052385] Flags: nZCv  IRQs off  FIQs on  Mode SVC_32  ISA ARM  Segment user
+[95996.059593] Control: 10c5387d  Table: 22be804a  DAC: 00000055
+[95996.065325] Process kworker/u8:5 (pid: 15661, stack limit = 0x78013c69)
+[95996.071923] Stack: (0xdc6f7e88 to 0xdc6f8000)
+[95996.076268] 7e80:                   dc6f7ecc dc6f7e98 00000000 c1f06c08 de9dc800 deff9a04
+[95996.084431] 7ea0: 00000000 dc6f7f7c 00000000 c1f65808 0000080c dc677a00 c1ee9bd0 dc6f7ebc
+[95996.092594] 7ec0: dc6f7ebc d085c8f6 c0445a90 dc1d1e00 e008f300 c0288400 e4ef7100 00000000
+[95996.100757] 7ee0: c20d45b0 e4ef7115 dc6f7f34 dc6f7ef8 c03725f0 c059b6b0 c0288400 c0288400
+[95996.108921] 7f00: c0288400 00000001 c0288418 e008f300 c0288400 e008f314 00000088 c0288418
+[95996.117083] 7f20: c1f03d00 dc6f6038 dc6f7f7c dc6f7f38 c0372df8 c037246c dc6f7f5c 00000000
+[95996.125245] 7f40: c1f03d00 c1f03d00 c20d3cbe c0288400 dc6f7f7c e1c43880 e4fa7980 00000000
+[95996.133409] 7f60: e008f300 c0372d9c e48bbe74 e1c4389c dc6f7fac dc6f7f80 c0379244 c0372da8
+[95996.141570] 7f80: 600f0093 e4fa7980 c0379108 00000000 00000000 00000000 00000000 00000000
+[95996.149734] 7fa0: 00000000 dc6f7fb0 c03010ac c0379114 00000000 00000000 00000000 00000000
+[95996.157897] 7fc0: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[95996.166060] 7fe0: 00000000 00000000 00000000 00000000 00000013 00000000 00000000 00000000
+[95996.174217] Backtrace:
+[95996.176662] [<c059b6a4>] (io_sq_wq_submit_work) from [<c03725f0>] (process_one_work+0x190/0x4c0)
+[95996.185425]  r10:e4ef7115 r9:c20d45b0 r8:00000000 r7:e4ef7100 r6:c0288400 r5:e008f300
+[95996.193237]  r4:dc1d1e00
+[95996.195760] [<c0372460>] (process_one_work) from [<c0372df8>] (worker_thread+0x5c/0x5bc)
+[95996.203836]  r10:dc6f6038 r9:c1f03d00 r8:c0288418 r7:00000088 r6:e008f314 r5:c0288400
+[95996.211647]  r4:e008f300
+[95996.214173] [<c0372d9c>] (worker_thread) from [<c0379244>] (kthread+0x13c/0x168)
+[95996.221554]  r10:e1c4389c r9:e48bbe74 r8:c0372d9c r7:e008f300 r6:00000000 r5:e4fa7980
+[95996.229363]  r4:e1c43880
+[95996.231888] [<c0379108>] (kthread) from [<c03010ac>] (ret_from_fork+0x14/0x28)
+[95996.239088] Exception stack(0xdc6f7fb0 to 0xdc6f7ff8)
+[95996.244127] 7fa0:                                     00000000 00000000 00000000 00000000
+[95996.252291] 7fc0: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[95996.260453] 7fe0: 00000000 00000000 00000000 00000000 00000013 00000000
+[95996.267054]  r10:00000000 r9:00000000 r8:00000000 r7:00000000 r6:00000000 r5:c0379108
+[95996.274866]  r4:e4fa7980 r3:600f0093
+[95996.278430] Code: eb3a59e1 e5952098 e5951094 e5812004 (e5821000)
+
+Signed-off-by: Xin Yin <yinxin_1989@aliyun.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ fs/io_uring.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index fada14ee1cdc..2a539b794f3b 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -2378,6 +2378,15 @@ static bool io_add_to_prev_work(struct async_list *list, struct io_kiocb *req)
+ 		list_del_init(&req->list);
+ 		ret = false;
+ 	}
++
++	if (ret) {
++		struct io_ring_ctx *ctx = req->ctx;
++
++		spin_lock_irq(&ctx->task_lock);
++		list_add(&req->task_list, &ctx->task_list);
++		req->work_task = NULL;
++		spin_unlock_irq(&ctx->task_lock);
++	}
+ 	spin_unlock(&list->lock);
+ 	return ret;
+ }
+-- 
+2.25.1
+

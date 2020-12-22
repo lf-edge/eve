@@ -1,0 +1,94 @@
+From d9e81b2fb3724a0e4cc658a78b8905aabdb3ff44 Mon Sep 17 00:00:00 2001
+From: Yinyin Zhu <zhuyinyin@bytedance.com>
+Date: Wed, 7 Oct 2020 11:16:32 +0800
+Subject: [PATCH 27/30] io_uring: Fix resource leaking when kill the process
+
+The commit
+
+  1c4404efcf2c0> ("<io_uring: make sure async workqueue is canceled on exit>")
+
+doesn't solve the resource leak problem totally! When kworker is doing a
+io task for the io_uring, The process which submitted the io task has
+received a SIGKILL signal from the user. Then the io_cancel_async_work
+function could have sent a SIGINT signal to the kworker, but the judging
+condition is wrong. So it doesn't send a SIGINT signal to the kworker,
+then caused the resource leaking problem.
+
+Why the juding condition is wrong? The process is a multi-threaded process,
+we call the thread of the process which has submitted the io task Thread1.
+So the req->task is the current macro of the Thread1. when all the threads
+of the process have done exit procedure, the last thread will call the
+io_cancel_async_work, but the last thread may not the Thread1, so the task
+is not equal and doesn't send the SIGINT signal. To fix this bug, we alter
+the task attribute of the req with struct files_struct. And check the files
+instead.
+
+Fixes: 1c4404efcf2c0 ("io_uring: make sure async workqueue is canceled on exit")
+Signed-off-by: Yinyin Zhu <zhuyinyin@bytedance.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ fs/io_uring.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index 2a539b794f3b..33bd3ebdd3ef 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -340,7 +340,7 @@ struct io_kiocb {
+ 	u64			user_data;
+ 	u32			result;
+ 	u32			sequence;
+-	struct task_struct	*task;
++	struct files_struct	*files;
+ 
+ 	struct fs_struct	*fs;
+ 
+@@ -514,7 +514,7 @@ static inline void io_queue_async_work(struct io_ring_ctx *ctx,
+ 		}
+ 	}
+ 
+-	req->task = current;
++	req->files = current->files;
+ 
+ 	spin_lock_irqsave(&ctx->task_lock, flags);
+ 	list_add(&req->task_list, &ctx->task_list);
+@@ -2382,6 +2382,8 @@ static bool io_add_to_prev_work(struct async_list *list, struct io_kiocb *req)
+ 	if (ret) {
+ 		struct io_ring_ctx *ctx = req->ctx;
+ 
++		req->files = current->files;
++
+ 		spin_lock_irq(&ctx->task_lock);
+ 		list_add(&req->task_list, &ctx->task_list);
+ 		req->work_task = NULL;
+@@ -3712,7 +3714,7 @@ static int io_uring_fasync(int fd, struct file *file, int on)
+ }
+ 
+ static void io_cancel_async_work(struct io_ring_ctx *ctx,
+-				 struct task_struct *task)
++				 struct files_struct *files)
+ {
+ 	if (list_empty(&ctx->task_list))
+ 		return;
+@@ -3724,7 +3726,7 @@ static void io_cancel_async_work(struct io_ring_ctx *ctx,
+ 		req = list_first_entry(&ctx->task_list, struct io_kiocb, task_list);
+ 		list_del_init(&req->task_list);
+ 		req->flags |= REQ_F_CANCEL;
+-		if (req->work_task && (!task || req->task == task))
++		if (req->work_task && (!files || req->files == files))
+ 			send_sig(SIGINT, req->work_task, 1);
+ 	}
+ 	spin_unlock_irq(&ctx->task_lock);
+@@ -3749,7 +3751,7 @@ static int io_uring_flush(struct file *file, void *data)
+ 	struct io_ring_ctx *ctx = file->private_data;
+ 
+ 	if (fatal_signal_pending(current) || (current->flags & PF_EXITING))
+-		io_cancel_async_work(ctx, current);
++		io_cancel_async_work(ctx, data);
+ 
+ 	return 0;
+ }
+-- 
+2.25.1
+

@@ -1,0 +1,75 @@
+From efb1cef27d591db4a6258fed069163aef50ca7dd Mon Sep 17 00:00:00 2001
+From: Muchun Song <songmuchun@bytedance.com>
+Date: Wed, 7 Oct 2020 11:16:34 +0800
+Subject: [PATCH 29/30] io_uring: Fix remove irrelevant req from the task_list
+
+If the process 0 has been initialized io_uring is complete, and
+then fork process 1. If process 1 exits and it leads to delete
+all reqs from the task_list. If we kill process 0. We will not
+send SIGINT signal to the kworker. So we can not remove the req
+from the task_list. The io_sq_wq_submit_work() can do that for
+us.
+
+Fixes: 1c4404efcf2c ("io_uring: make sure async workqueue is canceled on exit")
+Signed-off-by: Muchun Song <songmuchun@bytedance.com>
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ fs/io_uring.c | 21 ++++++++++-----------
+ 1 file changed, 10 insertions(+), 11 deletions(-)
+
+diff --git a/fs/io_uring.c b/fs/io_uring.c
+index 27770af20d24..242612fe9b48 100644
+--- a/fs/io_uring.c
++++ b/fs/io_uring.c
+@@ -2272,13 +2272,11 @@ static void io_sq_wq_submit_work(struct work_struct *work)
+ 					break;
+ 				cond_resched();
+ 			} while (1);
+-end_req:
+-			if (!list_empty(&req->task_list)) {
+-				spin_lock_irq(&ctx->task_lock);
+-				list_del_init(&req->task_list);
+-				spin_unlock_irq(&ctx->task_lock);
+-			}
+ 		}
++end_req:
++		spin_lock_irq(&ctx->task_lock);
++		list_del_init(&req->task_list);
++		spin_unlock_irq(&ctx->task_lock);
+ 
+ 		/* drop submission reference */
+ 		io_put_req(req);
+@@ -3722,15 +3720,16 @@ static int io_uring_fasync(int fd, struct file *file, int on)
+ static void io_cancel_async_work(struct io_ring_ctx *ctx,
+ 				 struct files_struct *files)
+ {
++	struct io_kiocb *req;
++
+ 	if (list_empty(&ctx->task_list))
+ 		return;
+ 
+ 	spin_lock_irq(&ctx->task_lock);
+-	while (!list_empty(&ctx->task_list)) {
+-		struct io_kiocb *req;
+ 
+-		req = list_first_entry(&ctx->task_list, struct io_kiocb, task_list);
+-		list_del_init(&req->task_list);
++	list_for_each_entry(req, &ctx->task_list, task_list) {
++		if (files && req->files != files)
++			continue;
+ 
+ 		/*
+ 		 * The below executes an smp_mb(), which matches with the
+@@ -3740,7 +3739,7 @@ static void io_cancel_async_work(struct io_ring_ctx *ctx,
+ 		 */
+ 		smp_store_mb(req->flags, req->flags | REQ_F_CANCEL); /* B */
+ 
+-		if (req->work_task && (!files || req->files == files))
++		if (req->work_task)
+ 			send_sig(SIGINT, req->work_task, 1);
+ 	}
+ 	spin_unlock_irq(&ctx->task_lock);
+-- 
+2.25.1
+
