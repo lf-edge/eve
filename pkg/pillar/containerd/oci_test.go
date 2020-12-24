@@ -473,9 +473,10 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	//create a temp dir to hold resulting files
 	dir, _ := ioutil.TempDir("/tmp", "podfiles")
 	rootDir := path.Join(dir, "runx")
+	rootFsDir := path.Join(rootDir, "rootfs")
 	podPath := path.Join(dir, imageConfigFilename)
 	rsPath := path.Join(rootDir, ociRuntimeSpecFilename)
-	err := os.MkdirAll(rootDir, 0777)
+	err := os.MkdirAll(rootFsDir, 0777)
 	if err != nil {
 		t.Errorf("failed to create temporary dir")
 	} else {
@@ -502,7 +503,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	spec.UpdateMounts([]types.DiskStatus{
 		{FileLocation: "/foo/baz.qcow2", Format: zconfig.Format_QCOW2},
 		{FileLocation: "/foo/bar", Format: zconfig.Format_CONTAINER}})
-	spec.Get().Root.Path = rootDir
+	spec.Get().Root.Path = rootFsDir
 	err = spec.AddLoader(rootDir)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
@@ -685,7 +686,7 @@ func TestPrepareMount(t *testing.T) {
 			spec.UpdateMounts([]types.DiskStatus{
 				{FileLocation: "/foo/baz.qcow2", Format: zconfig.Format_QCOW2},
 				{FileLocation: "/foo/bar", Format: zconfig.Format_CONTAINER}})
-			spec.Get().Root.Path = oldTempRootPath
+			spec.Get().Root.Path = path.Join(oldTempRootPath, "rootfs")
 			if err := spec.AddLoader(filepath.Join(oldTempRootPath, "tmp")); err != nil || tt.wantErr != nil {
 				if (tt.wantErr == nil) || ((err != nil) && (tt.wantErr.Error() != err.Error())) {
 					t.Errorf("PrepareMount() error = %v, wantErr %v", err, tt.wantErr)
@@ -753,7 +754,7 @@ func TestUpdateMounts(t *testing.T) {
 	g.Expect(spec.UpdateMounts([]types.DiskStatus{{MountDir: "/", Format: zconfig.Format_CONTAINER}})).To(HaveOccurred())
 
 	g.Expect(spec.UpdateMounts(tresAmigos)).ToNot(HaveOccurred())
-	g.Expect(spec.Mounts).To(Equal([]specs.Mount{
+	g.Expect(spec.Mounts).To(ConsistOf([]specs.Mount{
 		{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
 		{Destination: "/dev/eve/volumes/by-id/1", Type: "bind", Source: "/foo/baz/rootfs", Options: []string{"rbind", "rw"}},
 		{Destination: "/myvol", Type: "bind", Source: "/foo/baz/rootfs", Options: []string{"rbind", "rw"}},
@@ -811,7 +812,7 @@ func TestAddLoader(t *testing.T) {
 	g.Expect(spec2.Root).To(Equal(&specs.Root{Path: filepath.Join(tmpdir, "rootfs"), Readonly: true}))
 	g.Expect(spec2.Linux.CgroupsPath).To(Equal("/foo/bar/baz"))
 	g.Expect(spec2.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
-	g.Expect(spec2.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: tmpdir, Options: []string{"rbind", "rw"}}))
+	g.Expect(spec2.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: path.Join(tmpdir, ".."), Options: []string{"rbind", "rw"}}))
 	g.Expect(spec2.Mounts[0]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
 }
 
