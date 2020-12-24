@@ -53,6 +53,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 			VncDisplay: 5,
 			VncPasswd:  "rosebud",
 		},
+		GPUConfig: "legacy",
 		VifList: []types.VifInfo{
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
@@ -255,7 +256,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -517,7 +518,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -757,7 +758,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -864,6 +865,7 @@ func TestCreateDomConfig(t *testing.T) {
 			VncDisplay: 5,
 			VncPasswd:  "rosebud",
 		},
+		GPUConfig: "legacy",
 		VifList: []types.VifInfo{
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
@@ -1090,7 +1092,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -1361,7 +1363,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -1633,7 +1635,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -1881,7 +1883,7 @@ func TestCreateDomConfig(t *testing.T) {
 [device "fs1"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
-  mount_tag = "hostshare"
+  mount_tag = "share_dir"
   addr = "5"
 
 
@@ -2003,6 +2005,7 @@ func TestCreateDom(t *testing.T) {
 			VncPasswd:          "rosebud",
 			VirtualizationMode: types.HVM,
 		},
+		GPUConfig: "legacy",
 		VifList: []types.VifInfo{
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
