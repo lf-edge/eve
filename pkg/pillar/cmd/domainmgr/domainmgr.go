@@ -998,7 +998,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
-		IsContainer:        config.IsContainer(),
 	}
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
@@ -1168,27 +1167,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.IoAdapterList = config.IoAdapterList
 	}
 
-	// Pre-flight checks for containers
-	if status.IsContainer {
-		if len(status.DiskStatusList) == 0 || status.DiskStatusList[0].Format != zconfig.Format_CONTAINER {
-			log.Fatal("bailing because it appears that we have a container without a root OCI volume")
-		}
-
-		status.DiskStatusList[0].MountDir = "/"
-		status.OCIConfigDir = status.DiskStatusList[0].FileLocation
-
-		if config.IsCipher || config.CloudInitUserData != nil {
-			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
-			if err != nil {
-				fetchError := fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
-				log.Error(fetchError)
-				status.SetErrorNow(fetchError.Error())
-				return
-			}
-			status.EnvVariables = envList
-		}
-	}
-
 	// Assign any I/O devices
 	doAssignIoAdaptersToDomain(ctx, config, status)
 
@@ -1328,13 +1306,6 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 			status.Key())
 	}
-	// If this is a delete of the App Instance we wait for a shorter time
-	// since all of the read-write disk images will be deleted.
-	// A container only has a read-only image hence it can also be
-	// torn down with less waiting.
-	if status.IsContainer {
-		impatient = true
-	}
 	maxDelay := time.Second * 600 // 10 minutes
 	if impatient {
 		maxDelay /= 10
@@ -1408,22 +1379,18 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		}
 	}
 
-	// Incase of ctr based container, DomainShutdown moves the
-	// container to exit state and the domain is destroyed
-	// Issue Domain Destroy irrespective in container case
-	if status.IsContainer || status.DomainId != 0 {
-		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
-			log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
-		}
-		// Even if destroy failed we wait again
-		log.Functionf("doInactivate(%v) for %s: waiting for domain to be destroyed",
-			status.UUIDandVersion, status.DisplayName)
-
-		gone := waitForDomainGone(*status, maxDelay)
-		if gone {
-			status.DomainId = 0
-		}
+	if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+		log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
 	}
+	// Even if destroy failed we wait again
+	log.Functionf("doInactivate(%v) for %s: waiting for domain to be destroyed",
+		status.UUIDandVersion, status.DisplayName)
+
+	gone := waitForDomainGone(*status, maxDelay)
+	if gone {
+		status.DomainId = 0
+	}
+
 	// If everything failed we leave it marked as Activated
 	if status.DomainId != 0 {
 		errStr := fmt.Sprintf("doInactivate(%s) failed to halt/destroy %d",
@@ -1517,6 +1484,10 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Format == zconfig.Format_CONTAINER {
+			if i == 0 {
+				ds.MountDir = "/"
+				status.OCIConfigDir = ds.FileLocation
+			}
 			ds.Devtype = ""
 			need9P = true
 		} else {
@@ -1530,16 +1501,22 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Vdev = fmt.Sprintf("xvd%c", int('a')+i)
 	}
 
-	if (config.IsCipher || config.CloudInitUserData != nil) &&
-		!status.IsContainer {
-
-		ds, err := createCloudInitISO(ctx, config)
-		if err != nil {
-			return err
+	if config.IsCipher || config.CloudInitUserData != nil {
+		if status.OCIConfigDir != "" {
+			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
+			if err != nil {
+				return fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
+			}
+			status.EnvVariables = envList
+		} else {
+			ds, err := createCloudInitISO(ctx, config)
+			if err != nil {
+				return err
+			}
+			status.DiskStatusList = append(status.DiskStatusList, *ds)
 		}
-		status.DiskStatusList = append(status.DiskStatusList,
-			*ds)
 	}
+
 	if need9P {
 		status.DiskStatusList = append(status.DiskStatusList, types.DiskStatus{
 			FileLocation: "/mnt",

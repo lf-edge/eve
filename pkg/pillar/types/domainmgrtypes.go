@@ -37,13 +37,18 @@ type DomainConfig struct {
 	CipherBlockStatus
 }
 
-// IsContainer signals whether a domain happens to be based on an OCI container
-// FIXME we still have a few places where IsContainer is needed
-// however, the goal is to get rid of it completely. Before that
+// GetOCIConfigDir returns a location for OCI Config
+// FIXME we still have a few places where we need to know whether
+// a task came from an OCI container or not although the goal
+// is to get rid of this kind of split completely. Before that
 // happens our heuristic is to declare any app with the first volume
 // being of a type OCI container to be a container-based app
-func (config DomainConfig) IsContainer() bool {
-	return len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER
+func (config DomainConfig) GetOCIConfigDir() string {
+	if len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER {
+		return config.DiskConfigList[0].FileLocation
+	} else {
+		return ""
+	}
 }
 
 func (config DomainConfig) Key() string {
@@ -187,7 +192,6 @@ type DomainStatus struct {
 	ErrorAndTime
 	BootFailed     bool
 	AdaptersFailed bool
-	IsContainer    bool              // XXX: soon to be replaced by OCIConfigDir Is this Domain for a Container?
 	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string // List of environment variables to be set in container
 }

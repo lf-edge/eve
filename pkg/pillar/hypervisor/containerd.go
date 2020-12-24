@@ -66,11 +66,11 @@ func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.Domai
 }
 
 func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
-	if !status.IsContainer {
+	if status.OCIConfigDir == "" {
 		return logError("failed to run domain %s: not based on an OCI image", status.DomainName)
 	}
 
-	spec, err := ctx.setupSpec(&status, &config, status.DiskStatusList[0].FileLocation)
+	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
 	if err != nil {
 		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
 	}
