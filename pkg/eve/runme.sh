@@ -57,7 +57,7 @@ Optionally you can pass the following right before run in docker run:
  -v <local folder>:/out or -v <local empty file>:/out/f to redirect output from stdout
 Passing -v <local folder>:/out makes sure the file created is given most appropriate name.
 
--f fmt selects a packaging format: raw (default), qcow2, parallels and gcp are all valid options.
+-f fmt selects a packaging format: raw (default), qcow2, parallels, vdi and gcp are all valid options.
 
 live and installer_raw support an optional last argument specifying the size of the image in Mb.
 __EOT__
@@ -118,7 +118,7 @@ while true; do
              shift
           fi
           shift
-          [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && [ "$FMT" != "parallels" ] && bail "Unknown format: $FMT"
+          [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && [ "$FMT" != "parallels" ] && [ "$FMT" != "vdi" ] && bail "Unknown format: $FMT"
           ;;
        *) break
           ;;

@@ -331,13 +331,13 @@ run-build-vm: $(BIOS_IMG) $(DEVICETREE_DTB)
 
 run-live-vb:
 	@[ -f "$(LIVE).vdi" ] || { echo "Please run: make live-vdi"; exit 1; }
-	VBoxManage list vms | grep $(VB_VM_NAME) >/dev/null &&  VBoxManage unregistervm $(VB_VM_NAME) --delete || echo "No VMs with $(VB_VM_NAME) name"
+	VBoxManage list vms | grep $(VB_VM_NAME) >/dev/null &&  VBoxManage controlvm $(VB_VM_NAME) acpipowerbutton & sleep 10 & VBoxManage unregistervm $(VB_VM_NAME) --delete || echo "No VMs with $(VB_VM_NAME) name"
 	VBoxManage createvm --name $(VB_VM_NAME) --register --basefolder $(DIST)/
-	VBoxManage modifyvm $(VB_VM_NAME) --cpus $(VB_CPUS) --memory $(VB_MEMORY) --vram 16 --ostype Ubuntu_64  --mouse usbtablet --graphicscontroller vmsvga
-	VBoxManage modifyvm $(VB_VM_NAME) --nic1 natnetwork --nat-network1 natnet1 --cableconnected1 on
-	VBoxManage modifyvm $(VB_VM_NAME) --nic2 natnetwork --nat-network2 natnet2 --cableconnected2 on
-	VBoxManage storagectl $(VB_VM_NAME) --name "SATA Controller" --add sata  --controller IntelAHCI --bootable on
+	VBoxManage modifyvm $(VB_VM_NAME) --cpus $(VB_CPUS) --memory $(VB_MEMORY) --vram 16 --nested-hw-virt on --ostype Ubuntu_64  --mouse usbtablet --graphicscontroller vmsvga --boot1 disk --boot2 net
+	VBoxManage storagectl $(VB_VM_NAME) --name "SATA Controller" --add SATA --controller IntelAhci --bootable on --hostiocache on
 	VBoxManage storageattach $(VB_VM_NAME)  --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium $(LIVE).vdi
+	VBoxManage modifyvm $(VB_VM_NAME) --nic1 natnetwork --nat-network1 natnet1 --cableconnected1 on --natpf1 ssh,tcp,,2222,,22
+	VBoxManage modifyvm $(VB_VM_NAME) --nic2 natnetwork --nat-network2 natnet2 --cableconnected2 on
 	VBoxManage startvm  $(VB_VM_NAME)
 
 run-live-parallels:
