@@ -1,10 +1,10 @@
-ARG GOVER=1.12.4
+ARG GOVER=1.15.3
 FROM golang:${GOVER}-alpine as build
 RUN apk add --no-cache   \
-        libc-dev=0.7.1-r0\
-        git=2.20.4-r0    \
-        gcc=8.3.0-r0     \
-        linux-headers=4.18.13-r1
+        libc-dev=0.7.2-r3\
+        git=2.26.2-r0    \
+        gcc=9.3.0-r2     \
+        linux-headers=5.4.5-r1
 
 COPY ./  /newlog/.
 WORKDIR /newlog

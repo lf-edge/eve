@@ -4,7 +4,7 @@ kernel:
 init:
   - linuxkit/init:a68f9fa0c1d9dbfc9c23663749a0b7ac510cbe1c
   - linuxkit/runc:f79954950022fea76b8b6f10de58cb48e4fb3878
-  - linuxkit/containerd:a4aa19c608556f7d786852557c36136255220c1f
+  - CONTAINERD_TAG
   - linuxkit/getty:v0.5
   - linuxkit/memlogd:v0.5
   - GRUB_TAG
