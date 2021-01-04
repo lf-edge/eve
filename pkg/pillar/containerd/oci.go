@@ -171,6 +171,12 @@ func (s *ociSpec) AddLoader(volume string) error {
 		spec.Mounts = append(spec.Mounts, mount)
 	}
 
+	// delete unneeded annotation
+	delete(s.Spec.Annotations, eveOCIMountPointsLabel)
+
+	// pass annotations into spec
+	spec.Spec.Annotations = s.Spec.Annotations
+
 	// finally do a switcheroo
 	s.Spec = spec.Spec
 
@@ -280,6 +286,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.DisplayName)
 	}
+	s.Annotations[EVEOCIVNCPasswordLabel] = dom.VncPasswd
 }
 
 // UpdateFromVolume updates values in the OCI spec based on the location
