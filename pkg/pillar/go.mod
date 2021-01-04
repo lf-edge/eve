@@ -59,7 +59,7 @@ require (
 	golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392
 	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
 	google.golang.org/grpc v1.33.0
-	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
+	gopkg.in/mcuadros/go-syslog.v2 v2.3.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	rsc.io/letsencrypt v0.0.3 // indirect
 )

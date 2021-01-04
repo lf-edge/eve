@@ -26,13 +26,10 @@ onboot:
      image: linuxkit/modprobe:v0.5
      command: ["modprobe", "-a", "nct6775", "w83627hf_wdt", "wlcore_sdio", "wl18xx", "br_netfilter"]
 services:
-   - name: rsyslogd
-     image: RSYSLOGD_TAG
-     cgroupsPath: /eve/services/rsyslogd
-     oomScoreAdj: -999
    - name: newlogd
      image: NEWLOGD_TAG
      cgroupsPath: /eve/services/eve-newlog
+     oomScoreAdj: -999
    - name: ntpd
      image: linuxkit/openntpd:v0.5
      cgroupsPath: /eve/services/ntpd

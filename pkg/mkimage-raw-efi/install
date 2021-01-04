@@ -86,7 +86,7 @@ collect_black_box() {
    tar -C /proc -cjf "$1/procfs.tar.bz2" cpuinfo meminfo
    tar -C /sys -cjf "$1/sysfs.tar.bz2" .
    tar -C /run/CONFIG -cjf "$1/config.tar.bz2" .
-   tar -C /run/P3 -cjf "$1/persist.tar.bz2" status rsyslog log config checkpoint certs agentdebug
+   tar -C /run/P3 -cjf "$1/persist.tar.bz2" status newlog log config checkpoint certs agentdebug
    collect_tpm_info "$1"/tpminfo.txt
 }
 

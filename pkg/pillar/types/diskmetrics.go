@@ -24,7 +24,7 @@ var ReportDirPaths = []string{
 	PersistDir + "/img",       // XXX old to be removed
 	PersistDir + "/tmp",
 	PersistDir + "/log",
-	PersistDir + "/rsyslog",
+	PersistDir + "/newlog",
 	PersistDir + "/config",
 	PersistDir + "/status",
 	PersistDir + "/certs",

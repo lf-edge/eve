@@ -106,10 +106,10 @@ functions provided by the `zedcloud` package.
 * Saving the latest correct configuration locally.
 * Informing any services of changes to their relevant configurations via [pubsub](../pkg/pillar/pubsub), which allows those services to restart or make changes in response to the updated configuration.
 
-#### logmanager
+#### loguploader
 
-[Logmanager](../pkg/pillar/cmd/logmanager) is the service responsible for
-collecting logs, packaging them up and sending them to the Controller. It does
+[Loguploader](../pkg/pillar/cmd/loguploader) is the service responsible for
+uploading device and application gzip logs to controller. It does
 so through the functions provided by the `zedcloud` package.
 
 #### client

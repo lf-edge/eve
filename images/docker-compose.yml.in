@@ -73,17 +73,6 @@ services:
         networks:
             - eve
 
-    rsyslogd:
-        image: RSYSLOGD_TAG
-        privileged: true
-        volumes:
-            - persist:/persist
-            - config:/config
-            - run:/run
-        # network_mode: host
-        networks:
-            - eve
-
     wwan:
         image: WWAN_TAG
         privileged: true

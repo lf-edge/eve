@@ -28,7 +28,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/hardwaremodel"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/logmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/loguploader"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
@@ -81,7 +80,6 @@ var (
 		"faultinjection":   {f: faultinjection.Run},
 		"hardwaremodel":    {f: hardwaremodel.Run, inline: inlineAlways},
 		"ledmanager":       {f: ledmanager.Run},
-		"logmanager":       {f: logmanager.Run},
 		"loguploader":      {f: loguploader.Run},
 		"nim":              {f: nim.Run},
 		"nodeagent":        {f: nodeagent.Run},

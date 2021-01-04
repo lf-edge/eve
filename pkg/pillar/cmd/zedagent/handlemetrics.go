@@ -307,37 +307,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	aclMetric.TotalRuleCount = networkMetrics.TotalRuleCount
 	ReportDeviceMetric.Acl = aclMetric
 
-	lm, _ := ctx.subLogMetrics.Get("global")
-	if lm != nil {
-		logMetrics := lm.(types.LogMetrics)
-		deviceLogMetric := new(metrics.LogMetric)
-		deviceLogMetric.NumDeviceEventsSent = logMetrics.NumDeviceEventsSent
-		deviceLogMetric.NumDeviceBundlesSent = logMetrics.NumDeviceBundlesSent
-		deviceLogMetric.NumAppEventsSent = logMetrics.NumAppEventsSent
-		deviceLogMetric.NumAppBundlesSent = logMetrics.NumAppBundlesSent
-		deviceLogMetric.Num4XxResponses = logMetrics.Num4xxResponses
-		pTime, _ := ptypes.TimestampProto(logMetrics.LastDeviceBundleSendTime)
-		deviceLogMetric.LastDeviceBundleSendTime = pTime
-		pTime, _ = ptypes.TimestampProto(logMetrics.LastAppBundleSendTime)
-		deviceLogMetric.LastAppBundleSendTime = pTime
-		deviceLogMetric.IsLogProcessingDeferred = logMetrics.IsLogProcessingDeferred
-		deviceLogMetric.NumTimesDeferred = logMetrics.NumTimesDeferred
-		pTime, _ = ptypes.TimestampProto(logMetrics.LastLogDeferTime)
-		deviceLogMetric.LastLogDeferTime = pTime
-		deviceLogMetric.TotalDeviceLogInput = logMetrics.TotalDeviceLogInput
-		deviceLogMetric.TotalAppLogInput = logMetrics.TotalAppLogInput
-		deviceLogMetric.NumDeviceEventErrors = logMetrics.NumDeviceEventErrors
-		deviceLogMetric.NumAppEventErrors = logMetrics.NumAppEventErrors
-		deviceLogMetric.NumDeviceBundleProtoBytesSent = logMetrics.NumDeviceBundleProtoBytesSent
-		deviceLogMetric.NumAppBundleProtoBytesSent = logMetrics.NumAppBundleProtoBytesSent
-		deviceLogMetric.InputSources = make(map[string]uint64)
-		for source, val := range logMetrics.DeviceLogInput {
-			deviceLogMetric.InputSources[source] = val
-		}
-		ReportDeviceMetric.Log = deviceLogMetric
-	}
-	log.Traceln("log metrics: ", ReportDeviceMetric.Log)
-
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := types.MetricsMap{} // Start empty
 	zedagentMetrics := zedcloud.GetCloudMetrics(log)
@@ -346,9 +315,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 	if clientMetrics != nil {
 		cms = zedcloud.Append(cms, clientMetrics)
-	}
-	if logmanagerMetrics != nil {
-		cms = zedcloud.Append(cms, logmanagerMetrics)
 	}
 	if downloaderMetrics != nil {
 		cms = zedcloud.Append(cms, downloaderMetrics)

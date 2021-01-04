@@ -27,4 +27,4 @@ Go-tpm package is hosted at <https://github.com/google/go-tpm/>. Go-tpm is licen
 ## Debugging
 
 To print TPM vendor information, use `/opt/zededa/bin/tpmmgr printCapability`
-To see logs from tpmmgr, one can find recent ones with source being tpmmgr it under `/persist/rsyslog/syslog.txt` or on the controller.
+To see logs from tpmmgr, one can find recent ones with source being tpmmgr it under `/persist/newlog/devUpload` using zcat or on the controller.
