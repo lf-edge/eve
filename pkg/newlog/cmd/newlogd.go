@@ -166,28 +166,19 @@ func main() {
 	movefileChan := make(chan fileChanInfo, 5)
 	panicFileChan := make(chan []byte, 2)
 
-	var forceUseLegacylog bool
-	if _, err := os.Stat(types.ForceLegacylogFilename); err == nil {
-		forceUseLegacylog = true
-		log.Functionf("newlogd: force legacy log")
-	}
-
 	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
 
-	// XXX temp flag 'Force-Use-Oldlog' to force legacy log infra, remove this later
-	if !forceUseLegacylog {
-		// handle the write log messages to /persist/newlog/collect/ logfiles
-		go writelogFile(loggerChan, movefileChan)
+	// handle the write log messages to /persist/newlog/collect/ logfiles
+	go writelogFile(loggerChan, movefileChan)
 
-		// handle the kernel messages
-		go getKmessages(loggerChan)
+	// handle the kernel messages
+	go getKmessages(loggerChan)
 
-		// handle collect other container log messages from memlogd
-		go getMemlogMsg(loggerChan, panicFileChan)
+	// handle collect other container log messages from memlogd
+	go getMemlogMsg(loggerChan, panicFileChan)
 
-		// handle linux Syslog /dev/log messages
-		go getSyslogMsg(loggerChan)
-	}
+	// handle linux Syslog /dev/log messages
+	go getSyslogMsg(loggerChan)
 
 	stillRunning := time.NewTicker(stillRunningInerval)
 	ps.StillRunning(agentName, warningTime, errorTime)

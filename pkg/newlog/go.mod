@@ -10,7 +10,6 @@ require (
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20200211160554-32163b631888
 	github.com/sirupsen/logrus v1.7.0
-	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc // indirect
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go

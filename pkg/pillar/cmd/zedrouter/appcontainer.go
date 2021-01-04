@@ -284,7 +284,7 @@ func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, l
 				} else {
 					message = msg[0]
 				}
-				// insert container-name, app-UUID and module timestamp in log to be processed by logmanager
+				// insert container-name, app-UUID and module timestamp in log to be processed by newlogd
 				// use customized aclog independent of pillar logger
 				aclogger := ctx.aclog.WithFields(logrus.Fields{
 					"appuuid":       status.UUIDandVersion.UUID.String(),

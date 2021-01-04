@@ -63,7 +63,6 @@ var deviceNetworkStatus = &types.DeviceNetworkStatus{}
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
 var clientMetrics types.MetricsMap
-var logmanagerMetrics types.MetricsMap
 var loguploaderMetrics types.MetricsMap
 var newlogMetrics types.NewlogMetrics
 var downloaderMetrics types.MetricsMap
@@ -102,7 +101,6 @@ type zedagentContext struct {
 	subVaultStatus            pubsub.Subscription
 	subAttestQuote            pubsub.Subscription
 	subEncryptedKeyFromDevice pubsub.Subscription
-	subLogMetrics             pubsub.Subscription
 	subNewlogMetrics          pubsub.Subscription
 	subBlobStatus             pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -836,20 +834,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subBlobStatus = subBlobStatus
 	subBlobStatus.Activate()
 
-	// Subscribe to Log metrics from logmanager
-	subLogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "logmanager",
-		MyAgentName: agentName,
-		TopicImpl:   types.LogMetrics{},
-		Activate:    false,
-		Ctx:         &zedagentCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subLogMetrics = subLogMetrics
-	subLogMetrics.Activate()
-
 	// Subscribe to Newlog metrics from newlogd
 	subNewlogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "newlogd",
@@ -1014,16 +998,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLogmanagerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "logmanager",
-		MyAgentName: agentName,
-		TopicImpl:   cms,
-		Activate:    true,
-		Ctx:         &zedagentCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
 	// cloud metrics of loguploader
 	subLoguploaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "loguploader",
@@ -1136,9 +1110,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subBaseOsStatus.MsgChan():
 			subBaseOsStatus.ProcessChange(change)
 
-		case change := <-subLogMetrics.MsgChan():
-			subLogMetrics.ProcessChange(change)
-
 		case change := <-subBlobStatus.MsgChan():
 			subBlobStatus.ProcessChange(change)
 
@@ -1179,16 +1150,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					err)
 			} else {
 				clientMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-subLogmanagerMetrics.MsgChan():
-			subLogmanagerMetrics.ProcessChange(change)
-			m, err := subLogmanagerMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subLogmanagerMetrics.Get failed: %s",
-					err)
-			} else {
-				logmanagerMetrics = m.(types.MetricsMap)
 			}
 
 		case change := <-subLoguploaderMetrics.MsgChan():

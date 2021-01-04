@@ -15,7 +15,7 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/ConfigItemValueMap
-AGENTS0="zedagent logmanager ledmanager nim nodeagent domainmgr loguploader"
+AGENTS0="zedagent ledmanager nim nodeagent domainmgr loguploader"
 AGENTS1="zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
@@ -264,7 +264,7 @@ access_usb() {
             if ! $BINDIR/tpmmgr saveTpmInfo $TPMINFOTEMPFILE; then
                 echo "$(date -Ins -u) saveTpmInfo failed" > $TPMINFOTEMPFILE
             fi
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log "/persist/rsyslog" $TPMINFOTEMPFILE; then
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log "/persist/newlog" $TPMINFOTEMPFILE; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar
@@ -462,14 +462,6 @@ else
     else
         echo "$(date -Ins -u) Found $uuid in /etc/hosts"
     fi
-fi
-
-#If logmanager is already running we don't have to start it.
-if ! pgrep logmanager >/dev/null; then
-    echo "$(date -Ins -u) Starting logmanager"
-    $BINDIR/logmanager &
-    wait_for_touch logmanager
-    touch "$WATCHDOG_FILE/logmanager.touch"
 fi
 
 if ! pgrep loguploader >/dev/null; then

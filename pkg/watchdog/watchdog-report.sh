@@ -55,23 +55,6 @@ if [ -n "$oom" ]; then
     echo "$oom" >>/persist/reboot-reason
     bootReason="BootReasonOOM" # Must match string in types package
 fi
-if [ -n "$agent" ]; then
-    # This assumes that the panic message and stack trace has 1) made it to
-    # syslog.txt and 2) has not yet been sent to controller and removed.
-    # Former is less likely if debug is enabled.
-    echo "$agent crashed" >>/persist/reboot-reason
-    panic=$(grep panic /persist/rsyslog/syslog.txt | tail -1)
-    if [ -n "$panic" ]; then
-        echo "$panic" >>/persist/reboot-reason
-        # Note that panic stack trace might exist tagged with e.g. pillar.out
-        # in /persist/rsyslog/syslog.txt but can't extract from other container's
-        # files. Try to extract here
-        stack=$(awk '/pillar;panic/ {p=1} {if ($3 != "pillar") { p=0 }; if (p==1) {print}}' /persist/rsyslog/syslog.txt)
-        if [ -n "$stack" ]; then
-            echo "$stack" >>/persist/reboot-stack
-        fi
-    fi
-fi
 
 # printing reboot-reason to the console
 echo "Rebooting EVE. Reason: $(cat /persist/reboot-reason)" > /dev/console
@@ -84,14 +67,6 @@ if [ -n "$bootReason" ]; then
     else
         echo $bootReason > /persist/boot-reason
         echo "Watchdog report saved $bootReason" >>/persist/log/watchdog.log
-    fi
-fi
-
-# Check if it is monitor-rsyslog.sh that crashed/stopped.
-if [ $# -ge 2 ]; then
-    agent=$(echo "$2" | grep '/run/.*\.pid' | sed 's,/run/\(.*\)\.pid,\1,')
-    if [ "$agent" = "monitor-rsyslogd" ]; then
-        rm -rf /persist/rsyslog
     fi
 fi
 

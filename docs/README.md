@@ -348,7 +348,7 @@ CGroups in EVE follows the below hierarchy:
 Parent cgroup (/sys/fs/cgroup/<subsystems>/)
 ├── eve
 │   └── services
-│   │   └── rsyslogd
+│   │   └── newlogd
 │   │   └── ntpd
 │   │   └── sshd
 │   │   └── wwan

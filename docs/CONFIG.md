@@ -271,9 +271,6 @@ If there are no IP addresses, the logs for network interface manager can help:
     /persist/`zboot curpart`/log/nim.log
 ```
 
-In addition zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
-errors if those agents can not reach the controller.
-
 The ```/persist/status/nim/DevicePortConfigList/global.json``` contains the set
 of DevicePortConfig which have been tried, any errors, last time they succeeded
 and failed, etc. This is quite useful in a proxy or static IP setup, since there

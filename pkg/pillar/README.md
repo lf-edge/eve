@@ -12,7 +12,7 @@ The agents are:
 - vaultmgr - responsible of creation and operations over, encrypted vault(s) for mutable application images and device configuration data
 - nodeagent - montior the device health, while node is in baseos upgrade or normal operation mode. Also orchestrates baseos installation and upgrade validation by interacting with baseosmgr and zedagent.
 - zedagent - communicate using the device API to the controller to retrieve configuration and send status and metrics
-- logmanager - send logs to the controller for debugging of these agents
+- loguploader - send gzip logs to the controller for debugging of these agents
 - baseosmgr - handle updates of the base OS (hypervisors plus all of the services which make up EVE) using dual partitions for fallback
 - volumemgr - create volumes based on downloads or from scratch
 - downloader - download objects like images and certificates
