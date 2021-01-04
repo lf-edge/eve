@@ -7,6 +7,7 @@ import (
 	"fmt"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -664,7 +665,7 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 		return err
 	}
 
-	if vncPassword, ok := annotations["VncPasswd"]; ok && vncPassword != "" {
+	if vncPassword, ok := annotations[containerd.EVEOCIVNCPasswordLabel]; ok && vncPassword != "" {
 		if err := execVNCPassword(qmpFile, vncPassword); err != nil {
 			return logError("failed to set VNC password %v", err)
 		}

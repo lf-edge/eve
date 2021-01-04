@@ -63,6 +63,8 @@ const (
 	snapshotIDFile = "snapshotid.txt"
 	// OCI runtime spec label that tracks all mount points mentioned in OCI Image config
 	eveOCIMountPointsLabel = "org.lfedge.eve.blk_mounts"
+	// EVEOCIVNCPasswordLabel is OCI runtime spec label that tracks VNC password in OCI Image config
+	EVEOCIVNCPasswordLabel = "org.lfedge.eve.vnc_password"
 
 	//TBD: Have a better way to calculate this number.
 	//For now it is based on some trial-and-error experiments
