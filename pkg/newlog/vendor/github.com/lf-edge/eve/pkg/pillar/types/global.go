@@ -157,6 +157,9 @@ const (
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
 
+	// ForceFallbackCounter global setting key
+	ForceFallbackCounter = "force.fallback.counter"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -721,6 +724,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false

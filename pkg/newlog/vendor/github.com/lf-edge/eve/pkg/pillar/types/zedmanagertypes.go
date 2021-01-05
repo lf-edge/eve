@@ -46,10 +46,8 @@ type UUIDandVersion struct {
 // (advertize the EID in lisp and boot the guest) is driven by the Activate
 // attribute.
 type AppInstanceConfig struct {
-	UUIDandVersion  UUIDandVersion
-	DisplayName     string
-	ConfigSha256    string
-	ConfigSignature string
+	UUIDandVersion UUIDandVersion
+	DisplayName    string
 
 	// Error
 	//	If this is set, do not process further.. Just set the status to error
@@ -152,9 +150,6 @@ type AppInstanceStatus struct {
 	IoAdapterList       []IoAdapter // Report what was actually used
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
-
-	// Container related state
-	IsContainer bool
 
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.

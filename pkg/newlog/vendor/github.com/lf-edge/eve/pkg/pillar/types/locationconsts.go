@@ -75,6 +75,4 @@ const (
 	NewlogUploadDevDir = NewlogDir + "/devUpload"
 	// NewlogUploadAppDir - newlog app gzip file directory ready for upload
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
-	// ForceLegacylogFilename - transition flag to force using legacy log
-	ForceLegacylogFilename = IdentityDirname + "/Force-Use-Oldlog"
 )

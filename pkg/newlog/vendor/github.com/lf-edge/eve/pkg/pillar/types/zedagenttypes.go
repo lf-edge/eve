@@ -84,7 +84,6 @@ type BaseOsStatus struct {
 	UUIDandVersion        UUIDandVersion
 	BaseOsVersion         string
 	Activated             bool
-	Reboot                bool
 	TooEarly              bool // Failed since previous was inprogress/test
 	ContentTreeStatusList []ContentTreeStatus
 	PartitionLabel        string
@@ -383,19 +382,45 @@ func BootReasonFromString(str string) BootReason {
 	}
 }
 
+// MaintenanceModeReason captures reason for entering into maintenance mode
+type MaintenanceModeReason uint8
+
+// MaintenanceModeReason codes for storing reason for getting into maintenance mode
+const (
+	MaintenanceModeReasonNone MaintenanceModeReason = iota
+	MaintenanceModeReasonUserRequested
+	MaintenanceModeReasonVaultLockedUp
+)
+
+// String returns the verbose equivalent of MaintenanceModeReason code
+func (mmr MaintenanceModeReason) String() string {
+	switch mmr {
+	case MaintenanceModeReasonNone:
+		return "MaintenanceModeReasonNone"
+	case MaintenanceModeReasonUserRequested:
+		return "MaintenanceModeReasonUserRequested"
+	case MaintenanceModeReasonVaultLockedUp:
+		return "MaintenanceModeReasonVaultLockedUp"
+	default:
+		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
+	}
+}
+
 // NodeAgentStatus :
 type NodeAgentStatus struct {
-	Name              string
-	CurPart           string
-	UpdateInprogress  bool
-	RemainingTestTime time.Duration
-	DeviceReboot      bool
-	RebootReason      string     // From last reboot
-	BootReason        BootReason // From last reboot
-	RebootStack       string     // From last reboot
-	RebootTime        time.Time  // From last reboot
-	RestartCounter    uint32
-	RebootImage       string
+	Name                       string
+	CurPart                    string
+	UpdateInprogress           bool
+	RemainingTestTime          time.Duration
+	DeviceReboot               bool
+	RebootReason               string     // From last reboot
+	BootReason                 BootReason // From last reboot
+	RebootStack                string     // From last reboot
+	RebootTime                 time.Time  // From last reboot
+	RestartCounter             uint32
+	RebootImage                string
+	LocalMaintenanceMode       bool                  //enter Maintenance Mode
+	LocalMaintenanceModeReason MaintenanceModeReason //reason for Maintenance Mode
 }
 
 // Key :
@@ -454,12 +479,13 @@ const (
 
 // ZedAgentStatus :
 type ZedAgentStatus struct {
-	Name            string
-	ConfigGetStatus ConfigGetStatus
-	RebootCmd       bool
-	RebootReason    string     // Current reason to reboot
-	BootReason      BootReason // Current reason to reboot
-	MaintenanceMode bool       // Don't run apps etc
+	Name                 string
+	ConfigGetStatus      ConfigGetStatus
+	RebootCmd            bool
+	RebootReason         string     // Current reason to reboot
+	BootReason           BootReason // Current reason to reboot
+	MaintenanceMode      bool       // Don't run apps etc
+	ForceFallbackCounter int        // Try image fallback when counter changes
 }
 
 // Key :

@@ -34,7 +34,7 @@ type OldGlobalConfig struct {
 	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet, wlan, and wwan
 	NetworkTestTimeout        uint32   // Timeout for each test http/send
 
-	// zedagent, logmanager, etc
+	// zedagent, etc
 	NetworkSendTimeout uint32 // Timeout for each http/send
 
 	// UsbAccess
