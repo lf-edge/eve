@@ -123,19 +123,6 @@ func HandleGlobalConfig(log *base.LogObject, sub pubsub.Subscription, agentName 
 		logger)
 }
 
-// HandleGlobalConfigNoDefault updates the LogLevel setting in the passed in logger
-// based on GlobalConfig and debugOverride
-// Returns the debug bool
-// Unlike HandleGlobalConfig it does not look at debug.default.loglevel
-// XXX Only used by logmanager since enable debug for it slows it down too much
-func HandleGlobalConfigNoDefault(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	debugOverride bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
-
-	log.Functionf("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
-	return handleGlobalConfigImpl(log, sub, agentName, debugOverride, false,
-		logger)
-}
-
 func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentName string,
 	debugOverride bool, allowDefault bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
 	level := logrus.InfoLevel

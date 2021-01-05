@@ -570,12 +570,6 @@ google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
-# gopkg.in/mcuadros/go-syslog.v2 v2.3.0
-gopkg.in/mcuadros/go-syslog.v2
-gopkg.in/mcuadros/go-syslog.v2/format
-gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser
-gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser/rfc3164
-gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser/rfc5424
 # gopkg.in/sourcemap.v1 v1.0.5
 gopkg.in/sourcemap.v1
 gopkg.in/sourcemap.v1/base64vlq

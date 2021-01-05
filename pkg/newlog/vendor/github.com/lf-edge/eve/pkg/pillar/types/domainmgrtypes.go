@@ -25,17 +25,30 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
+	GPUConfig      string
 	DiskConfigList []DiskConfig
 	VifList        []VifInfo
 	IoAdapterList  []IoAdapter
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
-	// Container related info
-	IsContainer bool // Is this Domain for a Container?
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+}
+
+// GetOCIConfigDir returns a location for OCI Config
+// FIXME we still have a few places where we need to know whether
+// a task came from an OCI container or not although the goal
+// is to get rid of this kind of split completely. Before that
+// happens our heuristic is to declare any app with the first volume
+// being of a type OCI container to be a container-based app
+func (config DomainConfig) GetOCIConfigDir() string {
+	if len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER {
+		return config.DiskConfigList[0].FileLocation
+	} else {
+		return ""
+	}
 }
 
 func (config DomainConfig) Key() string {
@@ -45,7 +58,7 @@ func (config DomainConfig) Key() string {
 // VirtualizationModeOrDefault sets the default to PV
 func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	switch config.VirtualizationMode {
-	case PV, HVM, FML, NOHYPER:
+	case PV, HVM, FML, NOHYPER, LEGACY:
 		return config.VirtualizationMode
 	default:
 		return PV
@@ -142,6 +155,7 @@ const (
 	Filler
 	FML
 	NOHYPER
+	LEGACY
 )
 
 // Task represents any runnable entity on EVE
@@ -178,7 +192,7 @@ type DomainStatus struct {
 	ErrorAndTime
 	BootFailed     bool
 	AdaptersFailed bool
-	IsContainer    bool              // Is this Domain for a Container?
+	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string // List of environment variables to be set in container
 }
 
