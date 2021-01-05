@@ -465,6 +465,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	status, err := ioutil.ReadFile("/run/tasks/" + domainName)
 	if err != nil {
 		logrus.Errorf("couldn't read task status file: %v", err)
+		status = []byte("running") // assigning default state as we weren't able to read status file
 	}
 	logrus.Debugf("task %s has status %v\n", domainName, status)
 
