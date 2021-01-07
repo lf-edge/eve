@@ -284,7 +284,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
 
-		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.DisplayName)
+		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
 	}
 	s.Annotations[EVEOCIVNCPasswordLabel] = dom.VncPasswd
 }
