@@ -982,15 +982,13 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 	log.Tracef("DomainConfig %+v", config)
-	// Name of Xen domain must be unique; uniqify AppNum
-	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
 		UUIDandVersion:     config.UUIDandVersion,
 		PendingAdd:         true,
 		DisplayName:        config.DisplayName,
-		DomainName:         name,
+		DomainName:         config.GetTaskName(),
 		AppNum:             config.AppNum,
 		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationModeOrDefault(),
@@ -1599,10 +1597,9 @@ func handleModify(ctx *domainContext, key string,
 	if config.Activate && !status.Activated {
 		log.Functionf("handleModify(%v) activating for %s",
 			config.UUIDandVersion, config.DisplayName)
-		// AppNum could have changed if we did not already Activate
-		name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
-		if status.DomainName != name {
-			status.DomainName = name
+
+		if status.DomainName != config.GetTaskName() {
+			status.DomainName = config.GetTaskName()
 			status.AppNum = config.AppNum
 			log.Functionf("handleModify(%v) set domainName %s for %s",
 				config.UUIDandVersion, status.DomainName,

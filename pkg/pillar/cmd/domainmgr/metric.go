@@ -4,18 +4,12 @@
 package domainmgr
 
 import (
-	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/cpu"
-)
-
-const (
-	dom0Name = "Domain-0"
 )
 
 // Run a periodic post of the metrics
@@ -50,7 +44,7 @@ func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
 	for domainName, dm := range dmList {
-		uuid, err := domainnameToUUID(ctx, domainName)
+		uuid, err := types.DomainnameToUUID(domainName)
 		if err != nil {
 			log.Errorf("domainname %s: %s", domainName, err)
 			continue
@@ -105,20 +99,4 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory) {
 	}
 	log.Tracef("formatAndPublishHostCPUMem: hostcpu, dm %+v, CPU num %d", dm, CPUnum)
 	ctx.pubDomainMetric.Publish(dm.Key(), dm)
-}
-
-// Returns zero for the host/overhead
-func domainnameToUUID(ctx *domainContext, domainName string) (uuid.UUID, error) {
-	if domainName == dom0Name {
-		return uuid.UUID{}, nil
-	}
-	pub := ctx.pubDomainStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.DomainStatus)
-		if status.DomainName == domainName {
-			return status.UUIDandVersion.UUID, nil
-		}
-	}
-	return uuid.UUID{}, fmt.Errorf("Unknown domainname %s", domainName)
 }
