@@ -167,6 +167,10 @@ func (s *ociSpec) AddLoader(volume string) error {
 			Options:     []string{"rbind", "rw"}})
 	}
 	for _, mount := range s.Mounts {
+		// /run in docker image contains information during building so we must skip it from mounting
+		if mount.Destination == "/run" {
+			continue
+		}
 		mount.Destination = "/mnt/rootfs" + mount.Destination
 		spec.Mounts = append(spec.Mounts, mount)
 	}
