@@ -167,8 +167,11 @@ func (s *ociSpec) AddLoader(volume string) error {
 			Options:     []string{"rbind", "rw"}})
 	}
 	for _, mount := range s.Mounts {
-		// /run in docker image contains information during building so we must skip it from mounting
-		if mount.Destination == "/run" {
+		// for now we're filtering anything that is not a bind-mount
+		// since those mountpoints will be dealt with inside of the
+		// launcher -- at some point we may need to be launcher specific
+		// (at least when it comes to tmpfs)
+		if mount.Type != "bind" {
 			continue
 		}
 		mount.Destination = "/mnt/rootfs" + mount.Destination
