@@ -191,7 +191,7 @@ ifneq ($(ALL_PROXY),)
 DOCKER_ALL_PROXY:=--build-arg all_proxy=$(ALL_PROXY)
 endif
 
-DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; shift ; docker export $$C | tar -xf - "$$@" ; docker rm $$C ; } ; _
+DOCKER_UNPACK= _() { C=`docker create "$$1" fake` ; shift ; docker export "$$C" | tar -xf - "$$@" ; docker rm "$$C" ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.go/bin ; \
     docker_go_line="docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
