@@ -98,7 +98,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	aa *types.AssignableAdapters, file *os.File) error {
 	xen_type := "pvh"
 	rootDev := ""
-	extra := ""
+	extra := config.ExtraArgs
 	bootLoader := ""
 	kernel := config.Kernel
 	ramdisk := config.Ramdisk
