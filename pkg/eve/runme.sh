@@ -48,7 +48,7 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run lfedge/eve [-f fmt] version|rootfs|live|installer_raw|installer_iso
+Usage: docker run lfedge/eve [-f fmt] version|rootfs|live|installer_raw|installer_iso|installer_net
 
 The artifact will be produced on stdout, so don't forget to redirect it to a file.
 
@@ -106,6 +106,25 @@ do_installer_iso() {
   rm -rf /parts
   /make-efi
   dump /output.iso installer.iso
+}
+
+do_installer_net() {
+  ln -s /sys/class/mem/null /media/boot
+  find /bits /media/boot -xdev | grep -v initrd.img | sort | cpio --quiet -o -H newc | gzip > /initrd.bits
+  ln -s /bits/initrd.img /initrd.img
+  unsquashfs -d /tmp/kernel rootfs.img boot/kernel
+  mv /tmp/kernel/boot/kernel /
+  cat > /ipxe.efi.cfg <<__EOT__
+#!ipxe
+# dhcp
+# chain --autofree https://x.y.z/ipxe.efi.cfg
+kernel kernel eve_installer=\${mac:hexhyp} fastboot console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0 initrd=initrd.img initrd=initrd.bits
+initrd initrd.img
+initrd initrd.bits
+boot
+__EOT__
+  tar -C / -chvf /output.net ipxe.efi.cfg kernel initrd.img initrd.bits
+  dump /output.net installer.net
 }
 
 # Lets' parse global options first

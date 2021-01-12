@@ -163,7 +163,7 @@ QEMU_OPTS_arm64= -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,form
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0,romfile="" \
+        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
         -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
@@ -304,6 +304,11 @@ run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB)
 run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
+
+run-installer-net: QEMU_TFTP_OPTS=,tftp=$(DIST),bootfile=ipxe.efi
+run-installer-net: $(BIOS_IMG) $(DEVICETREE_DTB)
+	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
 run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG),format=$(IMG_FORMAT)
@@ -620,6 +625,7 @@ help:
 	@echo "   run-grub           runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-installer-iso  runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-installer-raw  runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-installer-net  runs installer.net (via qemu/iPXE) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-target         runs a full fledged virtual device on qemu from target.img (similar to run-live)"
 	@echo
 	@echo "make run is currently an alias for make run-live"
