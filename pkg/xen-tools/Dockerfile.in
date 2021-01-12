@@ -108,7 +108,7 @@ COPY --from=uefi-build /OVMF.fd /usr/lib/xen/boot/ovmf.bin
 COPY --from=uefi-build /OVMF_PVH.fd /usr/lib/xen/boot/ovmf-pvh.bin
 COPY --from=runx-build /runx-initrd /usr/lib/xen/boot/runx-initrd
 COPY init.sh /
-COPY qemu-ifup xen-start xen-info /etc/xen/scripts/
+COPY qemu-ifup xen-start /etc/xen/scripts/
 
 # We need to keep a slim profile, which means removing things we don't need
 RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
