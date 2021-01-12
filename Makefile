@@ -86,6 +86,7 @@ DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
 
 BIOS_IMG=$(DIST)/OVMF.fd $(DIST)/OVMF_CODE.fd $(DIST)/OVMF_VARS.fd
+IPXE_IMG=$(DIST)/ipxe.efi
 LIVE=$(DIST)/live
 LIVE_IMG=$(DIST)/live.$(IMG_FORMAT)
 TARGET_IMG=$(DIST)/target.img
@@ -278,6 +279,9 @@ $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IM
 $(BIOS_IMG): $(LINUXKIT) | $(DIST)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) $(notdir $@)
 
+$(IPXE_IMG): $(LINUXKIT) | $(DIST)
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/ipxe)-$(DOCKER_ARCH_TAG) $(notdir $@)
+
 $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 	mkdir $(dir $@) 2>/dev/null || :
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
@@ -305,8 +309,8 @@ run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
 
-run-installer-net: QEMU_TFTP_OPTS=,tftp=$(DIST),bootfile=ipxe.efi
-run-installer-net: $(BIOS_IMG) $(DEVICETREE_DTB)
+run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(IPXE_IMG)),bootfile=$(notdir $(IPXE_IMG))
+run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
@@ -422,6 +426,10 @@ $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIS
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeiso.sh $| $@
+
+$(INSTALLER).net: eve
+	docker run lfedge/eve:$(ROOTFS_VERSION)-$(HV) installer_net > $@
+	tar -C $(DIST) -xvf $@
 
 $(LIVE).vdi: $(LIVE).raw
 	qemu-img resize -f raw $< ${MEDIA_SIZE}M
