@@ -1,5 +1,7 @@
 #!/bin/sh
 
+UnknownStateThreshold=10
+
 bail() {
    echo "$@"
    exit 1
@@ -15,6 +17,51 @@ domID() {
    done >/dev/null 2>&1
 
    echo "$ID"
+}
+
+handleUnknownState() {
+  # checking if we have unknownStateCounter, if not initializing it.
+  unknownStateCounter="${unknownStateCounter:-0}"
+
+  if [ "$unknownStateCounter" -ge "$UnknownStateThreshold" ]; then
+    # Number of times we got unknown state is > UnknownStateThreshold, so declaring the state as broken
+    echo broken
+  else
+    # Number of times we got unknown state is <= UnknownStateThreshold, so declaring the state as running
+    echo running
+  fi
+
+  unknownStateCounter=$((unknownStateCounter + 1))
+}
+
+handleKnownState() {
+  # resetting unknownStateCounter
+  unknownStateCounter=0
+  STATUS="$1"
+
+  # an additional check we do for running domains is to make sure device model is still around
+  if [ "$1" = running ] &&
+     DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid" 2>/dev/null) &&
+     ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
+     STATUS=broken
+  fi
+
+  echo "$STATUS"
+}
+
+xen_info() {
+   # we expect to get rbpscd where every letter can also be a dash (-)
+   # Name    ID    Mem    VCPUs    State    Time(s)
+   case $(xl list "${1:- }" 2>/dev/null | awk '{st=$5;} END {print st;}') in
+      *c*) handleKnownState broken  ;;
+       *d) handleKnownState halting ;;
+      *s*) handleKnownState halting ;;
+      *p*) handleKnownState paused  ;;
+      *b*) handleKnownState running ;;
+       r*) handleKnownState running ;;
+   ------) handleUnknownState ;;
+        *) handleKnownState broken  ;;
+   esac
 }
 
 # pre-flight checks
@@ -46,13 +93,12 @@ xl unpause "$ID" || bail "xl unpause failed"
 # now star polling for domain status (11 sec interval) in the background
 # (note our use of mv to make sure file reads on the other side are atomic)
 (while true; do
-   sleep 11
-   /etc/xen/scripts/xen-info "$1" > "/run/tasks/$1.tmp"
+   xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
 done) &
 
 # and start watching over the console: note that we loop forever
-# in anticipation of potential domain reboots - we rely on xen-info
+# in anticipation of potential domain reboots - we rely on xen_info
 # to declare domain broken if it can't be found for a long time
 while true; do
    xl console "$1" < /dev/null
