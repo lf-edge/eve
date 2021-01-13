@@ -49,10 +49,18 @@ jobs:
              fi
           done
       - name: Build EVE for KVM
+        # build #1 without push (do not push either unless both can build)
         run: |
-          rm -rf dist
-          make LINUXKIT_PKG_TARGET=push HV=kvm eve
-      - name: Build EVE
+          rm -rf dist dist.kvm
+          make HV=kvm eve
+          mv -f dist dist.kvm
+      - name: Build and push EVE for Xen
+        # since build #1 works, build and push #2
         run: |
-          rm -rf dist
           make LINUXKIT_PKG_TARGET=push eve
+      - name: Build and push EVE for KVM
+        # redo build #1 with push
+        run: |
+          rm -rf dist
+          mv -f dist.kvm dist
+          make LINUXKIT_PKG_TARGET=push HV=kvm eve
