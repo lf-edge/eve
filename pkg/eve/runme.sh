@@ -117,7 +117,7 @@ do_installer_net() {
   cat > /ipxe.efi.cfg <<__EOT__
 #!ipxe
 # dhcp
-# chain --autofree https://x.y.z/ipxe.efi.cfg
+# chain --autofree https://github.com/lf-edge/eve/releases/download/1.2.3/ipxe.efi.cfg
 kernel kernel eve_installer=\${mac:hexhyp} fastboot console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0 initrd=initrd.img initrd=initrd.bits
 initrd initrd.img
 initrd initrd.bits
