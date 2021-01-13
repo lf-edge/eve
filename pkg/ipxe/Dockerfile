@@ -20,6 +20,7 @@ RUN git clone --depth 1 -b v1.21.1 https://github.com/ipxe/ipxe.git .
 COPY embedded.cfg src/embedded.cfg
 COPY *patch /tmp/
 
+# hadolint ignore=DL4006
 RUN cat /tmp/*patch | patch -p1
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" -C src DOWNLOAD_PROTO_HTTPS=1 EMBED=embedded.cfg \
