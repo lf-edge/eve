@@ -138,11 +138,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
-		serverURL, err = getServerURL(dsCtx)
-		// failed to get server url
-		if err != nil {
-			errStr = errStr + "\n" + err.Error()
-		}
+		serverURL = dst.Fqdn
 
 	case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
 		auth = &zedUpload.AuthInput{
