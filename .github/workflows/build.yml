@@ -17,17 +17,17 @@ jobs:
         env:
           PR_ID: ${{ github.event.pull_request.number  }}
         run: |
-          make pkgs
+          make V=1 pkgs
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
       - name: Build EVE
         run: |
-          make ROOTFS_VERSION="$VERSION" eve
+          make V=1 ROOTFS_VERSION="$VERSION" eve
       - name: Build EVE for KVM
         run: |
           rm -rf dist
-          make ROOTFS_VERSION="$VERSION" HV=kvm eve
+          make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve
       - name: Export docker container
         run: |
           for i in xen kvm; do
