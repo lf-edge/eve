@@ -2,6 +2,7 @@ FROM alpine:edge as build
 
 WORKDIR /
 RUN apk add --no-cache \
+    wireless-regdb \
     linux-firmware-other \
     linux-firmware-ath10k \
     linux-firmware-mrvl \
@@ -12,6 +13,7 @@ RUN apk add --no-cache \
 FROM scratch
 ENTRYPOINT []
 WORKDIR /
+COPY --from=build /lib/firmware/regulatory* /lib/firmware/
 COPY --from=build /lib/firmware/mrvl/*.bin /lib/firmware/mrvl/
 COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
 COPY --from=build /lib/firmware/rtlwifi/*.bin /lib/firmware/rtlwifi/
