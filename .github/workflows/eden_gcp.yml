@@ -12,6 +12,23 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: 'eve'
+      - name: get eden
+        uses: actions/checkout@v2
+        with:
+          repository: 'lf-edge/eden'
+      - name: fetch or build eve
+        env:
+          TAG: pr${{ github.event.pull_request.number }}
+          CACHE: evebuild/danger
+        run: |
+          if docker pull "$CACHE:$TAG-kvm"; then
+             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
+             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
+          else
+             make -C eve pkgs
+             make -C eve ROOTFS_VERSION="$TAG" HV=kvm eve
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
       - name: Public IP
         id: ip
         uses: haythem/public-ip@v1.2
@@ -46,16 +63,17 @@ jobs:
       - name: setup
         run: |
           ./eden config add default --devmodel GCP
+          ./eden config set default --key eve.tag --value="$TAG"
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
-          ./eden utils gcp firewall --source-range ${{ steps.ip.outputs.ipv4 }}/32 --name eve-eden-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
+          ./eden utils gcp firewall --source-range ${{ steps.ip.outputs.ipv4 }}/32 --name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
           ./eden setup
-          ./eden utils gcp image --image-name eve-eden-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" upload
-          ./eden utils gcp vm --image-name eve-eden-actions-${{github.run_number}} --vm-name eve-eden-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" run
+          ./eden utils gcp image --image-name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" upload
+          ./eden utils gcp vm --image-name eve-edengcp-actions-${{github.run_number}} --vm-name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" run
           ./eden start
-          BWD=$(./eden utils gcp vm get-ip --vm-name eve-eden-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS")
+          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS")
           echo "the IP is $BWD"
-          ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name eden-actions-${{github.run_number}}
+          ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{github.run_number}}
           ./eden eve onboard
           echo > tests/workflow/testdata/eden_stop.txt
       - name: Test
@@ -68,10 +86,10 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          gcloud compute firewall-rules delete eve-eden-actions-${{github.run_number}} || echo "not exists"
-          gcloud compute firewall-rules delete eden-actions-${{github.run_number}} || echo "not exists"
-          gcloud compute instances delete eve-eden-actions-${{github.run_number}} -q --zone=us-west1-a || echo "not exists"
-          gcloud compute images delete eve-eden-actions-${{github.run_number}} -q || echo "not exists"
+          gcloud compute firewall-rules delete eve-edengcp-actions-${{github.run_number}} || echo "not exists"
+          gcloud compute firewall-rules delete edengcp-actions-${{github.run_number}} || echo "not exists"
+          gcloud compute instances delete eve-edengcp-actions-${{github.run_number}} -q --zone=us-west1-a || echo "not exists"
+          gcloud compute images delete eve-edengcp-actions-${{github.run_number}} -q || echo "not exists"
       - name: Store raw test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
