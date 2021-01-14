@@ -5,11 +5,6 @@ package hypervisor
 
 import (
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -17,11 +12,18 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 //TBD: Have a better way to calculate this number.
 //For now it is based on some trial-and-error experiments
 const qemuOverHead = int64(600 * 1024 * 1024)
+const spdkOverHead = int64(256 * 1024 * 1024)
 
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
 
@@ -245,29 +247,18 @@ const qemuDiskTemplate = `
   bus = "pcie.0"
   addr = "{{.PCIId}}"
 
-[drive "drive-virtio-disk{{.DiskID}}"]
-  file = "{{.FileLocation}}"
-  format = "{{.Format | Fmt}}"
-  aio = "{{.AioType}}"
-  cache = "writeback"
-  if = "none"
 {{if .ReadOnly}}  readonly = "on"{{end}}
-{{- if eq .Devtype "legacy"}}
-[device "ahci.{{.PCIId}}"]
-  bus = "pci.{{.PCIId}}"
-  driver = "ahci"
-
-[device "ahci-disk{{.DiskID}}"]
-  driver = "ide-hd"
-  bus = "ahci.{{.PCIId}}.0"
-{{- else}}
-[device "virtio-disk{{.DiskID}}"]
-  driver = "virtio-blk-pci"
-  scsi = "off"
+[device "vhost-user-disk{{.DiskID}}"]
+  driver = "vhost-user-blk-pci"
+  chardev = "spdk_vhost_blk0"
+  num-queues = "2"
   bus = "pci.{{.PCIId}}"
   addr = "0x0"
-{{- end}}
-  drive = "drive-virtio-disk{{.DiskID}}"
+
+[chardev "spdk_vhost_blk0"]
+  backend = "socket"
+  path = "/var/run/spdk/vhost-user/block/sockets/vhost.{{.DiskID}}"
+
 {{end}}`
 
 const qemuNetTemplate = `
@@ -283,7 +274,7 @@ const qemuNetTemplate = `
   type = "tap"
   ifname = "{{.Vif}}"
   br = "{{.Bridge}}"
-  script = "/etc/xen/scripts/qemu-ifup"
+  script = "/usr/bin/qemu-ifup"
   downscript = "no"
 
 [device "net{{.NetID}}"]
@@ -359,7 +350,7 @@ func newKvm() Hypervisor {
 		return kvmContext{
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "virt",
-			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
+			dmExec:       "/usr/bin/qemu-system-aarch64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-serial", "chardev:charserial0"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{},
@@ -369,7 +360,7 @@ func newKvm() Hypervisor {
 			//nolint:godox // FIXME: Removing "-overcommit", "mem-lock=on", "-overcommit" for now, revisit it later as part of resource partitioning
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
-			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
+			dmExec:       "/usr/bin/run-qemu.py",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-no-hpet"},
 			dmCPUArgs:    []string{},
 			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
@@ -410,20 +401,31 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 
 	args := []string{ctx.dmExec}
 	args = append(args, dmArgs...)
+	// TDO: Add file location + disk id
 	args = append(args, "-name", domainName,
 		"-readconfig", file.Name(),
-		"-pidfile", kvmStateDir+domainName+"/pid")
+		"-pidfile", kvmStateDir+domainName+"/pid",
+		"-disks",
+	)
+
+	for id, ds := range diskStatusList {
+		if ds.Devtype != "cdrom" {
+			args = append(args, ds.FileLocation, strconv.Itoa(id))
+		}
+	}
 
 	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
 	if err != nil {
 		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
 	}
-	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+	if err = spec.AddLoader("/containers/services/spdk"); err != nil {
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
 
 	spec.AdjustMemLimit(config, qemuOverHead)
 	spec.Get().Process.Args = args
+
+	logrus.Infof("QEMU command line arguments: %v", args)
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
@@ -477,7 +479,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	t, _ = template.New("qemuDisk").
 		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).
 		Parse(qemuDiskTemplate)
-	for _, ds := range diskStatusList {
+	for id, ds := range diskStatusList {
 		if ds.Devtype == "" {
 			continue
 		}
@@ -490,7 +492,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		} else {
 			diskContext.PCIId = diskContext.PCIId + 1
 		}
-		diskContext.DiskID = diskContext.DiskID + 1
+		diskContext.DiskID = id
 	}
 
 	// render network device model settings
