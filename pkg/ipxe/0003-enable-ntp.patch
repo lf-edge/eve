@@ -1,0 +1,13 @@
+diff --git a/src/config/general.h b/src/config/general.h
+index 0c99bcbb..fcfca7c2 100644
+--- a/src/config/general.h
++++ b/src/config/general.h
+@@ -152,7 +152,7 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
+ //#define CONSOLE_CMD		/* Console command */
+ //#define IPSTAT_CMD		/* IP statistics commands */
+ //#define PROFSTAT_CMD		/* Profiling commands */
+-//#define NTP_CMD		/* NTP commands */
++#define NTP_CMD		/* NTP commands */
+ //#define CERT_CMD		/* Certificate management commands */
+ 
+ /*
