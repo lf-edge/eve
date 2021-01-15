@@ -116,13 +116,32 @@ do_installer_net() {
   cat > /ipxe.efi.cfg <<__EOT__
 #!ipxe
 # dhcp
+#
+# Uncomment ntp lines for devices without RTC (RPI for example)
+# echo Getting the current time from ntp...
+# :retry_ntp
+# ntp pool.ntp.org || goto retry_ntp
+#
+# you should set eve_install_disk argument to mmcblk0 if you need
+#
 # chain --autofree https://github.com/lf-edge/eve/releases/download/1.2.3/ipxe.efi.cfg
 kernel kernel eve_installer=\${mac:hexhyp} fastboot console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0 initrd=initrd.img initrd=initrd.bits
 initrd initrd.img
 initrd initrd.bits
 boot
 __EOT__
-  tar -C / -chvf /output.net ipxe.efi.cfg kernel initrd.img initrd.bits
+  tar -C / -chvf /output.net ipxe.efi.cfg kernel initrd.img initrd.bits ipxe.efi
+  if [ "$(uname -m)" = aarch64 ]
+  then
+  cat > /tmp/boot.scr <<__EOT__
+dhcp
+tftpboot \${kernel_addr_r} ipxe.efi
+bootefi \${kernel_addr_r}
+__EOT__
+    mkimage -A arm64 -O linux -T script -C none -a 0 -e 0 -n "U-Boot Script" -d /tmp/boot.scr /boot.scr.uimg
+    ln -fs /bits/boot/* /
+    tar -C / -rhvf /output.net boot.scr.uimg overlays u-boot.bin bcm2711-rpi-4-b.dtb config.txt fixup4.dat start4.elf
+  fi
   dump /output.net installer.net
 }
 

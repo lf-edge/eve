@@ -1,0 +1,11 @@
+diff --git a/src/config/local/nap.h b/src/config/local/nap.h
+new file mode 100644
+index 00000000..1e345eb0
+--- /dev/null
++++ b/src/config/local/nap.h
+@@ -0,0 +1,5 @@
++/* nap.h */
++#undef NAP_EFIARM
++#if defined ( __arm__ ) || defined ( __aarch64__ )
++#define NAP_NULL
++#endif
