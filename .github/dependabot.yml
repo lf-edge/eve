@@ -1,0 +1,77 @@
+---
+# .github/dependabot.yml: Config file for Dependabot
+#
+# Each pkg/* subdir must be listed separately.
+# Only configured for Dockerfiles that do not hardwire package versions.
+
+version: 2
+updates:
+  # Enable version updates for Docker
+  - package-ecosystem: "docker"
+    directory: "/pkg/alpine"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/dnsmasq"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/gpt-tools"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/grub"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/guacd"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/mkimage-iso-efi"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/mkrootfs-ext4"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/mkrootfs-squash"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/qrexec-dom0"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/qrexec-lib"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/rngd"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/strongswan"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/uefi"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/watchdog"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/wlan"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/wwan"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/pkg/xen"
+    schedule:
+      interval: "monthly"
