@@ -416,14 +416,14 @@ type ProxyConfig struct {
 	NetworkProxyEnable bool `protobuf:"varint,1,opt,name=networkProxyEnable,proto3" json:"networkProxyEnable,omitempty"`
 	// dedicated per protocol information
 	Proxies []*ProxyServer `protobuf:"bytes,2,rep,name=proxies,proto3" json:"proxies,omitempty"`
-	// exceptions seperated by commas
+	// exceptions separated by commas
 	Exceptions string `protobuf:"bytes,3,opt,name=exceptions,proto3" json:"exceptions,omitempty"`
 	// or pacfile can be in place of others
 	// base64 encoded
 	Pacfile string `protobuf:"bytes,4,opt,name=pacfile,proto3" json:"pacfile,omitempty"`
 	// Direct URL for wpad.dat download
 	NetworkProxyURL string `protobuf:"bytes,5,opt,name=networkProxyURL,proto3" json:"networkProxyURL,omitempty"`
-	// Uploaded proxy certificate or certifcate chain for MITM
+	// Uploaded proxy certificate or certificate chain for MITM
 	// this may be needed either in explicit (has ProxyServer items), automatic
 	// (networkProxyEnable) or transparent (network layer not aware of proxy)
 	ProxyCertPEM [][]byte `protobuf:"bytes,6,rep,name=proxyCertPEM,proto3" json:"proxyCertPEM,omitempty"`

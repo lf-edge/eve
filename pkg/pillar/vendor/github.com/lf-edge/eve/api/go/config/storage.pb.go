@@ -725,9 +725,9 @@ func (x *Drive) GetMaxsizebytes() int64 {
 	return 0
 }
 
-// ContentTree describes the top of some content tree. The controller
-// needs to allocate a uuid for it, and that uuid will be sent by EVE
-// in the ZInfoContentTree message
+// ContentTree describes the top of some content tree. The controller needs
+// to allocate a uuid for it, and that uuid will be sent by EVE in the
+// ZInfoContentTree message
 type ContentTree struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -747,9 +747,9 @@ type ContentTree struct {
 	// For container ContentTree, sha256 might not be available in config.
 	// If the sha256 is not available then it needs to be resolved corresponding to the tag
 	// change in generation_count indicates that the resolution of tag is needed
-	// generation_count needs to be updated when purge is required for an existing instance
-	// In case of new instance using the same content tree, EVE will get new
-	// content tree UUID in the device configuration from the controller
+	// generation_count needs to be updated when purge is required for an existing
+	// instance. In case of new instance using the same content tree, EVE will get
+	// new content tree UUID in the device configuration from the controller.
 	GenerationCount int64 `protobuf:"varint,9,opt,name=generation_count,json=generationCount,proto3" json:"generation_count,omitempty"`
 }
 

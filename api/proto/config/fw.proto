@@ -23,7 +23,7 @@ message ACEAction {
   string limitunit = 4;
   uint32 limitburst = 5;
 
-  // port map action, and its assoicated paramtere
+  // port map action, and its associated parameter
   bool portmap = 6;
   uint32 appPort = 7;
 }
