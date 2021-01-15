@@ -1,6 +1,6 @@
 FROM XENTOOLS_TAG as xentools
 
-FROM alpine:3.6	as build
+FROM alpine:3.13.0 as build
 
 RUN apk add --no-cache \
     gcc \
@@ -9,6 +9,8 @@ RUN apk add --no-cache \
     linux-headers \
     git
 
+# workaround for /var being symlink to /run
+RUN rm -rf /var
 
 COPY --from=xentools / /
 

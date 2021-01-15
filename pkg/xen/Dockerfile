@@ -1,4 +1,4 @@
-FROM alpine:3.7 as kernel-build
+FROM alpine:3.13.0 as kernel-build
 #linuxkit/alpine:f2f4db272c910d136380781a97e475013fabda8b AS kernel-build
 RUN apk update
 
@@ -18,7 +18,7 @@ RUN apk add \
     gnupg \
     installkernel \
     kmod \
-    libelf-dev \
+    libelf \
     libressl-dev \
     linux-headers \
     ncurses-dev \

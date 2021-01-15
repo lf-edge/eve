@@ -1,4 +1,4 @@
-FROM alpine:3.8 as build
+FROM alpine:3.13.0 as build
 
 WORKDIR /
 

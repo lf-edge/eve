@@ -1,6 +1,7 @@
 FROM XENTOOLS_TAG as xentools
 FROM QREXECLIB_TAG as qrexec_lib
-FROM alpine:3.6 as build
+# make error starting in alpine:3.9
+FROM alpine:3.8 as build
 
 RUN apk add --no-cache \
     gcc \
@@ -9,7 +10,11 @@ RUN apk add --no-cache \
     linux-headers \
     git
 
+# workaround for /var being symlink to /run
+RUN rm -rf /var
+
 COPY --from=xentools / /
+
 COPY --from=qrexec_lib / /
 
 RUN git clone https://github.com/QubesOS/qubes-core-qrexec qubes-core-qrexec
