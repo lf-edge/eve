@@ -33,7 +33,7 @@ message ProxyConfig {
   // dedicated per protocol information
   repeated ProxyServer proxies = 2;
 
-  // exceptions seperated by commas
+  // exceptions separated by commas
   string exceptions = 3;
 
   // or pacfile can be in place of others
@@ -43,7 +43,7 @@ message ProxyConfig {
   // Direct URL for wpad.dat download
   string networkProxyURL = 5;
 
-  // Uploaded proxy certificate or certifcate chain for MITM
+  // Uploaded proxy certificate or certificate chain for MITM
   // this may be needed either in explicit (has ProxyServer items), automatic
   // (networkProxyEnable) or transparent (network layer not aware of proxy)
   repeated bytes proxyCertPEM = 6;

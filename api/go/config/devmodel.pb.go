@@ -340,8 +340,8 @@ func (x *PhyIOUsagePolicy) GetFallBackPriority() uint32 {
 
 // PhysicalIO:
 //    Absolute low level description of physical buses and ports that are
-//    available on given platfrom.
-//    Collection of these IOs, connstitue what we would call as hardware
+//    available on given platform.
+//    Collection of these IOs, constitute what we would call as hardware
 //    model. Each physical IO is manageable and visible to EVE software, and
 //    it can be further configured to either provide IP connectivity or
 //    directly be given to workloads
@@ -357,7 +357,7 @@ type PhysicalIO struct {
 	// The hardware bus address. The key to this map can be of the following
 	// (case-insensitive) values:
 	// "pcilong": the address is a PCI id of the form 0000:02:00.0
-	// "ifname": the addresss is a string for a network interface like "eth1"
+	// "ifname": the address is a string for a network interface like "eth1"
 	// "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
 	// "irq": the address is a number such as "5". This can be a comma
 	//    separated list of integers or even a range of integers. Hence using
@@ -394,7 +394,7 @@ type PhysicalIO struct {
 	//    app traffic?? etc..
 	UsagePolicy *PhyIOUsagePolicy `protobuf:"bytes,7,opt,name=usagePolicy,proto3" json:"usagePolicy,omitempty"`
 	// physical and logical attributes
-	//    For example in WWAN to which firmware version to laod etc
+	//    For example in WWAN to which firmware version to load etc
 	Cbattr map[string]string `protobuf:"bytes,8,rep,name=cbattr,proto3" json:"cbattr,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 }
 
