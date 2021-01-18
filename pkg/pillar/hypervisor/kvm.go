@@ -409,7 +409,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	)
 
 	for id, ds := range diskStatusList {
-		if ds.Devtype != "cdrom" {
+		if ds.Devtype != "cdrom" && ds.Devtype != "9P" {
 			args = append(args, ds.FileLocation, strconv.Itoa(id))
 		}
 	}
