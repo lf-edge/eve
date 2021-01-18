@@ -15,7 +15,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/sirupsen/logrus"
 )
@@ -127,15 +126,12 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 		}
 	}
 
-	// if we have only a tag, we know it is a manifest
-	if _, ok := ref.(name.Tag); ok {
-		logrus.Infof("PullBlob: requested manifest or had tag without hash, so just pulling root for %s", image)
-		r, contentType, err = ociGetManifest(ref, opts)
-		if err != nil {
-			return 0, "", err
-		}
-	} else {
-		// we had a hash, so get the actual layer, but fall back to manifest
+	logrus.Infof("PullBlob(%s): trying to fetch manifest", image)
+	// check if we have a manifest
+	r, contentType, err = ociGetManifest(ref, opts)
+	if err != nil {
+		logrus.Infof("PullBlob(%s): unable to fetch manifest (%s), trying blob", image, err.Error())
+		// if we have a hash try to get the actual layer
 		d, ok := ref.(name.Digest)
 		if !ok {
 			return 0, "", fmt.Errorf("ref %s wasn't a tag or digest", image)
@@ -148,16 +144,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 		// write the layer out to the file
 		lr, err := layer.Compressed()
 		if err != nil {
-			// anything other than a 404 should return
-			terr, ok := err.(*transport.Error)
-			if !ok || terr.StatusCode != 404 {
-				return 0, "", fmt.Errorf("could not get layer reader %s: %v", ref.String(), err)
-			}
-			// a 404 should try a manifest
-			r, contentType, err = ociGetManifest(ref, opts)
-			if err != nil {
-				return 0, "", fmt.Errorf("could not retrieve as blob or manifest %s: %v", ref.String(), err)
-			}
+			return 0, "", fmt.Errorf("could not get layer reader %s: %v", ref.String(), err)
 		} else {
 			defer lr.Close()
 			r = lr
@@ -221,7 +208,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 			break
 		}
 	}
-
+	logrus.Infof("PullBlob(%s): Done. Size: %d, ContentType: %s FinalErr: %v", image, size, contentType, finalErr)
 	return size, contentType, finalErr
 }
 
