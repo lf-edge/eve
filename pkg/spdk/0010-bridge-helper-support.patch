@@ -1,0 +1,66 @@
+diff --git a/net/tap.c b/net/tap.c
+index b7512853f4..4fa694c6d9 100644
+--- a/net/tap.c
++++ b/net/tap.c
+@@ -63,7 +63,7 @@ typedef struct TAPState {
+     Notifier exit;
+ } TAPState;
+
+-static void launch_script(const char *setup_script, const char *ifname,
++static void launch_script(const char *setup_script, const char *ifname, const char *bridge,
+                           int fd, Error **errp);
+
+ static void tap_send(void *opaque);
+@@ -302,7 +302,7 @@ static void tap_exit_notify(Notifier *notifier, void *data)
+     Error *err = NULL;
+
+     if (s->down_script[0]) {
+-        launch_script(s->down_script, s->down_script_arg, s->fd, &err);
++        launch_script(s->down_script, s->down_script_arg, "bn1", s->fd, &err);
+         if (err) {
+             error_report_err(err);
+         }
+@@ -399,7 +399,7 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
+     return s;
+ }
+
+-static void launch_script(const char *setup_script, const char *ifname,
++static void launch_script(const char *setup_script, const char *ifname, const char *bridge,
+                           int fd, Error **errp)
+ {
+     int pid, status;
+@@ -424,6 +424,7 @@ static void launch_script(const char *setup_script, const char *ifname,
+         parg = args;
+         *parg++ = (char *)setup_script;
+         *parg++ = (char *)ifname;
++        *parg++ = (char *)bridge;
+         *parg = NULL;
+         execv(setup_script, args);
+         _exit(1);
+@@ -617,7 +618,7 @@ int net_init_bridge(const Netdev *netdev, const char *name,
+
+ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
+                         const char *setup_script, char *ifname,
+-                        size_t ifname_sz, int mq_required, Error **errp)
++                        size_t ifname_sz, const char *bridge, int mq_required, Error **errp)
+ {
+     Error *err = NULL;
+     int fd, vnet_hdr_required;
+@@ -639,7 +640,7 @@ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
+     if (setup_script &&
+         setup_script[0] != '\0' &&
+         strcmp(setup_script, "no") != 0) {
+-        launch_script(setup_script, ifname, fd, &err);
++        launch_script(setup_script, ifname, bridge, fd, &err);
+         if (err) {
+             error_propagate(errp, err);
+             close(fd);
+@@ -965,7 +966,7 @@ free_fail:
+
+         for (i = 0; i < queues; i++) {
+             fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
+-                              ifname, sizeof ifname, queues > 1, errp);
++                              ifname, sizeof ifname, tap->has_br ? tap->br : "bn1", queues > 1, errp);
+             if (fd == -1) {
+                 return -1;
+             }

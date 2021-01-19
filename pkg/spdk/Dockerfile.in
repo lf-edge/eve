@@ -93,6 +93,7 @@ RUN cp -Ra build/bin/* /out/usr/bin
 RUN cp -Ra dpdk/build/lib/* /out/usr/lib/
 
 WORKDIR /qemu-${QEMU_VER}
+RUN patch -p1 < /0010-bridge-helper-support.patch
 RUN ./configure --prefix=/usr --enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
     --enable-vhost-user --enable-linux-io-uring --enable-kvm --enable-virtfs \

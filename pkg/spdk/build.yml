@@ -13,3 +13,5 @@ config:
   net: host
   capabilities:
     - all
+  pid: host
+  userns: host
