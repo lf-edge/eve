@@ -9,6 +9,7 @@ config:
     - /config:/config
     - /persist:/persist
     - /lib/modules:/lib/modules
+    - /:/hostfs
   net: host
   capabilities:
     - all

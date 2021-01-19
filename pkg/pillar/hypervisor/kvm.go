@@ -405,6 +405,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	args = append(args, "-name", domainName,
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid",
+		"-object", fmt.Sprintf("memory-backend-file,id=mem,size=%dM,mem-path=/dev/shm,share=on", (config.Memory+1023)/1024), "-numa", "node,memdev=mem",
 		"-disks",
 	)
 

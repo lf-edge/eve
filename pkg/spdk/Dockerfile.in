@@ -1,3 +1,9 @@
+# hadolint ignore=DL3006
+FROM UEFI_TAG as uefi-build
+
+# hadolint ignore=DL3006
+FROM XENTOOLS_TAG as xen-tools
+
 #Build SPDK
 FROM alpine:3.12 as build
 RUN apk add --no-cache linux-headers=5.4.5-r1 \
@@ -101,6 +107,8 @@ RUN cp -Ra /spdk/include/spdk/pci_ids.h /out/usr/share/spdk/include/spdk/pci_ids
 RUN if [ $(uname -m) = x86_64 ]; then rm -rf /out/usr/share/qemu/edk2-{arm,aarch64}-*.fd; fi
 RUN if [ $(uname -m) = aarc64 ]; then rm -rf /out/usr/share/qemu/edk2-{i386,x86_64}-*.fd; fi
 RUN rm -rf /out/usr/share/qemu/s390* /out/usr/share/qemu/openbios* /out/usr/share/qemu/u-boot* /out/usr/share/qemu/*.dtb
+RUN mkdir -p /out/usr/lib/xen/boot/
+RUN cp /out/usr/share/qemu/bios.bin /out/usr/lib/xen/boot/seabios.bin
 RUN rm -rf /out/usr/bin/dpdk-test*
 
 RUN strip /out/usr/lib/* || :
@@ -134,6 +142,8 @@ RUN apk add --no-cache  \
 RUN if [ $(uname -m) == aarch64 ]; then apk add --no-cache libfdt=1.6.0-r0 libstdc++=9.3.0-r2 ;fi
 
 COPY --from=build /out/ /
+COPY --from=uefi-build /OVMF.fd /usr/lib/xen/boot/ovmf.bin
+COPY --from=xen-tools /usr/lib/xen/boot/runx-initrd /usr/lib/xen/boot/runx-initrd
 COPY init.sh /
 COPY run-qemu.py /usr/bin
 COPY qemu-ifup /usr/bin

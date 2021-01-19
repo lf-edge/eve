@@ -8,7 +8,7 @@ def run_process(args) :
 
 start = sys.argv.index("-disks")
 
-for i in range(start, len(sys.argv), 2) :
+for i in range(start, len(sys.argv) - 1, 2) :
     location = sys.argv[i + 1]
     id = sys.argv[i + 2]
     run_process(["/usr/share/spdk/scripts/rpc.py", "bdev_aio_create", location, "bdev_{}".format(id), "512"])
