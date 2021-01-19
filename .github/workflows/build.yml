@@ -1,0 +1,42 @@
+---
+name: PR build
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Build packages
+        env:
+          PR_ID: ${{ github.event.pull_request.number  }}
+        run: |
+          make pkgs
+          COMMIT_ID=$(git describe --abbrev=8 --always)
+          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
+          echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
+      - name: Build EVE
+        run: |
+          make ROOTFS_VERSION="$VERSION" eve
+      - name: Build EVE for KVM
+        run: |
+          rm -rf dist
+          make ROOTFS_VERSION="$VERSION" HV=kvm eve
+      - name: Export docker container
+        run: |
+          for i in xen kvm; do
+             docker tag "lfedge/eve:$VERSION-$i" "$TAG-$i"
+             IMGS="$IMGS $TAG-$i"
+          done
+          docker save $IMGS > eve.tar
+      - name: Upload EVE
+        uses: actions/upload-artifact@v2
+        with:
+          name: eve
+          path: eve.tar
