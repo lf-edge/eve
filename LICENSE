@@ -209,12 +209,6 @@ under the BSD-style license. For details, see the netclone/README
 This product bundles portions of the go httpproxy package, which is
 available under the BSD-style license. For details, see the zedcloud/proxy.go
 
-This product bundles portions of the github.com/linuxkit/linuxkit, which is
-available under the Apache License 2.0. For details, see the build-tools/src
-
-This product bundles portions of the github.com/estesp/manifest-tool, which is
-available under the Apache License 2.0. For details, see the build-tools/src
-
 This product bundles portions of the github.com/rackn/gohai, which is
 available under the Apache License 2.0. For details, see the
 pkg/pillar/cmd/hardwaremodel

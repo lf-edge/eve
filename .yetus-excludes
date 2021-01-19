@@ -4,8 +4,6 @@
 ^pkg/pillar/rootfs/fscrypt.conf
 ^pkg/fw/
 ^pkg/debug/abuild/
-^build-tools/src/linuxkit/
-^build-tools/src/manifest-tool/
 ^pkg/pillar/zedpac/
 ^api/python/
 ^api/go/
