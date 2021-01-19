@@ -30,7 +30,7 @@ jobs:
              docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}-amd64"
           else
              make -C eve pkgs
-             make -C eve ROOTFS_VERSION="$TAG" HV=-${{ matrix.hv }} eve
+             make -C eve ROOTFS_VERSION="$TAG" HV=${{ matrix.hv }} eve
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
       - name: Public IP
@@ -68,6 +68,7 @@ jobs:
         run: |
           ./eden config add default --devmodel GCP
           ./eden config set default --key eve.tag --value="$TAG"
+          ./eden config set default --key eve.hv --value ${{ matrix.hv }}
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden utils gcp firewall --source-range ${{ steps.ip.outputs.ipv4 }}/32 --name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
