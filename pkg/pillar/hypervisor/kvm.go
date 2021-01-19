@@ -409,10 +409,15 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-disks",
 	)
 
-	for id, ds := range diskStatusList {
-		if ds.Devtype != "cdrom" && ds.Devtype != "9P" {
-			args = append(args, ds.FileLocation, strconv.Itoa(id))
+	diskID := 0
+	for _, ds := range diskStatusList {
+		if ds.Devtype == "" {
+			continue
 		}
+		if ds.Devtype == "hdd" {
+			args = append(args, ds.FileLocation, strconv.Itoa(diskID))
+		}
+		diskID++
 	}
 
 	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
