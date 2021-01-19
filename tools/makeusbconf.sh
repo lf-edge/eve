@@ -6,7 +6,7 @@
 USAGE="Usage: $0 [-d] [-i] [-s <size in Kb>] [-f <file> ] <output.img>"
 
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
-PATH="$EVE/build-tools/bin:$PATH"
+PATH="$(go env GOPATH)/bin:$PATH"
 MKFLASH_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-raw-efi")"
 
 cleanup() {
