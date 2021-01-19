@@ -1,0 +1,26 @@
+From 85d20e8fe5d46de3c00a6b446465faeee053c7cf Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Tue, 19 Jan 2021 14:31:36 +0000
+Subject: [PATCH] build: Set target machine to Ivy Bridge
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ meson_options.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/meson_options.txt b/meson_options.txt
+index 9bf18ab6b..0b2fa429b 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -22,7 +22,7 @@ option('kernel_dir', type: 'string', value: '',
+ 	description: 'Path to the kernel for building kernel modules. Headers must be in $kernel_dir/build. Modules will be installed in $DEST_DIR/$kernel_dir/extra/dpdk.')
+ option('lib_musdk_dir', type: 'string', value: '',
+ 	description: 'path to the MUSDK library installation directory')
+-option('machine', type: 'string', value: 'native',
++option('machine', type: 'string', value: 'ivybridge',
+ 	description: 'set the target machine type')
+ option('max_ethports', type: 'integer', value: 32,
+ 	description: 'maximum number of Ethernet devices')
+-- 
+2.25.1
+

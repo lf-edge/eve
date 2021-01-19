@@ -75,6 +75,7 @@ RUN patch -p1 < /0003-pmdinfogen-define-_GNU_SOURCE-in-cflags.patch
 RUN patch -p1 < /0004-rte_config-Do-not-call-backtrace.patch
 RUN patch -p1 < /0005-buildtools-Fix-mktemp-template.patch
 RUN patch -p1 < /0006-pci-Switch-to-plain-out-b-w-l-functions-for-IO.patch
+RUN patch -p1 < /0007-build-Set-target-machine-to-Ivy-Bridge.patch
 
 WORKDIR /spdk
 RUN patch -p1 < /0001-configure-define-_GNU_SOURCE.patch
