@@ -51,22 +51,26 @@ jobs:
                 docker system prune -f || :
              fi
           done
-      - name: Build EVE for KVM
+      - name: Build EVE for Xen
         # build #1 without push (do not push either unless both can build)
         run: |
-          rm -rf dist dist.kvm
-          make HV=kvm eve
-          mv -f dist dist.kvm
-      - name: Build and push EVE for Xen
+          rm -rf dist dist.xen
+          make eve
+          mv -f dist dist.xen
+      - name: Build and push EVE for KVM
         # since build #1 works, build and push #2
         run: |
-          make LINUXKIT_PKG_TARGET=push eve
-      - name: Build and push EVE for KVM
+          make LINUXKIT_PKG_TARGET=push HV=kvm eve
+          docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-kvm-${{ env.ARCH }}
+          docker push lfedge/eve:snapshot-kvm-${{ env.ARCH }}
+      - name: Build and push EVE for Xen
         # redo build #1 with push
         run: |
           rm -rf dist
-          mv -f dist.kvm dist
-          make LINUXKIT_PKG_TARGET=push HV=kvm eve
+          mv -f dist.xen dist
+          make LINUXKIT_PKG_TARGET=push eve
+          docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-xen-${{ env.ARCH }}
+          docker push lfedge/eve:snapshot-xen-${{ env.ARCH }}
       - name: Create a GitHub release and clean up artifacts
         id: create-release
         uses: actions/github-script@v3
