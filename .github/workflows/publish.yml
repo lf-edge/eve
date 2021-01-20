@@ -74,11 +74,12 @@ jobs:
           result-encoding: string
           script: |
             console.log(context)
-            tag = ''
-            if (context.payload.ref === 'refs/heads/main') {
+            tag = context.payload.ref.split('/', 3)[2] // could we use context.ref ?
+
+            // we're mapping builds of certain branches to fake tags to be able to
+            // have a place where we publish the build assets
+            if (tag === 'main' || tag === 'master') {
               tag = '0.0.0'
-            } else {
-              tag = context.payload.ref.split('/', 3)[2]
             }
 
             // first create a release -- it is OK if that fails,

@@ -1,5 +1,5 @@
 ---
-name: Publish PR EVE
+name: Publish PR build
 on:
   pull_request_target:
     branches:
