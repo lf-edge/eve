@@ -1,0 +1,69 @@
+---
+name: Publish PR EVE
+on:
+  pull_request_target:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Wait
+        run: |
+          sleep 120
+
+      - name: Find PR build artifact
+        id: find-pr-artifact
+        uses: actions/github-script@v3
+        with:
+          script: |
+            const raw = github.actions.listWorkflowRuns.endpoint.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event: 'pull_request',
+              workflow_id: 'build.yml'
+            })
+
+            const runs = await github.paginate(raw)
+            for (const run of runs) {
+              for (const pr of run.pull_requests) {
+                if (pr.url === context.payload.pull_request.url && pr.head.sha === '${{ github.event.pull_request.head.sha }}') {
+                  for (wait = 0; wait < 30; wait++) {
+                    artifacts = (await github.actions.listWorkflowRunArtifacts({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      run_id: run.id,
+                    })).data
+                    if (artifacts.hasOwnProperty('total_count') && artifacts.total_count > 0) {
+                      for (const artifact of artifacts.artifacts) {
+                        if (artifact.name === 'eve') {
+                          return (await github.actions.downloadArtifact({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            artifact_id: artifact.id,
+                            archive_format: 'zip',
+                          })).url
+                        }
+                      }
+                    } else {
+                      console.log('waiting...')
+                      await new Promise(r => setTimeout(r, 60000))
+                    }  
+                  }
+                }
+              }  
+            }
+
+      - name: Publish EVE
+        run: |
+          [ -z "${{steps.find-pr-artifact.outputs.result}}" ] && exit 1
+
+          wget -O eve.zip "${{steps.find-pr-artifact.outputs.result}}"
+          unzip eve.zip
+
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
+             docker login -u evebuild --password-stdin
+          for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
+             docker push "$i"
+          done
