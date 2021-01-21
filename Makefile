@@ -203,7 +203,7 @@ DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 LINUXKIT_VERSION=80c4edd5c54dc05fbeae932440372990fce39bd6
-LINUXKIT_SOURCE=github.com/linuxkit/linuxkit/src/cmd/linuxkit@$(LINUXKIT_VERSION)
+LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=--disable-content-trust $(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD)
 LINUXKIT_PKG_TARGET=build
 RESCAN_DEPS=FORCE
@@ -521,10 +521,16 @@ shell: $(GOBUILDER)
 # build linuxkit for the host OS, not the container OS
 $(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
 $(LINUXKIT): $(GOBUILDER)
-	@$(DOCKER_GO) "unset GOFLAGS; rm -rf /tmp/linuxkit && mkdir -p /tmp/linuxkit && cd /tmp/linuxkit && GO111MODULE=on CGO_ENABLED=0 go get $(LINUXKIT_SOURCE) \
-	&& cd - && rm -rf /tmp/linuxkit" $(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
-	# it might have built cross-arch, so would need to move it
-	if [ -e $(BUILDTOOLS_BIN)/$(GOOS)_*/linuxkit ]; then mv $(BUILDTOOLS_BIN)/*/linuxkit $@; fi
+	@$(DOCKER_GO) \
+	"unset GOFLAGS; rm -rf /tmp/linuxkit && \
+	git clone $(LINUXKIT_SOURCE) /tmp/linuxkit && \
+	cd /tmp/linuxkit && \
+	git checkout $(LINUXKIT_VERSION) && \
+	cd /tmp/linuxkit/src/cmd/linuxkit && \
+	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor . && \
+	cd && \
+	rm -rf /tmp/linuxkit" \
+	$(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
 
 $(GOBUILDER):
 ifneq ($(BUILD),local)
