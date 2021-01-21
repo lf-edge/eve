@@ -4,7 +4,7 @@
 #      ./makeflash.sh [-C size] <input dir> <output.img> [partitions]
 #
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
-PATH="$(go env GOPATH)/bin:$PATH"
+PATH="$EVE/build-tools/bin:$PATH"
 MKFLASH_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-raw-efi")"
 
 if [ "$1" = "-C" ]; then

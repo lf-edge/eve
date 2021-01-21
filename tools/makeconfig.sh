@@ -4,7 +4,7 @@
 #      ./makeconfig.sh <output.img> <version> [list of config files]
 #
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
-PATH="$(go env GOPATH)/bin:$PATH"
+PATH="$EVE/build-tools/bin:$PATH"
 MKCONFIG_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkconf")"
 IMAGE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 ROOTFS_VERSION="$2"
