@@ -50,9 +50,7 @@ synthetic_tag() {
 }
 
 resolve_tags() {
-sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
-    -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
-    -e "s#CURDIR#$(pwd)#" \
+sed -e "s#CURDIR#$(pwd)#" \
     -e "s#ACRN_KERNEL_TAG#$ACRN_KERNEL_TAG#" \
     -e "s#NEW_KERNEL_TAG#$NEW_KERNEL_TAG#" \
     -e "s#KERNEL_TAG#$KERNEL_TAG#" \

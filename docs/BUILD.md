@@ -158,8 +158,8 @@ For a live bootable image, named `live.img`, we create the following dependencie
 `rootfs.img` is a bootable root filesystem. To build it:
 
 1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml).
-2. Call `makerootfs.sh images/rootfs.yml <format> rootfs.img`, which will:
-    1. Build an image using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file..
+2. Call `makerootfs.sh images/rootfs.yml rootfs.img <format> <arch>`, which will:
+    1. Build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file.
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
     3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs.img`.
@@ -244,8 +244,8 @@ For an installable image, named `installer.img`, we create the following depende
 To build `rootfs_installer.img`:
 
 1. Ensure the existence of the prerequisites: `rootfs.img`, `config.img`, `images/installer.yml`. The `yml` file is the configuration file for using linuxkit to build the `rootfs_installer.img`. See notes on [generating yml](#generating-yml).
-2. Call `makerootfs.sh images/installer.yml <format> rootfs_installer.img`, which will:
-    1. Build an image using `linuxkit` with a tar output format using `images/installer.yml` as the configuration file..
+2. Call `makerootfs.sh images/installer.yml rootfs_installer.img <format> <arch>`, which will:
+    1. Build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/installer.yml` as the configuration file..
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
     3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs_installer.img`.
