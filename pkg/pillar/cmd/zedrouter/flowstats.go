@@ -642,10 +642,9 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 	packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
 	dnsIn := packetSource.Packets()
 	for {
-		var packet gopacket.Packet
 		select {
 		case <-dnssys[bnNum].Done:
-			log.Functionf("(FlowStats) DNS Monitor exit on %s(bridge-num %d)", bn, bnNum)
+			log.Noticef("(FlowStats) DNS Monitor exit on %s(bridge-num %d)", bn, bnNum)
 			dnssys[bnNum].channelOpen = false
 			dnssys[bnNum].Lock()
 			dnsDataRemove(bnNum)
@@ -653,7 +652,17 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 
 			close(dnssys[bnNum].Done)
 			return
-		case packet = <-dnsIn:
+		case packet, ok := <-dnsIn:
+			if !ok {
+				log.Noticef("(FlowStats) dnsIn closed on %s(bridge-num %d)", bn, bnNum)
+				dnssys[bnNum].channelOpen = false
+				dnssys[bnNum].Lock()
+				dnsDataRemove(bnNum)
+				dnssys[bnNum].Unlock()
+
+				close(dnssys[bnNum].Done)
+				return
+			}
 			dnslayer := packet.Layer(layers.LayerTypeDNS)
 			if switched && dnslayer == nil {
 				dnssys[bnNum].Lock()
