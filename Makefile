@@ -570,9 +570,9 @@ images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
 
 $(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml $(SSH_KEY) | $(INSTALLER)
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
 $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
