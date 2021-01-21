@@ -89,7 +89,7 @@ You must have the following installed in order to build EVE:
 
 Each "Installed as Needed" build tool will place its final executable in `${GOPATH}/bin/`, e.g. `~/go/bin/linuxkit`.
 
-To build a specific tool, you can execute `make $(go env GOPATH)/bin/<tool-name>`, e.g. `make $(go env GOPATH)/bin/linuxkit`.
+To build a specific tool, you can execute `make build-tools/bin/<tool-name>`, e.g. `make build-tools/bin/bin/linuxkit`.
 
 This target does the following:
 

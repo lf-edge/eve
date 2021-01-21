@@ -5,7 +5,7 @@
 # [1] A poor man is a man on a deadline.
 #
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
-PATH="$(go env GOPATH)/bin:$PATH"
+PATH="$EVE/build-tools/bin:$PATH"
 
 get_git_tag() {
   echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}

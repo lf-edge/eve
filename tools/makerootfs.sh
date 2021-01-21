@@ -7,7 +7,7 @@ set -e
 set -o pipefail
 
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
-PATH="$(go env GOPATH)/bin:$PATH"
+PATH="$EVE/build-tools/bin:$PATH"
 MKROOTFS_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkrootfs-${3:-squash}")"
 YMLFILE="$1"
 IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
