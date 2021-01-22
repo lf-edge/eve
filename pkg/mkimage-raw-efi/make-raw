@@ -50,6 +50,10 @@ PARTS=${*:-"efi imga imgb conf persist"}
 # grub-core/commands/gptprio.c code will pay attention to
 PARTITION_TYPE_USR_X86_64=5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6
 
+# For board specific changes
+BOARD=""
+NEED_TO_ADJUST_THE_PROTECTIVE_MBR="true"
+
 # EFI partition size in bytes 
 EFI_PART_SIZE=$((36 * 1024 * 1024))
 # rootfs partition size in bytes
@@ -118,6 +122,25 @@ mkefifs() {
   cp -Lr "$EFI_DIR" /efifs/EFI
 }
 
+setup_efifs_tegra() {
+  root_dev="hd$1,gpt$2"
+  dtb_name=$3
+  # make dir /efifs with efi grub
+  mkdir -p /tmp/
+  touch /tmp/grub.cfg
+  # In the U-Boot UEFI implementation, the dtb for the kernel is automatically taken from u-boot, but the u-boot dtb and the kernel dtb are different,
+  # we need to set the correct kernel dtb for each nvidia device.
+  (echo "set root=${root_dev}"; echo "devicetree (${root_dev})/boot/dtb/nvidia/${dtb_name}"; echo "configfile (${root_dev})/EFI/BOOT/grub.cfg") > /tmp/grub.cfg
+  cp /tmp/grub.cfg /efifs/EFI/BOOT/grub.cfg
+}
+
+add_board_specific_efifs_changes() {
+  if [ "$BOARD" = "jetson-nano-b" ]; then
+    # IMGA part number is 15
+    setup_efifs_tegra 0 15 tegra210-p3450-0000.dtb
+  fi
+}
+
 do_system_vfat_part() {
   eval "local SEC_START=\$$1"
   local SEC_END="$(grow_part "$SEC_START" "$2")"
@@ -136,6 +159,7 @@ do_system_vfat_part() {
 do_efi() {
   mkefifs
   sed -e 's#@PATH_TO_GRUB@#'"$(cd /efifs; echo EFI/BOOT/BOOT*EFI)"'#' < /grub.cfg.in > /efifs/EFI/BOOT/grub.cfg
+  add_board_specific_efifs_changes
   do_system_vfat_part "$1" "$EFI_PART_SIZE"
 }
 
@@ -262,6 +286,20 @@ do_usb_conf() {
     eval "$1=$(( SEC_END + 1))"
 }
 
+do_jetson_nano_b_blob() {
+  BOARD="jetson-nano-b"
+  # adjust_protective_mbr breaks the first part of the jetson boot
+  NEED_TO_ADJUST_THE_PROTECTIVE_MBR="false"
+  JETSON_NANO_BLOB=/parts/boot/jetson-nano-b.blob
+  gunzip "$JETSON_NANO_BLOB.gz"
+  dd if="$JETSON_NANO_BLOB" of="$IMGFILE" conv=notrunc
+  rm "$JETSON_NANO_BLOB"
+  #replace backup header to end of the disk image.
+  sgdisk --move-second-header "$IMGFILE"
+  PART_OFFSET=13
+  eval "$1=$(cat /parts/boot/jetson-nano-b.blob.nextsec)"
+}
+
 # This function deploys GRUB stage1 into MBR (sector 0) and GRUB stage2 into the gap betwee
 # where GPT ends and first partition begins (sector 34 - sector FIRST_PART_SEC). It relies
 # on the knowlege of where GRUB implemenation stores the value for the 1st and 2nd sectors
@@ -378,7 +416,7 @@ if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IM
      fi
   fi
   umount /mnt || :
-else
+elif [ "$NEED_TO_ADJUST_THE_PROTECTIVE_MBR" = "true" ]; then
   # ...if we're NOT adding ourselves to an existing GPT - assume we own protective MBR
   # as well and can adjust it accordingly to maximize our chances of booting on something
   # like Raspbery Pi (which is pretty strict about how the first entry in the MBR partition
