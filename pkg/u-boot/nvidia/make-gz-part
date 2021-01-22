@@ -1,0 +1,16 @@
+#!/bin/bash
+IMGFILE=$1
+
+function grow_part() {
+  echo $(( $1 + 2 * $(( ( ( ($2 + 1024-1) / 1024 ) + 1024-1) / 1024 * 1024)) - 1))
+}
+
+function make_gz() {
+    ENDPART=$(eval "grow_part $(sfdisk --bytes -l "${IMGFILE}" | awk "/${IMGFILE}[0-9^]/" | tail -n 1 | awk '{ print $2 " " $5 }')")
+    echo $((ENDPART + 1)) > jetson-nano-b.blob.nextsec
+    # dd if="$IMGFILE" of=jetson-nano-b.blob bs=512 count=$(( ENDPART + 1 ))
+    mv "$IMGFILE" jetson-nano-b.blob
+    gzip jetson-nano-b.blob
+}
+
+make_gz

@@ -1,0 +1,154 @@
+#!/bin/bash
+#########################################################
+#                                                       #
+#                      ARGUMENTS                        #
+#                                                       #
+#########################################################
+IMGFILE=$1 # output image                               #
+BOARD=$2 # board name                                   #
+PARTS_DIR=${3:-"parts"}                                 #
+####################### by board ########################
+PARTS_PRESTED_DIR=$PARTS_DIR/preseted                   #
+PARTS_BOARD_DIR=                                        #
+PARTS_PRESTED_PLATFORM_DIR=                             #
+PARTS_PRESETED_FILE=                                    #
+PARTITIONS_LAYOUT_TYPE=                                 #
+####################### SHARED ##########################
+PARTITIONS_INFO= # array of partititions                #
+PARTITIONS_INFO_STR= # string of partititions           #
+#########################################################
+#                                                       #
+#                        OTHER                          #
+#                                                       #
+#########################################################
+SCRIPT_NAME="$(basename "${0}")"                        #
+BLOCK_SIZE=512                                          #
+IMGFILE_SIZE=                                           #
+#########################################################
+
+function cleanup() {
+  set +e
+  rm -rf "$PARTS_BOARD_DIR"
+}
+trap cleanup EXIT
+
+function add_to_partitions_str() {
+  part_info_str=$1
+  if [ "$PARTITIONS_INFO_STR" == "" ]; then
+    PARTITIONS_INFO_STR="$part_info_str"
+  else
+    PARTITIONS_INFO_STR=$(echo "$PARTITIONS_INFO_STR" && echo "$part_info_str")
+  fi
+}
+
+function partitions_str_to_array() {
+  PARTITIONS_INFO=()
+  while IFS=$'\n' read -r line; do PARTITIONS_INFO+=("$line"); done < <(echo "$PARTITIONS_INFO_STR")
+}
+
+function setup_board_info() {
+  if [ "$BOARD" == "jetson-nano-b" ]; then
+    PARTS_PRESTED_PLATFORM_DIR=$PARTS_PRESTED_DIR/tegra
+    PARTS_BOARD_DIR=$PARTS_PRESTED_PLATFORM_DIR/$BOARD
+    PARTS_PRESETED_FILE=$PARTS_PRESTED_PLATFORM_DIR/$BOARD/partitions.txt
+    PARTITIONS_LAYOUT_TYPE=GPT
+  fi
+}
+
+function load_preseted_parts_info() {
+  if [ -e "${PARTS_PRESETED_FILE}" ]; then
+    PARTITIONS_INFO_STR=$(cat "$PARTS_PRESETED_FILE")
+    partitions_str_to_array
+  fi
+}
+
+function create_gpt_raw_image()
+{
+  # Calculate raw image size by accumulating partition size with 1MB (2048-sector * 512) round up and plus 2MB for GPTs
+  IMGFILE_SIZE=$(echo "$PARTITIONS_INFO_STR" | awk -F'[=;]' '{sum += (int($6 / (2048 * 512)) + 1)} END {printf "%d\n", sum + 2}')
+  if [ -n "$IMAGE_SIZE_MB" ]; then
+    if [ "$IMAGE_SIZE_MB" -lt "$IMGFILE_SIZE" ]; then
+      echo "WARNING: ignore set image size, is too small"
+    else
+      IMGFILE_SIZE=$IMAGE_SIZE_MB
+    fi
+  fi
+  echo "${SCRIPT_NAME} - creating ${IMGFILE} of ${IMGFILE_SIZE}M..."
+  dd if=/dev/zero of="${IMGFILE}" bs=1 count=0 seek="${IMGFILE_SIZE}M"
+}
+
+function write_partitions_table()
+{
+  sgdisk -og "${IMGFILE}"
+  for part in "${PARTITIONS_INFO[@]}"; do
+    eval "${part}"
+
+    if [ "$part_type" == "" ]; then
+      part_type=8300 # Linux Filesystem
+    fi
+
+    part_size=$((part_size / BLOCK_SIZE)) # convert size to sectors
+    #shellcheck disable=SC2154
+    sgdisk -n "${part_num}":0:+"${part_size}" -c "${part_num}":"${part_name}" -t "${part_num}":"${part_type}" "${IMGFILE}"
+  done
+}
+
+function load_starts_of_partitions() {
+  parts_starts=()
+  while IFS=$'\n' read -r line; do parts_starts+=("$line"); done \
+  < <(sfdisk -d "${IMGFILE}" | grep -i start | cut -f1 -d, | sed -e "s#${IMGFILE}#part_num=#g" -e 's/ //g' -e 's/:/;/g' -e 's/start/part_start/g')
+  for part in "${parts_starts[@]}"; do
+    eval "${part}"
+    PARTITIONS_INFO_STR=${PARTITIONS_INFO_STR//"part_num=${part_num};"/"part_num=${part_num};part_start=${part_start};"}
+  done
+  partitions_str_to_array
+}
+
+function write_partitions()
+{
+  echo "${SCRIPT_NAME}: write partitions"
+  for part in "${PARTITIONS_INFO[@]}"; do
+    eval "$part"
+
+    target_file=""
+    # we search part files by fullpath, then in board dir,
+    # then in platform dir and in root parts dir. if lile founded - we write it, if no - skip.
+    #shellcheck disable=SC2154
+    if [ -e "${part_file}" ]; then
+        target_file="${part_file}"
+    elif [ -e "${PARTS_BOARD_DIR}/${part_file}" ]; then
+      target_file="${PARTS_BOARD_DIR}/${part_file}"
+    elif [ -e "${PARTS_PRESTED_PLATFORM_DIR}/${part_file}" ]; then
+      target_file="${PARTS_PRESTED_PLATFORM_DIR}/${part_file}"
+    elif [ -e "${PARTS_DIR}/${part_file}" ]; then
+      target_file="${PARTS_DIR}/${part_file}"
+    fi;
+
+    if [ "${target_file}" != "" ] && [ "${part_file}" != "" ]; then
+      dd if="${target_file}" of="$IMGFILE" bs=512 conv=notrunc seek="$part_start"
+    elif [ "${part_file}" != "" ]; then
+      echo "WARNING: file ${part_file} not found, entry will be skipped!"
+    fi
+    # We need get next part start sector for return to make-raw script
+  done
+}
+
+# Setup board and platform directories
+setup_board_info
+# Load preseted partitions, if exist.
+load_preseted_parts_info
+
+if [ "$PARTITIONS_LAYOUT_TYPE" == "GPT" ]; then
+  # Create image with guid partitions table
+  create_gpt_raw_image
+else
+  echo "ERROR: Partition layout type $PARTITIONS_LAYOUT_TYPE is not supported"
+  exit 1
+fi
+
+write_partitions_table
+# Reading the starting sectors of the parts from the partition table
+load_starts_of_partitions
+write_partitions
+
+sgdisk -v "$IMGFILE"
