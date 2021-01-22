@@ -520,7 +520,7 @@ shell: $(GOBUILDER)
 
 # build linuxkit for the host OS, not the container OS
 $(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
-$(LINUXKIT): $(GOBUILDER)
+$(LINUXKIT): | $(GOBUILDER)
 	@$(DOCKER_GO) \
 	"unset GOFLAGS; rm -rf /tmp/linuxkit && \
 	git clone $(LINUXKIT_SOURCE) /tmp/linuxkit && \
