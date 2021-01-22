@@ -48,7 +48,7 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run lfedge/eve [-f fmt] version|rootfs|live|installer_raw|installer_iso|installer_net
+Usage: docker run lfedge/eve [-f fmt] [-t target] version|rootfs|live|installer_raw|installer_iso|installer_net
 
 The artifact will be produced on stdout, so don't forget to redirect it to a file.
 
@@ -58,6 +58,7 @@ Optionally you can pass the following right before run in docker run:
 Passing -v <local folder>:/out makes sure the file created is given most appropriate name.
 
 -f fmt selects a packaging format: raw (default), qcow2, parallels, vdi and gcp are all valid options.
+-t target select a specific target for eve build: jetson-nano-b is a valid option. This flag is optional.
 
 live and installer_raw support an optional last argument specifying the size of the image in Mb.
 __EOT__
@@ -82,6 +83,10 @@ do_version() {
 do_live() {
   PART_SPEC="efi conf imga"
   [ -d /bits/boot ] && PART_SPEC="boot conf imga"
+  # For nvidia jetson nano model b we need add specific parts in image
+  if [ "$TARGET" = "jetson-nano-b" ]; then
+    PART_SPEC="jetson_nano_b_blob efi conf imga"
+  fi
   # each live image is expected to have a soft serial number that
   # typically gets provisioned by an installer -- since we're
   # shortcutting the installer step here we need to generate it
@@ -138,6 +143,15 @@ while true; do
           fi
           shift
           [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && [ "$FMT" != "parallels" ] && [ "$FMT" != "vdi" ] && bail "Unknown format: $FMT"
+          ;;
+     -t*) #shellcheck disable=SC2039
+          TARGET="${1/-t/}"
+          if [ -z "$TARGET" ]; then
+             TARGET="$2"
+             shift
+          fi
+          shift
+          [ "$TARGET" != "jetson-nano-b" ] && bail "Unknown target: $TARGET"
           ;;
        *) break
           ;;
