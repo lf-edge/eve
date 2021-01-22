@@ -2149,7 +2149,6 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
-	HasEncap bool // Vpn, for adjusting pMTU
 	// For other network services - Proxy / StrongSwan etc..
 	OpaqueConfig string
 }
