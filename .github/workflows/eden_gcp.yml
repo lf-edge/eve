@@ -1,8 +1,11 @@
 ---
 name: EdenGCP
 on:  # yamllint disable-line rule:truthy
-  push:
-    branches: [master]
+  workflow_run:
+    workflows: ["publish"]
+    branches: [main]
+    types: 
+      - completed
 # yamllint disable rule:line-length
 jobs:
   integration:
@@ -12,10 +15,6 @@ jobs:
       matrix:
         hv: ["kvm", "xen"]
     steps:
-      - name: get eve
-        uses: actions/checkout@v2
-        with:
-          path: 'eve'
       - name: get eden
         uses: actions/checkout@v2
         with:
@@ -29,13 +28,23 @@ jobs:
              docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}"
              docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}-amd64"
           else
-             make -C eve pkgs
-             make -C eve ROOTFS_VERSION="$TAG" HV=${{ matrix.hv }} eve
+            echo "No tag $CACHE:$TAG-${{ matrix.hv }} found"
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
       - name: Public IP
         id: ip
-        uses: haythem/public-ip@v1.2
+        uses: actions/http-client
+        result-encoding: string
+        script: |
+          const maxRetries = parseInt(core.getInput('maxRetries'), 10);
+          const http = new HttpClient('haythem/public-ip', undefined, { allowRetries: true, maxRetries: maxRetries });
+          try {
+            const ipv4 = await http.getJson<IPResponse>('https://api.ipify.org?format=json');
+          } catch (error) {
+            echo ("Didn't get anything") 
+            echo(error.message)
+          }
+          return ipv4
       - name: setup packages
         run: |
           sudo apt update
@@ -49,10 +58,10 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
-      - name: set firewall & clean
+      - name: clean
         run: |
-          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "not exists"
-          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q || echo "not exists"
+          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
+          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q || echo "Does not exist"
       - name: Connect VPN
         id: connect_vpn
         timeout-minutes: 1
