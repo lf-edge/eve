@@ -81,7 +81,6 @@ do_version() {
 
 do_live() {
   PART_SPEC="efi conf imga"
-  [ -d /bits/boot ] && PART_SPEC="boot conf imga"
   # each live image is expected to have a soft serial number that
   # typically gets provisioned by an installer -- since we're
   # shortcutting the installer step here we need to generate it

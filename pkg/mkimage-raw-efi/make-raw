@@ -60,8 +60,6 @@ CONF_PART_SIZE=$((1024 * 1024))
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
 # installer system parition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
-# boot partition size
-BOOT_PART_SIZE=$(( 20 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
 FIRST_PART_SEC=2048
 
@@ -136,14 +134,8 @@ do_system_vfat_part() {
 do_efi() {
   mkefifs
   sed -e 's#@PATH_TO_GRUB@#'"$(cd /efifs; echo EFI/BOOT/BOOT*EFI)"'#' < /grub.cfg.in > /efifs/EFI/BOOT/grub.cfg
+  [ -d /parts/boot ] && cp -r /parts/boot/* /efifs/
   do_system_vfat_part "$1" "$EFI_PART_SIZE"
-}
-
-do_boot() {
-  mkefifs
-  cp /trampoline.grub.cfg /efifs/EFI/BOOT/grub.cfg
-  cp -r /parts/boot/* /efifs/
-  do_system_vfat_part "$1" "$BOOT_PART_SIZE"
 }
 
 do_installer() {
