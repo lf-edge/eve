@@ -114,13 +114,18 @@ jobs:
             })).data
 
             // remove all assets (since we will be uploading new ones)
+            // note that we only consider assets coming from the same
+            // architecture we're running on -- this is because GH
+            // release assets can only be flat (no folders allowed)
             if (Array.isArray(assets) && assets.length > 0) {
               for (const asset of assets) {
-                await github.repos.deleteReleaseAsset({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  asset_id: asset.id,
-                })
+                if (asset.name.startsWith('${{ env.ARCH }}')) {
+                  await github.repos.deleteReleaseAsset({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    asset_id: asset.id,
+                  })
+                }
               }
             }
 
