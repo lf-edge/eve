@@ -421,6 +421,9 @@ $(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 
+$(LIVE).jetson-nano-b: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
+	./tools/makeflash.sh -C 370 $| $@ "jetson_nano_b_blob efi conf imga"
+
 $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 
