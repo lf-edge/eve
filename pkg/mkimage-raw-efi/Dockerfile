@@ -38,7 +38,7 @@ RUN apk add --no-cache --initdb -p /out \
   coreutils=8.30-r0         \
   tar=1.32-r0
 
-COPY make-raw install trampoline.grub.cfg grub.cfg.in UsbInvocationScript.txt /out/
+COPY make-raw install grub.cfg.in UsbInvocationScript.txt /out/
 
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
 
