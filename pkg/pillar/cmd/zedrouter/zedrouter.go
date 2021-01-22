@@ -10,6 +10,7 @@
 package zedrouter
 
 import (
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -901,9 +902,8 @@ func appNetworkDoActivateUnderlayNetwork(
 	if ulConfig.AppMacAddr != nil {
 		appMac = ulConfig.AppMacAddr.String()
 	} else {
-		// Room to handle multiple underlays in 5th byte
-		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
-			ulNum, status.AppNum)
+		appMac = generateAppMac(status.UUIDandVersion.UUID,
+			ulNum, status.AppNum, netInstStatus)
 	}
 	log.Functionf("appMac %s\n", appMac)
 
@@ -997,6 +997,33 @@ func appNetworkDoActivateUnderlayNetwork(
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+// generateAppMac picks a fixed address for Local and Cloud and uses a fixed
+// hash for Switch which still produces a stable MAC address
+// for a given app instance
+func generateAppMac(appUUID uuid.UUID, ulNum int, appNum int, netInstStatus *types.NetworkInstanceStatus) string {
+	var appMac string
+
+	switch netInstStatus.Type {
+	case types.NetworkInstanceTypeSwitch:
+		h := sha256.New()
+		h.Write(appUUID[:])
+		h.Write(netInstStatus.UUIDandVersion.UUID[:])
+		nums := make([]byte, 2)
+		nums[0] = byte(ulNum)
+		nums[1] = byte(appNum)
+		h.Write(nums)
+		hash := h.Sum(nil)
+		appMac = fmt.Sprintf("02:16:3e:%02x:%02x:%02x",
+			hash[0], hash[1], hash[2])
+
+	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
+		// Room to handle multiple underlays in 5th byte
+		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
+			ulNum, appNum)
+	}
+	return appMac
 }
 
 func appNetworkDoCopyNetworksToStatus(
