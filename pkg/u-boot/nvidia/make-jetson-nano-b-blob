@@ -1,0 +1,4 @@
+#!/bin/bash
+./make-parts jetson-nano-b
+./make-image jetson-nano-b.img jetson-nano-b
+./make-gz-part jetson-nano-b.img
