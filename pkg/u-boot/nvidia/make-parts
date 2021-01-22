@@ -1,0 +1,55 @@
+#!/bin/bash
+#########################################################
+SCRIPT_HOME="$PWD"
+#########################################################
+#                      ARGUMENTS
+#########################################################
+BOARD=$1 # board name
+FULLPATH_PARTS_DIR=${2:-"$SCRIPT_HOME/parts"}
+#########################################################
+PARTS_OUT=$FULLPATH_PARTS_DIR/preseted
+####################### TEGRA BSP #######################
+NVIDIA_BSP_DIR=$SCRIPT_HOME/BSP
+NVIDIA_BSP_T210_LINK=https://developer.download.nvidia.com/embedded/L4T/r32_Release_v4.4/r32_Release_v4.4-GMC3/T210/Tegra210_Linux_R32.4.4_aarch64.tbz2
+NVIDIA_BSP_T210_DIR="$NVIDIA_BSP_DIR/210"
+NVIDIA_BSP_T210_PACKAGE=$NVIDIA_BSP_T210_DIR/Tegra210_Linux_R32.4.4_aarch64.tbz2
+NVIDIA_BSP_T210_L4T_DIR=$NVIDIA_BSP_T210_DIR/Linux_for_Tegra
+##################### TEGRA BSP END #####################
+
+function cleanup() {
+  set +e
+  rm -rf "$NVIDIA_BSP_T210_PACKAGE" "$NVIDIA_BSP_T210_L4T_DIR"
+}
+trap cleanup EXIT
+
+function prepare_tegra_t210_bsp() {
+  mkdir -p "$NVIDIA_BSP_T210_DIR"
+  wget "$NVIDIA_BSP_T210_LINK" -O "$NVIDIA_BSP_T210_PACKAGE"
+  tar xpf "$NVIDIA_BSP_T210_PACKAGE" -C "$NVIDIA_BSP_T210_DIR"
+}
+
+function apply_bsp_t210_patches() {
+  cd "$NVIDIA_BSP_T210_L4T_DIR" || return
+  for patch in "$NVIDIA_BSP_T210_DIR"/patches/*.patch; do
+    echo "Applying $patch"
+    patch -p1 < "$patch"
+  done
+  cd "$SCRIPT_HOME" || return
+}
+
+function make_parts() {
+  if [ "$BOARD" == "jetson-nano-b" ]; then
+    # replace nvidia jetson-nano-b u-boot.bin binary to new version.
+    cp "$NVIDIA_BSP_T210_DIR/$BOARD/u-boot.bin" "$NVIDIA_BSP_T210_L4T_DIR/bootloader/t210ref/p3450-porg/u-boot.bin"
+    cd "$NVIDIA_BSP_T210_L4T_DIR" || return
+    BOARDID=3448 BOARDSKU='' FAB=300 ./flash.sh --no-flash --no-systemimg --sign jetson-nano-qspi-sd mmcblk0p1
+    tools/nvptparser.py bootloader/signed/flash.xml sdcard > bootloader/signed/partitions.txt
+    mkdir -p "$PARTS_OUT"/tegra/jetson-nano-b/
+    cp bootloader/signed/* bootloader/eks.img bootloader/bmp.blob bootloader/rp4.blob "$PARTS_OUT"/tegra/jetson-nano-b/
+    cd "$SCRIPT_HOME" || return
+  fi
+}
+
+prepare_tegra_t210_bsp
+apply_bsp_t210_patches
+make_parts

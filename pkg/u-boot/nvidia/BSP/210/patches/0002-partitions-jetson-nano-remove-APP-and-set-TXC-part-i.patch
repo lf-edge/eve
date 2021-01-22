@@ -1,0 +1,49 @@
+From 75eeffd155b33fa61b86cfd663fc006cf25d5eb2 Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Tue, 19 Jan 2021 08:18:15 +0300
+Subject: [PATCH] partitions: jetson-nano: remove APP and set TXC part id to 1
+ from 2.
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ .../t210ref/cfg/flash_l4t_t210_spi_sd_p3448.xml | 17 +----------------
+ 1 file changed, 1 insertion(+), 16 deletions(-)
+
+diff --git a/bootloader/t210ref/cfg/flash_l4t_t210_spi_sd_p3448.xml b/bootloader/t210ref/cfg/flash_l4t_t210_spi_sd_p3448.xml
+index 011e4e3..f87940b 100644
+--- a/bootloader/t210ref/cfg/flash_l4t_t210_spi_sd_p3448.xml
++++ b/bootloader/t210ref/cfg/flash_l4t_t210_spi_sd_p3448.xml
+@@ -100,7 +100,7 @@
+               by standard partition tools such as gdisk and parted. </description>
+         </partition>
+ 
+-        <partition name="TXC" id="2" type="TBCTYPE">
++        <partition name="TXC" id="1" type="TBCTYPE">
+             <allocation_policy> sequential </allocation_policy>
+             <filesystem_type> basic </filesystem_type>
+             <size> 131072 </size>
+@@ -250,21 +250,6 @@
+               a true USB 3.0 compliant host controller. </description>
+         </partition>
+ 
+-        <partition name="APP" id="1" type="data">
+-            <allocation_policy> sequential </allocation_policy>
+-            <filesystem_type> basic </filesystem_type>
+-            <size> APPSIZE </size>
+-            <file_system_attribute> 0 </file_system_attribute>
+-            <allocation_attribute> 0x8 </allocation_attribute>
+-            <percent_reserved> 0 </percent_reserved>
+-            <align_boundary> 4096 </align_boundary>
+-            <unique_guid> APPUUID </unique_guid>
+-            <filename> APPFILE </filename>
+-            <description> **Required.** Contains the rootfs. This partition must be assigned
+-              the "1" for id as it is physically put to the end of the device, so that it
+-              can be accessed as the fixed known special device `/dev/mmcblk0p1`. </description>
+-        </partition>
+-
+         <partition name="GPT" type="GPT">
+             <allocation_policy> sequential </allocation_policy>
+             <filesystem_type> basic </filesystem_type>
+-- 
+2.29.2
+

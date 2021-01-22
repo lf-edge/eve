@@ -1,0 +1,32 @@
+From c0e47fa1c74c405665ed181843d2535c5f343a99 Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Fri, 22 Jan 2021 11:20:57 +0300
+Subject: [PATCH] flash.sh: no root privilege required
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ flash.sh | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/flash.sh b/flash.sh
+index 7bccf05..360e8f4 100755
+--- a/flash.sh
++++ b/flash.sh
+@@ -1013,10 +1013,10 @@ if [ ${bup_blob} -eq 0 ]; then
+ 		USER="$(whoami)"
+ 	fi
+ 	# if the user is not root, there is not point in going forward
+-	if [ "${USER}" != "root" ]; then
+-		echo "flash.sh requires root privilege";
+-		exit 1;
+-	fi
++	# if [ "${USER}" != "root" ]; then
++	# 	echo "flash.sh requires root privilege";
++	# 	exit 1;
++	# fi
+ fi
+ 
+ #
+-- 
+2.29.2
+

@@ -1,0 +1,27 @@
+From 1f982e407ab3e0b85eff600b3dbece32acdd23ae Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Mon, 11 Jan 2021 11:01:05 +0300
+Subject: [PATCH] flash.sh: fix user not setted issue.
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ flash.sh | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/flash.sh b/flash.sh
+index 5c85659..fbc49a4 100755
+--- a/flash.sh
++++ b/flash.sh
+@@ -1009,6 +1009,9 @@ done
+ 
+ # allow payload generation to happen without sudo option
+ if [ ${bup_blob} -eq 0 ]; then
++	if ["$USER" == ""]; then
++		USER="$(whoami)"
++	fi
+ 	# if the user is not root, there is not point in going forward
+ 	if [ "${USER}" != "root" ]; then
+ 		echo "flash.sh requires root privilege";
+-- 
+2.29.2
+
