@@ -288,7 +288,21 @@ adjust_protective_mbr() {
     printf "${BOOT_PART}${PROT_PART}${NULL_PART}${NULL_PART}" | dd of="$IMGFILE" bs=1 seek=446 conv=noerror,sync,notrunc
 }
 
-
+handle_post_efi_gap() {
+    # while theoretically, the first partition can start right after the GPT
+    # table itself, various firmwares and BIOSes can be finiky. On top of that
+    # there are times when post-GPT gap is being used for firmware itself. This
+    # seems to be the case of NVidia Jetson Nano for example. This function
+    # installs whatever bits need to be installed in the post-GTP gap and
+    # reflects where the gap ends in the arguments that is passed to it.
+    local RES="$FIRST_PART_SEC"
+    if [ -f /parts/boot/post.gpt.blob.gz ]; then
+       RES=$(( 34 + $(gzip -d < /parts/boot/post.gpt.blob.gz |\
+               dd of="$1" bs=512 seek=34 conv=notrunc 2>&1 |\
+               sed -ne '/records out/s#+.*$##p') ))
+    fi
+    eval "$2"="$RES"
+}
 
 #
 # Extract partitions from stdin or look them up in /bits
@@ -332,11 +346,13 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
       sgdisk -Z --clear $IMGFILE 2>/dev/null || :
+      handle_post_efi_gap "$IMGFILE" CUR_SEC
       ;;
    *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
       sgdisk -Z --clear $IMGFILE 2>/dev/null || :
+      handle_post_efi_gap "$IMGFILE" CUR_SEC
       ;;
 esac
 
