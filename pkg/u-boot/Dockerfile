@@ -45,8 +45,7 @@ RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi/* /boot ; fi
 
 # add nvidia-jetson-nano-blob
 COPY nvidia /tmp/nvidia
-RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/nvidia/jetson-nano-b.blob.gz /boot ; fi
-RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/nvidia/jetson-nano-b.blob.nextsec /boot ; fi
+RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/nvidia/post.gpt.blob.gz /boot ; fi
 
 FROM scratch
 ENTRYPOINT []
