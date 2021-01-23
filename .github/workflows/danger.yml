@@ -1,56 +1,42 @@
 ---
 name: Publish PR build
 on:
-  pull_request_target:
-    branches:
-      - master
+  workflow_run:
+    workflows:
+      - "PR build"
+    types:
+      - completed
 
 jobs:
   build:
     runs-on: ubuntu-20.04
     steps:
-      - name: Wait
-        run: |
-          sleep 1
-
       - name: Find PR build artifact
         id: find-pr-artifact
         uses: actions/github-script@v3
         with:
           result-encoding: string
           script: |
-            const raw = github.actions.listWorkflowRuns.endpoint.merge({
+            console.log(context)
+            console.log(context.payload.workflow_run.id)
+            artifacts = (await github.actions.listWorkflowRunArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              event: 'pull_request',
-              workflow_id: 'build.yml'
-            })
-            const runs = await github.paginate(raw)
-            for (const run of runs) {
-              if (run.head_sha === '${{ github.event.pull_request.head.sha }}') {
-                for (wait = 0; wait < 180; wait++) {
-                  artifacts = (await github.actions.listWorkflowRunArtifacts({
+              run_id: context.payload.workflow_run.id,
+            })).data
+            if (artifacts.hasOwnProperty('total_count') && artifacts.total_count > 0) {
+              for (const artifact of artifacts.artifacts) {
+                if (artifact.name === 'eve') {
+                  return (await github.actions.downloadArtifact({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    run_id: run.id,
-                  })).data
-                  if (artifacts.hasOwnProperty('total_count') && artifacts.total_count > 0) {
-                    for (const artifact of artifacts.artifacts) {
-                      if (artifact.name === 'eve') {
-                        return (await github.actions.downloadArtifact({
-                          owner: context.repo.owner,
-                          repo: context.repo.repo,
-                          artifact_id: artifact.id,
-                          archive_format: 'zip',
-                        })).url
-                      }
-                    }
-                  } else {
-                    console.log('waiting...')
-                    await new Promise(r => setTimeout(r, 60000))
-                  }  
+                    artifact_id: artifact.id,
+                    archive_format: 'zip',
+                  })).url
                 }
               }
+            } else {
+              throw 'No artifacts to publish'
             }
 
       - name: Publish EVE
