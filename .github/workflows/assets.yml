@@ -40,7 +40,7 @@ jobs:
           result-encoding: string
           script: |
             console.log(context)
-            tag = ${{ env.TAG }}
+            tag = '${{ env.TAG }}'
 
             // first create a release -- it is OK if that fails,
             // since it means the release is already there
