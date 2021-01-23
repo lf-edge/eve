@@ -93,3 +93,21 @@ local build.
 It may be marginally useful to run Yetus on updates to the master itself, but Yetus in its full
 glory will generate too much feedback and the incremental updates are already covered by Yetus
 triggering on pull request submissions.
+
+### ver-update to List Package Versions
+
+Dependabot will not help in EVE packages that use hardwired apk package versions.
+Updating them is a manual process.
+The hard part is finding the out of date versions and knowing what to replace them with.
+That part can be done automatically with the scripts in build-tools/ver-update.
+The main steps are:
+
+```bash
+cd build-tools/ver-update
+make clean
+make
+grep pkg/my-pkg out-alp-ver-diff
+```
+
+It can generate the versions to change using different base OS versions.
+That version is specified by ALP_BASE_OS in Makefile.

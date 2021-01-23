@@ -1,0 +1,41 @@
+#!/bin/bash -epux
+
+DEF_OS=alpine:3.13.0
+BLD_DIR=tmp-build
+
+apk_command="/sbin/apk -v info"
+out_file_pkg_ver="out-alp-file-pkg"
+
+# $1: base OS image
+BASE_OS=${1:-$DEF_OS}
+
+utd_image="up-to-date-${BASE_OS/:*/}"
+
+test -r $out_file_pkg_ver
+
+rm -rf $BLD_DIR
+mkdir $BLD_DIR
+
+# generate Dockerfile with latest versions of all packages
+(
+    echo "FROM $BASE_OS"
+    echo
+    echo "RUN apk update"
+    echo
+    echo "RUN apk add --no-cache --force-broken-world \\"
+    cut -d ' ' -f 2 $out_file_pkg_ver | sort -u | sed 's/$/ \\/'
+    echo "|| echo Ignore missing packages"
+) > $BLD_DIR/Dockerfile
+
+# create image where all apk images are up-to-date
+docker build -t "$utd_image" $BLD_DIR
+
+# use image to dump package versions
+docker run --rm "$utd_image" $apk_command |
+    sed -n "s/^\(.*\)-\([0-9].*\)/\1 \2/p" | sort
+
+# clean up
+docker image rm "$utd_image"
+rm -rf $BLD_DIR
+
+echo "$0: Succeeded" 1>&2
