@@ -88,7 +88,7 @@ jobs:
             return release.upload_url
 
       - name: Upload rootfs for the release
-        id: upload-release-asset
+        id: upload-rootfs-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -98,7 +98,7 @@ jobs:
           asset_name: ${{ env.ARCH }}.rootfs.img
           asset_content_type: application/octet-stream
       - name: Upload kernel for the release
-        id: upload-release-asset
+        id: upload-kernel-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,7 +108,7 @@ jobs:
           asset_name: ${{ env.ARCH }}.kernel
           asset_content_type: application/octet-stream
       - name: Upload initrd.img for the release
-        id: upload-release-asset
+        id: upload-initrd-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -118,7 +118,7 @@ jobs:
           asset_name: ${{ env.ARCH }}.initrd.img
           asset_content_type: application/octet-stream
       - name: Upload initrd.bits for the release
-        id: upload-release-asset
+        id: upload-initrd-bits-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -128,7 +128,7 @@ jobs:
           asset_name: ${{ env.ARCH }}.initrd.bits
           asset_content_type: application/octet-stream
       - name: Upload ipxe.efi.cfg for the release
-        id: upload-release-asset
+        id: upload-ipxe-efi-cfg-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -138,7 +138,7 @@ jobs:
           asset_name: ${{ env.ARCH }}.ipxe.efi.cfg
           asset_content_type: application/octet-stream
       - name: Upload ipxe.efi.ip.cfg for the release
-        id: upload-release-asset
+        id: upload-ipxe-efi-ip-cfg-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
