@@ -35,6 +35,7 @@ jobs:
         run: |
           URL="https://github.com/lf-edge/eve/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
           sed -i. -e "s#^kernel #kernel $URL#" -e "s#^initrd #initrd $URL#" assets/ipxe.efi.cfg
+          sed -i. -e "s#initrd=initrd#initrd=${{ env.ARCH }}.initrd#g" assets/ipxe.efi.cfg
           sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
       - name: Create a GitHub release and clean up artifacts
         id: create-release
