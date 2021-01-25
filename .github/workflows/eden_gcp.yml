@@ -4,7 +4,7 @@ on:  # yamllint disable-line rule:truthy
   workflow_run:
     workflows: ["publish"]
     branches: [main]
-    types: 
+    types:
       - completed
 # yamllint disable rule:line-length
 jobs:
@@ -41,7 +41,7 @@ jobs:
           try {
             const ipv4 = await http.getJson<IPResponse>('https://api.ipify.org?format=json');
           } catch (error) {
-            echo ("Didn't get anything") 
+            echo ("Didn't get anything")
             echo(error.message)
           }
           return ipv4
