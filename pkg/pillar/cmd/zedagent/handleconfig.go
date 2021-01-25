@@ -71,6 +71,9 @@ var zcdevUUID uuid.UUID
 // Really a constant
 var nilUUID uuid.UUID
 
+// current epoch received from controller
+var controllerEpoch int64
+
 func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 
 	// get the server name
@@ -513,7 +516,12 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 				ctx := getconfigCtx.zedagentCtx
 				triggerPublishDevInfo(ctx)
 			}
-
+		}
+		newControllerEpoch := config.GetControllerEpoch()
+		if controllerEpoch != newControllerEpoch {
+			log.Noticef("Controller epoch changed from %d to %d", controllerEpoch, newControllerEpoch)
+			controllerEpoch = newControllerEpoch
+			triggerPublishAllInfo(getconfigCtx.zedagentCtx)
 		}
 	}
 

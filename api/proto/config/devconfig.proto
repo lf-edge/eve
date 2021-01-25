@@ -80,6 +80,10 @@ message EdgeDevConfig {
   // not start applications etc as to enable inspection of its state and
   // recover from bad state.
   bool maintenance_mode = 24;
+  // controller_epoch indicates current epoch of config
+  // if we set new epoch, EVE sends all info messages to controller
+  // it captures when a new controller takes over and needs all the info be resent
+  int64 controller_epoch = 25;
 }
 
 message ConfigRequest {

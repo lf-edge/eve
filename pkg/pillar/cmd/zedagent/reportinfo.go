@@ -60,6 +60,87 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 	}
 }
 
+// objectInfoTask publishes info for objects, identified by key and type coming from the channel
+func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey) {
+	wdName := agentName + "objectinfo"
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
+	ctxPtr.ps.RegisterFileWatchdog(wdName)
+
+	for {
+		select {
+		case infoForKeyMessage := <-triggerInfo:
+			infoType := infoForKeyMessage.infoType
+			log.Functionf("objectInfoTask got message for %s", infoType.String())
+			start := time.Now()
+			var err error
+			var c interface{}
+			switch infoType {
+			case info.ZInfoTypes_ZiDevice:
+				// publish device info
+				PublishDeviceInfoToZedCloud(ctxPtr)
+				ctxPtr.iteration++
+			case info.ZInfoTypes_ZiApp:
+				// publish application info
+				sub := ctxPtr.getconfigCtx.subAppInstanceStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					appStatus := c.(types.AppInstanceStatus)
+					uuidStr := appStatus.Key()
+					PublishAppInfoToZedCloud(ctxPtr, uuidStr, &appStatus, ctxPtr.assignableAdapters,
+						ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
+			case info.ZInfoTypes_ZiNetworkInstance:
+				// publish network instance info
+				sub := ctxPtr.subNetworkInstanceStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					niStatus := c.(types.NetworkInstanceStatus)
+					prepareAndPublishNetworkInstanceInfoMsg(ctxPtr, niStatus, false)
+					ctxPtr.iteration++
+				}
+			case info.ZInfoTypes_ZiVolume:
+				// publish volume info
+				sub := ctxPtr.getconfigCtx.subVolumeStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					volumeStatus := c.(types.VolumeStatus)
+					uuidStr := volumeStatus.VolumeID.String()
+					PublishVolumeToZedCloud(ctxPtr, uuidStr, &volumeStatus, ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
+			case info.ZInfoTypes_ZiContentTree:
+				// publish content tree info
+				sub := ctxPtr.getconfigCtx.subContentTreeStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					ctStatus := c.(types.ContentTreeStatus)
+					uuidStr := ctStatus.Key()
+					PublishContentInfoToZedCloud(ctxPtr, uuidStr, &ctStatus, ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
+			case info.ZInfoTypes_ZiBlobList:
+				// publish blob info
+				sub := ctxPtr.subBlobStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					blobStatus := c.(types.BlobStatus)
+					uuidStr := blobStatus.Key()
+					PublishBlobInfoToZedCloud(ctxPtr, uuidStr, &blobStatus, ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
+			}
+			if err != nil {
+				log.Functionf("objectInfoTask not found %s for key %s: %s",
+					infoType.String(), infoForKeyMessage.objectKey, err)
+			}
+			log.Function("objectInfoTask done with message")
+			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishInfo", start,
+				warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
+	}
+}
+
 // PublishDeviceInfoToZedCloud This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
