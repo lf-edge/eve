@@ -21,6 +21,9 @@ jobs:
         run: |
           echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
+          # FIXME: somehow when both arm64 and amd64 jobs run in parallel GH timesout,
+          # lets see if this helps
+          [ "$ARCH" = arm64 ] && sleep 120
       - name: Pull the release from DockerHUB
         run: |
           EVE=lfedge/eve:${{ env.TAG }}-xen-${{ env.ARCH }}
