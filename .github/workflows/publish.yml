@@ -19,9 +19,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine architecture prefix
+      - name: Determine architecture prefix and ref
+        env:
+          REF: ${{ github.ref }}
         run: |
           echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
+          echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
       - name: Login to DockerHUB
         run: |
           echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
@@ -61,13 +64,17 @@ jobs:
         # since build #1 works, build and push #2
         run: |
           make LINUXKIT_PKG_TARGET=push HV=kvm eve
-          docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-kvm-${{ env.ARCH }}
-          docker push lfedge/eve:snapshot-kvm-${{ env.ARCH }}
+          if [ "${{ env.TAG }}" = snapshot ]; then
+             docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-kvm-${{ env.ARCH }}
+             docker push lfedge/eve:snapshot-kvm-${{ env.ARCH }}
+          fi
       - name: Build and push EVE for Xen
         # redo build #1 with push
         run: |
           rm -rf dist
           mv -f dist.xen dist
           make LINUXKIT_PKG_TARGET=push eve
-          docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-xen-${{ env.ARCH }}
-          docker push lfedge/eve:snapshot-xen-${{ env.ARCH }}
+          if [ "${{ env.TAG }}" = snapshot ]; then
+             docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-xen-${{ env.ARCH }}
+             docker push lfedge/eve:snapshot-xen-${{ env.ARCH }}
+          fi
