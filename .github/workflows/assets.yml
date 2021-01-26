@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Determine architecture prefix and ref
         env:
-          REF: ${{ github.ref }}
+          REF: ${{ github.event.workflow_run.head_branch }}
         run: |
           echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
@@ -102,6 +102,16 @@ jobs:
 
             return release.upload_url
 
+      - name: Upload initrd.bits for the release
+        id: upload-initrd-bits-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/initrd.bits
+          asset_name: ${{ env.ARCH }}.initrd.bits
+          asset_content_type: application/octet-stream
       - name: Upload rootfs for the release
         id: upload-rootfs-asset
         uses: actions/upload-release-asset@v1
@@ -131,16 +141,6 @@ jobs:
           upload_url: ${{ steps.create-release.outputs.result }}
           asset_path: assets/initrd.img
           asset_name: ${{ env.ARCH }}.initrd.img
-          asset_content_type: application/octet-stream
-      - name: Upload initrd.bits for the release
-        id: upload-initrd-bits-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/initrd.bits
-          asset_name: ${{ env.ARCH }}.initrd.bits
           asset_content_type: application/octet-stream
       - name: Upload ipxe.efi.cfg for the release
         id: upload-ipxe-efi-cfg-asset
