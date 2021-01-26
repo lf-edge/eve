@@ -981,7 +981,7 @@ func appNetworkDoActivateUnderlayNetwork(
 			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
-			newIpsets, false, netInstStatus.CurrentUplinkIntf,
+			newIpsets, netInstStatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -1383,7 +1383,7 @@ func doAppNetworkModifyUnderlayNetwork(
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false, netstatus.CurrentUplinkIntf,
+			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -1555,7 +1555,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false, netstatus.CurrentUplinkIntf,
+			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
