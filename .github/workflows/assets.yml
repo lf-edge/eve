@@ -23,7 +23,9 @@ jobs:
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
           # FIXME: somehow when both arm64 and amd64 jobs run in parallel GH timesout,
           # lets see if this helps
-          [ "$ARCH" = arm64 ] && sleep 120
+          if [ "$(uname -m)" = aarch64 ]; then
+             sleep 120
+          fi
       - name: Pull the release from DockerHUB
         run: |
           EVE=lfedge/eve:${{ env.TAG }}-xen-${{ env.ARCH }}
@@ -37,6 +39,15 @@ jobs:
           sed -i. -e "s#^kernel #kernel $URL#" -e "s#^initrd #initrd $URL#" assets/ipxe.efi.cfg
           sed -i. -e "s#initrd=initrd#initrd=${{ env.ARCH }}.initrd#g" assets/ipxe.efi.cfg
           sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
+      - name: Unzip kernel on arm64
+        run: |
+          # FIXME: stock iPXE doesn't support compressed kernels on arm64.
+          # EVE's iPXE does, but we still haven't quite figured out the
+          # hand-off part between the two. Therefore for now unpack the kernel.
+          if [ "${{ env.ARCH }}" = arm64 ]; then
+             mv assets/kernel assets/kernel.gz
+             gzip -d assets/kernel.gz
+          fi
       - name: Create a GitHub release and clean up artifacts
         id: create-release
         uses: actions/github-script@v3
