@@ -454,7 +454,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
-			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+			hostsDirpath, status.BridgeIPSets,
 			status.CurrentUplinkIntf, dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -735,7 +735,7 @@ func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) 
 		status.CurrentUplinkIntf)
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
-		status.Ipv4Eid, status.CurrentUplinkIntf, dnsServers, ntpServers)
+		status.CurrentUplinkIntf, dnsServers, ntpServers)
 	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
 }
@@ -863,9 +863,7 @@ func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
 func getPrefixLenForBridgeIP(
 	status *types.NetworkInstanceStatus) int {
 	var prefixLen int
-	if status.Ipv4Eid {
-		prefixLen = 32
-	} else if status.Subnet.IP != nil {
+	if status.Subnet.IP != nil {
 		prefixLen, _ = status.Subnet.Mask.Size()
 	} else if status.IsIPv6() {
 		prefixLen = 128
@@ -1717,7 +1715,7 @@ func doNetworkInstanceFallback(
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
-				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
 		}
@@ -1771,7 +1769,7 @@ func doNetworkInstanceFallback(
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
-				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
 		}
