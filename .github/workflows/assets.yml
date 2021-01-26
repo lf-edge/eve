@@ -1,3 +1,15 @@
+# This workflow is much more convoluted than it should be (see a simpler
+# version of it in git's history). The reason it is convoluted is that it
+# kept timing out on any of the hosted runners so we're now trying to see
+# if GitHub own runners are any better. Of course, GH only provides x86
+# runners and thus (instead of a nice matrix job of amd64, arm64) we have
+# to "emulated" arm64 side on the amd64 runner.
+#
+# The trick we play is that we keep it as a matrix job still, but we make
+# it use the same GitHub provided x86 ubuntu-20.04 runners. The runner that
+# gets to unpack arm64 artifacts does so with the help of binfmt-support and
+# qemu-user-static
+
 ---
 name: Assets
 on:
@@ -9,23 +21,21 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
-        os: [ARM64, ubuntu-20.04]
+        arch: [amd64, arm64]
     steps:
       - name: Determine architecture prefix and ref
         env:
           REF: ${{ github.event.workflow_run.head_branch }}
         run: |
-          echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
+          # FIXME: I'd rather be a real matrix job with a functional arm64 runner
+          # echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
+          sudo apt install -y binfmt-support qemu-user-static
+          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-          # FIXME: somehow when both arm64 and amd64 jobs run in parallel GH timesout,
-          # lets see if this helps
-          if [ "$(uname -m)" = aarch64 ]; then
-             sleep 120
-          fi
       - name: Pull the release from DockerHUB
         run: |
           EVE=lfedge/eve:${{ env.TAG }}-xen-${{ env.ARCH }}
