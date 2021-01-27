@@ -126,6 +126,8 @@ The following are the output components from the build process and their purpose
     2. config partition with the content of `config.img` described below
     3. root partition from the above `rootfs.img`
 * `live.qcow2` - the final bootable live disk image in [qcow2](https://en.wikipedia.org/wiki/Qcow) format
+* `live.vdi` - the final bootable live disk image in vdi format (used in VirtualBox systems)
+* `live.parallels` - the final bootable live virtual hard disk image in Parallels format
 * `live.img.tar.gz` - the final bootable live disk image in [Google Compute Platform](https://cloud.google.com/compute/docs/import/import-existing-image) format
 * `live.img` - a symlink to one of the above images that was built last
 * `installer.raw` - a bootable image that can install EVE on a local device. The installer is intended to be flashed to a USB or SD device, or booted via PXE, and then run to install on a local drive.
