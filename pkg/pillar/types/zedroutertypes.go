@@ -1540,6 +1540,17 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 	return ""
 }
 
+// GetInterfaceAddrs returns all IP addresses on the phylabelOrIfName except
+// link local
+func GetInterfaceAddrs(globalStatus DeviceNetworkStatus,
+	phylabelOrIfname string) ([]net.IP, error) {
+
+	if phylabelOrIfname == "" {
+		return []net.IP{}, fmt.Errorf("ifname not specified")
+	}
+	return getInterfaceAddr(globalStatus, false, phylabelOrIfname, false)
+}
+
 // Returns addresses based on free, ifname, and whether or not we want
 // IPv6 link-locals. Only applies to management ports unless ifname is set.
 // If free is not set, the addresses from the free management ports are first.
