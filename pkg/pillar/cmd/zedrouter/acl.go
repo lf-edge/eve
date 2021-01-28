@@ -230,13 +230,13 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // For a shared bridge call aclToRules for each ifname, then aclDropRules,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
-func createACLConfiglet(aclArgs types.AppNetworkACLArgs,
+func createACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 	ACLs []types.ACE) (types.IPTablesRuleList, error) {
 
 	log.Functionf("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	rules, err := aclToRules(aclArgs, ACLs)
+	rules, err := aclToRules(ctx, aclArgs, ACLs)
 	if err != nil {
 		return rules, err
 	}
@@ -301,7 +301,7 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
-func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTablesRuleList, error) {
+func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTablesRuleList, error) {
 
 	var rulesList types.IPTablesRuleList
 	log.Tracef("aclToRules(%s, %s, %d, %s, %s, %v\n",
@@ -575,7 +575,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 	}
 
 	for _, ace := range ACLs {
-		rules, err := aceToRules(aclArgs, ace)
+		rules, err := aceToRules(ctx, aclArgs, ace)
 		if err != nil {
 			return nil, err
 		}
@@ -641,7 +641,7 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 	return rulesList, nil
 }
 
-func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesRuleList,
+func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesRuleList,
 	error) {
 	var rulesList types.IPTablesRuleList
 
@@ -841,7 +841,6 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				aclRule1.IsUserConfigured = true
 				rulesList = append(rulesList, aclRule1)
 
-				// XXX Are port map rules only valid for Local network instance?
 				// Create a copy of this rule in mangle table to mark/accept
 				// port mapping connections from outside.
 				if aclRule1.RuleID != -1 {
@@ -861,7 +860,60 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 						" programmed due to ACL ID allocation failure",
 						aclRule1.Table, aclRule1.Chain, aclRule1.Rule, aclRule1.Action)
 				}
+
+				// Add a hairpin DNAT rule; need upLink IP
+				extIPs, err := types.GetInterfaceAddrs(*ctx.deviceNetworkStatus, upLink)
+				if err != nil {
+					log.Errorf("Can't add hairpin rule for %s: %v", upLink, err)
+					continue
+				}
+				// Pick first IPv4 address
+				var extIP net.IP
+				for _, ip := range extIPs {
+					if ip.To4() != nil {
+						extIP = ip
+						break
+					}
+				}
+				if len(extIP) == 0 {
+					log.Errorf("Can't add hairpin rule for %s: no IPv4 address", upLink)
+					continue
+				}
+				var aclRuleH types.IPTablesRule
+				aclRuleH.IPVer = aclArgs.IPVer
+				aclRuleH.Table = "nat"
+				aclRuleH.Chain = "PREROUTING"
+				aclRuleH.RuleID = ace.RuleID
+				aclRuleH.ActionChainName = ""
+				aclRuleH.Rule = []string{"-i", aclArgs.BridgeName, "-p", protocol,
+					"-d", extIP.String(), "--dport", lport}
+				aclRuleH.Action = []string{"-j", "DNAT",
+					"--to-destination", target}
+				aclRuleH.IsPortMapRule = true
+				aclRuleH.IsUserConfigured = true
+				rulesList = append(rulesList, aclRuleH)
+
+				// Create a copy of this rule in mangle table to mark/accept
+				// port mapping connections from other app instances
+				if aclRuleH.RuleID != -1 {
+					aclRuleH.Table = "mangle"
+					aclRuleH.IsMarkingRule = true
+					chainName := fmt.Sprintf("%s-%s-%d",
+						aclArgs.BridgeName, aclArgs.VifName, aclRuleH.RuleID)
+
+					// Embed App id in marking value
+					markingValue := (aclArgs.AppNum << 24) | aclRuleH.RuleID
+					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+					aclRuleH.Action = []string{"-j", chainName}
+					aclRuleH.ActionChainName = chainName
+					rulesList = append(rulesList, aclRuleH)
+				} else {
+					log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+						" programmed due to ACL ID allocation failure",
+						aclRuleH.Table, aclRuleH.Chain, aclRuleH.Rule, aclRuleH.Action)
+				}
 			}
+
 			// add the outgoing port-map translation rule to bridge port
 			aclRule2.Table = "nat"
 			aclRule2.Chain = "POSTROUTING"
@@ -1188,7 +1240,7 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 // apply rules as a block
 // lets just delete the existing ACL iptables rules block
 // and add the new ACL rules, for the appNetwork.
-func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, ACLs []types.ACE,
+func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, ACLs []types.ACE,
 	oldRules types.IPTablesRuleList, force bool) (types.IPTablesRuleList, error) {
 
 	log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
@@ -1208,7 +1260,7 @@ func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, AC
 		return rules, err
 	}
 
-	rulesList, err := createACLConfiglet(aclArgs, ACLs)
+	rulesList, err := createACLConfiglet(ctx, aclArgs, ACLs)
 
 	// Before adding new rules, clear flows if any created matching the old rules
 	var family netlink.InetFamily = syscall.AF_INET

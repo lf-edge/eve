@@ -955,7 +955,7 @@ func appNetworkDoActivateUnderlayNetwork(
 		AppNum: int32(status.AppNum)}
 
 	// Set up ACLs
-	ruleList, err := createACLConfiglet(aclArgs, ulConfig.ACLs)
+	ruleList, err := createACLConfiglet(ctx, aclArgs, ulConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
@@ -1391,7 +1391,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	appID := status.UUIDandVersion.UUID
 	rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
-	ruleList, err := updateACLConfiglet(aclArgs,
+	ruleList, err := updateACLConfiglet(ctx, aclArgs,
 		oldulConfig.ACLs, ulConfig.ACLs, rules.ACLRules, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
