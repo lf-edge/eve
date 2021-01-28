@@ -37,7 +37,8 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 	for _, p := range processes {
 		pi, err := getProcessMetric(p)
 		if err != nil {
-			log.Errorf("getProcessMetric failed: %s", err)
+			// Process might have just exited
+			log.Functionf("getProcessMetric failed: %s", err)
 			continue
 		}
 		if pi.UserProcess {
