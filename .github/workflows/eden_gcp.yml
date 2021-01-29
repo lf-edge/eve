@@ -48,7 +48,7 @@ jobs:
           make build-tests
       - name: setup
         run: |
-           export ipv4=`curl https://api.ipify.org/?format=json | jq ".ip" -r`
+          export ipv4=`curl https://api.ipify.org/?format=json | jq ".ip" -r`
           ./eden config add default --devmodel GCP
           ./eden config set default --key eve.tag --value="lfedge/eve:snapshot"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
