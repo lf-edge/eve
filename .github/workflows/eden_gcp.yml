@@ -65,7 +65,7 @@ jobs:
           TAG: pr${{ github.event.pull_request.number }}
         run: |
           ./eden config add default --devmodel GCP
-          ./eden config set default --key eve.tag --value="$TAG"
+          ./eden config set default --key eve.tag --value="lfedge/eve:snapshot"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
