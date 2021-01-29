@@ -61,8 +61,6 @@ jobs:
           make build
           make build-tests
       - name: setup
-        env:
-          TAG: pr${{ github.event.pull_request.number }}
         run: |
           ./eden config add default --devmodel GCP
           ./eden config set default --key eve.tag --value="lfedge/eve:snapshot"
