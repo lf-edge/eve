@@ -19,18 +19,6 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: 'lf-edge/eden'
-      - name: fetch or build eve
-        env:
-          TAG: pr${{ github.event.pull_request.number }}
-          CACHE: evebuild/danger
-        run: |
-          if docker pull "$CACHE:$TAG-${{ matrix.hv }}"; then
-             docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}"
-             docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}-amd64"
-          else
-            echo "No tag $CACHE:$TAG-${{ matrix.hv }} found"
-          fi
-          echo "TAG=$TAG" >> $GITHUB_ENV
       - name: Public IP
         id: ip
         uses: actions/http-client
@@ -47,7 +35,6 @@ jobs:
           return ipv4
       - name: setup packages
         run: |
-          sudo apt update
           sudo apt install -y qemu-utils openvpn
           echo "$OVPN_FILE" | base64 -d > ./config.ovpn
         env:
@@ -74,6 +61,8 @@ jobs:
           make build
           make build-tests
       - name: setup
+        env:
+          TAG: pr${{ github.event.pull_request.number }}
         run: |
           ./eden config add default --devmodel GCP
           ./eden config set default --key eve.tag --value="$TAG"
