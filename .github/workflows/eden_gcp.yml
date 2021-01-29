@@ -21,7 +21,7 @@ jobs:
           repository: 'lf-edge/eden'
       - name: Public IP
         id: ip
-        uses: actions/http-client
+        uses: actions/http-client@edadda14b09058389cd47f9790e19b97883624c1
         with:
           result-encoding: string
           script: |
