@@ -23,8 +23,8 @@ jobs:
       - name: build eden
         run: |
           make clean
-          make build
-          make build-tests
+          make V=1 build
+          make V=1 build-tests
       - name: get eve
         uses: actions/checkout@v2
         with:
@@ -38,8 +38,8 @@ jobs:
              docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
              docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
           else
-             make -C eve pkgs
-             make -C eve ROOTFS_VERSION="$TAG" HV=kvm eve
+             make -C eve V=1 pkgs
+             make -C eve V=1 ROOTFS_VERSION="$TAG" HV=kvm eve
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
       - name: run

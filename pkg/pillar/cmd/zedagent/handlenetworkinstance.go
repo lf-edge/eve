@@ -116,7 +116,6 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			vi.AppID = v.AppID.String()
 			info.Vifs = append(info.Vifs, vi)
 		}
-		info.Ipv4Eid = status.Ipv4Eid
 		for _, ifname := range status.IfNameList {
 			ia := ctx.assignableAdapters.LookupIoBundleIfName(ifname)
 			if ia == nil {

@@ -106,7 +106,7 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 func createDnsmasqConfiglet(
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
-	ipsets []string, Ipv4Eid bool, uplink string,
+	ipsets []string, uplink string,
 	dnsServers []net.IP, ntpServers []net.IP) {
 
 	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v ntpServers %v",
@@ -198,8 +198,6 @@ func createDnsmasqConfiglet(
 	if netconf.Logicallabel == "" {
 		log.Functionf("Internal switch without external port case, dnsmasq suppress router advertize\n")
 		advertizeRouter = false
-	} else if Ipv4Eid {
-		advertizeRouter = false
 	} else if netconf.Gateway != nil {
 		if netconf.Gateway.IsUnspecified() {
 			advertizeRouter = false
@@ -221,9 +219,6 @@ func createDnsmasqConfiglet(
 		}
 	}
 	advertizeDns := false
-	if Ipv4Eid {
-		advertizeDns = true
-	}
 	for _, ns := range netconf.DnsServers {
 		advertizeDns = true
 		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
