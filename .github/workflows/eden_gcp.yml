@@ -21,6 +21,7 @@ jobs:
           repository: 'lf-edge/eden'
       - name: setup packages
         run: |
+          sudo apt update
           sudo apt install -y qemu-utils openvpn curl jq
           echo "$OVPN_FILE" | base64 -d > ./config.ovpn
         env:
