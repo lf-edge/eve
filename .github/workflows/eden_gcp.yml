@@ -51,7 +51,7 @@ jobs:
         run: |
           export ipv4=`curl https://api.ipify.org/?format=json | jq ".ip" -r`
           ./eden config add default --devmodel GCP
-          ./eden config set default --key eve.tag --value="lfedge/eve:snapshot"
+          ./eden config set default --key eve.tag --value="snapshot"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
