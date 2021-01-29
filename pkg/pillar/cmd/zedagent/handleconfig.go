@@ -62,7 +62,7 @@ type getconfigContext struct {
 	rebootFlag               bool
 }
 
-// devUUID is set in handleConfigInit and never changed
+// devUUID is set in Run and never changed
 var devUUID uuid.UUID
 
 // XXX need to support recreating devices. Remove when zedcloud preserves state
@@ -102,17 +102,6 @@ func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 		log.Fatal(err)
 	}
 
-	b, err := ioutil.ReadFile(types.UUIDFileName)
-	if err != nil {
-		// XXX this can fail if agents have crashed
-		log.Fatal("ReadFile", err, types.UUIDFileName)
-	}
-	uuidStr := strings.TrimSpace(string(b))
-	devUUID, err = uuid.FromString(uuidStr)
-	if err != nil {
-		log.Fatal("uuid.FromString", err, string(b))
-	}
-	log.Functionf("Read UUID %s", devUUID)
 	zedcloudCtx.DevUUID = devUUID
 	zcdevUUID = devUUID
 	return &zedcloudCtx

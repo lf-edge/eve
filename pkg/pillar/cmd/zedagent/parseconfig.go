@@ -28,7 +28,7 @@ import (
 const (
 	MaxBaseOsCount       = 2
 	BaseOsImageCount     = 1
-	rebootConfigFilename = types.IdentityDirname + "/rebootConfig"
+	rebootConfigFilename = types.PersistStatusDir + "/rebootConfig"
 )
 
 // Returns a rebootFlag

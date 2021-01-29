@@ -45,7 +45,7 @@ const (
 	configDir                   = "/config"
 	tmpDirname                  = "/run/global"
 	firstbootFile               = tmpDirname + "/first-boot"
-	restartCounterFile          = configDir + "/restartcounter"
+	restartCounterFile          = types.PersistStatusDir + "/restartcounter"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -279,7 +279,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDomainStatus.Activate()
 
 	// Wait until we have been onboarded aka know our own UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	if _, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("Device is onboarded")

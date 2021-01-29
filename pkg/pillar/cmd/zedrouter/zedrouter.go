@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -93,6 +94,7 @@ var debug = false
 var debugOverride bool // From command line arg
 var logger *logrus.Logger
 var log *base.LogObject
+var devUUID uuid.UUID
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
@@ -302,6 +304,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Functionf("processed GlobalConfig")
+
+	// Wait until we have been onboarded aka know our own UUID
+	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("processed onboarded")
+	devUUID = onboard.DeviceUUID
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)

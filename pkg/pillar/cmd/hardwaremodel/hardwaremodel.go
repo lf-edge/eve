@@ -69,7 +69,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	versionPtr := flag.Bool("v", false, "Version")
 	cPtr := flag.Bool("c", false, "No CRLF")
 	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
-	outputFilePtr := flag.String("o", "/config/hardwaremodel", "file or device for output")
+	outputFilePtr := flag.String("o", "/dev/tty", "file or device for output")
 	flag.Parse()
 	outputFile := *outputFilePtr
 	if *debugPtr {

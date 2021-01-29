@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"io/ioutil"
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
@@ -102,7 +101,7 @@ type dnsSys struct {
 var loopcount int // XXX debug
 
 var dnssys [maxBridgeNumber]dnsSys // per bridge DNS records for the collection period
-var devUUID, nilUUID uuid.UUID
+var nilUUID uuid.UUID
 var broadcastMAC = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 // FlowStatsCollect : Timer fired to collect iptable flow stats
@@ -123,20 +122,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 		return
 	}
 	instData.intfAddrs = IntfAddrs
-
-	if devUUID == nilUUID {
-		b, err := ioutil.ReadFile(types.UUIDFileName)
-		if err != nil {
-			log.Errorf("error in reading uuid: %s", err)
-			return
-		}
-		uuidStr := strings.TrimSpace(string(b))
-		devUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Errorf("error in parsing uuid %s: %s", uuidStr, err)
-			return
-		}
-	}
 
 	checkAppAndACL(ctx, &instData)
 

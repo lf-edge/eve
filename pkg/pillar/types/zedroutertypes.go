@@ -2787,7 +2787,8 @@ func (vifIP VifIPTrig) LogKey() string {
 
 // OnboardingStatus - UUID, etc. advertised by client process
 type OnboardingStatus struct {
-	DeviceUUID uuid.UUID
+	DeviceUUID    uuid.UUID
+	HardwareModel string // From controller
 }
 
 // Key returns the key for pubsub
