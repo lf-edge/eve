@@ -54,9 +54,8 @@ message EdgeDevConfig {
 
   repeated NetworkInstanceConfig networkInstances = 16;
 
-  // Information saved by device to make it easier to find in the controller
-  string enterprise = 17;
-  string name = 18;
+  // deprecated 17;
+  // deprecated 18;
 
   // controller supplies a list of cipher contexts,
   // containing certificate and other details, to be
