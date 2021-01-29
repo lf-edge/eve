@@ -1780,6 +1780,15 @@ type UnderlayNetworkStatus struct {
 	Assigned        bool   // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch  bool
 	HostName        string
+	ACLDependList   []ACLDepend
+}
+
+// ACLDepend is used to track an external interface/port and optional IP addresses
+// on that interface which are encoded in the rules. Does not include the vif(s)
+// for the AppNetworkStatus itself.
+type ACLDepend struct {
+	Ifname string
+	IPAddr net.IP
 }
 
 // ULNetworkACLs - Underlay Network ACLRules
