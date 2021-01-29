@@ -22,17 +22,18 @@ jobs:
       - name: Public IP
         id: ip
         uses: actions/http-client
-        result-encoding: string
-        script: |
-          const maxRetries = parseInt(core.getInput('maxRetries'), 10);
-          const http = new HttpClient('haythem/public-ip', undefined, { allowRetries: true, maxRetries: maxRetries });
-          try {
-            const ipv4 = await http.getJson<IPResponse>('https://api.ipify.org?format=json');
-          } catch (error) {
-            echo ("Didn't get anything")
-            echo(error.message)
-          }
-          return ipv4
+        with:
+          result-encoding: string
+          script: |
+            const maxRetries = parseInt(core.getInput('maxRetries'), 10);
+            const http = new HttpClient('haythem/public-ip', undefined, { allowRetries: true, maxRetries: maxRetries });
+            try {
+              const ipv4 = await http.getJson<IPResponse>('https://api.ipify.org?format=json');
+            } catch (error) {
+              echo ("Didn't get anything")
+              echo(error.message)
+            }
+            return ipv4
       - name: setup packages
         run: |
           sudo apt install -y qemu-utils openvpn
