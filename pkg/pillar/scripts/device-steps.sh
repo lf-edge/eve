@@ -170,6 +170,20 @@ if [ ! -d $PERSISTDIR/log ]; then
     mkdir $PERSISTDIR/log
 fi
 
+if [ ! -d $PERSISTDIR/status ]; then
+    echo "$(date -Ins -u) Creating $PERSISTDIR/status"
+    mkdir $PERSISTDIR/status
+fi
+
+if [ -f $CONFIGDIR/restartcounter ]; then
+    echo "$(date -Ins -u) move $CONFIGDIR/restartcounter $PERSISTDIR/status"
+    mv $CONFIGDIR/restartcounter $PERSISTDIR/status
+fi
+if [ -f $CONFIGDIR/rebootConfig ]; then
+    echo "$(date -Ins -u) move $CONFIGDIR/rebootConfig $PERSISTDIR/status"
+    mv $CONFIGDIR/rebootConfig $PERSISTDIR/status
+fi
+
 # Run upgradeconverter
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
 $BINDIR/upgradeconverter pre-vault
@@ -249,10 +263,9 @@ access_usb() {
             [ -d "$IDENTITYDIR" ] || mkdir -p "$IDENTITYDIR"
             cp -p $CONFIGDIR/device.cert.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/onboard.cert.pem ] || cp -p $CONFIGDIR/onboard.cert.pem "$IDENTITYDIR"
-            [ ! -f $CONFIGDIR/uuid ] || cp -p $CONFIGDIR/uuid "$IDENTITYDIR"
+            [ ! -f $PERSISTDIR/status/uuid ] || cp -p $PERSISTDIR/status/uuid "$IDENTITYDIR"
             cp -p $CONFIGDIR/root-certificate.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
-            [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
             $BINDIR/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
             $BINDIR/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
@@ -427,7 +440,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
-    uuid=$(cat $CONFIGDIR/uuid)
+    uuid=$(cat $PERSISTDIR/status/uuid)
     /bin/hostname "$uuid"
     /bin/hostname >/etc/hostname
     if ! grep -q "$uuid" /etc/hosts; then
@@ -451,7 +464,7 @@ else
         echo "$(date -Ins -u) Created hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
     fi
 
-    uuid=$(cat $CONFIGDIR/uuid)
+    uuid=$(cat $PERSISTDIR/status/uuid)
     /bin/hostname "$uuid"
     /bin/hostname >/etc/hostname
 

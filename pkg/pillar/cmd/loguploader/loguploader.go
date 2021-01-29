@@ -106,10 +106,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	// Wait until we have been onboarded aka know our own UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("processed onboarded")
+	devUUID = onboard.DeviceUUID
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
@@ -331,6 +333,7 @@ func sendCtxInit(ctx *loguploaderContext) {
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
+	zedcloudCtx.DevUUID = devUUID
 
 	ctx.zedcloudCtx = &zedcloudCtx
 	log.Functionf("sendCtxInit: Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
@@ -342,24 +345,8 @@ func sendCtxInit(ctx *loguploaderContext) {
 		log.Fatal(err)
 	}
 
-	// In case we run early, wait for UUID file to appear
-	for {
-		b, err := ioutil.ReadFile(types.UUIDFileName)
-		if err != nil {
-			log.Errorln("ReadFile", err, types.UUIDFileName)
-			time.Sleep(time.Second)
-			continue
-		}
-		uuidStr := strings.TrimSpace(string(b))
-		devUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Errorln("uuid.FromString", err, string(b))
-			time.Sleep(time.Second)
-			continue
-		}
-		zedcloudCtx.DevUUID = devUUID
-		break
-	}
+	zedcloudCtx.DevUUID = devUUID
+
 	// wait for uuid of logs V2 URL string
 	newlogsDevURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, devUUID, "newlogs")
 	log.Functionf("sendCtxInit: Read UUID %s", devUUID)

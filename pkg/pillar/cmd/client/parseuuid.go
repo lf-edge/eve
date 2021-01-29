@@ -17,14 +17,14 @@ import (
 )
 
 // Return UUID, hardwaremodel, enterprise, and devicename
-func parseUUIDResponse(resp *http.Response, contents []byte) (uuid.UUID, string, string, string, error) {
+func parseUUIDResponse(resp *http.Response, contents []byte) (uuid.UUID, string, error) {
 	var hardwaremodel string
 	var devUUID uuid.UUID
 	var uuidResponse = &eveuuid.UuidResponse{}
 	err := proto.Unmarshal(contents, uuidResponse)
 	if err != nil {
 		log.Errorf("Unmarshalling uuidResponse failed: %v", err)
-		return devUUID, hardwaremodel, "", "", err
+		return devUUID, hardwaremodel, err
 	}
 	productName := uuidResponse.GetProductName()
 	manufacturer := uuidResponse.GetManufacturer()
@@ -35,40 +35,38 @@ func parseUUIDResponse(resp *http.Response, contents []byte) (uuid.UUID, string,
 	devUUID, err = uuid.FromString(uuidStr)
 	if err != nil {
 		log.Errorf("uuid.FromString(%s): %s", uuidStr, err)
-		return devUUID, hardwaremodel, "", "", err
+		return devUUID, hardwaremodel, err
 	}
-	return devUUID, hardwaremodel, "", "", err
+	return devUUID, hardwaremodel, err
 }
 
 // Return UUID, hardwaremodel, enterprise, and devicename
-func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.UUID, string, string, string, error) {
+func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.UUID, string, error) {
 	var devUUID uuid.UUID
 	var hardwaremodel string
-	var enterprise string
-	var name string
 
 	if resp.StatusCode == http.StatusNotModified {
 		log.Tracef("StatusNotModified len %d", len(contents))
 		// Return as error since we are not returning any useful values.
-		return devUUID, hardwaremodel, enterprise, name,
+		return devUUID, hardwaremodel,
 			fmt.Errorf("Unchanged StatusNotModified")
 	}
 
 	if err := validateConfigMessage(configUrl, resp); err != nil {
 		log.Errorln("validateConfigMessage: ", err)
-		return devUUID, hardwaremodel, enterprise, name, err
+		return devUUID, hardwaremodel, err
 	}
 
 	configResponse, err := readConfigResponseProtoMessage(contents)
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
-		return devUUID, hardwaremodel, enterprise, name, err
+		return devUUID, hardwaremodel, err
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
 		log.Tracef("Same ConfigHash %s len %d", hash, len(contents))
 		// Return as error since we are not returning any useful values.
-		return devUUID, hardwaremodel, enterprise, name,
+		return devUUID, hardwaremodel,
 			fmt.Errorf("Unchanged config hash")
 	}
 	log.Functionf("Change in ConfigHash from %s to %s", prevConfigHash, hash)
@@ -86,11 +84,9 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	devUUID, err = uuid.FromString(uuidStr)
 	if err != nil {
 		log.Errorf("uuid.FromString(%s): %s", uuidStr, err)
-		return devUUID, hardwaremodel, enterprise, name, err
+		return devUUID, hardwaremodel, err
 	}
-	enterprise = strings.TrimSpace(config.GetEnterprise())
-	name = strings.TrimSpace(config.GetName())
-	return devUUID, hardwaremodel, enterprise, name, nil
+	return devUUID, hardwaremodel, nil
 }
 
 // From zedagent/handleconfig.go

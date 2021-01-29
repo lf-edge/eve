@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -156,17 +157,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	subAppInstanceConfig.Activate()
 
+	// Wait until we have been onboarded aka know our own UUID
+	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("processed onboarded")
+	devUUID := onboard.DeviceUUID
+
 	if zedcloud.UseV2API() {
-		b, err := ioutil.ReadFile(types.UUIDFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		uuidStr := strings.TrimSpace(string(b))
-		wscCtx.devUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Functionf("Read devUUID %s\n", wscCtx.devUUID.String())
+		wscCtx.devUUID = devUUID
 	}
 
 	// Pick up debug aka log level before we start real work

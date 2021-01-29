@@ -47,7 +47,7 @@ import (
 
 const (
 	agentName          = "zedagent"
-	restartCounterFile = types.IdentityDirname + "/restartcounter"
+	restartCounterFile = types.PersistStatusDir + "/restartcounter"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
 	// Time limits for event loop handlers
@@ -283,10 +283,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.attestCtx = &attestCtx
 
 	// Wait until we have been onboarded aka know our own UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("processed onboarded")
+	devUUID = onboard.DeviceUUID
 
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
