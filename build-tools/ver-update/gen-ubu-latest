@@ -1,0 +1,40 @@
+#!/bin/bash -epux
+
+DEF_OS=ubuntu:latest
+BLD_DIR=tmp-build
+
+apt_command="dpkg-query -W"
+out_file_pkg_ver="out-ubu-file-pkg"
+
+# $1: base OS image
+BASE_OS=${1:-$DEF_OS}
+
+utd_image="up-to-date-${BASE_OS/:*/}"
+
+rm -rf $BLD_DIR
+mkdir $BLD_DIR
+
+# generate Dockerfile with latest versions of all packages
+(
+    echo "FROM $BASE_OS"
+    echo
+    echo "RUN apt-get update"
+    echo
+    # use for loop because it will not ignore one bad package in the list
+    echo "RUN for pkg in \\"
+    cut -d ' ' -f 2 $out_file_pkg_ver | sort -u | sed 's/$/ \\/'
+    echo "; do apt-get install -f -y --fix-missing \$pkg; \\"
+    echo "done || echo Ignore missing packages"
+) > $BLD_DIR/Dockerfile
+
+# create image where all apk images are up-to-date
+docker build -t "$utd_image" $BLD_DIR
+
+# use image to dump package versions
+docker run --rm "$utd_image" $apt_command | sed 's/:amd64//' | tr '\t' ' ' | sort
+
+# clean up
+docker image rm "$utd_image"
+rm -rf $BLD_DIR
+
+echo "$0: Succeeded" 1>&2
