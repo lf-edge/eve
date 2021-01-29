@@ -17,9 +17,15 @@ OUT_UBU_VER_DIFF     = out-ubu-ver-diff
 OUT_UBU_FILE_PKG_VER = out-ubu-file-pkg
 OUT_UBU_LATEST       = out-ubu-latest
 
-all: $(OUT_ALP_VER_DIFF) $(OUT_UBU_VER_DIFF)
-	cat -n $(OUT_ALP_VER_DIFF)
-	cat -n $(OUT_UBU_VER_DIFF)
+all: alpine ubuntu
+	: $@: Succeeded
+
+alpine: $(OUT_ALP_VER_DIFF)
+	wc -l $(OUT_ALP_VER_DIFF)
+	: $@: Succeeded
+
+ubuntu: $(OUT_UBU_VER_DIFF)
+	wc -l $(OUT_UBU_VER_DIFF)
 	: $@: Succeeded
 
 # Alpine/apk
@@ -36,6 +42,7 @@ $(OUT_ALP_FILE_PKG_VER): gen-alp-file-pkg
 	: $@: Succeeded
 
 $(OUT_ALP_LATEST): gen-alp-latest Makefile $(OUT_ALP_FILE_PKG_VER)
+	: $@: Begin: ALP_BASE_OS=$(ALP_BASE_OS)
 	./gen-alp-latest $(ALP_BASE_OS) > $@.tmp
 	mv -f $@.tmp $@
 	: $@: Succeeded
@@ -54,6 +61,7 @@ $(OUT_UBU_FILE_PKG_VER): gen-ubu-file-pkg
 	: $@: Succeeded
 
 $(OUT_UBU_LATEST): gen-ubu-latest Makefile $(OUT_UBU_FILE_PKG_VER)
+	: $@: Begin: UBU_BASE_OS=$(UBU_BASE_OS)
 	./gen-ubu-latest $(UBU_BASE_OS) > $@.tmp
 	mv -f $@.tmp $@
 	: $@: Succeeded
