@@ -27,7 +27,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x16\x63onfig/devconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/appconfig.proto\x1a\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x15\x63onfig/devmodel.proto\x1a\x16\x63onfig/netconfig.proto\x1a\x14\x63onfig/netinst.proto\x1a\x14\x63onfig/storage.proto\"\xd0\x07\n\rEdgeDevConfig\x12\x31\n\x02id\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x36\n\x04\x61pps\x18\x04 \x03(\x0b\x32(.org.lfedge.eve.config.AppInstanceConfig\x12\x36\n\x08networks\x18\x05 \x03(\x0b\x32$.org.lfedge.eve.config.NetworkConfig\x12:\n\ndatastores\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.config.DatastoreConfig\x12\x31\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32#.org.lfedge.eve.config.BaseOSConfig\x12\x33\n\x06reboot\x18\t \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x33\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x36\n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32!.org.lfedge.eve.config.ConfigItem\x12?\n\x11systemAdapterList\x18\x0c \x03(\x0b\x32$.org.lfedge.eve.config.SystemAdapter\x12\x37\n\x0c\x64\x65viceIoList\x18\r \x03(\x0b\x32!.org.lfedge.eve.config.PhysicalIO\x12\x14\n\x0cmanufacturer\x18\x0e \x01(\t\x12\x13\n\x0bproductName\x18\x0f \x01(\t\x12\x46\n\x10networkInstances\x18\x10 \x03(\x0b\x32,.org.lfedge.eve.config.NetworkInstanceConfig\x12\x12\n\nenterprise\x18\x11 \x01(\t\x12\x0c\n\x04name\x18\x12 \x01(\t\x12<\n\x0e\x63ipherContexts\x18\x13 \x03(\x0b\x32$.org.lfedge.eve.config.CipherContext\x12\x37\n\x0b\x63ontentInfo\x18\x14 \x03(\x0b\x32\".org.lfedge.eve.config.ContentTree\x12.\n\x07volumes\x18\x15 \x03(\x0b\x32\x1d.org.lfedge.eve.config.Volume\x12!\n\x19\x63ontrollercert_confighash\x18\x16 \x01(\t\x12\x18\n\x10maintenance_mode\x18\x18 \x01(\x08\x12\x18\n\x10\x63ontroller_epoch\x18\x19 \x01(\x03\"<\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\"Z\n\x0e\x43onfigResponse\x12\x34\n\x06\x63onfig\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.config.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x16\x63onfig/devconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/appconfig.proto\x1a\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x15\x63onfig/devmodel.proto\x1a\x16\x63onfig/netconfig.proto\x1a\x14\x63onfig/netinst.proto\x1a\x14\x63onfig/storage.proto\"\xae\x07\n\rEdgeDevConfig\x12\x31\n\x02id\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x36\n\x04\x61pps\x18\x04 \x03(\x0b\x32(.org.lfedge.eve.config.AppInstanceConfig\x12\x36\n\x08networks\x18\x05 \x03(\x0b\x32$.org.lfedge.eve.config.NetworkConfig\x12:\n\ndatastores\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.config.DatastoreConfig\x12\x31\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32#.org.lfedge.eve.config.BaseOSConfig\x12\x33\n\x06reboot\x18\t \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x33\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x36\n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32!.org.lfedge.eve.config.ConfigItem\x12?\n\x11systemAdapterList\x18\x0c \x03(\x0b\x32$.org.lfedge.eve.config.SystemAdapter\x12\x37\n\x0c\x64\x65viceIoList\x18\r \x03(\x0b\x32!.org.lfedge.eve.config.PhysicalIO\x12\x14\n\x0cmanufacturer\x18\x0e \x01(\t\x12\x13\n\x0bproductName\x18\x0f \x01(\t\x12\x46\n\x10networkInstances\x18\x10 \x03(\x0b\x32,.org.lfedge.eve.config.NetworkInstanceConfig\x12<\n\x0e\x63ipherContexts\x18\x13 \x03(\x0b\x32$.org.lfedge.eve.config.CipherContext\x12\x37\n\x0b\x63ontentInfo\x18\x14 \x03(\x0b\x32\".org.lfedge.eve.config.ContentTree\x12.\n\x07volumes\x18\x15 \x03(\x0b\x32\x1d.org.lfedge.eve.config.Volume\x12!\n\x19\x63ontrollercert_confighash\x18\x16 \x01(\t\x12\x18\n\x10maintenance_mode\x18\x18 \x01(\x08\x12\x18\n\x10\x63ontroller_epoch\x18\x19 \x01(\x03\"<\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\"Z\n\x0e\x43onfigResponse\x12\x34\n\x06\x63onfig\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.config.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_appconfig__pb2.DESCRIPTOR,config_dot_baseosconfig__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_devmodel__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,config_dot_netinst__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,])
 
@@ -134,56 +134,42 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='enterprise', full_name='org.lfedge.eve.config.EdgeDevConfig.enterprise', index=13,
-      number=17, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=b"".decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='name', full_name='org.lfedge.eve.config.EdgeDevConfig.name', index=14,
-      number=18, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=b"".decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='cipherContexts', full_name='org.lfedge.eve.config.EdgeDevConfig.cipherContexts', index=15,
+      name='cipherContexts', full_name='org.lfedge.eve.config.EdgeDevConfig.cipherContexts', index=13,
       number=19, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='contentInfo', full_name='org.lfedge.eve.config.EdgeDevConfig.contentInfo', index=16,
+      name='contentInfo', full_name='org.lfedge.eve.config.EdgeDevConfig.contentInfo', index=14,
       number=20, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='volumes', full_name='org.lfedge.eve.config.EdgeDevConfig.volumes', index=17,
+      name='volumes', full_name='org.lfedge.eve.config.EdgeDevConfig.volumes', index=15,
       number=21, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='controllercert_confighash', full_name='org.lfedge.eve.config.EdgeDevConfig.controllercert_confighash', index=18,
+      name='controllercert_confighash', full_name='org.lfedge.eve.config.EdgeDevConfig.controllercert_confighash', index=16,
       number=22, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=b"".decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='maintenance_mode', full_name='org.lfedge.eve.config.EdgeDevConfig.maintenance_mode', index=19,
+      name='maintenance_mode', full_name='org.lfedge.eve.config.EdgeDevConfig.maintenance_mode', index=17,
       number=24, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='controller_epoch', full_name='org.lfedge.eve.config.EdgeDevConfig.controller_epoch', index=20,
+      name='controller_epoch', full_name='org.lfedge.eve.config.EdgeDevConfig.controller_epoch', index=18,
       number=25, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -202,7 +188,7 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=242,
-  serialized_end=1218,
+  serialized_end=1184,
 )
 
 
@@ -240,8 +226,8 @@ _CONFIGREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1220,
-  serialized_end=1280,
+  serialized_start=1186,
+  serialized_end=1246,
 )
 
 
@@ -279,8 +265,8 @@ _CONFIGRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1282,
-  serialized_end=1372,
+  serialized_start=1248,
+  serialized_end=1338,
 )
 
 _EDGEDEVCONFIG.fields_by_name['id'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION
