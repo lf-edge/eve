@@ -303,6 +303,15 @@ above and executing exactly the same boot command:
 Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
+## How to use on a Jetson nano 4GB ARM board
+
+In Jetson nano, from January 22, 2021, it became possible to save the u-boot to an internal qspi chip. Following the instructions from the first point and specifying the kernel and u-boot versions in the same way as in EVE, we can run it on the Jetson nano with 4GB of RAM.
+
+1. Follow steps in [instruction](https://github.com/lf-edge/eve/blob/master/boards/jetson/) for flash jetson boot flow partitions to qspi.
+2. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
+3. Build a live image `make ZARCH=arm64 HV=kvm live-raw`
+4. Flash the `dist/arm64/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+
 ## How to use on an AMD board
 
 The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04:
