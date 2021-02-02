@@ -1546,39 +1546,12 @@ func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArg
 
 func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
 	var rulesList types.IPTablesRuleList
-	var aclRule1, aclRule2 types.IPTablesRule
 
 	// not for dom0
 	if aclArgs.IsMgmt {
 		return rulesList
 	}
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	// two rules for ipv4
-	aclRule1.IPVer = 4
-	aclRule1.Table = "mangle"
-	aclRule1.Chain = "PREROUTING"
-	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	aclRule2.IPVer = 4
-	aclRule2.Table = "mangle"
-	aclRule2.Chain = "PREROUTING"
-	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	rulesList = append(rulesList, aclRule1, aclRule2)
-
-	// two rules for ipv6
-	aclRule1.IPVer = 6
-	aclRule1.Table = "mangle"
-	aclRule1.Chain = "PREROUTING"
-	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	aclRule2.IPVer = 6
-	aclRule2.Table = "mangle"
-	aclRule2.Chain = "PREROUTING"
-	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	rulesList = append(rulesList, aclRule1, aclRule2)
-
 	// XXX To monitor flows (Local/Switch instances) we should
 	// add connection tracking rules to mangle table at PREROUTING hook.
 	switch aclArgs.NIType {
