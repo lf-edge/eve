@@ -424,6 +424,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 
 	spec.AdjustMemLimit(config, qemuOverHead)
 	spec.Get().Process.Args = args
+	logrus.Infof("Hypervisor args: %v", args)
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
