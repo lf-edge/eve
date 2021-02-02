@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -u
 # Poor man's[1] yml generator
 #
 #
@@ -46,6 +46,7 @@ external_tag() {
 synthetic_tag() {
   NAME=$1
   shift 1
+  # ignore undefined EVE_TAG in resolve_tags because not defined yet
   echo ${NAME}:${EVE_HASH:-$( (cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}"$ARCH"
 }
 
@@ -62,7 +63,6 @@ sed -e "s#CURDIR#$(pwd)#" \
     -e "s#ACRN_TAG#$ACRN_TAG#" \
     -e "s#DNSMASQ_TAG#$DNSMASQ_TAG#" \
     -e "s#STRONGSWAN_TAG#$STRONGSWAN_TAG#" \
-    -e "s#TESTCERT_TAG#$TESTCERT_TAG#" \
     -e "s#TESTMSVCS_TAG#$TESTMSVCS_TAG#" \
     -e "s#PILLAR_TAG#$PILLAR_TAG#" \
     -e "s#STORAGE_INIT_TAG#$STORAGE_INIT_TAG#" \
@@ -71,7 +71,6 @@ sed -e "s#CURDIR#$(pwd)#" \
     -e "s#WLAN_TAG#$WLAN_TAG#" \
     -e "s#GUACD_TAG#$GUACD_TAG#" \
     -e "s#GRUB_TAG#$GRUB_TAG#" \
-    -e "s#DTREES_TAG#$DTREES_TAG#" \
     -e "s#GPTTOOLS_TAG#$GPTTOOLS_TAG#" \
     -e "s#NEWLOGD_TAG#$NEWLOGD_TAG#" \
     -e "s#WATCHDOG_TAG#$WATCHDOG_TAG#" \
@@ -82,7 +81,7 @@ sed -e "s#CURDIR#$(pwd)#" \
     -e "s#LISP_TAG#$LISP_TAG#" \
     -e "s#VTPM_TAG#${VTPM_TAG}#" \
     -e "s#UEFI_TAG#${UEFI_TAG}#" \
-    -e "s#EVE_TAG#${EVE_TAG}#" \
+    -e "s#EVE_TAG#${EVE_TAG:-}#" \
     -e "s#KVMTOOLS_TAG#${KVMTOOLS_TAG}#" \
     -e "s#IPXE_TAG#${IPXE_TAG}#" \
     ${1:-}
