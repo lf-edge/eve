@@ -1,5 +1,5 @@
---- OvmfPkg/PlatformPei/Xen.c.orig
-+++ OvmfPkg/PlatformPei/Xen.c
+--- a/OvmfPkg/PlatformPei/Xen.c.orig
++++ b/OvmfPkg/PlatformPei/Xen.c
 @@ -137,6 +137,10 @@ XenDetect (
        mXen = TRUE;
        return TRUE;

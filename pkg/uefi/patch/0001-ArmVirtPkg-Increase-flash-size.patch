@@ -1,0 +1,160 @@
+From 9346e2b608346da3defc3e74e83a0358ee134620 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Fri, 29 Jan 2021 16:05:05 +0000
+Subject: [PATCH] ArmVirtPkg: Increase flash size
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ ArmVirtPkg/ArmVirt.dsc.inc    |  8 ++---
+ ArmVirtPkg/ArmVirtKvmTool.fdf |  2 +-
+ ArmVirtPkg/ArmVirtQemu.fdf    |  4 +--
+ ArmVirtPkg/ArmVirtXen.fdf     |  4 +--
+ ArmVirtPkg/VarStore.fdf.inc   | 57 ++++-------------------------------
+ 5 files changed, 15 insertions(+), 60 deletions(-)
+
+diff --git a/ArmVirtPkg/ArmVirt.dsc.inc b/ArmVirtPkg/ArmVirt.dsc.inc
+index 9ec9293047..56f37597d8 100644
+--- a/ArmVirtPkg/ArmVirt.dsc.inc
++++ b/ArmVirtPkg/ArmVirt.dsc.inc
+@@ -12,14 +12,14 @@
+   DEFINE DEBUG_PRINT_ERROR_LEVEL = 0x8000004F
+ 
+ !if $(TARGET) != NOOPT
+-  DEFINE FD_SIZE_IN_MB    = 2
++  DEFINE FD_SIZE_IN_MB    = 64
+ !else
+   DEFINE FD_SIZE_IN_MB    = 3
+ !endif
+ 
+-!if $(FD_SIZE_IN_MB) == 2
+-  DEFINE FD_SIZE          = 0x200000
+-  DEFINE FD_NUM_BLOCKS    = 0x200
++!if $(FD_SIZE_IN_MB) == 64
++  DEFINE FD_SIZE          = 0x4000000
++  DEFINE FD_NUM_BLOCKS    = 0x4000
+ !endif
+ !if $(FD_SIZE_IN_MB) == 3
+   DEFINE FD_SIZE          = 0x300000
+diff --git a/ArmVirtPkg/ArmVirtKvmTool.fdf b/ArmVirtPkg/ArmVirtKvmTool.fdf
+index ebc82c5bd5..575971cb02 100644
+--- a/ArmVirtPkg/ArmVirtKvmTool.fdf
++++ b/ArmVirtPkg/ArmVirtKvmTool.fdf
+@@ -27,7 +27,7 @@ ErasePolarity = 1
+ 
+ # This one is tricky, it must be: BlockSize * NumBlocks = Size
+ BlockSize     = 0x00001000
+-NumBlocks     = 0x200
++NumBlocks     = 0x4000
+ 
+ ################################################################################
+ #
+diff --git a/ArmVirtPkg/ArmVirtQemu.fdf b/ArmVirtPkg/ArmVirtQemu.fdf
+index b5e2253295..cd949c57ad 100644
+--- a/ArmVirtPkg/ArmVirtQemu.fdf
++++ b/ArmVirtPkg/ArmVirtQemu.fdf
+@@ -21,8 +21,8 @@
+ ################################################################################
+ 
+ [Defines]
+-!if $(FD_SIZE_IN_MB) == 2
+-  DEFINE FVMAIN_COMPACT_SIZE  = 0x1ff000
++!if $(FD_SIZE_IN_MB) == 64
++  DEFINE FVMAIN_COMPACT_SIZE  = 0x3fff000
+ !endif
+ !if $(FD_SIZE_IN_MB) == 3
+   DEFINE FVMAIN_COMPACT_SIZE  = 0x2ff000
+diff --git a/ArmVirtPkg/ArmVirtXen.fdf b/ArmVirtPkg/ArmVirtXen.fdf
+index 8fbbc2313a..32e3bc6102 100644
+--- a/ArmVirtPkg/ArmVirtXen.fdf
++++ b/ArmVirtPkg/ArmVirtXen.fdf
+@@ -21,8 +21,8 @@
+ ################################################################################
+ 
+ [Defines]
+-!if $(FD_SIZE_IN_MB) == 2
+-  DEFINE FVMAIN_COMPACT_SIZE  = 0x1fe000
++!if $(FD_SIZE_IN_MB) == 64
++  DEFINE FVMAIN_COMPACT_SIZE  = 0x3ffe000
+ !endif
+ !if $(FD_SIZE_IN_MB) == 3
+   DEFINE FVMAIN_COMPACT_SIZE  = 0x2fe000
+diff --git a/ArmVirtPkg/VarStore.fdf.inc b/ArmVirtPkg/VarStore.fdf.inc
+index b4afaf12b6..9a42545f27 100644
+--- a/ArmVirtPkg/VarStore.fdf.inc
++++ b/ArmVirtPkg/VarStore.fdf.inc
+@@ -10,66 +10,21 @@
+ ##
+ 
+ [FD.QEMU_VARS]
+-BaseAddress   = 0x04000000
+-Size          = 0xc0000
++BaseAddress   = 0x4000000
++Size          = 0x4000000
+ ErasePolarity = 1
+ BlockSize     = 0x40000
+-NumBlocks     = 3
++NumBlocks     = 0x100
+ 
+ 
+-0x00000000|0x00040000
++0x00000000|0x01000000
+ gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageVariableBase|gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageVariableSize
+ #NV_VARIABLE_STORE
+-DATA = {
+-  ## This is the EFI_FIRMWARE_VOLUME_HEADER
+-  # ZeroVector []
+-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-  # FileSystemGuid: gEfiSystemNvDataFvGuid         =
+-  #   { 0xFFF12B8D, 0x7696, 0x4C8B,
+-  #     { 0xA9, 0x85, 0x27, 0x47, 0x07, 0x5B, 0x4F, 0x50 }}
+-  0x8D, 0x2B, 0xF1, 0xFF, 0x96, 0x76, 0x8B, 0x4C,
+-  0xA9, 0x85, 0x27, 0x47, 0x07, 0x5B, 0x4F, 0x50,
+-  # FvLength: 0xC0000
+-  0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00,
+-  # Signature "_FVH"       # Attributes
+-  0x5f, 0x46, 0x56, 0x48, 0xff, 0xfe, 0x04, 0x00,
+-  # HeaderLength # CheckSum # ExtHeaderOffset #Reserved #Revision
+-  0x48, 0x00, 0x28, 0x09, 0x00, 0x00, 0x00, 0x02,
+-  # Blockmap[0]: 0x3 Blocks * 0x40000 Bytes / Block
+-  0x3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
+-  # Blockmap[1]: End
+-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-  ## This is the VARIABLE_STORE_HEADER
+-  # It is compatible with SECURE_BOOT_ENABLE == FALSE as well.
+-  # Signature: gEfiAuthenticatedVariableGuid =
+-  #   { 0xaaf32c78, 0x947b, 0x439a,
+-  #     { 0xa1, 0x80, 0x2e, 0x14, 0x4e, 0xc3, 0x77, 0x92 }}
+-  0x78, 0x2c, 0xf3, 0xaa, 0x7b, 0x94, 0x9a, 0x43,
+-  0xa1, 0x80, 0x2e, 0x14, 0x4e, 0xc3, 0x77, 0x92,
+-  # Size: 0x40000 (gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageVariableSize) -
+-  #         0x48 (size of EFI_FIRMWARE_VOLUME_HEADER) = 0x3ffb8
+-  # This can speed up the Variable Dispatch a bit.
+-  0xB8, 0xFF, 0x03, 0x00,
+-  # FORMATTED: 0x5A #HEALTHY: 0xFE #Reserved: UINT16 #Reserved1: UINT32
+-  0x5A, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+-}
+ 
+-
+-0x00040000|0x00040000
++0x01000000|0x01800000
+ gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwWorkingBase|gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwWorkingSize
+ #NV_FTW_WORKING
+-DATA = {
+-  # EFI_FAULT_TOLERANT_WORKING_BLOCK_HEADER->Signature = gEdkiiWorkingBlockSignatureGuid         =
+-  #  { 0x9e58292b, 0x7c68, 0x497d, { 0xa0, 0xce, 0x65,  0x0, 0xfd, 0x9f, 0x1b, 0x95 }}
+-  0x2b, 0x29, 0x58, 0x9e, 0x68, 0x7c, 0x7d, 0x49,
+-  0xa0, 0xce, 0x65,  0x0, 0xfd, 0x9f, 0x1b, 0x95,
+-  # Crc:UINT32            #WorkingBlockValid:1, WorkingBlockInvalid:1, Reserved
+-  0x5b, 0xe7, 0xc6, 0x86, 0xFE, 0xFF, 0xFF, 0xFF,
+-  # WriteQueueSize: UINT64
+-  0xE0, 0xFF, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00
+-}
+ 
+-0x00080000|0x00040000
++0x02800000|0x01800000
+ gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareBase|gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareSize
+ #NV_FTW_SPARE
+-- 
+2.25.1
+
