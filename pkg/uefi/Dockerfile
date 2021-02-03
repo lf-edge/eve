@@ -17,7 +17,7 @@ ARG BUILD_CONTAINER=alpine:3.12
 FROM ${BUILD_CONTAINER} as build
 
 # hadolint ignore=DL3018
-RUN apk add --no-cache curl make gcc g++ python2 patch libuuid iasl nasm util-linux-dev bash git util-linux
+RUN apk add --no-cache curl make gcc g++ python2 libuuid iasl nasm util-linux-dev bash git util-linux patch
 
 RUN git clone --depth 1 -b edk2-stable202011 https://github.com/tianocore/edk2.git /ws
 COPY build.sh /ws/
