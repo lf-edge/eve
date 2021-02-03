@@ -1,0 +1,8 @@
+#!/bin/bash
+SCRIPT_HOME="$PWD"
+CROSS_TOOL_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/aarch64-linux-gnu/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
+
+if ! [ -d gcc ]; then
+    wget -c "$CROSS_TOOL_URL" && tar xf ./gcc*.tar.xz -C "$SCRIPT_HOME"/ && rm -rf ./*.tar.xz
+    rm -rf ./gcc && mv ./gcc* ./gcc
+fi

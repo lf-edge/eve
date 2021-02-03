@@ -1,0 +1,40 @@
+#!/bin/bash
+#########################################################
+SCRIPT_HOME="$PWD"
+TEGRA_PLATFORM=$1 # 210 or 186
+BSP_VERSION=32.5.0
+BSP_VERSION_ARR=(); while IFS=$'\n' read -r line; do BSP_VERSION_ARR+=("$line"); done < <(echo $BSP_VERSION | tr "." "\n")
+####################### TEGRA BSP #######################
+NVIDIA_BSP_DIR=$SCRIPT_HOME/BSP
+NVIDIA_BSP_PLATFORM_DIR="$NVIDIA_BSP_DIR/t$TEGRA_PLATFORM"
+NVIDIA_BSP_L4T_DIR=$NVIDIA_BSP_PLATFORM_DIR/Linux_for_Tegra
+######################### T210 ##########################
+NVIDIA_BSP_PACKAGE="Tegra${TEGRA_PLATFORM}_Linux_R${BSP_VERSION}_aarch64.tbz2"
+NVIDIA_BSP_LINK="https://developer.download.nvidia.com/embedded/L4T/r${BSP_VERSION_ARR[0]}_Release_v${BSP_VERSION_ARR[1]}.${BSP_VERSION_ARR[2]}/T${TEGRA_PLATFORM}/${NVIDIA_BSP_PACKAGE}"
+##################### TEGRA BSP END #####################
+
+function cleanup() {
+  set +e
+  rm -rf "$NVIDIA_BSP_PACKAGE"
+}
+trap cleanup EXIT
+
+function prepare_bsp() {
+  mkdir -p "$NVIDIA_BSP_PLATFORM_DIR"
+  wget "$NVIDIA_BSP_LINK" -O "$NVIDIA_BSP_PACKAGE"
+  tar xpf "$NVIDIA_BSP_PACKAGE" -C "$NVIDIA_BSP_PLATFORM_DIR"
+}
+
+function apply_bsp_patches() {
+  if [ -d "$NVIDIA_BSP_PLATFORM_DIR"/patches/"$BSP_VERSION" ]; then
+    cd "$NVIDIA_BSP_L4T_DIR" || return
+    for patch in "$NVIDIA_BSP_PLATFORM_DIR"/patches/"$BSP_VERSION"/*.patch; do
+      echo "Applying $patch"
+      patch -p1 < "$patch"
+    done
+    cd "$SCRIPT_HOME" || return
+  fi
+}
+
+prepare_bsp
+apply_bsp_patches

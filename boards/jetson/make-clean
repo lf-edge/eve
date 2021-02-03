@@ -1,0 +1,2 @@
+#!/bin/bash
+rm -rf BSP/t210/Linux_for_Tegra BSP/t186/Linux_for_Tegra gcc
