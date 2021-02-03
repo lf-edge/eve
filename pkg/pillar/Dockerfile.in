@@ -87,6 +87,7 @@ COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
 COPY --from=fscrypt-build /usr/local/bin/fscrypt /opt/zededa/bin/fscrypt
+COPY --from=uefi-build /OVMF*.fd /usr/lib/xen/boot/
 
 # And now a few local tweaks
 COPY rootfs/ /

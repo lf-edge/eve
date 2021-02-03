@@ -6,7 +6,6 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
-	"runtime"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -93,11 +92,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			dc.GPUConfig = ""
 		}
 		if dc.BootLoader == "" {
-			if runtime.GOARCH == "amd64" {
-				dc.BootLoader = "/usr/lib/xen/boot/seabios.bin"
-			} else {
-				dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
-			}
+			dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
 		}
 	}
 	if dc.BootLoader == "" && dc.VirtualizationModeOrDefault() == types.FML {
