@@ -1,0 +1,42 @@
+#!/bin/bash
+#########################################################
+VERSION=$1
+#########################################################
+SCRIPT_HOME="$PWD"
+SOURCE_URL=https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
+UBOOT_DIR=$SCRIPT_HOME/u-boot
+UBOOR_SRC_DIR=$UBOOT_DIR/src
+#########################################################
+
+function cleanup() {
+  set +e
+  rm -rf "$UBOOR_SRC_DIR"
+}
+trap cleanup EXIT
+
+mkdir -p "$UBOOT_DIR"
+curl -fsSL "$SOURCE_URL" | tar -C "$UBOOT_DIR"/ -xzf - && rm -rf "$UBOOR_SRC_DIR" && mv "$UBOOT_DIR"/u-boot* "$UBOOR_SRC_DIR"
+
+if [ "$(uname -m)" = x86_64 ]; then
+    "$SCRIPT_HOME"/get-gcc
+    export CROSS_COMPILE="$SCRIPT_HOME"/gcc/bin/aarch64-linux-gnu-
+    export ARCH=arm64
+fi
+
+function apply_patches() {
+  if [ -d "$UBOOT_DIR/patches/$VERSION" ]; then
+    cd "$UBOOT_DIR"/src || return
+    for patch in "$UBOOT_DIR"/patches/"$VERSION"/*.patch; do
+      echo "Applying ${patch}"
+      patch -p1 < "$patch"
+    done
+    cd "$SCRIPT_HOME" || return
+  fi
+}
+
+apply_patches
+# jetson-nano-b00
+make -C "$UBOOR_SRC_DIR" O=build/p3450-0000 p3450-0000_defconfig
+make -C "$UBOOR_SRC_DIR" O=build/p3450-0000 -j "$(getconf _NPROCESSORS_ONLN)"
+
+cp "$UBOOR_SRC_DIR"/build/p3450-0000/u-boot.bin BSP/t210/Linux_for_Tegra/bootloader/t210ref/p3450-0000/u-boot.bin
