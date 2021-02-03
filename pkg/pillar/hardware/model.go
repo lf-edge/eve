@@ -30,23 +30,8 @@ import (
 const (
 	compatibleFile = "/proc/device-tree/compatible"
 	cpuInfoFile    = "/proc/cpuinfo"
-	overrideFile   = types.IdentityDirname + "/hardwaremodel"
 	softSerialFile = types.IdentityDirname + "/soft_serial"
 )
-
-// XXX Note that this function (and the ones below) log if there is an
-// error. That's impolite for a library to do.
-func GetHardwareModel(log *base.LogObject) string {
-	model := getOverride(log, overrideFile)
-	if model != "" {
-		return model
-	}
-	return GetHardwareModelNoOverride(log)
-}
-
-func GetHardwareModelOverride(log *base.LogObject) string {
-	return getOverride(log, overrideFile)
-}
 
 func GetHardwareModelNoOverride(log *base.LogObject) string {
 	product := ""

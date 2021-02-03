@@ -93,3 +93,48 @@ local build.
 It may be marginally useful to run Yetus on updates to the master itself, but Yetus in its full
 glory will generate too much feedback and the incremental updates are already covered by Yetus
 triggering on pull request submissions.
+
+## Maintaining Dockerfile Versions
+
+The Dockerfiles get out of date because they use base OS images that are periodically updated.
+It is important to stay up-to-date in general for bug fixes and security updates,
+but sometimes the Dockerfiles must be updated immediately when the OS image
+removes a version of a package.
+
+### Dockerfile Version Updates with Dependabot
+
+GitHub provides a feature called **Dependabot** that fixes several kinds of out of date versions
+including the OS images in Dockerfiles. The limitation is that it only updates the base OS image,
+not the package versions in the apk add command, so it can only be used in EVE packages that do not
+hardwire package versions.
+
+Dependabot should not be enabled in the reference lf-edge tree.
+Instead use it in user forks and let Dependabot create its PRs there.
+Then the user can cherry-pick the version changes, test, tweak, squash, and submit
+their own PR to lf-edge.
+
+To use Dependabot in a user fork:
+
+* enable Dependabot options in: Settings -> Security & analysis
+* open: Insights -> Dependency graph -> Dependabot
+* re-run by: modify this file, push to master
+* review generated PRs
+* cherry-pick from dependabot/docker/* branches
+
+### ver-update to List Package Versions
+
+Dependabot will not help in EVE packages that use hardwired apk package versions.
+Updating them is a manual process.
+The hard part is finding the out of date versions and knowing what to replace them with.
+That part can be done automatically with the scripts in build-tools/ver-update.
+The main steps are:
+
+```bash
+cd build-tools/ver-update
+make clean
+make
+grep pkg/my-pkg out-alp-ver-diff
+```
+
+It can generate the versions to change using different base OS versions.
+That version is specified by ALP_BASE_OS in Makefile.

@@ -143,7 +143,8 @@ type AppInstanceStatus struct {
 	DisplayName         string
 	DomainName          string // Once booted
 	Activated           bool
-	ActivateInprogress  bool // Needed for cleanup after failure
+	ActivateInprogress  bool     // Needed for cleanup after failure
+	FixedResources      VmConfig // CPU etc
 	VolumeRefStatusList []VolumeRefStatus
 	UnderlayNetworks    []UnderlayNetworkStatus
 	BootTime            time.Time

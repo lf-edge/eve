@@ -480,7 +480,7 @@ type NetworkInstanceConfig struct {
 	// instType - Type of network instance ( local, bridge etc )
 	InstType ZNetworkInstType `protobuf:"varint,4,opt,name=instType,proto3,enum=org.lfedge.eve.config.ZNetworkInstType" json:"instType,omitempty"`
 	// activate
-	//  - True by default. If set to false ( inactivate), the network instance
+	//  - True by default. If set to false ( deactivate), the network instance
 	//    configuration is downloaded to the device, but the network instance
 	//    itself is not created on the device.
 	Activate bool `protobuf:"varint,5,opt,name=activate,proto3" json:"activate,omitempty"`

@@ -172,6 +172,8 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		// Bool Items
 		UsbAccess,
 		AllowAppVnc,
+		EveMemoryLimitInBytes,
+		IgnoreMemoryCheckForApps,
 		IgnoreDiskCheckForApps,
 		AllowLogFastupload,
 		// TriState Items

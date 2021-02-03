@@ -1,0 +1,174 @@
+# This workflow is much more convoluted than it should be (see a simpler
+# version of it in git's history). The reason it is convoluted is that it
+# kept timing out on any of the hosted runners so we're now trying to see
+# if GitHub own runners are any better. Of course, GH only provides x86
+# runners and thus (instead of a nice matrix job of amd64, arm64) we have
+# to "emulated" arm64 side on the amd64 runner.
+#
+# The trick we play is that we keep it as a matrix job still, but we make
+# it use the same GitHub provided x86 ubuntu-20.04 runners. The runner that
+# gets to unpack arm64 artifacts does so with the help of binfmt-support and
+# qemu-user-static
+
+---
+name: Assets
+on:
+  workflow_run:
+    workflows:
+      - Publish
+    types:
+      - completed
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Determine architecture prefix and ref
+        env:
+          REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # FIXME: I'd rather be a real matrix job with a functional arm64 runner
+          # echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
+          sudo apt install -y binfmt-support qemu-user-static
+          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+          echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
+      - name: Pull the release from DockerHUB
+        run: |
+          EVE=lfedge/eve:${{ env.TAG }}-xen-${{ env.ARCH }}
+          docker pull "$EVE"
+          rm -rf assets && mkdir assets && cd assets
+          docker run "$EVE" rootfs > rootfs.img
+          docker run "$EVE" installer_net | tar -xvf -
+      - name: Create direct iPXE config
+        run: |
+          URL="https://github.com/lf-edge/eve/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
+          sed -i. -e "s#^kernel #kernel $URL#" -e "s#^initrd #initrd $URL#" assets/ipxe.efi.cfg
+          sed -i. -e "s#initrd=initrd#initrd=${{ env.ARCH }}.initrd#g" assets/ipxe.efi.cfg
+          sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
+      - name: Unzip kernel on arm64
+        run: |
+          # FIXME: stock iPXE doesn't support compressed kernels on arm64.
+          # EVE's iPXE does, but we still haven't quite figured out the
+          # hand-off part between the two. Therefore for now unpack the kernel.
+          if [ "${{ env.ARCH }}" = arm64 ]; then
+             mv assets/kernel assets/kernel.gz
+             gzip -d assets/kernel.gz
+          fi
+      - name: Create a GitHub release and clean up artifacts
+        id: create-release
+        uses: actions/github-script@v3
+        with:
+          result-encoding: string
+          script: |
+            console.log(context)
+            tag = '${{ env.TAG }}'
+
+            // first create a release -- it is OK if that fails,
+            // since it means the release is already there
+            try {
+              const raw = (await github.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: 'Release ' + tag,
+                prerelease: true,
+              })).data
+              console.log(raw)
+            } catch (e) {}
+
+            // get the release ID
+            const release = (await github.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: tag,
+            })).data
+
+            // get assets for that ID
+            const assets = (await github.repos.listReleaseAssets({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+            })).data
+
+            // remove all assets (since we will be uploading new ones)
+            // note that we only consider assets coming from the same
+            // architecture we're running on -- this is because GH
+            // release assets can only be flat (no folders allowed)
+            if (Array.isArray(assets) && assets.length > 0) {
+              for (const asset of assets) {
+                if (asset.name.startsWith('${{ env.ARCH }}')) {
+                  await github.repos.deleteReleaseAsset({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    asset_id: asset.id,
+                  })
+                }
+              }
+            }
+
+            return release.upload_url
+
+      - name: Upload initrd.bits for the release
+        id: upload-initrd-bits-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/initrd.bits
+          asset_name: ${{ env.ARCH }}.initrd.bits
+          asset_content_type: application/octet-stream
+      - name: Upload rootfs for the release
+        id: upload-rootfs-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/rootfs.img
+          asset_name: ${{ env.ARCH }}.rootfs.img
+          asset_content_type: application/octet-stream
+      - name: Upload kernel for the release
+        id: upload-kernel-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/kernel
+          asset_name: ${{ env.ARCH }}.kernel
+          asset_content_type: application/octet-stream
+      - name: Upload initrd.img for the release
+        id: upload-initrd-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/initrd.img
+          asset_name: ${{ env.ARCH }}.initrd.img
+          asset_content_type: application/octet-stream
+      - name: Upload ipxe.efi.cfg for the release
+        id: upload-ipxe-efi-cfg-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/ipxe.efi.cfg
+          asset_name: ${{ env.ARCH }}.ipxe.efi.cfg
+          asset_content_type: application/octet-stream
+      - name: Upload ipxe.efi.ip.cfg for the release
+        id: upload-ipxe-efi-ip-cfg-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/ipxe.efi.ip.cfg
+          asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
+          asset_content_type: application/octet-stream

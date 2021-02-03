@@ -1,0 +1,29 @@
+---
+name: Unit tests
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Test
+        run: |
+          make test
+      - name: Report test results as Annotations
+        if: ${{ always() }}
+        uses: guyarb/golang-test-annoations@v0.1
+        with:
+          test-results: dist/amd64/results.json
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: 'test-report'
+          path: ${{ github.workspace }}/dist

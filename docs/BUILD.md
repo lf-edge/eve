@@ -85,30 +85,21 @@ You must have the following installed in order to build EVE:
 
 ### Installed As Needed
 
-* [manifest-tool](https://github.com/estesp/manifest-tool) - CLI used to create multi-architecture manifests of docker images.
 * [linuxkit](https://github.com/linuxkit/linuxkit) - CLI used to build actual EVE bootable images.
 
-Each "Installed as Needed" build tool will place its final executable in `build-tools/bin/`, e.g. `build-tools/bin/linuxkit` or `build-tools/bin/manifest-tool`. Each tool, in turn, has a directory in `build-tools/src/`, e.g. `build-tools/src/linuxkit/`. The `src/` directory does _not_ contain all of the code for the tool. Instead, it has the following:
+Each "Installed as Needed" build tool will place its final executable in `${GOPATH}/bin/`, e.g. `~/go/bin/linuxkit`.
 
-* `Gopkg.toml` - with all of the dependencies including the specific version of the package itself as a `constraint`. Details of different types of the rules present in this file is described [here](https://golang.github.io/dep/docs/Gopkg.toml.html).
-* `Gopkg.lock` - generated from a run
-* `dummy.go` - an empty file to give go something to build
-
-To build a specific tool, you can execute `make bin/<tool-name>`, e.g. `make bin/manifest-tool`, in `build-tools`, e.g.:
-
-```shell
-make -C build-tools bin/manifest-tool
-```
+To build a specific tool, you can execute `make build-tools/bin/<tool-name>`, e.g. `make build-tools/bin/bin/linuxkit`.
 
 This target does the following:
 
-1. Set `GOPATH=$PWD`, i.e. the `build-tools/` directory
-2. If `dep` isn't available, `go get` it
-3. `cd src/<tool> && dep ensure -v`. This step installs the tool's go source in `vendor/`, as it is in `Gopkg.toml`
-4. `cd src/<tool>/vendor/<path>` ; this path will change based on the tool.
-5. `go build <options> -o $GOPATH/bin/<tool>`
+1. Create a temporary directory
+1. Initialize git in that directory
+1. Fetch just the target commit to the directory
+1. Install tools as needed
+1. Remove the temporary directory
 
-To build all of the tools, run `make -C build-tools all`, or in the project root directory, just `make build-tools`
+To build all of the tools, in the project root directory, run `make build-tools`
 
 #### Reasoning
 
@@ -135,6 +126,8 @@ The following are the output components from the build process and their purpose
     2. config partition with the content of `config.img` described below
     3. root partition from the above `rootfs.img`
 * `live.qcow2` - the final bootable live disk image in [qcow2](https://en.wikipedia.org/wiki/Qcow) format
+* `live.vdi` - the final bootable live disk image in vdi format (used in VirtualBox systems)
+* `live.parallels` - the final bootable live virtual hard disk image in Parallels format
 * `live.img.tar.gz` - the final bootable live disk image in [Google Compute Platform](https://cloud.google.com/compute/docs/import/import-existing-image) format
 * `live.img` - a symlink to one of the above images that was built last
 * `installer.raw` - a bootable image that can install EVE on a local device. The installer is intended to be flashed to a USB or SD device, or booted via PXE, and then run to install on a local drive.
@@ -167,8 +160,8 @@ For a live bootable image, named `live.img`, we create the following dependencie
 `rootfs.img` is a bootable root filesystem. To build it:
 
 1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml).
-2. Call `makerootfs.sh images/rootfs.yml <format> rootfs.img`, which will:
-    1. Build an image using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file..
+2. Call `makerootfs.sh images/rootfs.yml rootfs.img <format> <arch>`, which will:
+    1. Build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file.
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
     3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs.img`.
@@ -253,8 +246,8 @@ For an installable image, named `installer.img`, we create the following depende
 To build `rootfs_installer.img`:
 
 1. Ensure the existence of the prerequisites: `rootfs.img`, `config.img`, `images/installer.yml`. The `yml` file is the configuration file for using linuxkit to build the `rootfs_installer.img`. See notes on [generating yml](#generating-yml).
-2. Call `makerootfs.sh images/installer.yml <format> rootfs_installer.img`, which will:
-    1. Build an image using `linuxkit` with a tar output format using `images/installer.yml` as the configuration file..
+2. Call `makerootfs.sh images/installer.yml rootfs_installer.img <format> <arch>`, which will:
+    1. Build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/installer.yml` as the configuration file..
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
     3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs_installer.img`.

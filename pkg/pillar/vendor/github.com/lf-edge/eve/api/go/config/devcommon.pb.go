@@ -83,9 +83,8 @@ func (x *UUIDandVersion) GetVersion() string {
 // For rebooting device,  command=Reset, counter = counter+delta, desiredState = on
 // For poweroff device,  command=Reset, counter = counter+delta, desiredState = off
 // For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss
-// Current implementation does support only single command outstanding for each type
-// In future can be extended to have more scheduled events
-//
+// Current implementation does support only single command outstanding for each
+// type. In future can be extended to have more scheduled events.
 type DeviceOpsCmd struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

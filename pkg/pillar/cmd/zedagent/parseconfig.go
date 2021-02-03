@@ -28,7 +28,7 @@ import (
 const (
 	MaxBaseOsCount       = 2
 	BaseOsImageCount     = 1
-	rebootConfigFilename = types.IdentityDirname + "/rebootConfig"
+	rebootConfigFilename = types.PersistStatusDir + "/rebootConfig"
 )
 
 // Returns a rebootFlag
@@ -1087,7 +1087,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
-	case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
+	case types.NT_IPV4, types.NT_IPV6:
 		if ipspec == nil {
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Missing ipspec for %s in %v",
 				config.Key(), netEnt)

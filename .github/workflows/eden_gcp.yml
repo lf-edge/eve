@@ -1,0 +1,87 @@
+---
+name: EdenGCP
+on:  # yamllint disable-line rule:truthy
+  workflow_run:
+    workflows:
+      - Publish
+    types:
+      - completed
+# yamllint disable rule:line-length
+jobs:
+  integration:
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        hv: ["kvm", "xen"]
+    steps:
+      - name: get eden
+        uses: actions/checkout@v2
+        with:
+          repository: 'lf-edge/eden'
+      - name: setup packages
+        run: |
+          sudo apt update
+          sudo apt install -y qemu-utils openvpn curl jq
+          echo "$OVPN_FILE" | base64 -d > ./config.ovpn
+        env:
+          OVPN_FILE: ${{ secrets.OVPN_FILE }}
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+      - name: clean
+        run: |
+          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
+          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q || echo "Does not exist"
+      - name: Connect VPN
+        id: connect_vpn
+        timeout-minutes: 1
+        run: |
+          sudo openvpn --config ./config.ovpn --daemon
+          until ip -f inet addr show tun0; do sleep 5; ip a; done
+          echo ::set-output name=tunnel_ip::$(ip -f inet addr show tun0 | sed -En -e 's/.*inet ([0-9.]+).*/\1/p')
+      - name: build eden
+        run: |
+          make build
+          make build-tests
+      - name: setup
+        run: |
+          export ipv4=`curl https://api.ipify.org/?format=json | jq ".ip" -r`
+          ./eden config add default --devmodel GCP
+          ./eden config set default --key eve.tag --value="snapshot"
+          ./eden config set default --key eve.hv --value ${{ matrix.hv }}
+          ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
+          ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
+          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
+          ./eden setup
+          ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" upload
+          ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" run
+          ./eden start
+          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS")
+          echo "the IP is $BWD"
+          ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}}
+          ./eden eve onboard
+          echo > tests/workflow/testdata/eden_stop.txt
+      - name: Test
+        run: |
+          EDEN_TEST=gcp ./eden test tests/workflow -v debug
+      - name: Collect logs
+        if: ${{ always() }}
+        run: |
+          ./eden log --format json > trace.log
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          gcloud compute firewall-rules delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || echo "Does not exist"
+          gcloud compute firewall-rules delete edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || echo "Does not exist"
+          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
+          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q || echo "Does not exist"
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: eden-report-${{ matrix.hv }}
+          path: ${{ github.workspace }}/trace.log

@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -46,7 +47,7 @@ import (
 
 const (
 	agentName          = "zedagent"
-	restartCounterFile = types.IdentityDirname + "/restartcounter"
+	restartCounterFile = types.PersistStatusDir + "/restartcounter"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
 	// Time limits for event loop handlers
@@ -90,6 +91,7 @@ type zedagentContext struct {
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
+	TriggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
 	subBaseOsStatus           pubsub.Subscription
 	subNetworkInstanceMetrics pubsub.Subscription
@@ -153,6 +155,12 @@ var logger *logrus.Logger
 var log *base.LogObject
 var zedcloudCtx *zedcloud.ZedCloudContext
 
+// object to trigger sending of info with infoType for objectKey
+type infoForObjectKey struct {
+	infoType  info.ZInfoTypes
+	objectKey string
+}
+
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
 	log = logArg
@@ -207,9 +215,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Functionf("Starting %s", agentName)
 
 	triggerDeviceInfo := make(chan struct{}, 1)
+	triggerObjectInfo := make(chan infoForObjectKey, 1)
 	zedagentCtx := zedagentContext{
 		ps:                ps,
 		TriggerDeviceInfo: triggerDeviceInfo,
+		TriggerObjectInfo: triggerObjectInfo,
 	}
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
@@ -273,10 +283,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.attestCtx = &attestCtx
 
 	// Wait until we have been onboarded aka know our own UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("processed onboarded")
+	devUUID = onboard.DeviceUUID
 
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
@@ -1053,10 +1065,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	//Parse SMART data
 	go parseSMARTData()
 
-	// Use a go routine to make sure we have wait/timeout without
+	// Use go routines to make sure we have wait/timeout without
 	// blocking the main select loop
 	log.Functionf("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
+	log.Functionf("Creating %s at %s", "objectInfoTask", agentlog.GetMyStack())
+	go objectInfoTask(&zedagentCtx, triggerObjectInfo)
 
 	// Publish initial device info.
 	triggerPublishDevInfo(&zedagentCtx)
@@ -1280,6 +1294,53 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 		// and we get a second and third trigger before that is complete.
 		log.Warnf("Failed to send on PublishDeviceInfo")
 	}
+}
+
+func triggerPublishAllInfo(ctxPtr *zedagentContext) {
+
+	log.Function("Triggered PublishAllInfo")
+	// we use goroutine since every publish operation can take a long time
+	// and will block sending on TriggerObjectInfo channel
+	go func() {
+		// we need only the last one device info to publish
+		triggerPublishDevInfo(ctxPtr)
+		// trigger publish applications infos
+		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiApp,
+				c.(types.AppInstanceStatus).Key(),
+			}
+		}
+		// trigger publish network instance infos
+		for _, c := range ctxPtr.subNetworkInstanceStatus.GetAll() {
+			niStatus := c.(types.NetworkInstanceStatus)
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiNetworkInstance,
+				(&niStatus).Key(),
+			}
+		}
+		// trigger publish volume infos
+		for _, c := range ctxPtr.getconfigCtx.subVolumeStatus.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiVolume,
+				c.(types.VolumeStatus).Key(),
+			}
+		}
+		// trigger publish content tree infos
+		for _, c := range ctxPtr.getconfigCtx.subContentTreeStatus.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiContentTree,
+				c.(types.ContentTreeStatus).Key(),
+			}
+		}
+		// trigger publish blob infos
+		for _, c := range ctxPtr.subBlobStatus.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiBlobList,
+				c.(types.BlobStatus).Key(),
+			}
+		}
+	}()
 }
 
 func handleZbootRestarted(ctxArg interface{}, done bool) {

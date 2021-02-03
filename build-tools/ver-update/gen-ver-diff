@@ -1,0 +1,35 @@
+#!/bin/bash -epu
+
+# Generates a list of all Dockerfiles with package versions that are out of date.
+# output columns:
+# - Dockfile name
+# - package name
+# - out of date version
+# - latest version
+
+official_list="$1"
+out_file_pkg_ver="$2"
+
+unknown_vers=
+
+# read lines with columns: dockerfile, package, version
+while read -r dfile pkg ver; do
+    if [ -n "$ver" ]; then
+        # line has a version, find version in official list
+        new_ver=$(sed -n "s/^$pkg \([0-9].*\)/\1/p" "$official_list")
+        if [ -n "$new_ver" ]; then
+            if [ "$ver" != "$new_ver" ]; then
+                echo "$dfile $pkg $ver $new_ver"
+            fi
+        else
+            unknown_vers="$unknown_vers $pkg"
+        fi
+    fi
+done < "$out_file_pkg_ver"
+
+if [ -n "$unknown_vers" ]; then
+    sorted_unknown=$(echo "$unknown_vers" | xargs -n1 | sort -u)
+    echo "$0: Missing versions:" $sorted_unknown 1>&2
+fi
+
+echo "$0: Succeeded" 1>&2

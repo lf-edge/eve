@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86 5.10.1 Kernel Configuration
+# Linux/x86 5.10.7 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="gcc (Alpine 8.3.0) 8.3.0"
 CONFIG_CC_IS_GCC=y
@@ -3395,7 +3395,6 @@ CONFIG_LPC_SCH=y
 # CONFIG_MFD_RC5T583 is not set
 # CONFIG_MFD_SEC_CORE is not set
 # CONFIG_MFD_SI476X_CORE is not set
-# CONFIG_MFD_SL28CPLD is not set
 CONFIG_MFD_SM501=y
 # CONFIG_MFD_SM501_GPIO is not set
 # CONFIG_MFD_SKY81452 is not set

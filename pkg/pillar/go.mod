@@ -37,7 +37,7 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20201111200732-5491ea93dbe4
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
-	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20201208021720-782660b12f0b
+	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
 	github.com/onsi/gomega v1.9.0
 	github.com/opencontainers/go-digest v1.0.0

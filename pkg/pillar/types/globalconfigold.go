@@ -62,8 +62,9 @@ type OldGlobalConfig struct {
 
 	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
 	// dom0. The rest is available for Apps.
-	Dom0MinDiskUsagePercent uint32
-	IgnoreDiskCheckForApps  bool
+	Dom0MinDiskUsagePercent  uint32
+	IgnoreMemoryCheckForApps bool
+	IgnoreDiskCheckForApps   bool
 
 	// XXX add max space for downloads?
 	// XXX add max space for running images?
@@ -123,8 +124,9 @@ var globalConfigDefaults = OldGlobalConfig{
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
 
-	Dom0MinDiskUsagePercent: 20,
-	IgnoreDiskCheckForApps:  false,
+	Dom0MinDiskUsagePercent:  20,
+	IgnoreMemoryCheckForApps: false,
+	IgnoreDiskCheckForApps:   false,
 }
 
 // Check which values are set and which should come from defaults
@@ -342,6 +344,7 @@ func (config OldGlobalConfig) MoveBetweenConfigs() *ConfigItemValueMap {
 
 	newConfig.SetGlobalValueBool(AllowAppVnc, config.AllowAppVnc)
 	newConfig.SetGlobalValueBool(UsbAccess, config.UsbAccess)
+	newConfig.SetGlobalValueBool(IgnoreMemoryCheckForApps, config.IgnoreMemoryCheckForApps)
 	newConfig.SetGlobalValueBool(IgnoreDiskCheckForApps, config.IgnoreDiskCheckForApps)
 
 	newConfig.SetGlobalValueString(SSHAuthorizedKeys, config.SshAuthorizedKeys)

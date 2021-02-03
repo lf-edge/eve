@@ -62,7 +62,7 @@ type getconfigContext struct {
 	rebootFlag               bool
 }
 
-// devUUID is set in handleConfigInit and never changed
+// devUUID is set in Run and never changed
 var devUUID uuid.UUID
 
 // XXX need to support recreating devices. Remove when zedcloud preserves state
@@ -70,6 +70,9 @@ var zcdevUUID uuid.UUID
 
 // Really a constant
 var nilUUID uuid.UUID
+
+// current epoch received from controller
+var controllerEpoch int64
 
 func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 
@@ -99,17 +102,6 @@ func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 		log.Fatal(err)
 	}
 
-	b, err := ioutil.ReadFile(types.UUIDFileName)
-	if err != nil {
-		// XXX this can fail if agents have crashed
-		log.Fatal("ReadFile", err, types.UUIDFileName)
-	}
-	uuidStr := strings.TrimSpace(string(b))
-	devUUID, err = uuid.FromString(uuidStr)
-	if err != nil {
-		log.Fatal("uuid.FromString", err, string(b))
-	}
-	log.Functionf("Read UUID %s", devUUID)
 	zedcloudCtx.DevUUID = devUUID
 	zcdevUUID = devUUID
 	return &zedcloudCtx
@@ -513,7 +505,12 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 				ctx := getconfigCtx.zedagentCtx
 				triggerPublishDevInfo(ctx)
 			}
-
+		}
+		newControllerEpoch := config.GetControllerEpoch()
+		if controllerEpoch != newControllerEpoch {
+			log.Noticef("Controller epoch changed from %d to %d", controllerEpoch, newControllerEpoch)
+			controllerEpoch = newControllerEpoch
+			triggerPublishAllInfo(getconfigCtx.zedagentCtx)
 		}
 	}
 

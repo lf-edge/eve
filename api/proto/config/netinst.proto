@@ -82,7 +82,7 @@ message NetworkInstanceConfig {
   // instType - Type of network instance ( local, bridge etc )
   ZNetworkInstType instType = 4;
   // activate
-  //  - True by default. If set to false ( inactivate), the network instance
+  //  - True by default. If set to false ( deactivate), the network instance
   //    configuration is downloaded to the device, but the network instance
   //    itself is not created on the device.
   bool activate = 5;

@@ -10,6 +10,7 @@
 package zedrouter
 
 import (
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -92,6 +94,7 @@ var debug = false
 var debugOverride bool // From command line arg
 var logger *logrus.Logger
 var log *base.LogObject
+var devUUID uuid.UUID
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
@@ -301,6 +304,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Functionf("processed GlobalConfig")
+
+	// Wait until we have been onboarded aka know our own UUID
+	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("processed onboarded")
+	devUUID = onboard.DeviceUUID
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
@@ -677,6 +688,22 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 	return &status
 }
 
+func lookupAppNetworkStatusByAppIP(ctx *zedrouterContext, ip net.IP) *types.AppNetworkStatus {
+
+	ipStr := ip.String()
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if ipStr == ulStatus.AllocatedIPAddr {
+				return &status
+			}
+		}
+	}
+	return nil
+}
+
 func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetworkConfig {
 
 	sub := ctx.subAppNetworkConfig
@@ -885,9 +912,8 @@ func appNetworkDoActivateUnderlayNetwork(
 	if ulConfig.AppMacAddr != nil {
 		appMac = ulConfig.AppMacAddr.String()
 	} else {
-		// Room to handle multiple underlays in 5th byte
-		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
-			ulNum, status.AppNum)
+		appMac = generateAppMac(status.UUIDandVersion.UUID,
+			ulNum, status.AppNum, netInstStatus)
 	}
 	log.Functionf("appMac %s\n", appMac)
 
@@ -939,10 +965,11 @@ func appNetworkDoActivateUnderlayNetwork(
 		AppNum: int32(status.AppNum)}
 
 	// Set up ACLs
-	ruleList, err := createACLConfiglet(aclArgs, ulConfig.ACLs)
+	ruleList, dependList, err := createACLConfiglet(ctx, aclArgs, ulConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
+	ulStatus.ACLDependList = dependList
 	appID := status.UUIDandVersion.UUID
 	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
@@ -965,7 +992,7 @@ func appNetworkDoActivateUnderlayNetwork(
 			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
-			newIpsets, false, netInstStatus.CurrentUplinkIntf,
+			newIpsets, netInstStatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -981,6 +1008,33 @@ func appNetworkDoActivateUnderlayNetwork(
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+// generateAppMac picks a fixed address for Local and Cloud and uses a fixed
+// hash for Switch which still produces a stable MAC address
+// for a given app instance
+func generateAppMac(appUUID uuid.UUID, ulNum int, appNum int, netInstStatus *types.NetworkInstanceStatus) string {
+	var appMac string
+
+	switch netInstStatus.Type {
+	case types.NetworkInstanceTypeSwitch:
+		h := sha256.New()
+		h.Write(appUUID[:])
+		h.Write(netInstStatus.UUIDandVersion.UUID[:])
+		nums := make([]byte, 2)
+		nums[0] = byte(ulNum)
+		nums[1] = byte(appNum)
+		h.Write(nums)
+		hash := h.Sum(nil)
+		appMac = fmt.Sprintf("02:16:3e:%02x:%02x:%02x",
+			hash[0], hash[1], hash[2])
+
+	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
+		// Room to handle multiple underlays in 5th byte
+		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
+			ulNum, appNum)
+	}
+	return appMac
 }
 
 func appNetworkDoCopyNetworksToStatus(
@@ -1320,6 +1374,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 		doAppNetworkModifyUnderlayNetwork(
 			ctx, status, ulConfig, oldulConfig, ulStatus, ipsets, false)
 	}
+	publishAppNetworkStatus(ctx, status)
 }
 
 func doAppNetworkModifyUnderlayNetwork(
@@ -1348,11 +1403,13 @@ func doAppNetworkModifyUnderlayNetwork(
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	appID := status.UUIDandVersion.UUID
 	rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
-	ruleList, err := updateACLConfiglet(aclArgs,
-		oldulConfig.ACLs, ulConfig.ACLs, rules.ACLRules, force)
+	ruleList, dependList, err := updateACLConfiglet(ctx, aclArgs,
+		oldulConfig.ACLs, ulConfig.ACLs, rules.ACLRules,
+		ulStatus.ACLDependList, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
+	ulStatus.ACLDependList = dependList
 	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
@@ -1367,7 +1424,7 @@ func doAppNetworkModifyUnderlayNetwork(
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false, netstatus.CurrentUplinkIntf,
+			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -1539,7 +1596,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false, netstatus.CurrentUplinkIntf,
+			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -1695,10 +1752,15 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		doDnsmasqRestart(ctx)
 	}
 
+	changedDepend := changedACLDepend(ctx, *ctx.deviceNetworkStatus,
+		status)
 	*ctx.deviceNetworkStatus = status
 	maybeHandleDNS(ctx)
 
 	deviceUpdateNIprobing(ctx, &status)
+	if changedDepend != nil {
+		updateACLIPAddr(ctx, changedDepend)
+	}
 
 	log.Functionf("handleDNSImpl done for %s\n", key)
 }
@@ -1716,6 +1778,101 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	maybeHandleDNS(ctx)
 	log.Functionf("handleDNSDelete done for %s\n", key)
+}
+
+// changedACLDepend determines the interfaces/ports and assigned IP addresses
+// which are changed from old to new.
+// The old IP address is placed in ACLDepend
+func changedACLDepend(ctx *zedrouterContext, oldDNS types.DeviceNetworkStatus,
+	newDNS types.DeviceNetworkStatus) []types.ACLDepend {
+
+	var dependList []types.ACLDepend
+	for i, op := range oldDNS.Ports {
+		if len(newDNS.Ports) <= i {
+			log.Tracef("changedACLDepend: %s disappeared",
+				op.IfName)
+			// Port disappeared - treat as change
+			depend := types.ACLDepend{Ifname: op.IfName}
+			dependList = append(dependList, depend)
+			continue
+		}
+		np := newDNS.Ports[i]
+		for j, oai := range op.AddrInfoList {
+			if len(np.AddrInfoList) <= j {
+				log.Tracef("changedACLDepend: %s %s disappeared",
+					op.IfName, oai.Addr.String())
+				// Address disappeared - treat as change
+				depend := types.ACLDepend{Ifname: op.IfName,
+					IPAddr: oai.Addr}
+				dependList = append(dependList, depend)
+				continue
+			}
+			nai := np.AddrInfoList[j]
+			if !oai.Addr.Equal(nai.Addr) {
+				log.Tracef("changedACLDepend: %s %s changed to %s",
+					op.IfName, oai.Addr.String(), nai.Addr.String())
+				depend := types.ACLDepend{Ifname: op.IfName,
+
+					IPAddr: oai.Addr}
+				dependList = append(dependList, depend)
+			}
+		}
+	}
+	return dependList
+}
+
+// updateACLIPAddr checks which AppNetworkStatus have ACLDependList
+// which is a subset of the changedDepend
+// An empty IP address in ACLDependList means match is just on the ifname
+func updateACLIPAddr(ctx *zedrouterContext, changedDepend []types.ACLDepend) {
+	log.Functionf("updateACLIPAddr changedDepend: %+v", changedDepend)
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		config := lookupAppNetworkConfig(ctx, status.Key())
+		if config == nil || !config.Activate {
+			log.Tracef("updateACLIPAddr skipping %s: no config",
+				status.Key())
+			continue
+		}
+		for i := range config.UnderlayNetworkList {
+			ulConfig := &config.UnderlayNetworkList[i]
+			ulStatus := &status.UnderlayNetworkList[i]
+			if ulStatus.ACLDependList == nil {
+				log.Tracef("updateACLIPAddr skipping ul %d %s: ACLDependList",
+					i, status.Key())
+				continue
+			}
+			match := false
+			for _, d := range ulStatus.ACLDependList {
+				// if d.Ifname in changedDepend
+				for _, c := range changedDepend {
+					if d.Ifname != c.Ifname {
+						continue
+					}
+					if len(d.IPAddr) == 0 || len(c.IPAddr) == 0 ||
+						d.IPAddr.Equal(c.IPAddr) {
+						log.Noticef("updateACLIPAddr match on %s == %s for %s",
+							c.IPAddr, d.IPAddr, status.Key())
+						match = true
+						break
+					}
+				}
+				if match {
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+			ipsets := compileAppInstanceIpsets(ctx,
+				config.UnderlayNetworkList)
+			doAppNetworkModifyUnderlayNetwork(ctx, &status,
+				ulConfig, ulConfig, ulStatus, ipsets, true)
+			publishAppNetworkStatus(ctx, &status)
+		}
+	}
 }
 
 func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetworkConfig,

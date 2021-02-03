@@ -44,8 +44,6 @@ const (
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
 	// V2TLSCertShaFilename - find TLS root cert for API V2 based on this sha
 	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
-	// UUIDFileName - device UUID
-	UUIDFileName = IdentityDirname + "/uuid"
 
 	// APIV1FileName - user can statically allow for API v1
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
@@ -75,4 +73,6 @@ const (
 	NewlogUploadDevDir = NewlogDir + "/devUpload"
 	// NewlogUploadAppDir - newlog app gzip file directory ready for upload
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
+	// EveMemoryLimitFile - stores memory reserved for eve
+	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
 )

@@ -213,7 +213,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	model := hardware.GetHardwareModel(log)
+	// XXX this is just dmidecode; should we pick up
+	// from OnboardingStatus once we have it?
+	model := hardware.GetHardwareModelNoOverride(log)
 	log.Noticef("Got HardwareModel %s", model)
 
 	var blinkFunc Blink200msFunc

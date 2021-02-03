@@ -163,11 +163,6 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	netlink.LinkDel(link)
 
-	// Delete the sister dummy interface also, if any
-	if status.HasEncap {
-		deleteDummyInterface(status)
-	}
-
 	//    ip link add ${bridgeName} type bridge
 	attrs = netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
@@ -202,33 +197,18 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 	index := bridgeLink.Attrs().Index
 	status.BridgeIfindex = index
 
-	// For the case of Lisp/Vpn networks, we route all traffic coming from
-	// the bridge to a dummy interface with MTU 1280. This is done to
-	// get bigger packets fragmented and also to have the kernel generate
-	// ICMP packet too big for path MTU discovery before being captured by
-	// lisp dataplane/other network elements
-	if status.HasEncap {
-		err = createDummyInterface(status)
-	}
 	return err, bridgeMac
 }
 
 func networkInstanceBridgeDelete(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	// When bridge and sister interfaces are deleted, code in pbr.go
-	// takes care of deleting the corresponding route tables and ip rules.
 	// Here we explicitly delete the iptables rules which are tied to the Linux bridge
 	// itself and not the rules for specific domU vifs.
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
 		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
 	handleNetworkInstanceACLConfiglet("-D", aclArgs)
-
-	// delete the sister interface
-	if status.HasEncap {
-		deleteDummyInterface(status)
-	}
 
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = status.BridgeName
@@ -248,89 +228,6 @@ func isNetworkInstanceCloud(status *types.NetworkInstanceStatus) bool {
 		return true
 	}
 	return false
-}
-
-func createDummyInterface(status *types.NetworkInstanceStatus) error {
-
-	bridgeName := status.BridgeName
-	bridgeNum := status.BridgeNum
-
-	sattrs := netlink.NewLinkAttrs()
-	// "s" for sister
-	dummyIntfName := "s" + bridgeName
-	sattrs.Name = dummyIntfName
-
-	slinkMac := fmt.Sprintf("00:16:3e:06:01:%02x", bridgeNum)
-	hw, err := net.ParseMAC(slinkMac)
-	if err != nil {
-		log.Fatal("doNetworkCreate: ParseMAC failed: ", slinkMac, err)
-	}
-	sattrs.HardwareAddr = hw
-	// 1280 gives us a comfortable buffer for lisp encapsulation
-	sattrs.MTU = 1280
-	slink := &netlink.Dummy{LinkAttrs: sattrs}
-	if err := netlink.LinkAdd(slink); err != nil {
-		errStr := fmt.Sprintf("doNetworkCreate: LinkAdd on %s failed: %s",
-			dummyIntfName, err)
-		return errors.New(errStr)
-	}
-
-	// ip link set ${dummy-interface} up
-	if err := netlink.LinkSetUp(slink); err != nil {
-		errStr := fmt.Sprintf("doNetworkCreate: LinkSetUp on %s failed: %s",
-			dummyIntfName, err)
-		return errors.New(errStr)
-	}
-
-	// Turn ARP off on our dummy link
-	if err := netlink.LinkSetARPOff(slink); err != nil {
-		errStr := fmt.Sprintf("doNetworkCreate: LinkSetARPOff on %s failed: %s",
-			dummyIntfName, err)
-		return errors.New(errStr)
-	}
-
-	var destAddr string
-	if status.Ipv4Eid || isNetworkInstanceCloud(status) {
-		destAddr = status.Subnet.String()
-	} else {
-		destAddr = "fd00::/8"
-	}
-	_, ipnet, err := net.ParseCIDR(destAddr)
-	if err != nil {
-		errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
-			status.Subnet.String())
-		return errors.New(errStr)
-	}
-
-	// get bridge index
-	attrs := netlink.NewLinkAttrs()
-	attrs.Name = bridgeName
-	link := &netlink.Bridge{LinkAttrs: attrs}
-	iifIndex := link.Attrs().Index
-
-	// get link index
-	oifIndex := slink.Attrs().Index
-	err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet)
-	if err != nil {
-		errStr := fmt.Sprintf(
-			"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
-			bridgeName, err)
-		return errors.New(errStr)
-	}
-	return nil
-}
-
-func deleteDummyInterface(status *types.NetworkInstanceStatus) {
-
-	bridgeName := status.BridgeName
-	// "s" for sister
-	dummyIntfName := "s" + bridgeName
-
-	// Delete the sister dummy interface also
-	sattrs := netlink.NewLinkAttrs()
-	sattrs.Name = dummyIntfName
-	sLink := &netlink.Dummy{LinkAttrs: sattrs}
-	netlink.LinkDel(sLink)
 }
 
 func doBridgeAclsDelete(
@@ -557,7 +454,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
-			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+			hostsDirpath, status.BridgeIPSets,
 			status.CurrentUplinkIntf, dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
@@ -838,7 +735,7 @@ func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) 
 		status.CurrentUplinkIntf)
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
-		status.Ipv4Eid, status.CurrentUplinkIntf, dnsServers, ntpServers)
+		status.CurrentUplinkIntf, dnsServers, ntpServers)
 	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
 }
@@ -966,9 +863,7 @@ func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
 func getPrefixLenForBridgeIP(
 	status *types.NetworkInstanceStatus) int {
 	var prefixLen int
-	if status.Ipv4Eid {
-		prefixLen = 32
-	} else if status.Subnet.IP != nil {
+	if status.Subnet.IP != nil {
 		prefixLen, _ = status.Subnet.Mask.Size()
 	} else if status.IsIPv6() {
 		prefixLen = 128
@@ -1191,7 +1086,6 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
 	}
 	log.Functionf("IfNameList: %+v", status.IfNameList)
-
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
 		err = bridgeActivate(ctx, status)
@@ -1200,8 +1094,18 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	case types.NetworkInstanceTypeLocal:
 		err = natActivate(ctx, status)
+		if err == nil {
+			err = createServer4(ctx, status.BridgeIPAddr,
+				status.BridgeName)
+		}
+
 	case types.NetworkInstanceTypeCloud:
 		err = vpnActivate(ctx, status)
+		if err == nil {
+			err = createServer4(ctx, status.BridgeIPAddr,
+				status.BridgeName)
+		}
+
 	default:
 		errStr := fmt.Sprintf("doNetworkInstanceActivate: NetworkInstance %d not yet supported",
 			status.Type)
@@ -1275,8 +1179,10 @@ func doNetworkInstanceInactivate(
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
 		natInactivate(ctx, status, false)
+		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	case types.NetworkInstanceTypeCloud:
 		vpnInactivate(ctx, status)
+		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	}
 
 	return
@@ -1569,6 +1475,22 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 	return ipVer
 }
 
+func lookupNetworkInstanceStatusByAppIP(ctx *zedrouterContext,
+	ip net.IP) *types.NetworkInstanceStatus {
+
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
+		for _, a := range status.IPAssignments {
+			if ip.Equal(a) {
+				return &status
+			}
+		}
+	}
+	return nil
+}
+
 // ==== Vpn
 func vpnCreate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -1793,7 +1715,7 @@ func doNetworkInstanceFallback(
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
-				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
 		}
@@ -1847,7 +1769,7 @@ func doNetworkInstanceFallback(
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
-				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
 		}

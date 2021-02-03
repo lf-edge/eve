@@ -40,6 +40,7 @@ const (
 	errorTime     = 3 * time.Minute
 	warningTime   = 40 * time.Second
 	bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
+	uuidFileName  = types.PersistStatusDir + "/uuid"
 )
 
 // Really a constant
@@ -57,11 +58,6 @@ var Version = "No version specified"
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
-//  uuid			Written by getUuid operation
-//  hardwaremodel		Written by getUuid if server returns a hardwaremodel
-//  enterprise			Written by getUuid if server returns an enterprise
-//  name			Written by getUuid if server returns a name
-//
 //
 
 type clientContext struct {
@@ -129,10 +125,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 	}
 
-	hardwaremodelFileName := types.IdentityDirname + "/hardwaremodel"
-	enterpriseFileName := types.IdentityDirname + "/enterprise"
-	nameFileName := types.IdentityDirname + "/name"
-
 	cms := zedcloud.GetCloudMetrics(log) // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -148,17 +140,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		Persistent: true,
 	})
 
+	// Get any existing UUID from the above pub
 	var oldUUID uuid.UUID
-	b, err := ioutil.ReadFile(types.UUIDFileName)
+	var oldHardwaremodel string
+	item, err := pubOnboardStatus.Get("global")
 	if err == nil {
-		uuidStr := strings.TrimSpace(string(b))
-		oldUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Warningf("Malformed UUID file ignored: %s", err)
-		}
+		status := item.(types.OnboardingStatus)
+		oldUUID = status.DeviceUUID
+		oldHardwaremodel = status.HardwareModel
 	}
-	// Check if we have a /config/hardwaremodel file
-	oldHardwaremodel := hardware.GetHardwareModelOverride(log)
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -271,8 +261,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	done := false
 	var devUUID uuid.UUID
 	var hardwaremodel string
-	var enterprise string
-	var name string
 	gotUUID := false
 	gotRegister := false
 	retryCount := 0
@@ -316,7 +304,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				}
 				if !done && operations["getUuid"] {
 					// Check if getUUid succeeds
-					done, devUUID, hardwaremodel, enterprise, name = doGetUUID(&clientCtx, devtlsConfig, retryCount)
+					done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 					if done {
 						log.Functionf("getUUID succeeded; selfRegister no longer needed")
 						gotUUID = true
@@ -324,7 +312,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				}
 			}
 			if !gotUUID && operations["getUuid"] {
-				done, devUUID, hardwaremodel, enterprise, name = doGetUUID(&clientCtx, devtlsConfig, retryCount)
+				done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 				if done {
 					log.Functionf("getUUID succeeded; selfRegister no longer needed")
 					gotUUID = true
@@ -347,7 +335,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// If we already know a uuid we can skip waiting
 			// but if the network is working we do wait
 			// This might not set hardwaremodel when upgrading
-			// an onboarded system without /config/hardwaremodel.
+			// an onboarded system
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
 			if clientCtx.networkState != types.DPC_SUCCESS &&
@@ -384,61 +372,33 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			log.Functionf("Got config with UUID %s", devUUID)
 		}
-
+		_, err := os.Stat(uuidFileName)
+		if err != nil {
+			doWrite = true
+		}
+		// Write to file since device-steps.sh sets hostname
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(types.UUIDFileName, b, 0644)
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
 			if err != nil {
-				log.Fatal("WriteFile", err, types.UUIDFileName)
+				log.Fatal("WriteFile", err, uuidFileName)
 			}
 			log.Tracef("Wrote UUID %s", devUUID)
 		}
-
-		// always publish the latest UUID
+		if hardwaremodel == "" {
+			hardwaremodel = oldHardwaremodel
+		}
+		if hardwaremodel == "" {
+			// Nothing from controller; use dmidecode etc
+			hardwaremodel = hardware.GetHardwareModelNoOverride(log)
+		}
+		// always publish the latest UUID and hardwaremode
 		trigOnboardStatus.DeviceUUID = devUUID
+		trigOnboardStatus.HardwareModel = hardwaremodel
+
 		pubOnboardStatus.Publish("global", trigOnboardStatus)
 		log.Functionf("client pub OnboardStatus")
 
-		doWrite = true
-		if hardwaremodel != "" {
-			if oldHardwaremodel != hardwaremodel {
-				log.Functionf("Replacing existing hardwaremodel %s with %s",
-					oldHardwaremodel, hardwaremodel)
-			} else {
-				log.Functionf("No change to hardwaremodel %s",
-					hardwaremodel)
-				doWrite = false
-			}
-		} else {
-			log.Functionf("Got config with no hardwaremodel")
-			doWrite = false
-		}
-
-		if doWrite {
-			// Note that no CRLF
-			b := []byte(hardwaremodel)
-			err = ioutil.WriteFile(hardwaremodelFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err,
-					hardwaremodelFileName)
-			}
-			log.Tracef("Wrote hardwaremodel %s", hardwaremodel)
-		}
-		// We write the strings even if empty to make sure we have the most
-		// recents. Since this is for debug use we are less careful
-		// than for the hardwaremodel.
-		b = []byte(enterprise) // Note that no CRLF
-		err = ioutil.WriteFile(enterpriseFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, enterpriseFileName)
-		}
-		log.Tracef("Wrote enterprise %s", enterprise)
-		b = []byte(name) // Note that no CRLF
-		err = ioutil.WriteFile(nameFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, nameFileName)
-		}
-		log.Tracef("Wrote name %s", name)
 	}
 
 	err = pub.Publish("global", zedcloud.GetCloudMetrics(log))
@@ -626,11 +586,11 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 }
 
 func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
-	retryCount int) (bool, uuid.UUID, string, string, string) {
+	retryCount int) (bool, uuid.UUID, string) {
 	//First try the new /uuid api, if fails, fall back to /config
-	done, devUUID, hardwaremodel, enterprise, name := doGetUUIDNew(ctx, tlsConfig, retryCount)
+	done, devUUID, hardwaremodel := doGetUUIDNew(ctx, tlsConfig, retryCount)
 	if done {
-		return done, devUUID, hardwaremodel, enterprise, name
+		return done, devUUID, hardwaremodel
 	} else {
 		log.Warnln("/uuid API failed, falling back to /config for doGetUUID")
 		return doGetUUIDLegacy(ctx, tlsConfig, retryCount)
@@ -638,7 +598,7 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 }
 
 func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
-	retryCount int) (bool, uuid.UUID, string, string, string) {
+	retryCount int) (bool, uuid.UUID, string) {
 	var resp *http.Response
 	var contents []byte
 	var rtf types.SenderResult
@@ -650,7 +610,7 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 	b, err := generateUUIDRequest()
 	if err != nil {
 		log.Errorln(err)
-		return false, nilUUID, "", "", ""
+		return false, nilUUID, ""
 	}
 	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
@@ -661,24 +621,24 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 			ctx.getCertsTimer = time.NewTimer(time.Second)
 			log.Functionf("doGetUUID: Cert miss. Setup timer to acquire")
 		}
-		return false, nilUUID, "", "", ""
+		return false, nilUUID, ""
 	}
 	log.Functionf("doGetUUID: client getUUID ok")
-	devUUID, hardwaremodel, enterprise, name, err := parseUUIDResponse(resp, contents)
+	devUUID, hardwaremodel, err := parseUUIDResponse(resp, contents)
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
 			utils.UpdateLedManagerConfig(log, 4)
 		}
-		return true, devUUID, hardwaremodel, enterprise, name
+		return true, devUUID, hardwaremodel
 	}
 	// Keep on trying until it parses
 	log.Errorf("Failed parsing uuid: %s", err)
-	return false, nilUUID, "", "", ""
+	return false, nilUUID, ""
 }
 
 func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
-	retryCount int) (bool, uuid.UUID, string, string, string) {
+	retryCount int) (bool, uuid.UUID, string) {
 
 	var resp *http.Response
 	var contents []byte
@@ -690,7 +650,7 @@ func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
 	b, err := generateConfigRequest()
 	if err != nil {
 		log.Errorln(err)
-		return false, nilUUID, "", "", ""
+		return false, nilUUID, ""
 	}
 	var done bool
 	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
@@ -707,20 +667,20 @@ func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
 			ctx.getCertsTimer = time.NewTimer(interval * time.Second)
 			log.Functionf("doGetUUID: Cert miss. Setup timer to acquire")
 		}
-		return false, nilUUID, "", "", ""
+		return false, nilUUID, ""
 	}
 	log.Functionf("doGetUUID: client getUUID ok")
-	devUUID, hardwaremodel, enterprise, name, err := parseConfig(requrl, resp, contents)
+	devUUID, hardwaremodel, err := parseConfig(requrl, resp, contents)
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
 			utils.UpdateLedManagerConfig(log, 4)
 		}
-		return true, devUUID, hardwaremodel, enterprise, name
+		return true, devUUID, hardwaremodel
 	}
 	// Keep on trying until it parses
 	log.Errorf("Failed parsing uuid: %s", err)
-	return false, nilUUID, "", "", ""
+	return false, nilUUID, ""
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,

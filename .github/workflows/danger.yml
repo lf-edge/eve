@@ -1,0 +1,53 @@
+---
+name: Publish PR build
+on:
+  workflow_run:
+    workflows:
+      - "PR build"
+    types:
+      - completed
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Find PR build artifact
+        id: find-pr-artifact
+        uses: actions/github-script@v3
+        with:
+          result-encoding: string
+          script: |
+            console.log(context)
+            console.log(context.payload.workflow_run.id)
+            artifacts = (await github.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            })).data
+            if (artifacts.hasOwnProperty('total_count') && artifacts.total_count > 0) {
+              for (const artifact of artifacts.artifacts) {
+                if (artifact.name === 'eve') {
+                  return (await github.actions.downloadArtifact({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    artifact_id: artifact.id,
+                    archive_format: 'zip',
+                  })).url
+                }
+              }
+            } else {
+              throw 'No artifacts to publish'
+            }
+
+      - name: Publish EVE
+        run: |
+          [ -z "${{steps.find-pr-artifact.outputs.result}}" ] && exit 1
+
+          wget -O eve.zip "${{steps.find-pr-artifact.outputs.result}}"
+          unzip eve.zip
+
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
+             docker login -u evebuild --password-stdin
+          for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
+             docker push "$i"
+          done

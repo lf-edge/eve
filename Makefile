@@ -8,7 +8,8 @@ GOVER ?= 1.15.3
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
-PATH:=$(CURDIR)/build-tools/bin:$(PATH)
+BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
+PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
 export CGO_ENABLED GOOS GOARCH PATH
 
@@ -110,9 +111,7 @@ DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
-PART_SPEC_amd64=efi conf imga
-PART_SPEC_arm64=boot conf imga
-PART_SPEC=$(PART_SPEC_$(ZARCH))
+PART_SPEC=efi conf imga
 
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
@@ -189,8 +188,18 @@ ifneq ($(ALL_PROXY),)
 DOCKER_ALL_PROXY:=--build-arg all_proxy=$(ALL_PROXY)
 endif
 
+# use "make V=1" for verbose logging
+DASH_V :=
+QUIET := @
+SET_X := :
+ifeq ($(V),1)
+  DASH_V := -v
+  QUIET :=
+  SET_X := set -x
+endif
+
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; shift ; docker export $$C | tar -xf - "$$@" ; docker rm $$C ; } ; _
-DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.go/bin ; \
+DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.go/bin ; \
     docker_go_line="docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
     -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c" ; \
@@ -200,7 +209,9 @@ DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
-LINUXKIT=$(CURDIR)/build-tools/bin/linuxkit
+LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
+LINUXKIT_VERSION=80c4edd5c54dc05fbeae932440372990fce39bd6
+LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=--disable-content-trust $(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD)
 LINUXKIT_PKG_TARGET=build
 RESCAN_DEPS=FORCE
@@ -231,6 +242,7 @@ PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
 # Top-level targets
 
 all: help
+	$(QUIET): $@: Succeeded
 
 # just reports the version, without appending qualifies like HVM or such
 version:
@@ -238,7 +250,8 @@ version:
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
+	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
+	$(QUIET): $@: Succeeded
 
 itest: $(GOBUILDER) run-proxy | $(DIST)
 	@echo Running integration tests
@@ -262,7 +275,7 @@ $(BUILD_VM_CLOUD_INIT): build-tools/src/scripts/cloud-init.in | $(DIST)
 	@if [ -z "$(BUILD_VM_SSH_PUB_KEY)" ] || [ -z "$(BUILD_VM_GH_TOKEN)" ]; then                  \
 	    echo "Must be run as: make BUILD_VM_SSH_PUB_KEY=XXX BUILD_VM_GH_TOKEN=YYY $@" && exit 1 ;\
 	fi
-	@sed -e 's#@ZARCH@#$(subst amd64,x64,$(ZARCH))#' -e 's#@SSH_PUB_KEY@#$(BUILD_VM_SSH_PUB_KEY)#g'  \
+	$(QUIET)sed -e 's#@ZARCH@#$(subst amd64,x64,$(ZARCH))#' -e 's#@SSH_PUB_KEY@#$(BUILD_VM_SSH_PUB_KEY)#g'  \
 	     -e 's#@GH_TOKEN@#$(BUILD_VM_GH_TOKEN)#g' < $< | docker run -i alpine:edge sh -c             \
 	          'apk add cloud-utils > /dev/null 2>&1 && cloud-localds --disk-format qcow2 _ - && cat _' > $@
 
@@ -278,6 +291,7 @@ $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IM
 
 $(BIOS_IMG): $(LINUXKIT) | $(DIST)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) $(notdir $@)
+	$(QUIET): $@: Succeeded
 
 $(IPXE_IMG): $(LINUXKIT) | $(DIST)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/ipxe)-$(DOCKER_ARCH_TAG) $(notdir $@)
@@ -285,15 +299,19 @@ $(IPXE_IMG): $(LINUXKIT) | $(DIST)
 $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 	mkdir $(dir $@) 2>/dev/null || :
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
+	$(QUIET): $@: Succeeded
 
 $(EFI_PART): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) $(notdir $@)
+	$(QUIET): $@: Succeeded
 
 $(BOOT_PART): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/u-boot)-$(DOCKER_ARCH_TAG) $(notdir $@)
+	$(QUIET): $@: Succeeded
 
 $(INITRD_IMG): $(LINUXKIT) | $(INSTALLER)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/mkimage-raw-efi)-$(DOCKER_ARCH_TAG) $(notdir $@ $(EFI_PART))
+	$(QUIET): $@: Succeeded
 
 # run-installer
 #
@@ -323,10 +341,12 @@ run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
 run-rootfs: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,format=vvfat
+	$(QUIET): $@: Succeeded
 
 run-grub: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
 	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,label=EVE,file=fat:rw:$(EFI_PART)/..
+	$(QUIET): $@: Succeeded
 
 run-compose: images/docker-compose.yml images/version.yml
 	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
@@ -390,12 +410,12 @@ $(DIST) $(INSTALLER):
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
 build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
-config: $(CONFIG_IMG)
+config: $(CONFIG_IMG))		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_IMG)
 rootfs-%: $(ROOTFS)-%.img ;
-live: $(LIVE_IMG)
-live-%: $(LIVE).% ;
+live: $(LIVE_IMG)		; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
+live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
 installer-%: $(INSTALLER).% ;
 
@@ -406,26 +426,33 @@ $(SSH_KEY):
 
 $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 	./tools/makeconfig.sh $@ "$(ROOTFS_VERSION)" $(CONF_FILES)
+	$(QUIET): $@: Succeeded
 
 $(PERSIST_IMG): | $(INSTALLER)
 	$(if $(findstring zfs,$(HV)),echo 'eve<3zfs' > $@)
 	# 1M of zeroes should be enough to trigger filesystem wipe on first boot
 	dd if=/dev/zero bs=1048576 count=1 >> $@
+	$(QUIET): $@: Succeeded
 
 $(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 	@rm -f $@ && ln -s $(notdir $<) $@
+	$(QUIET): $@: Succeeded
 
 $(ROOTFS_IMG): $(ROOTFS)-$(HV).img
 	@rm -f $@ && ln -s $(notdir $<) $@
+	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
+	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
+	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeiso.sh $| $@
+	$(QUIET): $@: Succeeded
 
 $(INSTALLER).net: eve
 	docker run lfedge/eve:$(ROOTFS_VERSION)-$(HV) installer_net > $@
@@ -448,20 +475,22 @@ pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
 pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar
-	@true
+	$(QUIET): $@: Succeeded
 pkg/xen-tools: pkg/uefi eve-xen-tools
-	@true
+	$(QUIET): $@: Succeeded
 pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
-	@true
+	$(QUIET): $@: Succeeded
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
-	@true
+	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
-	@true
+	$(QUIET): $@: Succeeded
 
-eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(if $(findstring arm64,$(ZARCH)),$(BOOT_PART)) | $(DIST)
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(BOOT_PART) | $(DIST)
+	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp pkg/eve/build.yml pkg/eve/runme.sh images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
-	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
+	$(QUIET): $@: Succeeded
 
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
@@ -509,29 +538,38 @@ release:
 	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"
 
 shell: $(GOBUILDER)
-	@DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
+	$(QUIET)DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
 
 #
 # Utility targets in support of our Dockerized build infrastrucutre
 #
-$(LINUXKIT): CGO_ENABLED=0
+
+# build linuxkit for the host OS, not the container OS
 $(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
-$(LINUXKIT): $(CURDIR)/build-tools/src/linuxkit/Gopkg.lock $(CURDIR)/build-tools/bin/manifest-tool | $(GOBUILDER)
-	@$(DOCKER_GO) "unset GOFLAGS ; unset GO111MODULE ; go build -ldflags '-X version.GitCommit=$(EVE_TREE_TAG)' -o /go/bin/linuxkit \
-                          ./vendor/github.com/linuxkit/linuxkit/src/cmd/linuxkit" $(dir $<) /linuxkit $(dir $@)
-$(CURDIR)/build-tools/bin/manifest-tool: $(CURDIR)/build-tools/src/manifest-tool/Gopkg.lock | $(GOBUILDER)
-	@$(DOCKER_GO) "unset GOFLAGS ; unset GO111MODULE ; go build -ldflags '-X main.gitCommit=$(EVE_TREE_TAG)' -o /go/bin/manifest-tool \
-                          ./vendor/github.com/estesp/manifest-tool" $(dir $<) /manifest-tool $(dir $@)
+$(LINUXKIT): | $(GOBUILDER)
+	$(QUIET)$(DOCKER_GO) \
+	"unset GOFLAGS; rm -rf /tmp/linuxkit && \
+	git clone $(LINUXKIT_SOURCE) /tmp/linuxkit && \
+	cd /tmp/linuxkit && \
+	git checkout $(LINUXKIT_VERSION) && \
+	cd /tmp/linuxkit/src/cmd/linuxkit && \
+	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor . && \
+	cd && \
+	rm -rf /tmp/linuxkit" \
+	$(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
+	$(QUIET): $@: Succeeded
 
 $(GOBUILDER):
+	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
 ifneq ($(BUILD),local)
 	@echo "Creating go builder image for user $(USER)"
-	@docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
+	$(QUIET)docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
                       --build-arg UID=$(UID) --build-arg GID=$(GID) \
                       $(DOCKER_HTTP_PROXY) $(DOCKER_HTTPS_PROXY) $(DOCKER_NO_PROXY) $(DOCKER_ALL_PROXY) \
                       -t $@ build-tools/src/scripts > /dev/null
 	@echo "$@ docker container is ready to use"
 endif
+	$(QUIET): $@: Succeeded
 
 #
 # Common, generalized rules
@@ -546,29 +584,39 @@ endif
 %.qcow2: %.raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	qemu-img resize $@ ${MEDIA_SIZE}M
+	$(QUIET): $@: Succeeded
 
 %.yml: %.yml.in build-tools $(RESCAN_DEPS)
-	@$(PARSE_PKGS) $< > $@
+	$(QUIET)$(PARSE_PKGS) $< > $@
+	$(QUIET): $@: Succeeded
 
 %/Dockerfile: %/Dockerfile.in build-tools $(RESCAN_DEPS)
-	@$(PARSE_PKGS) $< > $@
+	$(QUIET)$(PARSE_PKGS) $< > $@
+	$(QUIET): $@: Succeeded
 
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
-	@$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
+	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
+	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
 	@if [ -e $@.patch ]; then patch -p0 -o $@.sed < $@.patch ;else cp $< $@.sed ;fi
-	@sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
+	$(QUIET)sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
 	@rm $@.sed
+	$(QUIET): $@: Succeeded
 
 $(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml $(SSH_KEY) | $(INSTALLER)
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
+	$(QUIET): $@: Begin
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
+	$(QUIET): $@: Succeeded
 $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
+	$(QUIET): $@: Begin
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	$(QUIET): $@: Succeeded
 
 %-show-tag:
 	@$(LINUXKIT) pkg show-tag pkg/$*
@@ -612,7 +660,7 @@ help:
 	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
 	@echo
 	@echo "Commonly used build targets:"
-	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
+	@echo "   build-tools    builds linuxkit utilities and installs under build-tools/bin"
 	@echo "   config         builds a bundle with initial EVE configs"
 	@echo "   pkgs           builds all EVE packages"
 	@echo "   pkg/XXX        builds XXX EVE package"

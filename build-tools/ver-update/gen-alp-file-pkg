@@ -1,0 +1,37 @@
+#!/bin/bash -epu
+
+TOP='*'
+if (( $# )); then
+    TOP="$*"
+else
+    cd "$(dirname "$0")/../.."
+fi
+
+# big filters, explained line by line:
+# - for:
+#   - find all Dockerfiles
+#   - skip generated files
+# - pkgs=:
+#   - combine all \ continuation lines
+#   - replace tabs with space
+#   - get only run apk add lines
+#   - strip out add command to get package names only
+#   - split package names to separate lines
+#   - strip add options and paths
+# - for:
+#   - replace =version with space
+# - unique sort of file/package/version lines
+
+for dfile in $(find $TOP -name 'Docker*' | grep -v build-tools/ | grep -v dist/ | grep -v vendor/); do
+    pkgs=$(perl -p -e 's/\\\n//' "$dfile" |
+        tr '\t' ' ' |
+        grep -i 'run *apk .*add' |
+        sed 's/.* add //' |
+        xargs -n1 |
+        grep '^[a-z]') || true
+    for pkg in $pkgs; do
+        echo "$dfile ${pkg/=/ }"
+    done
+done | sort -u
+
+echo "$0: Succeeded" 1>&2

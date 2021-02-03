@@ -326,7 +326,7 @@ github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/register
-# github.com/lf-edge/eve/libs/zedUpload v0.0.0-20201208021720-782660b12f0b
+# github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
 github.com/lf-edge/eve/libs/zedUpload
 github.com/lf-edge/eve/libs/zedUpload/awsutil
 github.com/lf-edge/eve/libs/zedUpload/azureutil

@@ -1,0 +1,9 @@
+--- images/rootfs.yml.in	2021-01-15 19:34:18.000000000 -0800
++++ images/rootfs.yml.in	2021-01-15 19:35:09.000000000 -0800
+@@ -1,5 +1,5 @@
+ kernel:
+-  image: NEW_KERNEL_TAG
++  image: KERNEL_TAG
+   cmdline: "rootdelay=3"
+ init:
+   - linuxkit/init:a68f9fa0c1d9dbfc9c23663749a0b7ac510cbe1c

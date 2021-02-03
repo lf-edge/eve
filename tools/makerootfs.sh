@@ -1,7 +1,9 @@
 #!/bin/bash
 # Usage:
 #
-#     ./makerootfs.sh <image.yml> <output rootfs image>  [<fs>]
+#     ./makerootfs.sh <image.yml> <output rootfs image> <fs> <arch>
+# <fs> defaults to squash
+# <arch> defaults to the current machine architecture
 
 set -e
 set -o pipefail
@@ -17,5 +19,12 @@ if [ ! -f "$YMLFILE" ] || [ $# -lt 2 ]; then
     exit 1
 fi
 
+# did we specify an architecture?
+ARCH="$4"
+ARCHARG=""
+if [ -n "$ARCH" ]; then
+  ARCHARG="-arch ${ARCH}"
+fi
+
 : > "$IMAGE"
-linuxkit build -o - "$YMLFILE" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
+linuxkit build -docker ${ARCHARG} -o - "$YMLFILE" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
