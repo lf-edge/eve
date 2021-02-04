@@ -365,7 +365,7 @@ run-live-vb:
 	VBoxManage modifyvm $(VB_VM_NAME) --cpus $(VB_CPUS) --memory $(VB_MEMORY) --vram 16 --nested-hw-virt on --ostype Ubuntu_64  --mouse usbtablet --graphicscontroller vmsvga --boot1 disk --boot2 net
 	VBoxManage storagectl $(VB_VM_NAME) --name "SATA Controller" --add SATA --controller IntelAhci --bootable on --hostiocache on
 	VBoxManage storageattach $(VB_VM_NAME)  --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium $(LIVE).vdi
-	VBoxManage modifyvm $(VB_VM_NAME) --nic1 natnetwork --nat-network1 natnet1 --cableconnected1 on --natpf1 ssh,tcp,,2222,,22
+	VBoxManage modifyvm $(VB_VM_NAME) --nic1 natnetwork --nat-network1 natnet1 --cableconnected1 on --natpf1 ssh,tcp,,$(SSH_PORT),,22
 	VBoxManage modifyvm $(VB_VM_NAME) --nic2 natnetwork --nat-network2 natnet2 --cableconnected2 on
 	VBoxManage startvm  $(VB_VM_NAME)
 
@@ -374,13 +374,14 @@ run-live-parallels:
 	@prlctl list -a | grep $(PARALLELS_VM_NAME) | grep "invalid" >/dev/null && prlctl unregister $(PARALLELS_VM_NAME) || echo "No invalid $(PARALLELS_VM_NAME) VM"
 	@if prlctl list --all | grep "$(PARALLELS_VM_NAME)"; then \
 		prlctl stop $(PARALLELS_VM_NAME) --kill; \
-		prlctl set $(PARALLELS_VM_NAME) --device-set hdd0 --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
+		prlctl set $(PARALLELS_VM_NAME) --device-set hdd0 --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --hypervisor-type parallels --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
 	else \
 		prlctl create $(PARALLELS_VM_NAME) --distribution ubuntu --no-hdd --dst $(DIST)/ ; \
-		prlctl set $(PARALLELS_VM_NAME) --device-add hdd --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
+		prlctl set $(PARALLELS_VM_NAME) --device-add hdd --image $(LIVE).parallels --nested-virt on --adaptive-hypervisor on --hypervisor-type parallels --cpus $(PARALLELS_CPUS) --memsize $(PARALLELS_MEMORY); \
 		prlctl set $(PARALLELS_VM_NAME) --device-del net0 ; \
 		prlctl set $(PARALLELS_VM_NAME) --device-add net --type shared --adapter-type virtio --ipadd 192.168.1.0/24 --dhcp yes ; \
 		prlctl set $(PARALLELS_VM_NAME) --device-add net --type shared --adapter-type virtio --ipadd 192.168.2.0/24 --dhcp yes ; \
+		prlsrvctl net set Shared --nat-tcp-add ssh,$(SSH_PORT),$(PARALLELS_VM_NAME),22 ; \
 		prlctl start $(PARALLELS_VM_NAME) ; \
 	fi
 
