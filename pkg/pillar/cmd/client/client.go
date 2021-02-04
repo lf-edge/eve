@@ -267,6 +267,67 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	clientCtx.getCertsTimer = time.NewTimer(1 * time.Second)
 	clientCtx.getCertsTimer.Stop()
 
+	// Returns non-zero if we should exit with that exit code
+	// Otherwise it updates "done" when done
+	tryRegister := func() int {
+		if clientCtx.usableAddressCount == 0 {
+			log.Noticef("tryRegister: usableAddressCount still zero")
+			// We keep exponential unchanged
+			return 0
+		}
+		if clientCtx.networkState != types.DPC_SUCCESS &&
+			clientCtx.networkState != types.DPC_FAIL_WITH_IPANDDNS &&
+			clientCtx.networkState != types.DPC_REMOTE_WAIT {
+			log.Noticef("tryRegister: networkState %s",
+				clientCtx.networkState.String())
+			// We keep exponential unchanged
+			return 0
+		}
+
+		// try to fetch the server certs chain first, if it's V2
+		if !gotServerCerts && zedcloudCtx.V2API {
+			gotServerCerts = fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true) // XXX always get certs from cloud for now
+			log.Functionf("client fetchCertChain, gotServerCerts %v", gotServerCerts)
+			if !gotServerCerts {
+				return 0 // Try again later
+			}
+		}
+
+		if !gotRegister && operations["selfRegister"] {
+			done = selfRegister(&zedcloudCtx, onboardTLSConfig, deviceCertPem, retryCount)
+			if done {
+				gotRegister = true
+			}
+			if !done && operations["getUuid"] {
+				// Check if getUUid succeeds
+				done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
+				if done {
+					log.Functionf("getUUID succeeded; selfRegister no longer needed")
+					gotUUID = true
+				}
+			}
+		}
+		if !gotUUID && operations["getUuid"] {
+			done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
+			if done {
+				log.Functionf("getUUID succeeded; selfRegister no longer needed")
+				gotUUID = true
+			}
+			if oldUUID != nilUUID && retryCount > 2 {
+				log.Functionf("Sticking with old UUID")
+				devUUID = oldUUID
+				done = true
+				return 0
+			}
+		}
+		retryCount++
+		if maxRetries != 0 && retryCount > maxRetries {
+			log.Errorf("Exceeded %d retries", maxRetries)
+			return 1
+		}
+		return 0
+	}
+
 	for !done {
 		log.Functionf("Waiting for usableAddressCount %d networkState %s and done %v",
 			clientCtx.usableAddressCount, clientCtx.networkState.String(), done)
@@ -276,59 +337,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+			ret := tryRegister()
+			if ret != 0 {
+				return ret
+			}
 
 		case <-ticker.C:
-			if clientCtx.networkState != types.DPC_SUCCESS &&
-				clientCtx.networkState != types.DPC_FAIL_WITH_IPANDDNS &&
-				clientCtx.networkState != types.DPC_REMOTE_WAIT {
-				log.Functionf("ticker and networkState %s usableAddressCount %d",
-					clientCtx.networkState.String(),
-					clientCtx.usableAddressCount)
-				// We keep exponential unchanged
-				break
-			}
-
-			// try to fetch the server certs chain first, if it's V2
-			if !gotServerCerts && zedcloudCtx.V2API {
-				gotServerCerts = fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true) // XXX always get certs from cloud for now
-				log.Functionf("client fetchCertChain, gotServerCerts %v", gotServerCerts)
-				if !gotServerCerts {
-					break
-				}
-			}
-
-			if !gotRegister && operations["selfRegister"] {
-				done = selfRegister(&zedcloudCtx, onboardTLSConfig, deviceCertPem, retryCount)
-				if done {
-					gotRegister = true
-				}
-				if !done && operations["getUuid"] {
-					// Check if getUUid succeeds
-					done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
-					if done {
-						log.Functionf("getUUID succeeded; selfRegister no longer needed")
-						gotUUID = true
-					}
-				}
-			}
-			if !gotUUID && operations["getUuid"] {
-				done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
-				if done {
-					log.Functionf("getUUID succeeded; selfRegister no longer needed")
-					gotUUID = true
-				}
-				if oldUUID != nilUUID && retryCount > 2 {
-					log.Functionf("Sticking with old UUID")
-					devUUID = oldUUID
-					done = true
-					break
-				}
-			}
-			retryCount++
-			if maxRetries != 0 && retryCount > maxRetries {
-				log.Errorf("Exceeded %d retries",
-					maxRetries)
-				return 1
+			ret := tryRegister()
+			if ret != 0 {
+				return ret
 			}
 
 		case <-t1.C:
