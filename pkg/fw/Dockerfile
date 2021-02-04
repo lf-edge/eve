@@ -20,6 +20,7 @@ COPY --from=build /lib/firmware/bnx2x/* /lib/firmware/bnx2x/
 COPY --from=build /lib/firmware/mrvl/*.bin /lib/firmware/mrvl/
 COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
 COPY --from=build /lib/firmware/rtlwifi/*.bin /lib/firmware/rtlwifi/
+COPY --from=build /lib/firmware/iwlwifi-3168* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-9260* /lib/firmware/
