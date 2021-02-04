@@ -105,11 +105,18 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 // when baseos upgrade is inprogress,
 // check if vault is accessible, and if not reset the node
 func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
-	if ctxPtr.vaultOperational {
+	if ctxPtr.vaultOperational != types.TS_DISABLED {
+		//TriState is either NONE(vaultmgr is not running) or
+		//ENABLED(vaultmgr has reported vault to be operational)
+		//In both the cases, there is nothing to be done now.
 		return
 	}
+
+	//Vault has been reported to be not operational
+	//This could be due to remote attestation taking time
+	//Check if we have crossed cut off time
 	vaultCutOffTime := ctxPtr.globalConfig.GlobalValueInt(types.VaultReadyCutOffTime)
-	timePassed := ctxPtr.timeTickCount
+	timePassed := ctxPtr.timeTickCount - ctxPtr.vaultTestStartTime
 	if timePassed > vaultCutOffTime {
 		if ctxPtr.updateInprogress {
 			// fail the upgrade by rebooting now
@@ -125,7 +132,8 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 			publishNodeAgentStatus(ctxPtr)
 		}
 	} else {
-		log.Functionf("handleRebootOnVaultLocked %d seconds remaining",
+		log.Functionf("handleRebootOnVaultLocked: status(%s), (%d)seconds remaining",
+			types.FormatTriState(ctxPtr.vaultOperational),
 			vaultCutOffTime-timePassed)
 	}
 }

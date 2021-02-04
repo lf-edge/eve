@@ -94,7 +94,8 @@ type nodeagentContext struct {
 	rebootStack                 string           // From last reboot
 	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
-	vaultOperational            bool
+	vaultOperational            types.TriState              // Is the vault fully operational?
+	vaultTestStartTime          uint32                      // Time at which we should start waiting for vault to be operational
 	maintMode                   bool                        // whether Maintenance mode should be triggered
 	maintModeReason             types.MaintenanceModeReason //reason for entering Maintenance mode
 
@@ -134,6 +135,7 @@ func newNodeagentContext(ps *pubsub.PubSub, logger *logrus.Logger, log *base.Log
 	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 	nodeagentCtx.agentBaseContext.NeedWatchdog = true
+	nodeagentCtx.vaultOperational = types.TS_NONE
 	return &nodeagentCtx
 }
 
@@ -634,8 +636,20 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*nodeagentContext)
 	vault := statusArg.(types.VaultStatus)
-	if vault.Name == types.DefaultVaultName && vault.ConversionComplete &&
-		vault.Status != info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR {
-		ctx.vaultOperational = true
+
+	if ctx.vaultTestStartTime == 0 {
+		//First update from vaultmgr, record it as test start time
+		log.Notice("handleVaultStatusImpl: Recording vault test start time")
+		ctx.vaultTestStartTime = ctx.timeTickCount
+	}
+
+	//Filter out other irrelevant vaults' status
+	if vault.Name != types.DefaultVaultName {
+		return
+	}
+	if vault.ConversionComplete && vault.Status != info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR {
+		ctx.vaultOperational = types.TS_ENABLED
+	} else {
+		ctx.vaultOperational = types.TS_DISABLED
 	}
 }
