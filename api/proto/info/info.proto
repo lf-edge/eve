@@ -332,6 +332,9 @@ message ZInfoDevice {
   repeated ZCellularModuleInfo cell_radios = 35;
   repeated ZSimcardInfo sims = 36;
   repeated ZInfoDeviceTasks tasks = 37;
+
+  bool maintenance_mode = 38;
+  MaintenanceModeReason maintenance_mode_reason = 39;
 }
 
 // Different reasons for a boot/reboot
@@ -352,6 +355,14 @@ enum BootReason {
   BOOT_REASON_UNKNOWN = 12;
   BOOT_REASON_VAULT_FAILED = 13;
   BOOT_REASON_PARSE_FAIL = 255;
+}
+
+// Different reasons why we are in maintenance mode
+// Must match the values in pkg/pillar/types.MaintenceModeReason
+enum MaintenanceModeReason {
+  MAINTENANCE_MODE_REASON_NONE = 0;
+  MAINTENANCE_MODE_REASON_USER_REQUESTED = 1;
+  MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP = 2;
 }
 
 // The current and fallback system adapter information
