@@ -473,6 +473,7 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 		"running": types.RUNNING,
 		"paused":  types.PAUSED,
 		"halting": types.HALTING,
+		"broken":  types.BROKEN,
 	}
 	effectiveDomainState, matched := stateMap[strings.TrimSpace(string(status))]
 	if !matched {
