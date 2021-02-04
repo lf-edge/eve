@@ -29,8 +29,10 @@ handleUnknownState() {
   else
     # Number of times we got unknown state is <= UnknownStateThreshold, so declaring the state as running
     echo running
-  fi
 
+    # Waiting for 5sec before checking domain status again in order to recover from unknown state
+    sleep 5
+  fi
   unknownStateCounter=$((unknownStateCounter + 1))
 }
 
@@ -90,7 +92,7 @@ ID=$(domID "$1")
 # finally unpause the domain
 xl unpause "$ID" || bail "xl unpause failed"
 
-# now star polling for domain status (11 sec interval) in the background
+# now star polling for domain status in the background
 # (note our use of mv to make sure file reads on the other side are atomic)
 (while true; do
    xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
