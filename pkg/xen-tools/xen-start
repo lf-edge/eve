@@ -93,6 +93,7 @@ xl unpause "$ID" || bail "xl unpause failed"
 # now star polling for domain status (11 sec interval) in the background
 # (note our use of mv to make sure file reads on the other side are atomic)
 (while true; do
+   sleep 11
    xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
 done) &
