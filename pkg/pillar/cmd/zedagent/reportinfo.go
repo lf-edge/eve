@@ -473,6 +473,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Add SecurityInfo
 	ReportDeviceInfo.SecInfo = getSecurityInfo(ctx)
 
+	// MaintenceMode
+	ReportDeviceInfo.MaintenanceMode = ctx.maintenanceMode
+	ReportDeviceInfo.MaintenanceModeReason = info.MaintenanceModeReason(ctx.maintModeReason)
+
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
