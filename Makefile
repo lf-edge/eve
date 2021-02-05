@@ -10,8 +10,9 @@ GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
+DOCKER_BUILDKIT = 1
 
-export CGO_ENABLED GOOS GOARCH PATH
+export CGO_ENABLED DOCKER_BUILDKIT GOOS GOARCH PATH
 
 # A set of tweakable knobs for our build needs (tweak at your risk!)
 # Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
