@@ -69,6 +69,7 @@ type volumemgrContext struct {
 	subDatastoreConfig      pubsub.Subscription
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
+	deferDelete             *time.Ticker
 
 	worker worker.Worker // For background work
 
@@ -78,10 +79,10 @@ type volumemgrContext struct {
 	gcRunning            bool
 	initGced             bool // Will be marked true after initObjects are garbage collected
 
-	globalConfig  *types.ConfigItemValueMap
-	GCInitialized bool
-	vdiskGCTime   uint32 // In seconds; XXX delete when OldVolumeStatus is deleted
-
+	globalConfig       *types.ConfigItemValueMap
+	GCInitialized      bool
+	vdiskGCTime        uint32 // In seconds; XXX delete when OldVolumeStatus is deleted
+	deferContentDelete uint32 // In seconds
 	// Common CAS client which can be used by multiple routines.
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
@@ -115,9 +116,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
-		ps:           ps,
-		vdiskGCTime:  3600,
-		globalConfig: types.DefaultConfigItemValueMap(),
+		ps:                 ps,
+		vdiskGCTime:        3600,
+		deferContentDelete: 0,
+		globalConfig:       types.DefaultConfigItemValueMap(),
 	}
 
 	log.Functionf("Starting %s", agentName)
@@ -496,6 +498,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.gc = time.NewTicker(duration * time.Second)
 	ctx.gc.Stop()
 
+	// Create ticker; set when we get the global config
+	ctx.deferDelete = time.NewTicker(time.Hour)
+	ctx.deferDelete.Stop()
+
 	// start the metrics reporting task
 	diskMetricsTickerHandle := make(chan interface{})
 	log.Functionf("Creating %s at %s", "diskMetricsTimerTask", agentlog.GetMyStack())
@@ -544,6 +550,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				ctx.initGced = true
 			}
 			ps.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
+
+		case <-ctx.deferDelete.C:
+			start := time.Now()
+			checkDeferredDelete(&ctx)
+			ps.CheckMaxTimeTopic(agentName, "deferDelete", start,
 				warningTime, errorTime)
 
 		case res := <-ctx.worker.MsgChan():
@@ -674,6 +686,20 @@ func maybeUpdateConfigItems(ctx *volumemgrContext, newConfigItemValueMap *types.
 				time.Duration(min), time.Duration(max))
 			// Force an immediate timout since timer could have decreased
 			flextimer.TickNow(ctx.diskMetricsTickerHandle)
+		}
+	}
+	newDC := newConfigItemValueMap.GlobalValueInt(types.DeferContentDelete)
+	oldDC := oldConfigItemValueMap.GlobalValueInt(types.DeferContentDelete)
+	if newDC != oldDC {
+		log.Noticef("maybeUpdateConfigItems: Updating deferContentDelete from %d to %d",
+			oldDC, newDC)
+		ctx.deferContentDelete = newDC
+		if newDC == 0 {
+			ctx.deferDelete.Stop()
+		} else {
+			// Run ten times as often as lifetime
+			duration := time.Duration(ctx.deferContentDelete / 10)
+			ctx.deferDelete = time.NewTicker(duration * time.Second)
 		}
 	}
 }

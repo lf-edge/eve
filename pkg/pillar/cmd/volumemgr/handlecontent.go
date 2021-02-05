@@ -6,6 +6,7 @@ package volumemgr
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -298,15 +299,54 @@ func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	log.Functionf("updateContentTree for %v Done", status.ContentID)
 }
 
+type timeAndContentTreeStatus struct {
+	deleteTime time.Time
+	status     *types.ContentTreeStatus
+}
+
+// deferredDelete has entries in time order
+var deferredDelete = make([]timeAndContentTreeStatus, 0)
+
+// deleteContentTree optionally delays the delete using the above slice
 func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	log.Functionf("deleteContentTree for %v", status.ContentID)
+	if ctx.deferContentDelete == 0 {
+		doDeleteContentTree(ctx, status)
+	} else {
+		expiry := time.Now().Add(time.Duration(ctx.deferContentDelete) * time.Second)
+		tc := timeAndContentTreeStatus{
+			deleteTime: expiry,
+			status:     status,
+		}
+		log.Noticef("Deferring delete of %s to %v",
+			status.Key(), expiry)
+		deferredDelete = append(deferredDelete, tc)
+	}
+}
+
+func checkDeferredDelete(ctx *volumemgrContext) {
+	newDD := make([]timeAndContentTreeStatus, 0)
+	for _, tc := range deferredDelete {
+		if time.Now().After(tc.deleteTime) {
+			log.Noticef("Handling deferred delete of %s",
+				tc.status.Key())
+			doDeleteContentTree(ctx, tc.status)
+		} else {
+			newDD = append(newDD, tc)
+		}
+	}
+	deferredDelete = newDD
+}
+
+func doDeleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
+	log.Functionf("doDeleteContentTree for %v", status.ContentID)
 	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
 	//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
 	if err := ctx.casClient.RemoveImage(status.ReferenceID()); err != nil {
-		log.Errorf("deleteContentTree: exception while deleting image %s: %s",
+		log.Errorf("doDeleteContentTree: exception while deleting image %s: %s",
 			status.RelativeURL, err.Error())
 	}
 	unpublishContentTreeStatus(ctx, status)
 	deleteLatchContentTreeHash(ctx, status.ContentID, uint32(status.GenerationCounter))
-	log.Functionf("deleteContentTree for %v Done", status.ContentID)
+	log.Functionf("doDeleteContentTree for %v Done", status.ContentID)
 }
