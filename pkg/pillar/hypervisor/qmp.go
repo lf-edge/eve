@@ -15,13 +15,24 @@ import (
 const sockTimeout = 10 * time.Second
 
 func execRawCmd(socket, cmd string) ([]byte, error) {
+	var retry = 3
 	logrus.Infof("executing QMP command: %s", cmd)
-	monitor, err := qmp.NewSocketMonitor("unix", socket, sockTimeout)
+	var err error
+	var monitor *qmp.SocketMonitor
+
+	for retry >= 0 {
+		if monitor, err = qmp.NewSocketMonitor("unix", socket, sockTimeout); err == nil {
+			break
+		}
+		retry = retry - 1
+		time.Sleep(time.Second)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	if err := monitor.Connect(); err != nil {
+	if err = monitor.Connect(); err != nil {
 		return nil, err
 	}
 	defer monitor.Disconnect()
