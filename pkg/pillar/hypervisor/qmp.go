@@ -15,6 +15,7 @@ import (
 const sockTimeout = 10 * time.Second
 
 func execRawCmd(socket, cmd string) ([]byte, error) {
+	logrus.Infof("executing QMP command: %s", cmd)
 	monitor, err := qmp.NewSocketMonitor("unix", socket, sockTimeout)
 	if err != nil {
 		return nil, err
