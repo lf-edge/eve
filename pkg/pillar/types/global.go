@@ -140,6 +140,8 @@ const (
 	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
 	// VdiskGCTime global setting key
 	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
+	// DeferContentDelete global setting key
+	DeferContentDelete GlobalSettingKey = "timer.defer.content.delete"
 	// DownloadRetryTime global setting key
 	DownloadRetryTime GlobalSettingKey = "timer.download.retry"
 	// DownloadStalledTime global setting key
@@ -729,6 +731,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
 	configItemSpecMap.AddIntItem(StaleConfigTime, 7*24*3600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*3600)
 	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadStalledTime, 600, 20, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)

@@ -154,6 +154,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		MintimeUpdateSuccess,
 		StaleConfigTime,
 		VdiskGCTime,
+		DeferContentDelete,
 		DownloadRetryTime,
 		DownloadStalledTime,
 		DomainBootRetryTime,
