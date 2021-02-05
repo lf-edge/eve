@@ -701,6 +701,12 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				ip = match.Value
 				break
 			}
+			if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+				errStr := fmt.Sprintf("ACE with host not supported on switch network instance: %+v",
+					ace)
+				log.Errorln(errStr)
+				return nil, nil, errors.New(errStr)
+			}
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
@@ -721,6 +727,12 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				ipsetName = "ipv6." + match.Value
 			}
 		case "eidset":
+			if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+				errStr := fmt.Sprintf("ACE with host not supported on switch network instance: %+v",
+					ace)
+				log.Errorln(errStr)
+				return nil, nil, errors.New(errStr)
+			}
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
