@@ -477,6 +477,17 @@ else
     fi
 fi
 
+# XXX to handle a downgrade we need a /config/uuid file to boot old EVE
+if [ ! -f $CONFIGDIR/uuid ]; then
+    echo "$(date -Ins -u) cp -p $PERSISTDIR/status/uuid $CONFIGDIR/uuid"
+    cp -p $PERSISTDIR/status/uuid $CONFIGDIR/uuid
+elif ! diff $PERSISTDIR/status/uuid $CONFIGDIR/uuid >/dev/null; then
+    echo "$(date -Ins -u) rm -f $CONFIGDIR/uuid"
+    rm -f $CONFIGDIR/uuid
+    echo "$(date -Ins -u) cp -p $PERSISTDIR/status/uuid $CONFIGDIR/uuid"
+    cp -p $PERSISTDIR/status/uuid $CONFIGDIR/uuid
+fi
+
 if ! pgrep loguploader >/dev/null; then
     echo "$(date -Ins -u) Starting loguploader"
     $BINDIR/loguploader &
