@@ -241,10 +241,10 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
-		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s EVE version %s at %s: %s\n",
+		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s at EVE version %s at %s: %s\n",
 			agentName, agentPid, EveCurrentPartition(), EveVersion(), dateStr, reason)
 	} else {
-		reason = fmt.Sprintf("%s EVE version %s at %s\n",
+		reason = fmt.Sprintf("%s at EVE version %s at %s\n",
 			reason, EveVersion(), dateStr)
 	}
 	// If we already wrote a bootReason file we append to
