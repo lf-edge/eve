@@ -155,7 +155,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 					config.VncDisplay))
 			}
 			if config.VncPasswd != "" {
-				vncParams = append(vncParams, fmt.Sprintf("vncpasswd=\"%s\"\n",
+				vncParams = append(vncParams, fmt.Sprintf("vncpasswd=%s",
 					config.VncPasswd))
 			}
 			file.WriteString(fmt.Sprintf("vfb = ['%s']\n", strings.Join(vncParams, ", ")))
