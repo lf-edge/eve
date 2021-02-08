@@ -67,6 +67,12 @@ RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
     mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
+# Firmware for in kernel use
+ARG FIRMWARE_VERSION=20201218
+ARG FIRMWARE_LINK=https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware-${FIRMWARE_VERSION}.tar.gz
+# hadolint ignore=DL4006
+RUN curl -fsSL ${FIRMWARE_LINK} | tar -C /linux/lib/ -xzf - && mv /linux/lib/linux-firmware-${FIRMWARE_VERSION} /linux/lib/firmware
+
 # Apply local patches
 WORKDIR /linux
 RUN set -e ; [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
