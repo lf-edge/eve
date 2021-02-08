@@ -615,7 +615,7 @@ $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALL
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
+	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
