@@ -54,6 +54,8 @@ FROM DNSMASQ_TAG as dnsmasq
 FROM STRONGSWAN_TAG as strongswan
 # hadolint ignore=DL3006
 FROM GPTTOOLS_TAG as gpttools
+# hadolint ignore=DL3006
+FROM UEFI_TAG as uefi-build
 
 FROM alpine:3.8
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
