@@ -110,6 +110,8 @@ func getProcessMetric(p *process.Process) (*types.ProcessMetric, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Ensure we have a copy and not reference into slice
+	n = string([]byte(n))
 	_, err = p.Exe()
 	userProcess := (err == nil) // kernel or user-space?
 
