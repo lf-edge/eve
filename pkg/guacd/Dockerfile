@@ -1,4 +1,4 @@
-FROM alpine:3.8 as build
+FROM alpine:3.13.1 as build
 
 ENV GUACD_VERSION=1.0.0
 
@@ -16,7 +16,7 @@ RUN tar xzvf ${GUACD_VERSION}.tar.gz ;\
     ./configure --prefix=/usr/ --with-vnc --disable-guacenc --disable-dependency-tracking && \
      make && make install
 
-FROM alpine:3.8
+FROM alpine:3.13.1
 
 RUN apk add cairo jpeg libpng openssl libvncserver
 COPY --from=build /usr/sbin/guacd /usr/sbin/guacd
