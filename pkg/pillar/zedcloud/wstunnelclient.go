@@ -302,6 +302,7 @@ func (wsc *WSConnection) pinger() {
 	}
 	// timeout timer
 	timer := time.AfterFunc(tunTimeout, timeout)
+	defer timer.Stop()
 	// pong handler resets last pong time
 	ph := func(message string) error {
 		timer.Reset(tunTimeout)
