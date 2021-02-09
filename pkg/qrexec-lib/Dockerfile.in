@@ -1,6 +1,6 @@
 FROM XENTOOLS_TAG as xentools
 
-FROM alpine:3.6	as build
+FROM alpine:3.13.1	as build
 
 RUN apk add --no-cache \
     gcc \
