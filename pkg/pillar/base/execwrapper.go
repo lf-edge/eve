@@ -106,10 +106,11 @@ func (c *Command) execCommand() ([]byte, error) {
 	stillRunning := time.NewTicker(25 * time.Second)
 	defer stillRunning.Stop()
 
-	timer := time.After(c.timeout * time.Second)
+	waitTimer := time.NewTimer(c.timeout * time.Second)
+	defer waitTimer.Stop()
 	for {
 		select {
-		case <-timer:
+		case <-waitTimer.C:
 			// Timeout happened first, kill the process.
 			c.command.Process.Kill()
 			return nil, fmt.Errorf("execCommand(%v): command timed out", c.command.Args)
