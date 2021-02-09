@@ -1,0 +1,32 @@
+From 9335ed16735147ad6eee2f4d7e304f7803956def Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Tue, 9 Feb 2021 05:10:50 +0300
+Subject: [PATCH] arch: arm64: dts: broadcom: add fb node to rpi4 device tree.
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ arch/arm/boot/dts/bcm2711-rpi-4-b.dts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/arm/boot/dts/bcm2711-rpi-4-b.dts b/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
+index 09a1182c2936..a9171f3f2952 100644
+--- a/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
++++ b/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
+@@ -68,6 +68,14 @@ sd_vcc_reg: sd_vcc_reg {
+ 		enable-active-high;
+ 		gpio = <&expgpio 6 GPIO_ACTIVE_HIGH>;
+ 	};
++
++	soc {
++		fb: fb {
++			compatible = "brcm,bcm2708-fb";
++			firmware = <&firmware>;
++			status = "okay";
++		};
++	};
+ };
+ 
+ &ddc0 {
+-- 
+2.30.0
+
