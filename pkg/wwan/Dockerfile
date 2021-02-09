@@ -1,4 +1,4 @@
-FROM alpine:3.12 as build
+FROM alpine:3.13.1 as build
 
 RUN apk add --no-cache \
     automake \
@@ -45,7 +45,7 @@ RUN git checkout 1.26.2 && ./autogen.sh --without-udev && ./configure --prefix=/
 RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.*
 
 # second stage (new-ish Docker feature) for smaller image
-FROM alpine:3.12
+FROM alpine:3.13.1
 
 RUN apk add --no-cache ppp jq glib
 
