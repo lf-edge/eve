@@ -479,6 +479,10 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	if !matched {
 		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in unexpected state %v",
 			domainName, string(status))
+	} else if effectiveDomainState == types.BROKEN {
+		return effectiveDomainID, types.BROKEN, fmt.Errorf("info: domain %s reported to be in broken state",
+			domainName)
+
 	}
 
 	return effectiveDomainID, effectiveDomainState, nil
