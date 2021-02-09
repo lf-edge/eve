@@ -39,7 +39,7 @@ ENV CONFIGURE_OPTS "--disable-nfs"
 RUN \
     CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make && make install DESTDIR=/out
 
-FROM alpine:3.8
+FROM alpine:3.13.1
 WORKDIR /
 COPY --from=watchdog-build /out/etc /etc
 COPY --from=watchdog-build /out/usr/sbin /usr/sbin
