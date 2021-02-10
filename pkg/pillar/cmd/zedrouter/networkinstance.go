@@ -916,46 +916,6 @@ func doConfigureIpAddrOnInterface(
 	return nil
 }
 
-// getPortIPv4Addr
-//	To be used only for NI type Switch
-func getPortIPv4Addr(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) (string, error) {
-	// Find any service which is associated with the appLink UUID
-	log.Functionf("NetworkInstance UUID:%s, Name: %s, LogicalLabel: %s\n",
-		status.UUID, status.DisplayName, status.Logicallabel)
-
-	if status.Logicallabel == "" {
-		log.Functionf("no Logicallabel\n")
-		return "", nil
-	}
-
-	if len(status.IfNameList) == 0 {
-		errStr := fmt.Sprintf("IfNameList empty for %s",
-			status.BridgeName)
-		log.Warn(errStr)
-		return "", nil
-	}
-	ifname := status.IfNameList[0]
-	ifindex, err := IfnameToIndex(log, ifname)
-	if err != nil {
-		return "", err
-	}
-	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := IfindexToAddrs(log, ifindex)
-	if err != nil {
-		log.Warnf("IfIndexToAddrs failed: %s\n", err)
-		addrs = nil
-	}
-	for _, addr := range addrs {
-		log.Functionf("found addr %s\n", addr.String())
-		if addr.To4() != nil {
-			return addr.String(), nil
-		}
-	}
-	log.Functionf("No IPv4 address on %s yet\n", status.Logicallabel)
-	return "", nil
-}
-
 func setBridgeIPAddr(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -983,40 +943,26 @@ func setBridgeIPAddr(
 	var ipAddr string
 	var err error
 
-	switch status.Type {
-	case types.NetworkInstanceTypeSwitch:
-		ipAddr, err = getPortIPv4Addr(ctx, status)
-		if err != nil {
-			log.Errorf("setBridgeIPAddr: getPortIPv4Addr failed: %s\n",
-				err)
-			return err
-		}
-		log.Functionf("Bridge: %s, Link: %s, ipAddr: %s\n",
-			status.BridgeName, link, ipAddr)
+	// Assign the gateway Address as the bridge IP address
+	var bridgeMac net.HardwareAddr
 
+	switch link.(type) {
+	case *netlink.Bridge:
+		// XXX always true?
+		bridgeLink := link.(*netlink.Bridge)
+		bridgeMac = bridgeLink.HardwareAddr
 	default:
-		// If not we do a local allocation
-		// Assign the gateway Address as the bridge IP address
-		var bridgeMac net.HardwareAddr
-
-		switch link.(type) {
-		case *netlink.Bridge:
-			// XXX always true?
-			bridgeLink := link.(*netlink.Bridge)
-			bridgeMac = bridgeLink.HardwareAddr
-		default:
-			// XXX - Same here.. Should be Fatal??
-			errStr := fmt.Sprintf("Not a bridge %s",
-				status.BridgeName)
-			return errors.New(errStr)
-		}
-		if status.Gateway != nil {
-			ipAddr = status.Gateway.String()
-			status.IPAssignments[bridgeMac.String()] = status.Gateway
-		}
-		log.Functionf("BridgeMac: %s, ipAddr: %s\n",
-			bridgeMac.String(), ipAddr)
+		// XXX - Same here.. Should be Fatal??
+		errStr := fmt.Sprintf("Not a bridge %s",
+			status.BridgeName)
+		return errors.New(errStr)
 	}
+	if status.Gateway != nil {
+		ipAddr = status.Gateway.String()
+		status.IPAssignments[bridgeMac.String()] = status.Gateway
+	}
+	log.Functionf("BridgeMac: %s, ipAddr: %s\n",
+		bridgeMac.String(), ipAddr)
 	status.BridgeIPAddr = ipAddr
 	publishNetworkInstanceStatus(ctx, status)
 	log.Functionf("Published NetworkStatus. BridgeIpAddr: %s\n",
