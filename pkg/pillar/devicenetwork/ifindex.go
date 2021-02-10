@@ -32,7 +32,7 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
 		// hence we don't print unless the entry is new
-		log.Functionf("IfindexToNameAdd index %d name %s type %s\n",
+		log.Noticef("IfindexToNameAdd index %d name %s type %s\n",
 			index, linkName, linkType)
 		ifindexToName[index] = linkNameType{
 			linkName:     linkName,
@@ -46,8 +46,9 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 	} else if m.linkName != linkName {
 		// We get this when the vifs are created with "vif*" names
 		// and then changed to "bu*" etc.
-		log.Functionf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
+		log.Noticef("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
+
 		ifindexToName[index] = linkNameType{
 			linkName:     linkName,
 			linkType:     linkType,
@@ -58,7 +59,7 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 		// log.Tracef("ifindexToName post add %v\n", ifindexToName)
 		return false
 	} else if m.relevantFlag != relevantFlag || m.upFlag != upFlag {
-		log.Functionf("IfindexToNameAdd flag(s) changed to %v/%v for %s\n",
+		log.Noticef("IfindexToNameAdd flag(s) changed to %v/%v for %s\n",
 			relevantFlag, upFlag, linkName)
 		ifindexToName[index] = linkNameType{
 			linkName:     linkName,
@@ -75,10 +76,12 @@ func IfindexToNameAdd(log *base.LogObject, index int, linkName string, linkType 
 }
 
 // If the linkName exists under another index then remove it
+// Happens when we rename ethN to kethN and back. Could potentially happen with vif
+// renaming as well.
 func ifindexMaybeRemoveOld(log *base.LogObject, newIndex int, ifname string) {
 	for index, lnt := range ifindexToName {
 		if lnt.linkName == ifname && index != newIndex {
-			log.Functionf("Found old ifindex %d for new %d for %s",
+			log.Noticef("Found old ifindex %d for new %d for %s",
 				index, newIndex, ifname)
 			delete(ifindexToName, index)
 			return
@@ -101,7 +104,7 @@ func IfindexToNameDel(log *base.LogObject, index int, linkName string) bool {
 		// log.Tracef("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	} else {
-		log.Tracef("IfindexToNameDel index %d name %s\n",
+		log.Noticef("IfindexToNameDel index %d name %s\n",
 			index, linkName)
 		delete(ifindexToName, index)
 		// log.Tracef("ifindexToName post delete %v\n", ifindexToName)
@@ -149,7 +152,12 @@ func UpdateIfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 	// Try a lookup to handle race
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		return -1, fmt.Errorf("Unknown kernel ifname %s", ifname)
+		err = fmt.Errorf("Unknown kernel ifname %s: %v", ifname, err)
+		log.Error(err)
+		// Make sure we do not have anything stale for this ifname.
+		// Could have a stale ifindex for that name due to the rename in nim.
+		ifindexMaybeRemoveOld(log, -1, ifname)
+		return -1, err
 	}
 	index := link.Attrs().Index
 	linkType := link.Type()
