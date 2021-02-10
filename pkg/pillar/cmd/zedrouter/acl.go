@@ -18,6 +18,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
+// UDPProtocol : UDP protocol match in ACL
+const UDPProtocol = "udp"
+
 // XXX Stop gap allocator copied from zedrouter/appnumallocator.go
 // XXX The below ACL id allocation code should get removed when cloud
 // starts allocating the ACL id per ACL rule and send to device as part
@@ -246,7 +249,78 @@ func createACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 	}
 	rules = append(rules, dropRules...)
 	rules, err = applyACLRules(aclArgs, rules)
+	clearUDPFlows(aclArgs, ACLs)
 	return rules, depend, err
+}
+
+// This function looks for any UDP port map rules among the ACLs and if so clears
+// any only sessions corresponding to them.
+func clearUDPFlows(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) {
+	for _, ace := range ACLs {
+		var protocol, port string
+		for _, match := range ace.Matches {
+			switch match.Type {
+			case "protocol":
+				protocol = match.Value
+			case "lport":
+				port = match.Value
+			}
+		}
+		if protocol == "" && port != "" {
+			// malformed rule.
+			continue
+		}
+		// Not interested in non-UDP sessions
+		if protocol != UDPProtocol {
+			continue
+		}
+		for _, action := range ace.Actions {
+			if action.PortMap != true {
+				continue
+			}
+			var family netlink.InetFamily = syscall.AF_INET
+			if aclArgs.IPVer != 4 {
+				family = syscall.AF_INET6
+			}
+			dport, err := strconv.ParseInt(port, 10, 32)
+			if err != nil {
+				log.Errorf("clearUDPFlows: Port number %s cannot be parsed to integer", port)
+				continue
+			}
+			targetPort := uint16(action.TargetPort)
+			filter := ConntrackUDPFilter{
+				Protocol:   17, // UDP
+				Port:       uint16(dport),
+				TargetPort: uint16(targetPort),
+			}
+			flowsDeleted, err := netlink.ConntrackDeleteFilter(netlink.ConntrackTable, family, filter)
+			if err != nil {
+				log.Errorf("clearUDPFlows: Failed clearing UDP flows for lport: %v, target port: %v",
+					dport, targetPort)
+				continue
+			}
+			log.Functionf("clearUDPFlows: Cleared %v UDP flows for lport: %v and target port: %v",
+				flowsDeleted, dport, targetPort)
+		}
+	}
+}
+
+// ConntrackUDPFilter : Custom filter to match on UDP protocol and ports
+type ConntrackUDPFilter struct {
+	Protocol   uint8
+	Port       uint16
+	TargetPort uint16
+}
+
+// MatchConntrackFlow : Implements CustomConntrackFilter interface to filter flows
+func (f ConntrackUDPFilter) MatchConntrackFlow(flow *netlink.ConntrackFlow) bool {
+	if flow.Forward.Protocol != f.Protocol {
+		return false
+	}
+	if flow.Forward.DstPort == f.Port || flow.Reverse.SrcPort == f.TargetPort {
+		return true
+	}
+	return false
 }
 
 // If no valid bridgeIP we assume IPv4
