@@ -820,47 +820,6 @@ func appNetworkDoActivateAllUnderlayNetworks(
 	}
 }
 
-// Get Switch's IPv4 address for the port in NetworkInstance
-func getSwitchIPv4Addr(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) (string, error) {
-	// Find any service which is associated with the appLink UUID
-	log.Functionf("getSwitchIPv4Addr(%s-%s)\n",
-		status.DisplayName, status.UUID.String())
-	if status.Type != types.NetworkInstanceTypeSwitch {
-		errStr := fmt.Sprintf("NI not a switch. Type: %d", status.Type)
-		return "", errors.New(errStr)
-	}
-	if status.Logicallabel == "" {
-		log.Functionf("SwitchType, but no LogicalLabel\n")
-		return "", nil
-	}
-
-	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
-	ifindex, err := IfnameToIndex(log, ifname)
-	if err != nil {
-		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
-			status.DisplayName, ifname, err)
-		return "", errors.New(errStr)
-	}
-	addrs, err := IfindexToAddrs(log, ifindex)
-	if err != nil {
-		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfindexToAddrs(%s, index %d) failed %s",
-			status.DisplayName, ifname, ifindex, err)
-		return "", errors.New(errStr)
-	}
-	for _, addr := range addrs {
-		log.Functionf("getSwitchIPv4Addr(%s): found addr %s\n",
-			status.DisplayName, addr.String())
-		// XXX Add IPv6 underlay; ignore link-locals.
-		if addr.To4() != nil {
-			return addr.String(), nil
-		}
-	}
-	log.Functionf("getSwitchIPv4Addr(%s): no IPv4 address on %s yet\n",
-		status.DisplayName, status.Logicallabel)
-	return "", nil
-}
-
 func appNetworkDoActivateUnderlayNetwork(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
@@ -934,15 +893,6 @@ func appNetworkDoActivateUnderlayNetwork(
 		log.Errorf("appNetworkDoActivateUnderlayNetwork: Bridge/App IP address allocation "+
 			"failed for app %s", status.DisplayName)
 		return
-	}
-
-	// Check if we have a bridge service with an address
-	bridgeIP, err := getSwitchIPv4Addr(ctx, netInstStatus)
-	if err != nil {
-		log.Functionf("doActivate: %s\n", err)
-	} else if bridgeIP != "" {
-		log.Functionf("bridgeIp: %s\n", bridgeIP)
-		bridgeIPAddr = bridgeIP
 	}
 	log.Functionf("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
