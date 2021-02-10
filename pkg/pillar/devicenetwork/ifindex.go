@@ -280,14 +280,3 @@ func IfindexToAddrsFlush(log *base.LogObject, index int) {
 	var addrs []net.IP
 	ifindexToAddrs[index] = addrs
 }
-
-// IfnameToAddrsFlush does the above flush but based on ifname
-func IfnameToAddrsFlush(log *base.LogObject, ifname string) {
-	log.Functionf("IfNameToAddrsFlush(%s)", ifname)
-	index, err := IfnameToIndex(log, ifname)
-	if err != nil {
-		log.Warnf("IfnameToAddrsFlush: Unknown ifname %s: %s", ifname, err)
-		return
-	}
-	IfindexToAddrsFlush(log, index)
-}
