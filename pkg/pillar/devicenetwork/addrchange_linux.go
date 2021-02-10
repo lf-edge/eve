@@ -39,6 +39,20 @@ func LinkChange(log *base.LogObject, change netlink.LinkUpdate) (bool, int) {
 		relevantFlag, upFlag := RelevantLastResort(log, change.Link)
 		log.Functionf("LinkChange: NEWLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
+		// Must check current ifindex to since NEWLINK message could be older
+		// than current kernel state and we have renames between ethN and kethN
+		// which look like apparent ifindex changes to ethN
+		link, err := netlink.LinkByName(ifname)
+		if err != nil {
+			log.Errorf("LinkChange: Unknown kernel ifname %s: %v", ifname, err)
+			return changed, -1
+		}
+		index := link.Attrs().Index
+		if index != ifindex {
+			log.Noticef("LinkChange: different ifindex %d vs reported %d for %s",
+				index, ifindex, ifname)
+			ifindex = index
+		}
 		changed = IfindexToNameAdd(log, ifindex, ifname, linkType, relevantFlag, upFlag)
 		log.Functionf("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)

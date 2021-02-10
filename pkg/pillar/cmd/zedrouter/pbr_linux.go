@@ -60,6 +60,20 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
+		// Must check current ifindex to since NEWLINK message could be older
+		// than current kernel state and we have renames between ethN and kethN
+		// which look like apparent ifindex changes to ethN
+		link, err := netlink.LinkByName(ifname)
+		if err != nil {
+			log.Errorf("PbrLinkChange: Unknown kernel ifname %s: %v", ifname, err)
+			return ""
+		}
+		index := link.Attrs().Index
+		if index != ifindex {
+			log.Noticef("PbrLinkChange: different ifindex %d vs reported %d for %s",
+				index, ifindex, ifname)
+			ifindex = index
+		}
 		added := IfindexToNameAdd(log, ifindex, ifname, linkType)
 		if added {
 			changed = true
