@@ -114,16 +114,29 @@ func IfindexToName(log *base.LogObject, index int) (string, string, error) {
 // IfnameToIndex looks up the index to find the name
 // If not found in the map it checks if the kernel has it and if so
 // logs and adds it to the map.
+// XXX in theory this can be subject to the apparent ifindex change due to ethN to kethN
+// rename, but that happens at boot and not during runtime (except moving things in and
+// out of app-direct). But PbrLinkChange will update ifindexToName in that case.
 func IfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 	for i, lnt := range ifindexToName {
 		if lnt.linkName == ifname {
 			return i, nil
 		}
 	}
+	return UpdateIfnameToIndex(log, ifname)
+}
+
+// UpdateIfnameToIndex ensures that we have current info for the name and index
+func UpdateIfnameToIndex(log *base.LogObject, ifname string) (int, error) {
 	// Try a lookup to handle race
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		return -1, fmt.Errorf("Unknown kernel ifname %s", ifname)
+		err = fmt.Errorf("Unknown kernel ifname %s: %v", ifname, err)
+		log.Error(err)
+		// Make sure we do not have anything stale for this ifname.
+		// Could have a stale ifindex for that name due to the rename in nim.
+		ifindexMaybeRemoveOld(log, -1, ifname)
+		return -1, err
 	}
 	index := link.Attrs().Index
 	linkType := link.Type()

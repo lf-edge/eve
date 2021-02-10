@@ -129,7 +129,10 @@ func addBridge(log *base.LogObject, ifname string) error {
 		return err
 	}
 	// update cached ifindex
-	UpdateIfnameToIndex(log, ifname)
+	_, err = UpdateIfnameToIndex(log, ifname)
+	if err != nil {
+		log.Errorf("addBridge: UpdateIfnameToIndex failed: %v", err)
+	}
 	return nil
 }
 
@@ -202,6 +205,9 @@ func removeBridge(log *base.LogObject, ifname string) error {
 		return err
 	}
 	// update cached ifindex
-	UpdateIfnameToIndex(log, ifname)
+	_, err = UpdateIfnameToIndex(log, ifname)
+	if err != nil {
+		log.Errorf("removeBridge: UpdateIfnameToIndex failed: %v", err)
+	}
 	return nil
 }
