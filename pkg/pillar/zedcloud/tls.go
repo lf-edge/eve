@@ -12,17 +12,18 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/base"
-	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"golang.org/x/crypto/ocsp"
 )
 
 //GetClientCert prepares tls.Certificate to connect to the cloud Controller
@@ -136,7 +137,8 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 	if err != nil {
 		return nil, err
 	}
-	if !caCertPool.AppendCertsFromPEM(caCert1) {
+	caCertStr := string(caCert1) // prevent potential memory leak
+	if !caCertPool.AppendCertsFromPEM([]byte(caCertStr)) {
 		errStr := fmt.Sprintf("Failed to append certs from %s",
 			types.RootCertFileName)
 		if ctx != nil {
