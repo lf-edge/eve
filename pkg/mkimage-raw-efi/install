@@ -2,7 +2,7 @@
 # shellcheck shell=dash
 #
 # This script is an entry point for a standalone installer.
-# It is expected to probe for the destination installtion
+# It is expected to probe for the destination installation
 # media and arrange for source files to be in /parts. Some
 # of these files will be supplied from outside of the container
 # in /bits, some will be constructed on the fly depending
@@ -10,6 +10,7 @@
 #   eve_install_disk
 #   eve_pause_before_install
 #   eve_pause_after_install
+#   eve_reboot_after_install
 #   eve_install_skip_config
 #   eve_install_skip_persist
 #   eve_install_skip_rootfs
@@ -231,8 +232,16 @@ for p in CONFIG INVENTORY P3; do
 done
 
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
-cp /sbin/poweroff /bin/sleep /
-echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
-/sleep 5
+cp /sbin/poweroff /sbin/reboot /bin/sleep /
+# we also maybe asked to reboot after install
+if grep -q eve_reboot_after_install /proc/cmdline; then
+  echo "NOTICE: Device will now reboot." >/dev/console
+  /sleep 5
 
-/poweroff -f
+  /reboot -f
+else
+  echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
+  /sleep 5
+
+  /poweroff -f
+fi
