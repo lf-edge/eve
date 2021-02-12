@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -306,6 +307,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	aclMetric := new(metrics.AclMetric)
 	aclMetric.TotalRuleCount = networkMetrics.TotalRuleCount
 	ReportDeviceMetric.Acl = aclMetric
+
+	zedboxStats := new(metrics.ZedboxStats)
+	zedboxStats.NumGoRoutines = uint32(runtime.NumGoroutine()) // number of zedbox goroutines
+	ReportDeviceMetric.Zedbox = zedboxStats
 
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := types.MetricsMap{} // Start empty
