@@ -28,10 +28,28 @@ import (
 )
 
 const (
-	compatibleFile = "/proc/device-tree/compatible"
-	cpuInfoFile    = "/proc/cpuinfo"
-	softSerialFile = types.IdentityDirname + "/soft_serial"
+	compatibleFile    = "/proc/device-tree/compatible"
+	cpuInfoFile       = "/proc/cpuinfo"
+	modelOverrideFile = types.PersistStatusDir + "/hardwaremodel"
+	softSerialFile    = types.IdentityDirname + "/soft_serial"
 )
+
+// XXX Note that this function (and the ones below) log if there is an
+// error. That's impolite for a library to do.
+
+// GetHardwareModel uses the most current i.e., prefers override from the controller
+func GetHardwareModel(log *base.LogObject) string {
+	model := getOverride(log, modelOverrideFile)
+	if model != "" {
+		return model
+	}
+	return GetHardwareModelNoOverride(log)
+}
+
+// GetHardwareModelOverride gets any override from the controller
+func GetHardwareModelOverride(log *base.LogObject) string {
+	return getOverride(log, modelOverrideFile)
+}
 
 func GetHardwareModelNoOverride(log *base.LogObject) string {
 	product := ""
