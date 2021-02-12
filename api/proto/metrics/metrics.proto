@@ -128,6 +128,7 @@ message deviceMetric {
   repeated CipherMetric cipher = 13;  // Object decryption
   AclMetric acl = 14;
   newlogMetric newlog = 15;
+  zedboxStats zedbox = 16;
 }
 
 message AclMetric {
@@ -449,4 +450,9 @@ message logfileMetrics {
   uint32 numGzipFileKeptLocal = 7;
   google.protobuf.Timestamp recentGzipFileTime = 8;
   google.protobuf.Timestamp lastGzipFileSendTime = 9;
+}
+
+// zedboxStats - for zedbox process items
+message zedboxStats {
+  uint32 numGoRoutines = 1;
 }
