@@ -122,7 +122,9 @@ do_installer_net() {
 # :retry_ntp
 # ntp pool.ntp.org || goto retry_ntp
 #
-# you should set eve_install_disk argument to mmcblk0 if you need
+# you may want to add the following to the kernel command line arguments:
+#   * eve_install_disk=XXX (e.g. XXX=mmcblk0)
+#   * eve_install_server=XXX (e.g. XXX=zedcloud.hummingbird.zededa.net)
 #
 # chain --autofree https://github.com/lf-edge/eve/releases/download/1.2.3/ipxe.efi.cfg
 kernel kernel eve_installer=\${mac:hexhyp} eve_reboot_after_install fastboot console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0 initrd=initrd.img initrd=initrd.bits
