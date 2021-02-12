@@ -37,10 +37,11 @@ const (
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 	// Time limits for event loop handlers
-	errorTime     = 3 * time.Minute
-	warningTime   = 40 * time.Second
-	bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
-	uuidFileName  = types.PersistStatusDir + "/uuid"
+	errorTime             = 3 * time.Minute
+	warningTime           = 40 * time.Second
+	bailOnHTTPErr         = false // For 4xx and 5xx HTTP errors we try other interfaces
+	uuidFileName          = types.PersistStatusDir + "/uuid"
+	hardwaremodelFileName = types.PersistStatusDir + "/hardwaremodel"
 )
 
 // Really a constant
@@ -393,14 +394,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		if err != nil {
 			doWrite = true
 		}
-		// Write to file since device-steps.sh sets hostname
+		// Write to file since device-steps.sh sets hostname from uuidFileName
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
 			err = ioutil.WriteFile(uuidFileName, b, 0644)
 			if err != nil {
-				log.Fatal("WriteFile", err, uuidFileName)
+				log.Errorf("WriteFile %s failed: %v",
+					uuidFileName, err)
+			} else {
+				log.Noticef("Wrote UUID file %s", devUUID)
 			}
-			log.Tracef("Wrote UUID %s", devUUID)
 		}
 		if hardwaremodel == "" {
 			hardwaremodel = oldHardwaremodel
@@ -416,6 +419,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		pubOnboardStatus.Publish("global", trigOnboardStatus)
 		log.Functionf("client pub OnboardStatus")
 
+		if hardwaremodel != oldHardwaremodel {
+			// Write/update file for ledmanager
+			// Note that no CRLF
+			b := []byte(hardwaremodel)
+			err = ioutil.WriteFile(hardwaremodelFileName, b, 0644)
+			if err != nil {
+				log.Errorf("WriteFile %s failed: %v",
+					hardwaremodelFileName, err)
+			} else {
+				log.Noticef("Wrote hardwaremodel %s", hardwaremodel)
+			}
+		}
 	}
 
 	err = pub.Publish("global", zedcloud.GetCloudMetrics(log))

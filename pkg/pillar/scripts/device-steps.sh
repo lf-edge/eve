@@ -183,6 +183,10 @@ if [ -f $CONFIGDIR/rebootConfig ]; then
     echo "$(date -Ins -u) move $CONFIGDIR/rebootConfig $PERSISTDIR/status"
     mv $CONFIGDIR/rebootConfig $PERSISTDIR/status
 fi
+if [ -f $CONFIGDIR/hardwaremodel ]; then
+    echo "$(date -Ins -u) move $CONFIGDIR/hardwaremodel $PERSISTDIR/status"
+    mv $CONFIGDIR/hardwaremodel $PERSISTDIR/status
+fi
 
 # Run upgradeconverter
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
@@ -434,12 +438,7 @@ if [ $SELF_REGISTER = 1 ]; then
     rm -f $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-        $BINDIR/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
-        echo "$(date -Ins -u) Created default hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
-    fi
-    # Make sure we set the dom0 hostname, used by LISP nat traversal, to
-    # a unique string. Using the uuid
+
     uuid=$(cat $PERSISTDIR/status/uuid)
     /bin/hostname "$uuid"
     /bin/hostname >/etc/hostname
@@ -457,12 +456,6 @@ else
 
     # Remove zedclient.pid from watchdog
     rm "$WATCHDOG_PID/zedclient.pid"
-
-    if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-        echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
-        $BINDIR/hardwaremodel -c -o $CONFIGDIR/hardwaremodel
-        echo "$(date -Ins -u) Created hardwaremodel $(cat $CONFIGDIR/hardwaremodel)"
-    fi
 
     uuid=$(cat $PERSISTDIR/status/uuid)
     /bin/hostname "$uuid"
