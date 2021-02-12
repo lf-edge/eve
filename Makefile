@@ -519,13 +519,15 @@ pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar eve-uefi
+pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar pkg/uefi
 	$(QUIET): $@: Succeeded
 pkg/xen-tools: pkg/uefi eve-xen-tools
 	$(QUIET): $@: Succeeded
 pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	$(QUIET): $@: Succeeded
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
+	$(QUIET): $@: Succeeded
+pkg/debug: pkg/kernel
 	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
