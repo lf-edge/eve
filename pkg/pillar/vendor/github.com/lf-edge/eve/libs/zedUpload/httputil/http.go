@@ -187,7 +187,11 @@ func ExecCmd(cmd, host, remoteFile, localFile string, objSize int64,
 			stats.Error = err
 			return stats
 		}
-		_, _ = io.Copy(part, file)
+		_, err = io.Copy(part, file)
+		if err != nil {
+			stats.Error = err
+			return stats
+		}
 		err = writer.Close()
 		if err != nil {
 			stats.Error = err
