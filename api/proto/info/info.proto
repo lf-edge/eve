@@ -335,6 +335,9 @@ message ZInfoDevice {
 
   bool maintenance_mode = 38;
   MaintenanceModeReason maintenance_mode_reason = 39;
+
+  // Is /dev/watchdog present in the system
+  bool hardware_watchdog_present = 40;
 }
 
 // Different reasons for a boot/reboot
