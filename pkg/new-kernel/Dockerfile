@@ -150,7 +150,7 @@ RUN if [ "$(uname -m)" != aarch64 ]; then \
      fi
 
 # Strip at least some of the modules to conserve space
-RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules/*/extra -name \*.ko` ;fi
+RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
 
 # Device Tree Blobs
 RUN if [ "$(uname -m)" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install ;fi
