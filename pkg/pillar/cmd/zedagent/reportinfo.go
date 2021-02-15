@@ -477,6 +477,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.MaintenanceMode = ctx.maintenanceMode
 	ReportDeviceInfo.MaintenanceModeReason = info.MaintenanceModeReason(ctx.maintModeReason)
 
+	// Watchdog
+	ReportDeviceInfo.HardwareWatchdogPresent = getHarwareWatchdogPresent(ctx)
+
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
