@@ -308,15 +308,14 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 		if err = s.Load(f); err != nil {
 			return err
 		}
+		s.Root.Path = volume + "/rootfs"
 	} else if imgInfo, err := getSavedImageInfo(volume); err == nil {
+		s.Root.Path = volume + "/rootfs" // we need to set Root.Path before doing things with users/groups in spec
 		if err = s.updateFromImageConfig(imgInfo.Config); err != nil {
 			return err
 		}
-	} else {
-		return nil
 	}
 
-	s.Root.Path = volume + "/rootfs"
 	return nil
 }
 
@@ -352,11 +351,12 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 	s.Process.Cwd = cwd
 	if config.User != "" {
 		if err := oci.WithUser(config.User)(ctrdCtx, s.client.ctrdClient, &dummy, &s.Spec); err != nil {
-			return err
+			return fmt.Errorf("WithUser error: %s", err.Error())
 		}
 		if err := oci.WithAdditionalGIDs(fmt.Sprintf("%d", s.Process.User.UID))(ctrdCtx, s.client.ctrdClient, &dummy, &s.Spec); err != nil {
-			return err
+			return fmt.Errorf("WithAdditionalGIDs error: %s", err.Error())
 		}
+		return nil
 	}
 	return oci.WithAdditionalGIDs("root")(ctrdCtx, s.client.ctrdClient, &dummy, &s.Spec)
 }
