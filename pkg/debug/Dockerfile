@@ -39,7 +39,7 @@ RUN for patch in fix-musl-sc_long_bit.patch wrapper-for-basename.patch 155652295
 
 FROM linuxkit/sshd:666b4a1a323140aa1f332826164afba506abf597
 
-COPY ssh.sh /usr/bin/ssh.sh
+COPY ssh.sh spec.sh /usr/bin/
 # get the rebuilt musl from above
 COPY --from=musl-build /lib/ld-musl-*.so.1 /lib/
 
