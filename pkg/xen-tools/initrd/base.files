@@ -1,4 +1,6 @@
 /bin/busybox
+/usr/bin/sudo
+/usr/lib/sudo/libsudo_util.so.*
 /sbin/mke2fs
 /lib/libext2fs.so.2*
 /lib/libcom_err.so.2*
