@@ -400,6 +400,17 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
 		}
+		if ib.Error != "" {
+			errInfo := new(info.ErrorInfo)
+			errInfo.Description = ib.Error
+			if !ib.ErrorTime.IsZero() {
+				protoTime, err := ptypes.TimestampProto(ib.ErrorTime)
+				if err == nil {
+					errInfo.Timestamp = protoTime
+				}
+			}
+			reportAA.Err = errInfo
+		}
 		log.Tracef("AssignableAdapters for %s macs %v",
 			reportAA.Name, reportAA.IoAddressList)
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
