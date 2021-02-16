@@ -12,8 +12,8 @@ domID() {
    # shellcheck disable=SC2034
    for _ in 1 2 3; do
      ID=$(xl domid "$1")
+     [ -z "$ID" ] || break # we should return immediately, ID may change over time
      sleep 8
-     [ -z "$ID" ] || break
    done >/dev/null 2>&1
 
    echo "$ID"
@@ -51,16 +51,16 @@ handleKnownState() {
 
 xen_info() {
    # we expect to get rbpscd where every letter can also be a dash (-)
+   # we set - if ID is empty as a non-existent ID
    # Name    ID    Mem    VCPUs    State    Time(s)
-   case $(xl list "${1:- }" 2>/dev/null | awk '{st=$5;} END {print st;}') in
+   case $(xl list "${1:--}" 2>/dev/null | awk '{st=$5;} END {print st;}') in
       *c*) handleKnownState broken  ;;
        *d) handleKnownState halting ;;
       *s*) handleKnownState halting ;;
       *p*) handleKnownState paused  ;;
       *b*) handleKnownState running ;;
        r*) handleKnownState running ;;
-     # Waiting for 5sec before checking domain status again in order to recover from unknown state
-   ------) handleUnknownState; sleep 5 ;;
+   ------) handleUnknownState ;;
         *) handleKnownState broken  ;;
    esac
 }
@@ -93,10 +93,10 @@ xl unpause "$ID" || bail "xl unpause failed"
 
 # now start polling for domain status in the background
 # (note: our use of mv to make sure file reads on the other side are atomic)
-# (note: there will be a 5sec wait before the next xen_info() call in case if we get a nondeterministic domain state)
 (while true; do
    xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
+   sleep 5
 done) &
 
 # and start watching over the console: note that we loop forever
