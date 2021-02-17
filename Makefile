@@ -64,6 +64,7 @@ REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || ech
 REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d.%H.%M"))
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 
+# ROOTFS_VERSION used to construct the installer directory
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG),$(REPO_TAG))
 
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
@@ -86,19 +87,29 @@ DOCKER_ARCH_TAG=$(ZARCH)
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
 
-BIOS_IMG=$(DIST)/OVMF.fd $(DIST)/OVMF_CODE.fd $(DIST)/OVMF_VARS.fd
 IPXE_IMG=$(DIST)/ipxe.efi
-LIVE=$(DIST)/live
-LIVE_IMG=$(DIST)/live.$(IMG_FORMAT)
-TARGET_IMG=$(DIST)/target.img
-INSTALLER=$(DIST)/installer
+LIVE=$(BUILD_DIR)/live
+LIVE_IMG=$(BUILD_DIR)/live.$(IMG_FORMAT)
+TARGET_IMG=$(BUILD_DIR)/target.img
+INSTALLER=$(BUILD_DIR)/installer
+BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
+CURRENT_DIR=$(DIST)/current
+CURRENT_IMG=$(CURRENT_DIR)/live.$(IMG_FORMAT)
+CURRENT_INSTALLER=$(CURRENT_DIR)/installer
 INSTALLER_IMG=$(INSTALLER).$(INSTALLER_IMG_FORMAT)
+INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
+CURRENT_FIRMWARE_DIR=$(CURRENT_INSTALLER)/firmware
+BIOS_IMG=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_CODE.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
+
+RUNME=$(BUILD_DIR)/runme.sh
+BUILD_YML=$(BUILD_DIR)/build.yml
 
 BUILD_VM=$(DIST)/build-vm.qcow2
 BUILD_VM_CLOUD_INIT=$(DIST)/build-vm-ci.qcow2
 
 ROOTFS=$(INSTALLER)/rootfs
 ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
+ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG=$(ROOTFS).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
@@ -155,8 +166,8 @@ QEMU_MEMORY:=4096
 
 PFLASH_amd64=y
 PFLASH=$(PFLASH_$(ZARCH))
-QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(DIST)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(DIST)/OVMF_VARS.fd
-QEMU_OPTS_BIOS_=-bios $(DIST)/OVMF.fd
+QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(CURRENT_FIRMWARE_DIR)/OVMF_CODE.fd -drive if=pflash,format=raw,unit=1,file=$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd
+QEMU_OPTS_BIOS_=-bios $(CURRENT_FIRMWARE_DIR)/OVMF.fd
 QEMU_OPTS_BIOS=$(QEMU_OPTS_BIOS_$(PFLASH))
 
 QEMU_OPTS_arm64= -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
@@ -248,6 +259,11 @@ all: help
 version:
 	@echo $(ROOTFS_VERSION)
 
+# makes a link to current
+current: $(CURRENT_DIR)
+$(CURRENT_DIR): $(DIST)
+	@rm -f $@ && ln -s $(BUILD_DIR) $@
+
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
@@ -289,7 +305,7 @@ $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IM
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$@.active -drive format=qcow2,file=$<
 	mv $@.active $@
 
-$(BIOS_IMG): $(LINUXKIT) | $(DIST)
+$(BIOS_IMG): $(LINUXKIT) | $(INSTALLER_FIRMWARE_DIR)
 	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) $(notdir $@)
 	$(QUIET): $@: Succeeded
 
@@ -332,8 +348,9 @@ run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
+# run MUST NOT change the current dir; it depends on the output being correct from a previous build
 run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG),format=$(IMG_FORMAT)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT)
 
 run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
@@ -405,7 +422,7 @@ live-gcp-upload: $(LINUXKIT) | $(LIVE).img.tar.gz
 	fi
 
 # ensure the dist directory exists
-$(DIST) $(INSTALLER):
+$(DIST) $(INSTALLER) $(INSTALLER_FIRMWARE_DIR):
 	mkdir -p $@
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
@@ -413,9 +430,9 @@ build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG))		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
-rootfs: $(ROOTFS_IMG)
+rootfs: $(ROOTFS_IMG) current
 rootfs-%: $(ROOTFS)-%.img ;
-live: $(LIVE_IMG)		; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
+live: $(LIVE_IMG)	current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
 installer-%: $(INSTALLER).% ;
@@ -435,12 +452,16 @@ $(PERSIST_IMG): | $(INSTALLER)
 	dd if=/dev/zero bs=1048576 count=1 >> $@
 	$(QUIET): $@: Succeeded
 
-$(ROOTFS)-%.img: $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
+$(ROOTFS)-%.img: $(ROOTFS_IMG)
 	@rm -f $@ && ln -s $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
-$(ROOTFS_IMG): $(ROOTFS)-$(HV).img
-	@rm -f $@ && ln -s $(notdir $<) $@
+$(ROOTFS_IMG): images/rootfs-$(HV).yml | $(INSTALLER)
+	$(QUIET): $@: Begin
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
+	@echo "size of $@ is $$(wc -c < "$@")B"
+	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
+	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -486,9 +507,12 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
 
-eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) $(BOOT_PART) | $(DIST)
+$(RUNME) $(BUILD_YML):
+	cp pkg/eve/$(@F) $@
+
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART) $(RUNME) $(BUILD_YML) current | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
-	cp pkg/eve/build.yml pkg/eve/runme.sh images/*.yml $|
+	cp images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
 	$(QUIET): $@: Succeeded
@@ -607,16 +631,10 @@ images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
-$(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml $(SSH_KEY) | $(INSTALLER)
-	$(QUIET): $@: Begin
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
-	$(QUIET): $@: Succeeded
-$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): images/rootfs-%.yml | $(INSTALLER)
-	$(QUIET): $@: Begin
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
-	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+$(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)
+fullname-rootfs: $(ROOTFS_FULL_NAME)-$(HV)-$(ZARCH).$(ROOTFS_FORMAT) current
+$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_IMG)
+	@rm -f $@ && ln -s $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
 %-show-tag:
@@ -632,8 +650,8 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
-.PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
+.PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
+.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH
 FORCE:
 
 help:
