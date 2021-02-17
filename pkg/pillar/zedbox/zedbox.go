@@ -153,7 +153,12 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 	log.Functionf("Notifying zedbox to start service %s with args %v",
 		sericeInitStatus.ServiceName, sericeInitStatus.CmdArgs)
 	if err := reverse.Publish(log, agentName, &sericeInitStatus); err != nil {
-		log.Fatalf(err.Error())
+		// When we hit this it is most likely due to zedbox having hit a panic
+		// or fatal. Don't hide that as the reboot reason.
+		// If that is not the case, then watchdog will soon detect that this service
+		// is not running.
+		log.Errorf(err.Error())
+		return 1
 	}
 	return 0
 }
