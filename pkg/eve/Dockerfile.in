@@ -17,9 +17,15 @@ COPY --from=raw / /
 COPY --from=ipxe / /
 COPY --from=tools /out/ /
 COPY installer /bits
-COPY OVMF* /firmware/
 COPY runme.sh /
 RUN mkdir /in /out
+
+
+# These labels indicate where each component type is.
+# These must be updated if we change filenames or locations.
+# The annotations to be used are available at https://github.com/lf-edge/edge-containers/blob/master/docs/annotations.md
+LABEL org.lfedge.eci.artifact.root="/bits/rootfs.img"
+LABEL org.lfedge.eci.artifact.initrd="/bits/initrd.img"
 
 WORKDIR /bits
 ENTRYPOINT ["/runme.sh"]
