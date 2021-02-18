@@ -9,7 +9,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
-	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
@@ -219,16 +218,6 @@ type DatastoreContext struct {
 
 // AllowNonFreePort looks at GlobalConfig to determine which policy
 // to apply for the download of the object.
-func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
-
-	switch objType {
-	case AppImgObj:
-		return gc.GlobalValueTriState(AllowNonFreeAppImages) == TS_ENABLED
-	case BaseOsObj:
-		return gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED
-	default:
-		logrus.Fatalf("AllowNonFreePort: Unknown ObjType %s\n",
-			objType)
-		return false
-	}
+func AllowNonFreePort(gc ConfigItemValueMap) bool {
+	return gc.GlobalValueTriState(AllowNonFreeImages) == TS_ENABLED
 }

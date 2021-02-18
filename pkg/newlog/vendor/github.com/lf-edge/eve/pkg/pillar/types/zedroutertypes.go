@@ -1290,7 +1290,7 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 
 	var servers []net.IP
 	for _, us := range globalStatus.Ports {
-		if !us.IsMgmt {
+		if !us.IsMgmt && ifname == "" {
 			continue
 		}
 		if ifname != "" && ifname != us.IfName {
@@ -1411,7 +1411,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, phylabelOr
 	}
 	for _, us := range globalStatus.Ports {
 		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
+			!us.IsMgmt && ifname == "" {
 			continue
 		}
 		if free && !us.Free {
@@ -1540,8 +1540,19 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 	return ""
 }
 
+// GetInterfaceAddrs returns all IP addresses on the phylabelOrIfName except
+// link local
+func GetInterfaceAddrs(globalStatus DeviceNetworkStatus,
+	phylabelOrIfname string) ([]net.IP, error) {
+
+	if phylabelOrIfname == "" {
+		return []net.IP{}, fmt.Errorf("ifname not specified")
+	}
+	return getInterfaceAddr(globalStatus, false, phylabelOrIfname, false)
+}
+
 // Returns addresses based on free, ifname, and whether or not we want
-// IPv6 link-locals. Only applies to management ports.
+// IPv6 link-locals. Only applies to management ports unless ifname is set.
 // If free is not set, the addresses from the free management ports are first.
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 	phylabelOrIfname string, includeLinkLocal bool) ([]net.IP, error) {
@@ -1559,7 +1570,7 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
+			!us.IsMgmt && ifname == "" {
 			continue
 		}
 		// If ifname is set it should match
@@ -1769,6 +1780,15 @@ type UnderlayNetworkStatus struct {
 	Assigned        bool   // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch  bool
 	HostName        string
+	ACLDependList   []ACLDepend
+}
+
+// ACLDepend is used to track an external interface/port and optional IP addresses
+// on that interface which are encoded in the rules. Does not include the vif(s)
+// for the AppNetworkStatus itself.
+type ACLDepend struct {
+	Ifname string
+	IPAddr net.IP
 }
 
 // ULNetworkACLs - Underlay Network ACLRules
@@ -1780,13 +1800,9 @@ type ULNetworkACLs struct {
 type NetworkType uint8
 
 const (
-	NT_NOOP      NetworkType = 0
-	NT_IPV4                  = 4
-	NT_IPV6                  = 6
-	NT_CryptoEID             = 14 // Either IPv6 or IPv4; IP Address
-	// determines whether IPv4 EIDs are in use.
-	NT_CryptoV4 = 24 // Not used
-	NT_CryptoV6 = 26 // Not used
+	NT_NOOP NetworkType = 0
+	NT_IPV4             = 4
+	NT_IPV6             = 6
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 	// XXX how do we represent a bridge? NT_L2??
 )
@@ -1876,8 +1892,6 @@ type NetworkInstanceInfo struct {
 
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
-
-	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
 	// Any errrors from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
@@ -2149,7 +2163,6 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
-	HasEncap bool // Vpn, for adjusting pMTU
 	// For other network services - Proxy / StrongSwan etc..
 	OpaqueConfig string
 }
@@ -2774,7 +2787,8 @@ func (vifIP VifIPTrig) LogKey() string {
 
 // OnboardingStatus - UUID, etc. advertised by client process
 type OnboardingStatus struct {
-	DeviceUUID uuid.UUID
+	DeviceUUID    uuid.UUID
+	HardwareModel string // From controller
 }
 
 // Key returns the key for pubsub

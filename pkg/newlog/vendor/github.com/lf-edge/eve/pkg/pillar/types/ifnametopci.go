@@ -29,10 +29,24 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 	devPath := basePath + "/" + ifName + "/device"
 	info, err := os.Lstat(devPath)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Errorln(err)
+		if !strings.HasPrefix(ifName, "eth") {
+			if !os.IsNotExist(err) {
+				log.Errorln(err)
+			}
+			return "", err
 		}
-		return "", err
+		// Try alternate since the PCI device can be kethN
+		// if ifName is ethN
+		ifName = "k" + ifName
+		devPath = basePath + "/" + ifName + "/device"
+		info, err = os.Lstat(devPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Errorln(err)
+			}
+			return "", err
+		}
+		log.Noticef("ifNameToPci using alternate %s", ifName)
 	}
 	if (info.Mode() & os.ModeSymlink) == 0 {
 		log.Errorf("Skipping non-symlink %s\n", devPath)

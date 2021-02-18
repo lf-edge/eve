@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"io/ioutil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -35,6 +36,18 @@ const (
 	// HourInSec is number of seconds in a minute
 	HourInSec = 60 * MinuteInSec
 )
+
+// getEveMemoryLimitInBytes returns memory limit
+// reserved for eve in bytes
+func getEveMemoryLimitInBytes() (uint32, error) {
+	dataBytes, err := ioutil.ReadFile(EveMemoryLimitFile)
+	if err != nil {
+		return 0, err
+	}
+	dataString := strings.TrimSpace(string(dataBytes))
+	dataUint64, err := strconv.ParseUint(dataString, 10, 32)
+	return uint32(dataUint64), err
+}
 
 // ConfigItemStatus - Status of Config Items
 type ConfigItemStatus struct {
@@ -127,6 +140,8 @@ const (
 	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
 	// VdiskGCTime global setting key
 	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
+	// DeferContentDelete global setting key
+	DeferContentDelete GlobalSettingKey = "timer.defer.content.delete"
 	// DownloadRetryTime global setting key
 	DownloadRetryTime GlobalSettingKey = "timer.download.retry"
 	// DownloadStalledTime global setting key
@@ -156,6 +171,8 @@ const (
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
+	// LogRemainToSendMBytes Max gzip log files remain on device to be sent in Mbytes
+	LogRemainToSendMBytes GlobalSettingKey = "newlog.waittosend.ondisk.maxmegabytes"
 
 	// ForceFallbackCounter global setting key
 	ForceFallbackCounter = "force.fallback.counter"
@@ -165,6 +182,10 @@ const (
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
+	// EveMemoryLimitInBytes global setting key
+	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
+	// IgnoreMemoryCheckForApps global setting key
+	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
 	// AllowLogFastupload global setting key
@@ -173,10 +194,8 @@ const (
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
-	// AllowNonFreeAppImages global setting key
-	AllowNonFreeAppImages GlobalSettingKey = "network.allow.wwan.app.download"
-	// AllowNonFreeBaseImages global setting key
-	AllowNonFreeBaseImages GlobalSettingKey = "network.allow.wwan.baseos.download"
+	// AllowNonFreeImages global setting key
+	AllowNonFreeImages GlobalSettingKey = "network.allow.wwan.download"
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
 
@@ -684,6 +703,10 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 
 // NewConfigItemSpecMap - Creates a specmap based on default values
 func NewConfigItemSpecMap() ConfigItemSpecMap {
+	eveMemoryLimitInBytes, err := getEveMemoryLimitInBytes()
+	if err != nil {
+		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
+	}
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -708,6 +731,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
 	configItemSpecMap.AddIntItem(StaleConfigTime, 7*24*3600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*3600)
 	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadStalledTime, 600, 20, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
@@ -725,17 +749,21 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, eveMemoryLimitInBytes,
+		eveMemoryLimitInBytes, 0xFFFFFFFF)
+	// LogRemainToSendMBytes - Default has no limit, minimum is 10 Mbytes
+	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 0xFFFFFFFF, 10, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
+	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
-	configItemSpecMap.AddTriStateItem(AllowNonFreeAppImages, TS_ENABLED)
-	configItemSpecMap.AddTriStateItem(AllowNonFreeBaseImages, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(AllowNonFreeImages, TS_ENABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items

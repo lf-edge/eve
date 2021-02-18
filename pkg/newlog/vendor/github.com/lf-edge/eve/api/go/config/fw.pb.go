@@ -139,7 +139,7 @@ type ACEAction struct {
 	Limitrate  uint32 `protobuf:"varint,3,opt,name=limitrate,proto3" json:"limitrate,omitempty"`
 	Limitunit  string `protobuf:"bytes,4,opt,name=limitunit,proto3" json:"limitunit,omitempty"`
 	Limitburst uint32 `protobuf:"varint,5,opt,name=limitburst,proto3" json:"limitburst,omitempty"`
-	// port map action, and its assoicated paramtere
+	// port map action, and its associated parameter
 	Portmap bool   `protobuf:"varint,6,opt,name=portmap,proto3" json:"portmap,omitempty"`
 	AppPort uint32 `protobuf:"varint,7,opt,name=appPort,proto3" json:"appPort,omitempty"`
 }

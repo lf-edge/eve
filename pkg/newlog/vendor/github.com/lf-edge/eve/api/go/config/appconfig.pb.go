@@ -81,7 +81,7 @@ func (x *InstanceOpsCmd) GetOpsTime() string {
 // The complete configuration for an Application Instance
 // When changing key fields such as the drives/volumeRefs or the number
 // of interfaces, the controller is required to issue a purge command i.e.,
-// increase the purge counter. Otherwise there wil be an error (The controller
+// increase the purge counter. Otherwise there will be an error (The controller
 // can also issue a purge command to re-construct the content of the first
 // drive/volumeRef without any changes.)
 // Some changes such as ACL changes in the interfaces do not require a restart,
@@ -97,7 +97,7 @@ type AppInstanceConfig struct {
 	Uuidandversion *UUIDandVersion `protobuf:"bytes,1,opt,name=uuidandversion,proto3" json:"uuidandversion,omitempty"`
 	Displayname    string          `protobuf:"bytes,2,opt,name=displayname,proto3" json:"displayname,omitempty"` // User-friendly name
 	Fixedresources *VmConfig       `protobuf:"bytes,3,opt,name=fixedresources,proto3" json:"fixedresources,omitempty"`
-	// VolumeRefs, if supported by EVE, will supercede drives. Drives still
+	// VolumeRefs, if supported by EVE, will supersede drives. Drives still
 	// exist for backward compatibility.
 	// Drives will be deprecated in the future.
 	// The order here is critical because they are presented to the VM or

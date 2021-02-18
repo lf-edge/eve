@@ -4,7 +4,11 @@
 package types
 
 import (
+	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -48,6 +52,29 @@ func (config DomainConfig) GetOCIConfigDir() string {
 		return config.DiskConfigList[0].FileLocation
 	} else {
 		return ""
+	}
+}
+
+// GetTaskName assigns a unique name to the task representing this domain
+// FIXME: given config.UUIDandVersion.Version part not sure config.AppNum is needed for uniqueness
+func (config DomainConfig) GetTaskName() string {
+	return config.UUIDandVersion.UUID.String() + "." +
+		config.UUIDandVersion.Version + "." +
+		strconv.Itoa(config.AppNum)
+}
+
+// DomainnameToUUID does the reverse of GetTaskName
+func DomainnameToUUID(name string) (uuid.UUID, error) {
+	// FIXME: we can likely drop this altogether
+	if name == "Domain-0" {
+		return uuid.UUID{}, nil
+	}
+
+	res := strings.Split(name, ".")
+	if len(res) == 3 {
+		return uuid.FromString(res[0])
+	} else {
+		return uuid.UUID{}, fmt.Errorf("Unknown domainname %s", name)
 	}
 }
 
