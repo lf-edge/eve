@@ -171,6 +171,8 @@ const (
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
+	// LogRemainToSendMBytes Max gzip log files remain on device to be sent in Mbytes
+	LogRemainToSendMBytes GlobalSettingKey = "newlog.waittosend.ondisk.maxmegabytes"
 
 	// ForceFallbackCounter global setting key
 	ForceFallbackCounter = "force.fallback.counter"
@@ -749,6 +751,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, eveMemoryLimitInBytes,
 		eveMemoryLimitInBytes, 0xFFFFFFFF)
+	// LogRemainToSendMBytes - Default has no limit, minimum is 10 Mbytes
+	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 0xFFFFFFFF, 10, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false

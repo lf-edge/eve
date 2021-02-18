@@ -73,6 +73,8 @@ const (
 	NewlogUploadDevDir = NewlogDir + "/devUpload"
 	// NewlogUploadAppDir - newlog app gzip file directory ready for upload
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
+	// NewlogKeepSentQueueDir - a circular queue of gzip files already been sent
+	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
 	// EveMemoryLimitFile - stores memory reserved for eve
 	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
 )

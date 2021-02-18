@@ -375,6 +375,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		AverageCPULoadPct:   newlogMetrics.ServerStats.AvgCPULoadPCT,
 		CurrentProcessDelay: newlogMetrics.ServerStats.CurrProcessMsec,
 		AverageProcessDelay: newlogMetrics.ServerStats.AvgProcessMsec,
+		GzipFilesRemoved:    newlogMetrics.NumGZipFileRemoved,
 	}
 	if !newlogMetrics.FailSentStartTime.IsZero() {
 		nlm.FailSentStartTime, _ = ptypes.TimestampProto(newlogMetrics.FailSentStartTime)
