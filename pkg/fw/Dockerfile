@@ -10,6 +10,7 @@ RUN apk add --no-cache \
     linux-firmware-rtlwifi \
     linux-firmware-rsi \
     linux-firmware-nvidia \
+    linux-firmware-rtl_nic \
     linux-firmware-other
 
 FROM scratch
@@ -28,6 +29,10 @@ COPY --from=build /lib/firmware/iwlwifi-9260* /lib/firmware/
 COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 # Dell Edge Gateway 300x firmware
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
+# Intel Corporation Cannon Point-LP CNVi [Wireless-AC] (rev 30)
+COPY --from=build /lib/firmware/iwlwifi-9000-* /lib/firmware/
+# RTL8111/8168/8411 PCI Express Gigabit Ethernet Controller
+COPY --from=build /lib/firmware/rtl_nic/* /lib/firmware/rtl_nic/
 # FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
 COPY rpi /lib/firmware/
 # FIXME: we're currently using ath10k firmware supplied
