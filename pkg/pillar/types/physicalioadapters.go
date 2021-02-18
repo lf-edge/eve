@@ -77,7 +77,7 @@ func (ioAdapterList PhysicalIOAdapterList) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Onboarding ioAdapterList create")
+	logObject.Noticef("Onboarding ioAdapterList create")
 }
 
 // LogModify :
@@ -91,14 +91,14 @@ func (ioAdapterList PhysicalIOAdapterList) LogModify(logBase *base.LogObject, ol
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldIoAdapterList, ioAdapterList)).
-		Metricf("Onboarding ioAdapterList modify")
+		Noticef("Onboarding ioAdapterList modify")
 }
 
 // LogDelete :
 func (ioAdapterList PhysicalIOAdapterList) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.PhysicalIOAdapterListLogType, "",
 		nilUUID, ioAdapterList.LogKey())
-	logObject.Metricf("Onboarding ioAdapterList delete")
+	logObject.Noticef("Onboarding ioAdapterList delete")
 
 	base.DeleteLogObject(logBase, ioAdapterList.LogKey())
 }
