@@ -11,7 +11,20 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-const baseTableIndex = 500
+const (
+	baseTableIndex = 500
+
+	// PbrLocalDestPrio : IP rule priority for packets destined to locally owned addresses
+	PbrLocalDestPrio = 12000
+	// PbrLocalOrigPrio : IP rule priority for locally generated packets
+	PbrLocalOrigPrio = 15000
+	// PbrNatOutGatewayPrio : IP rule priority for packets destined to gateway(bridge ip) coming from apps.
+	PbrNatOutGatewayPrio = 9999
+	// PbrNatOutPrio : IP rule priority for packets destined to internet coming from apps
+	PbrNatOutPrio = 10000
+	// PbrNatInPrio : IP rule priority for external packets coming in towards apps
+	PbrNatInPrio = 11000
+)
 
 // ===== Manage routes in a particular table.
 // See also pbr_linux.go
@@ -71,10 +84,10 @@ func FlushRules(log *base.LogObject, ifindex int) {
 	}
 }
 
-func makeNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool) *netlink.Rule {
+func makeSrcNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool, prio int) *netlink.Rule {
 	r := netlink.NewRule()
 	r.Table = baseTableIndex + ifindex
-	r.Priority = 10000
+	r.Priority = prio
 	r.Family = HostFamily(p.IP)
 
 	var subnet net.IPNet
@@ -88,12 +101,101 @@ func makeNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool) *netlink.Rule 
 	return r
 }
 
+func makeDstLocalNetlinkRule(subnet net.IPNet, gateway net.IP, prio int) *netlink.Rule {
+	r := netlink.NewRule()
+	r.Table = syscall.RT_TABLE_LOCAL
+	r.Priority = prio
+	r.Family = HostFamily(gateway)
+
+	r.Src = &subnet
+	var g net.IPNet
+	g = HostSubnet(gateway)
+	r.Dst = &g
+
+	return r
+}
+
+func makeDstNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool, prio int) *netlink.Rule {
+	r := netlink.NewRule()
+	r.Table = baseTableIndex + ifindex
+	r.Priority = prio
+	r.Family = HostFamily(p.IP)
+
+	var subnet net.IPNet
+	if addForSubnet {
+		subnet = p
+	} else {
+		subnet = HostSubnet(p.IP)
+	}
+	r.Dst = &subnet
+
+	return r
+}
+
+// MoveDownLocalIPRule : Move IP rule that matches local destined packets below network instance rules.
+func MoveDownLocalIPRule(log *base.LogObject, prio int) {
+	// IPv4
+	r := netlink.NewRule()
+	r.Table = syscall.RT_TABLE_LOCAL
+	r.Priority = prio
+	r.Family = syscall.AF_INET
+	if err := netlink.RuleAdd(r); err != nil {
+		log.Errorf("MoveDownLocalIPRule: RuleAdd %v failed with %s", r, err)
+		return
+	}
+	r.Priority = 0
+	if err := netlink.RuleDel(r); err != nil {
+		log.Errorf("MoveDownLocalIPRule: RuleDel %v failed with %s", r, err)
+	}
+
+	// IPv6
+	r.Priority = prio
+	r.Family = syscall.AF_INET6
+	if err := netlink.RuleAdd(r); err != nil {
+		log.Errorf("MoveDownLocalIPRule: RuleAdd %v failed with %s", r, err)
+		return
+	}
+	r.Priority = 0
+	if err := netlink.RuleDel(r); err != nil {
+		log.Errorf("MoveDownLocalIPRule: RuleDel %v failed with %s", r, err)
+	}
+}
+
 // AddSourceRule create a pbr rule for the address or subet which refers to the
 // specific table for the ifindex.
-func AddSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet bool) {
+func AddSourceRule(log *base.LogObject, ifindex int, p net.IPNet,
+	addForSubnet bool, prio int) {
 
 	log.Functionf("AddSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
-	r := makeNetlinkRule(ifindex, p, addForSubnet)
+	r := makeSrcNetlinkRule(ifindex, p, addForSubnet, prio)
+	log.Tracef("AddSourceRule: RuleAdd %v", r)
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(r)
+	if err := netlink.RuleAdd(r); err != nil {
+		log.Errorf("RuleAdd %v failed with %s", r, err)
+		return
+	}
+}
+
+// AddGatewaySourceRule : Rule to match packets destined to brdige IP from apps
+func AddGatewaySourceRule(log *base.LogObject, p net.IPNet, gateway net.IP, prio int) {
+	log.Functionf("AddGatewaySourceRule(%v, %v)", p.String(), gateway)
+	r := makeDstLocalNetlinkRule(p, gateway, prio)
+	log.Tracef("AddGatewaySourceRule: RuleAdd %v", r)
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(r)
+	if err := netlink.RuleAdd(r); err != nil {
+		log.Errorf("AddGatewaySourceRule: RuleAdd %v failed with %s", r, err)
+		return
+	}
+}
+
+// AddInwardSourceRule : Rule to match port mapped packets going towards apps
+func AddInwardSourceRule(log *base.LogObject, ifindex int, p net.IPNet,
+	addForSubnet bool, prio int) {
+
+	log.Functionf("AddSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
+	r := makeDstNetlinkRule(ifindex, p, addForSubnet, prio)
 	log.Tracef("AddSourceRule: RuleAdd %v", r)
 	// Avoid duplicate rules
 	_ = netlink.RuleDel(r)
@@ -105,10 +207,35 @@ func AddSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet b
 
 // DelSourceRule removes the pbr rule for the address or subet which refers to the
 // specific table for the ifindex.
-func DelSourceRule(log *base.LogObject, ifindex int, p net.IPNet, addForSubnet bool) {
+func DelSourceRule(log *base.LogObject, ifindex int, p net.IPNet,
+	addForSubnet bool, prio int) {
 
 	log.Functionf("DelSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
-	r := makeNetlinkRule(ifindex, p, addForSubnet)
+	r := makeSrcNetlinkRule(ifindex, p, addForSubnet, prio)
+	log.Tracef("DelSourceRule: RuleDel %v", r)
+	if err := netlink.RuleDel(r); err != nil {
+		log.Errorf("RuleDel %v failed with %s", r, err)
+		return
+	}
+}
+
+// DelGatewaySourceRule :
+func DelGatewaySourceRule(log *base.LogObject, p net.IPNet, gateway net.IP, prio int) {
+	log.Functionf("DelGatewaySourceRule(%v, %v)", p.String(), gateway)
+	r := makeDstLocalNetlinkRule(p, gateway, prio)
+	log.Tracef("AddGatewaySourceRule: RuleAdd %v", r)
+	if err := netlink.RuleDel(r); err != nil {
+		log.Errorf("DelGatewaySourceRule: RuleDel %v failed with %s", r, err)
+		return
+	}
+}
+
+// DelInwardSourceRule :
+func DelInwardSourceRule(log *base.LogObject, ifindex int, p net.IPNet,
+	addForSubnet bool, prio int) {
+
+	log.Functionf("DelSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
+	r := makeDstNetlinkRule(ifindex, p, addForSubnet, prio)
 	log.Tracef("DelSourceRule: RuleDel %v", r)
 	if err := netlink.RuleDel(r); err != nil {
 		log.Errorf("RuleDel %v failed with %s", r, err)
