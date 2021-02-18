@@ -143,7 +143,8 @@ type AppInstanceStatus struct {
 	DisplayName         string
 	DomainName          string // Once booted
 	Activated           bool
-	ActivateInprogress  bool // Needed for cleanup after failure
+	ActivateInprogress  bool     // Needed for cleanup after failure
+	FixedResources      VmConfig // CPU etc
 	VolumeRefStatusList []VolumeRefStatus
 	UnderlayNetworks    []UnderlayNetworkStatus
 	BootTime            time.Time
@@ -252,17 +253,6 @@ func (status AppInstanceStatus) GetAppInterfaceList() []string {
 		}
 	}
 	return viflist
-}
-
-// MaybeUpdateAppIPAddr - Check if the AI status has the underlay network with this Mac Address
-func (status *AppInstanceStatus) MaybeUpdateAppIPAddr(macAddr, ipAddr string) bool {
-	for idx, ulStatus := range status.UnderlayNetworks {
-		if ulStatus.VifInfo.Mac == macAddr {
-			status.UnderlayNetworks[idx].AllocatedIPAddr = ipAddr
-			return true
-		}
-	}
-	return false
 }
 
 func RoundupToKB(b uint64) uint64 {
