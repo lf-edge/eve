@@ -62,9 +62,9 @@ func AddrChange(ctx DeviceNetworkContext, change netlink.AddrUpdate) (bool, int)
 		isPort := types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname)
 		if isPort {
 			if change.NewAddr {
-				AddSourceRule(log, change.LinkIndex, change.LinkAddress, false)
+				AddSourceRule(log, change.LinkIndex, change.LinkAddress, false, PbrLocalOrigPrio)
 			} else {
-				DelSourceRule(log, change.LinkIndex, change.LinkAddress, false)
+				DelSourceRule(log, change.LinkIndex, change.LinkAddress, false, PbrLocalOrigPrio)
 			}
 		}
 		log.Functionf("AddrChange: changed, %d %s", change.LinkIndex, change.LinkAddress.String())
@@ -300,7 +300,7 @@ func addPBR(log *base.LogObject, status types.DeviceNetworkStatus, ifname string
 	}
 	FlushRules(log, ifindex)
 	for _, a := range addrs {
-		AddSourceRule(log, ifindex, HostSubnet(a), false)
+		AddSourceRule(log, ifindex, HostSubnet(a), false, PbrLocalOrigPrio)
 	}
 	// Flush then copy all routes for this interface to the table
 	// for this ifindex

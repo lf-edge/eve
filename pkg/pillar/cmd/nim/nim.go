@@ -612,6 +612,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("AA initialized")
+	devicenetwork.MoveDownLocalIPRule(log, devicenetwork.PbrLocalDestPrio)
 
 	for {
 		select {
@@ -846,7 +847,7 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 		// Do not have a baseline to delete from
 		devicenetwork.FlushRules(log, ifindex)
 		for _, a := range addrs {
-			devicenetwork.AddSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false)
+			devicenetwork.AddSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false, devicenetwork.PbrLocalOrigPrio)
 		}
 		devicenetwork.HandleAddressChange(&ctx.deviceNetworkContext)
 		// XXX should we trigger restarting testing?
@@ -869,10 +870,10 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 		log.Functionf("%s(%s) changed from %v to %v",
 			logstr, ifname, oldAddrs, addrs)
 		for _, a := range oldAddrs {
-			devicenetwork.DelSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false)
+			devicenetwork.DelSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false, devicenetwork.PbrLocalOrigPrio)
 		}
 		for _, a := range addrs {
-			devicenetwork.AddSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false)
+			devicenetwork.AddSourceRule(log, ifindex, devicenetwork.HostSubnet(a), false, devicenetwork.PbrLocalOrigPrio)
 		}
 
 		devicenetwork.HandleAddressChange(&ctx.deviceNetworkContext)

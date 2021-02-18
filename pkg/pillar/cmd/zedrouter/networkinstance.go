@@ -1407,7 +1407,10 @@ func natActivate(ctx *zedrouterContext,
 				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
-		devicenetwork.AddSourceRule(log, status.BridgeIfindex, status.Subnet, true)
+		devicenetwork.AddGatewaySourceRule(log, status.Subnet,
+			net.ParseIP(status.BridgeIPAddr), devicenetwork.PbrNatOutGatewayPrio)
+		devicenetwork.AddSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatOutPrio)
+		devicenetwork.AddInwardSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatInPrio)
 	}
 	return nil
 }
@@ -1429,7 +1432,10 @@ func natInactivate(ctx *zedrouterContext,
 	if err != nil {
 		log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 	}
-	devicenetwork.DelSourceRule(log, status.BridgeIfindex, status.Subnet, true)
+	devicenetwork.DelGatewaySourceRule(log, status.Subnet,
+		net.ParseIP(status.BridgeIPAddr), devicenetwork.PbrNatOutGatewayPrio)
+	devicenetwork.DelSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatOutPrio)
+	devicenetwork.DelInwardSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatInPrio)
 	err = PbrRouteDeleteAll(status.BridgeName, oldUplinkIntf)
 	if err != nil {
 		log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
