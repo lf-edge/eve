@@ -68,7 +68,7 @@ func deleteServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) {
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
 	target := fmt.Sprintf("%s:%d", bridgeIP, targetPort)
-	log.Noticef("add NAT to target %s", target)
+	log.Noticef("delete NAT from target %s", target)
 	if err := iptables.IptableCmd(log, "-t", "nat", "-D", "PREROUTING",
 		"-i", bridgeName, "-p", "tcp", "-d", subnetStr,
 		"--dport", strconv.Itoa(targetPort),
@@ -141,7 +141,9 @@ func runServer(mux http.Handler, network string, ipaddr string,
 			log.Fatalf("server on %s failed: %s", ipaddr, err)
 		}
 	}
+	log.Noticef("Waiting for idleConnsClosed on %s", ipaddr)
 	<-idleConnsClosed
+	log.Noticef("Done waiting for idleConnsClosed on %s", ipaddr)
 }
 
 // ServeHTTP for networkHandler provides a json return
