@@ -804,6 +804,8 @@ func checkAppEntry(entry *inputEntry) string {
 	return appuuid
 }
 
+// updateLogMsgID - handles the msgID for log for both dev and apps
+// dev log does not have app-uuid, thus domainName passed in is ""
 func updateLogMsgID(domainName string) uint64 {
 	var msgid uint64
 	if domainName == "" {
@@ -1006,9 +1008,9 @@ func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int
 // checkKeepQuota - keep gzip file sizes below the user defined quota limit
 func checkKeepQuota() {
 	if limitGzipFilesMbyts < maxToSendMbytes {
+
 		maxSize := int64(limitGzipFilesMbyts * 1000000)
-		var sfiles map[string]gfileStats
-		sfiles = make(map[string]gfileStats)
+		sfiles := make(map[string]gfileStats)
 
 		key1, size1, err := checkDirGzfiles(sfiles, uploadAppDir)
 		if err != nil {
@@ -1063,8 +1065,7 @@ func checkKeepQuota() {
 		return
 	}
 
-	var sfiles map[string]gfileStats
-	sfiles = make(map[string]gfileStats)
+	sfiles := make(map[string]gfileStats)
 	keys, size, err := checkDirGzfiles(sfiles, keepSentDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: keepSentDir size %d, error %v", size, err)
