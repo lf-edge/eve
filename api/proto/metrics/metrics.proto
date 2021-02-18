@@ -432,6 +432,8 @@ message newlogMetric {
   logfileMetrics appMetrics = 18;
   // top 10 device log (not app) source in total bytes in percentage
   map <string, uint32> top10_input_sources = 19;
+  // gzip files removed due to exceeding user defined quota
+  uint32 gzipFilesRemoved = 20;
 }
 
 // logfileMetrics - is shared for both device log and application log

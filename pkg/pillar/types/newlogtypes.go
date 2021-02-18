@@ -57,6 +57,7 @@ type NewlogMetrics struct {
 	MaxGzipSize       uint32 // largest gzip file size created
 	AvgGzipSize       uint32 // average gzip file size
 	// from newlogd
+	NumGZipFileRemoved    uint32            // number of gzip file removed due to exceeding quota
 	NumBreakGZipFile      uint32            // total number of gzip file too large needs breakup
 	NumKmessages          uint64            // total input kmessages
 	NumSyslogMessages     uint64            // total input syslog message

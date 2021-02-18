@@ -170,6 +170,8 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		VaultReadyCutOffTime,
 		Dom0DiskUsageMaxBytes,
 		ForceFallbackCounter,
+		EveMemoryLimitInBytes,
+		LogRemainToSendMBytes,
 		// Bool Items
 		UsbAccess,
 		AllowAppVnc,

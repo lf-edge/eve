@@ -48,13 +48,15 @@ Upon the device restart, any unfinished temporary log files of previous life lef
 
 If the device loses network connection to the controller, the accumulated gzip log files in the directories can not be uploaded and will continue to grow. There are two problems: 1) the disk space is limited and 2) once the connection is restored there will be too many log files to upload and most of the log information is not that useful due to long time losing the connection. The device will limit the log files for N hours post the network disconnection. For example it will keep for 10 hours of log information if the network connection is lost. The implementation can be a simple tail drop of logs after the 10 hours, or it can be to recycle the most recent 5 hours logs and leave the first 5 hours logs untouched. The device can also be in the condition of the network is reachable, but the upload is not fast enough the the disk space is almost full, for example only 100 M Bytes space left. The device will either start to tail drop the logs or the recycle the log files through portion o fthe existing log files as in the network disconnection case.
 
-Once the gzip log files are uploaded to the cloud, any log entries in them will not be available on the device. For any log files are still waiting to be uploaded, they are in the '/persist/newlog/devUpload' and '/persist/newlog/appUpload' directories. EVE developers who have enabled ssh to the device for debugging purposes can look the log entries at in those directories by using "zcat" utility.
+User can use config-properties to set a log file maximum quota in Mbytes on the device, using the 'newlog.waittosend.ondisk.maxmegabytes' config-item, the default is unlimited (except for the above system applied limitation), the range is within (10, 4294967295) Mbytes.
+
+Once the gzip log files are uploaded to the cloud, the gzip files are still available on the device in the circular buffer in /persist/newlog/keepSentQueue directory. For any log files are still waiting to be uploaded, they are in the '/persist/newlog/devUpload' and '/persist/newlog/appUpload' directories. EVE developers who have enabled ssh to the device for debugging purposes can look the log entries at in those directories by using "zcat" utility.
 
 ## Log export to cloud
 
 "loguploader" is a pillar service which is responsible for uploading the gzip log files to the controller. The binary data of a gzip file is the payload portion of the authentication protobuf envolope structure. This is similar to all the other EVE POST messages, except that in those messsages the payload usually is data of another protobuf structure.
 
-The upload is one gzip file at a time. The "loguploader" finds the earliest timestamp from the gzip file's filename and sends the data to the controller. If the upload is sucessful, then the uploaded gzip file is removed from the directory. If the upload encounters an error, it will come back to retry again. There can be several different failure cases:
+The upload is one gzip file at a time. The "loguploader" finds the earliest timestamp from the gzip file's filename and sends the data to the controller. If the upload is sucessful, then the uploaded gzip file is moved from the directory to the /persist/newlog/keepSentQueue directory. If the upload encounters an error, it will come back to retry again. There can be several different failure cases:
 
 1) the upload has no reply from the server and is TCP timed out
 2) the upload gets http status code of 503 indicating that the controller is undergoing an update
@@ -77,6 +79,8 @@ The uploading is controlled on a scheduled timer. When the timer fires, the "log
 * when the timer is recalculated with above criterion, one exception is that the new time delay will be allowed to go smaller or it will be kept the same as before if there exists more than 5 files in the directory. This is to prevent the total files in the directory oscillating around a high number which would cause a longer delay in uploading of gzip files.
 
 The "loguploader" collects stats of round-trip delay, controller CPU load percentage and log batch processing time. The current EVE implementation does not use those stats in calculating the uploading timer values.
+
+The already uploaded gzip files are put in a circular buffer in /persist/newlog/keepSentQueue directory. This directory will keep up to 1000 gzip files (maximum of 50 Mbytes of compressed log data).
 
 To prevent the log messages grow without bounds over time, the 'failedUpload' directory will only keep up to 1000 gzip files, each with maximum of 50K, to be under 50M in the directory. The '/persist' partition space is monitored, and if the available space is under 100M, the 'newlogd' will kick in the gzip file recycle operation just as the controller uplink is unreachable.
 

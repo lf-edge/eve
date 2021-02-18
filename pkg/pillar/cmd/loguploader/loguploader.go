@@ -9,6 +9,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -20,15 +28,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
-	"math/rand"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -38,6 +39,8 @@ const (
 	warningTime = 40 * time.Second
 
 	failSendDir = types.NewlogDir + "/failedUpload"
+
+	keepSentDir = types.NewlogKeepSentQueueDir
 
 	defaultUploadIntv      = 90
 	metricsPublishInterval = 300 * time.Second
@@ -217,6 +220,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// init the upload interface to 2 min
 	loguploaderCtx.metrics.CurrUploadIntvSec = defaultUploadIntv
 	uploadTimer := time.NewTimer(time.Duration(loguploaderCtx.metrics.CurrUploadIntvSec) * time.Second)
+
+	if _, err := os.Stat(keepSentDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(keepSentDir, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	for {
 		select {
@@ -511,8 +520,11 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 			}
 			log.Errorf("doFetchSend: %v got error sending http: %v", ctx.metrics.FailSentStartTime.String(), err)
 		} else {
-			if err := os.Remove(gziplogfile); err != nil {
-				log.Fatal("doFetchSend: can not remove gziplogfile", err)
+			if _, err := os.Stat(gziplogfile); err == nil {
+				moveToFile := keepSentDir + "/" + gotFileName
+				if err := os.Rename(gziplogfile, moveToFile); err != nil {
+					log.Errorf("doFetchSend: can not move gziplogfile, %v", err)
+				}
 			}
 
 			contSentSuccess++
