@@ -2056,7 +2056,7 @@ func (nms NetworkMetrics) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Network nms create")
+	logObject.Metricf("Network metrics create")
 }
 
 // LogModify :
@@ -2178,7 +2178,7 @@ func (config NetworkInstanceConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Network instance config create")
+	logObject.Noticef("Network instance config create")
 }
 
 // LogModify :
@@ -2192,14 +2192,14 @@ func (config NetworkInstanceConfig) LogModify(logBase *base.LogObject, old inter
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-		Metricf("Network instance config modify")
+		Noticef("Network instance config modify")
 }
 
 // LogDelete :
 func (config NetworkInstanceConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceConfigLogType, "",
 		config.UUIDandVersion.UUID, config.LogKey())
-	logObject.Metricf("Network instance config delete")
+	logObject.Noticef("Network instance config delete")
 
 	base.DeleteLogObject(logBase, config.LogKey())
 }
@@ -2255,7 +2255,7 @@ func (status NetworkInstanceStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Network instance status create")
+	logObject.Noticef("Network instance status create")
 }
 
 // LogModify :
@@ -2269,14 +2269,14 @@ func (status NetworkInstanceStatus) LogModify(logBase *base.LogObject, old inter
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Metricf("Network instance status modify")
+		Noticef("Network instance status modify")
 }
 
 // LogDelete :
 func (status NetworkInstanceStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceStatusLogType, "",
 		status.UUIDandVersion.UUID, status.LogKey())
-	logObject.Metricf("Network instance status delete")
+	logObject.Noticef("Network instance status delete")
 
 	base.DeleteLogObject(logBase, status.LogKey())
 }
@@ -2754,7 +2754,7 @@ func (vifIP VifIPTrig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Vif IP trig create")
+	logObject.Noticef("Vif IP trig create")
 }
 
 // LogModify :
@@ -2768,14 +2768,14 @@ func (vifIP VifIPTrig) LogModify(logBase *base.LogObject, old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldVifIP, vifIP)).
-		Metricf("Vif IP trig modify")
+		Noticef("Vif IP trig modify")
 }
 
 // LogDelete :
 func (vifIP VifIPTrig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
 		nilUUID, vifIP.LogKey())
-	logObject.Metricf("Vif IP trig delete")
+	logObject.Noticef("Vif IP trig delete")
 
 	base.DeleteLogObject(logBase, vifIP.LogKey())
 }
@@ -2803,7 +2803,7 @@ func (status OnboardingStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Onboarding status create")
+	logObject.Noticef("Onboarding status create")
 }
 
 // LogModify :
@@ -2817,14 +2817,14 @@ func (status OnboardingStatus) LogModify(logBase *base.LogObject, old interface{
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Metricf("Onboarding status modify")
+		Noticef("Onboarding status modify")
 }
 
 // LogDelete :
 func (status OnboardingStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.OnboardingStatusLogType, "",
 		nilUUID, status.LogKey())
-	logObject.Metricf("Onboarding status delete")
+	logObject.Noticef("Onboarding status delete")
 
 	base.DeleteLogObject(logBase, status.LogKey())
 }
