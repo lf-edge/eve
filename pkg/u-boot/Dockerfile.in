@@ -35,14 +35,19 @@ RUN eval make \$TARGET_"$(uname -m)"
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 
 # export a final set of u-boot artifacts into /boot
-RUN mkdir /boot && cp /u-boot/u-boot.bin /boot
+RUN mkdir -p /boot && cp /u-boot/u-boot.bin /boot
 # FIXME: copy RPi4 dtb
 COPY rpi /tmp/rpi
 # download blobs for raspberry
 RUN if [ "$(uname -m)" = aarch64 ]; then curl -fsSLo /tmp/rpi/fixup4.dat ${RAPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat ; fi
 RUN if [ "$(uname -m)" = aarch64 ]; then curl -fsSLo /tmp/rpi/start4.elf ${RAPBERRY_FIRMWARE_BLOBS}/boot/start4.elf ; fi
 RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi/* /boot ; fi
-
+# get dtb for rpi4 from kernel package
+# hadolint ignore=DL3010,DL3022
+COPY --from=NEW_KERNEL_TAG /kernel.tar /boot/kernel.tar
+RUN if [ "$(uname -m)" = aarch64 ]; then\
+       tar -xf /boot/kernel.tar --strip-components 4 ./boot/dtb/broadcom/bcm2711-rpi-4-b.dtb -C /boot/ && rm /boot/kernel.tar;\
+    fi
 
 FROM scratch
 ENTRYPOINT []
