@@ -38,7 +38,7 @@ jobs:
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
       - name: Pull the release from DockerHUB
         run: |
-          EVE=lfedge/eve:${{ env.TAG }}-xen-${{ env.ARCH }}
+          EVE=lfedge/eve:${{ env.TAG }}-kvm-${{ env.ARCH }}
           docker pull "$EVE"
           rm -rf assets && mkdir assets && cd assets
           docker run "$EVE" rootfs > rootfs.img
