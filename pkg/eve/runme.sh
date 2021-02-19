@@ -127,7 +127,13 @@ do_installer_net() {
 #   * eve_install_server=XXX (e.g. XXX=zedcloud.hummingbird.zededa.net)
 #
 # chain --autofree https://github.com/lf-edge/eve/releases/download/1.2.3/ipxe.efi.cfg
-kernel kernel eve_installer=\${mac:hexhyp} eve_reboot_after_install fastboot console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0 initrd=initrd.img initrd=initrd.bits
+set console console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0
+
+# a few vendor tweaks
+iseq ${smbios/manufacturer} Huawei && set console console=ttyAMA0,115200n8
+iseq ${smbios/manufacturer} Huawei && set platform_tweaks pcie_aspm=off pci=pcie_bus_perf crashkernel=auto
+
+kernel kernel eve_installer=\${mac:hexhyp} eve_reboot_after_install fastboot ${console} ${platform_tweaks} initrd=initrd.img initrd=initrd.bits
 initrd initrd.img
 initrd initrd.bits
 boot
