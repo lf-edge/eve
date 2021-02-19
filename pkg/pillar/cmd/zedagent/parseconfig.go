@@ -1732,10 +1732,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			OpsTime:      reboot.OpsTime,
 		}
 		saveRebootConfig(rebootCmd)
-		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
+		// We read this into zedagentCtx.rebootConfigCounter and report that
+		// value to the controller once we have rebooted
 	}
 	if rebootConfig == nil {
 		// First boot - skip the reboot but report to cloud
+		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
 		triggerPublishDevInfo(getconfigCtx.zedagentCtx)
 		rebootPrevReturn = false
 		return false
