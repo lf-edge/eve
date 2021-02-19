@@ -372,6 +372,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		ctx.Pending.PendDNS.State = dpc.State
 		UpdateResolvConf(log, ctx.Pending.PendDNS)
 		UpdatePBR(log, ctx.Pending.PendDNS)
+		UpdateStaticArpEntries(ctx, ctx.Pending.PendDNS)
 		// Publish in case we need a port back from domainmgr
 		if ctx.PubDeviceNetworkStatus != nil {
 			ctx.Pending.PendDNS.Testing = true
@@ -953,6 +954,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	}
 	UpdateResolvConf(log, *ctx.DeviceNetworkStatus)
 	UpdatePBR(log, *ctx.DeviceNetworkStatus)
+	UpdateStaticArpEntries(ctx, *ctx.DeviceNetworkStatus)
 	if ctx.PubDeviceNetworkStatus != nil {
 		ctx.DeviceNetworkStatus.Testing = false
 		log.Functionf("PublishDeviceNetworkStatus: %+v\n",
