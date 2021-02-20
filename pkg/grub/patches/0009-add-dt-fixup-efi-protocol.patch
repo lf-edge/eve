@@ -1,0 +1,130 @@
+From 843f93185060ca0ce1053a9edbd8ba0214e5d3b3 Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Sat, 20 Feb 2021 23:27:22 +0300
+Subject: [PATCH] Add dt-fixup efi protocol
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ grub-core/loader/efi/fdt.c | 41 ++++++++++++++++++++++++++++++++++++--
+ include/grub/efi/api.h     | 22 ++++++++++++++++++++
+ 2 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/grub-core/loader/efi/fdt.c b/grub-core/loader/efi/fdt.c
+index c0c6800f7..8e8a7b500 100644
+--- a/grub-core/loader/efi/fdt.c
++++ b/grub-core/loader/efi/fdt.c
+@@ -25,9 +25,43 @@
+ #include <grub/efi/efi.h>
+ #include <grub/efi/fdtload.h>
+ #include <grub/efi/memory.h>
++#include <grub/cpu/efi/memory.h>
+ 
+ static void *loaded_fdt;
+ static void *fdt;
++static grub_efi_guid_t dt_fixup_guid = GRUB_EFI_DT_FIXUP_PROTOCOL_GUID;
++
++static void *grub_fdt_fixup (void)
++{
++  grub_efi_dt_fixup_t *dt_fixup_prot;
++  grub_efi_uintn_t size = 0;
++  grub_efi_status_t status;
++  void *fixup_fdt;
++
++  dt_fixup_prot = grub_efi_locate_protocol (&dt_fixup_guid, 0);
++  if (! dt_fixup_prot)
++    return loaded_fdt;
++
++  grub_dprintf ("linux", "EFI_DT_FIXUP_PROTOCOL available\n");
++
++  status = efi_call_4 (dt_fixup_prot->fixup, dt_fixup_prot, loaded_fdt, &size,
++		       GRUB_EFI_DT_APPLY_FIXUPS | GRUB_EFI_DT_RESERVE_MEMORY);
++  if (status != GRUB_EFI_BUFFER_TOO_SMALL)
++    return loaded_fdt;
++
++  fixup_fdt = grub_realloc (loaded_fdt, size);
++  if (!fixup_fdt)
++    return loaded_fdt;
++  loaded_fdt = fixup_fdt;
++
++  status = efi_call_4 (dt_fixup_prot->fixup, dt_fixup_prot, loaded_fdt, &size,
++		       GRUB_EFI_DT_APPLY_FIXUPS | GRUB_EFI_DT_RESERVE_MEMORY);
++
++  if (status == GRUB_EFI_SUCCESS)
++    grub_dprintf ("linux", "Device tree fixed up via EFI_DT_FIXUP_PROTOCOL\n");
++
++  return loaded_fdt;
++}
+ 
+ void *
+ grub_fdt_load (grub_size_t additional_size)
+@@ -42,7 +76,7 @@ grub_fdt_load (grub_size_t additional_size)
+     }
+ 
+   if (loaded_fdt)
+-    raw_fdt = loaded_fdt;
++    raw_fdt = grub_fdt_fixup();
+   else
+     raw_fdt = grub_efi_get_firmware_fdt();
+ 
+@@ -51,7 +85,10 @@ grub_fdt_load (grub_size_t additional_size)
+   size += additional_size;
+ 
+   grub_dprintf ("linux", "allocating %d bytes for fdt\n", size);
+-  fdt = grub_efi_allocate_any_pages (GRUB_EFI_BYTES_TO_PAGES (size));
++  fdt = grub_efi_allocate_pages_real (GRUB_EFI_MAX_USABLE_ADDRESS,
++				      GRUB_EFI_BYTES_TO_PAGES (size),
++				      GRUB_EFI_ALLOCATE_MAX_ADDRESS,
++				      GRUB_EFI_ACPI_RECLAIM_MEMORY);
+   if (!fdt)
+     return NULL;
+ 
+diff --git a/include/grub/efi/api.h b/include/grub/efi/api.h
+index 356d855e2..65b0c9184 100644
+--- a/include/grub/efi/api.h
++++ b/include/grub/efi/api.h
+@@ -334,6 +334,11 @@
+       { 0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0 } \
+   }
+ 
++#define GRUB_EFI_DT_FIXUP_PROTOCOL_GUID \
++  { 0xe617d64c, 0xfe08, 0x46da, \
++    { 0xf4, 0xdc, 0xbb, 0xd5, 0x87, 0x0c, 0x73, 0x00 } \
++  }
++
+ #define GRUB_EFI_VENDOR_APPLE_GUID \
+   { 0x2B0585EB, 0xD8B8, 0x49A9,	\
+       { 0x8B, 0x8C, 0xE2, 0x1B, 0x01, 0xAE, 0xF2, 0xB7 } \
+@@ -1627,6 +1632,13 @@ enum
+     GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST = 0x10,
+   };
+ 
++enum
++  {
++    GRUB_EFI_DT_APPLY_FIXUPS		= 0x01,
++    GRUB_EFI_DT_RESERVE_MEMORY		= 0x02,
++    GRUB_EFI_EFI_DT_INSTALL_TABLE	= 0x04,
++  };
++
+ struct grub_efi_simple_network
+ {
+   grub_uint64_t revision;
+@@ -1690,6 +1702,16 @@ struct grub_efi_block_io
+ };
+ typedef struct grub_efi_block_io grub_efi_block_io_t;
+ 
++struct grub_efi_dt_fixup
++{
++  grub_efi_uint64_t revision;
++  grub_efi_status_t (*fixup) (struct grub_efi_dt_fixup *this,
++			      void *fdt,
++			      grub_efi_uintn_t *buffer_size,
++			      grub_uint32_t flags);
++};
++typedef struct grub_efi_dt_fixup grub_efi_dt_fixup_t;
++
+ #if (GRUB_TARGET_SIZEOF_VOID_P == 4) || defined (__ia64__) \
+   || defined (__aarch64__) || defined (__MINGW64__) || defined (__CYGWIN__)
+ 
+-- 
+2.25.1
+
