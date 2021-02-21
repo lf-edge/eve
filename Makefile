@@ -18,7 +18,7 @@ export CGO_ENABLED GOOS GOARCH PATH
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=kvm'
+# The default hypervisor is KVM. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=xen'
 HV=kvm
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
