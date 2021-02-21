@@ -172,7 +172,7 @@ const (
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
 	// LogRemainToSendMBytes Max gzip log files remain on device to be sent in Mbytes
-	LogRemainToSendMBytes GlobalSettingKey = "newlog.waittosend.ondisk.maxmegabytes"
+	LogRemainToSendMBytes GlobalSettingKey = "newlog.gzipfiles.ondisk.maxmegabytes"
 
 	// ForceFallbackCounter global setting key
 	ForceFallbackCounter = "force.fallback.counter"

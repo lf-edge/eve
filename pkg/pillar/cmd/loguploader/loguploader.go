@@ -497,11 +497,16 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 	if fileTime > 0 && gotFileName != "" {
 		gziplogfile := zipDir + "/" + gotFileName
 		file, err := os.Open(gziplogfile)
-		if err != nil {
-			log.Fatal("doFetchSend: can not open gziplogfile", err)
+		if err != nil { // could be deleted by newlogd
+			log.Errorf("doFetchSend: can not open gziplogfile %v", err)
+			return numFiles
 		}
 		reader := bufio.NewReader(file)
-		content, _ := ioutil.ReadAll(reader)
+		content, err := ioutil.ReadAll(reader)
+		if err != nil { // could be deleted by newlogd
+			log.Errorf("doFetchSend: can not readall gziplogfile %v", err)
+			return numFiles
+		}
 
 		unavailable, err := sendToCloud(ctx, content, *iter, gotFileName, fileTime, isApp)
 		if err != nil {

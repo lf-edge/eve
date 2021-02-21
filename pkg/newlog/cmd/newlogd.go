@@ -959,6 +959,7 @@ func mayDoSpaceCleanup(isApp bool) {
 }
 
 type gfileStats struct {
+	isSent   bool
 	filename string
 	filesize int64
 }
@@ -966,9 +967,18 @@ type gfileStats struct {
 func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int64, error) {
 	var sizes int64
 
+	if _, err := os.Stat(logdir); err != nil {
+		return nil, sizes, err
+	}
+
 	files, err := ioutil.ReadDir(logdir)
 	if err != nil {
 		return nil, sizes, err
+	}
+
+	var alreadySent bool
+	if logdir == keepSentDir {
+		alreadySent = true
 	}
 
 	keys := make([]string, 0, len(files))
@@ -978,6 +988,7 @@ func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int
 		fs := gfileStats{
 			filename: logdir + "/" + fname,
 			filesize: fsize,
+			isSent: alreadySent,
 		}
 		sizes += fsize
 
@@ -990,19 +1001,7 @@ func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int
 		sfiles[fname3[1]] = fs
 	}
 
-	// keep the first several, they may have more important information on
-	// the causes of unreachable condition, and loguploader may work on the
-	// first one at this time
-	if len(keys) < 4 {
-		// skip this
-		return nil, sizes, nil
-	}
-
-	sort.Strings(keys)
-	if logdir == keepSentDir {
-		return keys, sizes, nil
-	}
-	return keys[3:], sizes, nil
+	return keys, sizes, nil
 }
 
 // checkKeepQuota - keep gzip file sizes below the user defined quota limit
@@ -1012,6 +1011,10 @@ func checkKeepQuota() {
 		maxSize := int64(limitGzipFilesMbyts * 1000000)
 		sfiles := make(map[string]gfileStats)
 
+		key0, size0, err := checkDirGzfiles(sfiles, keepSentDir)
+		if err != nil {
+			log.Errorf("checkKeepQuota: keepSentDir %v", err)
+		}
 		key1, size1, err := checkDirGzfiles(sfiles, uploadAppDir)
 		if err != nil {
 			log.Errorf("checkKeepQuota: AppDir %v", err)
@@ -1021,10 +1024,11 @@ func checkKeepQuota() {
 			log.Errorf("checkKeepQuota: DevDir %v", err)
 		}
 
-		totalsize := size1 + size2
+		totalsize := size0 + size1 + size2
 		prevFileRemoved := logmetrics.NumGZipFileRemoved
 		if totalsize > maxSize {
-			keys := key1
+			keys := key0
+			keys = append(keys, key1...)
 			keys = append(keys, key2...)
 			sort.Strings(keys)
 
@@ -1036,12 +1040,13 @@ func checkKeepQuota() {
 				if _, err := os.Stat(fs.filename); err != nil {
 					continue
 				}
-				if err := os.Remove(fs.filename); err != nil && !os.IsNotExist(err) {
+				if err := os.Remove(fs.filename); err != nil {
 					log.Errorf("checkKeepQuota: remove failed %s, %v", fs.filename, err)
-					log.Error(err)
 					continue
 				}
-				logmetrics.NumGZipFileRemoved++
+				if !fs.isSent {
+					logmetrics.NumGZipFileRemoved++
+				}
 				totalsize -= fs.filesize
 				if totalsize < maxSize {
 					break
