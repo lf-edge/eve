@@ -55,11 +55,12 @@ jobs:
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
-          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
-          ./eden setup
+          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
+          ./eden setup -v debug
           ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" upload
           ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" run
           ./eden start
+          sleep 100
           BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS") || { echo "no IP, probably VM does not exist"; exit 1; }
           echo "the IP is $BWD"
           ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
