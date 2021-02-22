@@ -7,7 +7,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/lf-edge/edge-containers/pkg/store"
 	"github.com/lf-edge/edge-containers/pkg/tgz"
 
 	"github.com/deislabs/oras/pkg/content"
@@ -33,7 +32,7 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, legacyOpts ...L
 	fileStore := content.NewFileStore("")
 	defer fileStore.Close()
 	memStore := content.NewMemoryStore()
-	multiStore := store.MultiReader{}
+	multiStore := content.MultiReader{}
 	multiStore.AddStore(fileStore, memStore)
 
 	// if we have the container format, we need to create tgz layers

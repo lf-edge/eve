@@ -2,14 +2,15 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 
 	ctrcontent "github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/remotes"
+	"github.com/deislabs/oras/pkg/content"
 	"github.com/deislabs/oras/pkg/oras"
 	ecresolver "github.com/lf-edge/edge-containers/pkg/resolver"
-	"github.com/lf-edge/edge-containers/pkg/store"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -48,20 +49,29 @@ func (p *Puller) Pull(target Target, blocksize int, verbose bool, writer io.Writ
 
 	targetStore := target.Ingester()
 	defer targetStore.Close()
-	decompressStore := store.NewDecompressStore(targetStore, blocksize)
+	dcstoreOpts := []content.WriterOpt{content.WithBlocksize(blocksize)}
+	if target.MultiWriter() {
+		dcstoreOpts = append(dcstoreOpts, content.WithMultiWriterIngester())
+	}
+	decompressStore := content.NewDecompressStore(targetStore, dcstoreOpts...)
 
 	allowedMediaTypes := AllMimeTypes()
 
 	if verbose {
 		pullOpts = append(pullOpts, oras.WithPullStatusTrack(writer))
 	}
-	pullOpts = append(pullOpts, oras.WithAllowedMediaTypes(allowedMediaTypes))
+
+	// provide our own cache because of https://github.com/deislabs/oras/issues/225 and https://github.com/deislabs/oras/issues/226
+	store := newCacheStoreFromIngester(decompressStore)
+	pullOpts = append(pullOpts, oras.WithAllowedMediaTypes(allowedMediaTypes), oras.WithPullEmptyNameAllowed(), oras.WithContentProvideIngester(store), oras.WithPullByBFS)
+
 	// pull the images
 	desc, layers, err := p.Impl(ctx, resolver, p.Image, decompressStore, pullOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
 	// process the layers to fill in our artifact
+	// these can be in the layers, or in the config
 	artifact := &Artifact{
 		Disks: []*Disk{},
 	}
@@ -91,5 +101,71 @@ func (p *Puller) Pull(target Target, blocksize int, verbose bool, writer io.Writ
 			})
 		}
 	}
+	// it might have been in the config
+
 	return &desc, artifact, nil
+}
+
+// Config pull the config for the artifact from the appropriate registry and return it as an object
+//
+// The resolver provides the channel to connect to the target type. resolver.Registry just uses the default registry,
+// while resolver.Directory uses a local directory, etc.
+func (p *Puller) Config(verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *ocispec.Image, error) {
+	// must have valid image ref
+	if p.Image == "" {
+		return nil, nil, fmt.Errorf("must have valid image ref")
+	}
+	// ensure we have a real puller
+	if p.Impl == nil {
+		p.Impl = oras.Pull
+	}
+
+	var (
+		err error
+	)
+	// get the saved context; if nil, create a background one
+	ctx := resolver.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	pullOpts := []oras.PullOpt{}
+
+	store := content.NewMemoryStore()
+
+	// we only pull indexes, manifests and configs
+	allowedMediaTypes := []string{ocispec.MediaTypeImageIndex, ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageConfig, MimeTypeDockerImageConfig, MimeTypeDockerImageManifest, MimeTypeDockerImageIndex}
+
+	if verbose {
+		pullOpts = append(pullOpts, oras.WithPullStatusTrack(writer))
+	}
+	pullOpts = append(pullOpts, oras.WithAllowedMediaTypes(allowedMediaTypes), oras.WithPullEmptyNameAllowed())
+
+	// pull the images
+	_, layers, err := p.Impl(ctx, resolver, p.Image, store, pullOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	// run through the layers, looking for configs
+	return findConfig(store, layers, "", "")
+}
+
+func findConfig(store *content.Memorystore, layers []ocispec.Descriptor, os, arch string) (desc *ocispec.Descriptor, config *ocispec.Image, err error) {
+	// run through the layers, looking for configs
+	for _, l := range layers {
+		switch l.MediaType {
+		case ocispec.MediaTypeImageConfig, MimeTypeDockerImageConfig:
+			var conf ocispec.Image
+			if _, data, found := store.Get(l); found {
+				if err := json.Unmarshal(data, &conf); err != nil {
+					return nil, nil, err
+				}
+			}
+			if (os != "" && conf.OS != os) || (arch != "" && conf.Architecture != arch) {
+				continue
+			}
+			config = &conf
+			desc = &l
+		}
+	}
+	return desc, config, nil
 }

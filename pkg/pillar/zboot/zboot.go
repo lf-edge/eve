@@ -44,7 +44,7 @@ func init() {
 	}
 }
 
-// reset routine
+// Reset routine
 func Reset(log *base.LogObject) {
 	_, err := execWithRetry(log, "zboot", "reset")
 	if err != nil {
@@ -106,11 +106,14 @@ func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byt
 // than once per process.
 var currentPartition string
 
+// SetCurpart set current partition to curpart
 func SetCurpart(curpart string) {
 	currentPartition = curpart
 }
 
 // partition routines
+
+// GetCurrentPartition determine current active partition
 func GetCurrentPartition() string {
 	if currentPartition != "" {
 		return currentPartition
@@ -127,6 +130,7 @@ func GetCurrentPartition() string {
 	return partName
 }
 
+// GetOtherPartition get the partition that is not currently active
 func GetOtherPartition() string {
 
 	partName := GetCurrentPartition()
@@ -160,12 +164,14 @@ func validatePartitionState(partState string) {
 	logrus.Fatal(errStr)
 }
 
+// IsCurrentPartition determine if partName is the currently active partition
 func IsCurrentPartition(partName string) bool {
 	validatePartitionName(partName)
 	curPartName := GetCurrentPartition()
 	return curPartName == partName
 }
 
+// IsOtherPartition determine if partName is the other, not-currently-active, partition
 func IsOtherPartition(partName string) bool {
 	validatePartitionName(partName)
 	otherPartName := GetOtherPartition()
@@ -173,6 +179,8 @@ func IsOtherPartition(partName string) bool {
 }
 
 //  get/set api routines
+
+// GetPartitionState get the state of partition partName
 func GetPartitionState(partName string) string {
 
 	validatePartitionName(partName)
@@ -185,6 +193,7 @@ func GetPartitionState(partName string) string {
 	return partState
 }
 
+// IsPartitionState determine if partition partName is in the state partState
 func IsPartitionState(partName string, partState string) bool {
 
 	validatePartitionName(partName)
@@ -212,6 +221,7 @@ func setPartitionState(log *base.LogObject, partName string, partState string) {
 // Cache - doesn't change in running system
 var partDev = make(map[string]string)
 
+// GetPartitionDevname get the device name for partition partName
 func GetPartitionDevname(partName string) string {
 	validatePartitionName(partName)
 	dev, ok := partDev[partName]
@@ -243,37 +253,46 @@ func setPartitionStateUpdating(log *base.LogObject, partName string) {
 }
 
 // check routines, for current partition
+
+// IsCurrentPartitionStateActive determine if the current partition is active
 func IsCurrentPartitionStateActive() bool {
 	partName := GetCurrentPartition()
 	return IsPartitionState(partName, "active")
 }
 
+// IsCurrentPartitionStateInProgress determine if the current partition state is in progress
 func IsCurrentPartitionStateInProgress() bool {
 	partName := GetCurrentPartition()
 	return IsPartitionState(partName, "inprogress")
 }
 
+// IsCurrentPartitionStateUpdating determine if the current partition state is updating
 func IsCurrentPartitionStateUpdating() bool {
 	partName := GetCurrentPartition()
 	return IsPartitionState(partName, "updating")
 }
 
 // check routines, for other partition
+
+// IsOtherPartitionStateActive determine if the other partition state is active
 func IsOtherPartitionStateActive() bool {
 	partName := GetOtherPartition()
 	return IsPartitionState(partName, "active")
 }
 
+// IsOtherPartitionStateInProgress determine if the other partition state is in progress
 func IsOtherPartitionStateInProgress() bool {
 	partName := GetOtherPartition()
 	return IsPartitionState(partName, "inprogress")
 }
 
+// IsOtherPartitionStateUnused determine if the other partition state is in unused
 func IsOtherPartitionStateUnused() bool {
 	partName := GetOtherPartition()
 	return IsPartitionState(partName, "unused")
 }
 
+// IsOtherPartitionStateUpdating determine if the other partition state is updating
 func IsOtherPartitionStateUpdating() bool {
 	partName := GetOtherPartition()
 	return IsPartitionState(partName, "updating")
@@ -300,26 +319,31 @@ func setOtherPartitionStateActive(log *base.LogObject) {
 	setPartitionState(log, partName, "active")
 }
 
+// SetOtherPartitionStateUpdating set the other partition state to updating
 func SetOtherPartitionStateUpdating(log *base.LogObject) {
 	partName := GetOtherPartition()
 	setPartitionState(log, partName, "updating")
 }
 
+// SetOtherPartitionStateUnused set the other partition state to unused
 func SetOtherPartitionStateUnused(log *base.LogObject) {
 	partName := GetOtherPartition()
 	setPartitionState(log, partName, "unused")
 }
 
+// GetCurrentPartitionDevName get the device name for the current partition
 func GetCurrentPartitionDevName() string {
 	partName := GetCurrentPartition()
 	return GetPartitionDevname(partName)
 }
 
+// GetOtherPartitionDevName get the device name for the other partition
 func GetOtherPartitionDevName() string {
 	partName := GetOtherPartition()
 	return GetPartitionDevname(partName)
 }
 
+// WriteToPartition write the image to partition partName
 func WriteToPartition(log *base.LogObject, image string, partName string) error {
 
 	var (
@@ -381,7 +405,7 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	}
 	defer f.Close()
 
-	if _, _, err := puller.Pull(registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
+	if _, _, err := puller.Pull(&registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
 		errStr := fmt.Sprintf("error pulling %s from containerd: %v", image, err)
 		log.Error(errStr)
 		return errors.New(errStr)
@@ -389,7 +413,7 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	return nil
 }
 
-// Transition current from inprogress to active, and other from active/inprogress
+// MarkCurrentPartitionStateActive transition current from inprogress to active, and other from active/inprogress
 // to unused
 func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 
@@ -430,11 +454,13 @@ const (
 	otherPartVersionFile = "/etc/eve-release"
 )
 
+// GetShortVersion get short form of version for partName
 func GetShortVersion(log *base.LogObject, partName string) (string, error) {
 	ver, err := getVersion(log, partName, types.EveVersionFile)
 	return ver, err
 }
 
+// GetLongVersion get long version of partition part
 // XXX add longversion once we have a filename above
 func GetLongVersion(part string) string {
 	return ""

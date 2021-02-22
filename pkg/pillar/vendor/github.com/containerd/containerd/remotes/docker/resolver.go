@@ -41,6 +41,10 @@ import (
 )
 
 var (
+	// ErrNoToken is returned if a request is successful but the body does not
+	// contain an authorization token.
+	ErrNoToken = errors.New("authorization server did not include a token in the response")
+
 	// ErrInvalidAuthorization is used when credentials are passed to a server but
 	// those credentials are rejected.
 	ErrInvalidAuthorization = errors.New("authorization failed")
@@ -263,7 +267,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 		return "", ocispec.Descriptor{}, errors.Wrap(errdefs.ErrNotFound, "no resolve hosts")
 	}
 
-	ctx, err = ContextWithRepositoryScope(ctx, refspec, false)
+	ctx, err = contextWithRepositoryScope(ctx, refspec, false)
 	if err != nil {
 		return "", ocispec.Descriptor{}, err
 	}
