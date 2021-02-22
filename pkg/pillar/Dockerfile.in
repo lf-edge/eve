@@ -55,7 +55,7 @@ FROM STRONGSWAN_TAG as strongswan
 # hadolint ignore=DL3006
 FROM GPTTOOLS_TAG as gpttools
 
-FROM alpine:3.8
+FROM alpine:3.13
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 RUN apk add --no-cache \

@@ -1,4 +1,4 @@
-FROM alpine:3.12 as build
+FROM alpine:3.13 as build
 
 ENV KVMTOOL_VERSION=90b2d3adadf218dfc6bdfdfcefe269843360223c
 
@@ -82,7 +82,7 @@ RUN mkdir /bios ; if [ $(uname -m) = x86_64 ]; then                             
       cp build/pc-bios/optionrom/linuxboot_dma.bin build/pc-bios/bios-microvm.bin /bios ;\
     fi
 
-FROM alpine:3.12
+FROM alpine:3.13
 
 # libgcc, pixman and glib are required for qemu
 # it maybe possible to get rid of libgcc & pixman

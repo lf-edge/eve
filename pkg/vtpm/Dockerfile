@@ -51,7 +51,7 @@ WORKDIR /vtpm_server
 RUN make
 
 #Pull a selected set of artifacts into the final stage.
-FROM alpine:3.9
+FROM alpine:3.13
 
 COPY --from=build /usr/lib/libstdc++.so.6 /usr/lib
 COPY --from=build /usr/lib/libgcc_s.so.1 /usr/lib

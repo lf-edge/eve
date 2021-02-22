@@ -14,7 +14,7 @@ RUN gcc -s -o /chroot2 /tmp/chroot2.c
 RUN gcc -s -o /hacf /tmp/hacf.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
-FROM alpine:3.12 as kernel-build
+FROM alpine:3.13 as kernel-build
 ENV GIT_HTTP=y
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
@@ -90,7 +90,7 @@ WORKDIR /out/usr/lib/xen/bin/
 RUN strip * || :
 RUN if [ "$(uname -m)" = "x86_64" ]; then rm -f qemu-system-i386 && ln -s "qemu-system-$(uname -m)" qemu-system-i386 ;fi
 
-FROM alpine:3.12
+FROM alpine:3.13
 RUN apk add --no-cache \
     bash=5.0.17-r0     \
     libaio=0.3.112-r1  \

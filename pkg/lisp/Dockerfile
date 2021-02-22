@@ -15,7 +15,7 @@ WORKDIR /lisp
 RUN go build -mod=vendor -o lisp-ztr ./cmd/lisp-ztr
 RUN strip lisp-ztr
 
-FROM alpine:3.11 AS lisp
+FROM alpine:3.13 AS lisp
 ENV LISP_VERSION=release-0.488
 
 ADD https://github.com/farinacci/lispers.net/archive/${LISP_VERSION}.tar.gz /tmp/
@@ -41,7 +41,7 @@ RUN pip install --upgrade pip && pip install -r /lisp/pip-requirements.txt
 RUN apk del py2-pip
 
 # Putting it all together
-FROM alpine:3.11
+FROM alpine:3.13
 
 RUN apk add --no-cache     \
         libffi=3.2.1-r6    \

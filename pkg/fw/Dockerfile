@@ -1,4 +1,4 @@
-FROM alpine:edge as build
+FROM alpine:3.13 as build
 
 WORKDIR /
 RUN apk add --no-cache \

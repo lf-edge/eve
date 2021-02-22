@@ -3,7 +3,7 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM alpine:3.12 as musl-build
+FROM alpine:3.13 as musl-build
 
 # setting up building account
 # hadolint ignore=DL3019
@@ -18,7 +18,7 @@ RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
 # hadolint ignore=DL3019,DL3018
 RUN apk add --allow-untrusted /home/builder/packages/*/musl-*.apk
 
-FROM alpine:3.12 as lshw-build
+FROM alpine:3.13 as lshw-build
 
 ENV LSHW_VERSION 02.19.2
 

@@ -12,7 +12,7 @@ WORKDIR /newlog
 RUN GO111MODULE=on CGO_ENABLED=1 go build -mod=vendor -o newlogd ./cmd
 RUN strip newlogd
 
-FROM alpine:3.8
+FROM alpine:3.13
 COPY --from=build /newlog/newlogd /usr/bin
 COPY newlogd-init.sh /newlogd-init.sh
 

@@ -1,4 +1,4 @@
-FROM alpine:3.12
+FROM alpine:3.13
 WORKDIR /
 # hadolint ignore=DL3018
 RUN apk add --no-cache bash glib squashfs-tools util-linux e2fsprogs \
