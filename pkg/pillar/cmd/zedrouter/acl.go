@@ -1080,18 +1080,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 	aclRule3.IsUserConfigured = true
 	aclRule3.RuleID = ace.RuleID
 	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
-
-		// XXX what about local-only switch network instance?
-		// XXX should skip trying to add this rule
-		if len(aclArgs.UpLinks) != 1 {
-			errStr := fmt.Sprintf("aceToRules: Switch network instance is only supported with exactly one " +
-				"uplink attached for now.")
-			log.Errorln(errStr)
-			return nil, nil, errors.New(errStr)
-		} else {
-			aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
-				"--physdev-in", uplinkToPhysdev(aclArgs.UpLinks[0]))
-		}
+		aclRule3.Rule = append(aclRule3.Rule, "-i", aclArgs.BridgeName)
 	}
 
 	aclRule4.Rule = outArgs
