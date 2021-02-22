@@ -60,9 +60,9 @@ jobs:
           ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" upload
           ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" run
           ./eden start
-          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS")
+          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS") || { echo "no IP, probably VM does not exist"; exit 1; }
           echo "the IP is $BWD"
-          ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}}
+          ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
           ./eden eve onboard
           echo > tests/workflow/testdata/eden_stop.txt
       - name: Test
@@ -72,6 +72,8 @@ jobs:
         if: ${{ always() }}
         run: |
           ./eden log --format json > trace.log
+          ./eden info > info.log
+          docker logs eden_adam > adam.log 2>&1
       - name: Clean
         if: ${{ always() }}
         run: |
@@ -84,4 +86,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: eden-report-${{ matrix.hv }}
-          path: ${{ github.workspace }}/trace.log
+          path: |
+            ${{ github.workspace }}/trace.log
+            ${{ github.workspace }}/info.log
+            ${{ github.workspace }}/adam.log

@@ -54,9 +54,16 @@ jobs:
         if: ${{ always() }}
         run: |
           ./eden log --format json > trace.log
+          ./eden info > info.log
+          cp dist/default-eve.log console.log
+          docker logs eden_adam > adam.log 2>&1
       - name: Store raw test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
         with:
           name: 'eden-report'
-          path: ${{ github.workspace }}/trace.log
+          path: |
+            ${{ github.workspace }}/trace.log
+            ${{ github.workspace }}/info.log
+            ${{ github.workspace }}/console.log
+            ${{ github.workspace }}/adam.log
