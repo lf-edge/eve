@@ -4,22 +4,17 @@ package resolver
  Provides a github.com/containerd/containerd/remotes#Resolver that resolves
  to a local filesystem directory.
 
- The format in the directory is one file for each blob, named `sha256:<hash>`.
- Even manifest and index files are saved as blob files. In addition,
- The image reference named is sha256 hashed and hex-encoded. That is used as
- a filename for a file that contains the OCI spec descriptor for the root manifest.
+ The format in the directory is the OCI spec for an image layout,
+ at https://github.com/opencontainers/image-spec/blob/master/image-layout.md
 
- For example, if the image name is docker.io/foo/bar:1.2.3, that can be hashed as
- sha256:24b80c31240b48117e63156af80951a987c43de267050c7c768dd4d20d5e9a3b
+ The image reference name is stored in the root index.json, with the image name stored
+ as the annotation for image name, i.e. org.opencontainers.image.ref.name
 
- A file will be created named sha256:24b80c31240b48117e63156af80951a987c43de267050c7c768dd4d20d5e9a3b
- whose contents will be the descriptor for the root.
+ The spec for annotations is available https://github.com/opencontainers/image-spec/blob/master/annotations.md
 */
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -59,32 +54,22 @@ func (d *Directory) Resolve(ctx context.Context, ref string) (name string, desc 
 		return "", ocispec.Descriptor{}, reference.ErrObjectRequired
 	}
 
-	imageFile := getImageFilename(ref)
-	if imageFile == "" {
-		return "", ocispec.Descriptor{}, fmt.Errorf("invalid reference: %s", ref)
-	}
+	// get the root manifest
 	// try to get it from the image reference file
-	contents, err := ioutil.ReadFile(path.Join(d.dir, imageFile))
+	indexFile := path.Join(d.dir, "index.json")
+	contents, err := ioutil.ReadFile(indexFile)
 	if err != nil {
 		return "", ocispec.Descriptor{}, reference.ErrInvalid
 	}
-	var rootDesc ocispec.Descriptor
+	var rootDesc ocispec.Index
 	if err := json.Unmarshal(contents, &rootDesc); err != nil {
 		return "", ocispec.Descriptor{}, fmt.Errorf("could not convert manifest description to json: %v", err)
 	}
-
-	dgst := refspec.Digest()
-	if dgst == "" {
-		dgst = digest.Digest(rootDesc.Digest.String())
+	if len(rootDesc.Manifests) < 1 {
+		return "", ocispec.Descriptor{}, fmt.Errorf("index %s did not have any manifests", indexFile)
 	}
 
-	// need to get the descriptor for the contents of it
-	desc = ocispec.Descriptor{
-		Digest:    dgst,
-		MediaType: rootDesc.MediaType,
-		Size:      rootDesc.Size,
-	}
-	return ref, desc, nil
+	return ref, rootDesc.Manifests[0], nil
 }
 
 func (d Directory) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
@@ -113,17 +98,34 @@ type directoryPusher struct {
 	dir string
 }
 
+type rcWrapper struct {
+	rc   io.ReadCloser
+	desc ocispec.Descriptor
+}
+
+func (r rcWrapper) Close() error {
+	return r.rc.Close()
+}
+func (r rcWrapper) Read(b []byte) (int, error) {
+	return r.rc.Read(b)
+}
+
 func (d directoryFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
-	filename := path.Join(d.dir, desc.Digest.String())
+	blobsDir := path.Join(d.dir, "blobs", desc.Digest.Algorithm().String())
+	filename := path.Join(blobsDir, desc.Digest.Hex())
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("could not open for reading %s: %v", filename, err)
 	}
-	return file, nil
+	return &rcWrapper{rc: file, desc: desc}, nil
 }
 
 func (d directoryPusher) Push(ctx context.Context, desc ocispec.Descriptor) (content.Writer, error) {
-	filename := path.Join(d.dir, desc.Digest.String())
+	blobsDir := path.Join(d.dir, "blobs", desc.Digest.Algorithm().String())
+	if err := os.MkdirAll(blobsDir, 0755); err != nil {
+		return nil, fmt.Errorf("could not create directory %s: %v", blobsDir, err)
+	}
+	filename := path.Join(blobsDir, desc.Digest.Hex())
 	file, err := os.Create(filename)
 	if err != nil {
 		return nil, fmt.Errorf("could not create for writing %s: %v", filename, err)
@@ -135,17 +137,12 @@ func (d directoryPusher) Push(ctx context.Context, desc ocispec.Descriptor) (con
 		isManifest = true
 	}
 
-	imageFile := getImageFilename(d.ref)
-	if imageFile == "" {
-		return nil, fmt.Errorf("invalid reference: %s", d.ref)
-	}
-
 	return directoryWriter{
 		file:       file,
 		desc:       desc,
 		isManifest: isManifest,
-		ref:        remotes.MakeRefKey(ctx, desc),
-		imageFile:  path.Join(d.dir, imageFile),
+		ref:        d.ref,
+		indexFile:  path.Join(d.dir, "index.json"),
 	}, nil
 }
 
@@ -154,11 +151,11 @@ type directoryWriter struct {
 	ref        string
 	isManifest bool
 	desc       ocispec.Descriptor
-	imageFile  string
 	committed  bool
 	start      time.Time
 	updated    time.Time
 	total      int64
+	indexFile  string
 }
 
 // Digest may return empty digest or panics until committed.
@@ -189,13 +186,25 @@ func (d directoryWriter) Commit(ctx context.Context, size int64, expected digest
 	}
 	// when we commit, we also need to write the image file
 	if d.isManifest {
-		// convert the manifest to json bytes and write it
-		b, err := json.Marshal(d.desc)
-		if err != nil {
-			return fmt.Errorf("could not convert manifest description to json: %v", err)
+		// ensure that the name annotation exists
+		if d.desc.Annotations == nil {
+			d.desc.Annotations = map[string]string{}
 		}
-		if err := ioutil.WriteFile(d.imageFile, b, 0644); err != nil {
-			return fmt.Errorf("error writing imagefile %s: %v", d.imageFile, err)
+		if value, ok := d.desc.Annotations[ocispec.AnnotationRefName]; !ok || value == "" {
+			d.desc.Annotations[ocispec.AnnotationRefName] = d.ref
+		}
+		// convert the manifest to json bytes and write it to the index.json
+		index := ocispec.Index{
+			Manifests: []ocispec.Descriptor{
+				d.desc,
+			},
+		}
+		b, err := json.Marshal(index)
+		if err != nil {
+			return fmt.Errorf("could not convert index to json: %v", err)
+		}
+		if err := ioutil.WriteFile(d.indexFile, b, 0644); err != nil {
+			return fmt.Errorf("error writing index file %s: %v", d.indexFile, err)
 		}
 	}
 	return nil
@@ -217,13 +226,4 @@ func (d directoryWriter) Status() (content.Status, error) {
 // Truncate updates the size of the target blob
 func (d directoryWriter) Truncate(size int64) error {
 	return fmt.Errorf("unsupported")
-}
-
-func getImageFilename(ref string) string {
-	refspec, err := reference.Parse(ref)
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(refspec.String()))
-	return fmt.Sprintf("%s:%s", "sha256", hex.EncodeToString(sum[:]))
 }

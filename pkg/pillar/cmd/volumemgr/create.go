@@ -72,7 +72,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	}
 	defer f.Close()
 
-	if _, _, err := puller.Pull(registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
+	if _, _, err := puller.Pull(&registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
 		errStr := fmt.Sprintf("error pulling %s from containerd: %v", ref, err)
 		log.Error(errStr)
 		return created, "", errors.New(errStr)

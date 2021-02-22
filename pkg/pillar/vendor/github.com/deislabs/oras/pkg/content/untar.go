@@ -70,3 +70,73 @@ func NewUntarWriter(writer content.Writer, opts ...WriterOpt) content.Writer {
 		done <- err
 	}, opts...)
 }
+
+// NewUntarWriterByName wrap multiple writers with an untar, so that the stream is untarred and passed
+// to the appropriate writer, based on the filename. If a filename is not found, it is up to the called func
+// to determine how to process it.
+func NewUntarWriterByName(writers func(string) (content.Writer, error), opts ...WriterOpt) content.Writer {
+	// process opts for default
+	wOpts := DefaultWriterOpts()
+	for _, opt := range opts {
+		if err := opt(&wOpts); err != nil {
+			return nil
+		}
+	}
+
+	// need a PassthroughMultiWriter here
+	return NewPassthroughMultiWriter(writers, func(r io.Reader, getwriter func(name string) io.Writer, done chan<- error) {
+		tr := tar.NewReader(r)
+		var err error
+		for {
+			header, err := tr.Next()
+			if err == io.EOF {
+				// clear the error, since we do not pass an io.EOF
+				err = nil
+				break // End of archive
+			}
+			if err != nil {
+				// pass the error on
+				err = fmt.Errorf("UntarWriter tar file header read error: %v", err)
+				break
+			}
+			// get the filename
+			filename := header.Name
+
+			// get the writer for this filename
+			w := getwriter(filename)
+			if w == nil {
+				continue
+			}
+
+			// write out the untarred data
+			// we can handle io.EOF, just go to the next file
+			// any other errors should stop and get reported
+			b := make([]byte, wOpts.Blocksize, wOpts.Blocksize)
+			for {
+				var n int
+				n, err = tr.Read(b)
+				if err != nil && err != io.EOF {
+					err = fmt.Errorf("UntarWriter file data read error: %v\n", err)
+					break
+				}
+				l := n
+				if n > len(b) {
+					l = len(b)
+				}
+				if _, err2 := w.Write(b[:l]); err2 != nil {
+					err = fmt.Errorf("UntarWriter error writing to underlying writer at for name '%s': %v", filename, err2)
+					break
+				}
+				if err == io.EOF {
+					// go to the next file
+					break
+				}
+			}
+			// did we break with a non-nil and non-EOF error?
+			if err != nil && err != io.EOF {
+				break
+			}
+		}
+		done <- err
+	}, opts...)
+}
