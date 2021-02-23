@@ -36,16 +36,25 @@ jobs:
           sudo apt install -y binfmt-support qemu-user-static
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-      - name: Pull the release from DockerHUB
+      - name: Pull the EVE release from DockerHUB or build it
         run: |
-          EVE=lfedge/eve:${{ env.TAG }}-kvm-${{ env.ARCH }}
-          docker pull "$EVE"
+          HV=kvm
+          if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
+             EVE=lfedge/eve:${{ env.TAG }}-${HV}-${{ env.ARCH }}
+             docker pull "$EVE"
+          else
+             git clone ${{ github.event.repository.html_url }} .
+             git reset --hard ${{ github.event.workflow_run.head_branch }}
+             make pkgs
+             make HV=${HV} ZARCH=${{ env.ARCH }} eve
+             EVE=lfedge/eve:$(make version)-${HV}-${{ env.ARCH }}
+          fi
           rm -rf assets && mkdir assets && cd assets
           docker run "$EVE" rootfs > rootfs.img
           docker run "$EVE" installer_net | tar -xvf -
       - name: Create direct iPXE config
         run: |
-          URL="https://github.com/lf-edge/eve/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
+          URL="${{ github.event.repository.html_url }}/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
           sed -i. -e "s#^kernel #kernel $URL#" -e "s#^initrd #initrd $URL#" assets/ipxe.efi.cfg
           sed -i. -e "s#initrd=initrd#initrd=${{ env.ARCH }}.initrd#g" assets/ipxe.efi.cfg
           sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
