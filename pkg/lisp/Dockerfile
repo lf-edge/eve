@@ -29,7 +29,7 @@ RUN apk add --no-cache           \
         libc-dev=0.7.2-r0        \
         python2-dev=2.7.18-r0    \
         libffi-dev=3.2.1-r6      \
-        openssl-dev=1.1.1i-r0    \
+        openssl-dev=1.1.1j-r0    \
         libpcap-dev=1.9.1-r0
 RUN tar -C /tmp -xzvf /tmp/${LISP_VERSION}.tar.gz && \
     cd /tmp/lispers.net-${LISP_VERSION} && \
@@ -47,7 +47,7 @@ RUN apk add --no-cache     \
         libffi=3.2.1-r6    \
         libpcap=1.9.1-r0   \
         python2=2.7.18-r0  \
-        openssl=1.1.1i-r0  \
+        openssl=1.1.1j-r0  \
         iproute2=5.4.0-r1  \
         keyutils=1.6.1-r0  \
         tini=0.18.0-r0
