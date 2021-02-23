@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
