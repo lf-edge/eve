@@ -63,18 +63,10 @@ jobs:
       - name: Build and push EVE for Xen
         # since build #1 works, build and push #2
         run: |
-          make V=1 LINUXKIT_PKG_TARGET=push HV=xen eve
-          if [ "${{ env.TAG }}" = snapshot ]; then
-             docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-xen-${{ env.ARCH }}
-             docker push lfedge/eve:snapshot-xen-${{ env.ARCH }}
-          fi
+          make V=1 HV=xen LINUXKIT_PKG_TARGET=push eve
       - name: Build and push EVE for KVM
         # redo build #1 with push
         run: |
           rm -rf dist
           mv -f dist.xen dist
           make V=1 HV=kvm LINUXKIT_PKG_TARGET=push eve
-          if [ "${{ env.TAG }}" = snapshot ]; then
-             docker tag lfedge/eve:snapshot-${{ env.ARCH }} lfedge/eve:snapshot-kvm-${{ env.ARCH }}
-             docker push lfedge/eve:snapshot-kvm-${{ env.ARCH }}
-          fi
