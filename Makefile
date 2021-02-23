@@ -4,6 +4,8 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
+# you are not supposed to tweak these variables -- they are effectively R/O
+HV_DEFAULT=kvm
 GOVER ?= 1.15.3
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
@@ -18,8 +20,8 @@ export CGO_ENABLED GOOS GOARCH PATH
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# The default hypervisor is KVM. Use 'make HV=acrn' to build ACRN images (AMD64 only) or 'make HV=xen'
-HV=kvm
+# Use 'make HV=acrn|xen|kvm' to build ACRN images (AMD64 only), Xen or KVM
+HV=$(HV_DEFAULT)
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
 # Image type for final disk images
@@ -514,7 +516,10 @@ eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
-	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD) $|
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
+	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
+	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --release $(EVE_REL) $(FORCE_BUILD) $| ;\
+	fi
 	$(QUIET): $@: Succeeded
 
 proto-vendor:
