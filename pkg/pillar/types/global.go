@@ -751,8 +751,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, eveMemoryLimitInBytes,
 		eveMemoryLimitInBytes, 0xFFFFFFFF)
-	// LogRemainToSendMBytes - Default has no limit, minimum is 10 Mbytes
-	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 0xFFFFFFFF, 10, 0xFFFFFFFF)
+	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
+	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
