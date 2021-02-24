@@ -55,7 +55,7 @@ jobs:
       - name: Create direct iPXE config
         run: |
           URL="${{ github.event.repository.html_url }}/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
-          sed -i. -e "s#^kernel #kernel $URL#" -e "s#^initrd #initrd $URL#" assets/ipxe.efi.cfg
+          sed -i. -e '/# set url https:/s#^.*$#set url '"$URL"'#' assets/ipxe.efi.cfg
           sed -i. -e "s#initrd=initrd#initrd=${{ env.ARCH }}.initrd#g" assets/ipxe.efi.cfg
           sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
       - name: Unzip kernel on arm64
