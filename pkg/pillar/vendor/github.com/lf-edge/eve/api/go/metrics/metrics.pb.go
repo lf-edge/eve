@@ -3023,7 +3023,7 @@ type NewlogMetric struct {
 	AppMetrics    *LogfileMetrics `protobuf:"bytes,18,opt,name=appMetrics,proto3" json:"appMetrics,omitempty"`
 	// top 10 device log (not app) source in total bytes in percentage
 	Top10InputSources map[string]uint32 `protobuf:"bytes,19,rep,name=top10_input_sources,json=top10InputSources,proto3" json:"top10_input_sources,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"varint,2,opt,name=value,proto3"`
-	// gzip files removed due to exceeding user defined quota
+	// counter for not uploaded gzip files removed due to exceeding user defined or default quota
 	GzipFilesRemoved uint32 `protobuf:"varint,20,opt,name=gzipFilesRemoved,proto3" json:"gzipFilesRemoved,omitempty"`
 }
 
