@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Manage Xen guest domains based on the subscribed collection of DomainConfig
@@ -1075,13 +1075,13 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 // XXX only for USB when usbAccess is set; really assign to pciback then separately
 // assign to domain
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
-	status *types.DomainStatus) {
+	status *types.DomainStatus) error {
 
 	publishAssignableAdapters := false
 	var assignmentsPci []string
 	var assignmentsUsb []string
 	for _, adapter := range config.IoAdapterList {
-		log.Tracef("doAssignIoAdaptersToDomain processing adapter %d %s",
+		log.Functionf("doAssignIoAdaptersToDomain processing adapter %d %s",
 			adapter.Type, adapter.Name)
 
 		aa := ctx.assignableAdapters
@@ -1095,15 +1095,21 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			if ib == nil {
 				continue
 			}
+			log.Functionf("doAssignIoAdaptersToDomain processing adapter %d %s member %s",
+				adapter.Type, adapter.Name, ib.Phylabel)
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
 				log.Fatalf("doAssignIoAdaptersToDomain IoBundle stolen by %s: %d %s for %s",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					status.DomainName)
 			}
-			if isPort(ctx, ib.Ifname) {
+			if ib.IsPort {
 				log.Fatalf("doAssignIoAdaptersToDomain IoBundle stolen by zedrouter: %d %s for %s",
 					adapter.Type, adapter.Name,
 					status.DomainName)
+			}
+			// Also checked in configAdapters. Check here in case there was a late error.
+			if ib.Error != "" {
+				return errors.New(ib.Error)
 			}
 			if !isInUsbGroup(*aa, *ib) {
 				continue
@@ -1132,14 +1138,17 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				}
 				hyper.PCIRelease(long)
 			}
-			status.SetErrorNow(err.Error())
-			return
+			if publishAssignableAdapters {
+				ctx.publishAssignableAdapters()
+			}
+			return err
 		}
 	}
 	checkIoBundleAll(ctx)
 	if publishAssignableAdapters {
 		ctx.publishAssignableAdapters()
 	}
+	return nil
 }
 
 func doActivate(ctx *domainContext, config types.DomainConfig,
@@ -1149,8 +1158,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 	if status.AdaptersFailed || status.PendingModify {
 		if err := configAdapters(ctx, config); err != nil {
-			log.Errorf("Failed to reserve adapters for %v: %s",
-				config, err)
+			log.Errorf("Failed to reserve adapters for %s: %s",
+				config.Key(), err)
 			status.PendingAdd = false
 			status.SetErrorNow(err.Error())
 			status.AdaptersFailed = true
@@ -1166,8 +1175,17 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 
 	// Assign any I/O devices
-	doAssignIoAdaptersToDomain(ctx, config, status)
-
+	if err := doAssignIoAdaptersToDomain(ctx, config, status); err != nil {
+		log.Errorf("Failed to assign adapters for %s: %s",
+			config.Key(), err)
+		status.PendingAdd = false
+		status.SetErrorNow(err.Error())
+		status.AdaptersFailed = true
+		publishDomainStatus(ctx, status)
+		cleanupAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID)
+		status.IoAdapterList = nil
+		return
+	}
 	// Finish preparing for container runtime.
 	for _, ds := range status.DiskStatusList {
 		switch ds.Format {
@@ -1535,7 +1553,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	defer ctx.publishAssignableAdapters()
 
 	for _, adapter := range config.IoAdapterList {
-		log.Tracef("configAdapters processing adapter %d %s",
+		log.Functionf("configAdapters processing adapter %d %s",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
 		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
@@ -1548,14 +1566,20 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 			if ibp == nil {
 				continue
 			}
+			log.Functionf("configAdapters processing adapter %d %s member %s",
+				adapter.Type, adapter.Name, ibp.Phylabel)
 			if ibp.UsedByUUID != config.UUIDandVersion.UUID &&
 				ibp.UsedByUUID != nilUUID {
 				return fmt.Errorf("adapter %d %s used by %s",
 					adapter.Type, adapter.Name, ibp.UsedByUUID)
 			}
-			if isPort(ctx, ibp.Ifname) {
+			if ibp.IsPort {
 				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
 					adapter.Type, adapter.Name, ibp.Phylabel)
+			}
+			if ibp.Error != "" {
+				return fmt.Errorf("adapter %d %s member %s has error: %s",
+					adapter.Type, adapter.Name, ibp.Phylabel, ibp.Error)
 			}
 		}
 		for _, ibp := range list {
@@ -1862,7 +1886,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	// Even if Testing is set we look at it for pciback transitions to
 	// bring things out of pciback (but not to add to pciback)
 	ctx.deviceNetworkStatus = status
-	checkAndSetIoBundleAll(ctx)
+	updatePortAndPciBackIoBundleAll(ctx)
 	ctx.DNSinitialized = true
 	log.Functionf("handleDNSImpl done for %s", key)
 }
@@ -1877,7 +1901,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Functionf("handleDNSDelete for %s", key)
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	ctx.DNSinitialized = false
-	checkAndSetIoBundleAll(ctx)
+	updatePortAndPciBackIoBundleAll(ctx)
 	log.Functionf("handleDNSDelete done for %s", key)
 }
 
@@ -2139,22 +2163,32 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 	log.Functionf("handlePhysicalIOAdapterListImpl: current len %d, update %+v",
 		len(aa.IoBundleList), phyIOAdapterList)
 
+	// Is this the initial setup?
 	if !aa.Initialized {
 		// Setup list first because functions lookup in IoBundleList
 		for _, phyAdapter := range phyIOAdapterList.AdapterList {
-			ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
+			ib := types.IoBundleFromPhyAdapter(log, phyAdapter)
+			// Fill in PCIlong, macaddr, unique
+			_, err := checkAndFillIoBundle(ib)
+			if err != nil {
+				ib.Error = err.Error()
+				ib.ErrorTime = time.Now()
+			}
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
-			aa.AddOrUpdateIoBundle(log, ib)
-		}
-		// Now initialize each entry
-		for _, ib := range aa.IoBundleList {
-			log.Functionf("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
-				ib)
-			handleIBCreate(ctx, ib)
+			aa.AddOrUpdateIoBundle(log, *ib)
 		}
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
+
+		// check for mismatched PCI-ids and assignment groups and mark as errors
+		aa.CheckBadAssignmentGroups(log)
+		for i := range aa.IoBundleList {
+			ib := &aa.IoBundleList[i]
+			log.Functionf("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
+				ib)
+			updatePortAndPciBackIoBundle(ctx, ib, false)
+		}
 		aa.Initialized = true
 		ctx.publishAssignableAdapters()
 		log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
@@ -2178,17 +2212,25 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 
 	// Any add or modify?
 	for _, phyAdapter := range phyIOAdapterList.AdapterList {
-		ib := *types.IoBundleFromPhyAdapter(log, phyAdapter)
+		ib := types.IoBundleFromPhyAdapter(log, phyAdapter)
+		// Fill in PCIlong, macaddr, unique
+		_, err := checkAndFillIoBundle(ib)
+		if err != nil {
+			ib.Error = err.Error()
+			ib.ErrorTime = time.Now()
+		}
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
-		if currentIbPtr == nil {
+		if currentIbPtr == nil || currentIbPtr.HasAdapterChanged(log, phyAdapter) {
+
 			log.Functionf("handlePhysicalIOAdapterListImpl: Adapter %s "+
-				"added. %+v", phyAdapter.Phylabel, ib)
-			handleIBCreate(ctx, ib)
-		} else if currentIbPtr.HasAdapterChanged(log, phyAdapter) {
-			log.Functionf("handlePhysicalIOAdapterListImpl: Adapter %s "+
-				"changed. Current: %+v, New: %+v", phyAdapter.Phylabel,
-				*currentIbPtr, ib)
-			handleIBModify(ctx, ib)
+				"add/modify: %+v", phyAdapter.Phylabel, ib)
+			aa.AddOrUpdateIoBundle(log, *ib)
+
+			// check for mismatched PCI-ids and assignment groups and mark as errors
+			aa.CheckBadAssignmentGroups(log)
+			// Lookup since it could have changed
+			ib = aa.LookupIoBundlePhylabel(ib.Phylabel)
+			updatePortAndPciBackIoBundle(ctx, ib, false)
 		} else {
 			log.Functionf("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"- No Change", phyAdapter.Phylabel)
@@ -2217,37 +2259,25 @@ func handlePhysicalIOAdapterListDelete(ctxArg interface{},
 	log.Functionf("handlePhysicalIOAdapterListDelete done")
 }
 
-// Process new IoBundles. Check if PCI device exists, and check that not
-// used in a DevicePortConfig/DeviceNetworkStatus
-// Assign to pciback
-func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
-
-	log.Functionf("handleIBCreate(%d %s %s)", ib.Type, ib.Phylabel, ib.AssignmentGroup)
-	aa := ctx.assignableAdapters
-	if err := checkAndSetIoBundle(ctx, &ib, false); err != nil {
-		log.Warnf("Not reporting non-existent PCI device %d %s: %v",
-			ib.Type, ib.Phylabel, err)
-		return
-	}
-	// We assume AddOrUpdateIoBundle will preserve any existing Unique/MacAddr
-	aa.AddOrUpdateIoBundle(log, ib)
-}
-
-func checkAndSetIoBundleAll(ctx *domainContext) {
+// updatePortAndPciBackIoBundleAll is used when DeviceNetworkStatus might have changed
+// the set of Ports hence we might need to move something in and out of pciback
+// Sets ib.Error as appropriately and publishes the results
+// XXX do we need to clear ib.Error?
+func updatePortAndPciBackIoBundleAll(ctx *domainContext) {
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
-		err := checkAndSetIoBundle(ctx, ib, true)
-		if err != nil {
-			log.Errorf("checkAndSetIoBundleAll failed for %d: %s",
-				i, err)
-		}
+		updatePortAndPciBackIoBundle(ctx, ib, true)
 	}
 }
 
-func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
-	publish bool) error {
+// updatePortAndPciBackIoBundle determines whether IsPort should be set for
+// the members in this bundle, and based on that whether it needs to be moved
+// in or out of pciback
+// Sets Error/ErrorTime if there is an error
+func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle,
+	publish bool) {
 
-	log.Functionf("checkAndSetIoBundle(%d %s %s) publish %t",
+	log.Functionf("updatePortAndPciBackIoBundle(%d %s %s) publish %t",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, publish)
 	aa := ctx.assignableAdapters
 	var list []*types.IoBundle
@@ -2259,60 +2289,75 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 	}
 	// Is any member a port? If so treat all as port
 	isPort := false
+	// expand list to include other PCI functions on the same PCI controller
+	// since they need to be treated as part of the same bundle even if the
+	// EVE controller doesn't know it
+	list = aa.ExpandControllers(log, list)
 	for _, ib := range list {
 		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) {
 			isPort = true
 		}
 	}
-	log.Functionf("checkAndSetIoBundle(%d %s %s) isPort %t members %d",
+	log.Functionf("updatePortAndPciBackIoBundle(%d %s %s) isPort %t members %d",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, len(list))
 	for _, ib := range list {
-		err := checkAndSetIoMember(ctx, ib, isPort, publish)
+		err := updatePortAndPciBackIoMember(ctx, ib, isPort, publish)
 		if err != nil {
+			ib.Error = err.Error()
+			ib.ErrorTime = time.Now()
 			log.Error(err)
-			return err
 		}
 	}
-	return nil
 }
 
-func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, publish bool) error {
+// updatePortAndPciBackIoMember sets IsPort, and based on that whether it needs to be moved
+// in or out of pciback
+// XXX move all members and once and fall back on failure?
+func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, publish bool) error {
 
-	log.Functionf("checkAndSetIoMember(%d %s %s) isPort %t publish %t",
+	log.Functionf("updatePortAndPciBackIoMember(%d %s %s) isPort %t publish %t",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, publish)
 	aa := ctx.assignableAdapters
-	// Check if part of DevicePortConfig
-	ib.IsPort = false
 	changed := false
-	if isPort {
-		log.Warnf("checkAndSetIoMember(%d %s %s) part of zedrouter port",
+	if ib.IsPort != isPort {
+		ib.IsPort = isPort
+		changed = true
+	}
+	if changed && isPort {
+		log.Warnf("updatePortAndPciBackIoMember(%d %s %s) part of EVE port",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup)
 		ib.IsPort = true
 		changed = true
 		if ib.UsedByUUID != nilUUID {
-			log.Errorf("checkAndSetIoMember(%d %s %s) used by %s",
-				ib.Type, ib.Phylabel, ib.AssignmentGroup,
+			err := fmt.Errorf("Adapter %s (group %s type %d) is used by %s; can not be used as EVE port",
+				ib.Phylabel, ib.AssignmentGroup, ib.Type,
 				ib.UsedByUUID.String())
+			return err
 
 		} else if ib.IsPCIBack {
-			log.Functionf("checkAndSetIoMember(%d %s %s) take back from pciback",
+			log.Functionf("updatePortAndPciBackIoMember(%d %s %s) take back from pciback",
 				ib.Type, ib.Phylabel, ib.AssignmentGroup)
 			if ib.PciLong != "" {
-				log.Functionf("Removing %s (%s) from pciback",
+				log.Functionf("updatePortAndPciBackIoMember: Removing %s (%s) from pciback",
 					ib.Phylabel, ib.PciLong)
 				err := hyper.PCIRelease(ib.PciLong)
 				if err != nil {
-					log.Errorf("checkAndSetIoMember(%d %s %s) PCIRelease %s failed %v",
-						ib.Type, ib.Phylabel, ib.AssignmentGroup, ib.PciLong, err)
+					err = fmt.Errorf("Adapter %s (group %s type %d) PCI ID %s; not released by hypervisor: %v",
+						ib.Phylabel, ib.AssignmentGroup, ib.Type,
+						ib.PciLong, err)
+					return err
 				}
 				// Seems like like no risk for race; when we return
 				// from above the driver has been attached and
 				// any ifname has been registered.
 				found, ifname := types.PciLongToIfname(log, ib.PciLong)
 				if !found {
-					log.Errorf("Not found: %d %s %s",
-						ib.Type, ib.Phylabel, ib.Ifname)
-				} else if ifname != ib.Ifname {
+					err := fmt.Errorf("Adapter %s (group %s type %d) PCI ID %s not found after released by hypervisor",
+						ib.Phylabel, ib.AssignmentGroup, ib.Type,
+						ib.PciLong)
+					return err
+				}
+				if ifname != ib.Ifname {
 					log.Warnf("Found: %d %s %s at %s",
 						ib.Type, ib.Phylabel, ib.Ifname,
 						ifname)
@@ -2324,52 +2369,23 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			// Verify that it has been returned from pciback
 			_, err := types.IoBundleToPci(log, ib)
 			if err != nil {
-				log.Warnf("checkAndSetIoMember(%d %s %s) gone?: %s",
-					ib.Type, ib.Phylabel, ib.AssignmentGroup, err)
+				err = fmt.Errorf("Adapter %s (group %s type %d) PCI ID %s not found: %v",
+					ib.Phylabel, ib.AssignmentGroup, ib.Type,
+					ib.PciLong, err)
+				return err
 			}
 		}
 	}
-	if ib.Type.IsNet() && ib.MacAddr == "" {
-		ib.MacAddr = getMacAddr(ib.Ifname)
-		changed = true
-		log.Functionf("checkAndSetIoMember(%d %s %s) long %s macaddr %s",
-			ib.Type, ib.Ifname, ib.AssignmentGroup, ib.PciLong, ib.MacAddr)
-	}
-
 	if publish && changed {
 		ctx.publishAssignableAdapters()
 		changed = false
 	}
 
-	// For a new PCI device we check if it exists in hardware/kernel
-	long, err := types.IoBundleToPci(log, ib)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	// This is a PCI device
-	if long != "" {
-		ib.PciLong = long
-		changed = true
-		log.Functionf("checkAndSetIoMember(%d %s %s) found %s",
-			ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
-
-		// Save somewhat Unique string for debug
-		found, unique := types.PciLongToUnique(log, long)
-		if !found {
-			errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique not found",
-				ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
-			log.Errorln(errStr)
-		} else {
-			ib.Unique = unique
-			changed = true
-			log.Functionf("checkAndSetIoMember(%d %s %s) %s unique %s",
-				ib.Type, ib.Phylabel, ib.AssignmentGroup, long, unique)
-		}
-	}
-
 	if !ib.IsPort && !ib.IsPCIBack {
-		if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
+		if ib.Error != "" {
+			log.Warningf("Not assigning %s (%s) to pciback due to error: %s at %s",
+				ib.Phylabel, ib.PciLong, ib.Error, ib.ErrorTime)
+		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
 			log.Functionf("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ctx.usbAccess && isInUsbGroup(*aa, *ib) {
@@ -2394,6 +2410,50 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 	return nil
 }
 
+// checkAndFillIoBundle checks if PCI devices exists, and extracts information like PciLong
+// (if not set) MacAddr, and Unique
+// Returns changed bool and error for non-existent devices
+func checkAndFillIoBundle(ib *types.IoBundle) (bool, error) {
+
+	log.Functionf("checkAndFillIoBundle(%d %s %s)", ib.Type, ib.Phylabel, ib.AssignmentGroup)
+	changed := false
+	if ib.Type.IsNet() && ib.MacAddr == "" {
+		ib.MacAddr = getMacAddr(ib.Ifname)
+		changed = true
+		log.Functionf("checkAndFillIoBundle(%d %s %s) found macaddr %s",
+			ib.Type, ib.Ifname, ib.AssignmentGroup, ib.MacAddr)
+	}
+
+	// For a new PCI device we check if it exists in hardware/kernel
+	long, err := types.IoBundleToPci(log, ib)
+	if err != nil {
+		log.Error(err)
+		return changed, err
+	}
+	if long == "" {
+		return changed, nil
+	}
+	// This is a PCI device
+	ib.PciLong = long
+	changed = true
+	log.Functionf("checkAndFillIoBundle(%d %s %s) found long %s",
+		ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
+
+	// Save somewhat Unique string for debug
+	found, unique := types.PciLongToUnique(log, long)
+	if !found {
+		errStr := fmt.Sprintf("checkAndFillIoBundleIoBundle(%d %s %s) %s unique not found",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
+		log.Warn(errStr)
+	} else {
+		ib.Unique = unique
+		changed = true
+		log.Functionf("checkAndFillIoBundle(%d %s %s) %s found unique %s",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, long, unique)
+	}
+	return changed, nil
+}
+
 func getMacAddr(ifname string) string {
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
@@ -2406,7 +2466,7 @@ func getMacAddr(ifname string) string {
 	return link.Attrs().HardwareAddr.String()
 }
 
-// Check if anything moved around
+// Check if anything moved around and log warning
 func checkIoBundleAll(ctx *domainContext) {
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
@@ -2417,32 +2477,11 @@ func checkIoBundleAll(ctx *domainContext) {
 	}
 }
 
-// Check if the name to pci-id have changed
+// Check if the name to pci-id or Mac Address has changed. Indication of confusion.
 // We track a mostly unique string to see if the underlying firmware node has
 // changed in addition to the name to pci-id lookup.
 func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	long, err := types.IoBundleToPci(log, ib)
-	if err != nil {
-		return err
-	}
-	if long == "" {
-		// Doesn't exist
-		return nil
-	}
-	found, unique := types.PciLongToUnique(log, long)
-	if !found {
-		errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique %s not foun",
-			ib.Type, ib.Phylabel, ib.AssignmentGroup,
-			long, ib.Unique)
-		return errors.New(errStr)
-	}
-	if unique != ib.Unique && ib.Unique != "" {
-		errStr := fmt.Sprintf("IoBundle(%d %s %s) changed unique from %s to %s",
-			ib.Type, ib.Phylabel, ib.AssignmentGroup,
-			ib.Unique, unique)
-		return errors.New(errStr)
-	}
 	if ib.Type.IsNet() && ib.MacAddr != "" {
 		macAddr := getMacAddr(ib.Phylabel)
 		// Will be empty string if adapter is assigned away
@@ -2452,6 +2491,27 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				ib.MacAddr, macAddr)
 			return errors.New(errStr)
 		}
+	}
+	long, err := types.IoBundleToPci(log, ib)
+	if err != nil {
+		// Disappeared or different PCI ID?
+		return err
+	}
+	if long == "" {
+		// Not PCI
+		return nil
+	}
+	found, unique := types.PciLongToUnique(log, long)
+	if !found {
+		errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique %s not found",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup,
+			long, ib.Unique)
+		log.Warn(errStr)
+	} else if unique != ib.Unique && ib.Unique != "" {
+		errStr := fmt.Sprintf("IoBundle(%d %s %s) changed unique from %s to %s",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup,
+			ib.Unique, unique)
+		return errors.New(errStr)
 	}
 	return nil
 }
@@ -2490,7 +2550,10 @@ func maybeAssignableAddUSB(ctx *domainContext) bool {
 		if ib.PciLong == "" {
 			continue
 		}
-		if !ib.IsPort && !ib.IsPCIBack {
+		if ib.Error != "" {
+			log.Warnf("maybeAssignableAddUSB: Not assigning %s (%s) to pciback: error %s at %s",
+				ib.Phylabel, ib.PciLong, ib.Error, ib.ErrorTime)
+		} else if !ib.IsPort && !ib.IsPCIBack {
 			log.Functionf("maybeAssignableAddUSB: Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
 			assignments = addNoDuplicate(assignments, ib.PciLong)
@@ -2514,7 +2577,7 @@ func maybeAssignableAddUSB(ctx *domainContext) bool {
 // Returns success/failure based on current usage
 func maybeAssignableRemUSB(ctx *domainContext) bool {
 
-	log.Functionf("maybeAssignableAddUSB()")
+	log.Functionf("maybeAssignableRemUSB()")
 	var assignments []string
 	ret := true
 	aa := ctx.assignableAdapters
@@ -2661,31 +2724,6 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 		replace.IoBundleList = append(replace.IoBundleList, e)
 	}
 	*ctx.assignableAdapters = replace
-	checkIoBundleAll(ctx)
-}
-
-func handleIBModify(ctx *domainContext, newIb types.IoBundle) {
-	aa := ctx.assignableAdapters
-	currentIbPtr := aa.LookupIoBundlePhylabel(newIb.Phylabel)
-	if currentIbPtr == nil {
-		log.Errorf("Failed to find IoBundle (%d %s).  aa: %+v",
-			newIb.Type, newIb.Phylabel, aa)
-		return
-	}
-
-	log.Functionf("handleIBModify(%d %s %s) from %v to %v",
-		currentIbPtr.Type, currentIbPtr.Phylabel, currentIbPtr.AssignmentGroup,
-		*currentIbPtr, newIb)
-
-	if err := checkAndSetIoBundle(ctx, &newIb, false); err != nil {
-		log.Warnf("Not reporting non-existent PCI device %d %s: %v",
-			newIb.Type, newIb.Phylabel, err)
-		return
-	}
-
-	// XXX can we have changes which require us to
-	// do PCIRelease for the old Adapter?
-	*currentIbPtr = newIb
 	checkIoBundleAll(ctx)
 }
 

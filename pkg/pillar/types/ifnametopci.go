@@ -69,6 +69,16 @@ func PCILongToShort(long string) string {
 	return strings.SplitAfterN(long, ":", 2)[1]
 }
 
+// PCISameController compares the PCI-ID without comparing the controller
+func PCISameController(long1 string, long2 string) bool {
+	if long1 == "" || long2 == "" {
+		return false
+	}
+	ctrl1 := strings.SplitAfter(long1, ".")[0]
+	ctrl2 := strings.SplitAfter(long2, ".")[0]
+	return ctrl1 == ctrl2
+}
+
 // Check if an ID like 0000:03:00.0 exists
 func pciLongExists(long string) bool {
 	path := pciPath + "/" + long
