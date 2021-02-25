@@ -33,7 +33,10 @@ jobs:
         run: |
           # FIXME: I'd rather be a real matrix job with a functional arm64 runner
           # echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
-          sudo apt install -y binfmt-support qemu-user-static
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          # the following weird statement is here to speed up the happy path
+          # if the default server is responding -- we can skip apt update
+          $APT_INSTALL || { apt update && $APT_INSTALL ; }
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
       - name: Pull the EVE release from DockerHUB or build it
