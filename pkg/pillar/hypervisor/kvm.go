@@ -630,7 +630,7 @@ func waitForQmp(domainName string) error {
 			if waited > maxDelay {
 				// Give up
 				logrus.Warnf("waitForQmp for %s: giving up", domainName)
-				return logError("Qmp not found: error %v", err)
+				return logError("Qmp not found")
 			}
 			delay = 2 * delay
 			if delay > time.Minute {
