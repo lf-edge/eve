@@ -36,7 +36,7 @@ jobs:
           APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
           # the following weird statement is here to speed up the happy path
           # if the default server is responding -- we can skip apt update
-          $APT_INSTALL || { apt update && $APT_INSTALL ; }
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
       - name: Pull the EVE release from DockerHUB or build it
