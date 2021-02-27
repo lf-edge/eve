@@ -1893,10 +1893,6 @@ type NetworkInstanceInfo struct {
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
 
-	// Any errrors from provisioning the network
-	// ErrorAndTime provides SetErrorNow() and ClearError()
-	ErrorAndTime
-
 	// Vif metric map. This should have a union of currently existing
 	// vifs and previously deleted vifs.
 	// XXX When a vif is removed from bridge (app instance delete case),
@@ -2165,6 +2161,10 @@ type NetworkInstanceConfig struct {
 
 	// For other network services - Proxy / StrongSwan etc..
 	OpaqueConfig string
+
+	// Any errrors from the parser
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 func (config *NetworkInstanceConfig) Key() string {
