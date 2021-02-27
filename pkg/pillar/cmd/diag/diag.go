@@ -307,6 +307,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ctx.cert = &cert
 			ctx.usingOnboardCert = false
 		}
+		// Check in case /config/server changes while running
+		nserver, err := ioutil.ReadFile(types.ServerFileName)
+		if err != nil {
+			log.Error(err)
+		} else if len(nserver) != 0 && string(server) != string(nserver) {
+			log.Warnf("/config/server changed from %s to %s",
+				server, nserver)
+			server = nserver
+			ctx.serverNameAndPort = strings.TrimSpace(string(server))
+			ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
+		}
 	}
 	return 0
 }

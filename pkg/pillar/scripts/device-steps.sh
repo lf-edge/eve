@@ -427,8 +427,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo "$(date -Ins -u) Starting client selfRegister getUuid"
     if ! $BINDIR/client selfRegister getUuid; then
-        # XXX $? is always zero
-        echo "$(date -Ins -u) client selfRegister failed with $?"
+        echo "$(date -Ins -u) client selfRegister failed"
         exit 1
     fi
 
@@ -452,7 +451,10 @@ if [ $SELF_REGISTER = 1 ]; then
 else
     echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
     echo "$(date -Ins -u) Starting client getUuid"
-    $BINDIR/client getUuid
+    if ! $BINDIR/client getUuid; then
+        echo "$(date -Ins -u) client getUuid failed"
+        exit 1
+    fi
 
     # Remove zedclient.pid from watchdog
     rm "$WATCHDOG_PID/zedclient.pid"
