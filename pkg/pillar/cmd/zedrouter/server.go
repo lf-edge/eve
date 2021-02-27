@@ -36,6 +36,11 @@ type hostnameHandler struct {
 }
 
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
+	if bridgeIP == "" {
+		err := fmt.Errorf("Can't run server on %s: no bridgeIP", bridgeName)
+		log.Error(err)
+		return err
+	}
 	mux := http.NewServeMux()
 	nh := &networkHandler{ctx: ctx}
 	mux.Handle("/eve/v1/network.json", nh)
