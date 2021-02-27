@@ -364,8 +364,14 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		// other than switch-type(l2)
 		// if ip type is l3, do the needful
 		if networkInstanceConfig.IpType != types.AddressTypeNone {
-			parseIpspec(apiConfigEntry.Ip,
-				&networkInstanceConfig)
+			err := parseIpspec(apiConfigEntry.Ip, &networkInstanceConfig)
+			if err != nil {
+				errStr := fmt.Sprintf("Network Instance %s parameter parse failed: %s",
+					networkInstanceConfig.Key(), err)
+				log.Error(errStr)
+				networkInstanceConfig.SetErrorNow(errStr)
+				continue
+			}
 
 			parseDnsNameToIpList(apiConfigEntry,
 				&networkInstanceConfig)
@@ -1097,7 +1103,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		}
 		err := parseIpspecNetworkXObject(ipspec, config)
 		if err != nil {
-			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec failed for %s: %s",
+			errStr := fmt.Sprintf("Network parameter parse for %s failed: %s",
 				config.Key(), err)
 			log.Error(errStr)
 			config.SetErrorNow(errStr)
@@ -1110,7 +1116,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 				config.Key(), ipspec)
 			err := parseIpspecNetworkXObject(ipspec, config)
 			if err != nil {
-				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec ignored for %s: %s",
+				errStr := fmt.Sprintf("Network parameter parse for %s failed: %s",
 					config.Key(), err)
 				log.Error(errStr)
 				config.SetErrorNow(errStr)

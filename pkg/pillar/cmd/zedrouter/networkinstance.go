@@ -278,6 +278,16 @@ func handleNetworkInstanceModify(
 	if status != nil {
 		log.Functionf("handleNetworkInstanceModify(%s)\n", key)
 		status.ChangeInProgress = types.ChangeInProgressTypeModify
+		// Any error from parser?
+		if config.HasError() {
+			log.Errorf("handleNetworkInstanceModify(%s) returning parse error %s",
+				key, config.Error)
+			status.SetError(config.Error, config.ErrorTime)
+			status.ChangeInProgress = types.ChangeInProgressTypeNone
+			publishNetworkInstanceStatus(ctx, status)
+			log.Functionf("handleNetworkInstanceModify(%s) done\n", key)
+			return
+		}
 		pub.Publish(status.Key(), *status)
 		doNetworkInstanceModify(ctx, config, status)
 		niUpdateNIprobing(ctx, status)
@@ -308,8 +318,19 @@ func handleNetworkInstanceCreate(
 			VifMetricMap:  make(map[string]types.NetworkMetric),
 		},
 	}
-
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate
+
+	// Any error from parser?
+	if config.HasError() {
+		log.Errorf("handleNetworkInstanceCreate(%s) returning parse error %s",
+			key, config.Error)
+		status.SetError(config.Error, config.ErrorTime)
+		status.ChangeInProgress = types.ChangeInProgressTypeNone
+		publishNetworkInstanceStatus(ctx, &status)
+		log.Functionf("handleNetworkInstanceCreate(%s) done\n", key)
+		return
+	}
+
 	ctx.networkInstanceStatusMap[status.UUID] = &status
 	pub.Publish(status.Key(), status)
 
