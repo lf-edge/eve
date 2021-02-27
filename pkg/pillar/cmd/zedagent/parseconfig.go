@@ -1221,7 +1221,7 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
 		if err != nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad subnet %s: %s",
+			return errors.New(fmt.Sprintf("bad subnet %s: %s",
 				s, err))
 		}
 		config.Subnet = *subnet
@@ -1229,21 +1229,21 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 	if g := ipspec.GetGateway(); g != "" {
 		config.Gateway = net.ParseIP(g)
 		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad gateway IP %s",
+			return errors.New(fmt.Sprintf("bad gateway IP %s",
 				g))
 		}
 	}
 	if n := ipspec.GetNtp(); n != "" {
 		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
+			return errors.New(fmt.Sprintf("bad ntp IP %s",
 				n))
 		}
 	}
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad dns IP %s",
+			return errors.New(fmt.Sprintf("bad dns IP %s",
 				dsStr))
 		}
 		config.DnsServers = append(config.DnsServers, ds)
@@ -1251,12 +1251,12 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())
 		if start == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad start IP %s",
+			return errors.New(fmt.Sprintf("bad start IP %s",
 				dr.GetStart()))
 		}
 		end := net.ParseIP(dr.GetEnd())
 		if end == nil && dr.GetEnd() != "" {
-			return errors.New(fmt.Sprintf("parseIpspec: bad end IP %s",
+			return errors.New(fmt.Sprintf("bad end IP %s",
 				dr.GetEnd()))
 		}
 		config.DhcpRange.Start = start
@@ -1273,7 +1273,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
 		if err != nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad subnet %s: %s",
+			return errors.New(fmt.Sprintf("bad subnet %s: %s",
 				s, err))
 		}
 		config.Subnet = *subnet
@@ -1282,7 +1282,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	if g := ipspec.GetGateway(); g != "" {
 		config.Gateway = net.ParseIP(g)
 		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad gateway IP %s",
+			return errors.New(fmt.Sprintf("bad gateway IP %s",
 				g))
 		}
 	}
@@ -1290,7 +1290,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	if n := ipspec.GetNtp(); n != "" {
 		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
+			return errors.New(fmt.Sprintf("bad ntp IP %s",
 				n))
 		}
 	}
@@ -1298,7 +1298,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad dns IP %s",
+			return errors.New(fmt.Sprintf("bad dns IP %s",
 				dsStr))
 		}
 		config.DnsServers = append(config.DnsServers, ds)
@@ -1307,12 +1307,12 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())
 		if start == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad start IP %s",
+			return errors.New(fmt.Sprintf("bad start IP %s",
 				dr.GetStart()))
 		}
 		end := net.ParseIP(dr.GetEnd())
 		if end == nil && dr.GetEnd() != "" {
-			return errors.New(fmt.Sprintf("parseIpspec: bad end IP %s",
+			return errors.New(fmt.Sprintf("bad end IP %s",
 				dr.GetEnd()))
 		}
 		config.DhcpRange.Start = start
