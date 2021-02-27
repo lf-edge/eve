@@ -370,7 +370,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 					networkInstanceConfig.Key(), err)
 				log.Error(errStr)
 				networkInstanceConfig.SetErrorNow(errStr)
-				continue
+				// Proceed to send error back to controller
 			}
 
 			parseDnsNameToIpList(apiConfigEntry,
@@ -1234,6 +1234,9 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 		}
 	}
 	if n := ipspec.GetNtp(); n != "" {
+		if n == "255.255.255.255" {
+			n = "pool2.ntp.org"
+		}
 		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
@@ -1288,6 +1291,9 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	}
 	// Parse NTP Server
 	if n := ipspec.GetNtp(); n != "" {
+		if n == "255.255.255.255" {
+			n = "pool2.ntp.org"
+		}
 		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
