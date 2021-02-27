@@ -149,6 +149,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		status := item.(types.OnboardingStatus)
 		oldUUID = status.DeviceUUID
 		oldHardwaremodel = status.HardwareModel
+		log.Noticef("Found existing UUID %s and model %s",
+			oldUUID, oldHardwaremodel)
 	}
 
 	clientCtx := clientContext{
@@ -217,7 +219,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0.0)
 
-	// XXX redo in ticker case to handle change to servername?
 	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
@@ -287,23 +288,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		// try to fetch the server certs chain first, if it's V2
 		if !gotServerCerts && zedcloudCtx.V2API {
-			gotServerCerts = fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true) // XXX always get certs from cloud for now
-			log.Functionf("client fetchCertChain, gotServerCerts %v", gotServerCerts)
+			// Set force so we re-download certs on each boot
+			gotServerCerts = fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true)
 			if !gotServerCerts {
+				log.Errorf("Failed to fetch certs from %s. Wrong URL?",
+					serverNameAndPort)
 				return 0 // Try again later
 			}
+			log.Noticef("Fetched certs from %s",
+				serverNameAndPort)
 		}
 
 		if !gotRegister && operations["selfRegister"] {
 			done = selfRegister(&zedcloudCtx, onboardTLSConfig, deviceCertPem, retryCount)
 			if done {
 				gotRegister = true
+				log.Noticef("Registered at %s",
+					serverNameAndPort)
+			} else {
+				log.Errorf("Failed to register at %s. Wrong URL? Not activated?",
+					serverNameAndPort)
 			}
 			if !done && operations["getUuid"] {
 				// Check if getUUid succeeds
 				done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 				if done {
-					log.Functionf("getUUID succeeded; selfRegister no longer needed")
+					log.Noticef("getUUID succeeded; selfRegister no longer needed")
 					gotUUID = true
 				}
 			}
@@ -311,11 +321,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		if !gotUUID && operations["getUuid"] {
 			done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 			if done {
-				log.Functionf("getUUID succeeded; selfRegister no longer needed")
+				log.Noticef("getUUID succeeded; selfRegister no longer needed")
 				gotUUID = true
+			} else {
+				log.Errorf("Failed to getUUID at %s. Wrong URL? Not activated?",
+					serverNameAndPort)
 			}
 			if oldUUID != nilUUID && retryCount > 2 {
-				log.Functionf("Sticking with old UUID")
+				log.Noticef("Sticking with old UUID")
 				devUUID = oldUUID
 				done = true
 				return 0
@@ -340,12 +353,42 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subDeviceNetworkStatus.ProcessChange(change)
 			ret := tryRegister()
 			if ret != 0 {
+				log.Errorf("tryRegister failed %d", ret)
 				return ret
 			}
 
 		case <-ticker.C:
+			// Check in case /config/server changes while running
+			nserver, err := ioutil.ReadFile(types.ServerFileName)
+			if err != nil {
+				log.Error(err)
+			} else if len(nserver) != 0 && string(server) != string(nserver) {
+				log.Warnf("/config/server changed from %s to %s",
+					server, nserver)
+				server = nserver
+				serverNameAndPort = strings.TrimSpace(string(server))
+				serverName = strings.Split(serverNameAndPort, ":")[0]
+				if onboardTLSConfig != nil {
+					onboardTLSConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
+						serverName, &onboardCert, &zedcloudCtx)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+				if devtlsConfig != nil {
+					devtlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
+						serverName, &deviceCert, &zedcloudCtx)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+				// Force a refresh
+				ok := fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true)
+				log.Noticef("get cert chain result %t", ok)
+			}
 			ret := tryRegister()
 			if ret != 0 {
+				log.Errorf("tryRegister failed %d", ret)
 				return ret
 			}
 
@@ -367,13 +410,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-clientCtx.getCertsTimer.C:
 			// triggered by cert miss error in doGetUUID, so the TLS is device TLSConfig
 			ok := fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true)
-			log.Functionf("client timer get cert chain %v", ok)
+			log.Noticef("client timer get cert chain result %t", ok)
 
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-
 	// Post loop code
 	if devUUID != nilUUID {
 		var trigOnboardStatus types.OnboardingStatus
@@ -437,6 +479,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Errorln(err)
 	}
+	log.Noticef("client done")
 	return 0
 }
 
@@ -619,12 +662,12 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 
 func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
-	//First try the new /uuid api, if fails, fall back to /config
+	//First try the new /uuid api, if fails, fall back to /config API
 	done, devUUID, hardwaremodel := doGetUUIDNew(ctx, tlsConfig, retryCount)
 	if done {
 		return done, devUUID, hardwaremodel
 	} else {
-		log.Warnln("/uuid API failed, falling back to /config for doGetUUID")
+		log.Warnln("/uuid API failed, falling back to /config API for doGetUUID")
 		return doGetUUIDLegacy(ctx, tlsConfig, retryCount)
 	}
 }
