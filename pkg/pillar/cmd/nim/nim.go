@@ -1099,7 +1099,6 @@ func handleNetworkInstanceImpl(ctxArg interface{}, key string,
 
 	log.Functionf("handleNetworkInstanceStatusImpl(%s)", key)
 	ctx := ctxArg.(*nimContext)
-	// Hard to check if any switch NI was added, deleted, or changed
 	updateFilteredFallback(ctx)
 	log.Functionf("handleNetworkInstanceImpl(%s) done", key)
 }
@@ -1109,7 +1108,6 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 
 	log.Functionf("handleNetworkInstanceDelete(%s)", key)
 	ctx := ctxArg.(*nimContext)
-	// Hard to check if any switch NI was added, deleted, or changed
 	updateFilteredFallback(ctx)
 	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
@@ -1147,20 +1145,15 @@ func mapToKeys(m map[string]bool) []string {
 	return keys
 }
 
-// Determine which interfaces are not used exclusively by device assignment or by
-// a switch network instance.
+// Determine which interfaces are not used exclusively by device assignment.
 //
 // Exclude those in AssignableAdapters with usedByUUID!=0
-// Exclude those in NetworkInstanceStatus Type=switch
 func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
 	log.Tracef("filterIfMap: len %d", len(fallbackPortMap))
 
 	filteredFallback := make(map[string]bool, len(fallbackPortMap))
 	for ifname, upFlag := range fallbackPortMap {
 		if isAssigned(ctx, ifname) {
-			continue
-		}
-		if isSwitch(ctx, ifname) {
 			continue
 		}
 		filteredFallback[ifname] = upFlag
@@ -1187,31 +1180,4 @@ func isAssigned(ctx *nimContext, ifname string) bool {
 		return true
 	}
 	return false
-}
-
-// Check in NetworkInstanceStatus Type=switch
-// XXX should we check for other shared usage? Static IP config?
-func isSwitch(ctx *nimContext, ifname string) bool {
-
-	sub := ctx.subNetworkInstanceStatus
-	items := sub.GetAll()
-	log.Tracef("isSwitch(%s) have %d items", ifname, len(items))
-
-	foundExcl := false
-	for _, st := range items {
-		status := st.(types.NetworkInstanceStatus)
-
-		if !status.IsUsingIfName(ifname) {
-			continue
-		}
-		log.Tracef("isSwitch(%s) found use in %s/%s",
-			ifname, status.DisplayName, status.Key())
-		if status.Type != types.NetworkInstanceTypeSwitch {
-			continue
-		}
-		foundExcl = true
-		log.Tracef("isSwitch(%s) found excl use in %s/%s",
-			ifname, status.DisplayName, status.Key())
-	}
-	return foundExcl
 }
