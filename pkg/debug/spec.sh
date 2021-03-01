@@ -1,10 +1,63 @@
 #!/bin/sh
+#shellcheck disable=SC2039
+# This script creates an initial hardware model file
+# The output is conservative when it comes to assignment groups in that
+# it does not form any assignment groups but merely checks whether there are
+# multiple functions on the same controller, and in that case the assignment
+# group is set to empty.
 
 if [ "$(uname -m)" = x86_64 ]; then
    ARCH=2
 else
    ARCH=4
 fi
+
+# pci_long_to_dev returns the bus:controller without the function value
+# $1 is the PciLong value
+pci_long_to_dev() {
+    local pcilong=$1
+    local dom=${pcilong%%:*}
+    local rest=${pcilong#"$dom":}
+    local bus=${rest%%:*}
+    rest=${rest#"$bus":}
+    local dev=${rest%%:*}
+    local ct=${dev%%.*}
+    # local fn=${dev##*.}
+    echo "$bus:$ct"
+}
+
+# pci_check_multifunction returns 0 if the controller has multiple functions
+# $1 is the PciLong value
+pci_check_multifunction() {
+    local pcilong=$1
+    local short_no_fn
+    short_no_fn=$(pci_long_to_dev "$pcilong")
+    count=$(lspci | grep -c ^"$short_no_fn")
+    if [ "$count" = 0 ]; then
+        echo "XXX missing PCI device $pcilong"
+        exit 1
+    elif [ "$count" = 1 ]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# get_assignmentgroup returns a guess at the assignment group
+# Note that if multiple devices are functions on the same controller
+# they are made unassignable, since it is hard to gather the group and
+# verify that there are no other functions on that controller
+# $1 is the name; $2 is the PciLong value
+get_assignmentgroup() {
+    local name=$1
+    local pcilong=$2
+    if pci_check_multifunction "$pcilong"; then
+        echo ""
+    else
+        echo "$name"
+    fi
+}
+
 
 if [ -e /dev/xen ]; then
    CPUS=$(eve exec xen-tools xl info | grep nr_cpus | cut -f2 -d:)
@@ -36,11 +89,12 @@ __EOT__
 #enumerate GPUs
 ID=""
 for VGA in $(lspci -D  | grep VGA | cut -f1 -d\ ); do
+    grp=$(get_assignmentgroup "VGA${ID}" "$VGA")
 cat <<__EOT__
     {
       "ztype": 7,
       "phylabel": "VGA${ID}",
-      "assigngrp": "VGA${ID}",
+      "assigngrp": "${grp}",
       "phyaddrs": {
         "PciLong": "${VGA}"
       },
@@ -54,11 +108,12 @@ done
 #enumerate USB
 ID=""
 for USB in $(lspci -D  | grep USB | cut -f1 -d\ ); do
+    grp=$(get_assignmentgroup "USB${ID}" "$USB")
 cat <<__EOT__
     {
       "ztype": 2,
       "phylabel": "USB${ID}",
-      "assigngrp": "USB${ID}",
+      "assigngrp": "${grp}",
       "phyaddrs": {
         "PciLong": "${USB}"
       },
@@ -131,7 +186,6 @@ cat <<__EOT__
       "ztype": 1,
       "usage": 1,
       "phylabel": "${LABEL}",
-      "assigngrp": "${LABEL}",
       "logicallabel": "${LABEL}",
       "usagePolicy": {
         "freeUplink": true
@@ -139,7 +193,9 @@ cat <<__EOT__
 __EOT__
      BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
      if echo "$BUS_ID" | grep -q '[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f].[0-9a-f]'; then
+         grp=$(get_assignmentgroup "$LABEL" "$BUS_ID")
 cat <<__EOT__
+      "assigngrp": "${grp}",
       "phyaddrs": {
         "Ifname": "${LABEL}",
         "PciLong": "${BUS_ID}"
@@ -154,6 +210,24 @@ __EOT__
      fi
      COMMA="},"
   fi
+done
+#enumerate Audio
+ID=""
+for audio in $(lspci -D  | grep Audio | cut -f1 -d\ ); do
+    grp=$(get_assignmentgroup "Audio${ID}" "$audio")
+cat <<__EOT__
+    {
+      "ztype": 2,
+      "phylabel": "Audio${ID}",
+      "assigngrp": "${grp}",
+      "phyaddrs": {
+        "PciLong": "${audio}"
+      },
+      "logicallabel": "Audio${ID}",
+      "usagePolicy": {}
+    },
+__EOT__
+    ID=$(( ${ID:-0} + 1 ))
 done
 
 cat <<__EOT__
