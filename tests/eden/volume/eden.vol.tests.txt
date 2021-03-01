@@ -1,0 +1,1 @@
+eden.escript.test -test.run TestEdenScripts/volumes_test

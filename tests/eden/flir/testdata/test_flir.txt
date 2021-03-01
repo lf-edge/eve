@@ -1,0 +1,56 @@
+[!exec:bash] stop
+[!exec:grep] stop
+[!exec:cat] stop
+[!exec:curl] stop
+
+# This test deploys fledge docker image into EVE to test Flir Camera data
+
+# deploy the application
+eden pod deploy -p 8027:80 -p 8028:8081  --name=fledge --memory=2GB --cpus=2  docker://itmoeve/fledgeeveflirdemo:1.8.2  -v debug
+
+test eden.app.test -test.v -timewait 20m RUNNING fledge
+
+# Test workload request
+# https://wiki.akraino.org/display/AK/IIoT+Predictive+Maintenance+Installation+Guide
+
+exec -t 10m bash wait_app.sh
+
+exec cat result1
+
+stdout 'green'
+
+exec cat result2
+
+stdout 'average'
+
+# teardown applications
+eden pod delete fledge
+
+test eden.app.test -test.v -timewait 10m - fledge
+
+# Test's config file
+-- eden-config.yml --
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}
+
+-- wait_app.sh --
+#!/bin/sh
+
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+
+address=http://$($EDEN eve ip):8028
+
+until curl -s $address/fledge/ping | grep green; do sleep 10; done
+
+curl -s $address/fledge/ping -o result1
+
+curl -d '{"name":"flircamera","type":"south","plugin":"FlirAX8","enabled":true,"config":{"address":{"value":"{{EdenGetEnv "CAMERA_IP"}}"},"port":{"value":"{{EdenGetEnv "CAMERA_PORT"}}"}}}' -X POST $address/fledge/service
+
+until curl -s $address/fledge/ping |grep "dataRead\": [^0]"; do sleep 10; done
+
+until curl -s $address/fledge/asset/AX8/summary?seconds=60 -o result2; do sleep 10; done

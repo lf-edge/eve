@@ -1,0 +1,118 @@
+# Number of tests
+
+# EDEN_TEST env. var. -- flavour of test set: "small", "medium"(default) and "large"
+
+# EDEN_TEST_SETUP env. var. -- "y"(default) performs the EDEN setup steps
+
+# EDEN_TEST_STOP -- "y" stops EDEN after tests ("n" by default)
+
+# EDEN_TEST_USB_PT -- "y" enables USB Passthrough test (disabled by default).
+
+
+
+
+
+#./eden config add default
+/bin/echo Eden setup (01/35)
+eden.escript.test -test.run TestEdenScripts/eden_setup
+#source ~/.eden/activate.sh
+
+
+# Making some settings for test configuration if we work with QEMU
+
+
+eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 8027:8027
+
+
+
+/bin/echo Eden start (02/35)
+eden.escript.test -test.run TestEdenScripts/eden_start
+/bin/echo Eden onboard (03/35)
+eden.escript.test -test.run TestEdenScripts/eden_onboard
+
+
+
+# Just restart EVE if not using the SETUP steps
+# Is it QEMU?
+
+/bin/echo EVE restart (04/35)
+eden.escript.test -test.run TestEdenScripts/eve_restart
+
+
+
+/bin/echo Eden Log test (05/35)
+eden.escript.test -testdata ../lim/testdata/ -test.run TestEdenScripts/log_test
+/bin/echo Eden SSH test (06/35)
+eden.escript.test -test.run TestEdenScripts/ssh
+
+/bin/echo Eden Info test (07/35)
+eden.escript.test -testdata ../lim/testdata/ -test.run TestEdenScripts/info_test
+
+/bin/echo Eden Metric test (08/35)
+eden.escript.test -testdata ../lim/testdata/ -test.run TestEdenScripts/metric_test
+
+/bin/echo Escript args test (09/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/arg -args=test1=123,test2=456
+/bin/echo Escript template test (10/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/template
+/bin/echo Escript message test (11/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/message
+/bin/echo Escript nested scripts test (12/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/nested_scripts
+/bin/echo Escript time test (13/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/time
+/bin/echo Escript source test (14/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/source
+/bin/echo Escript fail scenario test (15/35)
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/fail_scenario
+
+/bin/echo Eden basic network test (16/35)
+eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/network_test
+/bin/echo Eden basic volumes test (17/35)
+eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volumes_test
+
+/bin/echo Eden Host only ACL (18/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/host-only
+/bin/echo Eden Network light (19/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/networking_light
+/bin/echo Eden Networks switch (20/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/nw_switch
+/bin/echo Eden Network Ports switch (21/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_switch
+
+
+
+
+/bin/echo Eden VNC (23/35)
+eden.escript.test -testdata ../vnc/testdata/ -test.run TestEdenScripts/vnc_test
+/bin/echo Eden registry (24/35)
+eden.escript.test -testdata ../registry/testdata/ -test.run TestEdenScripts/registry_test
+/bin/echo Eden Network test (25/35)
+eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/test_networking
+/bin/echo Eden 2 dockers test (26/35)
+eden.escript.test -testdata ../docker/testdata/ -test.run TestEdenScripts/2dockers_test
+/bin/echo Eden 2 dockers test with app state detector (27/35)
+eden.escript.test -testdata ../app/testdata/ -test.run TestEdenScripts/2dockers_test
+/bin/echo Eden Nginx (28/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/ngnix
+/bin/echo Eden Mariadb (29/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/maridb
+/bin/echo Eden eclient with disk (30/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/disk
+/bin/echo EVE reset (31/35)
+eden.escript.test -test.run TestEdenScripts/eden_reset
+
+
+/bin/echo Eden's testing the maximum application limit (32/35)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/eclients
+
+
+/bin/echo Eden Reboot test (33/35)
+eden.escript.test -test.run TestEdenScripts/reboot_test
+
+/bin/echo Eden base OS update (34/35)
+eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image
+
+
+
+

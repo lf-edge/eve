@@ -1,0 +1,7 @@
+---
+eden:
+    # test binary
+    test-bin: "eden.reboot.test"
+
+    # test scenario
+    test-scenario: "eden.reboot.tests.txt"

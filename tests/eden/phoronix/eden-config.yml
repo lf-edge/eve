@@ -1,0 +1,7 @@
+---
+eden:
+    # test binary
+    test-bin: "eden.phoronix.test"
+
+    # test scenario
+    test-scenario: "eden.phoronix.tests.txt"

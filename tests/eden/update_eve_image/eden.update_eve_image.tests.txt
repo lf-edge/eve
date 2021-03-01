@@ -1,0 +1,1 @@
+eden.escript.test -test.run TestEdenScripts/update_eve_image -test.timeout 10m
