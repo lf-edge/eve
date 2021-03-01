@@ -1,0 +1,26 @@
+{{$test1 := "test eden.lim.test -test.v -timewait 10m -test.run TestInfo"}}
+{{$test2 := "test eden.lim.test -test.v -timewait 1m -test.run TestInfo"}}
+
+#eden config add default
+#eden setup
+#eden start
+#eden eve onboard
+
+# Trying to find eth0 or eth1 in dinfo.network.devName.
+{{$test1}} -out InfoContent.dinfo.network.devName 'InfoContent.dinfo.network.devName:.*eth[01].*'
+stdout 'eth[01]'
+
+# Checking dinfo.network.devName for interfaces other than eth0 or eth1.
+! {{$test2}} -out InfoContent.dinfo.network.devName 'InfoContent.dinfo.network.devName:.*eth[^01].*'
+! stdout 'eth[^01]'
+
+# Test's config. file
+-- eden-config.yml --
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}
+

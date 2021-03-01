@@ -1,0 +1,13 @@
+eden -t 2m eve stop
+! stderr .
+
+eden eve status
+! stdout 'EVE on .* status: running'
+! stderr .
+
+eden -t 2m eve start
+! stderr .
+
+eden eve status
+stdout 'EVE on .* status: running'
+! stderr .

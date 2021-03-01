@@ -1,0 +1,1 @@
+eden.escript.test -test.run TestEdenScripts/test_networking -test.timeout 40m

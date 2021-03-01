@@ -1,0 +1,66 @@
+# Test for `nginx` server's port redirection switching
+
+[!exec:bash] stop
+[!exec:sleep] stop
+
+# Starting of reboot detector with 2 reboots limit
+! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=2 &
+
+eden pod deploy -p 8027:80 docker://nginx -v debug -n nginx --memory=512MB
+
+test eden.app.test -test.v -timewait 20m RUNNING nginx
+
+eden pod ps
+cp stdout pod_ps
+exec bash server_ip.sh nginx
+
+exec sleep 10
+exec -t 5m bash run_clent.sh
+stdout 'Welcome to nginx!'
+
+eden pod modify t1 -p 8028:80
+
+eden pod ps
+cp stdout pod_ps
+exec bash server_ip.sh nginx
+
+exec sleep 10
+exec -t 5m bash run_clent.sh
+stdout 'Welcome to nginx!'
+
+eden pod modify t1 -p 8027:80
+
+eden pod ps
+cp stdout pod_ps
+exec bash server_ip.sh nginx
+
+exec sleep 10
+exec -t 5m bash run_clent.sh
+stdout 'Welcome to nginx!'
+
+eden pod delete nginx
+
+test eden.app.test -test.v -timewait 10m - nginx
+
+-- server_ip.sh --
+echo export ENGINX=$(grep "^$1\s" pod_ps | cut -f 5) > env
+
+-- run_clent.sh --
+. ./env
+
+for i in `seq 10`
+do
+    echo curl $ENGINX
+    curl $ENGINX | grep "Welcome to nginx!" && break
+    sleep 20
+done
+
+-- eden-config.yml --
+{{/* Test's config. file */}}
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}

@@ -1,0 +1,3 @@
+{{$time := EdenGetEnv "time"}}
+
+message '{{ $time }}'
