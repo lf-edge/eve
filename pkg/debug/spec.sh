@@ -5,6 +5,10 @@
 # it does not form any assignment groups but merely checks whether there are
 # multiple functions on the same controller, and in that case the assignment
 # group is set to empty.
+# Note that the generated USB configuration does not include each USB port
+# aka receptacle, since that is not known to software; only the controllers
+# can be seen. Those can be manually added after determining which USB controller
+# handles the different USB ports.
 
 if [ "$(uname -m)" = x86_64 ]; then
    ARCH=2
