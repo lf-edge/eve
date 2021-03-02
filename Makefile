@@ -434,7 +434,7 @@ config: $(CONFIG_IMG))		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_IMG) current
 rootfs-%: $(ROOTFS)-%.img ;
-live: $(LIVE_IMG)	current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
+live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
 installer-%: $(INSTALLER).% ;
