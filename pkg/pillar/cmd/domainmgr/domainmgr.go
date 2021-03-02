@@ -2693,7 +2693,8 @@ func doModprobe(driver string, add bool) error {
 
 func handleIBDelete(ctx *domainContext, phylabel string) {
 
-	log.Functionf("handleIBDelete(%s)", phylabel)
+	log.Noticef("handleIBDelete(%s) len %d", phylabel,
+		len(ctx.assignableAdapters.IoBundleList))
 	aa := ctx.assignableAdapters
 
 	ib := aa.LookupIoBundlePhylabel(phylabel)
@@ -2716,7 +2717,7 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 	}
 	// Create a new list with everything but "ib" included
 	replace := types.AssignableAdapters{Initialized: true,
-		IoBundleList: make([]types.IoBundle, len(aa.IoBundleList)-1)}
+		IoBundleList: make([]types.IoBundle, 0, len(aa.IoBundleList)-1)}
 	for _, e := range aa.IoBundleList {
 		if e.Type == ib.Type && e.Phylabel == ib.Phylabel {
 			continue
@@ -2724,6 +2725,8 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 		replace.IoBundleList = append(replace.IoBundleList, e)
 	}
 	*ctx.assignableAdapters = replace
+	log.Noticef("handleIBDelete(%s) done len %d", phylabel,
+		len(ctx.assignableAdapters.IoBundleList))
 	checkIoBundleAll(ctx)
 }
 
