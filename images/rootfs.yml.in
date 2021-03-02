@@ -24,7 +24,7 @@ onboot:
      command: ["/sbin/rngd", "-1"]
    - name: modprobe
      image: linuxkit/modprobe:v0.5
-     command: ["modprobe", "-a", "nct6775", "w83627hf_wdt", "wlcore_sdio", "wl18xx", "br_netfilter", "smsc75xx", "cp210x"]
+     command: ["modprobe", "-a", "nct6775", "w83627hf_wdt", "wlcore_sdio", "wl18xx", "br_netfilter", "smsc75xx", "cp210x", "nicvf"]
 services:
    - name: newlogd
      image: NEWLOGD_TAG
