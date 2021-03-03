@@ -85,6 +85,8 @@ endif
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
+FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
@@ -139,9 +141,9 @@ VB_VM_NAME=EVE_Live
 VB_CPUS=2 #num
 VB_MEMORY=2048 #in megabytes
 
-# public cloud settings (only CGP is supported for now)
+# public cloud settings (only GCP is supported for now)
 # note how GCP doesn't like dots so we replace them with -
-CLOUD_IMG_NAME=$(subst .,-,live-$(ROOTFS_VERSION)-$(HV)-$(ZARCH))
+CLOUD_IMG_NAME=$(subst .,-,live-$(FULL_VERSION))
 CLOUD_PROJECT=-project lf-edge-eve
 CLOUD_BUCKET=-bucket eve-live
 CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
@@ -265,6 +267,17 @@ version:
 current: $(CURRENT_DIR)
 $(CURRENT_DIR): $(DIST)
 	@rm -f $@ && ln -s $(BUILD_DIR) $@
+
+# reports the image version that current points to
+# we explicitly do *not* use $(BUILD_DIR), because that is recalculated each time, and it might have changed
+# since we last built. We just want to know what current is pointing to *now*, not what it might point to
+# if we ran a new build.
+currentversion:
+	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
+	@cat $(CURRENT_DIR)/installer/eve_version
+
+
+.PHONY: currentversion
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -424,8 +437,16 @@ live-gcp-upload: $(LINUXKIT) | $(LIVE).img.tar.gz
 	fi
 
 # ensure the dist directory exists
-$(DIST) $(INSTALLER) $(INSTALLER_FIRMWARE_DIR):
+$(DIST) $(BUILD_DIR) $(INSTALLER_FIRMWARE_DIR):
 	mkdir -p $@
+
+# ensure the installer dir exists, and save the version in the directory
+# we need to save the version including hypervisor and architecture
+$(INSTALLER):
+	@mkdir -p $@
+	# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
+	@echo $(FULL_VERSION) > $(INSTALLER)/eve_version
+
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
 build-vm: $(BUILD_VM)
