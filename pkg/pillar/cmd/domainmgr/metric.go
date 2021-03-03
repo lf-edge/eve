@@ -82,13 +82,16 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory) {
 	}
 
 	CPUnum, err := cpu.Counts(false)
-	if err != nil || CPUnum == 0 {
-		log.Errorf("getAndPublishMetrics: cpu count %d, error %v", CPUnum, err)
-
+	if err != nil {
+		log.Errorf("getAndPublishMetrics: cpu.Counts failed: %v", err)
 		return
 	}
-
-	busy /= float64(CPUnum)
+	if CPUnum == 0 {
+		// Assume 1 i.e. don't scale busy
+		log.Warnf("getAndPublishMetrics: cpu count zero")
+	} else {
+		busy /= float64(CPUnum)
+	}
 
 	dm := types.DomainMetric{
 		UUIDandVersion:    hostUUID,
