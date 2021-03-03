@@ -610,7 +610,7 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 		switched = true
 		filter = "udp and (port 53 or port 67)"
 	}
-	log.Functionf("(FlowStats) DNS Monitor on %s(bridge-num %d) swithced=%v, filter=%s", bn, bnNum, switched, filter)
+	log.Functionf("(FlowStats) DNS Monitor on %s(bridge-num %d) switched=%v, filter=%s", bn, bnNum, switched, filter)
 
 	handle, err := pcap.OpenLive(bn, snapshotLen, promiscuous, timeout, false)
 	if err != nil {
@@ -693,6 +693,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 		break
 	}
 	if len(vifInfo) == 0 { // there is no Mac on the bridge
+		log.Tracef("checkDHCPPacketInfo: no mac on the bridge")
 		return
 	}
 
