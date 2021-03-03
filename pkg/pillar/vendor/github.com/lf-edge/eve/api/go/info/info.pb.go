@@ -2324,8 +2324,11 @@ type ZInfoDevice struct {
 	CpuArch     string `protobuf:"bytes,5,opt,name=cpuArch,proto3" json:"cpuArch,omitempty"`
 	Platform    string `protobuf:"bytes,6,opt,name=platform,proto3" json:"platform,omitempty"`
 	Ncpu        uint32 `protobuf:"varint,7,opt,name=ncpu,proto3" json:"ncpu,omitempty"`
-	Memory      uint64 `protobuf:"varint,8,opt,name=memory,proto3" json:"memory,omitempty"`   // in Mbytes
-	Storage     uint64 `protobuf:"varint,9,opt,name=storage,proto3" json:"storage,omitempty"` // in MBytes for the currently active image filesystem
+	// memory - Total system memory available (in MBytes). Firmware might use
+	// some memory making it unavailable to the hypervisor - So this could be
+	// less than the amount stated by the hardware manufacturer
+	Memory  uint64 `protobuf:"varint,8,opt,name=memory,proto3" json:"memory,omitempty"`
+	Storage uint64 `protobuf:"varint,9,opt,name=storage,proto3" json:"storage,omitempty"` // in MBytes for the currently active image filesystem
 	// Value of'Power_Cycle_Count' from SMART.
 	// -1 is assigned if SMART is disabled or 'Power_Cycle_Count' is unavailable.
 	PowerCycleCounter int64              `protobuf:"varint,10,opt,name=powerCycleCounter,proto3" json:"powerCycleCounter,omitempty"`
