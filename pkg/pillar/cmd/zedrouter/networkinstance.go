@@ -722,8 +722,8 @@ func getSwitchNetworkInstanceUsingIfname(
 		ifname2 := types.LogicallabelToIfName(ctx.deviceNetworkStatus,
 			status.Logicallabel)
 		if ifname2 != ifname {
-			log.Functionf("getSwitchNetworkInstanceUsingIfname: NI (%s) not using %s",
-				status.DisplayName, ifname)
+			log.Functionf("getSwitchNetworkInstanceUsingIfname: NI (%s) not using %s; using %s",
+				status.DisplayName, ifname, ifname2)
 			continue
 		}
 
