@@ -47,8 +47,11 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 	}
 	locations, err := ioutil.ReadDir(srcDir)
 	if err != nil {
-		log.Errorf("renameFiles read: directory '%s' failed: %v",
-			srcDir, err)
+		// Some old directories might not exist
+		if !os.IsNotExist(err) {
+			log.Errorf("renameFiles read: directory '%s' failed: %v",
+				srcDir, err)
+		}
 		return
 	}
 	for _, location := range locations {
