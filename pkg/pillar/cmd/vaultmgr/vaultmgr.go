@@ -667,14 +667,25 @@ func publishAllFscryptVaultStatus(ctx *vaultMgrContext) {
 	fscryptStatus, fscryptErr := vault.GetOperInfo(log)
 	publishFscryptVaultStatus(ctx, types.DefaultVaultName, defaultVault,
 		fscryptStatus, fscryptErr)
+
+	// Don't try if it isn't there
+	_, err := os.Stat(deprecatedCfgVault)
+	if os.IsNotExist(err) {
+		return
+	}
 	publishFscryptVaultStatus(ctx, deprecatedCfgVaultName, deprecatedCfgVault,
 		fscryptStatus, fscryptErr)
 }
 
 func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
 	//XXX: till Controller deprecates handling status of persist/config, keep sending
-	publishZfsVaultStatus(ctx, deprecatedCfgVaultName, defaultCfgSecretDataset)
 	publishZfsVaultStatus(ctx, types.DefaultVaultName, defaultSecretDataset)
+	// Don't try if it isn't there
+	_, err := os.Stat(deprecatedCfgVault)
+	if os.IsNotExist(err) {
+		return
+	}
+	publishZfsVaultStatus(ctx, deprecatedCfgVaultName, defaultCfgSecretDataset)
 }
 
 func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
