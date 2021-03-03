@@ -39,8 +39,11 @@ message AppMemoryMetric {
 }
 
 message DeviceMemoryMetric {
-  // totalMB - Total Device memory as seen by EVE.
-  uint32 totalMB = 1;
+  // memoryMB - Total Device memory
+  // This is the same as reported in the memory field in the
+  // device info message. Repeated here for convenience of controller to process
+  // the metrics message.
+  uint32 memoryMB = 1;
 
   // allocated_appsMB - Total memory Allocated to AppInstances
   // In steady state, this is the sum of all the AppMemoryMetric.allocatedMB
