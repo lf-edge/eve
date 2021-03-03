@@ -284,7 +284,10 @@ message ZInfoDevice {
   string cpuArch = 5;
   string platform = 6;
   uint32 ncpu = 7;
-  uint64 memory = 8;   // in Mbytes
+  // memory - Total system memory available (in MBytes). Firmware might use
+  // some memory making it unavailable to the hypervisor - So this could be
+  // less than the amount stated by the hardware manufacturer
+  uint64 memory = 8;
   uint64 storage = 9;  // in MBytes for the currently active image filesystem
 
   // Value of'Power_Cycle_Count' from SMART.
