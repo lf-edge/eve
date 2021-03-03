@@ -17,11 +17,44 @@ enum ZmetricTypes {
   ZmApp = 3;
 }
 
+// memoryMetric - DEPRECATED. DO NOT USE THIS.
 message memoryMetric {
   uint32 usedMem = 2;            //in MBytes
   uint32 availMem = 3;           //in MBytes
-  double usedPercentage = 4;
-  double availPercentage = 5;
+  double usedPercentage = 4; // Obsolete - No Longer Used.
+  double availPercentage = 5; // Obsolete - No Longer Used.
+}
+
+// App Memory Metric
+message AppMemoryMetric {
+    // allocatedMB - Memory allocated to app instance by EVE independent
+    //  of the state of the App Instance.
+    uint32 allocatedMB = 1;
+
+    // usedMB - Memory Used by app from totalMB Memory
+    //  usedMB <= totalMB in normal cases.
+    //  Enforcement of the allocatedMB could be lax, hence usedMB can sometimes
+    //   exceed allocatedMB.
+    uint32 usedMB = 2;
+}
+
+message DeviceMemoryMetric {
+  // totalMB - Total Device memory as seen by EVE.
+  uint32 totalMB = 1;
+
+  // allocated_appsMB - Total memory Allocated to AppInstances
+  // In steady state, this is the sum of all the AppMemoryMetric.allocatedMB
+  // from all the app instances
+  uint32 allocated_appsMB = 2;
+
+  // allocated_eveMB - Total Allocated Memory for Eve
+  uint32 allocated_eveMB = 3;
+
+  // used_eveMB - Memory currently used by Eve.
+  //    used_eveMB <= allocated_eveMB in normal case
+  // Eve may not be able to enforce ie., used_eveMB might be greater than
+  // allocated_eveMB.
+  uint32 used_eveMB = 4;
 }
 
 message networkMetric {
@@ -114,7 +147,10 @@ message appCpuMetric {
 
 message deviceMetric {
   // deprecated = 1;
+
+  // memory - OBSOLETE. use DeviceMemoryMetric
   memoryMetric memory = 2;
+
   repeated networkMetric network = 3;
   repeated zedcloudMetric zedcloud = 4;
   // deprecated = 5;
@@ -123,12 +159,18 @@ message deviceMetric {
   repeated MetricItem metricItems = 8;
   uint64 runtimeStorageOverheadMB = 9;     // In MB
   uint64 appRunTimeStorageMB = 10;         // In MB
+
+  // systemServicesMemoryMB - OBSOLETE. Will no longer be used.
   memoryMetric systemServicesMemoryMB = 11;  // In MB
+
   logMetric log = 12;
   repeated CipherMetric cipher = 13;  // Object decryption
   AclMetric acl = 14;
   newlogMetric newlog = 15;
   zedboxStats zedbox = 16;
+
+  // deviceMemory - Memory metrics.
+  DeviceMemoryMetric deviceMemory = 17;
 }
 
 message AclMetric {
@@ -140,9 +182,14 @@ message appContainerMetric {
   string status = 2;           // Status string e.g. Uptime 3 hours
   uint32 PIDs = 3;             // Number of PIDs inside the container
   appCpuMetric cpu = 4;        // container cpu usage
+
+  // memory - OBSOLETE. Use appContainerMemory instead
   memoryMetric memory = 5;     // container memory usage, will fill 'usedMem', 'availMem' initially
+
   networkMetric network = 6;   // container network usage, will fill 'txBytes', 'rxBytes' initially
   diskMetric disk = 7;         // container Block IO, will fill 'readBytes', 'writeBytes' initially
+
+  AppMemoryMetric appContainerMemory = 8;
 }
 
 enum MetricItemType {
@@ -192,10 +239,15 @@ message appMetric {
   string appVersion = 10;
   string AppName = 2;
   appCpuMetric cpu = 3;
+
+  // memory - OBSOLETE. Use appMemory instead
   memoryMetric memory = 4;
+
   repeated networkMetric network = 5;
   repeated appDiskMetric disk = 6;
   repeated appContainerMetric container = 7;
+
+  AppMemoryMetric appMemory = 8;
 }
 
 // We track device and app logs separately with these counters.
