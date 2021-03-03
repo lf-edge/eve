@@ -401,7 +401,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	}
 
 	// update proxy certs if configured
-	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
+	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API && ctx.zedcloudCtx.TlsConfig != nil {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
 	// XXX can we limit to interfaces which changed?
