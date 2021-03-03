@@ -166,7 +166,7 @@ func (status AppNetworkStatus) LogModify(logBase *base.LogObject, old interface{
 		logObject.CloneAndAddField("activated", status.Activated).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("App network status modify")
+			Noticef("App network status modify")
 	}
 }
 

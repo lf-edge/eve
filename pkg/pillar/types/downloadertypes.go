@@ -185,7 +185,7 @@ func (status DownloaderStatus) LogModify(logBase *base.LogObject, old interface{
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("Download status modify")
+			Noticef("Download status modify")
 	}
 }
 
