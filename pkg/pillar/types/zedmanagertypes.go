@@ -207,7 +207,7 @@ func (status AppInstanceStatus) LogModify(logBase *base.LogObject, old interface
 			AddField("purge-in-progress", status.PurgeInprogress).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("App instance status modify")
+			Noticef("App instance status modify")
 	}
 }
 

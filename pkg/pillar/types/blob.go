@@ -120,7 +120,7 @@ func (status BlobStatus) LogModify(logBase *base.LogObject, old interface{}) {
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("error", status.Error).
 			AddField("error-time", status.ErrorTime).
-			Errorf("Blob status modify")
+			Noticef("Blob status modify")
 	}
 }
 

@@ -283,7 +283,7 @@ func (status DomainStatus) LogModify(logBase *base.LogObject, old interface{}) {
 			AddField("activated", status.Activated).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("domain status modify")
+			Noticef("domain status modify")
 	}
 }
 

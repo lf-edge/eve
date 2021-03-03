@@ -126,7 +126,7 @@ func (status ResolveStatus) LogModify(logBase *base.LogObject, old interface{}) 
 			AddField("retry-count-int64", status.RetryCount).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("Resolve status modify")
+			Noticef("Resolve status modify")
 	}
 }
 
