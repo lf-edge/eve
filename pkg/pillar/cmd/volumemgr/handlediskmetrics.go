@@ -188,8 +188,12 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Tracef("createOrUpdateDiskMetrics: persistUsage %d, elapse sec %v", persistUsage, time.Since(startPubTime).Seconds())
 
 	for _, path := range types.ReportDirPaths {
-		usage := diskmetrics.SizeFromDir(log, path)
-		log.Tracef("createOrUpdateDiskMetrics: ReportDirPath %s usage %d", path, usage)
+		usage, err := diskmetrics.SizeFromDir(log, path)
+		log.Tracef("createOrUpdateDiskMetrics: ReportDirPath %s usage %d err %v", path, usage, err)
+		if err != nil {
+			// Do not report
+			continue
+		}
 		var metric *types.DiskMetric
 		metric = lookupDiskMetric(ctx, path)
 		if metric == nil {
@@ -206,8 +210,12 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Tracef("createOrUpdateDiskMetrics: DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
 
 	for _, path := range types.AppPersistPaths {
-		usage := diskmetrics.SizeFromDir(log, path)
-		log.Tracef("createOrUpdateDiskMetrics: AppPersistPath %s usage %d", path, usage)
+		usage, err := diskmetrics.SizeFromDir(log, path)
+		log.Tracef("createOrUpdateDiskMetrics: AppPersistPath %s usage %d err %v", path, usage, err)
+		if err != nil {
+			// Do not report
+			continue
+		}
 		var metric *types.DiskMetric
 		metric = lookupDiskMetric(ctx, path)
 		if metric == nil {

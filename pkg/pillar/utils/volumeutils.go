@@ -23,8 +23,8 @@ func GetVolumeSize(log *base.LogObject, name string) (uint64, uint64, string, bo
 	}
 	if info.IsDir() {
 		// Assume this is a container
-		size := diskmetrics.SizeFromDir(log, name)
-		return size, size, "CONTAINER", false, nil
+		size, err := diskmetrics.SizeFromDir(log, name)
+		return size, size, "CONTAINER", false, err
 	}
 	imgInfo, err := diskmetrics.GetImgInfo(log, name)
 	if err != nil {
