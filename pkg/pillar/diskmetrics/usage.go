@@ -4,6 +4,7 @@
 package diskmetrics
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -14,32 +15,32 @@ import (
 // SizeFromDir performs a du -s equivalent operation.
 // Didn't use ioutil.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
 // which is an unnecessary costly operation.
-func SizeFromDir(log *base.LogObject, dirname string) uint64 {
+func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 	var totalUsed uint64
 	fileInfo, err := os.Stat(dirname)
 	if err != nil {
-		log.Errorf("File not found %s. %s. Set the size to zero\n", err.Error(), dirname)
-		return totalUsed
+		err = fmt.Errorf("Stat %s: %v", dirname, err)
+		return totalUsed, err
 	}
 	if !fileInfo.IsDir() {
-		return uint64(fileInfo.Size())
+		return uint64(fileInfo.Size()), nil
 	}
 	f, err := os.Open(dirname)
 	if err != nil {
-		log.Errorf("Exception while opening %s. %s. Set the size to zero\n", err.Error(), dirname)
-		return totalUsed
+		err = fmt.Errorf("Exception while opening %s: %v", dirname, err)
+		return totalUsed, err
 	}
 	locations, err := f.Readdir(-1)
 	f.Close()
 	if err != nil {
-		//log.Tracef("Exception while reading dirs %s. Set the size to zero\n", err.Error(), dirname)
-		return totalUsed
+		err = fmt.Errorf("Exception while reading dir %s: %v", dirname, err)
+		return totalUsed, err
 	}
 	for _, location := range locations {
 		filename := dirname + "/" + location.Name()
 		log.Tracef("Looking in %s\n", filename)
 		if location.IsDir() {
-			size := SizeFromDir(log, filename)
+			size, _ := SizeFromDir(log, filename)
 			log.Tracef("Dir %s size %d\n", filename, size)
 			totalUsed += size
 		} else {
@@ -47,7 +48,7 @@ func SizeFromDir(log *base.LogObject, dirname string) uint64 {
 			totalUsed += uint64(location.Size())
 		}
 	}
-	return totalUsed
+	return totalUsed, nil
 }
 
 // PartitionSize - Given "sdb1" return the size of the partition; "sdb"
