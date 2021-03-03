@@ -535,7 +535,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*
 func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW, tooEarly bool) {
-	log.Errorf("Device swInfo: %s", swInfo.String())
+	log.Functionf("Device swInfo: %s", swInfo.String())
 	switch swInfo.Status {
 	case info.ZSwState_INITIAL:
 		// If Unused and partitionLabel is set them it
