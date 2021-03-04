@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -402,8 +401,6 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		logrus.Debugf("Adding pci config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
 	}
-
-	// XXX log file content: logrus.Infof("Created %s: %s
 	return nil
 }
 
@@ -524,10 +521,16 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 	xlInfo, stderr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "info"})
 	if err != nil {
-		logrus.Errorf("xl info failed %s %s falling back on Dom0 stats: %v", xlInfo, stderr, err)
+		logrus.Errorf("xl info failed stdout: %s stderr: %s, err: %v falling back on Dom0 stats",
+			xlInfo, stderr, err)
 		return selfDomCPUMem()
 	}
-
+	// Seems like we can get empty output, or partial output, from xl info
+	if xlInfo == "" {
+		logrus.Errorf("xl info empty stderr: %s falling back on Dom0 stats",
+			stderr)
+		return selfDomCPUMem()
+	}
 	splitXlInfo := strings.Split(xlInfo, "\n")
 
 	dict := make(map[string]string, len(splitXlInfo)-1)
@@ -538,39 +541,40 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		}
 	}
 
-	hm := types.HostMemory{}
-	hm.TotalMemoryMB, err = strconv.ParseUint(dict["total_memory"], 10, 64)
-	if err != nil {
-		logrus.Errorf("Failed parsing total_memory: %s", err)
-		hm.TotalMemoryMB = 0
-	}
-	hm.FreeMemoryMB, err = strconv.ParseUint(dict["free_memory"], 10, 64)
-	if err != nil {
-		logrus.Errorf("Failed parsing free_memory: %s", err)
-		hm.FreeMemoryMB = 0
-	}
+	// Handle subsets of attributes being filled in by xl info by starting
+	// with something reasonable
+	hm, _ := selfDomCPUMem()
 
-	// Note that this is the set of physical CPUs which is different
-	// than the set of CPUs assigned to dom0
-	var ncpus uint64
-	ncpus, err = strconv.ParseUint(dict["nr_cpus"], 10, 32)
-	if err != nil {
-		logrus.Errorln("error while converting ncpus to int: ", err)
-		ncpus = 0
+	if str, ok := dict["total_memory"]; ok {
+		res, err := strconv.ParseUint(str, 10, 64)
+		if err != nil {
+			logrus.Errorf("Failed parsing total_memory: %s", err)
+		} else {
+			hm.TotalMemoryMB = res
+		}
 	}
-	hm.Ncpus = uint32(ncpus)
-	if false {
-		// debug code to compare Xen and fallback
-		// XXX remove debug code
-		hm2, err := selfDomCPUMem()
-		logrus.Infof("XXX xen %+v fallback %+v (%v)", hm, hm2, err)
+	if str, ok := dict["free_memory"]; ok {
+		res, err := strconv.ParseUint(str, 10, 64)
+		if err != nil {
+			logrus.Errorf("Failed parsing free_memory: %s", err)
+		} else {
+			hm.FreeMemoryMB = res
+		}
+	}
+	if str, ok := dict["nr_cpus"]; ok {
+		// Note that this is the set of physical CPUs which is different
+		// than the set of CPUs assigned to dom0
+		res, err := strconv.ParseUint(str, 10, 64)
+		if err != nil {
+			logrus.Errorf("Failed parsing nr_cpus: %s", err)
+		} else {
+			hm.Ncpus = uint32(res)
+		}
 	}
 	return hm, nil
 }
 
 func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
-	count := 0
-	counter := 0
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()
 	xentopInfo, _, _ := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
@@ -578,28 +582,22 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 
 	splitXentopInfo := strings.Split(xentopInfo, "\n")
 	splitXentopInfoLength := len(splitXentopInfo)
-	var i int
-	var start int
 
-	for i = 0; i < splitXentopInfoLength; i++ {
-
-		str := splitXentopInfo[i]
-		re := regexp.MustCompile(" ")
-
-		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(str, "")
-		matched, err := regexp.MatchString("NAMESTATECPU.*", spaceRemovedsplitXentopInfo)
-
-		if err != nil {
-			logrus.Debugf("MatchString failed: %s", err)
-		} else if matched {
-
-			count++
-			logrus.Debugf("string matched: %s", str)
-			if count == 2 {
-				start = i + 1
-				logrus.Debugf("value of i: %d", start)
-			}
+	// Start at last instance of "Domain-0" in the first column
+	start := -1
+	for i := 0; i < splitXentopInfoLength; i++ {
+		fields := strings.Fields(strings.TrimSpace(splitXentopInfo[i]))
+		if len(fields) == 0 {
+			// Empty line probably end
+		} else if strings.EqualFold(fields[0], dom0Name) {
+			start = i
+			logrus.Tracef("start set to %d", start)
 		}
+	}
+	if start == -1 {
+		logrus.Errorf("No Domain-0 in: %+v", splitXentopInfo)
+		logrus.Errorf("Calling fallbackDomainMetric")
+		return fallbackDomainMetric(), nil
 	}
 
 	length := splitXentopInfoLength - 1 - start
@@ -619,6 +617,7 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	for f := 0; f < length; f++ {
 
 		// First name and state
+		counter := 0
 		out := 0
 		counter++
 		cpuMemoryStat[f][counter] = finalOutput[f][out]
@@ -638,9 +637,8 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 				cpuMemoryStat[f][counter] = finalOutput[f][out]
 			}
 		}
-		counter = 0
 	}
-	logrus.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
+	logrus.Tracef("ExecuteXentopCmd return %+v", cpuMemoryStat)
 
 	// first we get all the task stats from containerd, and we update
 	// the ones that have a Xen domain associated with them
@@ -648,14 +646,9 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	if len(cpuMemoryStat) != 0 {
 		dmList = parseCPUMemoryStat(cpuMemoryStat, dmList)
 	} else if err != nil {
+		logrus.Errorf("GetDomsCPUMem failed: %v", err)
+		logrus.Errorf("Calling fallbackDomainMetric")
 		dmList = fallbackDomainMetric()
-	}
-	// finally add host entry to dmList
-	if false {
-		// debug code to compare Xen and fallback
-		logrus.Infof("XXX reported DomainMetric %+v", dmList)
-		dmList = fallbackDomainMetric()
-		logrus.Infof("XXX fallback DomainMetric %+v", dmList)
 	}
 	return dmList, nil
 }
