@@ -1,0 +1,30 @@
+image: eve-vtune
+org: lfedge
+network: yes
+config:
+  pid: host
+  net: host
+  binds:
+    - /:/hostfs
+    - /config:/config
+    - /persist:/persist:rshared,rbind
+    - /run:/run
+    - /tmp:/tmp
+    - /dev:/dev
+    - /sys:/sys
+    - /sys/fs/cgroup:/sys/fs/cgroup
+    - /containers:/containers
+    - /etc:/hostroot/etc
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /etc/motd:/etc/motd
+    - /etc/profile:/etc/profile
+    - /etc/profile.d:/etc/profile.d
+    - /run:/root/.ssh
+    - /bin/eve:/bin/eve
+    - /usr/bin/logread:/usr/bin/logread
+    - /usr/bin/ctr:/usr/bin/ctr
+    - /usr/bin/runc:/usr/bin/runc
+    - /var/log:/var/log
+    - /persist/containerd:/var/lib/containerd
+  capabilities:
+    - all
