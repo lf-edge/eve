@@ -276,7 +276,7 @@ func checkAndUpdateResolveConfig(ctx *downloaderContext, dsID uuid.UUID) {
 	for _, v := range resolveStatuses {
 		status := v.(types.ResolveStatus)
 		if status.DatastoreID == dsID {
-			config := lookupDownloaderConfig(ctx, status.Key())
+			config := lookupResolveConfig(ctx, status.Key())
 			if config != nil {
 				resHandler.modify(ctx, status.Key(), *config, *config)
 			}
