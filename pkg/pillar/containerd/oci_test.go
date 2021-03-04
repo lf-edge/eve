@@ -6,12 +6,6 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	. "github.com/onsi/gomega"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	uuid "github.com/satori/go.uuid"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"
 	"os"
@@ -19,6 +13,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	. "github.com/onsi/gomega"
+	"github.com/opencontainers/runtime-spec/specs-go"
+	uuid "github.com/satori/go.uuid"
+	"github.com/stretchr/testify/assert"
 )
 
 const loaderRuntimeSpec = `
@@ -520,7 +521,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	mountFile := path.Join(rootDir, "mountPoints")
-	mountExpected := "/myvol" + "\n"
+	mountExpected := ""
 	mounts, err := ioutil.ReadFile(mountFile)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
@@ -704,7 +705,7 @@ func TestPrepareMount(t *testing.T) {
 				}
 
 				mountFile := path.Join(tt.args.containerPath, "mountPoints")
-				expectedMounts := "/myvol" + "\n"
+				expectedMounts := ""
 				mounts, err := ioutil.ReadFile(mountFile)
 				if err != nil {
 					t.Errorf("TestPrepareMount: exception while reading mountPoints file %s %v", mountFile, err)
@@ -750,14 +751,13 @@ func TestUpdateMounts(t *testing.T) {
 		{MountDir: "/override", Format: zconfig.Format_QCOW2, FileLocation: "/foo/bam.qcow2", ReadOnly: true},
 	}
 
-	g.Expect(spec.UpdateMounts([]types.DiskStatus{})).To(HaveOccurred())
-	g.Expect(spec.UpdateMounts([]types.DiskStatus{{MountDir: "/", Format: zconfig.Format_CONTAINER}})).To(HaveOccurred())
+	g.Expect(spec.UpdateMounts([]types.DiskStatus{})).ToNot(HaveOccurred())
+	g.Expect(spec.UpdateMounts([]types.DiskStatus{{MountDir: "/", Format: zconfig.Format_CONTAINER}})).ToNot(HaveOccurred())
 
 	g.Expect(spec.UpdateMounts(tresAmigos)).ToNot(HaveOccurred())
 	g.Expect(spec.Mounts).To(ConsistOf([]specs.Mount{
 		{Destination: "/test", Source: "/test", Type: "bind", Options: []string{"ro"}},
 		{Destination: "/dev/eve/volumes/by-id/1", Type: "bind", Source: "/foo/baz/rootfs", Options: []string{"rbind", "rw"}},
-		{Destination: "/myvol", Type: "bind", Source: "/foo/baz/rootfs", Options: []string{"rbind", "rw"}},
 		{Destination: "/dev/eve/volumes/by-id/2", Type: "bind", Source: "/foo/bam.qcow2", Options: []string{"rbind", "ro"}},
 		{Destination: "/override/2", Type: "bind", Source: "/foo/bam.qcow2", Options: []string{"rbind", "ro"}},
 	}))

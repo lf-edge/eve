@@ -13,18 +13,19 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/containers"
-	"github.com/containerd/containerd/oci"
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/opencontainers/runtime-spec/specs-go"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/containers"
+	"github.com/containerd/containerd/oci"
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
 const eveScript = "/bin/eve"
@@ -380,40 +381,10 @@ func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 // UpdateMounts adds volume specification mount points to the OCI runtime spec
 func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 	ociVolumeData := "rootfs"
-	mountDirs := []string{}
 	blkMountPoints := ""
 
-	// We are prepared to deal with the first volume being declared as root,
-	// however any other volume claiming that right would be treated as it
-	// doesn't have MountDir specifies at all
-	id := 0
-	if len(disks) > 0 && disks[0].MountDir == "/" {
-		mountDirs = []string{"/"}
-		id = 1
-	}
-
-	// Validating if there are enough disks provided for the mount-points
-	if len(disks)-id < len(s.volumes) {
-		// If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
-		// won't be enough disks to satisfy required mount-points.
-		return fmt.Errorf("updateMounts: Number of volumes provided: %v is less than number of mount-points: %v",
-			len(disks), len(s.volumes))
-	} else {
-		for p := range s.volumes {
-			// if the next non-root volume has a MountDir specifies it takes precedence over OCI Image spec
-			if disks[id].MountDir != "" && disks[id].MountDir != "/" {
-				mountDirs = append(mountDirs, disks[id].MountDir)
-			} else {
-				mountDirs = append(mountDirs, p)
-			}
-			id++
-		}
-		for ; id < len(disks); id++ {
-			mountDirs = append(mountDirs, disks[id].MountDir)
-		}
-	}
-
 	for id, disk := range disks {
+		dst := disk.MountDir
 		src := disk.FileLocation
 		opts := []string{"rbind"}
 		if disk.ReadOnly {
@@ -440,8 +411,7 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 		if disk.DisplayName != "" {
 			dests = append(dests, "/dev/eve/volumes/by-name/"+disk.DisplayName)
 		}
-		if mountDirs[id] != "" {
-			dst := mountDirs[id]
+		if dst != "" {
 			if disk.Format != zconfig.Format_CONTAINER {
 				// this is a bit of a hack: we assume that anything but
 				// the container image has to be a file and thus make it
