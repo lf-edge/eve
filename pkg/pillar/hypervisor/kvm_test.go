@@ -236,7 +236,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -270,7 +270,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -498,7 +498,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -532,7 +532,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -738,7 +738,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -772,7 +772,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1072,7 +1072,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1106,7 +1106,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1341,7 +1341,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1377,7 +1377,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1615,7 +1615,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1649,7 +1649,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1863,7 +1863,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
@@ -1897,7 +1897,7 @@ func TestCreateDomConfig(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "threads"
+  aio = "io_uring"
   cache = "writeback"
   if = "none"
 
