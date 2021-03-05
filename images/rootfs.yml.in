@@ -66,6 +66,9 @@ services:
      image: XENTOOLS_TAG
      cgroupsPath: /eve/services/xen-tools
      oomScoreAdj: -999
+   - name: vtune
+     image: VTUNE_TAG
+     cgroupsPath: /eve/services/vtune
 files:
    - path: /etc/eve-release
      contents: 'EVE_VERSION'

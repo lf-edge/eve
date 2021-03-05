@@ -84,6 +84,7 @@ sed -e "s#CURDIR#$(pwd)#" \
     -e "s#EVE_TAG#${EVE_TAG:-}#" \
     -e "s#KVMTOOLS_TAG#${KVMTOOLS_TAG}#" \
     -e "s#IPXE_TAG#${IPXE_TAG}#" \
+    -e "s#VTUNE_TAG#${VTUNE_TAG}#" \
     ${1:-}
 }
 
@@ -131,6 +132,8 @@ VTPM_TAG=$(linuxkit_tag pkg/vtpm)
 UEFI_TAG=$(linuxkit_tag pkg/uefi)
 KVMTOOLS_TAG=$(linuxkit_tag pkg/kvm-tools)
 IPXE_TAG=$(linuxkit_tag pkg/ipxe)
+VTUNE_TAG=$(linuxkit_tag pkg/vtune)
+
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
