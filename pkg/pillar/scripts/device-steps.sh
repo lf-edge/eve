@@ -22,6 +22,7 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
 TPMINFOTEMPFILE=/var/tmp/tpminfo.txt
+DISKSPACE_RECOVERY_LIMIT=70
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
@@ -200,6 +201,33 @@ fi
 if [ -f $CONFIGDIR/hardwaremodel ]; then
     echo "$(date -Ins -u) move $CONFIGDIR/hardwaremodel $PERSISTDIR/status"
     mv $CONFIGDIR/hardwaremodel $PERSISTDIR/status
+fi
+
+# Checking for low diskspace at bootup. If used percentage of
+# /persist directory is more than 70% then we will remove the
+# following sub directories:
+# /persist/log/*
+# /persist/newlog/appUpload/*
+# /persist/newlog/devUpload/*
+# /persist/newlog/keepSentQueue/*
+# /persist/newlog/failedUpload/*
+diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
+echo "Used percentage of /persist: $diskspace_used"
+if [ $diskspace_used > $DISKSPACE_RECOVERY_LIMIT ]
+then
+    echo "Used percentage of /persist is $diskspace_used more than the limit $DISKSPACE_RECOVERY_LIMIT"
+    for DIR in log newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload
+    do
+        rm -rf $PERSISTDIR/$DIR/*
+        diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
+        echo "Used percentage of /persist is $diskspace_used after clearing $PERSISTDIR/$DIR"
+        if [ $diskspace_used < $DISKSPACE_RECOVERY_LIMIT ]
+        then
+            break
+        fi
+    done
+    diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
+    echo "Used percentage of /persist after recovery: $diskspace_used"
 fi
 
 # Run upgradeconverter
