@@ -1,3 +1,5 @@
+eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/fail_test
+
 # Number of tests
 {{$tests := 35}}
 # EDEN_TEST env. var. -- flavour of test set: "small", "medium"(default) and "large"
