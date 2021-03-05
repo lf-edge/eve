@@ -34,13 +34,15 @@ jobs:
           make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve
       - name: Export docker container
         run: |
+          ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+          echo "ARCH=$ARCH" >> "$GITHUB_ENV"
           for i in xen kvm; do
-             docker tag "lfedge/eve:$VERSION-$i" "$TAG-$i"
-             IMGS="$IMGS $TAG-$i"
+             docker tag "lfedge/eve:$VERSION-$i" "$TAG-$i-$ARCH"
+             IMGS="$IMGS $TAG-$i-$ARCH"
           done
           docker save $IMGS > eve.tar
       - name: Upload EVE
         uses: actions/upload-artifact@v2
         with:
-          name: eve
+          name: eve-${{ env.ARCH }}
           path: eve.tar
