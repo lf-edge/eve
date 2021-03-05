@@ -17,8 +17,6 @@ jobs:
         with:
           result-encoding: string
           script: |
-            console.log(context)
-            console.log(context.payload.workflow_run.id)
             artifacts = (await github.actions.listWorkflowRunArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -38,6 +36,10 @@ jobs:
             } else {
               throw 'No artifacts to publish'
             }
+
+      - name: Download EVE amd64
+        run: |
+          wget -O eve-amd64.zip "${{steps.find-pr-artifact-amd64.outputs.result}}"
 
       - name: Find PR build artifact for arm64
         id: find-pr-artifact-arm64
@@ -65,11 +67,12 @@ jobs:
               throw 'No artifacts to publish'
             }
 
-      - name: Publish EVE
+      - name: Download EVE arm64
         run: |
-          wget -O eve-amd64.zip "${{steps.find-pr-artifact-amd64.outputs.result}}"
           wget -O eve-arm64.zip "${{steps.find-pr-artifact-arm64.outputs.result}}"
 
+      - name: Publish EVE
+        run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
              docker login -u evebuild --password-stdin
 
@@ -80,5 +83,3 @@ jobs:
                 docker push "$i"
              done
           done
-
-          docker manifest
