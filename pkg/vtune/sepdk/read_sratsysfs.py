@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 #     Copyright (C) 2016-2020 Intel Corporation.  All Rights Reserved.
 
 #     This file is part of SEP Development Kit
@@ -39,14 +38,18 @@ fd = None
 # figure out python version (major)
 python_ver = int(sys.version.split(".")[0])
 
+
 def unpack_one_byte():
     return struct.unpack('1B', os.read(fd, 1))[0]
+
 
 def unpack_two_byte():
     return struct.unpack('1H', os.read(fd, 2))[0]
 
+
 def unpack_four_byte_int():
     return struct.unpack('1I', os.read(fd, 4))[0]
+
 
 def unpack_four_byte_string():
     byte_string = struct.unpack('4s', os.read(fd, 4))[0]
@@ -54,19 +57,23 @@ def unpack_four_byte_string():
         byte_string = str(byte_string, "utf-8")
     return byte_string
 
+
 def get_type(base, offset):
     os.lseek(fd, base + offset, os.SEEK_SET)
     return unpack_one_byte()
 
+
 def get_length(base, offset):
     os.lseek(fd, base + offset, os.SEEK_SET)
     return unpack_one_byte()
+
 
 def get_prox_domain(base, offset, is_apic):
     os.lseek(fd, base + offset, os.SEEK_SET)
     if is_apic == 1:
         return unpack_one_byte()
     return unpack_four_byte_int()
+
 
 def get_type_name(type):
     switcher = {
@@ -76,6 +83,7 @@ def get_type_name(type):
     }
     return switcher.get(type, "None")
 
+
 def init_op(base, is_x2apic, is_apic, offset):
     if is_not_valid(base, is_x2apic, is_apic) == 1:
         goto_next_struct(base + offset)
@@ -83,6 +91,7 @@ def init_op(base, is_x2apic, is_apic, offset):
     if process_header(base, is_x2apic, is_apic) == 1:
         return 1
     return 0
+
 
 def is_not_valid(base, is_x2apic, is_apic):
     offset = 28
@@ -97,6 +106,7 @@ def is_not_valid(base, is_x2apic, is_apic):
         return 0
     return 1
 
+
 def goto_next_struct(base):
     global prev_type
     if base == total_length:
@@ -104,7 +114,7 @@ def goto_next_struct(base):
     os.lseek(fd, base, os.SEEK_SET)
     next_type = unpack_one_byte()
     if prev_type != next_type:
-        print ("")
+        print("")
     prev_type = next_type
     if next_type == 0:
         process_proc_apic_data(base)
@@ -112,6 +122,7 @@ def goto_next_struct(base):
         process_memory_data(base)
     else:
         process_proc_x2apic_data(base)
+
 
 def process_header(base, is_x2apic, is_apic):
     global prox_domain_low
@@ -129,6 +140,7 @@ def process_header(base, is_x2apic, is_apic):
         offset = 4
     prox_domain_low = get_prox_domain(base, offset, is_apic)
 
+
 def process_proc_x2apic_data(base):
     try:
         if init_op(base, 1, 0, 24) == 1:
@@ -143,12 +155,17 @@ def process_proc_x2apic_data(base):
             return 1
         goto_next_struct(base + 24)
     except OSError as e:
-        sys.stderr.write("ACPI information for proximity domain is not available on this machine: {0}\n".format(e))
+        sys.stderr.write(
+            "ACPI information for proximity domain is not available on this machine: {0}\n"
+            .format(e))
         return 2
     except:
-        sys.stderr.write("Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n")
+        sys.stderr.write(
+            "Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n"
+        )
         return 2
     return 0
+
 
 def process_memory_data(base):
     try:
@@ -173,12 +190,17 @@ def process_memory_data(base):
             return 1
         goto_next_struct(base + 40)
     except OSError as e:
-        sys.stderr.write("ACPI information for proximity domain is not available on this machine: {0}\n".format(e))
+        sys.stderr.write(
+            "ACPI information for proximity domain is not available on this machine: {0}\n"
+            .format(e))
         return 2
     except:
-        sys.stderr.write("Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n")
+        sys.stderr.write(
+            "Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n"
+        )
         return 2
     return 0
+
 
 def process_proc_apic_data(base):
     try:
@@ -193,7 +215,8 @@ def process_proc_apic_data(base):
         pd_temp = unpack_two_byte()
         os.lseek(fd, base + 11, os.SEEK_SET)
         prox_domain_high = unpack_one_byte()
-        prox_domain = (((prox_domain_high << 8) | pd_temp) << 8) | prox_domain_low
+        prox_domain = ((
+            (prox_domain_high << 8) | pd_temp) << 8) | prox_domain_low
         print("proximity_domain={}".format(prox_domain))
         os.lseek(fd, base + 12, os.SEEK_SET)
         clk_domain = unpack_four_byte_int()
@@ -201,12 +224,17 @@ def process_proc_apic_data(base):
             return 1
         goto_next_struct(base + 16)
     except OSError as e:
-        sys.stderr.write("ACPI information for proximity domain is not available on this machine: {0}\n".format(e))
+        sys.stderr.write(
+            "ACPI information for proximity domain is not available on this machine: {0}\n"
+            .format(e))
         return 2
     except:
-        sys.stderr.write("Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n")
+        sys.stderr.write(
+            "Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n"
+        )
         return 2
     return 0
+
 
 def process_file(filename):
     global total_length
@@ -221,15 +249,20 @@ def process_file(filename):
             return 1
         goto_next_struct(48)
     except OSError as e:
-        sys.stderr.write("ACPI information for proximity domain is not available on this machine: {0}\n".format(e))
+        sys.stderr.write(
+            "ACPI information for proximity domain is not available on this machine: {0}\n"
+            .format(e))
         return 2
     except:
-        sys.stderr.write("Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n")
+        sys.stderr.write(
+            "Unknown Error detected while getting proximity domain info from ACPI SRAT sysfs\n"
+        )
         return 2
     finally:
         if fd:
             os.close(fd)
     return 0
+
 
 ##print("Reading ACPI (SRAT) Information for KNL Configuration.")
 ret_val = process_file(ACPI_FILENAME)

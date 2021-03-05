@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 #     Copyright (C) 2016-2020 Intel Corporation.  All Rights Reserved.
 
 #     This file is part of SEP Development Kit
@@ -27,7 +26,6 @@
 #     invalidate any other reasons why the executable file might be covered by
 #     the GNU General Public License.
 
-
 import struct
 import os
 import sys
@@ -43,24 +41,30 @@ DMI_SYS_GENERAL_INFO_TYPE = "{0}-0"
 def read_dmi_info():
     type_file_num = 0
     while True:
-        if process_dmi_group_file(DMI_FILENAME
-                                  .format(DMI_GROUP_ASSOCIATIONS_TYPE.format(type_file_num))) == 1:
+        if process_dmi_group_file(
+                DMI_FILENAME.format(
+                    DMI_GROUP_ASSOCIATIONS_TYPE.format(type_file_num))) == 1:
             type_file_num += 1
         else:
             break
+
 
 def process_dmi_group_file(filename):
     file_fd = None
     try:
         if not os.path.isfile(filename):
             return 2
-        c_fd = subprocess.Popen(["strings", filename], shell=false, stdout=subprocess.PIPE).stdout
+        c_fd = subprocess.Popen(["strings", filename],
+                                shell=false,
+                                stdout=subprocess.PIPE).stdout
         if not c_fd.read().decode("utf-8").find(DMI_SYS_GROUP_NAME):
             return 1
         file_fd = os.open(filename, os.O_RDONLY)
         length = struct.unpack('1B', os.read(file_fd, 1))[0]
         os.lseek(file_fd, length, os.SEEK_SET)
-        name_str = os.read(file_fd, (len(DMI_GROUP_STRING) + len(DMI_SYS_GROUP_NAME))).decode("utf-8")
+        name_str = os.read(
+            file_fd,
+            (len(DMI_GROUP_STRING) + len(DMI_SYS_GROUP_NAME))).decode("utf-8")
         if DMI_SYS_GROUP_NAME not in name_str:
             return 1
 
@@ -69,19 +73,24 @@ def process_dmi_group_file(filename):
         for memb_x in range(0, int(members)):
             grp_type = struct.unpack('1B', os.read(file_fd, 1))[0]
             grp_handle = struct.unpack('1H', os.read(file_fd, 2))[0]
-            if process_dmi_member_file(DMI_FILENAME
-                                       .format(DMI_SYS_GENERAL_INFO_TYPE.format(grp_type))) == 0:
+            if process_dmi_member_file(
+                    DMI_FILENAME.format(
+                        DMI_SYS_GENERAL_INFO_TYPE.format(grp_type))) == 0:
                 break
     except OSError as ex_os:
-        sys.stderr.write("Information not found on DMI sysfs: {0}\n".format(ex_os))
+        sys.stderr.write(
+            "Information not found on DMI sysfs: {0}\n".format(ex_os))
         return 2
     except:
-        sys.stderr.write("Unknown Error detected while getting information from DMI sysfs\n")
+        sys.stderr.write(
+            "Unknown Error detected while getting information from DMI sysfs\n"
+        )
         return 2
     finally:
         if file_fd:
             os.close(file_fd)
     return 0
+
 
 def get_memory_mode(mem_mode):
     #print(mem_mode)
@@ -96,10 +105,10 @@ def get_memory_mode(mem_mode):
 def get_cluster_mode(cluster_mode):
     #print(cluster_mode)
     switcher = {
-        1:  "Quadrant",
-        2:  "Hemisphere",
-        4:  "SNC4",
-        8:  "SNC2",
+        1: "Quadrant",
+        2: "Hemisphere",
+        4: "SNC4",
+        8: "SNC2",
         16: "All2All",
     }
     return switcher.get(cluster_mode, "None")
@@ -130,12 +139,15 @@ def process_dmi_member_file(filename):
         sys.stderr.write("Information not found on DMI sysfs: {0}\n".format(e))
         return 2
     except:
-        sys.stderr.write("Unknown Error detected while getting information from DMI sysfs\n")
+        sys.stderr.write(
+            "Unknown Error detected while getting information from DMI sysfs\n"
+        )
         return 2
     finally:
         if grp_fd:
             os.close(grp_fd)
     return 0
+
 
 ##print("Reading DMI Information for KNL Configuration.")
 ret_val = read_dmi_info()
