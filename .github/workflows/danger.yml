@@ -83,3 +83,5 @@ jobs:
                 docker push "$i"
              done
           done
+
+          docker manifest
