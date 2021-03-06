@@ -81,7 +81,11 @@ jobs:
              unzip "eve-$arch.zip"
              for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
                 docker push "$i"
+                IMGS="$IMGS ${i/-$arch/}"
              done
           done
 
-          docker manifest
+          for i in $(echo "$IMGS" | tr ' ' '\012' | sort -u); do
+             docker manifest create "$i" --amend "$i-arm64" --amend "$i-amd64"
+             docker push "$i"
+          done
