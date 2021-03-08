@@ -1,9 +1,0 @@
-bash
-curl
-gcc
-git
-libseccomp-dev
-linux-headers
-make
-musl-dev
-pkgconf
