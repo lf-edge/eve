@@ -8,7 +8,7 @@ bail() {
 
 [ "$#" -gt 2 ] || bail "Usage: $0 <alpine version> <path to the cache> [packages...]"
 
-ALPINE_REPO="http://dl-cdn.alpinelinux.org/alpine/v$1/main"
+ALPINE_REPO="http://dl-cdn.alpinelinux.org/alpine/v$1"
 CACHE="$2/$(apk --print-arch)"
 ROOTFS="$CACHE/../rootfs"
 shift 2
@@ -23,7 +23,10 @@ done
 
 # fetch the missing packages
 # shellcheck disable=SC2086
-[ -n "$PKGS" ] && apk fetch -X "$ALPINE_REPO" --no-cache --recursive -o "$CACHE" $PKGS
+if [ -n "$PKGS" ]; then
+   apk fetch -X "$ALPINE_REPO" --no-cache --recursive -o "$CACHE" $PKGS || \
+     apk fetch -X "$ALPINE_REPO" --no-cache -o "$CACHE" $PKGS
+fi
 
 # index the cache
 rm -f "$CACHE"/APKINDEX*
@@ -33,5 +36,7 @@ abuild-sign "$CACHE/APKINDEX.tar.gz"
 
 mkdir -p "$ROOTFS/etc/apk"
 cp -r /etc/apk/keys "$ROOTFS/etc/apk"
+cp ~/.abuild/*.rsa.pub "$ROOTFS/etc/apk/keys/"
+cp ~/.abuild/*.rsa.pub /etc/apk/keys/
 echo "$CACHE/.." > "$ROOTFS/etc/apk/repositories"
 apk add -X "$CACHE/.." --no-cache --initdb -p "$ROOTFS" busybox
