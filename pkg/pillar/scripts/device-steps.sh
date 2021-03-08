@@ -97,6 +97,13 @@ for d in $DIRS; do
     fi
 done
 
+# Save any existing checkpoint directory for debugging
+rm -rf $PERSIST_AGENT_DEBUG/checkpoint
+if [ -d /persist/checkpoint ]; then
+    echo "$(date -Ins -u) Saving copy of /persist/checkpoint in /persist/agentdebug"
+    cp -rp /persist/checkpoint $PERSIST_AGENT_DEBUG/
+fi
+
 echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
 echo
