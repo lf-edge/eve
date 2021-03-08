@@ -104,6 +104,13 @@ if [ -d /persist/checkpoint ]; then
     cp -rp /persist/checkpoint $PERSIST_AGENT_DEBUG/
 fi
 
+# Save any existing /persist/status directory for debugging
+rm -rf $PERSIST_AGENT_DEBUG/status
+if [ -d /persist/status ]; then
+    echo "$(date -Ins -u) Saving copy of /persist/status in /persist/agentdebug"
+    cp -rp /persist/status $PERSIST_AGENT_DEBUG/
+fi
+
 echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
 echo
