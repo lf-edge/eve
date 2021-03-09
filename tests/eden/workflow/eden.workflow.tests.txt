@@ -70,8 +70,10 @@ eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/fail_
 
 /bin/echo Eden basic network test (16/{{$tests}})
 eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/network_test
-/bin/echo Eden basic volumes test (17/{{$tests}})
+/bin/echo Eden basic volumes test (17.1/{{$tests}})
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volumes_test
+/bin/echo Eden sftp volumes test (17.2/{{$tests}})
+eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volume_sftp
 
 /bin/echo Eden Host only ACL (18/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/host-only
