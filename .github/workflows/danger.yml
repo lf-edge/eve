@@ -87,5 +87,5 @@ jobs:
 
           for i in $(echo "$IMGS" | tr ' ' '\012' | sort -u); do
              docker manifest create "$i" --amend "$i-arm64" --amend "$i-amd64"
-             docker push "$i"
+             docker manifest push "$i"
           done
