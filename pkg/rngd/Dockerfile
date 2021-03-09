@@ -1,6 +1,7 @@
-FROM linuxkit/alpine:3683c9a66cd4da40bd7d6c7da599b2dcd738b559 AS mirror
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS build
+ENV BUILD_PKGS go gcc musl-dev linux-headers
+RUN eve-alpine-deploy.sh
 
-RUN apk add --no-cache go gcc musl-dev linux-headers
 ENV GOPATH=/go PATH=$PATH:/go/bin
 
 # see https://github.com/golang/go/issues/23672
@@ -11,7 +12,6 @@ RUN REQUIRE_CGO=1 go-compile.sh /go/src/rngd
 
 FROM scratch
 ENTRYPOINT []
-CMD []
 WORKDIR /
-COPY --from=mirror /go/bin/rngd /sbin/rngd
+COPY --from=build /go/bin/rngd /sbin/rngd
 CMD ["/sbin/rngd"]
