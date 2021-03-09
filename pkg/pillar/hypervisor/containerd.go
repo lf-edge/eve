@@ -162,8 +162,10 @@ func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState
 		"stopped": types.HALTED,
 	}
 	if effectiveDomainState, matched := stateMap[status]; !matched {
-		return effectiveDomainID, types.BROKEN, fmt.Errorf("task %s happens to be in an unexpected state %s",
+		err := fmt.Errorf("task %s happens to be in an unexpected state %s",
 			domainName, status)
+		logrus.Error(err)
+		return effectiveDomainID, types.BROKEN, err
 	} else {
 		return effectiveDomainID, effectiveDomainState, nil
 	}

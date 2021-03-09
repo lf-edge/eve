@@ -700,7 +700,7 @@ func (client *Client) ctrExec(ctx context.Context, domainName string, args []str
 	}
 
 	st, ee := process.Status(ctx)
-	logrus.Debugf("ctrExec process exited with: %v %v %d %d %d %d", st, ee, stdOut.Cap(), stdOut.Len(), stdErr.Cap(), stdErr.Len())
+	logrus.Debugf("ctrExec process exited with: %v %v %d %d %d %d stdout: %s stderr: %s, err: %v", st, ee, stdOut.Cap(), stdOut.Len(), stdErr.Cap(), stdErr.Len(), stdOut.String(), stdErr.String(), err)
 	return stdOut.String(), stdErr.String(), err
 }
 

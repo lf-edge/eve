@@ -803,6 +803,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
 					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 				}
+				status.State = types.BROKEN
 			}
 		}
 		status.DomainId = 0
@@ -811,10 +812,14 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		if !status.Activated && domainStatus == types.RUNNING {
 			log.Warnf("verifyDomain(%s) domain came back alive; id  %d",
 				status.Key(), domainID)
-			status.ClearError()
+			if status.HasError() {
+				log.Noticef("verifyDomain(%s) clearing existing error: %s",
+					status.Key(), status.Error)
+				status.ClearError()
+			}
 			status.DomainId = domainID
 			status.BootTime = time.Now()
-			log.Functionf("Update domainId %d bootTime %s for %s",
+			log.Noticef("Update domainId %d bootTime %s for %s",
 				status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 				status.Key())
 			status.Activated = true
@@ -826,7 +831,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key(), status.DomainId, domainID)
 			status.DomainId = domainID
 			status.BootTime = time.Now()
-			log.Functionf("Update domainId %d bootTime %s for %s",
+			log.Noticef("Update domainId %d bootTime %s for %s",
 				status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 				status.Key())
 			publishDomainStatus(ctx, status)
@@ -877,10 +882,14 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 			(timeLimit-elapsed)/time.Second)
 		return
 	}
-	log.Functionf("maybeRetryBoot(%s) after %s at %v",
+	log.Noticef("maybeRetryBoot(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
-	status.ClearError()
+	if status.HasError() {
+		log.Noticef("maybeRetryBoot(%s) clearing existing error: %s",
+			status.Key(), status.Error)
+		status.ClearError()
+	}
 	status.TriedCount += 1
 
 	ctx.createSema.V(1)
@@ -921,7 +930,7 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 			status.Key())
 		return
 	}
-	log.Functionf("maybeRetryAdapters(%s) after %s at %v",
+	log.Noticef("maybeRetryAdapters(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
 	if err := configAdapters(ctx, *config); err != nil {
@@ -936,7 +945,11 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	status.AdaptersFailed = false
-	status.ClearError()
+	if status.HasError() {
+		log.Noticef("maybeRetryAdapters(%s) clearing existing error: %s",
+			status.Key(), status.Error)
+		status.ClearError()
+	}
 
 	// We now have reserved all of the IoAdapters
 	status.IoAdapterList = config.IoAdapterList
@@ -1272,10 +1285,15 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 
 	err := hyper.Task(status).Start(status.DomainName, domainID)
 	if err != nil {
-		// XXX shouldn't we destroy it?
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
-		// XXX set BootFailed to cause retry
+
+		// Cleanup
+		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+		}
+
+		// Set BootFailed to cause retry
 		status.BootFailed = true
 		status.State = types.BROKEN
 		return
@@ -1287,20 +1305,24 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.State = types.RUNNING
 	domainID, state, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
 
-	// XXX key missing piece to avoid setting Activated below
 	if err != nil {
+		// Immediate failure treat as above
 		status.BootFailed = true
 		status.State = state
 		status.Activated = false
 		status.SetErrorNow(err.Error())
-		log.Functionf("doActivateTail(%v) failed for %s: %s",
+		log.Errorf("doActivateTail(%v) failed for %s: %s",
 			status.UUIDandVersion, status.DisplayName, err)
+		// Cleanup
+		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+		}
 		return
 	}
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
-		log.Functionf("Update domainId %d bootTime %s for %s",
+		log.Noticef("Update domainId %d bootTime %s for %s",
 			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 			status.Key())
 	}
@@ -1312,15 +1334,18 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 // shutdown and wait for the domain to go away; if that fails destroy and wait
 func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) {
 
-	log.Functionf("doInactivate(%v) for %s",
-		status.UUIDandVersion, status.DisplayName)
+	log.Functionf("doInactivate(%v) for %s domainId %d",
+		status.UUIDandVersion, status.DisplayName, status.DomainId)
 	domainID, _, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
-		log.Functionf("Update domainId %d bootTime %s for %s",
+		log.Noticef("Update domainId %d bootTime %s for %s",
 			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 			status.Key())
+	} else if err != nil {
+		log.Errorf("doInactivate(%v) for %s Info error: %s",
+			status.UUIDandVersion, status.DisplayName, err)
 	}
 	maxDelay := time.Second * 600 // 10 minutes
 	if impatient {
@@ -1332,12 +1357,11 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 		switch status.VirtualizationMode {
 		case types.HVM, types.FML:
-			// Do a short shutdown wait, then a shutdown -F
-			// just in case there are PV tools in guest
+			// Do a short shutdown wait, just in case there are
+			// PV tools in guest, then a shutdown -F
+			// If the Shutdown fails we don't wait; assume failure
+			// was due to no PV tools
 			shortDelay := time.Second * 60
-			if impatient {
-				shortDelay /= 10
-			}
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s",
 					status.DomainName, err)
@@ -1345,21 +1369,27 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 				// Wait for the domain to go away
 				log.Functionf("doInactivate(%v) for %s: waiting for domain to shutdown",
 					status.UUIDandVersion, status.DisplayName)
+				gone := waitForDomainGone(*status, shortDelay)
+				if gone {
+					status.DomainId = 0
+					break
+				}
 			}
-			gone := waitForDomainGone(*status, shortDelay)
-			if gone {
-				status.DomainId = 0
-				break
-			}
+			// This often fails with "X is an invalid domain identifier (rc=-6)"
+			// due to the DomainShutdown above, in which case
+			// the domain is already on the way down.
+			// In that case we wait
 			if err := DomainShutdown(*status, true); err != nil {
-				log.Errorf("DomainShutdown -F %s failed: %s",
+				log.Warnf("DomainShutdown -F %s failed: %s",
 					status.DomainName, err)
 			} else {
-				// Wait for the domain to go away
-				log.Functionf("doInactivate(%v) for %s: waiting for domain to poweroff",
+				log.Functionf("doInactivate(%v) for %s Shutdown(force) succeeded",
 					status.UUIDandVersion, status.DisplayName)
 			}
-			gone = waitForDomainGone(*status, maxDelay)
+			// Wait for the domain to go away
+			log.Functionf("doInactivate(%v) for %s: waiting for domain to poweroff",
+				status.UUIDandVersion, status.DisplayName)
+			gone := waitForDomainGone(*status, maxDelay)
 			if gone {
 				status.DomainId = 0
 				break
@@ -1370,21 +1400,22 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 				log.Errorf("DomainShutdown %s failed: %s",
 					status.DomainName, err)
 			} else {
-				// Wait for the domain to go away
-				log.Functionf("doInactivate(%v) for %s: waiting for domain to shutdown",
+				log.Functionf("doInactivate(%v) for %s Shutdown succeeded",
 					status.UUIDandVersion, status.DisplayName)
 			}
+			// Wait for the domain to go away
 			gone := waitForDomainGone(*status, maxDelay)
 			if gone {
 				status.DomainId = 0
 				break
 			}
 			if err := DomainShutdown(*status, true); err != nil {
-				log.Errorf("DomainShutdown -F %s failed: %s",
+				// Might fail if the domain is already on the
+				// way down due to the DomainShutdown above
+				log.Warnf("DomainShutdown -F %s failed: %s",
 					status.DomainName, err)
 			} else {
-				// Wait for the domain to go away
-				log.Functionf("doInactivate(%v) for %s: waiting for domain to poweroff",
+				log.Functionf("doInactivate(%v) for %s Shutdown(force) succeeded",
 					status.UUIDandVersion, status.DisplayName)
 			}
 			gone = waitForDomainGone(*status, maxDelay)
@@ -1395,16 +1426,20 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		}
 	}
 
-	if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
-		log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
-	}
-	// Even if destroy failed we wait again
-	log.Functionf("doInactivate(%v) for %s: waiting for domain to be destroyed",
-		status.UUIDandVersion, status.DisplayName)
-
-	gone := waitForDomainGone(*status, maxDelay)
-	if gone {
-		status.DomainId = 0
+	if status.DomainId != 0 {
+		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+			log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
+		} else {
+			log.Functionf("doInactivate(%v) for %s: Delete succeeded",
+				status.UUIDandVersion, status.DisplayName)
+		}
+		// Even if Delete failed we wait
+		log.Functionf("doInactivate(%v) for %s: waiting for domain to be destroyed",
+			status.UUIDandVersion, status.DisplayName)
+		gone := waitForDomainGone(*status, maxDelay)
+		if gone {
+			status.DomainId = 0
+		}
 	}
 
 	// If everything failed we leave it marked as Activated
@@ -1412,7 +1447,10 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		errStr := fmt.Sprintf("doInactivate(%s) failed to halt/destroy %d",
 			status.Key(), status.DomainId)
 		log.Error(errStr)
-		status.SetErrorNow(errStr)
+		// Don't clobber an existing error
+		if !status.HasError() {
+			status.SetErrorNow(errStr)
+		}
 	} else {
 		status.Activated = false
 		status.State = types.HALTED
@@ -1611,14 +1649,15 @@ func addNoDuplicate(list []string, add string) []string {
 func handleModify(ctx *domainContext, key string,
 	config *types.DomainConfig, status *types.DomainStatus) {
 
-	log.Functionf("handleModify(%v) activate %t for %s",
-		config.UUIDandVersion, config.Activate, config.DisplayName)
+	log.Functionf("handleModify(%v) activate %t for %s state %s",
+		config.UUIDandVersion, config.Activate, config.DisplayName,
+		status.State.String())
 
 	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 
 	changed := false
-	if config.Activate && !status.Activated {
+	if config.Activate && !status.Activated && status.State != types.BROKEN {
 		log.Functionf("handleModify(%v) activating for %s",
 			config.UUIDandVersion, config.DisplayName)
 
@@ -1632,15 +1671,6 @@ func handleModify(ctx *domainContext, key string,
 		status.VifList = checkIfEmu(config.VifList)
 		publishDomainStatus(ctx, status)
 
-		// This has the effect of trying a boot again for any
-		// handleModify after an error.
-		if status.HasError() {
-			log.Functionf("handleModify(%v) ignoring existing error for %s",
-				config.UUIDandVersion, config.DisplayName)
-			status.ClearError()
-			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status, false)
-		}
 		// Update disks based on any change to volumes
 		if err := configToStatus(ctx, *config, status); err != nil {
 			log.Errorf("Failed to update DomainStatus from %v: %s",
@@ -1657,8 +1687,8 @@ func handleModify(ctx *domainContext, key string,
 		log.Functionf("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
 		if status.HasError() {
-			log.Functionf("handleModify(%v) clearing existing error for %s",
-				config.UUIDandVersion, config.DisplayName)
+			log.Noticef("handleModify(%s) clearing existing error: %s",
+				status.Key(), status.Error)
 			status.ClearError()
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status, false)
@@ -1746,7 +1776,6 @@ func checkIfEmu(vifList []types.VifInfo) []types.VifInfo {
 
 // Used to wait both after shutdown and destroy
 func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
-	gone := false
 	delay := time.Second
 	var waited time.Duration
 	for {
@@ -1757,25 +1786,35 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			waited += delay
 		}
 		_, state, err := hyper.Task(&status).Info(status.DomainName, status.DomainId)
-		if err != nil || state == types.HALTED {
-			log.Functionf("waitForDomainGone(%v) for %s: domain is gone",
-				status.UUIDandVersion, status.DisplayName)
-			gone = true
-			break
-		} else {
-			if waited > maxDelay {
-				// Give up
-				log.Warnf("waitForDomainGone(%v) for %s: giving up",
-					status.UUIDandVersion, status.DisplayName)
-				break
-			}
-			delay = 2 * delay
-			if delay > time.Minute {
-				delay = time.Minute
-			}
+		if err != nil {
+			log.Errorf("waitForDomainGone(%v) for %s error %s state %s",
+				status.UUIDandVersion, status.DisplayName,
+				err, state.String())
+			// If we get here it is typically because Info reported
+			// the task as broken.
+			return true
+		}
+		if state == types.HALTED || state == types.UNKNOWN {
+			log.Functionf("waitForDomainGone(%v) for %s: done state %s",
+				status.UUIDandVersion, status.DisplayName,
+				state.String())
+			return true
+		}
+		log.Functionf("waitForDomainGone(%v) for %s state still %s waited %v",
+			status.UUIDandVersion, status.DisplayName,
+			state.String(), waited)
+		if waited > maxDelay {
+			// Give up
+			log.Warnf("waitForDomainGone(%v) for %s: giving up after %v state %s",
+				status.UUIDandVersion, status.DisplayName,
+				waited, state.String())
+			return false
+		}
+		delay = 2 * delay
+		if delay > time.Minute {
+			delay = time.Minute
 		}
 	}
-	return gone
 }
 
 func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
