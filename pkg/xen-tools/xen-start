@@ -40,10 +40,15 @@ handleKnownState() {
   STATUS="$1"
 
   # an additional check we do for running domains is to make sure device model is still around
-  if [ "$1" = running ] &&
-     DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid" 2>/dev/null) &&
-     ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
-     STATUS=broken
+  # Note that when the domU is rebooted from inside the DM_PID changes and for
+  # a short time device-model-pid is empty, and for a short time we might have
+  # a DM_PID in xenstore but the qemu process is not running.
+  # Thus the caller has to handle a transient broken state
+  if [ "$1" = running ] || [ "$1" = paused ]; then
+    if DM_PID=$(xenstore read "/local/domain/$ID/image/device-model-pid" 2>/dev/null) &&
+       ! (readlink "/proc/$DM_PID/exe" | grep -q qemu-system-); then
+        STATUS=broken
+    fi
   fi
 
   echo "$STATUS"
@@ -87,15 +92,25 @@ xl create "$2" -p $EXTRA_ARGS || bail "xl created failed"
 
 # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
 ID=$(domID "$1")
-
-# finally unpause the domain
-xl unpause "$ID" || bail "xl unpause failed"
+# check it timed out
+if [ -z "$ID" ]; then
+  echo broken > "/run/tasks/$1"
+else
+  # finally unpause the domain
+  xl unpause "$ID" || bail "xl unpause failed"
+fi
 
 # now start polling for domain status in the background
 # (note: our use of mv to make sure file reads on the other side are atomic)
 # (note: there will be a 5sec wait before the next xen_info() call in case if we get a nondeterministic domain state)
+# We wait and retry if we see a broken state to handle transients due to reboot
+# from inside the domU
 (while true; do
    xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
+   if grep -q broken "/run/tasks/$1.tmp"; then
+     sleep 10
+     xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
+   fi
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
 done) &
 

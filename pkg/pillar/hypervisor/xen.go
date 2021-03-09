@@ -422,7 +422,7 @@ func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 		logrus.Errorln("xl shutdown output ", stdOut, stdErr)
 		return fmt.Errorf("xl shutdown failed: %s %s", stdOut, stdErr)
 	}
-	logrus.Infof("xl shutdown done\n")
+	logrus.Infof("xl shutdown done: stdout: %s, stderr: %s", stdOut, stdErr)
 	return nil
 }
 
@@ -445,7 +445,8 @@ func (ctx xenContext) Delete(domainName string, domainID int) (result error) {
 		return fmt.Errorf("xl destroy failed: %s %s", stdOut, stdErr)
 	}
 
-	logrus.Infof("xl destroy done %s %d\n", domainName, domainID)
+	logrus.Infof("xl destroy done %s %d, stdout: %s, stderr: %s",
+		domainName, domainID, stdOut, stdErr)
 	return nil
 }
 
@@ -453,18 +454,25 @@ func (ctx xenContext) Info(domainName string, domainID int) (int, types.SwState,
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName, domainID)
 	if err != nil || effectiveDomainState != types.RUNNING {
+		status, err := ioutil.ReadFile("/run/tasks/" + domainName)
+		if err != nil {
+			status = []byte("file not read")
+		}
+		logrus.Infof("xen.Info(%s, %d) from containerd state %s, err: %v, status: %s",
+			domainName, effectiveDomainID, effectiveDomainState.String(),
+			err, string(status))
 		return effectiveDomainID, effectiveDomainState, err
 	}
 
 	// if task is alive, we augment task status with finer grained details from xl info
-	logrus.Debugf("xlStatus %s %d\n", domainName, domainID)
-
 	status, err := ioutil.ReadFile("/run/tasks/" + domainName)
 	if err != nil {
 		logrus.Errorf("couldn't read task status file: %v", err)
 		status = []byte("running") // assigning default state as we weren't able to read status file
 	}
-	logrus.Debugf("task %s has status %v\n", domainName, status)
+	logrus.Debugf("xen.Info(%s %d) have %d state %s status %s",
+		domainName, domainID, effectiveDomainID,
+		effectiveDomainState.String(), string(status))
 
 	stateMap := map[string]types.SwState{
 		"running": types.RUNNING,
@@ -496,7 +504,8 @@ func (ctx xenContext) PCIReserve(long string) error {
 		logrus.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	logrus.Infof("xl pci-assignable-add done\n")
+	logrus.Infof("xl pci-assignable-add done: stdout: %s, stderr: %s",
+		stdOut, stdErr)
 	return nil
 }
 
@@ -511,7 +520,8 @@ func (ctx xenContext) PCIRelease(long string) error {
 		logrus.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	logrus.Infof("xl pci-assignable-rem done\n")
+	logrus.Infof("xl pci-assignable-rem done: stdout: %s, stderr: %s",
+		stdOut, stdErr)
 	return nil
 }
 
