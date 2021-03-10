@@ -410,6 +410,28 @@ make proto
 
 Packages are built within a docker container as defined by the `Dockerfile` within the package directory. The `Dockerfile` also specifies how the package will be built within the container. Some packages have a separate script to built them which is then invoked using the `RUN` clause within the `Dockerfile`. For some others like the `kernel` package, the entire build script is specified within the `Dockerfile`. Finally, the built docker images are published [here](https://hub.docker.com/u/lfedge).
 
+Packages are meant to be the building blocks for [reproducible builds](https://reproducible-builds.org/). Currently, however, the builds are not strictly speaking reproducible, but rather guaranteed. EVE build system is not bootstrapping everything from the source up, instead it uses [Alpine Linux](https://pkgs.alpinelinux.org/packages) as the source of binary artifacts. All of the Alpine binary packages that are consumed by EVE are collected in the Docker image archive and published under `lfedge/eve-alpine` name. That way, EVE build system *pins* all Alpine packages that it needs and can guarantee that they won't change until the archive is updated. All of the packages in the archive are listed under [mirrors](../pkg/alpine/mirrors) folder and the archive can be updated by updating that list. While currently re-building of the archive image is done by fetching required packages from the official Alpine mirrors, we can always add an additional step of bootstrapping all the same packages from source (which will give EVE true reproducible builds).
+
+Reliance on `lfedge/eve-alpine` archive enforces a particular structure on individual Dockerfile from EVE packages. For one, they always start with `FROM lfedge/eve-alpine:TAG` and they always produce the final output in the `FROM scratch` step (to avoid layer dependency on the large `lfedge/eve-alpine` package). In addition, `lfedge/eve-alpine` archive package defines a helper script `eve-alpine-deploy.sh` that provides and easy entry point for setting up of the build environment and the final, Alpine-based output of the build. This helper script is driven by looking up the following environment variable (which are very similar to [Requires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#_dependency_types) and [BuildRequires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#buildrequires) in RPMs):
+
+* PKGS, PKGS_amd64, PKGS_arm64: used to list packages required for the final binary output of the build
+* BUILD_PKGS, BUILD_PKGS_amd64, BUILD_PKGS_arm64: used to list packages required to be present for the build itself, but not in the final output
+
+The only tiny annoyance is that one should not forget an explicit `RUN eve-alpine-deploy.sh` stanza in the Dockerfile after these ENV variables are defined. Calling `eve-alpine-deploy.sh` in the RUN stanza has an effect of all the BUILD time packages getting installed in the build context and all the runtime packages getting installed in the special folder `/out` (if there are additional binary artifacts produced by the build -- they too need to be added to the `/out` folder).
+
+A typical EVE Dockerfile drving the build will start from something like:
+
+```shell
+FROM lfedge/eve-alpine:XXX as build
+ENV PKGS foo bar
+ENV PKGS_arm64 baz-for-arm
+ENV BUILD_PKGS gcc go
+RUN eve-alpine-deploy.sh
+...
+FROM scratch
+COPY --from=build /out/ /
+```
+
 One can build each package independently via:
 
 ```shell
