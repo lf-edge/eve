@@ -1,0 +1,24 @@
+From 9b9f5cf01e6d52c7ec6898c2c674e11e5b281bd6 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Fri, 18 Oct 2019 22:49:08 +0000
+Subject: Define __force_order only when CONFIG_RANDOMIZE_BASE is unset
+
+Signed-off-by: Roman Shaposhnik <rvs@zededa.com>
+---
+ arch/x86/boot/compressed/pgtable_64.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/x86/boot/compressed/pgtable_64.c b/arch/x86/boot/compressed/pgtable_64.c
+index 3e9b2d9..6a7da1f 100644
+--- a/arch/x86/boot/compressed/pgtable_64.c
++++ b/arch/x86/boot/compressed/pgtable_64.c
+@@ -12,7 +12,9 @@
+  * It is not referenced from the code, but GCC < 5 with -fPIE would fail
+  * due to an undefined symbol. Define it to make these ancient GCCs work.
+  */
++#ifndef CONFIG_RANDOMIZE_BASE
+ unsigned long __force_order;
++#endif
+ 
+ #define BIOS_START_MIN		0x20000U	/* 128K, less than this is insane */
+ #define BIOS_START_MAX		0x9f000U	/* 640K, absolute maximum */

@@ -1,0 +1,24 @@
+From 51bd91a7cb355db7d8bcdabeb1948e23e0647c88 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Thu, 17 Oct 2019 05:34:30 +0800
+Subject: fix PHDR segment not covered by LOAD segment
+
+Signed-off-by: Roman Shaposhnik <rvs@zededa.com>
+---
+ hypervisor/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hypervisor/Makefile b/hypervisor/Makefile
+index 44c8da4..140e662 100644
+--- a/hypervisor/Makefile
++++ b/hypervisor/Makefile
+@@ -466,8 +466,8 @@
+ 
+ $(HV_OBJDIR)/$(HV_FILE).out: $(MODULES)
+ 	${BASH} ${LD_IN_TOOL} $(ARCH_LDSCRIPT_IN) $(ARCH_LDSCRIPT) ${HV_OBJDIR}/.config
+-	$(CC) -Wl,-Map=$(HV_OBJDIR)/$(HV_FILE).map -o $@ $(LDFLAGS) $(ARCH_LDFLAGS) -T$(ARCH_LDSCRIPT) \
++	$(CC) -Wl,--no-dynamic-linker -Wl,-Map=$(HV_OBJDIR)/$(HV_FILE).map -o $@ $(LDFLAGS) $(ARCH_LDFLAGS) -T$(ARCH_LDSCRIPT) \
+ 		-Wl,--start-group $^ -Wl,--end-group
+ 
+ .PHONY: clean
+ clean:
