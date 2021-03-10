@@ -131,6 +131,7 @@ VTPM_TAG=$(linuxkit_tag pkg/vtpm)
 UEFI_TAG=$(linuxkit_tag pkg/uefi)
 KVMTOOLS_TAG=$(linuxkit_tag pkg/kvm-tools)
 IPXE_TAG=$(linuxkit_tag pkg/ipxe)
+GIT_KERNEL_TAG=$(linuxkit_tag pkg/git-kernel)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
