@@ -1,22 +1,11 @@
-FROM linuxkit/alpine:77287352db68b442534c0005edd6ff750c8189f3 AS make-img
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS build
 
-RUN \
-  apk update && apk upgrade && \
-  apk add --no-cache \
-  dosfstools \
-  libarchive-tools \
-  binutils \
-  mtools \
-  sfdisk \
-  sgdisk \
-  xfsprogs \
-  e2fsprogs \
-  util-linux \
-  coreutils \
-  multipath-tools \
-  squashfs-tools \
-  && true
+ENV PKGS dosfstools libarchive-tools binutils mtools sfdisk sgdisk xfsprogs \
+         e2fsprogs util-linux coreutils multipath-tools squashfs-tools
+RUN eve-alpine-deploy.sh
 
-COPY . .
+COPY . /out/
 
+FROM scratch
+COPY --from=build /out/ /
 ENTRYPOINT [ "/make-rootfs" ]

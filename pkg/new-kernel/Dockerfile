@@ -1,39 +1,13 @@
 # This file must be kept as much in sync with pkg/kernel/Dockerfile as posisble
-FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 AS kernel-build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS kernel-build
 
-RUN apk add \
-    argp-standalone \
-    automake \
-    bash \
-    bc \
-    binutils-dev \
-    bison \
-    build-base \
-    curl \
-    diffutils \
-    flex \
-    git \
-    gmp-dev \
-    gnupg \
-    installkernel \
-    kmod \
-    elfutils-dev \
-    linux-headers \
-    libunwind-dev \
-    mpc1-dev \
-    mpfr-dev \
-    ncurses-dev \
-    findutils \
-    openssl-dev \
-    patch \
-    rsync \
-    sed \
-    squashfs-tools \
-    tar \
-    xz \
-    xz-dev \
-    zlib-dev \
-    openssl
+ENV BUILD_PKGS \
+    argp-standalone automake bash bc binutils-dev bison build-base curl \
+    diffutils flex git gmp-dev gnupg installkernel kmod elfutils-dev    \
+    linux-headers libunwind-dev mpc1-dev mpfr-dev ncurses-dev findutils \
+    openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev openssl \
+    attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
+RUN eve-alpine-deploy.sh
 
 ARG KERNEL_VERSION_aarch64=5.10.7
 ARG KERNEL_VERSION_x86_64=5.10.7
@@ -65,7 +39,7 @@ RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR
     curl -fsSLO ${KERNEL_PGP2_SIGN} && \
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
-    mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
+    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
 # Apply local patches
 WORKDIR /linux
@@ -112,14 +86,6 @@ RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, open source modules
 #  * ZFS on Linux
-RUN apk add --no-cache \
-    attr-dev=2.4.47-r7 \
-    autoconf=2.69-r2 \
-    file=5.36-r0 \
-    coreutils=8.30-r0 \
-    libtirpc-dev=1.0.3-r0 \
-    libtool=2.4.6-r5 \
-    util-linux-dev=2.33-r0
 ENV ZFS_VERSION=2.0.0
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git

@@ -1,10 +1,8 @@
-FROM linuxkit/alpine:90571a1a9059f3bf33ca3431bc5396aa837a47d3 as build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS build
 
-RUN mkdir -p /out/etc/apk /out/boot && cp -r /etc/apk/* /out/etc/apk/
-RUN apk add --no-cache --initdb -p /out \
-  busybox=1.27.2-r8    \
-  mtools=4.0.18-r2     \
-  dosfstools=4.1-r1
+ENV PKGS mtools dosfstools
+RUN eve-alpine-deploy.sh
+
 COPY make-config /out/
 RUN mkdir -p /out/conf/raw
 
