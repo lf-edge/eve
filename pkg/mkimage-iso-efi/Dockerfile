@@ -1,17 +1,12 @@
-FROM linuxkit/alpine:ad35b6ddbc70faa07e59a9d7dee7707c08122e8d AS make-img
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS build
 
-RUN mkdir -p /out/etc/apk /out/boot && cp -r /etc/apk/* /out/etc/apk/
-RUN apk add --no-cache --initdb -p /out \
-  dosfstools \
-  libarchive-tools \
-  binutils \
-  busybox \
-  mtools \
-  xorriso
+ENV PKGS dosfstools libarchive-tools binutils mtools xorriso
+RUN eve-alpine-deploy.sh
+
 RUN echo "mtools_skip_check=1" >> /out/etc/mtools.conf
 
 FROM scratch
-COPY --from=make-img /out /
+COPY --from=build /out /
 COPY . /
 WORKDIR /
 ENTRYPOINT [ "/make-efi" ]
