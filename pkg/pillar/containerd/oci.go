@@ -275,7 +275,7 @@ func (s *ociSpec) UpdateVifList(vifs []types.VifInfo) {
 		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
 			Env:     vifSpec,
 			Path:    eveScript,
-			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
+			Args:    append(vethScript, "up", s.name, v.Vif, v.Bridge, v.Mac),
 			Timeout: &timeout,
 		})
 		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
