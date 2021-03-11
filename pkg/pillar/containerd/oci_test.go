@@ -411,7 +411,7 @@ func TestOciSpec(t *testing.T) {
 	assert.Equal(t, []string{"VIF_NAME=vif1", "VIF_BRIDGE=br0", "VIF_MAC=52:54:00:12:34:57"}, s.Hooks.Prestart[1].Env)
 	assert.Equal(t, []string{"VIF_NAME=vif0", "VIF_BRIDGE=br0", "VIF_MAC=52:54:00:12:34:56"}, s.Hooks.Poststop[0].Env)
 	assert.Equal(t, "/bin/eve", s.Hooks.Poststop[1].Path)
-	assert.Equal(t, []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh", "up", "vif0", "br0", "52:54:00:12:34:56"}, s.Hooks.Prestart[0].Args)
+	assert.Equal(t, []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh", "up", "test", "vif0", "br0", "52:54:00:12:34:56"}, s.Hooks.Prestart[0].Args)
 	assert.Equal(t, []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh", "down", "vif1"}, s.Hooks.Poststop[1].Args)
 	assert.Equal(t, 60, *s.Hooks.Poststop[1].Timeout)
 }

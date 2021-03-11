@@ -9,9 +9,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	vifsDir string = "/run/tasks/vifs"
 )
 
 type ctrdContext struct {
@@ -74,9 +79,22 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 	if err != nil {
 		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
 	}
+
+	vifsTaskResolv := filepath.Join(vifsDir, status.DomainName, "etc", "resolv.conf")
+	err = os.MkdirAll(filepath.Dir(vifsTaskResolv), 0755)
+	if err != nil {
+		return logError("Failed to create directory for vifs task %s with err: %s",
+			filepath.Dir(vifsTaskResolv), err)
+	}
+	f, err := os.OpenFile(vifsTaskResolv, os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
+	if err != nil {
+		return logError("Failed creating empty resolv.conf file %s with err: %s", vifsTaskResolv, err)
+	}
+	defer f.Close()
+
 	spec.Get().Mounts = append(spec.Get().Mounts, specs.Mount{
 		Type:        "bind",
-		Source:      "/etc/resolv.conf",
+		Source:      vifsTaskResolv,
 		Destination: "/etc/resolv.conf",
 		Options:     []string{"rbind", "ro"}})
 
@@ -128,7 +146,14 @@ func (ctx ctrdContext) Stop(domainName string, domainID int, force bool) error {
 func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
-	return ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName)
+	if err := ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName); err != nil {
+		return err
+	}
+	vifsTaskDir := filepath.Join(vifsDir, domainName)
+	if err := os.RemoveAll(vifsTaskDir); err != nil {
+		return logError("cannot clear vifs task dir %s: %v", vifsTaskDir, err)
+	}
+	return nil
 }
 
 func (ctx ctrdContext) Annotations(domainName string, domainID int) (map[string]string, error) {
