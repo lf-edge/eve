@@ -12,10 +12,12 @@ import (
 )
 
 // MaybeAddDomainConfig makes sure we have a DomainConfig
+// Note that it does not publish it since caller often tweaks it; caller must
+// call publishDomainConfig() when done with tweaks.
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig,
 	aiStatus types.AppInstanceStatus,
-	ns *types.AppNetworkStatus) error {
+	ns *types.AppNetworkStatus) (*types.DomainConfig, error) {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
@@ -58,7 +60,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		if location == "" {
 			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
-			return errors.New(errStr)
+			return nil, errors.New(errStr)
 		}
 		disk := types.DiskConfig{}
 		disk.FileLocation = location
@@ -112,10 +114,8 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			dc.VifList[i] = ul.VifInfo
 		}
 	}
-	publishDomainConfig(ctx, &dc)
-
 	log.Functionf("MaybeAddDomainConfig done for %s", key)
-	return nil
+	return &dc, nil
 }
 
 func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig {
