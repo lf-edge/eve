@@ -583,24 +583,30 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	splitXentopInfo := strings.Split(xentopInfo, "\n")
 	splitXentopInfoLength := len(splitXentopInfo)
 
-	// Start at last instance of "Domain-0" in the first column
+	// Start after last instance of "NAME" in the first column
 	start := -1
 	for i := 0; i < splitXentopInfoLength; i++ {
 		fields := strings.Fields(strings.TrimSpace(splitXentopInfo[i]))
 		if len(fields) == 0 {
 			// Empty line probably end
-		} else if strings.EqualFold(fields[0], dom0Name) {
-			start = i
+		} else if fields[0] == "NAME" {
+			start = i + 1
 			logrus.Tracef("start set to %d", start)
 		}
 	}
 	if start == -1 {
-		logrus.Errorf("No Domain-0 in: %+v", splitXentopInfo)
+		logrus.Errorf("No NAME in: %+v", splitXentopInfo)
 		logrus.Errorf("Calling fallbackDomainMetric")
 		return fallbackDomainMetric(), nil
 	}
 
 	length := splitXentopInfoLength - 1 - start
+	if length <= 0 {
+		logrus.Errorf("No domains in: %+v", splitXentopInfo)
+		logrus.Errorf("Calling fallbackDomainMetric")
+		return fallbackDomainMetric(), nil
+	}
+
 	finalOutput := make([][]string, length)
 
 	for j := start; j < splitXentopInfoLength-1; j++ {
