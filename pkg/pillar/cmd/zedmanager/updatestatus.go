@@ -135,7 +135,10 @@ func doUpdate(ctx *zedmanagerContext,
 			changed = changed || c
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
-			err := MaybeAddDomainConfig(ctx, config, *status, nil)
+			dc, err := MaybeAddDomainConfig(ctx, config, *status, nil)
+			if dc != nil {
+				publishDomainConfig(ctx, dc)
+			}
 			if err != nil {
 				log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 					uuidStr, err)
@@ -426,7 +429,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	log.Tracef("Done with AppNetworkStatus for %s", uuidStr)
 
 	// Make sure we have a DomainConfig
-	err := MaybeAddDomainConfig(ctx, config, *status, ns)
+	// We modify it below and then publish it
+	dc, err := MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 			uuidStr, err)
@@ -435,6 +439,9 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 		log.Functionf("Waiting for DomainStatus Activated for %s",
 			uuidStr)
+		if dc != nil {
+			publishDomainConfig(ctx, dc)
+		}
 		return changed
 	}
 
@@ -442,6 +449,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds == nil {
 		log.Functionf("Waiting for DomainStatus for %s", uuidStr)
+		publishDomainConfig(ctx, dc)
 		return changed
 	}
 	if status.DomainName != ds.DomainName {
@@ -460,27 +468,22 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringDown {
-		dc := lookupDomainConfig(ctx, config.Key())
-		if dc == nil {
-			log.Errorf("RestartInprogress(%s) No DomainConfig",
-				status.Key())
-		} else if dc.Activate {
+		if dc.Activate {
 			log.Functionf("RestartInprogress(%s) Clear Activate",
 				status.Key())
 			dc.Activate = false
-			publishDomainConfig(ctx, dc)
 		} else if !ds.Activated {
 			log.Functionf("RestartInprogress(%s) Set Activate",
 				status.Key())
 			status.RestartInprogress = types.BringUp
 			changed = true
 			dc.Activate = true
-			publishDomainConfig(ctx, dc)
 		} else {
 			log.Functionf("RestartInprogress(%s) waiting for domain down",
 				status.Key())
 		}
 	}
+	publishDomainConfig(ctx, dc)
 	// Look for xen errors. Ignore if we are going down
 	if status.RestartInprogress != types.BringDown {
 		if ds.HasError() {
@@ -831,7 +834,10 @@ func doInactivateHalt(ctx *zedmanagerContext,
 
 	// Make sure we have a DomainConfig. Clears dc.Activate based
 	// on the AppInstanceConfig's Activate
-	err := MaybeAddDomainConfig(ctx, config, *status, ns)
+	dc, err := MaybeAddDomainConfig(ctx, config, *status, ns)
+	if dc != nil {
+		publishDomainConfig(ctx, dc)
+	}
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 			uuidStr, err)
