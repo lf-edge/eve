@@ -1,4 +1,7 @@
-FROM linuxkit/alpine:3fdc49366257e53276c6f363956a4353f95d9a81 as build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS binutils-dev build-base bc curl bison flex openssl-dev python3 swig
+ENV BUILD_PKGS_amd64 python3-dev
+RUN eve-alpine-deploy.sh
 
 ENV VERSION v2020.07
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
@@ -7,26 +10,11 @@ ENV RAPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RAPBER
 ENV TARGET_x86_64 qemu-x86_defconfig
 ENV TARGET_aarch64 rpi_4_defconfig
 
-RUN apk add --no-cache     \
-    binutils-dev=2.31.1-r2 \
-    build-base=0.5-r1      \
-    bc=1.07.1-r0           \
-    curl=7.64.0-r2         \
-    bison=3.0.5-r0         \
-    flex=2.6.4-r1          \
-    openssl-dev=1.1.1b-r1  \
-    python3                \
-    swig
-
 RUN curl -fsSL ${SOURCE_URL} | tar -C / -xzf - && mv /u-boot* /u-boot
 
 WORKDIR /u-boot
 # FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
-RUN if [ "$(uname -m)" = x86_64 ]; then                                              \
-       cp /etc/apk/repositories.upstream /etc/apk/repositories                     &&\
-       apk add --no-cache python3-dev=3.6.9-r3                                     &&\
-       sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h  ;\
-    fi
+RUN [ "$(uname -m)" != x86_64 ] || sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h
 COPY patches /tmp/patches
 RUN if [ "$(uname -m)" = aarch64 ]; then\
        for p in /tmp/patches/patches-"${VERSION}"/*.patch ; do patch -p1 < "$p" || exit 1 ; done;\

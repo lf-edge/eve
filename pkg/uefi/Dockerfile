@@ -9,15 +9,9 @@
 #   git clone https://git.linaro.org/uefi/uefi-tools.git
 #   ./uefi-tools/edk2-build.sh -b DEBUG -b RELEASE all
 #
-# It is possible to do a docker-based aarch64 build on x86.
-# If you want to do that -- make sure to pass the following
-# argument to the docker build:
-#   --build-arg BUILD_CONTAINER=alpine@sha256:286be1c7f84de7cbae6cf8aa4e13b3ce2f2512353b3e734336e47e92de4a881e
-ARG BUILD_CONTAINER=alpine:3.7
-FROM ${BUILD_CONTAINER} as build
-
-# hadolint ignore=DL3018
-RUN apk add --no-cache curl make gcc g++ python libuuid iasl nasm util-linux-dev bash git util-linux
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS curl make gcc g++ python3 libuuid iasl nasm util-linux-dev bash git util-linux patch
+RUN eve-alpine-deploy.sh
 
 RUN git clone --depth 1 -b edk2-stable202005 https://github.com/tianocore/edk2.git /ws
 WORKDIR /ws
@@ -25,11 +19,12 @@ RUN git submodule update --init
 COPY build.sh /ws/
 COPY patch /ws/patch
 RUN bash -c 'patch -p0 < patch/*'
+RUN ln -s python3 /usr/bin/python
 RUN make -C BaseTools
 RUN ./build.sh
 
 # now create an out dir for all the artifacts
-RUN mkdir /out && cp /ws/OVMF*.fd /out
+RUN rm -rf /out && mkdir /out && cp /ws/OVMF*.fd /out
 
 # FIXME: we should be building Raspbery Pi 4 UEFI implementations
 COPY rpi /tmp/rpi
