@@ -1,26 +1,14 @@
 ARG GOVER=1.14.4
-FROM lfedge/eve-alpine:e308c3ab4360639365e6084a75727ce5bf488adb as cache
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS make gcc git musl-dev linux-headers curl bash pkgconf libseccomp-dev go patch
+RUN eve-alpine-deploy.sh
 
-ARG GOVER=1.14.4
-FROM golang:${GOVER}-alpine as build
 ARG K3SVER=v1.18.4+k3s1
 
-COPY --from=cache /mirror/3.12 /mirror/3.12
-COPY --from=cache /mirror/3.12/rootfs/etc/apk/ /etc/apk/
-
-RUN apk add --no-cache --initdb \
-        make=4.3-r0 \
-        gcc=9.3.0-r2 \
-        musl-dev=1.1.24-r10 \
-        git=2.26.2-r0 \
-        linux-headers=5.4.5-r1 \
-        curl=7.69.1-r1 \
-        bash=5.0.17-r0 \
-        pkgconf=1.7.2-r0 \
-        libseccomp-dev=2.4.3-r0
-
 WORKDIR /k3s
+COPY 0001-go-mod.patch /tmp/
 RUN git clone -b ${K3SVER} --depth 1 https://github.com/rancher/k3s.git .
+RUN patch -p1 < /tmp/0001-go-mod.patch
 RUN scripts/download
 RUN scripts/build
 RUN scripts/package-cli
