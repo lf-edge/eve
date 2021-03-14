@@ -1,12 +1,13 @@
-FROM alpine:3.8 as build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS cairo-dev jpeg-dev libpng-dev gcc make libc-dev openssl-dev libvncserver-dev file
+ENV PKGS cairo jpeg libpng openssl libvncserver
+RUN eve-alpine-deploy.sh
 
 ENV GUACD_VERSION=1.0.0
 
 ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/1.0.0/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz 
 ADD 0001-alpine-stacksize-fix.patch /
 ADD uuid-1.6.2.tar.gz /
-
-RUN apk add cairo-dev jpeg-dev libpng-dev gcc make libc-dev openssl-dev libvncserver-dev file
 
 RUN cd /uuid-1.6.2 ; ./configure --prefix=/usr/ && make && make install
 
@@ -16,9 +17,9 @@ RUN tar xzvf ${GUACD_VERSION}.tar.gz ;\
     ./configure --prefix=/usr/ --with-vnc --disable-guacenc --disable-dependency-tracking && \
      make && make install
 
-FROM alpine:3.8
+FROM scratch
 
-RUN apk add cairo jpeg libpng openssl libvncserver
+COPY --from=build /out/ /
 COPY --from=build /usr/sbin/guacd /usr/sbin/guacd
 COPY --from=build /usr/lib/libguac.so.* /usr/lib/libuuid.so.* /usr/lib/libguac-client-vnc* /usr/lib/
 

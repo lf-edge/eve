@@ -3,7 +3,9 @@
 #
 
 # derived from Alpine 3.8
-FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar build-base ca-certificates iptables iproute2 openssl openssl-dev
+RUN eve-alpine-deploy.sh
 
 ENV STRONGSWAN_RELEASE https://download.strongswan.org/strongswan.tar.bz2
 ENV CONFIGURE_OPTS_x86_64 --enable-aesni
@@ -41,24 +43,9 @@ ENV CONFIGURE_OPTS --prefix=/usr \
             --enable-sha2 \
             --disable-static
 
-RUN apk add --no-cache \
-    gcc \
-    make \
-    patch \
-    libc-dev \
-    linux-headers \
-    tar
-
 WORKDIR /tmp/strongswan
 RUN mkdir -p /tmp/strongswan
 RUN mkdir -p /out
-
-RUN apk --update add build-base \
-            ca-certificates \
-            iptables \
-            iproute2 \
-	    openssl \
-            openssl-dev
 
 # FIXME: two reasons to build it instead of using the
 # stock one:
