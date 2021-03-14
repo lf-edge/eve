@@ -4,49 +4,26 @@
 #   /EFI/BOOT/grub.cfg - Chainloads main bootloader
 #   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
 #
-ARG BUILDER=lfedge/eve-alpine:ac1dc159510afa61334222cedf085c7730e4583c
-FROM ${BUILDER} as initrd
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+ENV BUILD_PKGS mkinitfs gcc musl-dev linux-headers kmod-dev util-linux-dev cryptsetup-dev
+ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar
+RUN eve-alpine-deploy.sh
 
 COPY nlplug-findfs.c initramfs-init /tmp/
-RUN apk add --no-cache         \
-      mkinitfs=3.4.1-r1        \
-      gcc=8.3.0-r0             \
-      musl-dev=1.1.20-r5       \
-      linux-headers=4.18.13-r1 \
-      kmod-dev=24-r1           \
-      util-linux-dev=2.33-r0   \
-      cryptsetup1-dev=1.7.5-r4
 RUN cc -Wall -Werror -g -D_GNU_SOURCE -DDEBUG -I/usr/include/blkid -I/usr/include/uuid /tmp/nlplug-findfs.c -lblkid  -lkmod  -L/lib -lcryptsetup -o /sbin/nlplug-findfs
 RUN mkinitfs -n -i /tmp/initramfs-init -o /initrd.gz
 
-FROM ${BUILDER} as build
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-
 WORKDIR /out
-
-RUN mkdir -p /out/etc/apk /out/boot && cp -r /etc/apk/* /out/etc/apk/
-RUN apk add --no-cache --initdb -p /out \
-  busybox=1.29.3-r10        \
-  mtools=4.0.23-r0          \
-  dosfstools=4.1-r1         \
-  libarchive-tools=3.3.3-r1 \
-  sgdisk=1.0.4-r0           \
-  e2fsprogs=~1.44.5         \
-  util-linux=2.33-r0        \
-  squashfs-tools=4.3-r5     \
-  coreutils=8.30-r0         \
-  tar=1.32-r0
-
-COPY make-raw install grub.cfg.in UsbInvocationScript.txt /out/
-
+RUN mkdir -p boot
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
+COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
 
 FROM scratch
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 COPY --from=build /out/ /
-COPY --from=initrd /initrd.gz /
+COPY --from=build /initrd.gz /
 COPY grub.stage1 /usr/lib/grub/i386-pc/boot.img
 RUN gzip -d < /initrd.gz | cpio -id && \
     rm -f /etc/mtab /dev/null && \
