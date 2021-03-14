@@ -1,23 +1,12 @@
 # derived from Alpine 3.8
-FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS gcc make file patch libc-dev util-linux-dev linux-headers openssl-dev g++ tar
+RUN eve-alpine-deploy.sh
 
 ENV POPT_VERSION 1.16
 ENV GPTFDISK_VERSION 1.0.3
 ENV VBOOT_REPO https://chromium.googlesource.com/chromiumos/platform/vboot_reference
 ENV VBOOT_COMMIT e0b3841863281a3fc3b188bfbab55d401fabdc73
-
-RUN apk add --no-cache \
-    gcc \
-    make \
-    patch \
-    libc-dev \
-    util-linux-dev \
-    linux-headers \
-    openssl-dev \
-    g++ \
-    tar
-
-RUN mkdir /out
 
 #
 # Step 1: Install SGDISK
@@ -62,7 +51,7 @@ COPY vboot_reference-${VBOOT_COMMIT}.tar.gz /
 RUN tar xvzf vboot_reference-${VBOOT_COMMIT}.tar.gz
 
 WORKDIR /vboot_reference
-RUN make cgpt LDFLAGS=-static
+RUN make cgpt LDFLAGS=-static CFLAGS=-Wno-error=address-of-packed-member
 RUN cp build/cgpt/cgpt /out/cgpt
 
 FROM scratch

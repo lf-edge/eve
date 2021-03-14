@@ -1,13 +1,9 @@
 # Build watchdogd for alpine
 
 # derived from Alpine 3.8
-FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 AS watchdog-build
-RUN apk add \
-    build-base \
-    file \
-    libtirpc-dev \
-    linux-headers \
-    tar
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS watchdog-build
+ENV BUILD_PKGS build-base file libtirpc-dev linux-headers tar
+RUN eve-alpine-deploy.sh
 
 # Version 5.15
 ENV WATCHDOGD_VERSION 5.15
@@ -39,11 +35,9 @@ ENV CONFIGURE_OPTS "--disable-nfs"
 RUN \
     CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make && make install DESTDIR=/out
 
-FROM alpine:3.8
+FROM scratch
 WORKDIR /
-COPY --from=watchdog-build /out/etc /etc
-COPY --from=watchdog-build /out/usr/sbin /usr/sbin
-COPY --from=watchdog-build /out/usr/share /usr/share
+COPY --from=watchdog-build /out/ /
 COPY init.sh /
 COPY watchdog.conf.seed /etc/
 COPY watchdog-report.sh /sbin/

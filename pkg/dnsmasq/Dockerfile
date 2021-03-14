@@ -1,15 +1,8 @@
-# derived from Alpine 3.8
-FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar
+RUN eve-alpine-deploy.sh
 
 ENV DNSMASQ_VERSION 2.84
-
-RUN apk add --no-cache \
-    gcc \
-    make \
-    patch \
-    libc-dev \
-    linux-headers \
-    tar
 
 RUN mkdir -p /dnsmasq/patches
 

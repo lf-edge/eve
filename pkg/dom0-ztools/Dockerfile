@@ -1,7 +1,6 @@
-FROM alpine:3.12 as zfs
-RUN mkdir -p /out/etc/apk /out/boot && cp -r /etc/apk/* /out/etc/apk/
-RUN apk add --no-cache --initdb -p /out \
-    zfs=0.8.4-r0
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as zfs
+ENV PKGS zfs
+RUN eve-alpine-deploy.sh
 
 FROM scratch
 COPY --from=zfs /out/ /

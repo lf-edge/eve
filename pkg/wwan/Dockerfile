@@ -1,21 +1,9 @@
-FROM alpine:3.12 as build
-
-RUN apk add --no-cache \
-    automake \
-    autoconf \
-    gettext \
-    gettext-dev \
-    git \
-    pkgconfig \
-    libtool \
-    libc-dev \
-    linux-headers \
-    gcc \
-    make \
-    glib-dev \
-    autoconf-archive \
-    patch \
-    cmake
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
+ENV BUILD_PKGS automake autoconf gettext gettext-dev git pkgconfig \
+               libtool libc-dev linux-headers gcc make glib-dev \
+               autoconf-archive patch cmake
+ENV PKGS ppp jq glib
+RUN eve-alpine-deploy.sh
 
 WORKDIR /
 RUN git clone https://git.openwrt.org/project/uqmi.git
@@ -45,12 +33,11 @@ RUN git checkout 1.26.2 && ./autogen.sh --without-udev && ./configure --prefix=/
 RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.*
 
 # second stage (new-ish Docker feature) for smaller image
-FROM alpine:3.12
-
-RUN apk add --no-cache ppp jq glib
+FROM scratch
 
 ENTRYPOINT []
 WORKDIR /
+COPY --from=build /out/ /
 COPY --from=build /uqmi/uqmi /usr/bin/qmicli /usr/bin/mbimcli /bin/
 COPY --from=build /usr/lib/libmbim*.so.[0-9] /usr/lib/libqmi*.so.[0-9] /usr/lib/
 COPY --from=build /usr/libexec/*proxy /usr/libexec/
