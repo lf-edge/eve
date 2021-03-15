@@ -12,6 +12,14 @@ jobs:
     runs-on: ubuntu-20.04
     if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' }}
     steps:
+      - name: Check
+        run: |
+          for addr in $(ip addr list|sed -En -e 's/.*inet ([0-9.]+).*/\1/p')
+          do
+              if echo "$addr" | grep -q -E "10.11.(12|13).[0-9]+"; then
+                echo "$addr overlaps with test"; exit 1
+              fi
+          done
       - name: setup
         run: |
           sudo apt update
@@ -40,6 +48,7 @@ jobs:
           else
              make -C eve V=1 pkgs
              make -C eve V=1 ROOTFS_VERSION="$TAG" HV=kvm eve
+             docker rmi -f $(docker images --filter=reference="lfedge/eve-*" -q)||echo "skip conflicts"
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
       - name: run
