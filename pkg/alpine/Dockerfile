@@ -1,11 +1,11 @@
 ARG ALPINE_VERSION=3.13
-# FROM lfedge/eve-alpine:5.16.0 AS cache
+FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS cache
 
 FROM alpine:${ALPINE_VERSION} AS mirror
 ARG ALPINE_VERSION=3.13
 
 # pull packages from a *previous* mirror
-# COPY --from=cache /mirror /mirror
+COPY --from=cache /mirror /mirror
 
 # update base image
 RUN apk update && apk upgrade -a
