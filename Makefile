@@ -483,8 +483,8 @@ $(ROOTFS_IMG): images/rootfs-$(HV).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@[ $$(wc -c < "$@") -gt $$(( 400 * 1024 * 1024 )) ] && \
+	        echo "ERROR: size of $@ is greater than 400MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)

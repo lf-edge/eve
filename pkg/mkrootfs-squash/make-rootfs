@@ -36,7 +36,7 @@ IMGFILE=/rootfs.img
   sed -i'' -e "/set *linuxkit_cmdline=/s#=.*\$#=$CMDLINE#" EFI/BOOT/grub.cfg
 
   ROOTFS_BLOCKSZ=4096
-  ROOTFS_PART_HEADROOM_BLOCKS=16000
+  ROOTFS_PART_HEADROOM_BLOCKS=32000
   
   ROOTFS_FILE_SIZE_KB=$(du -sk . | awk '{print $1}')
   ROOTFS_PART_BLOCKS=$(( $ROOTFS_FILE_SIZE_KB / 4 + $ROOTFS_PART_HEADROOM_BLOCKS ))
