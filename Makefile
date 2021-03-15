@@ -527,7 +527,7 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	$(QUIET): $@: Succeeded
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	$(QUIET): $@: Succeeded
-pkg/vtune: eve-new-kernel eve-debug
+eve-vtune: eve-new-kernel eve-debug
 	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
