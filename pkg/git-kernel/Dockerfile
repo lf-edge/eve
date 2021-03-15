@@ -129,4 +129,4 @@ RUN DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdept
     ( cd /tmp && tar cf /out/kernel-dev.tar usr/src )
 
 WORKDIR /
-COPY /out/* /
+RUN cp /out/*.tar /
