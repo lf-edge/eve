@@ -1,5 +1,5 @@
 # This file must be kept as much in sync with pkg/kernel/Dockerfile as posisble
-FROM alpine:3.12 AS kernel-build
+FROM alpine:3.12 as kernel-build
 
 RUN apk add \
     argp-standalone \
@@ -43,7 +43,6 @@ ENV KERNEL_BRANCH "st/vhost-nvme-5.10"
 # allows us to check for the existence /patches-${KERNEL_SERIES} to
 # build kernels without patches.
 COPY / /
-RUN ls -l /
 
 # Download and verify kernel
 RUN git clone ${KERNEL_REPO} --depth 1 -b ${KERNEL_BRANCH} /linux
@@ -59,7 +58,8 @@ RUN case $(uname -m) in \
         KERNEL_DEF_CONF=/linux/arch/arm64/configs/defconfig; \
         ;; \
     esac  && \
-    cp /kernel_config-${KERNEL_SERIES}-$(uname -m) ${KERNEL_DEF_CONF}; \
+    cp /kernel-config-git-$(uname -m) ${KERNEL_DEF_CONF}; \
+    sed -i "s/CONFIG_LOCALVERSION=\"-linuxkit\"/CONFIG_LOCALVERSION=\"-linuxkit${EXTRA}\"/" ${KERNEL_DEF_CONF}; \
     make defconfig;
 
 RUN mkdir -p /out
@@ -92,14 +92,14 @@ ENV ZFS_VERSION=2.0.0
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
 
-WORKDIR /tmp/zfs
-RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
-RUN sed -ie '/Linux-Maximum:/s/^.*$/Linux-Maximum: 5.10/' META
-RUN ./autogen.sh && \
-    ./configure --with-linux=/linux && \
-    ./scripts/make_gitrev.sh && \
-    make -C module -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
+#WORKDIR /tmp/zfs
+#RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+#RUN sed -ie '/Linux-Maximum:/s/^.*$/Linux-Maximum: 5.10/' META
+#RUN ./autogen.sh && \
+#    ./configure --with-linux=/linux && \
+#    ./scripts/make_gitrev.sh && \
+#    make -C module -j "$(getconf _NPROCESSORS_ONLN)" && \
+#    make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
 
 # Strip at least some of the modules to conserve space
 RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
@@ -134,5 +134,8 @@ RUN DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdept
          tar cf - -T - | (cd $dir; tar xf -) && \
     ( cd /tmp && tar cf /out/kernel-dev.tar usr/src )
 
+FROM scratch
+ENTRYPOINT []
+CMD []
 WORKDIR /
-RUN cp /out/*.tar /
+COPY --from=kernel-build /out/* /
