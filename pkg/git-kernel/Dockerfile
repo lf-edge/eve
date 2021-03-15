@@ -51,10 +51,16 @@ RUN git clone ${KERNEL_REPO} --depth 1 -b ${KERNEL_BRANCH} /linux
 # Apply local patches
 WORKDIR /linux
 
-RUN cp /kernel-config-$(uname -m) .config; \
-    sed -i "s/CONFIG_LOCALVERSION=\"-linuxkit\"/CONFIG_LOCALVERSION=\"-linuxkit-${KERNEL_BRANCH}\"/" .config; \
-    make oldconfig; \
-    diff -cw .config .config.old || true
+RUN case $(uname -m) in \
+    x86_64) \
+        KERNEL_DEF_CONF=/linux/arch/x86/configs/x86_64_defconfig; \
+        ;; \
+    aarch64) \
+        KERNEL_DEF_CONF=/linux/arch/arm64/configs/defconfig; \
+        ;; \
+    esac  && \
+    cp /kernel_config-${KERNEL_SERIES}-$(uname -m) ${KERNEL_DEF_CONF}; \
+    make defconfig;
 
 RUN mkdir -p /out
 
