@@ -19,6 +19,17 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: 'lf-edge/eden'
+      - name: Check
+        run: |
+          for addr in $(ip addr list|sed -En -e 's/.*inet ([0-9.]+).*/\1/p')
+          do
+              if echo "$addr" | grep -q -E "10.11.(12|13).[0-9]+"; then
+                echo "$addr overlaps with test"; exit 1
+              fi
+              if echo "$addr" | grep -q -E "10.8.0.[0-9]+"; then
+                echo "$addr overlaps with vpn"; exit 1
+              fi
+          done
       - name: setup packages
         run: |
           sudo apt update
@@ -75,6 +86,7 @@ jobs:
           ./eden log --format json > trace.log
           ./eden info > info.log
           docker logs eden_adam > adam.log 2>&1
+          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" > console.log
       - name: Clean
         if: ${{ always() }}
         run: |
@@ -91,3 +103,4 @@ jobs:
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log
             ${{ github.workspace }}/adam.log
+            ${{ github.workspace }}/console.log
