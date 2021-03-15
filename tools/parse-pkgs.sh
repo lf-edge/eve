@@ -54,6 +54,7 @@ resolve_tags() {
 sed -e "s#CURDIR#$(pwd)#" \
     -e "s#ACRN_KERNEL_TAG#$ACRN_KERNEL_TAG#" \
     -e "s#NEW_KERNEL_TAG#$NEW_KERNEL_TAG#" \
+    -e "s#GIT_KERNEL_TAG#$GIT_KERNEL_TAG#" \
     -e "s#KERNEL_TAG#$KERNEL_TAG#" \
     -e "s#FW_TAG#$FW_TAG#" \
     -e "s#XENTOOLS_TAG#$XENTOOLS_TAG#" \
@@ -102,6 +103,7 @@ fi
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
 NEW_KERNEL_TAG=$(linuxkit_tag pkg/new-kernel)
+GIT_KERNEL_TAG=$(linuxkit_tag pkg/git-kernel)
 ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
@@ -131,7 +133,6 @@ VTPM_TAG=$(linuxkit_tag pkg/vtpm)
 UEFI_TAG=$(linuxkit_tag pkg/uefi)
 KVMTOOLS_TAG=$(linuxkit_tag pkg/kvm-tools)
 IPXE_TAG=$(linuxkit_tag pkg/ipxe)
-GIT_KERNEL_TAG=$(linuxkit_tag pkg/git-kernel)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
