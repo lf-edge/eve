@@ -6,7 +6,9 @@
 FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++
 # Feel free to add additional packages here, but be aware that
-# EVE's rootfs image can be no larger than 300Mb
+# EVE's rootfs image can be no larger than 300Mb (and don't
+# forget to check on all supported architectures: e.g. arm64
+# binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
 ENV PKGS openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace
 RUN eve-alpine-deploy.sh
