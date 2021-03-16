@@ -608,11 +608,11 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	// XXX do a NatInactivate/NatActivate if management ports changed?
 }
 
-func handleRestart(ctxArg interface{}, done bool) {
+func handleRestart(ctxArg interface{}, restartCounter int) {
 
-	log.Tracef("handleRestart(%v)\n", done)
+	log.Tracef("handleRestart(%d)", restartCounter)
 	ctx := ctxArg.(*zedrouterContext)
-	if done {
+	if restartCounter != 0 {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
 		ctx.pubAppNetworkStatus.SignalRestarted()

@@ -563,11 +563,11 @@ func gcUnusedInitObjects(ctx *volumemgrContext) {
 	gcImagesFromCAS(ctx)
 }
 
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
+func handleVerifierRestarted(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*volumemgrContext)
 
-	log.Functionf("handleVerifierRestarted(%v)", done)
-	if done {
+	log.Functionf("handleVerifierRestarted(%d)", restartCounter)
+	if restartCounter != 0 {
 		ctx.verifierRestarted = true
 	}
 }
