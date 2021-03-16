@@ -27,7 +27,6 @@ ENV BUILD_PKGS_arm64 dtc-dev
 ENV PKGS bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo
 ENV PKGS_arm64 libfdt
 
-ENV GIT_HTTP=y
 RUN eve-alpine-deploy.sh
 
 # Alpine linux defines all 64bit integer types as long. Patch
