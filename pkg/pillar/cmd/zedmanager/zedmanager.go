@@ -295,28 +295,28 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 // and finally from zedrouter to domainmgr.
 // XXX is that sequence still needed with volumemgr in place?
 // Need EIDs before zedrouter ...
-func handleConfigRestart(ctxArg interface{}, done bool) {
+func handleConfigRestart(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Functionf("handleConfigRestart(%v)", done)
-	if done {
+	log.Functionf("handleConfigRestart(%d)", restartCounter)
+	if restartCounter != 0 {
 		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
 }
 
-func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
+func handleIdentitymgrRestarted(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*zedmanagerContext)
 
-	log.Functionf("handleIdentitymgrRestarted(%v)", done)
-	if done {
+	log.Functionf("handleIdentitymgrRestarted(%d)", restartCounter)
+	if restartCounter != 0 {
 		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
 }
 
-func handleZedrouterRestarted(ctxArg interface{}, done bool) {
+func handleZedrouterRestarted(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*zedmanagerContext)
 
-	log.Functionf("handleZedrouterRestarted(%v)", done)
-	if done {
+	log.Functionf("handleZedrouterRestarted(%d)", restartCounter)
+	if restartCounter != 0 {
 		ctx.pubDomainConfig.SignalRestarted()
 	}
 }

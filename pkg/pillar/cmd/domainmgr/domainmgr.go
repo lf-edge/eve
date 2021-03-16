@@ -580,10 +580,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 }
 
-func handleRestart(ctxArg interface{}, done bool) {
-	log.Functionf("handleRestart(%v)", done)
+func handleRestart(ctxArg interface{}, restartCounter int) {
+	log.Functionf("handleRestart(%d)", restartCounter)
 	ctx := ctxArg.(*domainContext)
-	if done {
+	if restartCounter != 0 {
 		log.Functionf("handleRestart: avoid cleanup")
 		ctx.pubDomainStatus.SignalRestarted()
 		return

@@ -32,8 +32,8 @@ func (e *EmptyDriverPublisher) Start() error {
 }
 
 // Load function
-func (e *EmptyDriverPublisher) Load() (map[string][]byte, bool, error) {
-	return make(map[string][]byte), false, nil
+func (e *EmptyDriverPublisher) Load() (map[string][]byte, int, error) {
+	return make(map[string][]byte), 0, nil
 }
 
 // Publish function
@@ -47,7 +47,7 @@ func (e *EmptyDriverPublisher) Unpublish(key string) error {
 }
 
 // Restart function
-func (e *EmptyDriverPublisher) Restart(restarted bool) error {
+func (e *EmptyDriverPublisher) Restart(restartCounter int) error {
 	return nil
 }
 
@@ -65,9 +65,9 @@ func (e *EmptyDriverSubscriber) Start() error {
 }
 
 // Load function
-func (e *EmptyDriverSubscriber) Load() (map[string][]byte, bool, error) {
+func (e *EmptyDriverSubscriber) Load() (map[string][]byte, int, error) {
 	res := make(map[string][]byte)
-	return res, false, nil
+	return res, 0, nil
 }
 
 // Stop function

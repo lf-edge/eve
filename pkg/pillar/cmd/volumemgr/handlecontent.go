@@ -53,10 +53,12 @@ func handleContentTreeDelete(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeDelete(%s) Done", key)
 }
 
-func handleContentTreeRestart(ctxArg interface{}, done bool) {
-	log.Functionf("handleContentTreeRestart(%v)", done)
+func handleContentTreeRestart(ctxArg interface{}, restartCounter int) {
+	log.Functionf("handleContentTreeRestart(%d)", restartCounter)
 	ctx := ctxArg.(*volumemgrContext)
-	ctx.contentTreeRestarted = true
+	if restartCounter != 0 {
+		ctx.contentTreeRestarted = true
+	}
 }
 
 func publishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus) {

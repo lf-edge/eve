@@ -138,10 +138,10 @@ func TestPubsubLog(t *testing.T) {
 	created := false
 	modified := false
 	deleted := false
-	subRestartHandler := func(ctxArg interface{}, arg bool) {
-		t.Logf("subRestartHandler")
-		if !arg {
-			t.Fatalf("subRestartHandler called with false")
+	subRestartHandler := func(ctxArg interface{}, restartCounter int) {
+		t.Logf("subRestartHandler %d", restartCounter)
+		if restartCounter == 0 {
+			t.Fatalf("subRestartHandler called with zero")
 		} else {
 			restarted = true
 		}

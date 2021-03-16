@@ -15,7 +15,7 @@ type Publication interface {
 	Publish(key string, item interface{}) error
 	// Unpublish - Delete / UnPublish an object
 	Unpublish(key string) error
-	// SignalRestarted - Signal the publisher has started.
+	// SignalRestarted - Signal the publisher has started one more time
 	SignalRestarted() error
 	// ClearRestarted clear the restarted flag
 	ClearRestarted() error
@@ -39,6 +39,8 @@ type Subscription interface {
 	Iterate(function base.StrMapFunc)
 	// Restarted report if this subscription has been marked as restarted
 	Restarted() bool
+	// RestartCounter reports how many times this subscription has been restarted
+	RestartCounter() int
 	// Synchronized report if this subscription has received initial items
 	Synchronized() bool
 	// ProcessChange - Invoked on the string msg from Subscription Channel

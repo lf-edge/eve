@@ -59,7 +59,12 @@ type PublicationImpl struct {
 
 // IsRestarted has this publication been set to "restarted"
 func (pub *PublicationImpl) IsRestarted() bool {
-	return pub.km.restarted
+	return pub.km.restartCounter != 0
+}
+
+// RestartCounter number of times this this publication been set to "restarted"
+func (pub *PublicationImpl) RestartCounter() int {
+	return pub.km.restartCounter
 }
 
 // Publish publish a key-value pair
@@ -138,7 +143,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 	return pub.driver.Unpublish(key)
 }
 
-// SignalRestarted signal that a publication is restarted
+// SignalRestarted signal that a publication is restarted one more time
 func (pub *PublicationImpl) SignalRestarted() error {
 	pub.log.Tracef("pub.SignalRestarted(%s)\n", pub.nameString())
 	return pub.restartImpl(true)
@@ -215,13 +220,14 @@ func (pub *PublicationImpl) updatersNotify(name string) {
 	pub.updaterList.lock.Unlock()
 }
 
-// Only reads json files. Sets restarted if that file was found.
+// Only reads json files. Sets restarted if that file was found and contains
+// an integer
 func (pub *PublicationImpl) populate() {
 	name := pub.nameString()
 
 	pub.log.Tracef("populate(%s)\n", name)
 
-	pairs, restarted, err := pub.driver.Load()
+	pairs, restartCounter, err := pub.driver.Load()
 	if err != nil {
 		// Could be a truncated or empty file
 		pub.log.Error(err)
@@ -236,7 +242,7 @@ func (pub *PublicationImpl) populate() {
 		}
 		pub.km.key.Store(key, item)
 	}
-	pub.km.restarted = restarted
+	pub.km.restartCounter = restartCounter
 	pub.log.Tracef("populate(%s) done\n", name)
 }
 
@@ -305,20 +311,24 @@ func (pub *PublicationImpl) nameString() string {
 func (pub *PublicationImpl) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	pub.log.Functionf("pub.restartImpl(%s, %v)\n", name, restarted)
+	var restartCounter int
+	if restarted {
+		restartCounter = pub.km.restartCounter + 1
+	} else {
+		restartCounter = 0
+	}
 
-	if restarted == pub.km.restarted {
+	if restartCounter == pub.km.restartCounter {
 		pub.log.Functionf("pub.restartImpl(%s, %v) value unchanged\n",
 			name, restarted)
 		return nil
 	}
-	pub.km.restarted = restarted
-	if restarted {
-		// XXX lock on restarted to make sure it gets noticed?
-		// XXX bug?
-		// Implicit in updaters lock??
-		pub.updatersNotify(name)
-	}
-	return pub.driver.Restart(restarted)
+	pub.km.restartCounter = restartCounter
+	// XXX lock on restarted to make sure it gets noticed?
+	// XXX bug?
+	// Implicit in updaters lock??
+	pub.updatersNotify(name)
+	return pub.driver.Restart(restartCounter)
 }
 
 func (pub *PublicationImpl) dump(infoStr string) {
@@ -335,5 +345,5 @@ func (pub *PublicationImpl) dump(infoStr string) {
 		return true
 	}
 	pub.km.key.Range(dumper)
-	pub.log.Tracef("\trestarted %t\n", pub.km.restarted)
+	pub.log.Tracef("\trestarted %d", pub.km.restartCounter)
 }

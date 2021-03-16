@@ -1322,10 +1322,10 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 	}()
 }
 
-func handleZbootRestarted(ctxArg interface{}, done bool) {
+func handleZbootRestarted(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*zedagentContext)
-	log.Functionf("handleZbootRestarted(%v)", done)
-	if done {
+	log.Functionf("handleZbootRestarted(%d)", restartCounter)
+	if restartCounter != 0 {
 		ctx.zbootRestarted = true
 	}
 }
