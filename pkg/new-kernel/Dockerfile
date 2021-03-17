@@ -69,7 +69,8 @@ RUN case $(uname -m) in \
     if [ -z "${EXTRA}" ]; then diff -cw defconfig ${KERNEL_DEF_CONF}; fi
 
 # Kernel
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
+RUN find -iname *.h -or -iname *.c -exec sed -i s/EXPORT_SYMBOL_GPL/EXPORT_SYMBOL/g {} \; && \
+    make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
     case $(uname -m) in \
     x86_64) \
         cp arch/x86_64/boot/bzImage /out/kernel; \
