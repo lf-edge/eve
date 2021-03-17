@@ -25,6 +25,7 @@ type VolumeConfig struct {
 	GenerationCounter       int64
 	VolumeDir               string
 	DisplayName             string
+	HasNoAppReferences      bool
 }
 
 // Key is volume UUID which will be unique
