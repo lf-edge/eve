@@ -1,0 +1,28 @@
+From dcd72d3ca94030f012fa906d060d432924e0e488 Mon Sep 17 00:00:00 2001
+From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+Date: Wed, 17 Mar 2021 01:33:50 +0000
+Subject: [PATCH] kallsyms: Unbreak symbol lookup
+
+Revert a patch from February 2020 which broke kallsyms
+
+Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+---
+ kernel/kallsyms.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/kernel/kallsyms.c b/kernel/kallsyms.c
+index fe9de067771c..55e9ad8c0de8 100644
+--- a/kernel/kallsyms.c
++++ b/kernel/kallsyms.c
+@@ -177,6 +177,8 @@ unsigned long kallsyms_lookup_name(const char *name)
+ 	return module_kallsyms_lookup_name(name);
+ }
+ 
++EXPORT_SYMBOL(kallsyms_lookup_name);
++
+ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
+ 				      unsigned long),
+ 			    void *data)
+-- 
+2.26.2
+
