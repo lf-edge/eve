@@ -85,6 +85,8 @@ type volumemgrContext struct {
 	// Common CAS client which can be used by multiple routines.
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
+
+	volumeConfigCreateDeferredMap map[string]*types.VolumeConfig
 }
 
 var debug = false
@@ -346,16 +348,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subContentTreeConfig = subContentTreeConfig
 	subContentTreeConfig.Activate()
 
+	ctx.volumeConfigCreateDeferredMap = make(map[string]*types.VolumeConfig)
+
 	subVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleVolumeCreate,
-		ModifyHandler: handleVolumeModify,
-		DeleteHandler: handleVolumeDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "zedagent",
-		MyAgentName:   agentName,
-		TopicImpl:     types.VolumeConfig{},
-		Ctx:           &ctx,
+		CreateHandler:  handleVolumeCreate,
+		ModifyHandler:  handleVolumeModify,
+		DeleteHandler:  handleVolumeDelete,
+		RestartHandler: handleVolumeRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+		AgentName:      "zedagent",
+		MyAgentName:    agentName,
+		TopicImpl:      types.VolumeConfig{},
+		Ctx:            &ctx,
 	})
 	if err != nil {
 		log.Fatal(err)

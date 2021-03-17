@@ -18,6 +18,82 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 	log.Functionf("handleVolumeCreate(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+	//defer creation to restart handler
+	ctx.volumeConfigCreateDeferredMap[key] = &config
+	log.Functionf("handleVolumeCreate(%s) Done", key)
+}
+
+func handleVolumeModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+
+	log.Functionf("handleVolumeModify(%s)", key)
+	config := configArg.(types.VolumeConfig)
+	ctx := ctxArg.(*volumemgrContext)
+	if _, deferred := ctx.volumeConfigCreateDeferredMap[key]; deferred {
+		//update deferred creation if exists
+		ctx.volumeConfigCreateDeferredMap[key] = &config
+	} else {
+		status := lookupVolumeStatus(ctx, config.Key())
+		if status == nil {
+			log.Fatalf("status doesn't exist at handleVolumeModify for %s", config.Key())
+		}
+		needRegeneration, regenerationReason := quantifyChanges(config, *status)
+		if needRegeneration {
+			errStr := fmt.Sprintf("Need volume regeneration due to %s but generation counter not incremented",
+				regenerationReason)
+			log.Errorf("handleVolumeModify(%s) failed: %s", status.Key(), errStr)
+			status.SetError(errStr, time.Now())
+			publishVolumeStatus(ctx, status)
+			updateVolumeRefStatus(ctx, status)
+			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+				log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
+			}
+			return
+		}
+		if config.DisplayName != status.DisplayName {
+			log.Functionf("DisplayName changed from %s to %s for %s",
+				status.DisplayName, config.DisplayName, config.VolumeID)
+			status.DisplayName = config.DisplayName
+		}
+		if config.RefCount != status.RefCount {
+			log.Functionf("RefCount changed from %d to %d for %s",
+				status.RefCount, config.RefCount, config.DisplayName)
+			status.RefCount = config.RefCount
+		}
+		updateVolumeStatusRefCount(ctx, status)
+		publishVolumeStatus(ctx, status)
+		updateVolumeRefStatus(ctx, status)
+		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+			log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
+		}
+	}
+	log.Functionf("handleVolumeModify(%s) Done", key)
+}
+
+func handleVolumeDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Functionf("handleVolumeDelete(%s)", key)
+	config := configArg.(types.VolumeConfig)
+	ctx := ctxArg.(*volumemgrContext)
+	if _, deferred := ctx.volumeConfigCreateDeferredMap[key]; deferred {
+		//remove deferred creation if exists
+		delete(ctx.volumeConfigCreateDeferredMap, key)
+	} else {
+		status := lookupVolumeStatus(ctx, config.Key())
+		if status == nil {
+			log.Functionf("handleVolumeDelete for %v, VolumeStatus not found", key)
+			return
+		}
+		updateVolumeStatusRefCount(ctx, status)
+		maybeDeleteVolume(ctx, status)
+	}
+	log.Functionf("handleVolumeDelete(%s) Done", key)
+}
+
+func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types.VolumeConfig) {
+
+	log.Tracef("handleDeferredVolumeCreate(%s)", key)
 	status := lookupVolumeStatus(ctx, config.Key())
 	if status != nil {
 		log.Fatalf("status exists at handleVolumeCreate for %s", config.Key())
@@ -57,7 +133,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-			log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+			log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 		}
 		return
 	}
@@ -72,7 +148,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)
 			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-				log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+				log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 			}
 			return
 		} else if remaining < status.MaxVolSize {
@@ -82,7 +158,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)
 			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-				log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+				log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 			}
 			return
 		}
@@ -93,67 +169,20 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		updateVolumeRefStatus(ctx, status)
 	}
 	if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-		log.Errorf("handleVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+		log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 	}
-	log.Functionf("handleVolumeCreate(%s) Done", key)
+	log.Tracef("handleDeferredVolumeCreate(%s) done", key)
 }
 
-func handleVolumeModify(ctxArg interface{}, key string,
-	configArg interface{}, oldConfigArg interface{}) {
+func handleVolumeRestart(ctxArg interface{}, restartCount int) {
 
-	log.Functionf("handleVolumeModify(%s)", key)
-	config := configArg.(types.VolumeConfig)
+	log.Tracef("handleVolumeRestart: %d", restartCount)
 	ctx := ctxArg.(*volumemgrContext)
-	status := lookupVolumeStatus(ctx, config.Key())
-	if status == nil {
-		log.Fatalf("status doesn't exist at handleVolumeModify for %s", config.Key())
+	for key, config := range ctx.volumeConfigCreateDeferredMap {
+		handleDeferredVolumeCreate(ctx, key, config)
+		delete(ctx.volumeConfigCreateDeferredMap, key)
 	}
-	needRegeneration, regenerationReason := quantifyChanges(config, *status)
-	if needRegeneration {
-		errStr := fmt.Sprintf("Need volume regeneration due to %s but generation counter not incremented",
-			regenerationReason)
-		log.Errorf("handleVolumeModify(%s) failed: %s", status.Key(), errStr)
-		status.SetError(errStr, time.Now())
-		publishVolumeStatus(ctx, status)
-		updateVolumeRefStatus(ctx, status)
-		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-			log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
-		}
-		return
-	}
-	if config.DisplayName != status.DisplayName {
-		log.Functionf("DisplayName changed from %s to %s for %s",
-			status.DisplayName, config.DisplayName, config.VolumeID)
-		status.DisplayName = config.DisplayName
-	}
-	if config.RefCount != status.RefCount {
-		log.Functionf("RefCount changed from %d to %d for %s",
-			status.RefCount, config.RefCount, config.DisplayName)
-		status.RefCount = config.RefCount
-	}
-	updateVolumeStatusRefCount(ctx, status)
-	publishVolumeStatus(ctx, status)
-	updateVolumeRefStatus(ctx, status)
-	if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-		log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
-	}
-	log.Functionf("handleVolumeModify(%s) Done", key)
-}
-
-func handleVolumeDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Functionf("handleVolumeDelete(%s)", key)
-	config := configArg.(types.VolumeConfig)
-	ctx := ctxArg.(*volumemgrContext)
-	status := lookupVolumeStatus(ctx, config.Key())
-	if status == nil {
-		log.Functionf("handleVolumeDelete for %v, VolumeStatus not found", key)
-		return
-	}
-	updateVolumeStatusRefCount(ctx, status)
-	maybeDeleteVolume(ctx, status)
-	log.Functionf("handleVolumeDelete(%s) Done", key)
+	log.Tracef("handleVolumeRestart done: %d", restartCount)
 }
 
 func publishVolumeStatus(ctx *volumemgrContext,
