@@ -5,7 +5,7 @@ FROM NEW_KERNEL_TAG as kernel-build
 FROM alpine:3.12 as vtune-build
 
 RUN apk add --no-cache curl=7.69.1-r3 tar=1.32-r1 make=4.3-r0 linux-headers=5.4.5-r1 patch=2.7.6-r6 g++=9.3.0-r2 \
-                       coreutils=8.32-r0 git=2.26.2-r0
+                       coreutils=8.32-r0 git=2.26.3-r0
 
 WORKDIR /
 
