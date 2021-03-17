@@ -100,14 +100,15 @@ RUN ./autogen.sh && \
     make -C module -j "$(getconf _NPROCESSORS_ONLN)" && \
     make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
 
+WORKDIR /linux
+
 # Out-of-tree, creepy modules
 #  * Maxlinear USB (option #2 https://github.com/lipnitsk/xr/archive/master.zip)
-WORKDIR /linux
-ADD https://www.maxlinear.com/document?id=21651 /tmp/xr.zip
-RUN unzip -d /tmp /tmp/xr.zip ;\
-    make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
-                   M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
-         modules modules_install
+#ADD https://github.com/lipnitsk/xr/archive/master.zip /tmp/xr.zip
+#RUN unzip -d /tmp /tmp/xr.zip ;\
+#    make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
+#                   M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
+#         modules modules_install
 #  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
 RUN if [ "$(uname -m)" != aarch64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
