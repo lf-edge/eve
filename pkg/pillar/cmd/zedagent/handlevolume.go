@@ -82,7 +82,17 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig.RefCount = 1
 		publishVolumeConfig(ctx, *volumeConfig)
 	}
+
+	//signal publisher restarted to apply deferred changes inside volumemgr
+	signalVolumeConfigRestarted(ctx)
 	log.Tracef("parsing volume config done\n")
+}
+
+func signalVolumeConfigRestarted(ctx *getconfigContext) {
+	log.Trace("signalVolumeConfigRestarted")
+	pub := ctx.pubVolumeConfig
+	pub.SignalRestarted()
+	log.Trace("signalVolumeConfigRestarted done")
 }
 
 func publishVolumeConfig(ctx *getconfigContext,
