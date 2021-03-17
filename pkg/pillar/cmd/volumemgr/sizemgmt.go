@@ -38,7 +38,15 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 				iterVolumeStatus.Key(), iterVolumeStatus.State)
 			continue
 		}
-		totalDiskSize += iterVolumeStatus.MaxVolSize
+		cfg := lookupVolumeConfig(ctxPtr, iterVolumeStatus.Key())
+		if cfg != nil && !cfg.ReadOnly && !cfg.HasNoAppReferences {
+			totalDiskSize += iterVolumeStatus.MaxVolSize
+		} else {
+			// we have no config with this volume, so it will purged soon
+			// or it is ReadOnly and will not grow
+			// or it has no apps pointing onto it in new config
+			totalDiskSize += uint64(iterVolumeStatus.CurrentSize)
+		}
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
