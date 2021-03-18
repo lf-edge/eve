@@ -185,6 +185,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		SSHAuthorizedKeys,
 		DefaultLogLevel,
 		DefaultRemoteLogLevel,
+		DisableDHCPAllOnesNetMask,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",
