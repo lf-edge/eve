@@ -1,7 +1,5 @@
 #!/bin/sh
 
-UnknownStateThreshold=10
-
 bail() {
    echo "$@"
    exit 1
@@ -19,24 +17,7 @@ domID() {
    echo "$ID"
 }
 
-handleUnknownState() {
-  # checking if we have unknownStateCounter, if not initializing it.
-  unknownStateCounter="${unknownStateCounter:-0}"
-
-  if [ "$unknownStateCounter" -ge "$UnknownStateThreshold" ]; then
-    # Number of times we got unknown state is > UnknownStateThreshold, so declaring the state as broken
-    echo broken
-  else
-    # Number of times we got unknown state is <= UnknownStateThreshold, so declaring the state as running
-    echo running
-  fi
-
-  unknownStateCounter=$((unknownStateCounter + 1))
-}
-
 handleKnownState() {
-  # resetting unknownStateCounter
-  unknownStateCounter=0
   STATUS="$1"
 
   # an additional check we do for running domains is to make sure device model is still around
@@ -64,8 +45,8 @@ xen_info() {
       *p*) handleKnownState paused  ;;
       *b*) handleKnownState running ;;
        r*) handleKnownState running ;;
-     # Waiting for 5sec before checking domain status again in order to recover from unknown state
-   ------) handleUnknownState; sleep 5 ;;
+     # returning last reported state in case of undetermined domain state from xen
+   ------) echo "$2" ;;
         *) handleKnownState broken  ;;
    esac
 }
@@ -106,10 +87,14 @@ fi
 # We wait and retry if we see a broken state to handle transients due to reboot
 # from inside the domU
 (while true; do
-   xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
+  last_state=$(cat "/run/tasks/$1" 2>/dev/null)
+  if [ -z "$last_state" ]; then
+    last_state=running
+  fi
+   xen_info "$(domID "$1")" "$last_state" > "/run/tasks/$1.tmp"
    if grep -q broken "/run/tasks/$1.tmp"; then
      sleep 10
-     xen_info "$(domID "$1")" > "/run/tasks/$1.tmp"
+     xen_info "$(domID "$1")" "$last_state" > "/run/tasks/$1.tmp"
    fi
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
 done) &
