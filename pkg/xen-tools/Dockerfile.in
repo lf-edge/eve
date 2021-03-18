@@ -100,7 +100,7 @@ COPY qemu-ifup xen-start /etc/xen/scripts/
 RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
 
 # Adjust /var/run, /var/lib and /var/lock to be shared
-RUN mv /var /var.template && ln -s /run /var
+RUN mv /var /var.template && ln -s /run /var && ln -s /run /var.template/run
 
 # Add a few mountpoints so we can use lowerfs in R/O mode
 RUN mkdir /persist /hostfs
