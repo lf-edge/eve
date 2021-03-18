@@ -83,10 +83,10 @@ jobs:
       - name: Collect logs
         if: ${{ always() }}
         run: |
-          ./eden log --format json > trace.log
-          ./eden info > info.log
-          docker logs eden_adam > adam.log 2>&1
-          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" > console.log
+          ./eden log --format json > trace.log || echo "no log"
+          ./eden info > info.log || echo "no info"
+          docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
+          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" > console.log || echo "no device log"
       - name: Clean
         if: ${{ always() }}
         run: |
