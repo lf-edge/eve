@@ -88,6 +88,7 @@ type zedrouterContext struct {
 	appStatsMutex             sync.Mutex // to protect the changing appNetworkStatus & appCollectStatsRunning
 	appStatsInterval          uint32
 	aclog                     *logrus.Logger // App Container logger
+	disableDHCPAllOnesNetMask bool
 }
 
 var debug = false
@@ -940,7 +941,7 @@ func appNetworkDoActivateUnderlayNetwork(
 			netInstStatus.CurrentUplinkIntf)
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			netInstStatus.CurrentUplinkIntf)
-		createDnsmasqConfiglet(bridgeName,
+		createDnsmasqConfiglet(ctx, bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
 			newIpsets, netInstStatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
@@ -1372,7 +1373,7 @@ func doAppNetworkModifyUnderlayNetwork(
 			netstatus.CurrentUplinkIntf)
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
-		createDnsmasqConfiglet(bridgeName,
+		createDnsmasqConfiglet(ctx, bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
@@ -1544,7 +1545,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 			netstatus.CurrentUplinkIntf)
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
-		createDnsmasqConfiglet(bridgeName,
+		createDnsmasqConfiglet(ctx, bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
@@ -1613,6 +1614,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	if gcp != nil {
 		ctx.GCInitialized = true
 		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
+		ctx.disableDHCPAllOnesNetMask = gcp.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }

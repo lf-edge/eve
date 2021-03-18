@@ -458,7 +458,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.CurrentUplinkIntf)
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			status.CurrentUplinkIntf)
-		createDnsmasqConfiglet(bridgeName,
+		createDnsmasqConfiglet(ctx, bridgeName,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
 			hostsDirpath, status.BridgeIPSets,
 			status.CurrentUplinkIntf, dnsServers, ntpServers)
@@ -754,7 +754,7 @@ func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) 
 		status.CurrentUplinkIntf)
 	ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 		status.CurrentUplinkIntf)
-	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
+	createDnsmasqConfiglet(ctx, bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
 		status.CurrentUplinkIntf, dnsServers, ntpServers)
 	createHostDnsmasqFile(ctx, bridgeName)
@@ -794,7 +794,7 @@ func lookupOrAllocateIPv4(
 
 	log.Functionf("bridgeName %s Subnet %v range %v-%v\n",
 		status.BridgeName, status.Subnet,
-		status.DhcpRange.Start, status.DhcpRange.End)
+		status.DhcpRange.Start.String(), status.DhcpRange.End.String())
 
 	if status.DhcpRange.Start == nil {
 		if status.Type == types.NetworkInstanceTypeSwitch {
@@ -1716,7 +1716,7 @@ func doNetworkInstanceFallback(
 				status.CurrentUplinkIntf)
 			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
-			createDnsmasqConfiglet(bridgeName,
+			createDnsmasqConfiglet(ctx, bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
 				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
@@ -1771,7 +1771,7 @@ func doNetworkInstanceFallback(
 				status.CurrentUplinkIntf)
 			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
-			createDnsmasqConfiglet(bridgeName,
+			createDnsmasqConfiglet(ctx, bridgeName,
 				status.BridgeIPAddr, &status.NetworkInstanceConfig,
 				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)

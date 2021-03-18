@@ -204,6 +204,9 @@ const (
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
+
+	// XXX Temporary flag to disable RFC 3442 classless static route usage
+	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -755,6 +758,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
+	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)

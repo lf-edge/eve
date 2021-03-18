@@ -2056,11 +2056,6 @@ func createCloudInitISO(ctx *domainContext,
 		config.UUIDandVersion.UUID.String()))
 	metafile.Close()
 
-	userfile, err := os.Create(dir + "/user-data")
-	if err != nil {
-		log.Fatalf("createCloudInitISO failed %s", err)
-	}
-
 	decBlock, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		return nil, err
@@ -2069,6 +2064,14 @@ func createCloudInitISO(ctx *domainContext,
 	if err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s", err)
 		return nil, errors.New(errStr)
+	}
+	userFileName := "/user-data"
+	if strings.Contains(string(ud), "#junos-config") {
+		userFileName = "/juniper.conf"
+	}
+	userfile, err := os.Create(dir + userFileName)
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s", err)
 	}
 	userfile.WriteString(string(ud))
 	userfile.Close()
