@@ -2,7 +2,7 @@ FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
 ENV BUILD_PKGS automake autoconf gettext gettext-dev git pkgconfig \
                libtool libc-dev linux-headers gcc make glib-dev \
                autoconf-archive patch cmake
-ENV PKGS ppp jq glib
+ENV PKGS alpine-baselayout musl-utils ppp jq glib
 RUN eve-alpine-deploy.sh
 
 WORKDIR /

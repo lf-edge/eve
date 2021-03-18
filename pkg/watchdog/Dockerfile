@@ -2,6 +2,7 @@
 
 FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 AS watchdog-build
 ENV BUILD_PKGS build-base file libtirpc-dev linux-headers tar
+ENV PKGS alpine-baselayout musl-utils
 RUN eve-alpine-deploy.sh
 
 # Version 5.15

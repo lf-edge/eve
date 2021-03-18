@@ -7,11 +7,11 @@ init:
   - linuxkit/containerd:1ae8f054e9fe792d1dbdb9a65f1b5e14491cb106
   - linuxkit/getty:v0.5
   - linuxkit/memlogd:v0.5
+  - DOM0ZTOOLS_TAG
   - GRUB_TAG
   - FW_TAG
   - XEN_TAG
   - GPTTOOLS_TAG
-  - DOM0ZTOOLS_TAG
 onboot:
    - name: storage-init
      image: STORAGE_INIT_TAG
