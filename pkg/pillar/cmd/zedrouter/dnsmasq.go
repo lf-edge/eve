@@ -104,6 +104,7 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 // When we create a linux bridge we set this up
 // Also called when we need to update the ipsets
 func createDnsmasqConfiglet(
+	ctx *zedrouterContext,
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
 	ipsets []string, uplink string,
@@ -240,7 +241,7 @@ func createDnsmasqConfiglet(
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
 	}
 	if netconf.Subnet.IP != nil {
-		if advertizeRouter {
+		if advertizeRouter && !ctx.disableDHCPAllOnesNetMask {
 			// Network prefix "255.255.255.255" will force packets to go through
 			// dom0 virtual router that makes the packets pass through ACLs and flow log.
 			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
@@ -255,10 +256,12 @@ func createDnsmasqConfiglet(
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
 				router))
-			file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",
-				router, "0.0.0.0",
-				"0.0.0.0/0", router,
-				netconf.Subnet.String(), router))
+			if !ctx.disableDHCPAllOnesNetMask {
+				file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",
+					router, "0.0.0.0",
+					"0.0.0.0/0", router,
+					netconf.Subnet.String(), router))
+			}
 		}
 	} else {
 		log.Functionf("createDnsmasqConfiglet: no router\n")
