@@ -17,8 +17,8 @@ package nodeagent
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -27,6 +27,7 @@ import (
 	"time"
 
 	info "github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -56,8 +57,12 @@ const (
 	domainHaltWaitIncrement uint32 = 5
 )
 
-// Version : module version
-var Version = "No version specified"
+var (
+	// Version : module version
+	Version           = "No version specified"
+	smartData         = types.NewSmartDataWithDefaults()
+	previousSmartData = types.NewSmartDataWithDefaults()
+)
 
 type nodeagentContext struct {
 	agentBaseContext            agentbase.Context
@@ -198,6 +203,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("processed GlobalConfig")
 
+	//Parse SMART data
+	parseSMARTData()
 	// get the last reboot reason
 	handleLastRebootReason(ctxPtr)
 
@@ -524,6 +531,17 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 			if bootReason == types.BootReasonNone {
 				bootReason = types.BootReasonFirst
 			}
+		} else if previousSmartData.PowerCycleCount > -1 && smartData.PowerCycleCount > -1 &&
+			bootReason == types.BootReasonNone {
+			if previousSmartData.PowerCycleCount < smartData.PowerCycleCount {
+				reason = fmt.Sprintf("Reboot reason - device powered off. Restarted at %s",
+					dateStr)
+				bootReason = types.BootReasonPowerFail
+			} else {
+				reason = fmt.Sprintf("Reboot reason - kernel crash - at %s",
+					dateStr)
+				bootReason = types.BootReasonKernel
+			}
 		} else {
 			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s",
 				dateStr)
@@ -652,4 +670,24 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 	} else {
 		ctx.vaultOperational = types.TS_DISABLED
 	}
+}
+
+func parseSMARTData() {
+	currentSMARTfilename := "/persist/SMART_details.json"
+	previousSMARTfilename := "/persist/SMART_details_previous.json"
+	parseData := func(filePath string, SMARTDataObj *types.SmartData) {
+		data, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			log.Errorf("parseSMARTData: exception while opening %s. %s", filePath, err.Error())
+			return
+		}
+		if err := json.Unmarshal(data, &SMARTDataObj); err != nil {
+			log.Errorf("parseSMARTData: exception while parsing SMART data. %s", err.Error())
+			return
+		}
+		SMARTDataObj.RawData = string(data)
+	}
+
+	parseData(currentSMARTfilename, smartData)
+	parseData(previousSMARTfilename, previousSmartData)
 }

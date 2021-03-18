@@ -5,7 +5,8 @@
 
 PERSISTDIR=/persist
 CONFIGDIR=/config
-SMART_DETAILS_FILE=/run/SMART_details.json
+SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
+SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
 
 # the following is here just for compatibility reasons and it should go away soon
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
@@ -155,7 +156,15 @@ for BLK_DEVICE in $BLK_DEVICES; do
 done
 
 #Recording SMART details to a file
-smartctl -a "$(grep -m 1 /persist < /proc/mounts | cut -d ' ' -f 1)" --json > $SMART_DETAILS_FILE
+SMART_JSON=$(smartctl -a "$(grep -m 1 /persist < /proc/mounts | cut -d ' ' -f 1)" --json)
+if [ -f "$SMART_DETAILS_PREVIOUS_FILE" ];
+then
+  mv $SMART_DETAILS_FILE $SMART_DETAILS_PREVIOUS_FILE
+  echo "$SMART_JSON" > $SMART_DETAILS_FILE
+else
+  echo "$SMART_JSON" > $SMART_DETAILS_FILE
+  echo "$SMART_JSON" > $SMART_DETAILS_PREVIOUS_FILE
+fi
 
 # Uncomment the following block if you want storage-init to replace
 # rootfs of service containers with a copy under /persist/services/X
