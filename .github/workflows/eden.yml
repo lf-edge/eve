@@ -63,10 +63,10 @@ jobs:
       - name: Collect logs
         if: ${{ always() }}
         run: |
-          ./eden log --format json > trace.log
-          ./eden info > info.log
-          cp dist/default-eve.log console.log
-          docker logs eden_adam > adam.log 2>&1
+          ./eden log --format json > trace.log || echo "no log"
+          ./eden info > info.log || echo "no info"
+          cp dist/default-eve.log console.log || echo "no device log"
+          docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
       - name: Store raw test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
