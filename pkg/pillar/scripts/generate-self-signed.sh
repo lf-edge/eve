@@ -79,18 +79,15 @@ openssl req -new -sha256 -key "$csr_key" -subj "$subject" -out "$csr"
 
 #Create X509 certificate and overwrite public key with TPM key
 # Newer versions require subject - old one fail if it is there
-v=$(openssl version | awk '{print $2}')
-case $v in (1.0.*)
-        openssl x509 -in "$csr" -req $force_pubkey\
+# since tracking version is difficult, we simply try with older
+# syntax if the newer one fails
+# shellcheck disable=SC2086
+openssl x509 -in "$csr" -req $force_pubkey\
         -out "$output_cert" \
         -CA /config/onboard.cert.pem -CAkey /config/onboard.key.pem -CAcreateserial\
-        -days "$lifetime" -sha256
-        ;;
-(*)
-        openssl req -x509 -sha256 -subj "$subject" \
+        -days "$lifetime" -sha256 ||\
+     openssl req -x509 -sha256 -subj "$subject" \
         -days "$lifetime" -key "$output_key" -in "$csr" -out "$output_cert"
-        ;;
-esac
 
 if [ "$use_tpm" = true ]; then
     echo "Writing device certificate to TPM"

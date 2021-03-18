@@ -51,6 +51,7 @@ RUN make && cp vtpm_server /out/usr/bin/
 # install dependencies
 WORKDIR /usr/lib
 RUN cp libstdc++.so.6 libgcc_s.so.1 libprotobuf.so.24.0.0 /out/usr/lib/
+RUN ln -s libprotobuf.so.24.0.0 /out/usr/lib/libprotobuf.so.24
 WORKDIR /usr/local/lib
 RUN cp libtss2-tctildr.so.0 libtss2-rc.so.0 libtss2-mu.so.0 libtss2-esys.so.0 \
        libtss2-sys.so.0.0.0 libtss2-sys.so.0 libtss2-tcti-device.so.0 /out/usr/local/lib/
