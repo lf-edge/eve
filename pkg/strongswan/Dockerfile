@@ -43,20 +43,19 @@ ENV CONFIGURE_OPTS --prefix=/usr \
             --disable-static
 
 WORKDIR /tmp/strongswan
-RUN mkdir -p /tmp/strongswan
-RUN mkdir -p /out
+RUN rm -rf /out && mkdir /out
 
 # FIXME: two reasons to build it instead of using the
 # stock one:
 #    1. alpine 3.6+ now has a conflict with libressl for curl-dev
 #    2. linuxkit alpine image doesn't have curl-dev (because of #1?)
 COPY curl-7.61.1.tar.bz2 /tmp/curl-7.61.1.tar.bz2
-RUN tar -C /tmp -xjvf /tmp/curl-7.61.1.tar.bz2 ; cd /tmp/curl-7.61.1 ; ./configure --prefix=/usr ; make install
+RUN tar -C /tmp -xjvf /tmp/curl-7.61.1.tar.bz2 ; cd /tmp/curl-7.61.1 ; ./configure --prefix=/usr ; make  -j "$(getconf _NPROCESSORS_ONLN)" install
 
 COPY strongswan.tar.bz2 /tmp/strongswan/strongswan.tar.bz2 
 RUN  tar --strip-components=1 -C /tmp/strongswan -xjf /tmp/strongswan/strongswan.tar.bz2
 RUN  eval ./configure $CONFIGURE_OPTS \$CONFIGURE_OPTS_`uname -m`
-RUN    make 
+RUN    make  -j "$(getconf _NPROCESSORS_ONLN)"
 RUN    make install DESTDIR=/out
 
 FROM scratch

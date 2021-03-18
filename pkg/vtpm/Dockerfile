@@ -9,6 +9,7 @@
 FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
 ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make \
                openssl-dev protobuf-dev gnupg curl-dev patch
+ENV PKGS alpine-baselayout musl-utils
 RUN eve-alpine-deploy.sh
 
 WORKDIR /

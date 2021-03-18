@@ -4,13 +4,13 @@
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as build
-ENV BUILD_PKGS abuild curl tar make linux-headers patch g++
+ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace
+ENV PKGS openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION 02.19.2
@@ -24,7 +24,7 @@ RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
 
 # now install it locally so we can pick it up later on below
 # hadolint ignore=DL3019,DL3018
-RUN apk add -p /out --allow-untrusted /home/builder/packages/*/musl-*.apk
+RUN apk add -p /out --allow-untrusted /home/builder/packages/*/musl-1.2*.apk
 
 # hadolint ignore=DL4006
 RUN curl -L https://www.ezix.org/software/files/lshw-B.${LSHW_VERSION}.tar.gz | tar xzvf -

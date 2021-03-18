@@ -18,7 +18,8 @@ RUN set -e && for patch in ../patches/*.patch; do \
         patch -p1 < "$patch"; \
     done
 
-RUN make
+RUN rm -rf /out
+RUN make  -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install DESTDIR=/out PREFIX=/usr
 
 FROM scratch
