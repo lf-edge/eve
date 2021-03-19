@@ -45,8 +45,9 @@ xen_info() {
       *p*) handleKnownState paused  ;;
       *b*) handleKnownState running ;;
        r*) handleKnownState running ;;
-     # returning last reported state in case of undetermined domain state from xen
-   ------) echo "$2" ;;
+       # returning last reported state in case of undetermined domain state from xen
+       # but checking id DM died in which case we return broken
+   ------) handleKnownState "$2" ;;
         *) handleKnownState broken  ;;
    esac
 }
@@ -93,7 +94,7 @@ fi
   fi
    xen_info "$(domID "$1")" "$last_state" > "/run/tasks/$1.tmp"
    if grep -q broken "/run/tasks/$1.tmp"; then
-     sleep 10
+     sleep 30
      xen_info "$(domID "$1")" "$last_state" > "/run/tasks/$1.tmp"
    fi
    mv "/run/tasks/$1.tmp" "/run/tasks/$1"
