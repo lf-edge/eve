@@ -34,7 +34,7 @@ WORKDIR /pillar
 COPY pillar-patches/* /patches/
 RUN set -e && for patch in ../patches/*.patch; do \
         echo "Applying $patch"; \
-        patch -p1 < "$patch"; \
+        patch -p1 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
     done
 
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
