@@ -55,12 +55,6 @@ jobs:
                 docker system prune -f || :
              fi
           done
-      - name: Build EVE for KVM
-        # build #1 without push (do not push either unless both can build)
-        run: |
-          rm -rf dist dist.xen
-          make V=1 HV=kvm eve
-          mv -f dist dist.xen
       - name: Build and push EVE for Xen
         # since build #1 works, build and push #2
         run: |
