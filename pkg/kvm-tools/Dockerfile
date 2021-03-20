@@ -31,7 +31,7 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
 # Building qemu in strip-down mirovm only mode
 RUN apk add --no-cache curl=7.69.1-r3
 # qemu 5.1 dependencies
-RUN apk add --no-cache python3=3.8.5-r1 glib-dev=2.64.6-r0 pixman-dev=0.40.0-r2
+RUN apk add --no-cache python3=3.8.8-r0 glib-dev=2.64.6-r0 pixman-dev=0.40.0-r2
 # qemu 5.2+ dependencies
 RUN apk add --no-cache py3-setuptools=47.0.0-r0 bash=5.0.17-r0 perl=5.30.3-r0
 # ninja dependencies
