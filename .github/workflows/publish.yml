@@ -63,5 +63,4 @@ jobs:
         # redo build #1 with push
         run: |
           rm -rf dist
-          mv -f dist.xen dist
           make V=1 HV=kvm LINUXKIT_PKG_TARGET=push eve
