@@ -2,7 +2,7 @@ ARG GOVER=1.15.3
 FROM golang:${GOVER}-alpine as build
 RUN apk add --no-cache   \
         libc-dev=0.7.2-r3\
-        git=2.26.2-r0    \
+        git=2.26.3-r0    \
         gcc=9.3.0-r2     \
         linux-headers=5.4.5-r1
 
