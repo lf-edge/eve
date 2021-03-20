@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:99db0c3af59a9656315c9d7a0ad8a24f631134b0 as kernel-build
+FROM lfedge/eve-alpine:6.2.0 as kernel-build
 
 ENV BUILD_PKGS \
     argp-standalone automake bash bc binutils-dev bison build-base curl \
