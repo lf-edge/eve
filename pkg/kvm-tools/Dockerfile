@@ -1,23 +1,20 @@
-FROM alpine:3.12 as build
+FROM lfedge/eve-alpine:6.2.0 as build
+# Building qemu in strip-down mirovm only mode: curl
+# qemu 5.1 dependencies: python3 glib-dev pixman-dev
+# qemu 5.2+ dependencies: py3-setuptools bash perl
+# ninja dependencies: cmake g++
+ENV BUILD_PKGS gcc make libc-dev binutils-dev patch libaio-dev zlib-dev zlib-static linux-headers libvncserver-dev curl python3 glib-dev pixman-dev py3-setuptools bash perl cmake g++
+ENV BUILD_PKGS_arm64 dtc dtc-dev
+# libgcc, pixman and glib are required for qemu
+# it maybe possible to get rid of libgcc & pixman
+ENV PKGS libgcc pixman glib libvncserver libaio musl-utils
+ENV PKGS_arm64 libfdt libstdc++
+RUN eve-alpine-deploy.sh
 
 ENV KVMTOOL_VERSION=90b2d3adadf218dfc6bdfdfcefe269843360223c
 
 ADD  https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/snapshot/kvmtool-${KVMTOOL_VERSION}.tar.gz /kvmtool.tar.gz
 COPY *.patch /
-
-RUN apk add --no-cache       \
-      gcc=9.3.0-r2           \
-      make=4.3-r0            \
-      libc-dev=0.7.2-r3      \
-      binutils-dev=2.34-r1   \
-      patch=2.7.6-r6         \
-      libaio-dev=0.3.112-r1  \
-      zlib-dev=1.2.11-r3     \
-      zlib-static=1.2.11-r3  \
-      linux-headers=5.4.5-r1 \
-      libvncserver-dev=0.9.13-r1
-
-RUN if [ $(uname -m) == aarch64 ]; then apk add --no-cache dtc=1.6.0-r0 dtc-dev=1.6.0-r0 ;fi
 
 RUN tar xzvf kvmtool.tar.gz > /dev/null 2>&1 ;\
     mv kvmtool-${KVMTOOL_VERSION} kvmtool
@@ -27,15 +24,6 @@ WORKDIR /kvmtool
 RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
     patch -p1 < /0002-alpine-define-workaround.patch      ;\
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/usr HOME=
-
-# Building qemu in strip-down mirovm only mode
-RUN apk add --no-cache curl=7.69.1-r3
-# qemu 5.1 dependencies
-RUN apk add --no-cache python3=3.8.5-r1 glib-dev=2.64.6-r0 pixman-dev=0.40.0-r2
-# qemu 5.2+ dependencies
-RUN apk add --no-cache py3-setuptools=47.0.0-r0 bash=5.0.17-r0 perl=5.30.3-r0
-# ninja dependencies
-RUN apk add --no-cache cmake=3.17.2-r0 g++=9.3.0-r2
 
 # building ninja
 WORKDIR /ninja-1.10.1
@@ -82,19 +70,9 @@ RUN mkdir /bios ; if [ $(uname -m) = x86_64 ]; then                             
       cp build/pc-bios/optionrom/linuxboot_dma.bin build/pc-bios/bios-microvm.bin /bios ;\
     fi
 
-FROM alpine:3.12
+FROM scratch
 
-# libgcc, pixman and glib are required for qemu
-# it maybe possible to get rid of libgcc & pixman
-RUN apk add --no-cache \
-            libgcc=9.3.0-r2 \
-            pixman=0.40.0-r2 \
-            glib=2.64.6-r0 \
-            libvncserver=0.9.13-r1 \
-            libaio=0.3.112-r1
-
-RUN if [ $(uname -m) == aarch64 ]; then apk add --no-cache libfdt=1.6.0-r0 libstdc++=9.3.0-r2 ;fi
-
+COPY --from=build /out/ /
 COPY --from=build /usr/bin/lkvm /usr/bin/lkvm
 COPY --from=build /qemu-5.2.0-rc1/build/qemu-system-* /usr/bin/
 COPY --from=build /bios /usr/share/qemu
