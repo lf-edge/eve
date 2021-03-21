@@ -75,18 +75,22 @@ eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volume
 /bin/echo Eden sftp volumes test (17.2/{{$tests}})
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volume_sftp
 
-/bin/echo Eden Host only ACL (18/{{$tests}})
+/bin/echo Eden Host only ACL (18.1/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/host-only
+/bin/echo Eden ACL to particular host (18.2/{{$tests}})
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/acl
 /bin/echo Eden Network light (19/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/networking_light
 /bin/echo Eden Networks switch (20/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/nw_switch
 /bin/echo Eden Network Ports switch (21/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_switch
+/bin/echo Eden Network portmap test (21.1/{{$tests}})
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_forward
 
 {{if (eq $usb_pt "y")}}
-/bin/echo EVE USB Passthrough (22/{{$tests}})
-eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/usb-pt_test
+/bin/echo Hardware reboot - USB (22/{{$tests}})
+eden.escript.test -testdata ../hardware_reboot/testdata/ -test.run TestEdenScripts/hardware_usb_reboot
 {{end}}
 
 {{ if or (eq $workflow "large") (eq $workflow "gcp") }}
@@ -117,11 +121,13 @@ eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/eclie
 /bin/echo Eden Reboot test (33/{{$tests}})
 eden.escript.test -test.run TestEdenScripts/reboot_test
 {{ if ne $workflow "small" }}
-/bin/echo Eden base OS update (34/{{$tests}})
-eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image
+/bin/echo Eden base OS update http (34/{{$tests}})
+eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_http
+/bin/echo Eden base OS update oci (35/{{$tests}})
+eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_oci
 {{end}}
 
 {{if (eq $stop "y")}}
-/bin/echo Eden stop (35/{{$tests}})
+/bin/echo Eden stop (36/{{$tests}})
 eden.escript.test -test.run TestEdenScripts/eden_stop
 {{end}}

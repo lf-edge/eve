@@ -6,6 +6,7 @@ eden.escript.test -test.run TestEdenScripts/host-only -test.timeout 15m
 eden.escript.test -test.run TestEdenScripts/networking_light -test.timeout 15m
 eden.escript.test -test.run TestEdenScripts/nw_switch -test.timeout 20m
 eden.escript.test -test.run TestEdenScripts/port_switch -test.timeout 20m
+eden.escript.test -test.run TestEdenScripts/port_forward -test.timeout 20m
 # Just a simple test of nginx image -- tested in port_switch test
 #eden.escript.test -test.run TestEdenScripts/ngnix -test.timeout 20m
 eden.escript.test -test.run TestEdenScripts/maridb -test.timeout 20m

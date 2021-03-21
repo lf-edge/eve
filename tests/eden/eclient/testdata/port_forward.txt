@@ -1,0 +1,94 @@
+# Tests for port forward connectivity between applications
+
+{{$test_msg := "Port forward tests"}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+
+[!exec:bash] stop
+[!exec:sleep] stop
+[!exec:ssh] stop
+[!exec:chmod] stop
+
+exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
+
+# Starting of reboot detector with 2 reboots limit
+! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=2 &
+
+message 'Resetting of EVE'
+eden eve reset
+exec sleep 20
+
+message 'Creating networks'
+#exec sleep 5
+eden network create 10.11.12.0/24 -n n1
+#exec sleep 5
+eden network create 10.11.13.0/24 -n n2
+
+test eden.network.test -test.v -timewait 10m ACTIVATED n1 n2
+
+message 'Starting with both application attached to same network instance'
+eden pod deploy -v debug -n app1 docker://itmoeve/eclient:0.5 -p 2223:22 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n app2 docker://itmoeve/eclient:0.5 -p 2224:22 --networks=n1 --memory=512MB
+
+message 'Waiting for apps to enter RUNNING state'
+test eden.app.test -test.v -timewait 20m RUNNING app1 app2
+
+message 'Checking accessibility'
+exec -t 5m bash wait_ssh.sh 2223 2224
+
+eden eve status
+cp stdout eve_status
+
+message 'Testing port map connectivity between apps'
+exec sleep 20
+exec -t 1m bash ping.sh 2223 2224
+stdout 'Ubuntu'
+
+message 'Resource cleanng'
+eden pod delete app1
+eden pod delete app2
+
+test eden.app.test -test.v -timewait 10m - app1 app2
+
+eden network delete n1
+eden network delete n2
+
+test eden.network.test -test.v -timewait 10m - n1 n2
+
+stdout 'no network with n1 found'
+stdout 'no network with n2 found'
+
+eden network ls
+! stdout '^n1\s'
+! stdout '^n2\s'
+
+-- wait_ssh.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+
+for p in $*
+do
+  for i in `seq 20`
+  do
+    sleep 20
+    # Test SSH-access to container
+    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
+    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+  done
+done
+
+-- ping.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+
+echo {{template "ssh"}}$HOST -p $1 sh /root/portmap_test.sh -p $2
+{{template "ssh"}}$HOST -p $1 sh /root/portmap_test.sh $2
+
+-- eden-config.yml --
+{{/* Test's config. file */}}
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}
