@@ -39,7 +39,13 @@ RUN for patch in fix-musl-sc_long_bit.patch wrapper-for-basename.patch 155652295
  make -C src RPM_OPT_FLAGS=-DNONLS static &&\
  cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
-FROM linuxkit/sshd:666b4a1a323140aa1f332826164afba506abf597
+FROM scratch
+ENTRYPOINT []
+WORKDIR /
 
-COPY ssh.sh spec.sh /usr/bin/
 COPY --from=build /out/ /
+COPY --from=build /etc/passwd /etc/group /etc/
+COPY ssh.sh spec.sh /usr/bin/
+RUN mkdir -p /etc/ssh /root/.ssh && chmod 0700 /root/.ssh
+
+CMD ["/sbin/tini", "/usr/bin/ssh.sh"]
