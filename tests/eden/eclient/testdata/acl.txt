@@ -1,0 +1,67 @@
+# Test particular host access
+
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+
+[!exec:bash] stop
+[!exec:sleep] stop
+[!exec:ssh] stop
+[!exec:chmod] stop
+
+exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
+
+# Starting of reboot detector with a 1 reboot limit
+! test eden.reboot.test -test.v -timewait 40m -reboot=0 -count=1 &
+
+# Define access only to github.com
+eden pod deploy -n curl-acl --memory=512MB docker://itmoeve/eclient:0.4 -p 2223:22 --acl=github.com
+
+test eden.app.test -test.v -timewait 10m RUNNING curl-acl
+
+exec -t 10m bash wait_ssh.sh 2223
+
+exec sleep 10
+
+# Try to curl host we defined
+exec -t 1m bash curl.sh 2223 github.com
+stderr 'Connected to github.com'
+
+# Try to curl another host
+! exec -t 1m bash curl.sh 2223 google.com
+! stderr 'Connected'
+
+eden pod delete curl-acl
+
+test eden.app.test -test.v -timewait 10m - curl-acl
+
+-- wait_ssh.sh --
+
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+for p in $*
+do
+  for i in `seq 20`
+  do
+    sleep 20
+    # Test SSH-access to container
+    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
+    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+  done
+done
+
+-- curl.sh --
+
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+
+echo {{template "ssh"}}$HOST -p $1 curl -v --max-time 30 "$2"
+{{template "ssh"}}$HOST -p $1 curl -v --max-time 30 "$2"
+
+-- eden-config.yml --
+{{/* Test's config file */}}
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}
