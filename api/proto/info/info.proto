@@ -335,6 +335,9 @@ message ZInfoDevice {
 
   bool maintenance_mode = 38;
   MaintenanceModeReason maintenance_mode_reason = 39;
+
+  // Are we in the process of rebooting EVE?
+  bool reboot_inprogress = 41;
 }
 
 // Different reasons for a boot/reboot
