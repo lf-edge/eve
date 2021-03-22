@@ -36,11 +36,6 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
 	getconfigCtx.lastReceivedConfig = time.Now()
-	// XXX can this happen when usingSaved is set?
-	if parseOpCmds(config, getconfigCtx) {
-		log.Functionln("Reboot flag set, skipping config processing")
-		return true
-	}
 	ctx := getconfigCtx.zedagentCtx
 
 	// XXX - DO NOT LOG entire config till secrets are in encrypted blobs
@@ -67,10 +62,16 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		publishZedAgentStatus(ctx.getconfigCtx)
 	}
 
+	// Any new reboot command?
+	if !usingSaved && parseOpCmds(config, getconfigCtx) {
+		log.Noticeln("Reboot flag set, skipping config processing")
+		return true
+	}
+
 	if getconfigCtx.rebootFlag || ctx.deviceReboot {
-		log.Tracef("parseConfig: Ignoring config as rebootFlag set")
+		log.Noticef("parseConfig: Ignoring config as rebootFlag set")
 	} else if ctx.maintenanceMode {
-		log.Functionf("parseConfig: Ignoring config due to maintenanceMode")
+		log.Noticef("parseConfig: Ignoring config due to maintenanceMode")
 	} else {
 		handleControllerCertsSha(ctx, config)
 		parseCipherContext(getconfigCtx, config)
