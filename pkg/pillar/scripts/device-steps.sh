@@ -213,15 +213,16 @@ fi
 # /persist/newlog/failedUpload/*
 diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
 echo "Used percentage of /persist: $diskspace_used"
-if [ $diskspace_used > $DISKSPACE_RECOVERY_LIMIT ]
+if [ "$diskspace_used" -ge "$DISKSPACE_RECOVERY_LIMIT" ]
 then
     echo "Used percentage of /persist is $diskspace_used more than the limit $DISKSPACE_RECOVERY_LIMIT"
     for DIR in log newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload
     do
-        rm -rf $PERSISTDIR/$DIR/*
+        dir_del=$PERSISTDIR/$DIR
+        rm -rf "${dir_del:?}/"*
         diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
-        echo "Used percentage of /persist is $diskspace_used after clearing $PERSISTDIR/$DIR"
-        if [ $diskspace_used < $DISKSPACE_RECOVERY_LIMIT ]
+        echo "Used percentage of /persist is $diskspace_used after clearing $dir_del"
+        if [ "$diskspace_used" -le "$DISKSPACE_RECOVERY_LIMIT" ]
         then
             break
         fi
