@@ -7,6 +7,7 @@ package domainmgr
 // and their memory, thread, FD, etc usage
 
 import (
+	"fmt"
 	"io/ioutil"
 	"path"
 	"strconv"
@@ -14,7 +15,13 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/shirou/gopsutil/process"
+)
+
+const (
+	maxStackStringLen = 1024 // Single stack
+	totalMaxStackLen  = 8192 // All reported stacks
 )
 
 // Return a slice of all the ProcessMetric plus a map of the pids
@@ -34,6 +41,7 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 		log.Errorf("process.Processes failed: %s", err)
 		return ret, reportedPids
 	}
+	totalStacks := 0
 	for _, p := range processes {
 		pi, err := getProcessMetric(p)
 		if err != nil {
@@ -44,10 +52,31 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 		if pi.UserProcess {
 			if _, ok := watchedPids[pi.Pid]; ok {
 				pi.Watched = true
+			} else if time.Since(pi.CreateTime) > time.Minute {
+				// Report stack for not watched processed which
+				// have been running for a while. This is
+				// a bit of belt and suspenders approach to
+				// catch hung processes which are not watched by
+				// the watchdog process to be able to see them
+				// even when we have no debug ssh access.
+				// We limit the total memory used for stacks for
+				// all the processes.
+				filename := fmt.Sprintf("/proc/%d/stack", pi.Pid)
+				pi.Stack, _ = fileutils.StatAndRead(log, filename, maxStackStringLen)
+				// Apply size limit
+				if pi.Stack != "" {
+					if totalStacks+len(pi.Stack) > totalMaxStackLen {
+						pi.Stack = "Omitted"
+					} else {
+						totalStacks += len(pi.Stack)
+					}
+				}
 			}
+
 			reportedPids[int32(pi.Pid)] = true
 			ret = append(ret, *pi)
 		}
+
 	}
 	return ret, reportedPids
 }

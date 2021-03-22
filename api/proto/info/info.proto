@@ -341,6 +341,9 @@ message ZInfoDevice {
 
   // Is /dev/watchdog present in the system
   bool hardware_watchdog_present = 40;
+
+  // Are we in the process of rebooting EVE?
+  bool reboot_inprogress = 41;
 }
 
 // Different reasons for a boot/reboot

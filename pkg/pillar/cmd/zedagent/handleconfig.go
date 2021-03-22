@@ -60,6 +60,8 @@ type getconfigContext struct {
 	subVolumeStatus          pubsub.Subscription
 	pubVolumeConfig          pubsub.Publication
 	rebootFlag               bool
+	lastReceivedConfig       time.Time
+	lastProcessedConfig      time.Time
 }
 
 // devUUID is set in Run and never changed
@@ -114,8 +116,12 @@ func configTimerTask(handleChannel chan interface{},
 	ctx := getconfigCtx.zedagentCtx
 	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
-	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
+	rebootFlag := getLatestConfig(configUrl, iteration,
 		getconfigCtx)
+	if rebootFlag != getconfigCtx.rebootFlag {
+		getconfigCtx.rebootFlag = rebootFlag
+		triggerPublishDevInfo(ctx)
+	}
 	publishZedAgentStatus(getconfigCtx)
 
 	configInterval := ctx.globalConfig.GlobalValueInt(types.ConfigInterval)
@@ -140,14 +146,17 @@ func configTimerTask(handleChannel chan interface{},
 			start := time.Now()
 			iteration += 1
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
-			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
+			if rebootFlag != getconfigCtx.rebootFlag {
+				getconfigCtx.rebootFlag = rebootFlag
+				triggerPublishDevInfo(ctx)
+			}
 			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
 
 		case <-stillRunning.C:
 			if getconfigCtx.rebootFlag {
-				log.Functionf("reboot flag set")
+				log.Noticef("reboot flag set")
 			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
