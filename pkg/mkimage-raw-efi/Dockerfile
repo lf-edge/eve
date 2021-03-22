@@ -21,6 +21,7 @@ COPY grub.stage1 ./usr/lib/grub/i386-pc/boot.img
 WORKDIR /eco/media/root-rw/root/containers/onboot/003-installer
 COPY runtime.json config.json ./
 RUN mv /out rootfs
+# hadolint ignore=DL3003
 RUN (cd /eco && find . -xdev | grep -v installer.img | sort | cpio --quiet -o -H newc) | gzip > rootfs/installer.img
 RUN mv rootfs /out
 

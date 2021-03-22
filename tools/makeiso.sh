@@ -11,4 +11,5 @@ if [ ! -d "$SOURCE" ] || [ $# -lt 2 ]; then
 fi
 
 : > "$ISO"
+# shellcheck disable=SC2086
 docker run --rm -v "$SOURCE:/bits" -v "$ISO:/output.iso" "$MKIMAGE_TAG" $3

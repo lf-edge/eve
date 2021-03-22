@@ -1,7 +1,6 @@
 #!/bin/sh
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
-MKIMAGE_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-iso-efi")"
 SOURCE="$(cd "$1" && pwd)"
 NET="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 
