@@ -35,6 +35,7 @@ const (
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
+	getconfigCtx.lastReceivedConfig = time.Now()
 	// XXX can this happen when usingSaved is set?
 	if parseOpCmds(config, getconfigCtx) {
 		log.Functionln("Reboot flag set, skipping config processing")
@@ -90,6 +91,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		parseContentInfoConfig(getconfigCtx, config)
 		parseVolumeConfig(getconfigCtx, config)
 		parseAppInstanceConfig(config, getconfigCtx)
+		getconfigCtx.lastProcessedConfig = time.Now()
 	}
 	return false
 }

@@ -535,6 +535,25 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
 	}
 
+	if !ctx.getconfigCtx.lastReceivedConfig.IsZero() {
+		protoTime, err := ptypes.TimestampProto(ctx.getconfigCtx.lastReceivedConfig)
+		if err == nil {
+			ReportDeviceMetric.LastReceivedConfig = protoTime
+		} else {
+			log.Errorf("Failed to convert timestamp (%+v) for LastReceivedConfig into TimestampProto. err: %s",
+				ctx.getconfigCtx.lastReceivedConfig, err)
+		}
+	}
+	if !ctx.getconfigCtx.lastProcessedConfig.IsZero() {
+		protoTime, err := ptypes.TimestampProto(ctx.getconfigCtx.lastProcessedConfig)
+		if err == nil {
+			ReportDeviceMetric.LastProcessedConfig = protoTime
+		} else {
+			log.Errorf("Failed to convert timestamp (%+v) for LastProcessedConfig into TimestampProto. err: %s",
+				ctx.getconfigCtx.lastProcessedConfig, err)
+		}
+	}
+
 	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
@@ -1374,6 +1393,7 @@ func createProcessMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMs
 		processMetric.VmBytes = p.VMBytes
 		processMetric.RssBytes = p.RssBytes
 		processMetric.MemoryPercent = p.MemoryPercent
+		processMetric.Stack = p.Stack
 		reportMetrics.Pr = append(reportMetrics.Pr, processMetric)
 	}
 	log.Tracef("Process metrics done: %v", reportMetrics.Pr)

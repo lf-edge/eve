@@ -491,6 +491,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Watchdog
 	ReportDeviceInfo.HardwareWatchdogPresent = getHarwareWatchdogPresent(ctx)
 
+	ReportDeviceInfo.RebootInprogress = ctx.getconfigCtx.rebootFlag
+
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo

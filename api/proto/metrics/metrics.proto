@@ -174,6 +174,12 @@ message deviceMetric {
 
   // deviceMemory - Memory metrics.
   DeviceMemoryMetric deviceMemory = 17;
+
+  // Last change to EdgeDevConfig received by device from controller
+  google.protobuf.Timestamp last_received_config = 18;
+
+  // Last change to EdgeDevConfig processed by device
+  google.protobuf.Timestamp last_processed_config = 19;
 }
 
 message AclMetric {
@@ -429,6 +435,8 @@ message ZMetricProcess {
   uint64 vm_bytes = 11;
   uint64 rss_bytes = 12;
   float memory_percent = 13;
+  // We report the stack for !watched proceeses which have been running for a while
+  string stack = 14;
 }
 
 // This is the request payload for POST /api/v1/edgeDevice/metrics
