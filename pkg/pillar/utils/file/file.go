@@ -4,12 +4,15 @@
 package utils
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"golang.org/x/sys/unix"
 )
 
@@ -47,4 +50,32 @@ func WriteRename(fileName string, b []byte) error {
 // Writable checks if the directory is writable
 func Writable(dir string) bool {
 	return unix.Access(dir, unix.W_OK) == nil
+}
+
+// StatAndRead returns the content and Modtime
+// We limit the size we read maxReadSize and silently truncate if longer
+func StatAndRead(log *base.LogObject, filename string, maxReadSize int) (string, time.Time) {
+	fi, err := os.Stat(filename)
+	if err != nil {
+		// File doesn't exist
+		return "", time.Time{}
+	}
+	f, err := os.Open(filename)
+	if err != nil {
+		if log != nil {
+			log.Errorf("StatAndRead failed %s", err)
+		}
+		return "", fi.ModTime()
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	content := make([]byte, maxReadSize)
+	n, err := r.Read(content)
+	if err != nil {
+		if log != nil {
+			log.Errorf("StatAndRead failed %s", err)
+		}
+		return "", fi.ModTime()
+	}
+	return string(content[0:n]), fi.ModTime()
 }
