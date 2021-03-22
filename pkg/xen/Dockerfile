@@ -7,7 +7,7 @@ ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
 RUN eve-alpine-deploy.sh
 
 ENV XEN_UBOOT_ADDR 0x81000000
-ENV XEN_VERSION 4.14.0
+ENV XEN_VERSION 4.14.1
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
@@ -26,13 +26,12 @@ RUN make defconfig && \
     make oldconfig && \
     rm -rf /out && mkdir -p /out/boot
 
-RUN case $(uname -m) in \
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" && \
+    case $(uname -m) in \
     x86_64) \
-        make -j "$(getconf _NPROCESSORS_ONLN)" && \
         cp xen.gz /out/boot/xen.gz \
 	;; \
     aarch64) \
-        CFLAGS=-mno-outline-atomics make -j "$(getconf _NPROCESSORS_ONLN)" && \
         (cd /tmp ; wget -O - ftp://ftp.denx.de/pub/u-boot/u-boot-2018.09.tar.bz2 | tar xjf - ; cd u-boot-* ; make defconfig ; make tools-all) ;\
         /tmp/u-boot-*/tools/mkimage -A arm64 -T kernel -a $XEN_UBOOT_ADDR -e $XEN_UBOOT_ADDR -C none -d xen /out/boot/xen.uboot ;\
         cp xen.efi /out/boot/ \
