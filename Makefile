@@ -91,7 +91,6 @@ FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
 
-IPXE_IMG=$(DIST)/ipxe.efi
 LIVE=$(BUILD_DIR)/live
 LIVE_IMG=$(BUILD_DIR)/live.$(IMG_FORMAT)
 TARGET_IMG=$(BUILD_DIR)/target.img
@@ -117,7 +116,10 @@ ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG=$(ROOTFS).img
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
+INSTALLER_IMG=$(INSTALLER)/installer.img
 PERSIST_IMG=$(INSTALLER)/persist.img
+KERNEL_IMG=$(INSTALLER)/kernel
+IPXE_IMG=$(INSTALLER)/ipxe.efi
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 
@@ -320,28 +322,21 @@ $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IM
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=qcow2,file=$@.active -drive format=qcow2,file=$<
 	mv $@.active $@
 
-$(BIOS_IMG): $(LINUXKIT) | $(INSTALLER_FIRMWARE_DIR)
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) $(notdir $@)
-	$(QUIET): $@: Succeeded
-
-$(IPXE_IMG): $(LINUXKIT) | $(DIST)
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/ipxe)-$(DOCKER_ARCH_TAG) $(notdir $@)
-
 $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 	mkdir $(dir $@) 2>/dev/null || :
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
 	$(QUIET): $@: Succeeded
 
-$(EFI_PART): $(LINUXKIT) | $(INSTALLER)
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) $(notdir $@)
-	$(QUIET): $@: Succeeded
-
-$(BOOT_PART): $(LINUXKIT) | $(INSTALLER)
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/u-boot)-$(DOCKER_ARCH_TAG) $(notdir $@)
-	$(QUIET): $@: Succeeded
-
-$(INITRD_IMG): $(LINUXKIT) | $(INSTALLER)
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/mkimage-raw-efi)-$(DOCKER_ARCH_TAG) $(notdir $@ $(EFI_PART))
+$(EFI_PART): PKG=grub
+$(BOOT_PART): PKG=u-boot
+$(INITRD_IMG): PKG=mkimage-raw-efi
+$(INSTALLER_IMG): PKG=mkimage-raw-efi
+$(KERNEL_IMG): PKG=new-kernel
+$(IPXE_IMG): PKG=ipxe
+$(BIOS_IMG): PKG=uefi
+$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG): $(LINUXKIT) | $(INSTALLER)
+	mkdir -p $(dir $@)
+	cd $(dir $@) && $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG))-$(DOCKER_ARCH_TAG) $(notdir $@)
 	$(QUIET): $@: Succeeded
 
 # run-installer
@@ -360,6 +355,7 @@ run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
 
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(IPXE_IMG)),bootfile=$(notdir $(IPXE_IMG))
 run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB)
+	tar -C $(INSTALLER) -xvf $(INSTALLER).net || :
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
@@ -444,6 +440,7 @@ $(DIST) $(BUILD_DIR) $(INSTALLER_FIRMWARE_DIR):
 # we need to save the version including hypervisor and architecture
 $(INSTALLER):
 	@mkdir -p $@
+	@cp -r pkg/eve/installer/* $@
 	# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
 	@echo $(FULL_VERSION) > $(INSTALLER)/eve_version
 
@@ -451,10 +448,11 @@ $(INSTALLER):
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
 build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
-config: $(CONFIG_IMG))		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
+installer-img: $(INSTALLER_IMG)
+kernel: $(KERNEL_IMG)
+config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_IMG) current
-rootfs-%: $(ROOTFS)-%.img ;
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
@@ -491,17 +489,17 @@ $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG)
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
+$(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
-	./tools/makeiso.sh $| $@
+$(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
+	./tools/makeiso.sh $| $@ installer
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).net: eve
-	docker run lfedge/eve:$(ROOTFS_VERSION)-$(HV) installer_net > $@
-	tar -C $(DIST) -xvf $@
+$(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
+	./tools/makenet.sh $| $@
+	$(QUIET): $@: Succeeded
 
 $(LIVE).vdi: $(LIVE).raw
 	qemu-img resize -f raw $< ${MEDIA_SIZE}M
@@ -533,7 +531,7 @@ pkg/%: eve-% FORCE
 $(RUNME) $(BUILD_YML):
 	cp pkg/eve/$(@F) $@
 
-eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART) $(RUNME) $(BUILD_YML) current | $(BUILD_DIR)
+eve: $(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART) $(RUNME) $(BUILD_YML) current | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
@@ -710,11 +708,11 @@ help:
 	@echo "   pkgs           builds all EVE packages"
 	@echo "   pkg/XXX        builds XXX EVE package"
 	@echo "   rootfs         builds default EVE rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   rootfs-XXX     builds a particular kind of EVE rootfs image (xen, kvm)"
 	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   live-XXX       builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
-	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
+	@echo "   installer-raw  builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
+	@echo "   installer-net  builds a tarball of artifacts to be used for PXE booting"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose        runs all EVE microservices via docker-compose deployment"

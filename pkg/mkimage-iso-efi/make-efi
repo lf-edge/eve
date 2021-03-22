@@ -25,8 +25,12 @@ else
    bsdtar xzf -
 fi
 
-# for installer we need to add a uid
-[ -f initrd.img ] && od -An -x -N 16 /dev/random | tr -d ' ' > installer.uid
+# for installer we need to add a uuid and override grub.cfg
+if [ "$1" = installer ]; then
+   mkdir boot && touch boot/.boot_repository
+   od -An -x -N 16 /dev/random | tr -d ' ' > boot/.uuid
+   cp grub.cfg EFI/BOOT/
+fi
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB

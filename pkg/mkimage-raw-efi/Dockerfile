@@ -6,30 +6,34 @@
 #
 FROM lfedge/eve-alpine:6.2.0 as build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-ENV BUILD_PKGS mkinitfs gcc musl-dev linux-headers kmod-dev util-linux-dev cryptsetup-dev
-ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar
+ENV BUILD_PKGS mkinitfs grep patch
+ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode
 RUN eve-alpine-deploy.sh
 
-COPY nlplug-findfs.c initramfs-init /tmp/
-RUN cc -Wall -Werror -g -D_GNU_SOURCE -DDEBUG -I/usr/include/blkid -I/usr/include/uuid /tmp/nlplug-findfs.c -lblkid  -lkmod  -L/lib -lcryptsetup -o /sbin/nlplug-findfs
-RUN mkinitfs -n -i /tmp/initramfs-init -o /initrd.gz
-
 WORKDIR /out
-RUN mkdir -p boot
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
+RUN mkdir -p efifs parts root bits config opt/zededa lib/modules run sys
 COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
+COPY grub.stage1 ./usr/lib/grub/i386-pc/boot.img
+
+# now lets create an edge container
+# FIXME: 003-installer? why not linuxkit build?
+WORKDIR /eco/media/root-rw/root/containers/onboot/003-installer
+COPY runtime.json config.json ./
+RUN mv /out rootfs
+RUN (cd /eco && find . -xdev | grep -v installer.img | sort | cpio --quiet -o -H newc) | gzip > rootfs/installer.img
+RUN mv rootfs /out
+
+# bootstrap Alpine's initrd
+WORKDIR /
+COPY initramfs-init.patch /tmp/
+RUN patch -p1 < /tmp/initramfs-init.patch
+RUN echo /bin/grep >> /etc/mkinitfs/features.d/base.files
+RUN mkinitfs -n -o /out/initrd.img
 
 FROM scratch
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 COPY --from=build /out/ /
-COPY --from=build /initrd.gz /
-COPY grub.stage1 /usr/lib/grub/i386-pc/boot.img
-RUN gzip -d < /initrd.gz | cpio -id && \
-    rm -f /etc/mtab /dev/null && \
-    find . -xdev | grep -v initrd.gz | sort | cpio --quiet -o -H newc | gzip > /initrd.gz && \
-    mv /initrd.gz /initrd.img
-
-COPY grub.cfg /EFI/BOOT/
 
 ENTRYPOINT [ "/make-raw" ]
