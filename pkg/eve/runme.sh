@@ -103,43 +103,21 @@ do_installer_raw() {
 
 do_installer_iso() {
   rm -rf /parts
-  /make-efi
+  /make-efi installer
   dump /output.iso installer.iso
 }
 
 do_installer_net() {
-  ln -s /sys/class/mem/null /media/boot
-  find /bits /media/boot -xdev | grep -v initrd.img | sort | cpio --quiet -o -H newc | gzip > /initrd.bits
-  ln -s /bits/initrd.img /initrd.img
+  # FIXME: this will also go away once we rationalize
+  # how we're managing config for things like netboot
+  (cd "$(mktemp -d)" && mkdir -p media/root-rw/boot
+   cp /bits/config.img /bits/persist.img media/root-rw
+   echo netboot > media/root-rw/boot/.uuid
+   find . | sort | cpio --quiet -o -H newc) | gzip > /initrd.bits
+  ln -s /bits/* /
   unsquashfs -d /tmp/kernel rootfs.img boot/kernel
   mv /tmp/kernel/boot/kernel /
-  cat > /ipxe.efi.cfg <<__EOT__
-#!ipxe
-# dhcp
-#
-# Uncomment ntp lines for devices without RTC (RPI for example)
-# echo Getting the current time from ntp...
-# :retry_ntp
-# ntp pool.ntp.org || goto retry_ntp
-#
-# you may want to add the following to the kernel command line arguments:
-#   * eve_install_disk=XXX (e.g. XXX=mmcblk0)
-#   * eve_install_server=XXX (e.g. XXX=zedcloud.hummingbird.zededa.net)
-#
-# chain --autofree https://github.com/lf-edge/eve/releases/download/1.2.3/ipxe.efi.cfg
-# set url https://foo.bar/
-set console console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0
-
-# a few vendor tweaks
-iseq \${smbios/manufacturer} Huawei && set console console=ttyAMA0,115200n8 ||
-iseq \${smbios/manufacturer} Huawei && set platform_tweaks pcie_aspm=off pci=pcie_bus_perf crashkernel=auto ||
-
-kernel \${url}kernel eve_installer=\${mac:hexhyp} eve_reboot_after_install fastboot \${console} \${platform_tweaks} initrd=initrd.img initrd=initrd.bits
-initrd \${url}initrd.img
-initrd \${url}initrd.bits
-boot
-__EOT__
-  tar -C / -chvf /output.net ipxe.efi.cfg kernel initrd.img initrd.bits ipxe.efi
+  tar -C / -chvf /output.net ipxe.efi.cfg ipxe.efi kernel initrd.img installer.img initrd.bits rootfs.img
   if [ "$(uname -m)" = aarch64 ]
   then
   cat > /tmp/boot.scr <<__EOT__
