@@ -1,14 +1,3 @@
---- a/tools/libxc/xc_sr_restore.c
-+++ b/tools/libxc/xc_sr_restore.c
-@@ -398,6 +398,6 @@
-     {
-         ERROR("PAGE_DATA record wrong size: length %u, expected "
-               "%zu + %zu + %lu", rec->length, sizeof(*pages),
--              (sizeof(uint64_t) * pages->count), (PAGE_SIZE * pages_of_data));
-+              (sizeof(uint64_t) * pages->count), (unsigned long)(PAGE_SIZE * pages_of_data));
-         goto err;
-     }
-
 diff --git a/tools/xenpaging/xenpaging.c b/tools/xenpaging/xenpaging.c
 index d0571cabac..7ad86e3b31 100644
 --- a/tools/xenpaging/xenpaging.c

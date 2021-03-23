@@ -51,7 +51,7 @@ RUN make src && make install DESTDIR=/out && make install
 RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
 
-ENV XEN_VERSION 4.14.1
+ENV XEN_VERSION 4.15.0-rc5
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
