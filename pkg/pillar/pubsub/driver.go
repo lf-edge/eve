@@ -68,6 +68,9 @@ type DriverPublisher interface {
 	// Stop publishing
 	// This is expected to return immediately.
 	Stop() error
+
+	// CheckMaxSize to see if it will fit
+	CheckMaxSize(key string, val []byte) error
 }
 
 // Restarted interface that lets you determine if a Publication has been restarted

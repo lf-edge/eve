@@ -369,3 +369,17 @@ func (s *Publisher) sendComplete(sock net.Conn) error {
 	_, err := sock.Write([]byte(buf))
 	return err
 }
+
+// CheckMaxSize returns an error if too large
+func (s *Publisher) CheckMaxSize(key string, val []byte) error {
+	s.log.Tracef("CheckMaxSize(%s): key %s\n", s.name, key)
+	// base64-encode to avoid having spaces in the key and val
+	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
+	sendVal := base64.StdEncoding.EncodeToString(val)
+	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
+	if len(buf) >= maxsize {
+		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
+			key, len(buf), maxsize)
+	}
+	return nil
+}
