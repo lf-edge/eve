@@ -13,8 +13,19 @@ that benefit the community at large, not just code contributions:
 * Add or improve hardware support
 * Fix bugs and add new features
 
-EVE governance is conducted by the Technical Steering Committee (TSC),
-which is currently composed of the following members:
+In addition to the spirit of the Apache Way, EVE community has also adopted
+the following ASF policies (with the only notable terminological difference
+being that instead of using the term PMC we call our governance body a TSC
+Technical Steering Committee):
+
+* [Communication](https://www.apache.org/foundation/governance/pmcs#communication)
+* [Community management](https://www.apache.org/foundation/governance/pmcs#community)
+* [Release process](https://www.apache.org/legal/release-policy.html)
+* [Branding guidelines](http://www.apache.org/foundation/marks/responsibility.html)
+* [Voting](http://www.apache.org/foundation/marks/responsibility.html)
+
+As was noted above, EVE governance is conducted by the TSC, which is currently
+composed of the following members:
 
 * Allen Wittenauer <aw@effectivemachines.com>
 * Avi Deitcher <avi@deitcher.net>
