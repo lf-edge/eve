@@ -4,6 +4,7 @@ ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
                curl diffutils flex git gmp-dev gnupg installkernel kmod \
                elfutils-dev libressl-dev linux-headers ncurses-dev python3 \
                sed squashfs-tools tar xz xz-dev zlib-dev libunwind-dev
+ENV BUILD_PKGS_arm64 uboot-tools
 RUN eve-alpine-deploy.sh
 
 ENV XEN_UBOOT_ADDR 0x81000000
@@ -32,8 +33,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" && \
         cp xen.gz /out/boot/xen.gz \
 	;; \
     aarch64) \
-        (cd /tmp ; wget -O - ftp://ftp.denx.de/pub/u-boot/u-boot-2018.09.tar.bz2 | tar xjf - ; cd u-boot-* ; make defconfig ; make tools-all) ;\
-        /tmp/u-boot-*/tools/mkimage -A arm64 -T kernel -a $XEN_UBOOT_ADDR -e $XEN_UBOOT_ADDR -C none -d xen /out/boot/xen.uboot ;\
+        mkimage -A arm64 -T kernel -a $XEN_UBOOT_ADDR -e $XEN_UBOOT_ADDR -C none -d xen /out/boot/xen.uboot ;\
         cp xen.efi /out/boot/ \
         ;; \
     esac
