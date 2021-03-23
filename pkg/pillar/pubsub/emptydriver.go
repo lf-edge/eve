@@ -36,6 +36,11 @@ func (e *EmptyDriverPublisher) Load() (map[string][]byte, int, error) {
 	return make(map[string][]byte), 0, nil
 }
 
+// CheckMaxSize function
+func (e *EmptyDriverPublisher) CheckMaxSize(key string, val []byte) error {
+	return nil
+}
+
 // Publish function
 func (e *EmptyDriverPublisher) Publish(key string, item []byte) error {
 	return nil

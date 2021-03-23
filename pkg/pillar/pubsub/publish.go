@@ -67,6 +67,29 @@ func (pub *PublicationImpl) RestartCounter() int {
 	return pub.km.restartCounter
 }
 
+// CheckMaxSize returns an error if the item is too large and would result
+// in a fatal if it was published
+func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
+	topic := TypeToName(item)
+	name := pub.nameString()
+	if topic != pub.topic {
+		errStr := fmt.Sprintf("CheckMaxSize(%s): item is wrong topic %s",
+			name, topic)
+		pub.log.Fatalln(errStr)
+	}
+	val := reflect.ValueOf(item)
+	if val.Kind() == reflect.Ptr {
+		pub.log.Fatalf("CheckMaxSize got a pointer for %s", name)
+	}
+	// marshal to json bytes to send to the driver
+	b, err := json.Marshal(item)
+	if err != nil {
+		pub.log.Fatal("json Marshal in CheckMaxSize", err)
+	}
+
+	return pub.driver.CheckMaxSize(key, b)
+}
+
 // Publish publish a key-value pair
 func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	topic := TypeToName(item)
@@ -112,7 +135,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	// marshal to json bytes to send to the driver
 	b, err := json.Marshal(item)
 	if err != nil {
-		pub.log.Fatal("json Marshal in socketdriver Publish", err)
+		pub.log.Fatal("json Marshal in Publish", err)
 	}
 
 	return pub.driver.Publish(key, b)

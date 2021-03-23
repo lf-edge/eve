@@ -11,6 +11,8 @@ import (
 
 // Publication - Interface to be implemented by a Publication
 type Publication interface {
+	// CheckMaxSize returns an error if the item is too large
+	CheckMaxSize(key string, item interface{}) error
 	// Publish - Publish an object
 	Publish(key string, item interface{}) error
 	// Unpublish - Delete / UnPublish an object
