@@ -509,8 +509,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
 			cfgApp.GetCipherData())
 
-		// write to zedmanager config directory
-		publishAppInstanceConfig(getconfigCtx, appInstance)
+		// Verify that it fits and if not publish with error
+		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
 	}
 }
 
@@ -1621,12 +1621,55 @@ func mergeMaintenanceMode(ctx *zedagentContext) {
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
 }
 
-func publishAppInstanceConfig(getconfigCtx *getconfigContext,
+func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	config types.AppInstanceConfig) {
 
 	key := config.Key()
-	log.Tracef("publishAppInstanceConfig UUID %s", key)
+	log.Tracef("checkAndPublishAppInstanceConfig UUID %s", key)
 	pub := getconfigCtx.pubAppInstanceConfig
+	if err := pub.CheckMaxSize(key, config); err != nil {
+		log.Error(err)
+		var clearNumBytes int
+		if config.CloudInitUserData != nil {
+			clearNumBytes = len(*config.CloudInitUserData)
+		}
+		cryptoNumBytes := len(config.CipherData)
+		numACLs := 0
+		for i := range config.UnderlayNetworkList {
+			numACLs += len(config.UnderlayNetworkList[i].ACLs)
+		}
+		if clearNumBytes == 0 && cryptoNumBytes == 0 {
+			// Issue must be due to ACLs
+			err = fmt.Errorf("App instance has too many ACLs: %d",
+				numACLs)
+			// Approximate number; 20 can never be a problem
+		} else if numACLs < 20 {
+			if clearNumBytes == 0 {
+				err = fmt.Errorf("App instance encrypted cloud-init user data too large: %d bytes",
+					cryptoNumBytes)
+			} else {
+				err = fmt.Errorf("App instance cloud-init user data too large: %d + %d bytes",
+					clearNumBytes, cryptoNumBytes)
+			}
+		} else {
+			if clearNumBytes == 0 {
+				err = fmt.Errorf("App instance encrypted cloud-init user data %d bytes plus %d ACLs too large",
+					cryptoNumBytes, numACLs)
+			} else {
+				err = fmt.Errorf("App instance cloud-init user data %d + %d bytes plus %d ACLs too large",
+					clearNumBytes, cryptoNumBytes, numACLs)
+			}
+		}
+		log.Error(err)
+		config.Errors = append(config.Errors, err.Error())
+		// Clear out all the fields which can be large
+		config.CloudInitUserData = nil
+		config.CipherData = nil
+		for i := range config.UnderlayNetworkList {
+			config.UnderlayNetworkList[i].ACLs = nil
+		}
+	}
+
 	pub.Publish(key, config)
 }
 
