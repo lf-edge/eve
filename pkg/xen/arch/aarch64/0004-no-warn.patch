@@ -2,15 +2,16 @@ diff --git a/arch/arm/cpuerrata.c b/arch/arm/cpuerrata.c
 index 0248893de0..9349797009 100644
 --- a/arch/arm/cpuerrata.c
 +++ b/arch/arm/cpuerrata.c
-@@ -185,8 +185,6 @@ warn:
-     if ( !warned )
-     {
-         ASSERT(system_state < SYS_STATE_active);
--        warning_add("No support for ARM_SMCCC_ARCH_WORKAROUND_1.\n"
--                    "Please update your firmware.\n");
-         warned = false;
-     }
+@@ -181,9 +181,6 @@
+                                      "call ARM_SMCCC_ARCH_WORKAROUND_1");
  
+ warn:
+-    printk_once("**** No support for ARM_SMCCC_ARCH_WORKAROUND_1. ****\n"
+-                "**** Please update your firmware.                ****\n");
+-
+     return 0;
+ }
+
 diff --git a/drivers/char/console.c b/drivers/char/console.c
 index 913ae1b66a..b3e2c72a0c 100644
 --- a/drivers/char/console.c

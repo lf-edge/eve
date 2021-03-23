@@ -15,10 +15,10 @@ index 598a226..0c3963a 100644
  
      /* Fill in hypercall transfer pages. */
      cpuid(base + 2, &eax, &ebx, &ecx, &edx);
-diff --git a/tools/libxl/libxl_create.c b/tools/libxl/libxl_create.c
+diff --git a/tools/libs/light/libxl_create.c b/tools/libs/light/libxl_create.c
 index 32d45dc..283b41b 100644
---- a/tools/libxl/libxl_create.c
-+++ b/tools/libxl/libxl_create.c
+--- a/tools/libs/light/libxl_create.c
++++ b/tools/libs/light/libxl_create.c
 @@ -320,6 +320,8 @@ int libxl__domain_build_info_setdefault(libxl__gc *gc,
          libxl_defbool_setdefault(&b_info->u.hvm.acpi_laptop_slate,  false);
          libxl_defbool_setdefault(&b_info->u.hvm.nx,                 true);
@@ -39,10 +39,10 @@ index 32d45dc..283b41b 100644
  
          if (libxl_defbool_val(d_config->b_info.u.hvm.vkb_device)) {
              libxl_device_vkb_init(&vkb);
-diff --git a/tools/libxl/libxl_x86.c b/tools/libxl/libxl_x86.c
+diff --git a/tools/libs/light/libxl_x86.c b/tools/libs/light/libxl_x86.c
 index cdb294a..ed3ac19 100644
---- a/tools/libxl/libxl_x86.c
-+++ b/tools/libxl/libxl_x86.c
+--- a/tools/libs/light/libxl_x86.c
++++ b/tools/libs/light/libxl_x86.c
 @@ -414,6 +414,16 @@
              LOG(ERROR, "Couldn't set HVM_PARAM_VPT_ALIGN");
              goto out;
@@ -60,10 +60,10 @@ index cdb294a..ed3ac19 100644
          if (info->u.hvm.mca_caps &&
              xc_hvm_param_set(CTX->xch, domid, HVM_PARAM_MCA_CAP,
                               info->u.hvm.mca_caps)) {
-diff --git a/tools/libxl/libxl_types.idl b/tools/libxl/libxl_types.idl
+diff --git a/tools/libs/light/libxl_types.idl b/tools/libs/light/libxl_types.idl
 index 7921950..246e128 100644
---- a/tools/libxl/libxl_types.idl
-+++ b/tools/libxl/libxl_types.idl
+--- a/tools/libs/light/libxl_types.idl
++++ b/tools/libs/light/libxl_types.idl
 @@ -569,6 +569,8 @@ libxl_domain_build_info = Struct("domain_build_info",[
                                         ("viridian",         libxl_defbool),
                                         ("viridian_enable",  libxl_bitmap),
@@ -77,15 +77,15 @@ diff --git a/tools/misc/xen-detect.c b/tools/misc/xen-detect.c
 index fd187a4..7752219 100644
 --- a/tools/misc/xen-detect.c
 +++ b/tools/misc/xen-detect.c
-@@ -83,6 +83,8 @@ static int check_for_xen(int pv_context)
- 
+@@ -83,6 +83,8 @@
+
          if ( !strcmp("XenVMMXenVMM", signature) && (regs[0] >= (base + 2)) )
              goto found;
 +        if ( !strcmp("ZenZenZenZen", signature) && (regs[0] >= (base + 2)) )
 +            goto found;
-     }
- 
-     return 0;
+
+         /* Higher base addresses are possible only with HVM. */
+         if ( pv_context )
 diff --git a/xen/arch/x86/hvm/hvm.c b/xen/arch/x86/hvm/hvm.c
 index 4723f5d..311e8a5 100644
 --- a/xen/arch/x86/hvm/hvm.c

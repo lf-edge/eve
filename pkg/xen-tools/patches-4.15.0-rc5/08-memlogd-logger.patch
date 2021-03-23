@@ -6,7 +6,7 @@ index a43c57edad..d0bf636c10 100644
  #include <xen/io/console.h>
  #include <xen/grant_table.h>
  
-+#include "xentoollog_external.h"
++#include "../libs/light/xentoollog_external.h"
 +
  #include <stdlib.h>
  #include <errno.h>
@@ -56,11 +56,11 @@ index a43c57edad..d0bf636c10 100644
  
  	fd = open(logfile, O_WRONLY|O_CREAT|O_APPEND, 0644);
  	if (fd == -1)
-diff --git a/tools/libs/toollog/include/xentoollog_external.h b/tools/libs/toollog/include/xentoollog_external.h
+diff --git a/tools/libs/light/xentoollog_external.h b/tools/libs/light/xentoollog_external.h
 new file mode 100644
 index 0000000000..4b664fc36e
 --- /dev/null
-+++ b/tools/libs/toollog/include/xentoollog_external.h
++++ b/tools/libs/light/xentoollog_external.h
 @@ -0,0 +1,68 @@
 +#ifndef XENTOOLLOG_EXTERNAL_H
 +#define XENTOOLLOG_EXTERNAL_H
@@ -130,10 +130,10 @@ index 0000000000..4b664fc36e
 +}
 +
 +#endif /* XENTOOLLOG_EXTERNAL_H */
-diff --git a/tools/libxl/libxl_dm.c b/tools/libxl/libxl_dm.c
+diff --git a/tools/libs/light/libxl_dm.c b/tools/libs/light/libxl_dm.c
 index dac1b8ddb8..a368fe6ba0 100644
---- a/tools/libxl/libxl_dm.c
-+++ b/tools/libxl/libxl_dm.c
+--- a/tools/libs/light/libxl_dm.c
++++ b/tools/libs/light/libxl_dm.c
 @@ -25,6 +25,8 @@
  #include <pwd.h>
  #include <grp.h>
@@ -162,7 +162,7 @@ index 4503ac7ea0..1f646c6400 100644
  #include "xl.h"
  #include "xl_utils.h"
  
-+#include "xentoollog_external.h"
++#include "../libs/light/xentoollog_external.h"
 +
  void dolog(const char *file, int line, const char *func, char *fmt, ...)
  {
