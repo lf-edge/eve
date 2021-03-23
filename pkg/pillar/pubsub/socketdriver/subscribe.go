@@ -173,7 +173,7 @@ func (s *Subscriber) watchSock() {
 			// XXX to handle connection/process restart we need to handle "sync"
 			// by doing a sweep across the KeyMap to handleDelete
 			// what we didn't see before the "complete"
-			s.C <- pubsub.Change{Operation: pubsub.Create, Key: "done"}
+			s.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
 
 		case "restarted":
 			s.C <- pubsub.Change{Operation: pubsub.Restart,
@@ -429,7 +429,7 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				// I do not know why, but the "R" operation from the file watcher
 				// historically called the Complete operation, leading to the
 				// "Synchronized" handler being called.
-				out <- pubsub.Change{Operation: pubsub.Create}
+				out <- pubsub.Change{Operation: pubsub.Sync}
 			case operation == "M" && fileName == "restarted":
 				statusFile := path.Join(statusDirName, fileName)
 				cb, err := ioutil.ReadFile(statusFile)

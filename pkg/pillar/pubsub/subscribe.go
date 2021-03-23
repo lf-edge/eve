@@ -124,7 +124,7 @@ func (sub *SubscriptionImpl) ProcessChange(change Change) {
 		sub.log.Tracef("Restart(%s) key %s counter %d",
 			name, change.Key, restartCounter)
 		handleRestart(sub, restartCounter)
-	case Create:
+	case Sync:
 		handleSynchronized(sub, true)
 	case Delete:
 		handleDelete(sub, change.Key)
