@@ -41,6 +41,7 @@ file
 findutils
 flex
 g++
+gawk
 gcc
 gettext
 git
