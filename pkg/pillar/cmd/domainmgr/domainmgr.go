@@ -1351,17 +1351,28 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	if impatient {
 		maxDelay /= 10
 	}
+
+	firstDelay := maxDelay
+	doShutdown := false // shutdown for particular VirtualizationModes
+
+	switch status.VirtualizationMode {
+	case types.HVM, types.FML:
+		doShutdown = true
+
+		// Do a short shutdown wait, just in case there are
+		// PV tools in guest, then a shutdown -F
+		firstDelay = time.Second * 60
+	case types.PV:
+		doShutdown = true
+	}
+
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
 
-		switch status.VirtualizationMode {
-		case types.HVM, types.FML:
-			// Do a short shutdown wait, just in case there are
-			// PV tools in guest, then a shutdown -F
+		if doShutdown {
 			// If the Shutdown fails we don't wait; assume failure
 			// was due to no PV tools
-			shortDelay := time.Second * 60
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s",
 					status.DomainName, err)
@@ -1369,59 +1380,31 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 				// Wait for the domain to go away
 				log.Functionf("doInactivate(%v) for %s: waiting for domain to shutdown",
 					status.UUIDandVersion, status.DisplayName)
-				gone := waitForDomainGone(*status, shortDelay)
+				gone := waitForDomainGone(*status, firstDelay)
 				if gone {
 					status.DomainId = 0
-					break
 				}
 			}
-			// This often fails with "X is an invalid domain identifier (rc=-6)"
-			// due to the DomainShutdown above, in which case
-			// the domain is already on the way down.
-			// In that case we wait
-			if err := DomainShutdown(*status, true); err != nil {
-				log.Warnf("DomainShutdown -F %s failed: %s",
-					status.DomainName, err)
-			} else {
-				log.Functionf("doInactivate(%v) for %s Shutdown(force) succeeded",
-					status.UUIDandVersion, status.DisplayName)
-			}
+		}
+	}
+	if status.DomainId != 0 && doShutdown {
+		// This often fails with "X is an invalid domain identifier (rc=-6)"
+		// due to the DomainShutdown above, in which case
+		// the domain is already on the way down.
+		// In case of errors we proceed directly to deleting the task,
+		// and after that we waitForDomainGone
+		if err := DomainShutdown(*status, true); err != nil {
+			log.Warnf("DomainShutdown -F %s failed: %s",
+				status.DomainName, err)
+		} else {
+			log.Functionf("doInactivate(%v) for %s Shutdown(force) succeeded",
+				status.UUIDandVersion, status.DisplayName)
 			// Wait for the domain to go away
 			log.Functionf("doInactivate(%v) for %s: waiting for domain to poweroff",
 				status.UUIDandVersion, status.DisplayName)
 			gone := waitForDomainGone(*status, maxDelay)
 			if gone {
 				status.DomainId = 0
-				break
-			}
-
-		case types.PV:
-			if err := DomainShutdown(*status, false); err != nil {
-				log.Errorf("DomainShutdown %s failed: %s",
-					status.DomainName, err)
-			} else {
-				log.Functionf("doInactivate(%v) for %s Shutdown succeeded",
-					status.UUIDandVersion, status.DisplayName)
-			}
-			// Wait for the domain to go away
-			gone := waitForDomainGone(*status, maxDelay)
-			if gone {
-				status.DomainId = 0
-				break
-			}
-			if err := DomainShutdown(*status, true); err != nil {
-				// Might fail if the domain is already on the
-				// way down due to the DomainShutdown above
-				log.Warnf("DomainShutdown -F %s failed: %s",
-					status.DomainName, err)
-			} else {
-				log.Functionf("doInactivate(%v) for %s Shutdown(force) succeeded",
-					status.UUIDandVersion, status.DisplayName)
-			}
-			gone = waitForDomainGone(*status, maxDelay)
-			if gone {
-				status.DomainId = 0
-				break
 			}
 		}
 	}
