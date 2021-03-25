@@ -33,6 +33,7 @@ jobs:
           make clean
           make V=1 build
           make V=1 build-tests
+          ./eden config add default
       - name: get eve
         uses: actions/checkout@v2
         with:
@@ -51,9 +52,13 @@ jobs:
              docker rmi -f $(docker images --filter=reference="lfedge/eve-*" -q)||echo "skip conflicts"
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
+      - name: set debug log level
+        if: contains(github.event.review.body, '#eden-debug')
+        run: |
+          ./eden config set default --key=eve.log-level --value=debug
+          ./eden config set default --key=eve.adam-log-level --value=debug
       - name: run
         run: |
-          ./eden config add default
           ./eden config set default --key eve.tag --value="$TAG"
           ./eden config set default --key=eve.accel --value=false
           ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
