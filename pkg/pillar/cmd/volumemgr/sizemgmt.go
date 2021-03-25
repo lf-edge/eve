@@ -39,14 +39,26 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 			continue
 		}
 		cfg := lookupVolumeConfig(ctxPtr, iterVolumeStatus.Key())
-		if cfg != nil && !cfg.ReadOnly && !cfg.HasNoAppReferences {
-			totalDiskSize += iterVolumeStatus.MaxVolSize
+		sizeToUseInCalculation := uint64(iterVolumeStatus.CurrentSize)
+		if cfg == nil {
+			// we have no config with this volume, so it will be purged
+			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, use CurrentSize",
+				iterVolumeStatus.Key())
+		} else if cfg.ReadOnly {
+			// it is ReadOnly and will not grow
+			log.Noticef("getRemainingDiskSpace: Volume %s is ReadOnly, use CurrentSize",
+				iterVolumeStatus.Key())
+		} else if cfg.HasNoAppReferences {
+			// it has no apps pointing onto it in new config
+			log.Noticef("getRemainingDiskSpace: Volume %s has no app references, use CurrentSize",
+				iterVolumeStatus.Key())
 		} else {
-			// we have no config with this volume, so it will purged soon
-			// or it is ReadOnly and will not grow
-			// or it has no apps pointing onto it in new config
-			totalDiskSize += uint64(iterVolumeStatus.CurrentSize)
+			// use MaxVolSize in other cases
+			log.Noticef("getRemainingDiskSpace: Use MaxVolSize for Volume %s",
+				iterVolumeStatus.Key())
+			sizeToUseInCalculation = iterVolumeStatus.MaxVolSize
 		}
+		totalDiskSize += sizeToUseInCalculation
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
