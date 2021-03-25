@@ -21,7 +21,7 @@ import (
 
 //TBD: Have a better way to calculate this number.
 //For now it is based on some trial-and-error experiments
-const qemuOverHead = int64(600 * 1024 * 1024)
+const qemuOverHead = int64(2048 * 1024 * 1024)
 
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
 
@@ -422,7 +422,13 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
 
-	spec.AdjustMemLimit(config, qemuOverHead)
+	effectiveQemuOverHead := qemuOverHead
+	if s, err := ioutil.ReadFile("/config/qemu_overhead.cfg"); err == nil {
+		if i, err := strconv.Atoi(string(s)); err == nil && i > 0 {
+			effectiveQemuOverHead = int64(i)
+		}
+	}
+	spec.AdjustMemLimit(config, effectiveQemuOverHead)
 	spec.Get().Process.Args = args
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
