@@ -161,9 +161,9 @@ ln -s /bits/* /parts 2>/dev/null
 [ -e /parts/boot ] || ln -s /root/boot /parts/boot
 
 # finally lets see if we were given any overrides
-grep -q eve_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
-grep -q eve_install_skip_config /proc/cmdline && trunc /parts/config.img
-grep -q eve_install_skip_config /proc/cmdline && trunc /parts/persist.img
+for i in rootfs config persist; do
+   grep -q "eve_install_skip_$i" /proc/cmdline && trunc "/parts/$i.img"
+done
 
 # we may be asked to pause before install procedure
 grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
