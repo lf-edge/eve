@@ -4,7 +4,7 @@
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-alpine:6.2.0 as build
-ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git
+ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
@@ -39,13 +39,24 @@ RUN for patch in fix-musl-sc_long_bit.patch wrapper-for-basename.patch 155652295
  make -C src RPM_OPT_FLAGS=-DNONLS static &&\
  cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
+# building hexedit
+WORKDIR /tmp/hexedit/hexedit-1.5
+# hadolint ignore=DL4006
+RUN curl -L https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz | tar -C .. -xzvf -
+RUN ./autogen.sh && ./configure && make DESTDIR=/out install
+
+# tweaking various bit
+WORKDIR /out
+COPY ssh.sh spec.sh ./usr/bin/
+RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
+RUN cp /etc/passwd /etc/group ./etc/
+RUN ln -s /run ./var/run
+RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_config
+
 FROM scratch
 ENTRYPOINT []
 WORKDIR /
 
 COPY --from=build /out/ /
-COPY --from=build /etc/passwd /etc/group /etc/
-COPY ssh.sh spec.sh /usr/bin/
-RUN mkdir -p /etc/ssh /root/.ssh && chmod 0700 /root/.ssh
 
 CMD ["/sbin/tini", "/usr/bin/ssh.sh"]
