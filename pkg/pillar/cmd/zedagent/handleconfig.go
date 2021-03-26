@@ -318,6 +318,7 @@ func getLatestConfig(url string, iteration int,
 
 	if !getconfigCtx.configReceived {
 		getconfigCtx.configReceived = true
+		purgeCloudInit(getconfigCtx)
 	}
 	getconfigCtx.configGetStatus = types.ConfigGetSuccess
 	publishZedAgentStatus(getconfigCtx)

@@ -445,6 +445,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 		if !found {
 			log.Functionf("Remove app config %s", uuidStr)
+			removeCloudInit(getconfigCtx, uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
 		}
 	}
@@ -507,7 +508,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
 			cfgApp.GetCipherData())
-
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
 	}
@@ -1625,6 +1625,16 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 
 	key := config.Key()
 	log.Tracef("checkAndPublishAppInstanceConfig UUID %s", key)
+
+	// We write the CipherData to a file since it can exceed
+	// the max size for pubsub
+	err := writeCloudInit(getconfigCtx, key, config.CipherData)
+	if err != nil {
+		log.Error(err)
+		config.Errors = append(config.Errors, err.Error())
+	}
+	config.CipherData = nil
+
 	pub := getconfigCtx.pubAppInstanceConfig
 	if err := pub.CheckMaxSize(key, config); err != nil {
 		log.Error(err)
@@ -1655,6 +1665,38 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	}
 
 	pub.Publish(key, config)
+}
+
+func writeCloudInit(getconfigCtx *getconfigContext,
+	key string, contents []byte) error {
+
+	filename := types.EncryptedCloudInitDirname + "/" + key
+	return fileutils.WriteRename(filename, contents)
+}
+
+func removeCloudInit(getconfigCtx *getconfigContext, key string) {
+	filename := types.EncryptedCloudInitDirname + "/" + key
+	os.Remove(filename)
+}
+
+// purgeCloudInit removes any file which does not have a corresponding AppInstanceConfig
+// Needs to be called after restart.
+func purgeCloudInit(getconfigCtx *getconfigContext) {
+	pub := getconfigCtx.pubAppInstanceConfig
+	locations, err := ioutil.ReadDir(types.EncryptedCloudInitDirname)
+	if err != nil {
+		return
+	}
+	for _, location := range locations {
+		key := location.Name()
+		if _, err := pub.Get(key); err != nil {
+			log.Warnf("purgeCloudInit: removing leftover for %s",
+				key)
+			removeCloudInit(getconfigCtx, key)
+		} else {
+			log.Noticef("purgeCloudInit: found %s", key)
+		}
+	}
 }
 
 func publishBaseOsConfig(getconfigCtx *getconfigContext,

@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -51,6 +52,7 @@ const (
 	warningTime         = 40 * time.Second
 	containerRootfsPath = "rootfs/"
 	casClientType       = "containerd"
+	maxCloudInitSize    = 1024 * 1024 // Max supported size of user-data
 )
 
 // Really a constant
@@ -2009,8 +2011,22 @@ func handleGlobalConfigSync(ctxArg interface{}, done bool) {
 func getCloudInitUserData(ctx *domainContext,
 	dc types.DomainConfig) (types.EncryptionBlock, error) {
 	if dc.CipherBlockStatus.IsCipher {
+		if dc.CipherData != nil {
+			// XXX fatal?
+			log.Errorf("XXX extra CipherData for %s len %d",
+				dc.Key(), len(dc.CipherData))
+		}
+		var err error
+		dc.CipherData, err = readCloudInit(dc.Key())
+		if err != nil {
+			log.Errorf("%s, readCloudInit failed: %s",
+				dc.Key(), err)
+			cipher.RecordFailure(agentName, types.NoData)
+			return types.EncryptionBlock{}, nil
+		}
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
 			agentName, dc.CipherBlockStatus)
+		dc.CipherData = nil
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, domain config cipherblock decryption unsuccessful, no cleartext: %v",
@@ -2026,6 +2042,14 @@ func getCloudInitUserData(ctx *domainContext,
 	decBlock := types.EncryptionBlock{}
 	cipher.RecordFailure(agentName, types.NoData)
 	return decBlock, nil
+}
+
+// readCloudInit reads up to 1Mbyte of cloud init into memory
+func readCloudInit(key string) ([]byte, error) {
+
+	filename := types.EncryptedCloudInitDirname + "/" + key
+	str, _ := fileutils.StatAndRead(log, filename, maxCloudInitSize)
+	return []byte(str), nil
 }
 
 // fetch the cloud init content

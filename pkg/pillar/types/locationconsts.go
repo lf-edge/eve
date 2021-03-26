@@ -25,6 +25,8 @@ const (
 	VolumeClearDirName = ClearDirName + "/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
+	// EncryptedCloudInitDirname - Location of encrypted cloud-init user-data
+	EncryptedCloudInitDirname = PersistDir + "/encrypted-cloud-init"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
