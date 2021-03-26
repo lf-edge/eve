@@ -43,7 +43,6 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		AppNum:            AppNum,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
-		CloudInitUserData: aiConfig.CloudInitUserData,
 		CipherBlockStatus: aiConfig.CipherBlockStatus,
 		GPUConfig:         "legacy",
 	}

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -503,10 +503,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if cmd != nil {
 			appInstance.PurgeCmd.Counter = cmd.Counter
 			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
-		}
-		userData := cfgApp.GetUserData()
-		if userData != "" {
-			appInstance.CloudInitUserData = &userData
 		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
@@ -1632,41 +1628,26 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	pub := getconfigCtx.pubAppInstanceConfig
 	if err := pub.CheckMaxSize(key, config); err != nil {
 		log.Error(err)
-		var clearNumBytes int
-		if config.CloudInitUserData != nil {
-			clearNumBytes = len(*config.CloudInitUserData)
-		}
 		cryptoNumBytes := len(config.CipherData)
 		numACLs := 0
 		for i := range config.UnderlayNetworkList {
 			numACLs += len(config.UnderlayNetworkList[i].ACLs)
 		}
-		if clearNumBytes == 0 && cryptoNumBytes == 0 {
+		if cryptoNumBytes == 0 {
 			// Issue must be due to ACLs
 			err = fmt.Errorf("App instance has too many ACLs: %d",
 				numACLs)
 			// Approximate number; 20 can never be a problem
 		} else if numACLs < 20 {
-			if clearNumBytes == 0 {
-				err = fmt.Errorf("App instance encrypted cloud-init user data too large: %d bytes",
-					cryptoNumBytes)
-			} else {
-				err = fmt.Errorf("App instance cloud-init user data too large: %d + %d bytes",
-					clearNumBytes, cryptoNumBytes)
-			}
+			err = fmt.Errorf("App instance encrypted cloud-init user data too large: %d bytes",
+				cryptoNumBytes)
 		} else {
-			if clearNumBytes == 0 {
-				err = fmt.Errorf("App instance encrypted cloud-init user data %d bytes plus %d ACLs too large",
-					cryptoNumBytes, numACLs)
-			} else {
-				err = fmt.Errorf("App instance cloud-init user data %d + %d bytes plus %d ACLs too large",
-					clearNumBytes, cryptoNumBytes, numACLs)
-			}
+			err = fmt.Errorf("App instance encrypted cloud-init user data %d bytes plus %d ACLs too large",
+				cryptoNumBytes, numACLs)
 		}
 		log.Error(err)
 		config.Errors = append(config.Errors, err.Error())
 		// Clear out all the fields which can be large
-		config.CloudInitUserData = nil
 		config.CipherData = nil
 		for i := range config.UnderlayNetworkList {
 			config.UnderlayNetworkList[i].ACLs = nil

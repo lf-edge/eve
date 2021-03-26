@@ -34,9 +34,6 @@ type DomainConfig struct {
 	VifList        []VifInfo
 	IoAdapterList  []IoAdapter
 
-	// XXX: to be deprecated, use CipherBlockStatus instead
-	CloudInitUserData *string // base64-encoded
-
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
 }
