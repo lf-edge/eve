@@ -2048,8 +2048,8 @@ func getCloudInitUserData(ctx *domainContext,
 func readCloudInit(key string) ([]byte, error) {
 
 	filename := types.EncryptedCloudInitDirname + "/" + key
-	str, _ := fileutils.StatAndRead(log, filename, maxCloudInitSize)
-	return []byte(str), nil
+	str, _, err := fileutils.StatAndRead(log, filename, maxCloudInitSize)
+	return []byte(str), err
 }
 
 // fetch the cloud init content

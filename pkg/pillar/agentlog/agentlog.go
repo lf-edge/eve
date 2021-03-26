@@ -306,7 +306,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	if bootReason != types.BootReasonNone {
 		filename = "/persist/" + bootReasonFile
 		brString := bootReason.String()
-		cur, _ := fileutils.StatAndRead(nil, filename, maxReadSize)
+		cur, _, _ := fileutils.StatAndRead(nil, filename, maxReadSize)
 		if cur != "" {
 			// Note: can not use log here since we are called from a log hook!
 			fmt.Printf("not replacing BootReason %s with %s\n",
@@ -351,22 +351,22 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 func GetRebootReason(log *base.LogObject) (string, time.Time, string) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
-	reason, ts := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
-	stack, _ := fileutils.StatAndRead(log, stackFilename, maxReadSize)
+	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
+	stack, _, _ := fileutils.StatAndRead(log, stackFilename, maxReadSize)
 	return reason, ts, stack
 }
 
 // GetBootReason returns the BootReason enum, which is stored as a string in /persist, together with its timestamp
 func GetBootReason(log *base.LogObject) (types.BootReason, time.Time) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, bootReasonFile)
-	reason, ts := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
+	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
 	return types.BootReasonFromString(reason), ts
 }
 
 // GetRebootImage : Image from which the reboot happened
 func GetRebootImage(log *base.LogObject) string {
 	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
-	image, _ := fileutils.StatAndRead(log, rebootFilename, maxReadSize)
+	image, _, _ := fileutils.StatAndRead(log, rebootFilename, maxReadSize)
 	return image
 }
 

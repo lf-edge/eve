@@ -53,29 +53,37 @@ func Writable(dir string) bool {
 }
 
 // StatAndRead returns the content and Modtime
-// We limit the size we read maxReadSize and silently truncate if longer
-func StatAndRead(log *base.LogObject, filename string, maxReadSize int) (string, time.Time) {
+// We limit the size we read maxReadSize and truncate if longer
+func StatAndRead(log *base.LogObject, filename string, maxReadSize int) (string, time.Time, error) {
 	fi, err := os.Stat(filename)
 	if err != nil {
 		// File doesn't exist
-		return "", time.Time{}
+		return "", time.Time{}, err
 	}
 	f, err := os.Open(filename)
 	if err != nil {
+		err = fmt.Errorf("StatAndRead %s failed: %v", filename, err)
 		if log != nil {
-			log.Errorf("StatAndRead failed %s", err)
+			log.Error(err)
 		}
-		return "", fi.ModTime()
+		return "", fi.ModTime(), err
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
 	content := make([]byte, maxReadSize)
 	n, err := r.Read(content)
 	if err != nil {
+		err = fmt.Errorf("StatAndRead %s failed: %v", filename, err)
 		if log != nil {
-			log.Errorf("StatAndRead failed %s", err)
+			log.Error(err)
 		}
-		return "", fi.ModTime()
+		return "", fi.ModTime(), err
 	}
-	return string(content[0:n]), fi.ModTime()
+	if n == maxReadSize {
+		err = fmt.Errorf("StatAndRead %s truncated after %d bytes",
+			filename, maxReadSize)
+	} else {
+		err = nil
+	}
+	return string(content[0:n]), fi.ModTime(), err
 }
