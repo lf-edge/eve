@@ -58,6 +58,10 @@ jobs:
         run: |
           make build
           make build-tests
+      - name: get eve
+        uses: actions/checkout@v2
+        with:
+          path: 'eve'
       - name: setup
         run: |
           export ipv4=`curl https://api.ipify.org/?format=json | jq ".ip" -r`
@@ -77,9 +81,10 @@ jobs:
           ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
           ./eden eve onboard
           echo > tests/workflow/testdata/eden_stop.txt
+          ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
       - name: Test
         run: |
-          EDEN_TEST=gcp ./eden test tests/workflow -v debug
+          EDEN_TEST=gcp ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
       - name: Collect logs
         if: ${{ always() }}
         run: |
