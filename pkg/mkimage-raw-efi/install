@@ -44,7 +44,9 @@ mounted_dev() {
    local STAT
    STAT=$(stat -c '%d' "$1" )
    # shellcheck disable=SC2035
-   basename "$(dirname "$(cd /sys/block && grep -l '^'$(( STAT / 256 )):$(( STAT % 256 ))'$' */dev */*/dev 2>/dev/null || echo null/dev)")"
+   DEV=$(cd /sys/block && grep -l '^'$(( STAT / 256 )):$(( STAT % 256 ))'$' */dev */*/dev 2>/dev/null | sed -ne 's#\([^/]*\)/dev#\1#p')
+   [ -e "/dev/$DEV" ] || DEV=null
+   echo "$DEV"
 }
 
 root_dev() {
