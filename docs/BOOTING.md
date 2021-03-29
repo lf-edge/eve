@@ -26,6 +26,29 @@ sections walk you through various boot sequences all using a single EVE disk ima
 Make sure to familiarize yourself with the implementation details of [make-raw](../pkg/mkimage-raw-efi/make-raw)
 since it is the main entry point into how EVE formats the disks it expects to be booted from.
 
+## Boot time artifacts
+
+Before we proceed describing each type of boot flow in details, let us first establish what kind of boot artifacts are required for EVE to boot. These are:
+
+1. rootfs image (either a [squashfs](https://www.kernel.org/doc/html/latest/filesystems/squashfs.html) or [ext4](https://www.kernel.org/doc/html/latest/filesystems/ext4/index.html))
+2. 2nd stage GRUB (in UEFI format)
+3. type-1 hypervisor ([Xen](https://xenproject.org/) or [ACRN](https://projectacrn.org/))
+4. Dom0 linux kernel (this doubles as type-2 hypervisor for KVM)
+5. Optional Alpine-derived initramfs [init entrypoint](https://gitlab.alpinelinux.org/alpine/mkinitfs) as a compressed cpio
+6. Optional container that performs [EVE installation](../pkg/mkimage-raw-efi/install) as a compressed cpio
+7. Optional extra files (e.g. content of config partition) as a compressed cpio
+
+While EVE bootable images come in at least two different flavors [installer](https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#using-an-installer-image) and [live](https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#installing-a-live-image) the boot flow and boot artifacts are all the same. Therefore, the only difference between an installer and a live image are all the optional boot artifacts #5-#7. In fact, the distinction is so blurry that an installer image that booted on the box and put all the required bits on disk can continue running effectively becoming a live image without the need for a reboot.
+
+Since artifacts #2-#5 are physically embedded inside of the rootfs image (artifact #1) a capable firmware (such as latest versions of u-boot) should be able to boot EVE with only having access to that single binary. However, since we have to deal with less capable firmware implementations (such as UEFI and legacy BIOS - see below) we have to leverage 1st stage GRUB or iPXE to parse rootfs image it in order to get access to artifacts #2-#5. This parsing can happen either via reading required portions of rootfs image from disk on demand (via GRUB's [loopback booting](https://www.gnu.org/software/grub/manual/grub/html_node/Loopback-booting.html)) or by first loading rootfs image to memory (via iPXE extensions). The fact that the size of rootfs image is deliberately kept very small, makes both of these methods roughly similar when it comes to performance and overhead. Still, it is an overhead and whenever possible EVE tries to rely on rootfs image sitting on a local disk so that it doesn't have to waste precious memory for hosting its. This, of course, creates a bit of a complication where one following the bootflow has to constantly be aware whether rootfs is on disk or in memory.
+
+All the logic of locating the right boot artifacts can been seen in [grub.cfg](../pkg/eve/installer/grub.cfg) and [ipxe.cfg](../pkg/eve/installer/ipxe.efi.cfg). All the cpio artifacts are loaded together and contribute files to the initial initramfs filesystem that the kernel will see. All of this is pretty vanilla Linux kernel boot flow, except for:
+
+* order of the cpio artifacts matters: if you have a file with the same name in two artifacts the actual content of that file will be taken from the later cpio artifacat (think of it as kernel doing sequence of `cpio -i` operations with root filesystem as a target)
+* if rootfs was loaded in memory it will also appear in the initramfs filesystem under the fixed name `/initrd.image`. This kind of a trick is pretty unique to EVE and it comes at a price of Linux kernel sticking ALL of the cpio bits into that file (artifacts #5-#7) not just rootfs image. Therefore we have to search for where rootfs image actually begins in that file to pass that offset to a `losetup`.
+
+Finally, once all the required boot artifacts have been made available in the initial initramfs, EVE leverages Alpine's ability to create an overlayfs-based stacked rootfilesystem by specifying [overlaytmpfs kernel option](https://gitlab.alpinelinux.org/alpine/mkinitfs/-/blob/master/initramfs-init.in) (look for `KOPT_overlaytmpfs` in the initramfs-init.in source to understand how it works). This is how EVE tweaks the content of the final rootfs to have additional files (e.g. the content of the installer container image appearing under `/containers/onboot/003-installer`).
+
 ## Booting under UEFI firmware
 
 UEFI firmware mandates that a bootloader is always located on a special partition labeled `EFI System`.
