@@ -45,6 +45,7 @@ func init() {
 }
 
 // Reset routine
+// it runs reboot -n -f
 func Reset(log *base.LogObject) {
 	_, err := execWithRetry(log, "zboot", "reset")
 	if err != nil {
@@ -71,12 +72,6 @@ func execWithRetry(log *base.LogObject, command string, args ...string) ([]byte,
 // If log is nil there is no logging
 func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byte, bool, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(),
-		10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, command, args...)
-
 	if log != nil {
 		log.Functionf("Waiting for zbootMutex.lock for %s %+v\n",
 			command, args)
@@ -86,6 +81,13 @@ func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byt
 		log.Functionf("Got zbootMutex.lock. Executing %s %+v\n",
 			command, args)
 	}
+	// initialize context after getting lock
+	// it uses the current time on initialization step
+	ctx, cancel := context.WithTimeout(context.Background(),
+		10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
 
 	out, err := cmd.Output()
 
