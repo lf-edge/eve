@@ -130,7 +130,8 @@ reset() {
     fi
 
     # Warning, this does not really play nice with init
-    reboot -f now
+    # do not sync, don't go through init
+    reboot -n -f
 }
 
 if [ $# -eq 0 ]; then
