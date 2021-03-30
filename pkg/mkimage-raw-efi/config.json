@@ -262,6 +262,14 @@
             ]
         },
         {
+            "destination": "/persist",
+            "type": "tmpfs",
+            "source": "tmpfs",
+            "options": [
+                "rw"
+            ]
+        },
+        {
             "destination": "/dev",
             "type": "bind",
             "source": "/dev",
