@@ -2010,29 +2010,40 @@ func handleGlobalConfigSync(ctxArg interface{}, done bool) {
 // getCloudInitUserData : returns decrypted cloud-init user data
 func getCloudInitUserData(ctx *domainContext,
 	dc types.DomainConfig) (types.EncryptionBlock, error) {
+
+	var err error
+	var clearText []byte
+	dc.CipherData, clearText, err = readCloudInit(dc.Key())
+	if err != nil {
+		log.Errorf("%s, readCloudInit failed: %s",
+			dc.Key(), err)
+		cipher.RecordFailure(agentName, types.NoData)
+		return types.EncryptionBlock{}, nil
+	}
 	if dc.CipherBlockStatus.IsCipher {
 		if dc.CipherData != nil {
 			// XXX fatal?
 			log.Errorf("XXX extra CipherData for %s len %d",
 				dc.Key(), len(dc.CipherData))
 		}
-		var err error
-		dc.CipherData, err = readCloudInit(dc.Key())
-		if err != nil {
-			log.Errorf("%s, readCloudInit failed: %s",
-				dc.Key(), err)
-			cipher.RecordFailure(agentName, types.NoData)
-			return types.EncryptionBlock{}, nil
-		}
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
 			agentName, dc.CipherBlockStatus)
 		dc.CipherData = nil
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
-			log.Errorf("%s, domain config cipherblock decryption unsuccessful, no cleartext: %v",
+			log.Errorf("%s, domain config cipherblock decryption unsuccessful, falling back to cleartext: %v",
 				dc.Key(), err)
-			cipher.RecordFailure(agentName,
-				types.MissingFallback)
+			decBlock.ProtectedUserData = string(clearText)
+			// We assume IsCipher is only set when there was some
+			// data. Hence this is a fallback if there is
+			// some cleartext.
+			if decBlock.ProtectedUserData != "" {
+				cipher.RecordFailure(agentName,
+					types.CleartextFallback)
+			} else {
+				cipher.RecordFailure(agentName,
+					types.MissingFallback)
+			}
 			return decBlock, nil
 		}
 		log.Functionf("%s, domain config cipherblock decryption successful", dc.Key())
@@ -2040,16 +2051,27 @@ func getCloudInitUserData(ctx *domainContext,
 	}
 	log.Functionf("%s, domain config cipherblock not present", dc.Key())
 	decBlock := types.EncryptionBlock{}
-	cipher.RecordFailure(agentName, types.NoData)
+	decBlock.ProtectedUserData = string(clearText)
+	if decBlock.ProtectedUserData != "" {
+		cipher.RecordFailure(agentName, types.NoCipher)
+	} else {
+		cipher.RecordFailure(agentName, types.NoData)
+	}
 	return decBlock, nil
 }
 
 // readCloudInit reads up to 1Mbyte of cloud init into memory
-func readCloudInit(key string) ([]byte, error) {
+// Returns encrypted, clear, error
+func readCloudInit(key string) ([]byte, []byte, error) {
 
 	filename := types.EncryptedCloudInitDirname + "/" + key
 	str, _, err := fileutils.StatAndRead(log, filename, maxCloudInitSize)
-	return []byte(str), err
+	if err != nil || len(str) != 0 {
+		return []byte(str), nil, err
+	}
+	filename = types.ClearCloudInitDirname + "/" + key
+	str, _, err = fileutils.StatAndRead(log, filename, maxCloudInitSize)
+	return nil, []byte(str), err
 }
 
 // fetch the cloud init content

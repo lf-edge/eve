@@ -505,6 +505,11 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.PurgeCmd.Counter = cmd.Counter
 			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
 		}
+		// XXX deprecate CloudInitUserData
+		userData := cfgApp.GetUserData()
+		if userData != "" {
+			appInstance.CloudInitUserData = userData
+		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
 			cfgApp.GetCipherData())
@@ -1628,16 +1633,18 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 
 	// We write the CipherData to a file since it can exceed
 	// the max size for pubsub
-	err := writeCloudInit(getconfigCtx, key, config.CipherData)
+	err := writeCloudInit(getconfigCtx, key, config.CipherData,
+		[]byte(config.CloudInitUserData))
 	if err != nil {
 		log.Error(err)
 		config.Errors = append(config.Errors, err.Error())
 	}
 	config.CipherData = nil
-
+	config.CloudInitUserData = ""
 	pub := getconfigCtx.pubAppInstanceConfig
 	if err := pub.CheckMaxSize(key, config); err != nil {
 		log.Error(err)
+		// XXX always zero
 		cryptoNumBytes := len(config.CipherData)
 		numACLs := 0
 		for i := range config.UnderlayNetworkList {
@@ -1668,19 +1675,27 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 }
 
 func writeCloudInit(getconfigCtx *getconfigContext,
-	key string, contents []byte) error {
+	key string, contents []byte, clear []byte) error {
 
 	filename := types.EncryptedCloudInitDirname + "/" + key
-	return fileutils.WriteRename(filename, contents)
+	err := fileutils.WriteRename(filename, contents)
+	if err != nil {
+		return err
+	}
+	filename = types.ClearCloudInitDirname + "/" + key
+	return fileutils.WriteRename(filename, clear)
 }
 
 func removeCloudInit(getconfigCtx *getconfigContext, key string) {
 	filename := types.EncryptedCloudInitDirname + "/" + key
 	os.Remove(filename)
+	filename = types.ClearCloudInitDirname + "/" + key
+	os.Remove(filename)
 }
 
 // purgeCloudInit removes any file which does not have a corresponding AppInstanceConfig
 // Needs to be called after restart.
+// Looks only at types.EncryptedCloudInitDirname but will remove ClearCloudInitDirname as well
 func purgeCloudInit(getconfigCtx *getconfigContext) {
 	pub := getconfigCtx.pubAppInstanceConfig
 	locations, err := ioutil.ReadDir(types.EncryptedCloudInitDirname)

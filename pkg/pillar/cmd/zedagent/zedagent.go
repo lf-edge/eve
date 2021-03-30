@@ -1357,6 +1357,12 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
+	if _, err := os.Stat(types.ClearCloudInitDirname); err != nil {
+		log.Tracef("Create %s", types.ClearCloudInitDirname)
+		if err := os.MkdirAll(types.ClearCloudInitDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 // handleAppInstanceStatusCreate - Handle AIS create. Publish ZInfoApp
