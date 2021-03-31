@@ -26,9 +26,9 @@ const (
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// EncryptedCloudInitDirname - Location of encrypted cloud-init user-data
-	EncryptedCloudInitDirname = PersistDir + "/encrypted-cloud-init"
+	EncryptedCloudInitDirname = SealedDirName + "/encrypted-cloud-init"
 	// ClearCloudInitDirname - Location of clear cloud-init user-data
-	ClearCloudInitDirname = PersistDir + "/clear-cloud-init"
+	ClearCloudInitDirname = SealedDirName + "/clear-cloud-init"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
