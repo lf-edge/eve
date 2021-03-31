@@ -1693,27 +1693,6 @@ func removeCloudInit(getconfigCtx *getconfigContext, key string) {
 	os.Remove(filename)
 }
 
-// purgeCloudInit removes any file which does not have a corresponding AppInstanceConfig
-// Needs to be called after restart.
-// Looks only at types.EncryptedCloudInitDirname but will remove ClearCloudInitDirname as well
-func purgeCloudInit(getconfigCtx *getconfigContext) {
-	pub := getconfigCtx.pubAppInstanceConfig
-	locations, err := ioutil.ReadDir(types.EncryptedCloudInitDirname)
-	if err != nil {
-		return
-	}
-	for _, location := range locations {
-		key := location.Name()
-		if _, err := pub.Get(key); err != nil {
-			log.Warnf("purgeCloudInit: removing leftover for %s",
-				key)
-			removeCloudInit(getconfigCtx, key)
-		} else {
-			log.Noticef("purgeCloudInit: found %s", key)
-		}
-	}
-}
-
 func publishBaseOsConfig(getconfigCtx *getconfigContext,
 	config *types.BaseOsConfig) {
 
