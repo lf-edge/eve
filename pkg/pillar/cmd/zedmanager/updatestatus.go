@@ -134,16 +134,11 @@ func doUpdate(ctx *zedmanagerContext,
 			c := doInactivateHalt(ctx, config, status)
 			changed = changed || c
 		} else {
-			// If we have a !ReadOnly disk this will create a copy
-			dc, err := MaybeAddDomainConfig(ctx, config, *status, nil)
-			if dc != nil {
-				publishDomainConfig(ctx, dc)
-			}
-			if err != nil {
-				log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
-					uuidStr, err)
-				status.SetErrorWithSource(err.Error(),
-					types.DomainStatus{}, time.Now())
+			// Since we are not activating we set the state to
+			// HALTED to indicate it is not running since it
+			// might have been halted before the device was rebooted
+			if status.State == types.INSTALLED {
+				status.State = types.HALTED
 				changed = true
 			}
 		}
