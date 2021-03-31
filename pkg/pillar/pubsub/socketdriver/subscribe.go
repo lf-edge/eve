@@ -381,26 +381,21 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 	min := max / 3
 	ticker := flextimer.NewRangeTicker(time.Duration(1000*min),
 		time.Duration(1000*max))
-	ticker.StopTicker()
 
 	for {
 		select {
-		case e, ok := <-ticker.C:
-			if !ok {
-				// We get some spurious indications with e being zero
+		case _, ok := <-ticker.C:
+			if !ok || !gotRestarted {
+				// skip handling in case of closed or not restarted
 				break
-			}
-
-			if !gotRestarted {
-				s.log.Fatalf("ticker without gotRestarted val %s, e %v",
-					restartedValue, e)
 			}
 			out <- pubsub.Change{Operation: pubsub.Restart, Key: restartedValue}
 			s.log.Functionf("sent restarted file with %s",
 				restartedValue)
 			gotRestarted = false
 			restartedValue = ""
-			ticker.StopTicker()
+			ticker.UpdateRangeTicker(time.Duration(1000*min),
+				time.Duration(1000*max))
 
 		case change, ok := <-in:
 			if !ok {
@@ -410,7 +405,6 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 						restartedValue)
 					gotRestarted = false
 					restartedValue = ""
-					ticker.StopTicker()
 				} else {
 					s.log.Warnf("translate goroutine exiting")
 				}
@@ -442,16 +436,13 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 					out <- pubsub.Change{Operation: pubsub.Restart, Key: restartedValue}
 					s.log.Functionf("flush restarted queued %s new %s",
 						restartedValue, string(cb))
-					gotRestarted = false
-					restartedValue = ""
-					ticker.StopTicker()
 				}
 				gotRestarted = true
 				restartedValue = string(cb)
 				s.log.Functionf("Starting timer restarted %s for %v %v",
 					restartedValue,
 					time.Duration(min), time.Duration(max))
-				ticker = flextimer.NewRangeTicker(time.Duration(min),
+				ticker.UpdateRangeTicker(time.Duration(min),
 					time.Duration(max))
 
 			case !strings.HasSuffix(fileName, ".json"):
