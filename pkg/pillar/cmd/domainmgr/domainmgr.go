@@ -37,7 +37,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -52,7 +51,6 @@ const (
 	warningTime         = 40 * time.Second
 	containerRootfsPath = "rootfs/"
 	casClientType       = "containerd"
-	maxCloudInitSize    = 1024 * 1024 // Max supported size of user-data
 )
 
 // Really a constant
@@ -710,7 +708,7 @@ func handleDomainDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*domainContext)
 	config := configArg.(types.DomainConfig)
 	// only when contains cloud-init user data (plain or cipher)
-	if config.IsCipher {
+	if config.IsCipher || config.CloudInitUserData != "" {
 		unpublishCipherBlockStatus(ctx, config.Key())
 	}
 	// Do we have a channel/goroutine?
@@ -1540,7 +1538,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Vdev = fmt.Sprintf("xvd%c", int('a')+i)
 	}
 
-	if config.IsCipher {
+	if config.IsCipher || config.CloudInitUserData != "" {
 		ciStr, err := fetchCloudInit(ctx, config)
 		if err != nil {
 			return fmt.Errorf("failed to fetch cloud-init userdata: %s",
@@ -2011,29 +2009,21 @@ func handleGlobalConfigSync(ctxArg interface{}, done bool) {
 func getCloudInitUserData(ctx *domainContext,
 	dc types.DomainConfig) (types.EncryptionBlock, error) {
 
-	var err error
-	var clearText []byte
-	dc.CipherData, clearText, err = readCloudInit(dc.Key())
-	if err != nil {
-		log.Errorf("%s, readCloudInit failed: %s",
-			dc.Key(), err)
-		cipher.RecordFailure(agentName, types.NoData)
-		return types.EncryptionBlock{}, nil
-	}
+	// CheckMaxSize and Publish will handle config.CipherData (and CloutInitUserData)
+	// using files due to the pubsub:"large" tag, but we manually need to
+	// move between config.CipherData and config.CipherBlockStatus.CipherData
+	// since Pubsub doesn't handle tags on embedded fields
+	dc.CipherBlockStatus.CipherData = dc.CipherData
+	dc.CipherData = nil
+
 	if dc.CipherBlockStatus.IsCipher {
-		if dc.CipherData != nil {
-			// XXX fatal?
-			log.Errorf("XXX extra CipherData for %s len %d",
-				dc.Key(), len(dc.CipherData))
-		}
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
 			agentName, dc.CipherBlockStatus)
-		dc.CipherData = nil
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, domain config cipherblock decryption unsuccessful, falling back to cleartext: %v",
 				dc.Key(), err)
-			decBlock.ProtectedUserData = string(clearText)
+			decBlock.ProtectedUserData = dc.CloudInitUserData
 			// We assume IsCipher is only set when there was some
 			// data. Hence this is a fallback if there is
 			// some cleartext.
@@ -2051,27 +2041,13 @@ func getCloudInitUserData(ctx *domainContext,
 	}
 	log.Functionf("%s, domain config cipherblock not present", dc.Key())
 	decBlock := types.EncryptionBlock{}
-	decBlock.ProtectedUserData = string(clearText)
+	decBlock.ProtectedUserData = dc.CloudInitUserData
 	if decBlock.ProtectedUserData != "" {
 		cipher.RecordFailure(agentName, types.NoCipher)
 	} else {
 		cipher.RecordFailure(agentName, types.NoData)
 	}
 	return decBlock, nil
-}
-
-// readCloudInit reads up to 1Mbyte of cloud init into memory
-// Returns encrypted, clear, error
-func readCloudInit(key string) ([]byte, []byte, error) {
-
-	filename := types.EncryptedCloudInitDirname + "/" + key
-	str, _, err := fileutils.StatAndRead(log, filename, maxCloudInitSize)
-	if err != nil || len(str) != 0 {
-		return []byte(str), nil, err
-	}
-	filename = types.ClearCloudInitDirname + "/" + key
-	str, _, err = fileutils.StatAndRead(log, filename, maxCloudInitSize)
-	return nil, []byte(str), err
 }
 
 // fetch the cloud init content

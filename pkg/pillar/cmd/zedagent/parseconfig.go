@@ -445,7 +445,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 		if !found {
 			log.Functionf("Remove app config %s", uuidStr)
-			removeCloudInit(getconfigCtx, uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
 		}
 	}
@@ -513,6 +512,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
 			cfgApp.GetCipherData())
+
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
 	}
@@ -1631,16 +1631,12 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	key := config.Key()
 	log.Tracef("checkAndPublishAppInstanceConfig UUID %s", key)
 
-	// We write the CipherData to a file since it can exceed
-	// the max size for pubsub
-	err := writeCloudInit(getconfigCtx, key, config.CipherData,
-		[]byte(config.CloudInitUserData))
-	if err != nil {
-		log.Error(err)
-		config.Errors = append(config.Errors, err.Error())
-	}
-	config.CipherData = nil
-	config.CloudInitUserData = ""
+	// CheckMaxSize and Publish will handle config.CipherData (and CloutInitUserData)
+	// using files due to the pubsub:"large" tag, but we manually need to
+	// move between config.CipherData and config.CipherBlockStatus.CipherData
+	// since Pubsub doesn't handle tags on embedded fields
+	config.CipherData = config.CipherBlockStatus.CipherData
+	config.CipherBlockStatus.CipherData = nil
 	pub := getconfigCtx.pubAppInstanceConfig
 	if err := pub.CheckMaxSize(key, config); err != nil {
 		// Issue must be due to too many ACLs
@@ -1661,25 +1657,6 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	}
 
 	pub.Publish(key, config)
-}
-
-func writeCloudInit(getconfigCtx *getconfigContext,
-	key string, contents []byte, clear []byte) error {
-
-	filename := types.EncryptedCloudInitDirname + "/" + key
-	err := fileutils.WriteRename(filename, contents)
-	if err != nil {
-		return err
-	}
-	filename = types.ClearCloudInitDirname + "/" + key
-	return fileutils.WriteRename(filename, clear)
-}
-
-func removeCloudInit(getconfigCtx *getconfigContext, key string) {
-	filename := types.EncryptedCloudInitDirname + "/" + key
-	os.Remove(filename)
-	filename = types.ClearCloudInitDirname + "/" + key
-	os.Remove(filename)
 }
 
 func publishBaseOsConfig(getconfigCtx *getconfigContext,

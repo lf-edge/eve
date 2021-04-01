@@ -1351,21 +1351,6 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
-	// Start clean
-	os.RemoveAll(types.EncryptedCloudInitDirname)
-	if _, err := os.Stat(types.EncryptedCloudInitDirname); err != nil {
-		log.Tracef("Create %s", types.EncryptedCloudInitDirname)
-		if err := os.MkdirAll(types.EncryptedCloudInitDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	os.RemoveAll(types.ClearCloudInitDirname)
-	if _, err := os.Stat(types.ClearCloudInitDirname); err != nil {
-		log.Tracef("Create %s", types.ClearCloudInitDirname)
-		if err := os.MkdirAll(types.ClearCloudInitDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 }
 
 // handleAppInstanceStatusCreate - Handle AIS create. Publish ZInfoApp
