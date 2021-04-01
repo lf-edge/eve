@@ -140,8 +140,9 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	pub.updatersNotify(name)
 
 	// marshal to json bytes to send to the driver
-	// No need to reduce size here since the IPC in serialize uses
-	// DetermineDiffs
+	// Driver only uses this for checkpoint files, hence we do not
+	// call writeAndRemoveLarge here. That is done when we serialize in
+	// DetermineDiffs()
 	b, err := json.Marshal(item)
 	if err != nil {
 		pub.log.Fatal("json Marshal in Publish", err)
