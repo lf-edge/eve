@@ -28,12 +28,12 @@ type Notify struct{}
 
 // Publication to publish to an individual topic
 // Usage:
-//  p1, err := pubsublegacy.Publish("foo", &fooStruct{})
+//  p1, err := pubsublegacy.Publish("foo", fooStruct{})
 //  ...
 //  // Optional
 //  p1.SignalRestarted()
 //  ...
-//  p1.Publish(key, &item)
+//  p1.Publish(key, item)
 //  p1.Unpublish(key) to delete
 //
 //  foo := p1.Get(key)
