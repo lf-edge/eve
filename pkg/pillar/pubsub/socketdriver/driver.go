@@ -158,6 +158,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		logger:         s.Logger,
 		log:            s.Log,
 		doneChan:       doneChan,
+		rootDir:        s.RootDir,
 	}, nil
 }
 
@@ -215,6 +216,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		logger:           s.Logger,
 		log:              s.Log,
 		doneChan:         doneChan,
+		rootDir:          s.RootDir,
 	}, nil
 }
 

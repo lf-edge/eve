@@ -42,6 +42,9 @@ type DriverSubscriber interface {
 	// Stop subscribing to a name and topic
 	// This is expected to return immediately.
 	Stop() error
+
+	// LargeDirName returns the directory to be used for large fields
+	LargeDirName() string
 }
 
 // DriverPublisher interface that a driver for publishing must implement
@@ -71,6 +74,9 @@ type DriverPublisher interface {
 
 	// CheckMaxSize to see if it will fit
 	CheckMaxSize(key string, val []byte) error
+
+	// LargeDirName returns the directory to be used for large fields
+	LargeDirName() string
 }
 
 // Restarted interface that lets you determine if a Publication has been restarted
