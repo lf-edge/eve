@@ -45,6 +45,11 @@
 //     sub, err := ps.Subscribe("my-agent", element, true, ctx)
 //   }
 //
+// Pubsub can handle large fields in the top level struct (element above)
+// by using the tag pubsub:"large" for the field.
+// However, changes such fields can be delivered early to the Subscriber
+// since they do not travel over the IPC channel but are read by the subscriber
+// when processing a create or modify event for the object.
 //
 // Driver
 //
