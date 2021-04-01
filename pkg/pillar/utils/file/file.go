@@ -60,6 +60,9 @@ func StatAndRead(log *base.LogObject, filename string, maxReadSize int) (string,
 		// File doesn't exist
 		return "", time.Time{}, err
 	}
+	if fi.Size() == 0 {
+		return "", fi.ModTime(), nil
+	}
 	f, err := os.Open(filename)
 	if err != nil {
 		err = fmt.Errorf("StatAndRead %s failed: %v", filename, err)
