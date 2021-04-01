@@ -6,11 +6,13 @@ package pubsub
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"reflect"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const (
@@ -34,22 +36,7 @@ func writeAndRemoveLarge(log *base.LogObject, item interface{}, dirname string) 
 // then it sets those fields to zero length.
 // Currently only supports string and byte slices
 func writeLargeImpl(log *base.LogObject, item interface{}, dirname string) error {
-	if false {
-		val := reflect.ValueOf(item) // could be any underlying type
-
-		// if its a pointer, resolve its value
-		if val.Kind() == reflect.Ptr {
-			val = reflect.Indirect(val)
-		}
-
-		// should double check we now have a struct (could still be anything)
-		if val.Kind() != reflect.Struct {
-			panic("unexpected type " + val.Kind().String())
-		}
-		// XXX    s := val
-	}
-	s := reflect.ValueOf(item).Elem() // could be any underlying type
-	// XXX typeOfT := s.Type()
+	s := reflect.ValueOf(item).Elem()
 	typeOfT := reflect.TypeOf(item).Elem()
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
@@ -60,11 +47,13 @@ func writeLargeImpl(log *base.LogObject, item interface{}, dirname string) error
 		if !ignored {
 			continue
 		}
+		length := 0
 		switch f.Kind() {
 		case reflect.String:
-			if len(f.String()) >= maxLargeLen {
+			length = len(f.String())
+			if length >= maxLargeLen {
 				err := fmt.Errorf("pubsub:large too large string %d bytes for %s",
-					len(f.String()), typeOfT.Field(i).Name)
+					length, typeOfT.Field(i).Name)
 				return err
 			}
 
@@ -75,7 +64,8 @@ func writeLargeImpl(log *base.LogObject, item interface{}, dirname string) error
 					typeOfT.Field(i).Name)
 				return err
 			}
-			if len(f.Bytes()) > maxLargeLen {
+			length = len(f.Bytes())
+			if length > maxLargeLen {
 				err := fmt.Errorf("pubsub:large too large byte slice %d bytes for %s",
 					len(f.Bytes()), typeOfT.Field(i).Name)
 				return err
@@ -100,7 +90,12 @@ func writeLargeImpl(log *base.LogObject, item interface{}, dirname string) error
 			}
 			filename := fmt.Sprintf("%s/%s",
 				dirname, typeOfT.Field(i).Name)
-			err = ioutil.WriteFile(filename, b, 0644)
+			// Need zero length check to avoid writing "null" etc
+			if length == 0 {
+				err = ioutil.WriteFile(filename, nil, 0644)
+			} else {
+				err = ioutil.WriteFile(filename, b, 0644)
+			}
 			if err != nil {
 				err := fmt.Errorf("pubsub:large write filed for %s: %v",
 					filename, err)
@@ -123,6 +118,54 @@ func ensureDir(dirname string) error {
 		err := os.MkdirAll(dirname, 0755)
 		if err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// readLarge walks the struct and uses readfile to fill those which have
+// pubsub:"large" tag
+// Note that file can be missing if the publisher has e.g., unpublished
+func readLarge(log *base.LogObject, item interface{}, dirname string) error {
+	s := reflect.ValueOf(item).Elem()
+	typeOfT := reflect.TypeOf(item).Elem()
+	for i := 0; i < s.NumField(); i++ {
+		f := s.Field(i)
+		v, ok := typeOfT.Field(i).Tag.Lookup("pubsub")
+		ignored := (ok && v == "large")
+		log.Tracef("%d: %s %s (ignored %t)",
+			i, typeOfT.Field(i).Name, f.Type(), ignored)
+		if !ignored {
+			continue
+		}
+		filename := fmt.Sprintf("%s/%s",
+			dirname, typeOfT.Field(i).Name)
+		out, _, err := fileutils.StatAndRead(log, filename, maxLargeLen+1)
+		if err != nil {
+			if !os.IsNotExist(err) && err != io.EOF {
+				return err
+			}
+		}
+		if len(out) == 0 {
+			continue
+		}
+		b := []byte(out)
+		switch f.Kind() {
+		case reflect.String:
+			var str string
+			err = json.Unmarshal(b, &str)
+			if err != nil {
+				panic(err)
+			}
+			f.SetString(str)
+		case reflect.Slice:
+			// Must Unmarshal into []byte to get base64 decode
+			var bytes []byte
+			err = json.Unmarshal(b, &bytes)
+			if err != nil {
+				panic(err)
+			}
+			f.SetBytes(bytes)
 		}
 	}
 	return nil

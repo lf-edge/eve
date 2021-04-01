@@ -218,7 +218,9 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
-	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
+	dirname := fmt.Sprintf("%s/%s/%s", sub.driver.LargeDirName(),
+		name, key)
+	item, err := parseTemplate(sub.log, itemcb, sub.topicType, dirname)
 	if err != nil {
 		errStr := fmt.Sprintf("handleModify(%s): json failed %s",
 			name, err)

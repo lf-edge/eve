@@ -70,7 +70,6 @@ func (pub *PublicationImpl) RestartCounter() int {
 // CheckMaxSize returns an error if the item is too large and would result
 // in a fatal if it was published
 func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
-	pub.log.Warnf("XXX CheckMaxSize for %T", item)
 	topic := TypeToName(item)
 	name := pub.nameString()
 	if topic != pub.topic {
@@ -82,13 +81,14 @@ func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
 	if val.Kind() != reflect.Ptr {
 		pub.log.Fatalf("CheckMaxSize got a non-pointer for %s", name)
 	}
+	newItem := deepCopy(pub.log, item)
 	// Remove any pubsub:"large" fields
-	if err := removeLarge(pub.log, item); err != nil {
+	if err := removeLarge(pub.log, newItem); err != nil {
 		return err
 	}
 
 	// marshal to json bytes to send to the driver
-	b, err := json.Marshal(item)
+	b, err := json.Marshal(newItem)
 	if err != nil {
 		pub.log.Fatal("json Marshal in CheckMaxSize", err)
 	}
@@ -139,13 +139,9 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	}
 	pub.updatersNotify(name)
 
-	// Write any any pubsub:"large" fields to a file and remove them from item
-	dirname := fmt.Sprintf("%s/%s/%s", pub.driver.LargeDirName(), name, key)
-	if err := writeAndRemoveLarge(pub.log, item, dirname); err != nil {
-		pub.log.Fatal("writeAndRemoveLarge in Publish", err)
-	}
-
 	// marshal to json bytes to send to the driver
+	// No need to reduce size here since the IPC in serialize uses
+	// DetermineDiffs
 	b, err := json.Marshal(item)
 	if err != nil {
 		pub.log.Fatal("json Marshal in Publish", err)
@@ -270,7 +266,9 @@ func (pub *PublicationImpl) populate() {
 		return
 	}
 	for key, itemB := range pairs {
-		item, err := parseTemplate(pub.log, itemB, pub.topicType)
+		dirname := fmt.Sprintf("%s/%s/%s", pub.driver.LargeDirName(),
+			name, key)
+		item, err := parseTemplate(pub.log, itemB, pub.topicType, dirname)
 		if err != nil {
 			// Handle bad files such as those of size zero
 			pub.log.Error(err)
@@ -305,6 +303,14 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 	}
 	// Look for new/changed
 	for originKey, origin := range items {
+		// Write any any pubsub:"large" fields to a file and remove
+		// them from origin
+		dirname := fmt.Sprintf("%s/%s/%s",
+			pub.driver.LargeDirName(), name, originKey)
+		err := writeAndRemoveLarge(pub.log, origin, dirname)
+		if err != nil {
+			pub.log.Fatal("writeAndRemoveLarge in DetermineDiffs", err)
+		}
 		originb, err := json.Marshal(origin)
 		if err != nil {
 			pub.log.Fatalf("json Marshal in DetermineDiffs for origin key %s: %v", originKey, err)
