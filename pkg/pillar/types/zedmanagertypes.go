@@ -61,14 +61,12 @@ type AppInstanceConfig struct {
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	// Not carried in pubsub; cleared before Publish
 	CloudInitUserData string `pubsub:"large"` // base64-encoded
 	RemoteConsole     bool
 	// Collect Stats IP Address, assume port is the default docker API for http: 2375
 	CollectStatsIPAddr net.IP
 
 	// CipherBlockStatus, for encrypted cloud-init data
-	// CipherData is not carried in pubsub; cleared before Publish
 	CipherBlockStatus
 	// Hide field inside CipherBlockStatus with extra CipherData
 	CipherData []byte `pubsub:"large"`
