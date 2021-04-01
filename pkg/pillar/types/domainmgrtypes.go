@@ -36,6 +36,8 @@ type DomainConfig struct {
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+	// Hide field inside CipherBlockStatus with extra CipherData
+	// XXX CipherData []byte `pubsub:"large"`
 }
 
 // GetOCIConfigDir returns a location for OCI Config

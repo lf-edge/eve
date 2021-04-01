@@ -199,6 +199,8 @@ type DatastoreConfig struct {
 
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus
+	// Hide field inside CipherBlockStatus with extra CipherData
+	// XXX CipherData []byte `pubsub:"large"`
 }
 
 // Key is the key in pubsub

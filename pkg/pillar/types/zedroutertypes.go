@@ -871,6 +871,8 @@ type WifiConfig struct {
 
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus
+	// Hide field inside CipherBlockStatus with extra CipherData
+	// XXX CipherData []byte `pubsub:"large"`
 }
 
 // CellConfig - Cellular part of the configure
