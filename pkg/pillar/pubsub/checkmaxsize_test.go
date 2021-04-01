@@ -214,6 +214,9 @@ func TestCheckMaxSize(t *testing.T) {
 			}
 			log.Functionf("Publishing key2")
 			err = pub.CheckMaxSize("key2", &largeItem2)
+			// Did CheckMaxSize modify argument
+			assert.Equal(t, test.stringSize, len(largeItem2.StrA))
+			assert.Equal(t, test.stringCSize, len(largeItem2.StrC))
 			if test.expectFail {
 				assert.NotNil(t, err)
 				t.Logf("Test case %s: CheckMaxSize error: %s",
@@ -221,8 +224,22 @@ func TestCheckMaxSize(t *testing.T) {
 			} else {
 				assert.Nil(t, err)
 				pub.Publish("key2", &largeItem2)
+				// Did Publish modify argument
+				assert.Equal(t, test.stringSize, len(largeItem2.StrA))
+				assert.Equal(t, test.stringCSize, len(largeItem2.StrC))
 				largeItems := pub.GetAll()
 				assert.Equal(t, 2, len(largeItems))
+
+				// Did we store correctly?
+				item2, err2 := pub.Get("key2")
+				assert.Nil(t, err2)
+				if err2 == nil {
+					it2 := item2.(largeItem)
+					assert.Equal(t, test.stringSize,
+						len(it2.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it2.StrC))
+				}
 				timer := time.NewTimer(10 * time.Second)
 				done := false
 				for !done {
@@ -243,6 +260,17 @@ func TestCheckMaxSize(t *testing.T) {
 				}
 				largeItems = sub.GetAll()
 				assert.Equal(t, 2, len(largeItems))
+				for key, item := range largeItems {
+					it := item.(largeItem)
+					if key == "key1" {
+						continue
+					}
+					assert.Equal(t, test.stringSize,
+						len(it.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it.StrC))
+				}
+
 				item2, err := sub.Get("key2")
 				assert.Nil(t, err)
 				if err == nil {

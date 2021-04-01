@@ -192,7 +192,13 @@ func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
 		newIntf := deepCopy(pub.log, m)
-		return newIntf, nil
+		val := reflect.ValueOf(newIntf)
+		if val.Kind() != reflect.Ptr {
+			pub.log.Fatalf("Get got a non-pointer for %s",
+				pub.nameString())
+		}
+		val = reflect.Indirect(val)
+		return val.Interface(), nil
 	} else {
 		name := pub.nameString()
 		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)

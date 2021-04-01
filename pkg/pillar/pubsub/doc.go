@@ -40,8 +40,8 @@
 //   func foo() {
 //     driver := socketdriver.SocketDriver{}
 //     ps := pubsub.New(&driver)
-//     pub, err := ps.Publish("my-agent", element)
-//     pub, err := ps.PublishPersistent("other-agent", element)
+//     pub, err := ps.Publish("my-agent", &element)
+//     pub, err := ps.PublishPersistent("other-agent", &element)
 //     sub, err := ps.Subscribe("my-agent", element, true, ctx)
 //   }
 //
