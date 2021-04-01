@@ -33,6 +33,25 @@ func deepCopy(log *base.LogObject, in interface{}) interface{} {
 	return val.Interface()
 }
 
+// deepCopyPtr returns the same PtrTo type of what is passed as input
+func deepCopyPtr(log *base.LogObject, in interface{}) interface{} {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal("json Marshal in deepCopy", err)
+	}
+	p := reflect.New(reflect.PtrTo(reflect.TypeOf(in)))
+	output := p.Interface()
+	if err := json.Unmarshal(b, output); err != nil {
+		log.Fatal("json Unmarshal in deepCopy", err)
+	}
+	val := reflect.ValueOf(output)
+	if val.Kind() != reflect.Ptr {
+		log.Fatalf("Not a pointer: %s", val.Kind())
+	}
+	val = val.Elem()
+	return val.Interface()
+}
+
 // template is a struct; returns a value of the same struct type
 func parseTemplate(log *base.LogObject, sb []byte, targetType reflect.Type, dirname string) (interface{}, error) {
 	p := reflect.New(targetType)

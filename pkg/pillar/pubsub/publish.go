@@ -78,10 +78,10 @@ func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
 		pub.log.Fatalln(errStr)
 	}
 	val := reflect.ValueOf(item)
-	if val.Kind() != reflect.Ptr {
-		pub.log.Fatalf("CheckMaxSize got a non-pointer for %s", name)
+	if val.Kind() == reflect.Ptr {
+		pub.log.Fatalf("CheckMaxSize got a pointer for %s", name)
 	}
-	newItem := deepCopy(pub.log, item)
+	newItem := deepCopyPtr(pub.log, item)
 	// Remove any pubsub:"large" fields
 	if err := removeLarge(pub.log, newItem); err != nil {
 		return err
@@ -106,11 +106,11 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		pub.log.Fatalln(errStr)
 	}
 	val := reflect.ValueOf(item)
-	if val.Kind() != reflect.Ptr {
-		pub.log.Fatalf("Publish got a non-pointer for %s", name)
+	if val.Kind() == reflect.Ptr {
+		pub.log.Fatalf("Publish got a pointer for %s", name)
 	}
 	// Perform a deepCopy in case the caller might change a map etc
-	newItem := deepCopy(pub.log, item)
+	newItem := deepCopyPtr(pub.log, item)
 	if m, ok := pub.km.key.Load(key); ok {
 		if cmp.Equal(m, newItem) {
 			pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)

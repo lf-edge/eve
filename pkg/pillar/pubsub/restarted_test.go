@@ -106,7 +106,7 @@ func TestRestarted(t *testing.T) {
 			}
 			item1 := item{FieldA: "item1"}
 			log.Functionf("Publishing key1")
-			pub.Publish("key1", &item1)
+			pub.Publish("key1", item1)
 			log.Functionf("SignalRestarted")
 			pub.SignalRestarted()
 
@@ -154,10 +154,10 @@ func TestRestarted(t *testing.T) {
 
 			item1modified := item{FieldA: "item1modified"}
 			log.Functionf("Publishing key1")
-			pub.Publish("key1", &item1modified)
+			pub.Publish("key1", item1modified)
 			item2 := item{FieldA: "item2"}
 			log.Functionf("Publishing key2")
-			pub.Publish("key2", &item2)
+			pub.Publish("key2", item2)
 			log.Functionf("SignalRestarted")
 			pub.SignalRestarted()
 

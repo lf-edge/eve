@@ -89,7 +89,7 @@ func TestUnsubscribe(t *testing.T) {
 			}
 			item1 := item{FieldA: "item1"}
 			log.Functionf("Publishing key1")
-			pub.Publish("key1", &item1)
+			pub.Publish("key1", item1)
 			log.Functionf("SignalRestarted")
 			pub.SignalRestarted()
 

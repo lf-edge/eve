@@ -172,7 +172,7 @@ func TestCheckMaxSize(t *testing.T) {
 			}
 			largeItem1 := largeItem{StrA: "largeItem1"}
 			log.Functionf("Publishing key1")
-			pub.Publish("key1", &largeItem1)
+			pub.Publish("key1", largeItem1)
 			log.Functionf("SignalRestarted")
 			pub.SignalRestarted()
 
@@ -213,7 +213,7 @@ func TestCheckMaxSize(t *testing.T) {
 				StrC: string(largeStringC),
 			}
 			log.Functionf("Publishing key2")
-			err = pub.CheckMaxSize("key2", &largeItem2)
+			err = pub.CheckMaxSize("key2", largeItem2)
 			// Did CheckMaxSize modify argument
 			assert.Equal(t, test.stringSize, len(largeItem2.StrA))
 			assert.Equal(t, test.stringCSize, len(largeItem2.StrC))
@@ -223,7 +223,7 @@ func TestCheckMaxSize(t *testing.T) {
 					testname, err)
 			} else {
 				assert.Nil(t, err)
-				pub.Publish("key2", &largeItem2)
+				pub.Publish("key2", largeItem2)
 				// Did Publish modify argument
 				assert.Equal(t, test.stringSize, len(largeItem2.StrA))
 				assert.Equal(t, test.stringCSize, len(largeItem2.StrC))
