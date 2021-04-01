@@ -34,10 +34,13 @@ type DomainConfig struct {
 	VifList        []VifInfo
 	IoAdapterList  []IoAdapter
 
+	// XXX: to be deprecated, use CipherBlockStatus instead
+	CloudInitUserData string `pubsub:"large"` // base64-encoded
+
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
 	// Hide field inside CipherBlockStatus with extra CipherData
-	// XXX CipherData []byte `pubsub:"large"`
+	CipherData []byte `pubsub:"large"`
 }
 
 // GetOCIConfigDir returns a location for OCI Config
