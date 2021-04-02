@@ -378,10 +378,16 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			log.Functionf("doUpdateContentTree(%s): Still have %d blobs left to load", status.Key(), leftToProcess)
 			return changed, false
 		}
-		log.Functionf("doUpdateContentTree(%s): all blobs LOADED", status.Key())
 
 		// if we made it here, then all blobs were loaded
 		log.Functionf("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
+
+		// check if the image was created
+		if !lookupImageCAS(status.ReferenceID(), ctx.casClient) {
+			log.Functionf("doUpdateContentTree(%s): image does not yet exist in CAS", status.Key())
+			return changed, false
+		}
+		log.Functionf("doUpdateContentTree(%s): image exists in CAS, Content Tree load is completely LOADED", status.Key())
 		status.State = types.LOADED
 		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
 		status.FileLocation = ""
