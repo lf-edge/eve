@@ -1539,14 +1539,20 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 
 	if config.IsCipher || config.CloudInitUserData != nil {
+		ciStr, err := fetchCloudInit(ctx, config)
+		if err != nil {
+			return fmt.Errorf("failed to fetch cloud-init userdata: %s",
+				err)
+		}
 		if status.OCIConfigDir != "" {
-			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
+			envList, err := parseEnvVariablesFromCloudInit(ciStr)
 			if err != nil {
-				return fmt.Errorf("failed to fetch environment variable from userdata. %s", err.Error())
+				return fmt.Errorf("failed to parse environment variable from cloud-init userdata: %s",
+					err)
 			}
 			status.EnvVariables = envList
 		} else {
-			ds, err := createCloudInitISO(ctx, config)
+			ds, err := createCloudInitISO(ctx, config, ciStr)
 			if err != nil {
 				return err
 			}
@@ -2002,6 +2008,7 @@ func handleGlobalConfigSync(ctxArg interface{}, done bool) {
 // getCloudInitUserData : returns decrypted cloud-init user data
 func getCloudInitUserData(ctx *domainContext,
 	dc types.DomainConfig) (types.EncryptionBlock, error) {
+
 	if dc.CipherBlockStatus.IsCipher {
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
 			agentName, dc.CipherBlockStatus)
@@ -2036,27 +2043,34 @@ func getCloudInitUserData(ctx *domainContext,
 	return decBlock, nil
 }
 
-// Fetch the list of environment variables from the cloud init
-// We are expecting the environment variables to be pass in particular format in cloud-int
-// Example:
-// Key1:Val1
-// Key2:Val2 ...
-func fetchEnvVariablesFromCloudInit(ctx *domainContext,
-	config types.DomainConfig) (map[string]string, error) {
+// fetch the cloud init content
+func fetchCloudInit(ctx *domainContext,
+	config types.DomainConfig) (string, error) {
 	decBlock, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, cloud-init data get failed %s",
 			config.DisplayName, err)
-		return nil, errors.New(errStr)
+		return "", errors.New(errStr)
 	}
 
 	ud, err := base64.StdEncoding.DecodeString(decBlock.ProtectedUserData)
 	if err != nil {
-		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s", err)
-		return nil, errors.New(errStr)
+		errStr := fmt.Sprintf("%s, base64 decode failed %s",
+			config.DisplayName, err)
+		return "", errors.New(errStr)
 	}
+	return string(ud), err
+}
+
+// Parse the list of environment variables from the cloud init
+// We are expecting the environment variables to be pass in particular format in cloud-int
+// Example:
+// Key1:Val1
+// Key2:Val2 ...
+func parseEnvVariablesFromCloudInit(ciStr string) (map[string]string, error) {
+
 	envList := make(map[string]string, 0)
-	list := strings.Split(string(ud), "\n")
+	list := strings.Split(ciStr, "\n")
 	for _, v := range list {
 		pair := strings.SplitN(v, "=", 2)
 		if len(pair) != 2 {
@@ -2081,7 +2095,7 @@ func cloudInitISOFileLocation(ctx *domainContext, config types.DomainConfig) str
 // by the controller when reactivating hence
 // more short-lived than other volumes/virtual disks.
 func createCloudInitISO(ctx *domainContext,
-	config types.DomainConfig) (*types.DiskStatus, error) {
+	config types.DomainConfig, ciStr string) (*types.DiskStatus, error) {
 
 	fileName := cloudInitISOFileLocation(ctx, config)
 
@@ -2102,24 +2116,15 @@ func createCloudInitISO(ctx *domainContext,
 		config.UUIDandVersion.UUID.String()))
 	metafile.Close()
 
-	decBlock, err := getCloudInitUserData(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-	ud, err := base64.StdEncoding.DecodeString(decBlock.ProtectedUserData)
-	if err != nil {
-		errStr := fmt.Sprintf("createCloudInitISO failed %s", err)
-		return nil, errors.New(errStr)
-	}
 	userFileName := "/user-data"
-	if strings.Contains(string(ud), "#junos-config") {
+	if strings.Contains(ciStr, "#junos-config") {
 		userFileName = "/juniper.conf"
 	}
 	userfile, err := os.Create(dir + userFileName)
 	if err != nil {
 		log.Fatalf("createCloudInitISO failed %s", err)
 	}
-	userfile.WriteString(string(ud))
+	userfile.WriteString(ciStr)
 	userfile.Close()
 
 	if err := mkisofs(fileName, dir); err != nil {

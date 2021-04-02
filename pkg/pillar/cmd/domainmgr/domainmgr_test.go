@@ -9,18 +9,19 @@
 package domainmgr
 
 import (
+	"encoding/base64"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
 
 func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "domainmgr", 0)
 	type fetchEnvVar struct {
-		config       types.DomainConfig
+		cloudInitStr string
 		expectOutput map[string]string
 	}
 	// testStrings are base 64 encoded strings which will contain
@@ -47,46 +48,36 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	testString5 := "Rk9PMT1CQVIxCkZPTzI9CkZPTzMKRk9PND1CQVI0"
 	testFetchEnvVar := map[string]fetchEnvVar{
 		"Test env var 1": {
-			config: types.DomainConfig{
-				CloudInitUserData: &testString1,
-			},
+			cloudInitStr: testString1,
 			expectOutput: map[string]string{
 				"FOO": "BAR",
 			},
 		},
 		"Test env var 2": {
-			config: types.DomainConfig{
-				CloudInitUserData: &testString2,
-			},
+			cloudInitStr: testString2,
 			expectOutput: map[string]string{
 				"SQL_ROOT_PASSWORD": "$omeR&NdomPa$$word",
 			},
 		},
 		"Test env var 3": {
-			config: types.DomainConfig{
-				CloudInitUserData: &testString3,
-			},
+			cloudInitStr: testString3,
 			expectOutput: map[string]string{
 				"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 			},
 		},
 		"Test env var 4": {
-			config: types.DomainConfig{
-				CloudInitUserData: &testString4,
-			},
+			cloudInitStr: testString4,
 			expectOutput: map[string]string{
 				"FOO": "1 2",
 			},
 		},
 		"Negative test env var 5": {
-			config: types.DomainConfig{
-				CloudInitUserData: &testString5,
-			},
+			cloudInitStr: testString5,
 		},
 	}
 	for testname, test := range testFetchEnvVar {
 		t.Logf("Running test case %s", testname)
-		envMap, err := fetchEnvVariablesFromCloudInit(nil, test.config)
+		envMap, err := decodeAndParseEnvVariablesFromCloudInit(test.cloudInitStr)
 		switch testname {
 		case "Negative test env var 5":
 			if err == nil {
@@ -101,4 +92,13 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 			}
 		}
 	}
+}
+
+func decodeAndParseEnvVariablesFromCloudInit(ciStr string) (map[string]string, error) {
+	ud, err := base64.StdEncoding.DecodeString(ciStr)
+	if err != nil {
+		return nil, fmt.Errorf("base64 decode failed %s", err)
+	}
+
+	return parseEnvVariablesFromCloudInit(string(ud))
 }
