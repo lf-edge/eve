@@ -281,6 +281,45 @@ func TestCheckMaxSize(t *testing.T) {
 			sub.Close()
 			log.Functionf("pub.Close")
 			pub.Close()
+			if test.persistent && !test.expectFail {
+				// Verify that a second publish gets the data
+				// filled in.
+				pub, err := ps.NewPublication(
+					pubsub.PublicationOptions{
+						AgentName:  test.agentName,
+						AgentScope: test.agentScope,
+						Persistent: test.persistent,
+						TopicType:  largeItem{},
+					})
+				if err != nil {
+					t.Fatalf("unable to publish: %v", err)
+				}
+				largeItems = pub.GetAll()
+				assert.Equal(t, 2, len(largeItems))
+				for key, item := range largeItems {
+					it := item.(largeItem)
+					if key == "key1" {
+						continue
+					}
+					assert.Equal(t, test.stringSize,
+						len(it.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it.StrC))
+				}
+
+				item2, err := pub.Get("key2")
+				assert.Nil(t, err)
+				if err == nil {
+					it2 := item2.(largeItem)
+					assert.Equal(t, test.stringSize,
+						len(it2.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it2.StrC))
+				}
+				pub.Unpublish("key1")
+				pub.Unpublish("key2")
+				pub.Close()
+			}
 		})
 	}
 	os.RemoveAll(rootPath)
