@@ -37,6 +37,7 @@ type Subscriber struct {
 	logger           *logrus.Logger
 	log              *base.LogObject
 	doneChan         chan struct{}
+	rootDir          string
 }
 
 // Load load entire persisted data set into a map
@@ -160,6 +161,11 @@ func (s *Subscriber) Stop() error {
 			s.name, "nowhere to stop")
 		return errors.New(errStr)
 	}
+}
+
+// LargeDirName where to put large fields
+func (s *Subscriber) LargeDirName() string {
+	return fmt.Sprintf("%s/persist/vault/pubsub-large", s.rootDir)
 }
 
 func (s *Subscriber) watchSock() {
