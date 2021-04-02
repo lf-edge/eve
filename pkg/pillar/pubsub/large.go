@@ -37,6 +37,21 @@ func writeAndRemoveLarge(log *base.LogObject, item interface{}, dirname string) 
 // Currently only supports string and byte slices
 func writeLargeImpl(log *base.LogObject, item interface{}, dirname string) error {
 	s := reflect.ValueOf(item).Elem()
+	// if its a pointer, resolve its value
+	if s.Kind() == reflect.Ptr {
+		fmt.Printf("XXX pointer follow for %s for %s",
+			s.Type().String(), dirname)
+		s = reflect.Indirect(s)
+	}
+
+	// For types.MetricsMap - not a struct
+	if s.Kind() == reflect.Map {
+		return nil
+	}
+	if s.Kind() != reflect.Struct {
+		log.Fatalf("unexpected type %s for %s",
+			s.Type().String(), dirname)
+	}
 	typeOfT := reflect.TypeOf(item).Elem()
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
@@ -128,6 +143,14 @@ func ensureDir(dirname string) error {
 // Note that file can be missing if the publisher has e.g., unpublished
 func readLarge(log *base.LogObject, item interface{}, dirname string) error {
 	s := reflect.ValueOf(item).Elem()
+	// For types.MetricsMap - not a struct
+	if s.Kind() == reflect.Map {
+		return nil
+	}
+	if s.Kind() != reflect.Struct {
+		log.Fatalf("unexpected type %s for %s",
+			s.Type().String(), dirname)
+	}
 	typeOfT := reflect.TypeOf(item).Elem()
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
