@@ -37,13 +37,6 @@ func writeAndRemoveLarge(log *base.LogObject, item interface{}, dirname string) 
 // Currently only supports string and byte slices
 func writeLargeImpl(log *base.LogObject, item interface{}, dirname string) error {
 	s := reflect.ValueOf(item).Elem()
-	// if its a pointer, resolve its value
-	if s.Kind() == reflect.Ptr {
-		fmt.Printf("XXX pointer follow for %s for %s",
-			s.Type().String(), dirname)
-		s = reflect.Indirect(s)
-	}
-
 	// For types.MetricsMap - not a struct
 	if s.Kind() == reflect.Map {
 		return nil
