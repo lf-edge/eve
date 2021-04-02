@@ -61,7 +61,7 @@ type AppInstanceConfig struct {
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	CloudInitUserData *string // base64-encoded
+	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
 	RemoteConsole     bool
 	// Collect Stats IP Address, assume port is the default docker API for http: 2375
 	CollectStatsIPAddr net.IP
