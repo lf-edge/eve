@@ -53,7 +53,7 @@ func deepCopyPtr(log *base.LogObject, in interface{}) interface{} {
 }
 
 // template is a struct; returns a value of the same struct type
-func parseTemplate(log *base.LogObject, sb []byte, targetType reflect.Type, dirname string) (interface{}, error) {
+func parseTemplate(log *base.LogObject, sb []byte, targetType reflect.Type, dirname string, wantPointer bool) (interface{}, error) {
 	p := reflect.New(targetType)
 	output := p.Interface()
 	if err := json.Unmarshal(sb, output); err != nil {
@@ -69,7 +69,9 @@ func parseTemplate(log *base.LogObject, sb []byte, targetType reflect.Type, dirn
 			return nil, err
 		}
 	}
-	val = val.Elem()
+	if !wantPointer {
+		val = val.Elem()
+	}
 	return val.Interface(), nil
 }
 

@@ -275,7 +275,7 @@ func (pub *PublicationImpl) populate() {
 	for key, itemB := range pairs {
 		dirname := fmt.Sprintf("%s/%s/%s", pub.driver.LargeDirName(),
 			name, key)
-		item, err := parseTemplate(pub.log, itemB, pub.topicType, dirname)
+		item, err := parseTemplate(pub.log, itemB, pub.topicType, dirname, true)
 		if err != nil {
 			// Handle bad files such as those of size zero
 			pub.log.Error(err)
