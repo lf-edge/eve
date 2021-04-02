@@ -16,6 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type largeItem struct {
+	StrA   string
+	StrC   string `json:"pubsub-large-StrC"`
+}
+
 func TestCheckMaxSize(t *testing.T) {
 	// Run in a unique directory
 	rootPath, err := ioutil.TempDir("", "checkmaxsize_test")
@@ -38,38 +43,39 @@ func TestCheckMaxSize(t *testing.T) {
 	}
 	ps := pubsub.New(&driver, logger, log)
 
-	// The values 49120 and 49122 have been determined experimentally
+	// The values 449000 and 49122 have been determined experimentally
 	// to be what fits and not for this particular struct and string
 	// content.
 	myCtx := context{}
 	testMatrix := map[string]struct {
-		agentName  string
-		agentScope string
-		persistent bool
-		stringSize int
-		expectFail bool
+		agentName   string
+		agentScope  string
+		persistent  bool
+		stringSize  int
+		stringCSize int
+		expectFail  bool
 	}{
 		"File small enough": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 49120,
+			stringSize: 49000,
 		},
 		"File with persistent small enough": {
 			agentName: "",
 			//			agentScope: "testscope2",
 			persistent: true,
-			stringSize: 49120,
+			stringSize: 49000,
 		},
 		"IPC small enough": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringSize: 49120,
+			stringSize: 49000,
 		},
 		"IPC with persistent small enough": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent: true,
-			stringSize: 49120,
+			stringSize: 49000,
 		},
 		"File too large": {
 			agentName: "",
@@ -97,6 +103,54 @@ func TestCheckMaxSize(t *testing.T) {
 			stringSize: 49122,
 			expectFail: true,
 		},
+		"File using large tag": {
+			agentName: "",
+			//			agentScope: "testscope1",
+			stringCSize: 524288,
+		},
+		"File with persistent using large tag": {
+			agentName: "",
+			//			agentScope: "testscope2",
+			persistent:  true,
+			stringCSize: 524288,
+		},
+		"IPC using large tag": {
+			agentName: "testagent1",
+			//			agentScope: "testscope",
+			stringCSize: 524288,
+		},
+		"IPC with persistent using large tag": {
+			agentName: "testagent2",
+			//			agentScope: "testscope",
+			persistent:  true,
+			stringCSize: 524288,
+		},
+		"File too large using large tag": {
+			agentName: "",
+			//			agentScope: "testscope1",
+			stringCSize: 1048576,
+			expectFail:  true,
+		},
+		"File with persistent too large using large tag": {
+			agentName: "",
+			//			agentScope: "testscope2",
+			persistent:  true,
+			stringCSize: 1048576,
+			expectFail:  true,
+		},
+		"IPC too large using large tag": {
+			agentName: "testagent1",
+			//			agentScope: "testscope",
+			stringCSize: 1048576,
+			expectFail:  true,
+		},
+		"IPC with persistent too large using large tag": {
+			agentName: "testagent2",
+			//			agentScope: "testscope",
+			persistent:  true,
+			stringCSize: 1048576,
+			expectFail:  true,
+		},
 	}
 
 	for testname, test := range testMatrix {
@@ -107,14 +161,14 @@ func TestCheckMaxSize(t *testing.T) {
 					AgentName:  test.agentName,
 					AgentScope: test.agentScope,
 					Persistent: test.persistent,
-					TopicType:  item{},
+					TopicType:  largeItem{},
 				})
 			if err != nil {
 				t.Fatalf("unable to publish: %v", err)
 			}
-			item1 := item{FieldA: "item1"}
+			largeItem1 := largeItem{StrA: "largeItem1"}
 			log.Functionf("Publishing key1")
-			pub.Publish("key1", item1)
+			pub.Publish("key1", largeItem1)
 			log.Functionf("SignalRestarted")
 			pub.SignalRestarted()
 
@@ -123,7 +177,7 @@ func TestCheckMaxSize(t *testing.T) {
 				AgentName:  test.agentName,
 				AgentScope: test.agentScope,
 				Persistent: test.persistent,
-				TopicImpl:  item{},
+				TopicImpl:  largeItem{},
 				Ctx:        &myCtx,
 			})
 			if err != nil {
@@ -139,25 +193,49 @@ func TestCheckMaxSize(t *testing.T) {
 					sub.ProcessChange(change)
 				}
 			}
-			items := sub.GetAll()
-			assert.Equal(t, 1, len(items))
+			largeItems := sub.GetAll()
+			assert.Equal(t, 1, len(largeItems))
 
 			largeString := make([]byte, test.stringSize)
 			for i := range largeString {
 				largeString[i] = byte(0x40 + i%25)
 			}
-			item2 := item{FieldA: string(largeString)}
+			largeStringC := make([]byte, test.stringCSize)
+			for i := range largeStringC {
+				largeStringC[i] = byte(0x40 + i%25)
+			}
+			largeItem2 := largeItem{
+				StrA: string(largeString),
+				StrC: string(largeStringC),
+			}
 			log.Functionf("Publishing key2")
-			err = pub.CheckMaxSize("key2", item2)
+			err = pub.CheckMaxSize("key2", largeItem2)
+			// Did CheckMaxSize modify argument
+			assert.Equal(t, test.stringSize, len(largeItem2.StrA))
+			assert.Equal(t, test.stringCSize, len(largeItem2.StrC))
 			if test.expectFail {
 				assert.NotNil(t, err)
 				t.Logf("Test case %s: CheckMaxSize error: %s",
 					testname, err)
 			} else {
 				assert.Nil(t, err)
-				pub.Publish("key2", item2)
-				items := pub.GetAll()
-				assert.Equal(t, 2, len(items))
+				pub.Publish("key2", largeItem2)
+				// Did Publish modify argument
+				assert.Equal(t, test.stringSize, len(largeItem2.StrA))
+				assert.Equal(t, test.stringCSize, len(largeItem2.StrC))
+				largeItems := pub.GetAll()
+				assert.Equal(t, 2, len(largeItems))
+
+				// Did we store correctly?
+				item2, err2 := pub.Get("key2")
+				assert.Nil(t, err2)
+				if err2 == nil {
+					it2 := item2.(largeItem)
+					assert.Equal(t, test.stringSize,
+						len(it2.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it2.StrC))
+				}
 				timer := time.NewTimer(10 * time.Second)
 				done := false
 				for !done {
@@ -165,8 +243,8 @@ func TestCheckMaxSize(t *testing.T) {
 					case change := <-sub.MsgChan():
 						log.Functionf("ProcessChange")
 						sub.ProcessChange(change)
-						items := sub.GetAll()
-						if len(items) == 2 {
+						largeItems := sub.GetAll()
+						if len(largeItems) == 2 {
 							done = true
 							break
 						}
@@ -176,8 +254,28 @@ func TestCheckMaxSize(t *testing.T) {
 						break
 					}
 				}
-				items = sub.GetAll()
-				assert.Equal(t, 2, len(items))
+				largeItems = sub.GetAll()
+				assert.Equal(t, 2, len(largeItems))
+				for key, item := range largeItems {
+					it := item.(largeItem)
+					if key == "key1" {
+						continue
+					}
+					assert.Equal(t, test.stringSize,
+						len(it.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it.StrC))
+				}
+
+				item2, err := sub.Get("key2")
+				assert.Nil(t, err)
+				if err == nil {
+					it2 := item2.(largeItem)
+					assert.Equal(t, test.stringSize,
+						len(it2.StrA))
+					assert.Equal(t, test.stringCSize,
+						len(it2.StrC))
+				}
 			}
 			log.Functionf("sub.Close")
 			sub.Close()
