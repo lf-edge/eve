@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -603,4 +604,10 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 //checkAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
 func checkAndCorrectBlobHash(blobHash string) string {
 	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(blobHash, "sha256:"))
+}
+
+// lookupImageCAS check if an image reference exists
+func lookupImageCAS(reference string, client cas.CAS) bool {
+	hash, err := client.GetImageHash(reference)
+	return err == nil && hash != ""
 }
