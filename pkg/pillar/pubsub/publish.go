@@ -51,6 +51,7 @@ type PublicationImpl struct {
 	global      bool
 	defaultName string
 	updaterList *Updaters
+	persistent  bool
 	logger      *logrus.Logger
 	log         *base.LogObject
 
@@ -217,10 +218,12 @@ func (pub *PublicationImpl) Iterate(function base.StrMapFunc) {
 // Close the publisher
 func (pub *PublicationImpl) Close() error {
 	items := pub.GetAll()
-	for key := range items {
-		pub.log.Functionf("Close(%s) unloading key %s",
-			pub.nameString(), key)
-		pub.Unpublish(key)
+	if !pub.persistent {
+		for key := range items {
+			pub.log.Functionf("Close(%s) unloading key %s",
+				pub.nameString(), key)
+			pub.Unpublish(key)
+		}
 	}
 	pub.ClearRestarted()
 	pub.driver.Stop()

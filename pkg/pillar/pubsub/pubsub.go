@@ -172,6 +172,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 		km:          keyMap{key: base.NewLockedStringMap()},
 		updaterList: p.updaterList,
 		defaultName: p.driver.DefaultName(),
+		persistent:  options.Persistent,
 		logger:      p.logger,
 		log:         p.log,
 	}
