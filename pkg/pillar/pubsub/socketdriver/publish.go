@@ -38,6 +38,7 @@ type Publisher struct {
 	logger         *logrus.Logger
 	log            *base.LogObject
 	doneChan       chan struct{}
+	rootDir        string
 }
 
 // Publish publish a key-value pair
@@ -184,6 +185,11 @@ func (s *Publisher) Restart(restartCounter int) error {
 		}
 	}
 	return nil
+}
+
+// LargeDirName where to put large fields
+func (s *Publisher) LargeDirName() string {
+	return fmt.Sprintf("%s/persist/vault/pubsub-large", s.rootDir)
 }
 
 func (s *Publisher) serveConnection(conn net.Conn, instance int) {
