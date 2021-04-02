@@ -165,7 +165,7 @@ func (s *Subscriber) Stop() error {
 
 // LargeDirName where to put large fields
 func (s *Subscriber) LargeDirName() string {
-	return fmt.Sprintf("%s/persist/vault/pubsub-large", s.rootDir)
+	return fmt.Sprintf("%s/persist/pubsub-large", s.rootDir)
 }
 
 func (s *Subscriber) watchSock() {

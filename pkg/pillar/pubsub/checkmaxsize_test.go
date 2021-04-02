@@ -17,8 +17,8 @@ import (
 )
 
 type largeItem struct {
-	StrA   string
-	StrC   string `json:"pubsub-large-StrC"`
+	StrA string
+	StrC string `json:"pubsub-large-StrC"`
 }
 
 func TestCheckMaxSize(t *testing.T) {
@@ -43,7 +43,7 @@ func TestCheckMaxSize(t *testing.T) {
 	}
 	ps := pubsub.New(&driver, logger, log)
 
-	// The values 449000 and 49122 have been determined experimentally
+	// The values 48000 and 49122 have been determined experimentally
 	// to be what fits and not for this particular struct and string
 	// content.
 	myCtx := context{}
@@ -58,24 +58,24 @@ func TestCheckMaxSize(t *testing.T) {
 		"File small enough": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 49000,
+			stringSize: 48000,
 		},
 		"File with persistent small enough": {
 			agentName: "",
 			//			agentScope: "testscope2",
 			persistent: true,
-			stringSize: 49000,
+			stringSize: 48000,
 		},
 		"IPC small enough": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringSize: 49000,
+			stringSize: 48000,
 		},
 		"IPC with persistent small enough": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent: true,
-			stringSize: 49000,
+			stringSize: 48000,
 		},
 		"File too large": {
 			agentName: "",
