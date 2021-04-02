@@ -110,7 +110,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		pub.log.Fatalf("Publish got a pointer for %s", name)
 	}
 	// Perform a deepCopy in case the caller might change a map etc
-	newItem := deepCopyPtr(pub.log, item)
+	newItem := deepCopy(pub.log, item)
 	if m, ok := pub.km.key.Load(key); ok {
 		if cmp.Equal(m, newItem) {
 			pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
@@ -193,13 +193,7 @@ func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
 		newIntf := deepCopy(pub.log, m)
-		val := reflect.ValueOf(newIntf)
-		if val.Kind() != reflect.Ptr {
-			pub.log.Fatalf("Get got a non-pointer for %s",
-				pub.nameString())
-		}
-		val = reflect.Indirect(val)
-		return val.Interface(), nil
+		return newIntf, nil
 	} else {
 		name := pub.nameString()
 		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
@@ -275,7 +269,7 @@ func (pub *PublicationImpl) populate() {
 	for key, itemB := range pairs {
 		dirname := fmt.Sprintf("%s/%s/%s", pub.driver.LargeDirName(),
 			name, key)
-		item, err := parseTemplate(pub.log, itemB, pub.topicType, dirname, true)
+		item, err := parseTemplate(pub.log, itemB, pub.topicType, dirname)
 		if err != nil {
 			// Handle bad files such as those of size zero
 			pub.log.Error(err)
@@ -312,13 +306,17 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 	for originKey, origin := range items {
 		// Write any any pubsub:"large" fields to a file and remove
 		// them from origin
+		item := deepCopyPtr(pub.log, origin)
 		dirname := fmt.Sprintf("%s/%s/%s",
 			pub.driver.LargeDirName(), name, originKey)
-		err := writeAndRemoveLarge(pub.log, origin, dirname)
+		// XXX could make dirname be per subscriber hence
+		// we could add timestamp/version and have subscriber
+		// delete after read
+		err := writeAndRemoveLarge(pub.log, item, dirname)
 		if err != nil {
 			pub.log.Fatal("writeAndRemoveLarge in DetermineDiffs", err)
 		}
-		originb, err := json.Marshal(origin)
+		originb, err := json.Marshal(item)
 		if err != nil {
 			pub.log.Fatalf("json Marshal in DetermineDiffs for origin key %s: %v", originKey, err)
 		}
@@ -332,7 +330,6 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 		} else if bytes.Compare(originb, local) != 0 {
 			pub.log.Tracef("determineDiffs(%s): key %s replacing due to diff\n",
 				name, originKey)
-			// XXX is deepCopy needed?
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else {
