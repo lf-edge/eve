@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86 5.4.51 Kernel Configuration
+# Linux/x86 5.4.77 Kernel Configuration
 #
 
 #
@@ -1920,7 +1920,6 @@ CONFIG_SCSI_PROC_FS=y
 CONFIG_BLK_DEV_SD=y
 # CONFIG_CHR_DEV_ST is not set
 CONFIG_BLK_DEV_SR=y
-# CONFIG_BLK_DEV_SR_VENDOR is not set
 CONFIG_CHR_DEV_SG=y
 # CONFIG_CHR_DEV_SCH is not set
 # CONFIG_SCSI_CONSTANTS is not set
@@ -3481,7 +3480,6 @@ CONFIG_FB_SIMPLE=y
 # Console display driver support
 #
 CONFIG_VGA_CONSOLE=y
-# CONFIG_VGACON_SOFT_SCROLLBACK is not set
 CONFIG_DUMMY_CONSOLE=y
 CONFIG_DUMMY_CONSOLE_COLUMNS=80
 CONFIG_DUMMY_CONSOLE_ROWS=25

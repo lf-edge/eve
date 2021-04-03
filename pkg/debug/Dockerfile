@@ -50,3 +50,4 @@ COPY --from=musl-build /lib/ld-musl-*.so.1 /lib/
 RUN apk add --no-cache pciutils usbutils vim tcpdump perf strace
 
 COPY --from=lshw-build /lshw /usr/bin/lshw
+

@@ -260,10 +260,6 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 		checkAndUpdateWireless(ctx, &pending.RunningDPC, &runnableDPC)
 
 		log.Functionf("VerifyPending: DPC changed. update DhcpClient.\n")
-		// ensure we rename ethN to kethN and set up bridge called
-		// ethN; move MAC address to bridge. Reverse if removed from DPC
-		UpdateBridge(log, runnableDPC, pending.RunningDPC)
-
 		UpdateDhcpClient(log, runnableDPC, pending.RunningDPC)
 		pending.RunningDPC = runnableDPC
 		log.Functionf("Running with DPC %v", pending.RunningDPC)

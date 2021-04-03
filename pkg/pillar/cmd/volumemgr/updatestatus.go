@@ -304,17 +304,15 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 	// at this point, the image is VERIFIED or higher
 	if status.State == types.VERIFIED {
-		// we need to check root blob state to wait for another loading process if exists
+		// XXX do we have any blobs in LOADING state?
+		// Can we check in the loop above to avoid the lookup?
 		blobStatuses := lookupBlobStatuses(ctx, status.Blobs...)
-		root := blobStatuses[0]
-		if root.State == types.LOADING {
-			log.Functionf("Found root blob %s in LOADING; defer", root.Key())
-			return changed, false
-		}
 		for _, b := range blobStatuses {
-			if b.State == types.VERIFIED {
-				b.State = types.LOADING
-				publishBlobStatus(ctx, b)
+			if b.State == types.LOADING {
+				// XXX we need to wait for blobs from another apps if they exists and in the LOADING state
+				log.Functionf("XXX found blob %s in LOADING; defer",
+					b.Key())
+				return changed, false
 			}
 		}
 
@@ -555,19 +553,21 @@ func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 
 	log.Functionf("updateStatusByBlob(%s)", sha)
 	found := false
-	pub := ctx.pubContentTreeStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := st.(types.ContentTreeStatus)
-		var hasSha bool
-	blobLoop:
-		for _, blobSha := range status.Blobs {
-			for _, s := range sha {
-				if blobSha == s {
-					log.Tracef("Found blob %s on ContentTreeStatus %s",
-						sha, status.Key())
-					hasSha = true
-					break blobLoop
+	for _, objType := range ctObjTypes {
+		pub := ctx.publication(types.ContentTreeStatus{}, objType)
+		items := pub.GetAll()
+		for _, st := range items {
+			status := st.(types.ContentTreeStatus)
+			var hasSha bool
+		blobLoop:
+			for _, blobSha := range status.Blobs {
+				for _, s := range sha {
+					if blobSha == s {
+						log.Tracef("Found blob %s on ContentTreeStatus %s",
+							sha, status.Key())
+						hasSha = true
+						break blobLoop
+					}
 				}
 			}
 		}
