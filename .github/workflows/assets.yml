@@ -59,7 +59,9 @@ jobs:
         run: |
           URL="${{ github.event.repository.html_url }}/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
           sed -i. -e '/# set url https:/s#^.*$#set url '"$URL"'#' assets/ipxe.efi.cfg
-          sed -i. -e "s#initrd=initrd#initrd=${{ env.ARCH }}.initrd#g" assets/ipxe.efi.cfg
+          for comp in initrd rootfs installer; do
+              sed -i. -e "s#initrd=${comp}#initrd=${{ env.ARCH }}.${comp}#g" assets/ipxe.efi.cfg
+          done
           sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
       - name: Unzip kernel on arm64
         run: |
