@@ -33,7 +33,7 @@ That file is /config/DevicePortConfig/override.json
 And further it can be overridden by a USB memory stick plugged in when the device is powered
 on. The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can be used to create a
 USB stick with a json file specifying the device connectivity based on the
-examples below.
+examples below. Use [tools/makeusbconf.bat](../tools/makeusbconf.bat) for Windows OS.
 Finally, when the device is created or updated in the controller, the device
 port configuration can be specified which will be sent to the device using the
 systemAdapter part of the API. The most recent information DevicePortConfig
@@ -243,6 +243,8 @@ tools/makeusbconf.sh -d -i -f ~/usb.json -s 8000 usb.img
 ```
 
 and then separately copied to the raw USB disk device.
+
+Use [tools/makeusbconf.bat](../tools/makeusbconf.bat) for Windows OS. It will ask you for USB device to use.
 
 ### Troubleshooting
 
