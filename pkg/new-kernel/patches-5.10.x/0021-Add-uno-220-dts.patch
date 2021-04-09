@@ -13,8 +13,9 @@ new file mode 100644
 index 000000000000..b5411de59659
 --- /dev/null
 +++ b/arch/arm64/boot/dts/broadcom/uno-220.dts
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,200 @@
 +#include "arm/bcm2711-rpi-4-b.dts"
++#include <dt-bindings/leds/common.h>
 +
 +&spi {
 +	pinctrl-names = "default";
@@ -199,6 +200,18 @@ index 000000000000..b5411de59659
 +		brcm,pins = <12 13>;
 +		brcm,function = <BCM2835_FSEL_ALT4>;
 +		brcm,pull = <0 2>;
++	};
++};
++
++/ {
++	leds {
++		uno {
++			label = "uno";
++			gpios = <&gpio 12 GPIO_ACTIVE_LOW>;
++			color = <LED_COLOR_ID_GREEN>;
++			default-state = "keep";
++			linux,default-trigger = "default-on";
++		};
 +	};
 +};
 --

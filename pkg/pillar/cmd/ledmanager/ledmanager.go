@@ -168,6 +168,12 @@ var mToF = []modelToFuncs{
 		ledName:   "led0",
 	},
 	{
+		model:     "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
+		initFunc:  InitLedCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "uno",
+	},
+	{
 		// Last in table as a default
 		model:     "",
 		initFunc:  InitDDCmd,
