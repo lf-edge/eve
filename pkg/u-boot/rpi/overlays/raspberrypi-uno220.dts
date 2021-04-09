@@ -1,0 +1,29 @@
+// SMBIOS tables support for default Raspberry Pi
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2711";
+	fragment@1 {
+		target-path = "/";
+		__overlay__ {
+			sysinfo {
+				compatible = "u-boot,sysinfo-smbios";
+				smbios {
+					system {
+						manufacturer = "raspberrypi";
+						product = "uno-220";
+					};
+					baseboard {
+						manufacturer = "raspberrypi";
+						product = "uno-220";
+					};
+					chassis {
+						manufacturer = "raspberrypi";
+						product = "uno-220";
+					};
+				};
+			};
+		};
+	};
+};
