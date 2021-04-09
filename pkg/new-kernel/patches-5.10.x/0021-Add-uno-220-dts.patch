@@ -1,19 +1,20 @@
 From d79a9307d61f4ec2101653059306964b27f2b51b Mon Sep 17 00:00:00 2001
-From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
+From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
 Subject: [PATCH 12/14] Add stdout path overlay
 
 ---
  .../arm/boot/dts/pi4-64-xen-overlay.dts | 16 ++++++++++++++++
- 1 file changed, 16 insertions(+)
- create mode 100644 arch/arm/boot/dts/pi4-64-xen-overlay.dts
+ arch/arm/boot/dts/Makefile
+ arch/arm64/boot/dts/broadcom/Makefile
+ 3 file changed, 16 insertions(+)
 
-diff --git a/arch/arm64/boot/dts/broadcom/uno-220.dts b/arch/arm64/boot/dts/broadcom/uno-220.dts
+diff --git a/arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts b/arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts
 new file mode 100644
 index 000000000000..b5411de59659
 --- /dev/null
-+++ b/arch/arm64/boot/dts/broadcom/uno-220.dts
-@@ -0,0 +1,200 @@
++++ b/arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts
+@@ -0,0 +1,216 @@
 +#include "arm/bcm2711-rpi-4-b.dts"
 +#include <dt-bindings/leds/common.h>
 +
@@ -214,5 +215,44 @@ index 000000000000..b5411de59659
 +		};
 +	};
 +};
++
++&i2c1 {
++       /* pca9554@27 {
++               compatible = "nxp,pca9554";
++               reg = <0x27>;
++       }; */
++
++       rtc@32 {
++               compatible = "epson,rx8010";
++               reg = <0x32>;
++               /* pinctrl-names = "default";
++               pinctrl-0 = <&pinctrl_rtc>;
++               interrupt-parent = <&gpio4>;
++               interrupts = <10 IRQ_TYPE_LEVEL_HIGH>; */
++       };
++};
+diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
+index fa6db6eed3e2..cbca43456352 100644
+--- a/arch/arm/boot/dts/Makefile	2020-12-15 19:34:59.008957000 +0000
++++ b/arch/arm/boot/dts/Makefile	2020-12-15 19:36:47.756054000 +0000
+@@ -93,6 +93,7 @@
+ 	bcm2837-rpi-3-b-plus.dtb \
+ 	bcm2837-rpi-cm3-io3.dtb \
+ 	bcm2711-rpi-4-b.dtb \
++       raspberrypi-uno-220.dtb \
+ 	bcm2835-rpi-zero.dtb \
+ 	bcm2835-rpi-zero-w.dtb
+ dtb-$(CONFIG_ARCH_BCM_5301X) += \
+diff --git a/arch/arm/boot/dts/broadcom/Makefile b/arch/arm/boot/dts/broadcom/Makefile
+index fa6db6eed3e2..cbca43456352 100644
+--- a/arch/arm64/boot/dts/broadcom/Makefile	2021-04-06 04:24:06.072745079 +0000
++++ b/arch/arm64/boot/dts/broadcom/Makefile	2021-04-06 04:24:43.729142399 +0000
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: GPL-2.0
+ dtb-$(CONFIG_ARCH_BCM2835) += bcm2711-rpi-4-b.dtb \
++			      raspberrypi-uno-220.dtb \
+ 			      bcm2837-rpi-3-a-plus.dtb \
+ 			      bcm2837-rpi-3-b.dtb \
+ 			      bcm2837-rpi-3-b-plus.dtb \
 --
 2.26.2
