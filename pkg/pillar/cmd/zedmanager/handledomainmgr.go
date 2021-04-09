@@ -102,7 +102,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			}
 		}
 	}
-	if dc.BootLoader == "" && dc.VirtualizationModeOrDefault() == types.FML {
+	if dc.BootLoader == "" && (dc.VirtualizationModeOrDefault() == types.FML || runtime.GOARCH == "arm64") {
 		dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
 	}
 	if ns != nil {
