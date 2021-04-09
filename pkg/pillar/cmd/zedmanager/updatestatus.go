@@ -176,15 +176,25 @@ func doInstall(ctx *zedmanagerContext,
 		log.Warnln(errString)
 	}
 
-	// If we are purging and we failed to activate due some volumes
-	// which are now removed from VolumeRefConfigList we remove them
-	if status.PurgeInprogress == types.RecreateVolumes && !status.Activated {
+	// Removing VolumeRefConfig which are removed from the AppInstanceConfig
+	// and not used by any domain while purging. VolumeRefConfig which are
+	// not in AppInstanceConfig but used by some running domain will be
+	// removed as part of purgeCmdDone.
+	if status.PurgeInprogress == types.RecreateVolumes {
+		domainVolMap := make(map[string]bool)
+		domainConfig := lookupDomainConfig(ctx, status.Key())
+		if domainConfig != nil {
+			for _, dc := range domainConfig.DiskConfigList {
+				domainVolMap[dc.VolumeKey] = true
+			}
+		}
 		removed := false
 		newVrs := []types.VolumeRefStatus{}
 		for i := range status.VolumeRefStatusList {
 			vrs := &status.VolumeRefStatusList[i]
+			_, ok := domainVolMap[vrs.Key()]
 			vrc := getVolumeRefConfigFromAIConfig(&config, *vrs)
-			if vrc != nil {
+			if vrc != nil || ok {
 				newVrs = append(newVrs, *vrs)
 				continue
 			}

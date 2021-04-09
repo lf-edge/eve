@@ -1513,6 +1513,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	need9P := false
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
+		ds.VolumeKey = dc.VolumeKey
 		ds.ReadOnly = dc.ReadOnly
 		ds.FileLocation = dc.FileLocation
 		ds.Format = dc.Format

@@ -316,6 +316,7 @@ type VifInfo struct {
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
+	VolumeKey    string
 	FileLocation string // Location of the volume
 	ReadOnly     bool
 	Format       zconfig.Format
@@ -324,6 +325,7 @@ type DiskConfig struct {
 }
 
 type DiskStatus struct {
+	VolumeKey    string
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
