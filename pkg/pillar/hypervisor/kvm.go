@@ -361,7 +361,7 @@ func newKvm() Hypervisor {
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-serial", "chardev:charserial0"},
 			dmCPUArgs:    []string{"-cpu", "host"},
-			dmFmlCPUArgs: []string{},
+			dmFmlCPUArgs: []string{"-cpu", "host"},
 		}
 	case "amd64":
 		return kvmContext{
