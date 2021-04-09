@@ -82,6 +82,11 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    # focrce kernel to re-scan partition table
    partprobe "$DEV"
    partx -a --nr "$IMGB_ID:$P3_ID" "$DEV"
+
+   # attempt to zero the first 5Mb of the P3 (to get rid of any residual prior data)
+   if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
+      dd if=/dev/zero of="$P3" bs=512 count=10240 2>/dev/null
+   fi
 fi
 
 # We support P3 partition either formatted as ext3/4 or as part of ZFS pool
