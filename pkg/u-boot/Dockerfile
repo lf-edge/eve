@@ -1,13 +1,15 @@
 FROM lfedge/eve-alpine:6.2.0 as build
-ENV BUILD_PKGS binutils-dev build-base bc curl bison flex openssl-dev python3 swig
-ENV BUILD_PKGS_amd64 python3-dev
+ENV BUILD_PKGS bash binutils-dev build-base bc curl bison flex openssl-dev python3 swig
+ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
 
-ENV VERSION v2020.07
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ENV VERSION v2021.04
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV RAPBERRY_FIRMWARE_BLOBS_VERSION 1.20200601
 ENV RAPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RAPBERRY_FIRMWARE_BLOBS_VERSION}
-ENV TARGET_x86_64 qemu-x86_defconfig
+ENV TARGET_x86_64 qemu-x86_64_defconfig
 ENV TARGET_aarch64 rpi_4_defconfig
 
 RUN curl -fsSL ${SOURCE_URL} | tar -C / -xzf - && mv /u-boot* /u-boot
@@ -19,6 +21,10 @@ COPY patches /tmp/patches
 RUN if [ "$(uname -m)" = aarch64 ]; then\
        for p in /tmp/patches/patches-"${VERSION}"/*.patch ; do patch -p1 < "$p" || exit 1 ; done;\
     fi
+# need to tweak u-boot config with our local settings
+COPY config /tmp/
+RUN cat /tmp/config >> "configs/$(eval echo \$TARGET_"$(uname -m)")"
+# generate default config for the target
 RUN eval make \$TARGET_"$(uname -m)"
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 
@@ -26,11 +32,15 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN mkdir /boot && cp /u-boot/u-boot.bin /boot
 # FIXME: copy RPi4 dtb
 COPY rpi /tmp/rpi
-# download blobs for raspberry
-RUN if [ "$(uname -m)" = aarch64 ]; then curl -fsSLo /tmp/rpi/fixup4.dat ${RAPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat ; fi
-RUN if [ "$(uname -m)" = aarch64 ]; then curl -fsSLo /tmp/rpi/start4.elf ${RAPBERRY_FIRMWARE_BLOBS}/boot/start4.elf ; fi
-RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi/* /boot ; fi
-
+# download blobs for raspberry -d YYY
+RUN if [ "$(uname -m)" = aarch64 ]; then \
+       curl -fsSLo /tmp/rpi/fixup4.dat "${RAPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat" ;\
+       curl -fsSLo /tmp/rpi/start4.elf "${RAPBERRY_FIRMWARE_BLOBS}/boot/start4.elf" ;\
+       for i in /tmp/rpi/overlays/*.dts ; do                                         \
+          scripts/dtc/dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
+       done                                                                         ;\
+       cp -r /tmp/rpi/* /boot                                                       ;\
+    fi
 
 FROM scratch
 ENTRYPOINT []

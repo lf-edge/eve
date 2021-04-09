@@ -1,0 +1,11 @@
+--- a/include/config_distro_bootcmd.h
++++ b/include/config_distro_bootcmd.h
+@@ -129,7 +129,7 @@
+ 		"if fdt addr ${fdt_addr_r}; then "                        \
+ 			"bootefi bootmgr ${fdt_addr_r};"                  \
+ 		"else "                                                   \
+-			"bootefi bootmgr;"                                \
++			"bootefi bootmgr ${fdt_addr};"                    \
+ 		"fi\0"
+ #else
+ #define BOOTENV_EFI_BOOTMGR
