@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/sirupsen/logrus"
 )
 
@@ -217,6 +218,31 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{},
 		status.SetErrorNow(err.Error())
 		publishBaseOsStatus(ctx, status)
 		return
+	}
+	// Did the version change and we have a failed aka inprogress update?
+	// If so we mark it as "Unused" so we can proceed and retry the update
+	if status.UUIDandVersion.Version != config.UUIDandVersion.Version {
+		var otherPartVersion string
+		otherPartName := zboot.GetOtherPartition()
+		otherPartStatus := getZbootStatus(ctx, otherPartName)
+		if otherPartStatus != nil {
+			otherPartVersion = otherPartStatus.ShortVersion
+		}
+		otherPartState := getPartitionState(ctx, otherPartName)
+		curPartState := getPartitionState(ctx,
+			zboot.GetCurrentPartition())
+
+		if curPartState == "active" && otherPartState == "inprogress" &&
+			otherPartVersion == config.BaseOsVersion {
+			log.Noticef("Mark other partition %s, unused",
+				otherPartName)
+			zboot.SetOtherPartitionStateUnused(log)
+			updateAndPublishZbootStatus(ctx,
+				status.PartitionLabel, false)
+			baseOsSetPartitionInfoInStatus(ctx, status,
+				status.PartitionLabel)
+			publishBaseOsStatus(ctx, status)
+		}
 	}
 
 	// update the version field, uuids being the same
