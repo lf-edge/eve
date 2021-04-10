@@ -2,7 +2,7 @@
 
 BIOS (or more generally firmware) are the only external pieces of software that
 EVE has to depend on and sometimes manage. EVE itself depends on firmware during
-the [boot phase](BOOTING.md) and can be currently boostrapped on:
+the [boot phase](BOOTING.md) and can be currently bootstrapped on:
 
 1. UEFI compliant firmware on both amd64 and arm64 architectures
 2. Legacy PC BIOS on amd64
@@ -33,7 +33,6 @@ to support [UEFI capsule](https://fwupd.org/) updates has been started.
 EVE relies on UEFI implementation to correctly fill out SMBIOS and ACPI tables.
 Unlike arm64 (see below), there's currently no way to patch those tables if
 they are setup incorrectly.
-
 
 ## UEFI compliant firmware on arm64
 
@@ -93,5 +92,5 @@ functionality to a more HAT-specific one by simply changing one line in
 
 For example, for an industrial HAT produced by Advantech [UNO-220](https://www.advantech.com/products/9a0cc561-8fc2-4e22-969c-9df90a3952b5/uno-220-p4n2/mod_92d93912-216e-4ee9-a5ed-be94a5f1eca8)
 here's how [EVE specific device tree](../pkg/new-kernel/patches-5.10.x/0021-Add-uno-220-dts.patch)
-and a [u-boot specific overlay](../pkg/u-boot/rpi/overlays/raspberrypi-uno220.dts)
+and a [u-boot specific overlay](../pkg/u-boot/rpi/overlays/raspberrypi-uno-220.dts)
 would look like.
