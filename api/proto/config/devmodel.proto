@@ -61,7 +61,7 @@ message SystemAdapter {
 
   // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
   // this is part of the freelink group
-  // DEPRECATED by PhyIoAdapter.usagePolicy.
+  // DEPRECATED by cost below
   bool freeUplink = 2;
 
   // uplink - DEPRECATED by PhysicalIO.Usage / PhysicalIO.UsagePolicy
@@ -89,27 +89,24 @@ message SystemAdapter {
   // ( physical interface), this should point to PhyLabel of the
   // physicalIO.
   string lowerLayerName = 8;
+
+  // cost of using a port for EVE management traffic (which is determined
+  // from PhysicalIO.usage)
+  // 0 is the lowest cost (free); 255 the highest.
+  // Load spreading will apply when multiple adapters have the same cost.
+  // Higher cost adapters are only tried when none of the lower cost ones work.
+  uint32 cost = 9;
 }
 
-// Given additional details for EVE softwar to how to treat this
+// Given additional details for EVE software to how to treat this
 // interface. Example policies could be limit use of LTE interface
 // or only use Eth1 only if Eth0 is not available etc
-// XXX Note that this is the static information from the model.
+// Note that this is the static information from the model.
 // Current configuration is in systemAdapter
 message PhyIOUsagePolicy {
-  // DEPRECATED - Used only when one other normal uplinks are down
-  bool freeUplink = 1;
+  bool freeUplink = 1;   // DEPRECATED by cost in the SystemAdapter message
 
-  // fallBackPriority
-  //  0 is the highest priority.
-  //  Lower priority interfaces are used only when NONE of the higher
-  //  priority interfaces are up.
-  //  For example:
-  //      First use all interfaces with priority 0
-  //      if no priority 0 interfaces, use interfaces with priority 1
-  //      if no priority 1 interfaces, use interfaces with priority 2
-  //      and so on..
-  uint32 fallBackPriority = 2;
+  // DEPRECATED fallBackPriority = 2;
 }
 
 // PhysicalIO:
