@@ -275,25 +275,31 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	for {
+		gotAll := ctx.gotBC && ctx.gotDNS && ctx.gotDPCList
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		case change := <-subLedBlinkCounter.MsgChan():
-			ctx.gotBC = true
 			subLedBlinkCounter.ProcessChange(change)
+			ctx.gotBC = true
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
-			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
+			ctx.gotDNS = true
 
 		case change := <-subOnboardStatus.MsgChan():
 			subOnboardStatus.ProcessChange(change)
 
 		case change := <-subDevicePortConfigList.MsgChan():
-			ctx.gotDPCList = true
 			subDevicePortConfigList.ProcessChange(change)
+			ctx.gotDPCList = true
 		}
+		// Is this the first time we have all the info to print?
+		if !gotAll && ctx.gotBC && ctx.gotDNS && ctx.gotDPCList {
+			printOutput(&ctx)
+		}
+
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
 		}
@@ -386,8 +392,12 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		log.Functionf("handleDNSImpl unchanged")
 		return
 	}
-	log.Functionf("handleDNSImpl: changed %v",
-		cmp.Diff(ctx.DeviceNetworkStatus, status))
+
+	mostlyEqual := status.MostlyEqualStatus(*ctx.DeviceNetworkStatus)
+	if !mostlyEqual {
+		log.Noticef("handleDNSImpl: important change %v",
+			cmp.Diff(*ctx.DeviceNetworkStatus, status))
+	}
 	*ctx.DeviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
 	log.Functionf("handleDNSImpl %d usable addresses", newAddrCount)
@@ -403,6 +413,11 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	// update proxy certs if configured
 	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API && ctx.zedcloudCtx.TlsConfig != nil {
 		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
+	}
+	if mostlyEqual {
+		log.Functionf("handleDNSImpl done - no important change for %s",
+			key)
+		return
 	}
 	// XXX can we limit to interfaces which changed?
 	// XXX wait in case we get another handle call?
@@ -462,7 +477,7 @@ func handleDPCImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleDPCImpl: changed %v",
-		cmp.Diff(ctx.DevicePortConfigList, status))
+		cmp.Diff(*ctx.DevicePortConfigList, status))
 	*ctx.DevicePortConfigList = status
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
