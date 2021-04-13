@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x15\x63onfig/devmodel.proto\x12\x15org.lfedge.eve.config\x1a\x1e\x65vecommon/devmodelcommon.proto\"\x84\x01\n\x0fsWAdapterParams\x12\x33\n\x05\x61Type\x18\x01 \x01(\x0e\x32$.org.lfedge.eve.config.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x8b\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\xd0\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12\x41\n\x08phyaddrs\x18\x03 \x03(\x0b\x32/.org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12<\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\'.org.lfedge.eve.config.PhyIOUsagePolicy\x12=\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32-.org.lfedge.eve.config.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x15\x63onfig/devmodel.proto\x12\x15org.lfedge.eve.config\x1a\x1e\x65vecommon/devmodelcommon.proto\"\x84\x01\n\x0fsWAdapterParams\x12\x33\n\x05\x61Type\x18\x01 \x01(\x0e\x32$.org.lfedge.eve.config.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x99\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\x12\x0c\n\x04\x63ost\x18\t \x01(\r\"&\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\"\xd0\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12\x41\n\x08phyaddrs\x18\x03 \x03(\x0b\x32/.org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12<\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\'.org.lfedge.eve.config.PhyIOUsagePolicy\x12=\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32-.org.lfedge.eve.config.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
   ,
   dependencies=[evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
@@ -50,8 +50,8 @@ _SWADAPTERTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=890,
-  serialized_end=937,
+  serialized_start=878,
+  serialized_end=925,
 )
 _sym_db.RegisterEnumDescriptor(_SWADAPTERTYPE)
 
@@ -172,6 +172,13 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='cost', full_name='org.lfedge.eve.config.SystemAdapter.cost', index=7,
+      number=9, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -185,7 +192,7 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=216,
-  serialized_end=355,
+  serialized_end=369,
 )
 
 
@@ -204,13 +211,6 @@ _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='fallBackPriority', full_name='org.lfedge.eve.config.PhyIOUsagePolicy.fallBackPriority', index=1,
-      number=2, type=13, cpp_type=3, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -223,8 +223,8 @@ _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=357,
-  serialized_end=421,
+  serialized_start=371,
+  serialized_end=409,
 )
 
 
@@ -262,8 +262,8 @@ _PHYSICALIO_PHYADDRSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=794,
-  serialized_end=841,
+  serialized_start=782,
+  serialized_end=829,
 )
 
 _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
@@ -300,8 +300,8 @@ _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=843,
-  serialized_end=888,
+  serialized_start=831,
+  serialized_end=876,
 )
 
 _PHYSICALIO = _descriptor.Descriptor(
@@ -380,8 +380,8 @@ _PHYSICALIO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=424,
-  serialized_end=888,
+  serialized_start=412,
+  serialized_end=876,
 )
 
 _SWADAPTERPARAMS.fields_by_name['aType'].enum_type = _SWADAPTERTYPE
