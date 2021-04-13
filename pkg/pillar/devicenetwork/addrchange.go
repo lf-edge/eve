@@ -138,7 +138,12 @@ func checkIfMgmtPortsHaveIPandDNS(log *base.LogObject, status types.DeviceNetwor
 	}
 
 	for _, port := range mgmtPorts {
-		numAddrs := types.CountLocalIPv4AddrAnyNoLinkLocalIf(status, port)
+		numAddrs, err := types.CountLocalIPv4AddrAnyNoLinkLocalIf(status, port)
+		if err != nil {
+			log.Errorf("CountLocalIPv4AddrAnyNoLinkLocalIf failed for %s: %v",
+				port, err)
+			continue
+		}
 		if numAddrs < 1 {
 			log.Tracef("No addresses on %s", port)
 			continue

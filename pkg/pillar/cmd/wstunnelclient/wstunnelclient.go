@@ -375,7 +375,14 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 		wstunnelclient := zedcloud.InitializeTunnelClient(log, ctx.serverNameAndPort, "localhost:4822")
 		destURL := wstunnelclient.Tunnel
 
-		addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus, ifname)
+		addrCount, err := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus,
+			ifname)
+		if err != nil {
+			log.Errorf("CountLocalIPv4AddrAnyNoLinkLocalIf failed for %s: %v",
+				ifname, err)
+			continue
+		}
+
 		log.Functionf("Connecting to %s using intf %s #sources %d\n",
 			destURL, ifname, addrCount)
 

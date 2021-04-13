@@ -180,7 +180,8 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 
 	var addrCount int
 	if !rc.AllowNonFreePort {
-		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
+		addrCount = types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+			types.PortCostMin)
 		log.Functionf("Have %d free management port addresses", addrCount)
 		err = errors.New("No free IP management port addresses for download")
 	} else {
@@ -227,10 +228,11 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		var ipSrc net.IP
 		if !rc.AllowNonFreePort {
-			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
-				addrIndex, "")
+			ipSrc, err = types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+				addrIndex, "", types.PortCostMin)
 		} else {
-			// Note that GetLocalAddrAny has the free ones first
+			// Note that GetLocalAddrAny considers them in
+			// cost order.
 			ipSrc, err = types.GetLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		}

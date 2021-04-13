@@ -1397,7 +1397,8 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 
 // ==== Nat
 
-// XXX need to redo this when MgmtPorts/FreeMgmtPorts changes?
+// When the uplink port changes, doNetworkInstanceFallback will redo
+// this function.
 func natActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
@@ -1621,10 +1622,10 @@ func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
 // Does not verify the existence of the logicallabels/interfaces
 func labelToIfNames(ctx *zedrouterContext, llOrIfname string) []string {
 	if strings.EqualFold(llOrIfname, "uplink") {
-		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
+		return types.GetMgmtPortsSortedCost(*ctx.deviceNetworkStatus, 0)
 	}
 	if strings.EqualFold(llOrIfname, "freeuplink") {
-		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)
+		return types.GetMgmtPortsByCost(*ctx.deviceNetworkStatus, 0)
 	}
 	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, llOrIfname)
 	if len(ifname) == 0 {

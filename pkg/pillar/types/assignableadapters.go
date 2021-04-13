@@ -49,9 +49,8 @@ type IoBundle struct {
 
 	Usage zcommon.PhyIoMemberUsage
 
-	// FreeUplink - The network connection through this adapter is Free.
-	// Prefer this adapter for connecting to the cloud.
-	FreeUplink bool
+	// Cost is zero for the free ports; less desirable ports have higher numbers
+	Cost uint8
 
 	// The following set of I/O addresses and info/aliases are used to find
 	// a device, and also to configure it.
@@ -146,11 +145,6 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 		log.Functionf("Usage changed from %d to %d", ib.Usage, phyAdapter.Usage)
 		return true
 	}
-	if phyAdapter.UsagePolicy.FreeUplink != ib.FreeUplink {
-		log.Functionf("FreeUplink changed from %t to %t",
-			ib.FreeUplink, phyAdapter.UsagePolicy.FreeUplink)
-		return true
-	}
 	return false
 }
 
@@ -169,7 +163,6 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
-	ib.FreeUplink = phyAdapter.UsagePolicy.FreeUplink
 	// Guard against models without ifname for network adapters
 	if ib.Type.IsNet() && ib.Ifname == "" {
 		log.Warnf("phyAdapter IsNet without ifname: phylabel %s logicallabel %s",

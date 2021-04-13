@@ -612,23 +612,19 @@ func printOutput(ctx *diagContext) {
 		// Print usefully formatted info based on which
 		// fields are set and Dhcp type; proxy info order
 		ifname := port.IfName
-		isMgmt := false
-		isFree := false
-		if types.IsFreeMgmtPort(*ctx.DeviceNetworkStatus, ifname) {
-			isMgmt = true
-			isFree = true
-		} else if types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname) {
-			isMgmt = true
-		}
+		isMgmt := types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname)
+		priority := types.GetPortCost(*ctx.DeviceNetworkStatus,
+			ifname)
 		if isMgmt {
 			mgmtPorts += 1
 		}
 
 		typeStr := "for application use"
-		if isFree {
+		if priority == types.PortCostMin {
 			typeStr = "for EV Controller without usage-based charging"
 		} else if isMgmt {
-			typeStr = "for EV Controller"
+			typeStr = fmt.Sprintf("for EV Controller (cost %d)",
+				priority)
 		}
 		fmt.Fprintf(outfile, "INFO: Port %s: %s\n", ifname, typeStr)
 		ipCount := 0
@@ -811,7 +807,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 
 func tryLookupIP(ctx *diagContext, ifname string) bool {
 
-	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, ifname)
+	addrCount, _ := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, ifname)
 	if addrCount == 0 {
 		fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s not possible since no IP address\n",
 			ifname, ctx.serverName)

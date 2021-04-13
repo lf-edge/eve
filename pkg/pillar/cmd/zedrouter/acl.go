@@ -921,7 +921,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 
 				// Check that we have an IP address on the uplink
 				// XXX need to handle multiple with IPv6
-				extIPs, err := types.GetInterfaceAddrs(*ctx.deviceNetworkStatus, upLink)
+				extIPs, err := types.GetLocalAddrList(*ctx.deviceNetworkStatus, upLink)
 				if err != nil {
 					log.Errorf("Can't add hairpin rule for %s: %v", upLink, err)
 					depend := types.ACLDepend{Ifname: upLink}

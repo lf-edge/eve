@@ -87,58 +87,38 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 	var errorList []error
 	remoteTemporaryFailure := types.SenderStatusNone
 
-	var numFreeIntf int
-	for try := 0; try < 2; try += 1 {
-		var intfs []string
-		if try == 0 {
-			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
-				iteration)
-			log.Tracef("sendOnAllIntf trying free %v\n", intfs)
-			numFreeIntf = len(intfs)
-			if len(intfs) == 0 {
-				err := errors.New("No free management interfaces")
-				errorList = append(errorList, err)
-			}
-		} else {
-			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
-				iteration)
-			log.Tracef("sendOnAllIntf non-free %v\n", intfs)
-			if len(intfs) == 0 {
-				if numFreeIntf == 0 {
-					err := errors.New("No management interfaces")
-					errorList = append(errorList, err)
-				} else {
-					// Should have an error from
-					// trying the free
-				}
-			}
+	intfs := types.GetMgmtPortsSortedCost(*ctx.DeviceNetworkStatus, iteration)
+	if len(intfs) == 0 {
+		err := fmt.Errorf("Can not connect to %s: No management interfaces",
+			url)
+		log.Error(err.Error())
+		return nil, nil, remoteTemporaryFailure, err
+	}
+	for _, intf := range intfs {
+		resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy)
+		// this changes original boolean logic a little in V2 API, basically the last rtf non-zero enum would
+		// overwrite the previous one in the loop if they are differ
+		if rtf != types.SenderStatusNone {
+			remoteTemporaryFailure = rtf
 		}
-		for _, intf := range intfs {
-			resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy)
-			// this changes original boolean logic a little in V2 API, basically the last rtf non-zero enum would
-			// overwrite the previous one in the loop if they are differ
-			if rtf != types.SenderStatusNone {
-				remoteTemporaryFailure = rtf
-			}
-			if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
-				remoteTemporaryFailure = types.SenderStatusUpgrade
-			}
+		if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
+			remoteTemporaryFailure = types.SenderStatusUpgrade
+		}
 
-			if bailOnHTTPErr && resp != nil &&
-				resp.StatusCode >= 400 && resp.StatusCode < 600 {
-				log.Functionf("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
-					url, reqlen, resp.StatusCode)
-				return resp, nil, remoteTemporaryFailure, err
-			}
-			if resp != nil && resp.StatusCode == http.StatusForbidden {
-				return resp, nil, remoteTemporaryFailure, err
-			}
-			if err != nil {
-				errorList = append(errorList, err)
-				continue
-			}
-			return resp, contents, remoteTemporaryFailure, nil
+		if bailOnHTTPErr && resp != nil &&
+			resp.StatusCode >= 400 && resp.StatusCode < 600 {
+			log.Functionf("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
+				url, reqlen, resp.StatusCode)
+			return resp, nil, remoteTemporaryFailure, err
 		}
+		if resp != nil && resp.StatusCode == http.StatusForbidden {
+			return resp, nil, remoteTemporaryFailure, err
+		}
+		if err != nil {
+			errorList = append(errorList, err)
+			continue
+		}
+		return resp, contents, remoteTemporaryFailure, nil
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
 		url, errorList)
@@ -197,70 +177,65 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		}
 	}
 
-	for try := 0; try < 2; try += 1 {
-		var intfs []string
-		if try == 0 {
-			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
-				iteration)
-			log.Tracef("VerifyAllIntf: trying free %v\n", intfs)
-		} else {
-			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
-				iteration)
-			log.Tracef("VerifyAllIntf: non-free %v\n", intfs)
+	intfs := types.GetMgmtPortsSortedCost(*ctx.DeviceNetworkStatus, iteration)
+	if len(intfs) == 0 {
+		err := fmt.Errorf("Can not connect to %s: No management interfaces",
+			url)
+		log.Error(err.Error())
+		return false, remoteTemporaryFailure, intfStatusMap, err
+	}
+	for _, intf := range intfs {
+		if intfSuccessCount >= successCount {
+			// We have enough uplinks with cloud connectivity working.
+			break
 		}
-		for _, intf := range intfs {
-			if intfSuccessCount >= successCount {
-				// We have enough uplinks with cloud connectivity working.
-				break
-			}
-			// This VerifyAllIntf() is called for "ping" url only, it does not have
-			// return envelope verifying check. Thus below does not check other values of rtf.
-			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
-			switch rtf {
-			case types.SenderStatusRefused, types.SenderStatusCertInvalid:
-				remoteTemporaryFailure = true
-			}
-			if resp != nil &&
-				(resp.StatusCode >= http.StatusInternalServerError &&
-					resp.StatusCode <= http.StatusNetworkAuthenticationRequired) {
-				remoteTemporaryFailure = true
-			}
-			if err != nil {
-				log.Errorf("Zedcloud un-reachable via interface %s: %s",
-					intf, err)
-				errorList = append(errorList, err)
-				intfStatusMap.RecordFailure(intf, err.Error())
-				continue
-			}
-			switch resp.StatusCode {
-			case http.StatusOK, http.StatusCreated:
-				log.Tracef("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
-				intfStatusMap.RecordSuccess(intf)
-				intfSuccessCount += 1
-			default:
-				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
-					"status code %d and status %s",
-					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
-				log.Errorln(errStr)
-				err = errors.New(errStr)
-				errorList = append(errorList, err)
-				intfStatusMap.RecordFailure(intf, err.Error())
-				continue
-			}
+		// This VerifyAllIntf() is called for "ping" url only, it does not have
+		// return envelope verifying check. Thus below does not check other values of rtf.
+		resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
+		switch rtf {
+		case types.SenderStatusRefused, types.SenderStatusCertInvalid:
+			remoteTemporaryFailure = true
+		}
+		if resp != nil &&
+			(resp.StatusCode >= http.StatusInternalServerError &&
+				resp.StatusCode <= http.StatusNetworkAuthenticationRequired) {
+			remoteTemporaryFailure = true
+		}
+		if err != nil {
+			log.Errorf("Zedcloud un-reachable via interface %s: %s",
+				intf, err)
+			errorList = append(errorList, err)
+			intfStatusMap.RecordFailure(intf, err.Error())
+			continue
+		}
+		switch resp.StatusCode {
+		case http.StatusOK, http.StatusCreated:
+			log.Tracef("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
+			intfStatusMap.RecordSuccess(intf)
+			intfSuccessCount++
+		default:
+			errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
+				"status code %d and status %s",
+				intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
+			log.Errorln(errStr)
+			err = errors.New(errStr)
+			errorList = append(errorList, err)
+			intfStatusMap.RecordFailure(intf, err.Error())
+			continue
 		}
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v",
+		err := fmt.Errorf("All test attempts to connect to %s failed: %v",
 			url, errorList)
-		log.Errorln(errStr)
-		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
+		log.Error(err.Error())
+		return false, remoteTemporaryFailure, intfStatusMap, err
 	}
 	if intfSuccessCount < successCount {
-		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
-			" to reach Zedcloud; last failed with %v",
-			intfSuccessCount, successCount, errorList)
-		log.Errorln(errStr)
-		return false, remoteTemporaryFailure, intfStatusMap, errors.New(errStr)
+		err := fmt.Errorf("Not enough Ports (%d) against required count %d"+
+			" to reach %s; last failed with %v",
+			intfSuccessCount, successCount, url, errorList)
+		log.Error(err.Error())
+		return false, remoteTemporaryFailure, intfStatusMap, err
 	}
 	log.Tracef("VerifyAllIntf: Verify done. intfStatusMap: %+v", intfStatusMap)
 	return true, remoteTemporaryFailure, intfStatusMap, nil
@@ -304,7 +279,10 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		isGet = true
 	}
 
-	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, intf)
+	addrCount, err := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, intf)
+	if err != nil {
+		return nil, nil, senderStatus, err
+	}
 	log.Tracef("Connecting to %s using intf %s #sources %d reqlen %d\n",
 		reqUrl, intf, addrCount, reqlen)
 
