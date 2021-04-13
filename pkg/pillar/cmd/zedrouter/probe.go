@@ -32,12 +32,6 @@ const (
 	stayUPMinCount   uint32 = stayDownMinCount
 )
 
-// intfTypeXXX - can be changed to more generic in terms of probing stages
-const (
-	intfTypeFree int = iota + 1
-	intfTypeNonFree
-)
-
 type probeRes struct {
 	isRemoteReply bool
 	latency       int64 // in millisecond
@@ -151,12 +145,12 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 			GatewayUP:    true,
 			NhAddr:       dr,
 			LocalAddr:    portGetIntfAddr(port),
-			IsFree:       port.Free,
+			Cost:         port.Cost,
 			RemoteHostUP: true,
 		}
 		netstatus.PInfo[port.IfName] = info
-		log.Functionf("niProbingUpdatePort: %s assigned new %s, info len %d, isFree %v\n",
-			netstatus.BridgeName, port.IfName, len(netstatus.PInfo), info.IsFree)
+		log.Functionf("niProbingUpdatePort: %s assigned new %s, info len %d, cost %d",
+			netstatus.BridgeName, port.IfName, len(netstatus.PInfo), info.Cost)
 		if !ipAddrIsValid(info.LocalAddr) {
 			info.GatewayUP = false
 			info.RemoteHostUP = false
@@ -167,10 +161,10 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		info.IsPresent = true
 		info.NhAddr = dr
 		info.LocalAddr = portGetIntfAddr(port)
-		info.IsFree = port.Free
+		info.Cost = port.Cost
 		// the probe status are copied inside publish NI status
 		netstatus.PInfo[port.IfName] = info
-		log.Functionf("niProbingUpdatePort: %s modified %s, isFree %v\n", netstatus.BridgeName, port.IfName, info.IsFree)
+		log.Functionf("niProbingUpdatePort: %s modified %s, cost %d", netstatus.BridgeName, port.IfName, info.Cost)
 		if netstatus.Logicallabel == port.Logicallabel {
 			// if the intf lose ip address or gain ip address, react faster
 			// XXX detect changes to LocalAddr and NHAddr in general?
@@ -254,7 +248,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 				ifNameList := getIfNameListForLLOrIfname(ctx, info.IfName)
 				if len(ifNameList) != 0 {
 					for _, ifName := range ifNameList {
-						_, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0, ifName)
+						_, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0, ifName)
 						if err != nil {
 							continue
 						}
@@ -335,8 +329,8 @@ func launchHostProbe(ctx *zedrouterContext) {
 			log.Tracef("launchHostProbe: intf %s, gw %v, statusUP %v, remoteHostUP %v\n",
 				info.IfName, info.NhAddr, info.GatewayUP, info.RemoteHostUP)
 
-			// Local nexthop ping, only apply to Ethernet type of interface
-			if info.IsFree {
+			// Local nexthop ping, only apply to zero cost ports
+			if info.Cost == 0 {
 				if _, ok := nhPing[info.IfName]; !ok {
 					isReachable, bringIntfDown = probeFastPing(info)
 					nhPing[info.IfName] = isReachable
@@ -425,7 +419,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 
 			netstatus.PInfo[info.IfName] = info
 		}
-		probeCheckStatus(netstatus)
+		probeCheckStatus(ctx, netstatus)
 		// we need to trigger the change at least once at start to set the initial Uplink intf
 		if netstatus.NeedIntfUpdate || netstatus.TriggerCnt == 0 {
 			needSendSignal = true
@@ -447,25 +441,24 @@ func launchHostProbe(ctx *zedrouterContext) {
 	setProbeTimer(ctx, nhProbeInterval)
 }
 
-func probeCheckStatus(status *types.NetworkInstanceStatus) {
+func probeCheckStatus(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 	if len(status.PInfo) == 0 {
 		return
 	}
 
 	prevIntf := status.CurrentUplinkIntf // the old Curr
-	f := make([]bool, 3)                 // non-valid, free, non-free
-	f[intfTypeFree] = true
-	f[intfTypeNonFree] = false
-	// check probe stats from Free pool first
-	// continue to the non-Free if there is no available good link in the Free pool
-	for c := intfTypeFree; c <= intfTypeNonFree; c++ {
+	// Loop across all of the used port costs
+	costList := types.GetPortCostList(*ctx.deviceNetworkStatus)
+	// check probe stats in cost order
+	for _, cost := range costList {
 		var numOfUps int
-		probeCheckStatusUseType(status, f[c])
+		probeCheckStatusUseType(status, cost)
 		currIntf := status.CurrentUplinkIntf
 		if currIntf != "" {
 			if currinfo, ok := status.PInfo[currIntf]; ok {
 				numOfUps = infoUpCount(currinfo)
-				log.Tracef("probeCheckStatus: level %d, currintf %s, num Ups %d\n", c, currIntf, numOfUps)
+				log.Tracef("probeCheckStatus: cost %d, currintf %s, num Ups %d",
+					cost, currIntf, numOfUps)
 			}
 		}
 		if numOfUps > 0 {
@@ -498,19 +491,20 @@ func probeCheckStatus(status *types.NetworkInstanceStatus) {
 }
 
 // How to determine the time to switch to another interface
-// -- compare only within the same interface class: ether, lte, sat
+// -- compare only within the same port cost
 // -- Random assign one intf intially
 // -- each intf has 3 types of states: both local and remote report UP, only one is UP, both are Down
 // -- try to pick and switch to the one has the highest degree of UPs
 // -- otherwise, don't switch
-func probeCheckStatusUseType(status *types.NetworkInstanceStatus, free bool) {
+func probeCheckStatusUseType(status *types.NetworkInstanceStatus, cost uint8) {
 	var numOfUps, upCnt int
 	currIntf := status.CurrentUplinkIntf
-	log.Tracef("probeCheckStatusUseType: from %s, free %v, curr intf %s\n", status.BridgeName, free, currIntf)
-	// if we don't have a Curr or the Curr is removed from PInfo, get a valid one from the same level free/non-free
+	log.Tracef("probeCheckStatusUseType: from %s, cost %d, curr intf %s",
+		status.BridgeName, cost, currIntf)
+	// if we don't have a Curr or the Curr is removed from PInfo, get a valid one from the same cost
 	if _, ok := status.PInfo[currIntf]; !ok || currIntf == "" {
 		for _, info := range status.PInfo {
-			if free != info.IsFree {
+			if cost != info.Cost {
 				continue
 			}
 			log.Tracef("probeCheckStatusUseType: currintf null, randomly assign %s now\n", info.IfName)
@@ -519,17 +513,18 @@ func probeCheckStatusUseType(status *types.NetworkInstanceStatus, free bool) {
 	}
 
 	if currIntf != "" {
-		// when we have more than two cost levels, this need to change to compare numbers
-		// if the current intf is non-free, and we are in free loop, to see if we can get free UP intf
-		if !status.PInfo[currIntf].IsFree && free {
+		// if the current intf has higher cost than the current cost
+		// (from the caller), then see if we can get an interface with that cost
+		if status.PInfo[currIntf].Cost > cost {
 			for _, info := range status.PInfo {
-				if free != info.IsFree {
+				if cost != info.Cost {
 					continue
 				}
 				if infoUpCount(info) == 0 {
 					continue
 				}
-				log.Tracef("probeCheckStatusUseType: currintf is non-free, randomly assign %s now\n", info.IfName)
+				log.Tracef("probeCheckStatusUseType: currintf was not best cost %d, randomly assign %s now",
+					cost, info.IfName)
 				currIntf = info.IfName
 				break
 			}
@@ -537,13 +532,13 @@ func probeCheckStatusUseType(status *types.NetworkInstanceStatus, free bool) {
 		currinfo := status.PInfo[currIntf]
 		numOfUps = infoUpCount(currinfo)
 		log.Tracef("probeCheckStatusUseType: curr intf %s, num ups %d\n", currIntf, numOfUps)
-		if free == currinfo.IsFree && numOfUps == 2 { // good, no need to change
+		if cost == currinfo.Cost && numOfUps == 2 { // good, no need to change
 			status.CurrentUplinkIntf = currIntf
 			return
 		}
 		log.Tracef("probeCheckStatusUseType: before loop\n")
 		for _, info := range status.PInfo {
-			if free != info.IsFree {
+			if cost != info.Cost {
 				continue
 			}
 			log.Tracef("probeCheckStatusUseType: compare %s, and %s\n", info.IfName, currIntf)

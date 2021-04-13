@@ -33,13 +33,13 @@ const (
 
 func LastResortDevicePortConfig(ctx *DeviceNetworkContext, ports []string) types.DevicePortConfig {
 
-	config := makeDevicePortConfig(ctx, ports, ports)
+	config := makeDevicePortConfig(ctx, ports)
 	// Set to higher than all zero but lower than the hardware model derived one above
 	config.TimePriority = time.Unix(0, 0)
 	return config
 }
 
-func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []string) types.DevicePortConfig {
+func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string) types.DevicePortConfig {
 	var config types.DevicePortConfig
 
 	config.Version = types.DPCIsMgmt
@@ -48,12 +48,6 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 		config.Ports[ix].IfName = u
 		config.Ports[ix].Phylabel = u
 		config.Ports[ix].Logicallabel = u
-		for _, f := range free {
-			if f == u {
-				config.Ports[ix].Free = true
-				break
-			}
-		}
 		config.Ports[ix].IsMgmt = true
 		config.Ports[ix].Dhcp = types.DT_CLIENT
 		portPtr := ctx.DevicePortConfig.GetPortByIfName(u)
@@ -190,7 +184,7 @@ func MakeDeviceNetworkStatus(log *base.LogObject, globalConfig types.DevicePortC
 		globalStatus.Ports[ix].Logicallabel = u.Logicallabel
 		globalStatus.Ports[ix].Alias = u.Alias
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
-		globalStatus.Ports[ix].Free = u.Free
+		globalStatus.Ports[ix].Cost = u.Cost
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
 		globalStatus.Ports[ix].Dhcp = u.Dhcp

@@ -849,7 +849,8 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	}
 
 	dp.IsMgmt = npc.IsMgmt
-	dp.Free = npc.Free
+	dp.Cost = uint32(npc.Cost)
+	dp.Free = npc.Cost == 0 // To be deprecated
 	// DhcpConfig
 	dp.DhcpType = uint32(npc.Dhcp)
 	dp.Subnet = npc.AddrSubnet

@@ -596,7 +596,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	sysAdapter *zconfig.SystemAdapter,
 	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
-	var isMgmt, isFree bool = false, false
 
 	log.Functionf("XXX parseOneSystemAdapterConfig name %s lowerLayerName %s",
 		sysAdapter.Name, sysAdapter.LowerLayerName)
@@ -627,49 +626,66 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
 		return nil
-	} else {
-		if port.Logicallabel != phyio.Logicallabel {
-			errStr := fmt.Sprintf("phyio for %s lower %s mismatched logicallabel %s vs %s",
-				sysAdapter.Name, sysAdapter.LowerLayerName,
-				port.Logicallabel, phyio.Logicallabel)
-			log.Warn(errStr)
-		}
-		port.Phylabel = phyio.Phylabel
-		port.IfName = phyio.Phyaddr.Ifname
-		if port.IfName == "" {
-			// Might not be set for all models
-			log.Warnf("Phyio for phylabel %s logicallabel %s has no ifname",
-				phyio.Phylabel, phyio.Logicallabel)
-			if phyio.Logicallabel != "" {
-				port.IfName = phyio.Logicallabel
-			} else {
-				port.IfName = phyio.Phylabel
-			}
-		}
-		isFree = phyio.UsagePolicy.FreeUplink
-		log.Functionf("Found phyio for %s: isFree: %t",
-			sysAdapter.Name, isFree)
 	}
+	if port.Logicallabel != phyio.Logicallabel {
+		errStr := fmt.Sprintf("phyio for %s lower %s mismatched logicallabel %s vs %s",
+			sysAdapter.Name, sysAdapter.LowerLayerName,
+			port.Logicallabel, phyio.Logicallabel)
+		log.Warn(errStr)
+	}
+	port.Phylabel = phyio.Phylabel
+	port.IfName = phyio.Phyaddr.Ifname
+	if port.IfName == "" {
+		// Might not be set for all models
+		log.Warnf("Phyio for phylabel %s logicallabel %s has no ifname",
+			phyio.Phylabel, phyio.Logicallabel)
+		if phyio.Logicallabel != "" {
+			port.IfName = phyio.Logicallabel
+		} else {
+			port.IfName = phyio.Phylabel
+		}
+	}
+	// We check if any phyio has FreeUplink set. If so we operate
+	// in old mode which means that cost is 1 if FreeUplink == false
+	// XXX Remove this when all controllers send cost.
+	oldController := anyDeviceIoWithFreeUplink(getconfigCtx)
+	log.Functionf("Found phyio for %s: free %t, oldController: %t",
+		sysAdapter.Name, phyio.UsagePolicy.FreeUplink, oldController)
+
+	var portCost uint8
+	if sysAdapter.Cost > 255 {
+		log.Warnf("SysAdpter cost %d for %s clamped to 255",
+			sysAdapter.Cost, sysAdapter.Name)
+		portCost = 255
+	} else {
+		portCost = uint8(sysAdapter.Cost)
+	}
+	if portCost == 0 {
+		if phyio.UsagePolicy.FreeUplink || sysAdapter.FreeUplink {
+			portCost = 0
+		} else if oldController {
+			log.Warnf("XXX oldController and !FreeUplink; assume %s cost=1",
+				sysAdapter.Name)
+			portCost = 1
+		}
+	}
+
+	var isMgmt bool
 	if version < types.DPCIsMgmt {
-		log.Warnf("XXX old version; assuming isMgmt and isFree")
+		log.Warnf("XXX old version; assuming %s isMgmt and cost=0",
+			sysAdapter.Name)
 		// This should go away when cloud sends proper values
 		isMgmt = true
-		isFree = true
-		version = types.DPCIsMgmt
+		portCost = 0
 	} else {
 		isMgmt = sysAdapter.Uplink
-		log.Functionf("System adapter %s, isMgmt: %t", sysAdapter.Name, isMgmt)
-		// Either one can set isFree; both need to clear
-		if sysAdapter.FreeUplink && !isFree {
-			log.Warnf("Free flag forced by system adapter for %s",
-				sysAdapter.Name)
-			isFree = true
-		}
 	}
 
-	port.IsMgmt = isMgmt
-	port.Free = isFree
+	log.Functionf("System adapter %s, isMgmt: %t cost: %d free %t",
+		sysAdapter.Name, isMgmt, portCost, sysAdapter.FreeUplink)
 
+	port.IsMgmt = isMgmt
+	port.Cost = portCost
 	port.Dhcp = types.DT_NONE
 	var ip net.IP
 	var network *types.NetworkXObjectConfig
@@ -810,6 +826,8 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 			Usage:        ioDevicePtr.Usage,
 		}
 		if ioDevicePtr.UsagePolicy != nil {
+			// Need to keep this to make proper determination
+			// for SystemAdapter
 			port.UsagePolicy.FreeUplink = ioDevicePtr.UsagePolicy.FreeUplink
 		}
 
@@ -861,6 +879,15 @@ func lookupDeviceIoLogicallabel(getconfigCtx *getconfigContext, label string) *t
 		}
 	}
 	return nil
+}
+
+func anyDeviceIoWithFreeUplink(getconfigCtx *getconfigContext) bool {
+	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
+		if port.UsagePolicy.FreeUplink {
+			return true
+		}
+	}
+	return false
 }
 
 func lookupDatastore(datastores []*zconfig.DatastoreConfig,

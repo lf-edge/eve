@@ -33,10 +33,6 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		return
 	}
 	ctx.deviceNetworkStatus = status
-	log.Functionf("handleDNSImpl %d free management ports addresses; %d any",
-		types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus),
-		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
-
 	log.Functionf("handleDNSImpl done for %s", key)
 }
 

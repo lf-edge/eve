@@ -173,7 +173,6 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 	assert.Equal(t, phyAdapter.Phyaddr.Ioports, ibPtr.Ioports)
 	assert.Equal(t, phyAdapter.Phyaddr.Serial, ibPtr.Serial)
 	assert.Equal(t, phyAdapter.Usage, ibPtr.Usage)
-	assert.Equal(t, phyAdapter.UsagePolicy.FreeUplink, ibPtr.FreeUplink)
 }
 
 var aa2 AssignableAdapters = AssignableAdapters{
