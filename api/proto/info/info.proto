@@ -394,7 +394,7 @@ message DevicePort {
   string ifname = 1;
   string name = 2;   // Logical name set by controller; same as logicallabel
   bool isMgmt = 3;
-  bool free = 4;
+  bool free = 4; // DEPRECATED - use cost instead with zero cost meaning free
   // DhcpConfig
   uint32 dhcpType = 11;
   string subnet = 12;
@@ -418,6 +418,7 @@ message DevicePort {
   ErrorInfo err = 29; // Any errors on the interface.
   org.lfedge.eve.common.PhyIoMemberUsage usage = 30; // Usage of the Device port
   string networkUUID = 31; // Network UUID configured for the port.
+  uint32 cost = 32; // Zero is free. Max is 255.
 }
 
 message ProxyStatus {
