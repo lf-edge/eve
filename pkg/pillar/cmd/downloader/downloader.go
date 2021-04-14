@@ -322,15 +322,15 @@ func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
 	if status == nil {
 		// Start by marking with PendingAdd
 		status0 := types.DownloaderStatus{
-			DatastoreID:      config.DatastoreID,
-			Name:             config.Name,
-			ImageSha256:      config.ImageSha256,
-			State:            types.DOWNLOADING,
-			RefCount:         config.RefCount,
-			Size:             config.Size,
-			LastUse:          time.Now(),
-			AllowNonFreePort: config.AllowNonFreePort,
-			PendingAdd:       true,
+			DatastoreID:         config.DatastoreID,
+			Name:                config.Name,
+			ImageSha256:         config.ImageSha256,
+			State:               types.DOWNLOADING,
+			RefCount:            config.RefCount,
+			Size:                config.Size,
+			LastUse:             time.Now(),
+			DownloadMaxPortCost: config.DownloadMaxPortCost,
+			PendingAdd:          true,
 		}
 		status = &status0
 	} else {

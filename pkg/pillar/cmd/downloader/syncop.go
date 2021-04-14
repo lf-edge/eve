@@ -4,9 +4,7 @@
 package downloader
 
 import (
-	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"path"
@@ -69,25 +67,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 	}
 
-	log.Functionf("Downloading <%s> to <%s> using %v allow non-free port",
-		config.Name, locFilename, config.AllowNonFreePort)
+	log.Functionf("Downloading <%s> to <%s> using %d DownloadMaxPortCost",
+		config.Name, locFilename, config.DownloadMaxPortCost)
 
-	var addrCount int
-	if !config.AllowNonFreePort {
-		addrCount = types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-			types.PortCostMin)
-		log.Functionf("Have %d free management port addresses", addrCount)
-		err = errors.New("No free IP management port addresses for download")
-	} else {
-		addrCount = types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
-		log.Functionf("Have %d any management port addresses", addrCount)
-		err = errors.New("No IP management port addresses for download")
-	}
+	addrCount := types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+		config.DownloadMaxPortCost)
 	if addrCount == 0 {
-		errStr = err.Error()
-		log.Errorf(errStr)
+		err := fmt.Errorf("No IP management port addresses for download with cost %d",
+			config.DownloadMaxPortCost)
+		log.Error(err.Error())
 		handleSyncOpResponse(ctx, config, status, locFilename,
-			key, errStr)
+			key, err.Error())
 		return
 	}
 
@@ -172,16 +162,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
-		var ipSrc net.IP
-		if !config.AllowNonFreePort {
-			ipSrc, err = types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-				addrIndex, "", types.PortCostMin)
-		} else {
-			// Note that GetLocalAddrAny considers them in
-			// cost order.
-			ipSrc, err = types.GetLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus,
-				addrIndex, "")
-		}
+		ipSrc, err := types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+			addrIndex, "", config.DownloadMaxPortCost)
 		if err != nil {
 			log.Errorf("GetLocalAddr failed: %s", err)
 			errStr = errStr + "\n" + err.Error()

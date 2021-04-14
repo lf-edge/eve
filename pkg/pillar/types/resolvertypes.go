@@ -16,10 +16,10 @@ import (
 // and the sequence counter.
 // It will resolve the tag in name to sha256
 type ResolveConfig struct {
-	DatastoreID      uuid.UUID
-	Name             string
-	AllowNonFreePort bool
-	Counter          uint32
+	DatastoreID         uuid.UUID
+	Name                string
+	DownloadMaxPortCost uint8
+	Counter             uint32
 }
 
 // Key : DatastoreID, name and sequence counter are used

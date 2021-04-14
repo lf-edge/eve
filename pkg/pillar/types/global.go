@@ -177,6 +177,11 @@ const (
 	// ForceFallbackCounter global setting key
 	ForceFallbackCounter = "force.fallback.counter"
 
+	// DownloadMaxPortCost global setting key controls
+	// how the EVE microservices will use free and non-free (e.g., WWAN)
+	// ports for image downloads.
+	DownloadMaxPortCost GlobalSettingKey = "network.download.max.cost"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -194,8 +199,7 @@ const (
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
-	// AllowNonFreeImages global setting key
-	AllowNonFreeImages GlobalSettingKey = "network.allow.wwan.download"
+
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
 
@@ -756,6 +760,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		eveMemoryLimitInBytes, 0xFFFFFFFF)
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -767,7 +772,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
-	configItemSpecMap.AddTriStateItem(AllowNonFreeImages, TS_ENABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items
