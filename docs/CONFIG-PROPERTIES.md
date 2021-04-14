@@ -23,7 +23,7 @@
 | timer.port.timeout | timer in seconds | 15 | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 600 | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet, WiFi, or LTE |
-| network.allow.wwan.download | "enabled" or "disabled" | disabled | allow image download over non-free ports like LTE |
+| network.download.max.cost | 0-255 | 0 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.ssh | boolean, or authorized ssh key | false | allow ssh to EVE |
 | debug.default.loglevel | string | info | min level saved in files on device |

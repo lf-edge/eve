@@ -171,6 +171,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		Dom0DiskUsageMaxBytes,
 		ForceFallbackCounter,
 		LogRemainToSendMBytes,
+		DownloadMaxPortCost,
 		// Bool Items
 		UsbAccess,
 		AllowAppVnc,
@@ -180,7 +181,6 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		AllowLogFastupload,
 		// TriState Items
 		NetworkFallbackAnyEth,
-		AllowNonFreeImages,
 		MaintenanceMode,
 		// String Items
 		SSHAuthorizedKeys,

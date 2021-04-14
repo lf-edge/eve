@@ -50,15 +50,15 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 
 	// try to reserve storage, must be released on error
 	size := blob.Size
-
+	maxCost := ctx.globalConfig.GlobalValueInt(types.DownloadMaxPortCost)
 	n := types.DownloaderConfig{
-		DatastoreID:      blob.DatastoreID,
-		Name:             blob.RelativeURL,
-		ImageSha256:      blob.Sha256,
-		AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig),
-		Size:             size,
-		Target:           locFilename,
-		RefCount:         refCount,
+		DatastoreID:         blob.DatastoreID,
+		Name:                blob.RelativeURL,
+		ImageSha256:         blob.Sha256,
+		DownloadMaxPortCost: uint8(maxCost),
+		Size:                size,
+		Target:              locFilename,
+		RefCount:            refCount,
 	}
 	log.Functionf("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
 	publishDownloaderConfig(ctx, &n)
