@@ -3677,7 +3677,8 @@ CONFIG_USB_MOUSE=m
 #
 # Intel ISH HID support
 #
-# CONFIG_INTEL_ISH_HID is not set
+CONFIG_INTEL_ISH_HID=m
+CONFIG_INTEL_ISH_FIRMWARE_DOWNLOADER=m
 # end of Intel ISH HID support
 # end of HID support
 
