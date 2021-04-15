@@ -40,10 +40,10 @@ systemAdapter part of the API. The most recent information DevicePortConfig
 becomes the highest priority, but the device tests that it works before using it
 (and falls back to a lower-priority working config.)
 
-More specifics in how this is handled are in [DEVICE-CONNECTIVITY](DEVICE-CONNECTIVITY.md).
+More specifics in how this is handled, including load spreading and failover with multiple uplink ports, are in [DEVICE-CONNECTIVITY](DEVICE-CONNECTIVITY.md).
 
 The above build/USB file can specify multiple management interfaces, as well as
-non-mananagement interface, and can specify static IP and DNS configuration
+non-management interface, and can specify static IP and DNS configuration
 (for environments where DHCP is not used), plus WiFi and cellular modem specifics. In addition it can specify proxies using several different mechanism.
 
 ### Example DevicePortConfig
@@ -60,7 +60,7 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
             "DnsServers": null,
             "DomainName": "",
             "Exceptions": "",
-            "Free": true,
+            "Cost": 0,
             "Gateway": "",
             "IfName": "eth0",
             "Name": "Management",
@@ -141,7 +141,7 @@ An example file with eth0 being static and eth1 using dhcp is:
                 "8.8.8.8"
             ],
             "DomainName": "example.com",
-            "Free": true,
+            "Cost": 0,
             "Gateway": "38.108.181.254",
             "IfName": "eth0",
             "Name": "Management1",
@@ -155,10 +155,41 @@ An example file with eth0 being static and eth1 using dhcp is:
         },
         {
             "Dhcp": 4,
-            "Free": true,
+            "Cost": 0,
             "IfName": "eth1",
             "Name": "Management2",
             "IsMgmt": true
+        }
+    ]
+}
+```
+
+To specify that wwan0 should be secondary (only used if eth0 can not be used to reach the controller), and eth1 only be if neither eth0 nor wwan0 works, one would set non-zero costs. For example,
+
+```json
+{
+    "Version": 1,
+    "Ports": [
+        {
+            "Dhcp": 4,
+            "Cost": 0,
+            "IfName": "eth0",
+            "IsMgmt": true,
+            "Name": "Management0"
+        },
+        {
+            "Dhcp": 4,
+            "Cost": 1,
+            "IfName": "wwan0",
+            "IsMgmt": true,
+            "Name": "Management1"
+        }
+        {
+            "Dhcp": 4,
+            "Cost": 2,
+            "IfName": "eth1",
+            "IsMgmt": true,
+            "Name": "Management2"
         }
     ]
 }
@@ -173,14 +204,14 @@ use DHCP 0. For example,
     "Ports": [
         {
             "Dhcp": 4,
-            "Free": true,
+            "Cost": 0,
             "IfName": "eth0",
             "IsMgmt": true,
             "Name": "Management"
         },
         {
             "Dhcp": 0,
-            "Free": true,
+            "Cost": 0,
             "IfName": "eth1",
             "IsMgmt": false,
             "Name": "Field"
@@ -222,7 +253,7 @@ make config.img; make installer.raw
 ### Creating USB sticks
 
 The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can run on any system that supports Docker to create a USB stick.
-It takes a usb.json as an argument, plus a few additrional arguments:
+It takes a usb.json as an argument, plus a few additional arguments:
 
 * -d Create a dump directory on the stick, which Eve will use to deposit any
   diagnostics.
