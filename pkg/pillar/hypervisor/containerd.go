@@ -46,6 +46,14 @@ func newContainerd() Hypervisor {
 	}
 }
 
+func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {
+	//we are here because of no /dev/xen or /dev/kvm exists
+	return &types.Capabilities{
+		HWAssistedVirtualization: false,
+		IOVirtualization:         false,
+	}, nil
+}
+
 func (ctx ctrdContext) Name() string {
 	return "containerd"
 }

@@ -109,6 +109,7 @@ type zedagentContext struct {
 	subAppContainerMetrics    pubsub.Subscription
 	subDiskMetric             pubsub.Subscription
 	subAppDiskMetric          pubsub.Subscription
+	subCapabilities           pubsub.Subscription
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -873,6 +874,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subAppDiskMetric = subAppDiskMetric
 	subAppDiskMetric.Activate()
 
+	subCapabilities, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.Capabilities{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subCapabilities = subCapabilities
+	subCapabilities.Activate()
+
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
 
@@ -1247,6 +1263,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subAppDiskMetric.MsgChan():
 			subAppDiskMetric.ProcessChange(change)
+
+		case change := <-subCapabilities.MsgChan():
+			subCapabilities.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection

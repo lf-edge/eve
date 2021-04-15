@@ -438,3 +438,9 @@ func (hm HostMemory) LogDelete(logBase *base.LogObject) {
 func (hm HostMemory) LogKey() string {
 	return string(base.HostMemoryLogType) + "-" + hm.Key()
 }
+
+// Capabilities represents device information
+type Capabilities struct {
+	HWAssistedVirtualization bool // VMX/SVM for amd64 or Arm virtualization extensions for arm64
+	IOVirtualization         bool // I/O Virtualization support
+}
