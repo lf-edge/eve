@@ -22,6 +22,8 @@ type Hypervisor interface {
 
 	GetHostCPUMem() (types.HostMemory, error)
 	GetDomsCPUMem() (map[string]types.DomainMetric, error)
+
+	GetCapabilities() (*types.Capabilities, error)
 }
 
 type hypervisorDesc struct {

@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -47,6 +48,63 @@ func addNoDuplicate(list []string, add string) []string {
 
 type xenContext struct {
 	ctrdContext
+	capabilities *types.Capabilities
+}
+
+func (ctx xenContext) GetCapabilities() (*types.Capabilities, error) {
+	if ctx.capabilities != nil {
+		return ctx.capabilities, nil
+	}
+	errorString := ""
+	vtx, err := ctx.checkHWAssistedVirtualization()
+	if err != nil {
+		errorString = err.Error()
+	}
+	vtd, err := ctx.checkIOVirtualisation()
+	if err != nil {
+		errorString = errorString + "; " + err.Error()
+	}
+	if errorString != "" {
+		return nil, fmt.Errorf("GetCapabilities: %s", errorString)
+	}
+	ctx.capabilities = &types.Capabilities{
+		HWAssistedVirtualization: vtx,
+		IOVirtualization:         vtd,
+	}
+	return ctx.capabilities, nil
+}
+
+func (ctx xenContext) checkHWAssistedVirtualization() (bool, error) {
+	switch runtime.GOARCH {
+	case "arm64":
+		//xen requires Arm virtualization extensions to run on ARM64
+		return true, nil
+	case "amd64":
+		ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+		defer done()
+		stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
+			[]string{"xl", "dmesg"})
+		if err != nil {
+			errStr := fmt.Sprintf("xl dmesg failed: %s %s", stdOut, stdErr)
+			logrus.Errorln(errStr)
+			return false, errors.New(errStr)
+		}
+		return strings.Contains(stdOut, "VMX enabled") || strings.Contains(stdOut, "SVM enabled"), nil
+	}
+	return false, fmt.Errorf("not implemented for %s", runtime.GOARCH)
+}
+
+func (ctx xenContext) checkIOVirtualisation() (bool, error) {
+	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
+		[]string{"xl", "dmesg"})
+	if err != nil {
+		errStr := fmt.Sprintf("xl dmesg failed: %s %s", stdOut, stdErr)
+		logrus.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	return strings.Contains(stdOut, "I/O virtualisation enabled"), nil
 }
 
 func newXen() Hypervisor {

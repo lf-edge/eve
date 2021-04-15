@@ -344,6 +344,9 @@ message ZInfoDevice {
 
   // Are we in the process of rebooting EVE?
   bool reboot_inprogress = 41;
+
+  // Information about hardware capabilities
+  Capabilities capabilities = 42;
 }
 
 // Different reasons for a boot/reboot
@@ -673,4 +676,12 @@ message ZInfoMsg {
     ZInfoBlobList binfo = 15;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
+}
+
+// Information about hardware capabilities of node
+message Capabilities {
+  // VMX/SVM for amd64 or Arm virtualization extensions for arm64
+  bool HWAssistedVirtualization = 2;
+  // I/O Virtualization support
+  bool IOVirtualization = 3;
 }

@@ -493,6 +493,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.RebootInprogress = ctx.getconfigCtx.rebootFlag
 
+	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
+
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -788,4 +790,17 @@ func parseSMARTData() {
 		return
 	}
 	smartData.RawData = string(data)
+}
+
+func getCapabilities(ctx *zedagentContext) *info.Capabilities {
+	m, err := ctx.subCapabilities.Get("global")
+	if err != nil {
+		log.Warnf("ctx.subCapabilities.Get failed: %s", err)
+		return nil
+	}
+	capabilities := m.(types.Capabilities)
+	return &info.Capabilities{
+		HWAssistedVirtualization: capabilities.HWAssistedVirtualization,
+		IOVirtualization:         capabilities.IOVirtualization,
+	}
 }

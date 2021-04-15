@@ -341,6 +341,7 @@ type kvmContext struct {
 	dmArgs       []string
 	dmCPUArgs    []string
 	dmFmlCPUArgs []string
+	capabilities *types.Capabilities
 }
 
 func newKvm() Hypervisor {
@@ -375,6 +376,35 @@ func newKvm() Hypervisor {
 		}
 	}
 	return nil
+}
+
+func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
+	if ctx.capabilities != nil {
+		return ctx.capabilities, nil
+	}
+	vtd, err := ctx.checkIOVirtualisation()
+	if err != nil {
+		return nil, fmt.Errorf("fail in check IOVirtualization: %v", err)
+	}
+	ctx.capabilities = &types.Capabilities{
+		HWAssistedVirtualization: true,
+		IOVirtualization:         vtd,
+	}
+	return ctx.capabilities, nil
+}
+
+func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
+	f, err := os.Open("/sys/kernel/iommu_groups")
+	if err == nil {
+		files, err := f.Readdirnames(0)
+		if err != nil {
+			return false, err
+		}
+		if len(files) != 0 {
+			return true, nil
+		}
+	}
+	return false, err
 }
 
 func (ctx kvmContext) Name() string {
