@@ -123,6 +123,12 @@ var mToF = []modelToFuncs{
 		ledName:   "/sys/class/gpio/gpio346/value",
 	},
 	{
+		model:     "SIEMENS AG.SIMATIC IPC127E",
+		initFunc:  InitLedCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "ipc127:green:1",
+	},
+	{
 		model:     "hisilicon,hi6220-hikey.hisilicon,hi6220.",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
