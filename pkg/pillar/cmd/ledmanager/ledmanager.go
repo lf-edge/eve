@@ -105,6 +105,12 @@ var mToF = []modelToFuncs{
 		blinkFunc: ExecuteDDCmd,
 	},
 	{
+		model:     "PC Engines.apu2",
+		initFunc:  InitLedCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "apu2:green:led3",
+	},
+	{
 		model:     "Dell Inc..Edge Gateway 3001",
 		initFunc:  InitDellCmd,
 		blinkFunc: ExecuteLedCmd,
