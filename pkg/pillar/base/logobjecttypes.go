@@ -148,6 +148,10 @@ const (
 	SigUSR1StacksType LogObjectType = "sigusr1_stacks"
 	// FatalStacksType:
 	FatalStacksType LogObjectType = "fatal_stacks"
+	// MemoryNotificationType
+	MemoryNotificationType = "memory_notification"
+	// DiskNotificationType
+	DiskNotificationType = "disk_notification"
 )
 
 // RelationObjectType :

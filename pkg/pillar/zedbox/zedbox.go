@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/volumemgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforaddr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/watcher"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/wstunnelclient"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
@@ -96,6 +97,7 @@ var (
 		"tpmmgr":           {f: tpmmgr.Run, inline: inlineUnlessService},
 		"vaultmgr":         {f: vaultmgr.Run, inline: inlineUnlessService},
 		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
+		"watcher":          {f: watcher.Run},
 	}
 	logger *logrus.Logger
 	log    *base.LogObject
