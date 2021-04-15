@@ -8,6 +8,21 @@ Any network port configuration changes which might affect the connectivity to th
 
 This is accomplished by logic to test connectivity to the controller (implemented in the Network Interface Manager [nim](../pkg/pillar/cmd/nim) with help from the [devicenetwork](../pkg/pillar/devicenetwork) package, and maintaining a list of current working and fallback configuration in ```/persist/status/nim/DevicePortConfigList/global.json```
 
+To handle different types of connectivity towards the controller EVE supports both load spreading and failover when it comes to maintaining connectivity to the controller.
+
+## Load spreading and failover
+
+Load spreading means that there are two or more similar uplink network, for instance two Ethernet ports for redundancy, the EVE will send different requests over different connections in a round-robin fashion.
+Failover means that a device can have different types of uplink networks, for example Ethernet, LTE, and/or satellite connectivity. In such a case a cost can be assigned to each uplink port so that e.g., LTE (the wwan0 port) is only used if EVE can not connect via any lower cost (e.g., one or more Ethernet) ports.
+
+That is accomplished in the below configuration, which uses the ```DevicePortConfig``` type, by specifying the ```Cost``` integer. In the in the [API](../api/proto/config/devmodel.proto) the corresponding field is the ```cost``` in the SystemAdapter message.
+
+The cost is a number between 0 and 255, with zero (the default) implying free, and less preferred ports being assigned a higher cost. Multiple ports can be assigned the same cost, in which case once failover has happened to cost N, then all uplink ports with cost N will be used for load spreading of the management traffic.
+
+Furthermore, one can set [network.download.max.cost](CONFIG-PROPERTIES.md) to a number N if is is acceptable for EVE to perform (potentially large) downloads of content and images when having failed over to uplink ports with cost N.
+
+The cost is new and will replace the free/freeUplink way to specify two levels of cost (free or paid). For compatibility reasons EVE will look at freeUplink for the SystemAdapter and PhysicalIO so that the free/paid distinction still works until the cost parameter is used by all the controller.
+
 ## Sources of configuration
 
 There are several sources from which nim gets the potential port configurations. Those all use the ```DevicePortConfig``` type. There are examples of such configurations in [legacy EVE configuration](CONFIG.md)
@@ -34,7 +49,7 @@ That ensures that the configuration doesn't revert back once the device has conn
 
 ### From the controller
 
-The systemAdapter in the API specifies the intended port configuration.
+The SystemAdapter in the API specifies the intended port configuration.
 This is fed into the logic in nim by [zedagent](../pkg/pillar/cmd/zedagent) publishing a ```DevicePortConfig``` item.
 
 The API for this is [SystemAdapter](../api/proto/config/devmodel.proto).
