@@ -186,6 +186,12 @@ var mToF = []modelToFuncs{
 		ledName:   "uno",
 	},
 	{
+		model:     "AAEON.UP-APL01",
+		initFunc:  InitLedCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "upboard:blue:",
+	},
+	{
 		// Last in table as a default
 		model:     "",
 		initFunc:  InitDDCmd,
