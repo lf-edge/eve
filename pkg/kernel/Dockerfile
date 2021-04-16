@@ -5,12 +5,12 @@ ENV BUILD_PKGS \
     argp-standalone automake bash bc binutils-dev bison build-base curl \
     diffutils flex git gmp-dev gnupg installkernel kmod elfutils-dev    \
     linux-headers libunwind-dev mpc1-dev mpfr-dev ncurses-dev findutils \
-    openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev   \
-    openssl attr-dev autoconf file libtirpc-dev libtool util-linux-dev
+    openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev openssl \
+    attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.4.51
-ARG KERNEL_VERSION_x86_64=5.4.51
+ARG KERNEL_VERSION_aarch64=5.10.7
+ARG KERNEL_VERSION_x86_64=5.10.7
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -39,7 +39,7 @@ RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR
     curl -fsSLO ${KERNEL_PGP2_SIGN} && \
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
-    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info,
+    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
 # Apply local patches
 WORKDIR /linux
@@ -86,7 +86,7 @@ RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, open source modules
 #  * ZFS on Linux
-ENV ZFS_VERSION=0.8.4
+ENV ZFS_VERSION=2.0.4
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
 
@@ -109,7 +109,7 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
 #  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
 RUN if [ "$(uname -m)" != aarch64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
-       (cd /tmp/rtl8821CU ; git checkout 93b04bfcd293fdd7d98d5a7c964ae9416a40159c) &&\
+       (cd /tmp/rtl8821CU && git checkout 2dc966f0dc99 && patch -p1 < /rtl8821CU.patch ) &&\
        make -C /tmp/rtl8821CU KSRC=/linux modules &&\
        install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
      fi

@@ -9,8 +9,8 @@ ENV BUILD_PKGS \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.10.7
-ARG KERNEL_VERSION_x86_64=5.10.7
+ARG KERNEL_VERSION_aarch64=5.11.15
+ARG KERNEL_VERSION_x86_64=5.11.15
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -86,13 +86,12 @@ RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, open source modules
 #  * ZFS on Linux
-ENV ZFS_VERSION=2.0.0
+ENV ZFS_VERSION=2.1.0-rc3
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
 
 WORKDIR /tmp/zfs
 RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
-RUN sed -ie '/Linux-Maximum:/s/^.*$/Linux-Maximum: 5.10/' META
 RUN ./autogen.sh && \
     ./configure --with-linux=/linux && \
     ./scripts/make_gitrev.sh && \
