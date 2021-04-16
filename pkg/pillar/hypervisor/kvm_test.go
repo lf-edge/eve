@@ -201,7 +201,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
@@ -463,7 +463,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
@@ -1037,7 +1037,7 @@ func TestCreateDomConfig(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
@@ -1306,7 +1306,7 @@ func TestCreateDomConfig(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
@@ -1580,7 +1580,7 @@ func TestCreateDomConfig(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "cirrus-vga"
+  driver = "VGA"
   vgamem_mb = "16"
   bus = "pcie.0"
   addr = "0x1"
