@@ -110,10 +110,11 @@ do_installer_iso() {
 do_installer_net() {
   # FIXME: this will also go away once we rationalize
   # how we're managing config for things like netboot
-  (cd "$(mktemp -d)" && mkdir -p media/root-rw/boot
-   cp /bits/config.img /bits/persist.img media/root-rw
-   echo netboot > media/root-rw/boot/.uuid
-   find . | sort | cpio --quiet -o -H newc) | gzip > /initrd.bits
+  (cd "$(mktemp -d)" && mkdir -p media/root-rw
+  cp -r /bits/boot media/root-rw
+  cp /bits/config.img /bits/persist.img media/root-rw
+  echo netboot > media/root-rw/boot/.uuid
+  find . | sort | cpio --quiet -o -H newc) | gzip > /initrd.bits
   ln -s /bits/* /
   unsquashfs -d /tmp/kernel rootfs.img boot/kernel
   mv /tmp/kernel/boot/kernel /

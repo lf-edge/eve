@@ -497,7 +497,7 @@ $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CON
 	./tools/makeiso.sh $| $@ installer
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
+$(INSTALLER).net: $(EFI_PART) $(BOOT_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
 	./tools/makenet.sh $| $@
 	$(QUIET): $@: Succeeded
 

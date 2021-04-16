@@ -15,7 +15,8 @@ fi
 #  # how we're managing config for things like netboot
 cat <<__EOT__ | docker run --rm -v "$SOURCE:/bits" -v "$NET:/output.tar" -i alpine:3.13 sh
    cd "\$(mktemp -d)"
-   mkdir -p media/root-rw/boot
+   mkdir -p media/root-rw
+   cp -r /bits/boot media/root-rw
    cp /bits/config.img /bits/persist.img media/root-rw
    echo netboot > media/root-rw/boot/.uuid
    find . | sort | cpio --quiet -o -H newc | gzip > /initrd.bits
