@@ -18,9 +18,6 @@ type DownloaderConfig struct {
 	Name        string
 	Target      string // file path where to download the file
 	NameIsURL   bool   // If not we form URL based on datastore info
-
-	DownloadMaxPortCost uint8
-
 	Size        uint64 // In bytes
 	FinalObjDir string // final Object Store
 	RefCount    uint
@@ -105,15 +102,12 @@ type DownloaderStatus struct {
 	LastUse       time.Time // When RefCount dropped to zero
 	Expired       bool      // Handshake to client
 	NameIsURL     bool      // If not we form URL based on datastore info
-
-	DownloadMaxPortCost uint8
-
-	State         SwState // DOWNLOADED etc
-	ReservedSpace uint64  // Contribution to global ReservedSpace
-	Size          uint64  // Once DOWNLOADED; in bytes
-	TotalSize     int64   // expected size as reported by the downloader, if any
-	CurrentSize   int64   // current total downloaded size as reported by the downloader
-	Progress      uint    // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
+	State         SwState   // DOWNLOADED etc
+	ReservedSpace uint64    // Contribution to global ReservedSpace
+	Size          uint64    // Once DOWNLOADED; in bytes
+	TotalSize     int64     // expected size as reported by the downloader, if any
+	CurrentSize   int64     // current total downloaded size as reported by the downloader
+	Progress      uint      // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
 	ModTime       time.Time
 	ContentType   string // content-type header, if provided
 	// ErrorAndTime provides SetErrorNow() and ClearError()

@@ -173,16 +173,17 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		return
 	}
 
-	log.Functionf("Resolving config <%s> using %d DownloadMaxPortCost",
-		rc.Name, rc.DownloadMaxPortCost)
+	downloadMaxPortCost := ctx.downloadMaxPortCost
+	log.Functionf("Resolving config <%s> using %d downloadMaxPortCost",
+		rc.Name, downloadMaxPortCost)
 
 	addrCount := types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-		rc.DownloadMaxPortCost)
+		downloadMaxPortCost)
 	log.Functionf("Have %d management port addresses for cost %d",
-		addrCount, rc.DownloadMaxPortCost)
+		addrCount, downloadMaxPortCost)
 	if addrCount == 0 {
 		err := fmt.Errorf("No IP management port addresses for resolve with cost %d",
-			rc.DownloadMaxPortCost)
+			downloadMaxPortCost)
 		log.Error(err.Error())
 		rs.SetErrorNow(err.Error())
 		publishResolveStatus(ctx, rs)
@@ -221,7 +222,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		ipSrc, err := types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-			addrIndex, "", rc.DownloadMaxPortCost)
+			addrIndex, "", downloadMaxPortCost)
 		if err != nil {
 			log.Errorf("GetLocalAddr failed: %s", err)
 			errStr = errStr + "\n" + err.Error()

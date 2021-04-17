@@ -39,6 +39,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		if gcp.GlobalValueInt(types.DownloadStalledTime) != 0 {
 			maxStalledTime = time.Duration(gcp.GlobalValueInt(types.DownloadStalledTime)) * time.Second
 		}
+		ctx.downloadMaxPortCost = uint8(gcp.GlobalValueInt(types.DownloadMaxPortCost))
 		ctx.GCInitialized = true
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
