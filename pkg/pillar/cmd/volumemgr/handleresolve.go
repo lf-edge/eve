@@ -12,12 +12,10 @@ import (
 func MaybeAddResolveConfig(ctx *volumemgrContext, cs types.ContentTreeStatus) {
 
 	log.Functionf("MaybeAddResolveConfig for %s", cs.ContentID)
-	maxCost := ctx.globalConfig.GlobalValueInt(types.DownloadMaxPortCost)
 	resolveConfig := types.ResolveConfig{
-		DatastoreID:         cs.DatastoreID,
-		Name:                cs.RelativeURL,
-		DownloadMaxPortCost: uint8(maxCost),
-		Counter:             uint32(cs.GenerationCounter),
+		DatastoreID: cs.DatastoreID,
+		Name:        cs.RelativeURL,
+		Counter:     uint32(cs.GenerationCounter),
 	}
 	publishResolveConfig(ctx, &resolveConfig)
 	log.Functionf("MaybeAddResolveConfig for %s Done", cs.ContentID)

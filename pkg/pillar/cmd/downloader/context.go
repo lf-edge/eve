@@ -4,8 +4,6 @@
 package downloader
 
 import (
-	"sync"
-
 	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -23,9 +21,9 @@ type downloaderContext struct {
 	pubCipherBlockStatus   pubsub.Publication
 	subDatastoreConfig     pubsub.Subscription
 	deviceNetworkStatus    types.DeviceNetworkStatus
-	globalStatusLock       sync.Mutex
 	subGlobalConfig        pubsub.Subscription
 	GCInitialized          bool
+	downloadMaxPortCost    uint8
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {

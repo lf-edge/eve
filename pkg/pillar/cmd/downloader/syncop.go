@@ -67,14 +67,15 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 	}
 
-	log.Functionf("Downloading <%s> to <%s> using %d DownloadMaxPortCost",
-		config.Name, locFilename, config.DownloadMaxPortCost)
+	downloadMaxPortCost := ctx.downloadMaxPortCost
+	log.Functionf("Downloading <%s> to <%s> using %d downloadMaxPortCost",
+		config.Name, locFilename, downloadMaxPortCost)
 
 	addrCount := types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-		config.DownloadMaxPortCost)
+		downloadMaxPortCost)
 	if addrCount == 0 {
 		err := fmt.Errorf("No IP management port addresses for download with cost %d",
-			config.DownloadMaxPortCost)
+			downloadMaxPortCost)
 		log.Error(err.Error())
 		handleSyncOpResponse(ctx, config, status, locFilename,
 			key, err.Error())
@@ -163,7 +164,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		ipSrc, err := types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-			addrIndex, "", config.DownloadMaxPortCost)
+			addrIndex, "", downloadMaxPortCost)
 		if err != nil {
 			log.Errorf("GetLocalAddr failed: %s", err)
 			errStr = errStr + "\n" + err.Error()
