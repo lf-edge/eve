@@ -165,6 +165,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return sha256, errors.New("NewRequest failed")
 	}
 
+	// XXX add timer?
 	req = req.WithCancel(context.Background())
 	defer req.Cancel()
 
