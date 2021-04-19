@@ -236,7 +236,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	if errStr != "" {
 		// Delete file, and update the storage
 		doDelete(ctx, key, locFilename, status)
-		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
@@ -250,7 +249,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		// error, so delete the file
 		doDelete(ctx, key, locFilename, status)
 		errStr := fmt.Sprintf("%v", err)
-		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
@@ -263,6 +261,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// We do not clear any status.RetryCount, Error, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
+	status.ClearError()
 	status.ModTime = time.Now()
 	status.State = types.DOWNLOADED
 	status.Progress = 100 // Just in case

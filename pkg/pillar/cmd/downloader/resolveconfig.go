@@ -77,9 +77,9 @@ func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus) {
 		return
 	}
 
-	// reset Error, to start download again
+	// Increment count; we defer clearing error until success
+	// to avoid confusing the user.
 	status.RetryCount++
-	status.ClearError()
 	publishResolveStatus(ctx, status)
 
 	resolveTagsToHash(ctx, *config)
@@ -147,8 +147,6 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 			Counter:     rc.Counter,
 		}
 	}
-	rs.ClearError()
-
 	sha := maybeNameHasSha(rc.Name)
 	if sha != "" {
 		rs.ImageSha256 = sha
@@ -239,6 +237,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
+		rs.ClearError()
 		rs.ImageSha256 = sha256
 		publishResolveStatus(ctx, rs)
 		return
