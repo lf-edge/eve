@@ -5,17 +5,18 @@ package hypervisor
 
 import (
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
 	"text/template"
 	"time"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
 
 //TBD: Have a better way to calculate this number.
@@ -423,6 +424,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
+	domainUUID := status.UUIDandVersion.UUID
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(domainName, config, diskStatusList, aa, file); err != nil {
 		return logError("failed to build domain config: %v", err)
@@ -440,6 +442,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	args := []string{ctx.dmExec}
 	args = append(args, dmArgs...)
 	args = append(args, "-name", domainName,
+		"-uuid", domainUUID.String(),
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
