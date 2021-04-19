@@ -16,7 +16,7 @@ const sockTimeout = 10 * time.Second
 
 func execRawCmd(socket, cmd string) ([]byte, error) {
 	var retry = 3
-	logrus.Infof("executing QMP command: %s", cmd)
+	logrus.Debugf("executing QMP command: %s", cmd)
 	var err error
 	var monitor *qmp.SocketMonitor
 
