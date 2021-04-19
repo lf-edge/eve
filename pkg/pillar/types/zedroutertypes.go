@@ -1206,34 +1206,42 @@ func rotate(arr []string, amount int) []string {
 // rotation causes rotation/round-robin within each cost
 func GetMgmtPortsSortedCost(globalStatus DeviceNetworkStatus, rotation int) []string {
 	return getMgmtPortsSortedCostImpl(globalStatus, rotation,
-		PortCostMax)
+		PortCostMax, false)
+}
+
+// GetMgmtPortsSortedCostWithoutFailed returns all management ports sorted by
+// port cost ignoring ports with failures.
+// rotation causes rotation/round-robin within each cost
+func GetMgmtPortsSortedCostWithoutFailed(globalStatus DeviceNetworkStatus, rotation int) []string {
+	return getMgmtPortsSortedCostImpl(globalStatus, rotation,
+		PortCostMax, true)
 }
 
 // getMgmtPortsSortedCostImpl returns all management ports sorted by port cost
 // up to and including the maxCost
-func getMgmtPortsSortedCostImpl(globalStatus DeviceNetworkStatus, rotation int, maxCost uint8) []string {
+func getMgmtPortsSortedCostImpl(globalStatus DeviceNetworkStatus, rotation int, maxCost uint8, dropFailed bool) []string {
 	ifnameList := []string{}
 	costList := getPortCostListImpl(globalStatus, maxCost)
 	for _, cost := range costList {
 		ifnameList = append(ifnameList,
-			getMgmtPortsImpl(globalStatus, rotation, true, cost)...)
+			getMgmtPortsImpl(globalStatus, rotation, true, cost, dropFailed)...)
 	}
 	return ifnameList
 }
 
 // GetMgmtPortsAny returns all management ports
 func GetMgmtPortsAny(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsImpl(globalStatus, rotation, false, 0)
+	return getMgmtPortsImpl(globalStatus, rotation, false, 0, false)
 }
 
 // GetMgmtPortsByCost returns all management ports with a given port cost
 func GetMgmtPortsByCost(globalStatus DeviceNetworkStatus, cost uint8) []string {
-	return getMgmtPortsImpl(globalStatus, 0, true, cost)
+	return getMgmtPortsImpl(globalStatus, 0, true, cost, false)
 }
 
 // Returns the IfNames.
 func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
-	matchCost bool, cost uint8) []string {
+	matchCost bool, cost uint8, dropFailed bool) []string {
 
 	var ifnameList []string
 	for _, us := range globalStatus.Ports {
@@ -1242,6 +1250,9 @@ func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
 			!us.IsMgmt {
+			continue
+		}
+		if dropFailed && us.HasError() {
 			continue
 		}
 		ifnameList = append(ifnameList, us.IfName)
@@ -1451,7 +1462,7 @@ func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
 	if phylabelOrIfname == "" {
 		// Get interfaces in cost order
 		ifnameList = getMgmtPortsSortedCostImpl(globalStatus, 0,
-			maxCost)
+			maxCost, false)
 	} else {
 		ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
 		us := GetPort(globalStatus, ifname)
