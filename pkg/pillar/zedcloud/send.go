@@ -87,7 +87,7 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 	var errorList []error
 	remoteTemporaryFailure := types.SenderStatusNone
 
-	intfs := types.GetMgmtPortsSortedCost(*ctx.DeviceNetworkStatus, iteration)
+	intfs := types.GetMgmtPortsSortedCostWithoutFailed(*ctx.DeviceNetworkStatus, iteration)
 	if len(intfs) == 0 {
 		err := fmt.Errorf("Can not connect to %s: No management interfaces",
 			url)
