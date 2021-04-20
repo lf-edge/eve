@@ -901,10 +901,13 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
 	ReportAppInfo.State = info.ZSwState_HALTED
+	var state types.SwState
+	var objErr bool
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
-
+		state = aiStatus.State
+		objErr = aiStatus.HasError()
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
 				aiStatus.ErrorAndTimeWithSource.ErrorAndTime())
@@ -1015,6 +1018,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
+	start := time.Now()
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishAppInfoToZedCloud failed: %s", err)
@@ -1028,6 +1032,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			true)
 	} else {
 		writeSentAppInfoProtoMessage(data)
+
+		log.Functionf("sent app info %s state %s err %t took %v",
+			uuid, state.String(), objErr, time.Since(start))
 	}
 }
 
@@ -1050,10 +1057,13 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportContentInfo.Uuid = uuid
 	ReportContentInfo.State = info.ZSwState_HALTED
+	var state types.SwState
+	var objErr bool
 	if ctStatus != nil {
 		ReportContentInfo.DisplayName = ctStatus.DisplayName
 		ReportContentInfo.State = ctStatus.State.ZSwState()
-
+		state = ctStatus.State
+		objErr = ctStatus.HasError()
 		if !ctStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
 				ctStatus.ErrorAndTimeWithSource.ErrorAndTime())
@@ -1089,6 +1099,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
+	start := time.Now()
 	err = SendProtobuf(statusURL, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishContentInfoToZedCloud failed: %s", err)
@@ -1100,6 +1111,9 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		}
 		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
 			true)
+	} else {
+		log.Functionf("sent content info %s state %s err %t took %v",
+			uuid, state.String(), objErr, time.Since(start))
 	}
 }
 
@@ -1122,10 +1136,13 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportVolumeInfo.Uuid = uuid
 	ReportVolumeInfo.State = info.ZSwState_INITIAL
+	var state types.SwState
+	var objErr bool
 	if volStatus != nil {
 		ReportVolumeInfo.DisplayName = volStatus.DisplayName
 		ReportVolumeInfo.State = volStatus.State.ZSwState()
-
+		state = volStatus.State
+		objErr = volStatus.HasError()
 		if !volStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
 				volStatus.ErrorAndTimeWithSource.ErrorAndTime())
@@ -1168,6 +1185,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
+	start := time.Now()
 	err = SendProtobuf(statusURL, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishVolumeToZedCloud failed: %s", err)
@@ -1179,7 +1197,11 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		}
 		zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
 			true)
+	} else {
+		log.Functionf("sent vol info %s state %s err %t took %v",
+			uuid, state.String(), objErr, time.Since(start))
 	}
+
 }
 
 // PublishBlobInfoToZedCloud is called per change, hence needs to try over all management ports
@@ -1200,8 +1222,12 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	ReportBlobInfo := new(info.ZInfoBlob)
 
 	ReportBlobInfo.Sha256 = blobSha
+	var state types.SwState
+	var objErr bool
 	if blobStatus != nil {
 		ReportBlobInfo.State = blobStatus.State.ZSwState()
+		state = blobStatus.State
+		objErr = blobStatus.HasError()
 		ReportBlobInfo.ProgressPercentage = blobStatus.GetDownloadedPercentage()
 		ReportBlobInfo.Usage = &info.UsageInfo{RefCount: uint32(blobStatus.RefCount)}
 		ReportBlobInfo.Resources = &info.ContentResources{CurSizeBytes: blobStatus.Size}
@@ -1227,6 +1253,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
+	start := time.Now()
 	err = SendProtobuf(statusURL, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishBlobInfoToZedCloud failed: %s", err)
@@ -1238,6 +1265,9 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		}
 		zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
 			true)
+	} else {
+		log.Functionf("sent blob info %s state %s err %t took %v",
+			blobSha, state.String(), objErr, time.Since(start))
 	}
 }
 

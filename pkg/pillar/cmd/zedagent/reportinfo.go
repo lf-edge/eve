@@ -521,6 +521,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
+	start := time.Now()
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishDeviceInfoToZedCloud failed: %s", err)
@@ -534,6 +535,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			statusUrl, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
+
+		log.Functionf("sent device info %s took %v", deviceUUID,
+			time.Since(start))
 	}
 }
 
