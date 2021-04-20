@@ -31,6 +31,8 @@ COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
 # Intel Corporation Cannon Point-LP CNVi [Wireless-AC] (rev 30)
 COPY --from=build /lib/firmware/iwlwifi-9000-* /lib/firmware/
+# Intel Wireless 22000 series (AX200 on NUC9VXQNX)
+COPY --from=build /lib/firmware/iwlwifi-cc-a0* /lib/firmware/
 # Intel Wireless 22000 series (AX201 on NUC10i7FNH)
 COPY --from=build /lib/firmware/iwlwifi-QuZ-a0-hr-b0* /lib/firmware/
 # RTL8111/8168/8411 PCI Express Gigabit Ethernet Controller
