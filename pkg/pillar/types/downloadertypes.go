@@ -4,6 +4,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -113,6 +114,8 @@ type DownloaderStatus struct {
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RetryCount int
+	// We save the original error when we do a retry
+	OrigError string
 }
 
 func (status DownloaderStatus) Key() string {
@@ -134,7 +137,11 @@ func (status *DownloaderStatus) ClearPendingStatus() {
 }
 
 // HandleDownloadFail : Do Failure specific tasks
-func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
+func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time.Duration) {
+	if retryTime != 0 {
+		errStr = fmt.Sprintf("Will retry in %v: %s",
+			retryTime, errStr)
+	}
 	status.SetErrorNow(errStr)
 	status.ClearPendingStatus()
 }

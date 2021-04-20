@@ -43,7 +43,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
 	if err != nil {
-		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", config.Name, err)
+		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
+			retryTime, config.Name, err)
 		handleSyncOpResponse(ctx, config, status, locFilename, key, errStr)
 		return
 	}
@@ -74,7 +75,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	addrCount := types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
 		downloadMaxPortCost)
 	if addrCount == 0 {
-		err := fmt.Errorf("No IP management port addresses for download with cost %d",
+		err := fmt.Errorf("No IP management port addresses with cost <= %d",
 			downloadMaxPortCost)
 		log.Error(err.Error())
 		handleSyncOpResponse(ctx, config, status, locFilename,
@@ -236,7 +237,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	if errStr != "" {
 		// Delete file, and update the storage
 		doDelete(ctx, key, locFilename, status)
-		status.HandleDownloadFail(errStr)
+		status.HandleDownloadFail(errStr, retryTime)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)
@@ -249,7 +250,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		// error, so delete the file
 		doDelete(ctx, key, locFilename, status)
 		errStr := fmt.Sprintf("%v", err)
-		status.HandleDownloadFail(errStr)
+		status.HandleDownloadFail(errStr, retryTime)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)

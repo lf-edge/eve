@@ -77,9 +77,15 @@ func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus) {
 		return
 	}
 
+	if status.RetryCount == 0 {
+		status.OrigError = status.Error
+	}
 	// Increment count; we defer clearing error until success
 	// to avoid confusing the user.
 	status.RetryCount++
+	errStr := fmt.Sprintf("Retry attempt %d after %s",
+		status.RetryCount, status.OrigError)
+	status.SetErrorNow(errStr)
 	publishResolveStatus(ctx, status)
 
 	resolveTagsToHash(ctx, *config)
@@ -156,7 +162,9 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 
 	dst, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, rc.DatastoreID)
 	if err != nil {
-		rs.SetErrorNow(err.Error())
+		errStr := fmt.Sprintf("Will retry when datastore available: %s",
+			err.Error())
+		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -165,7 +173,8 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, rc.Name, false, *dst)
 	if err != nil {
-		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", rc.Name, err)
+		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
+			retryTime, rc.Name, err)
 		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
@@ -180,10 +189,12 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	log.Functionf("Have %d management port addresses for cost %d",
 		addrCount, downloadMaxPortCost)
 	if addrCount == 0 {
-		err := fmt.Errorf("No IP management port addresses for resolve with cost %d",
+		err := fmt.Errorf("No IP management port addresses with cost <= %d",
 			downloadMaxPortCost)
 		log.Error(err.Error())
-		rs.SetErrorNow(err.Error())
+		errStr := fmt.Sprintf("Will retry in %v: %s",
+			retryTime, err)
+		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -212,6 +223,8 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 	// and return, but we will get to it later
 	if errStr != "" {
 		log.Errorf("Error preparing to download. All errors:%s", errStr)
+		errStr := fmt.Sprintf("Will retry in %v: %s",
+			retryTime, errStr)
 		rs.SetErrorNow(errStr)
 		publishResolveStatus(ctx, rs)
 		return
@@ -244,6 +257,8 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 
 	}
 	log.Errorf("All source IP addresses failed. All errors:%s", errStr)
+	errStr = fmt.Sprintf("Will retry in %v: %s",
+		retryTime, errStr)
 	rs.SetErrorNow(errStr)
 	publishResolveStatus(ctx, rs)
 }

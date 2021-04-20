@@ -306,9 +306,15 @@ func maybeRetryDownload(ctx *downloaderContext,
 		return
 	}
 
+	if status.RetryCount == 0 {
+		status.OrigError = status.Error
+	}
 	// Increment count; we defer clearing error until success
 	// to avoid confusing the user.
 	status.RetryCount++
+	errStr := fmt.Sprintf("Retry attempt %d after %s",
+		status.RetryCount, status.OrigError)
+	status.SetErrorNow(errStr)
 	publishDownloaderStatus(ctx, status)
 
 	doDownload(ctx, *config, status)
@@ -409,7 +415,7 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 	if config.RefCount == 0 {
 		errStr := fmt.Sprintf("RefCount==0; download deferred for %s\n",
 			config.Name)
-		status.HandleDownloadFail(errStr)
+		status.HandleDownloadFail(errStr, 0)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %s", config.Name, errStr)
 		return
@@ -417,9 +423,9 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 
 	dst, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, config.DatastoreID)
 	if dst == nil {
-		// XXX can we have a faster retry in this case?
-		// React when DatastoreConfig changes?
-		status.HandleDownloadFail(err.Error())
+		errStr := fmt.Sprintf("Will retry when datastore available: %s",
+			err.Error())
+		status.HandleDownloadFail(errStr, 0)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
 		return
