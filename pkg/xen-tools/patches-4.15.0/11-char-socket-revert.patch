@@ -1,0 +1,24 @@
+diff --git a/tools/qemu-xen/chardev/char-socket.c b/tools/qemu-xen/chardev/char-socket.c
+index ef62dbf..7ad180e 100644
+--- a/tools/qemu-xen/chardev/char-socket.c
++++ b/tools/qemu-xen/chardev/char-socket.c
+@@ -177,16 +177,15 @@ static int tcp_chr_write(Chardev *chr, const uint8_t *buf, int len)
+ 
+         if (ret < 0 && errno != EAGAIN) {
+             if (tcp_chr_read_poll(chr) <= 0) {
+-                /* Perform disconnect and return error. */
+                 tcp_chr_disconnect_locked(chr);
++                return len;
+             } /* else let the read handler finish it properly */
+         }
+ 
+         return ret;
+     } else {
+-        /* Indicate an error. */
+-        errno = EIO;
+-        return -1;
++        /* XXX: indicate an error ? */
++        return len;
+     }
+ }
+ 
