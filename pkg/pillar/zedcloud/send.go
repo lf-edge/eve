@@ -89,6 +89,12 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 
 	intfs := types.GetMgmtPortsSortedCostWithoutFailed(*ctx.DeviceNetworkStatus, iteration)
 	if len(intfs) == 0 {
+		// This can happen during onboarding etc and the failed status
+		// might be updated infrequently by nim
+		log.Warnf("All management ports are marked failed; trying all")
+		intfs = types.GetMgmtPortsSortedCost(*ctx.DeviceNetworkStatus, iteration)
+	}
+	if len(intfs) == 0 {
 		err := fmt.Errorf("Can not connect to %s: No management interfaces",
 			url)
 		log.Error(err.Error())
