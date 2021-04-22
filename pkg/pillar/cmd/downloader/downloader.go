@@ -233,7 +233,8 @@ func lookupDownloaderConfig(ctx *downloaderContext, key string) *types.Downloade
 }
 
 // runHandler is the server for each DownloaderConfig object aka key
-func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
+func runHandler(ctx *downloaderContext, key string, updateChan <-chan Notify,
+	receiveChan chan<- CancelChannel) {
 
 	log.Functionf("runHandler starting")
 
@@ -244,7 +245,7 @@ func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 	closed := false
 	for !closed {
 		select {
-		case _, ok := <-c:
+		case _, ok := <-updateChan:
 			if ok {
 				sub := ctx.subDownloaderConfig
 				c, err := sub.Get(key)
@@ -255,11 +256,12 @@ func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 				config := c.(types.DownloaderConfig)
 				status := lookupDownloaderStatus(ctx, key)
 				if status == nil {
-					handleCreate(ctx, config, status, key)
+					handleCreate(ctx, config, status, key,
+						receiveChan)
 				} else {
-					handleModify(ctx, key, config, status)
+					handleModify(ctx, key, config, status,
+						receiveChan)
 				}
-				// XXX if err start timer
 			} else {
 				// Closed
 				status := lookupDownloaderStatus(ctx, key)
@@ -267,13 +269,12 @@ func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 					handleDelete(ctx, key, status)
 				}
 				closed = true
-				// XXX stop timer
 			}
 		case <-ticker.C:
 			log.Tracef("runHandler(%s) timer", key)
 			status := lookupDownloaderStatus(ctx, key)
 			if status != nil {
-				maybeRetryDownload(ctx, status)
+				maybeRetryDownload(ctx, status, receiveChan)
 			}
 		}
 	}
@@ -281,13 +282,25 @@ func runHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 }
 
 func maybeRetryDownload(ctx *downloaderContext,
-	status *types.DownloaderStatus) {
+	status *types.DownloaderStatus, receiveChan chan<- CancelChannel) {
 
 	// object is either in download progress or,
 	// successfully downloaded, nothing to do
 	if !status.HasError() {
 		return
 	}
+	config := lookupDownloaderConfig(ctx, status.Key())
+	if config == nil {
+		log.Functionf("maybeRetryDownload(%s) no config",
+			status.Key())
+		return
+	}
+	if config.RefCount == 0 {
+		log.Functionf("maybeRetryDownload(%s) RefCount==0",
+			status.Key())
+		return
+	}
+
 	t := time.Now()
 	elapsed := t.Sub(status.ErrorTime)
 	if elapsed < retryTime {
@@ -298,13 +311,6 @@ func maybeRetryDownload(ctx *downloaderContext,
 	}
 	log.Functionf("maybeRetryDownload(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
-
-	config := lookupDownloaderConfig(ctx, status.Key())
-	if config == nil {
-		log.Functionf("maybeRetryDownload(%s) no config",
-			status.Key())
-		return
-	}
 
 	if status.RetryCount == 0 {
 		status.OrigError = status.Error
@@ -317,11 +323,12 @@ func maybeRetryDownload(ctx *downloaderContext,
 	status.SetErrorNow(errStr)
 	publishDownloaderStatus(ctx, status)
 
-	doDownload(ctx, *config, status)
+	doDownload(ctx, *config, status, receiveChan)
 }
 
 func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
-	status *types.DownloaderStatus, key string) {
+	status *types.DownloaderStatus, key string,
+	receiveChan chan<- CancelChannel) {
 
 	log.Functionf("handleCreate(%s) for %s", config.ImageSha256, config.Name)
 
@@ -351,16 +358,14 @@ func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
 	}
 	publishDownloaderStatus(ctx, status)
 
-	doDownload(ctx, config, status)
+	doDownload(ctx, config, status, receiveChan)
 }
 
-// XXX Allow to cancel by setting RefCount = 0? Such a change
-// would have to be detected outside of handler since the download is
-// single-threaded.
 // RefCount 0->1 means download.
 // RefCount -> 0 means set Expired to delete
 func handleModify(ctx *downloaderContext, key string,
-	config types.DownloaderConfig, status *types.DownloaderStatus) {
+	config types.DownloaderConfig, status *types.DownloaderStatus,
+	receiveChan chan<- CancelChannel) {
 
 	log.Functionf("handleModify(%s) for %s", status.ImageSha256, status.Name)
 
@@ -375,7 +380,7 @@ func handleModify(ctx *downloaderContext, key string,
 	// or status is not downloaded then do install
 	if config.RefCount != 0 && (status.HasError() || status.State != types.DOWNLOADED) {
 		log.Functionf("handleModify installing %s", config.Name)
-		handleCreate(ctx, config, status, key)
+		handleCreate(ctx, config, status, key, receiveChan)
 	} else if status.RefCount != config.RefCount {
 		log.Functionf("handleModify RefCount change %s from %d to %d",
 			config.Name, status.RefCount, config.RefCount)
@@ -403,19 +408,18 @@ func doDelete(ctx *downloaderContext, key string, filename string,
 
 	status.State = types.INITIAL
 
-	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
-	// going back to RefCount 0. FIXed
 	publishDownloaderStatus(ctx, status)
 }
 
 // perform download of the object, by reserving storage
-func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus) {
+func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus,
+	receiveChan chan<- CancelChannel) {
 
 	// If RefCount == 0 then we don't yet need to download.
 	if config.RefCount == 0 {
 		errStr := fmt.Sprintf("RefCount==0; download deferred for %s\n",
 			config.Name)
-		status.HandleDownloadFail(errStr, 0)
+		status.HandleDownloadFail(errStr, 0, false)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %s", config.Name, errStr)
 		return
@@ -425,14 +429,14 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 	if dst == nil {
 		errStr := fmt.Sprintf("Will retry when datastore available: %s",
 			err.Error())
-		status.HandleDownloadFail(errStr, 0)
+		status.HandleDownloadFail(errStr, 0, false)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
 		return
 	}
 	log.Tracef("Found datastore(%s) for %s", config.DatastoreID.String(), config.Name)
 
-	handleSyncOp(ctx, status.Key(), config, status, dst)
+	handleSyncOp(ctx, status.Key(), config, status, dst, receiveChan)
 }
 
 func handleDelete(ctx *downloaderContext, key string,

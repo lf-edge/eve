@@ -16,7 +16,8 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-func runResolveHandler(ctx *downloaderContext, key string, c <-chan Notify) {
+func runResolveHandler(ctx *downloaderContext, key string, updateChan <-chan Notify,
+	receiveChan chan<- CancelChannel) {
 
 	log.Functionf("runResolveHandler starting")
 
@@ -27,11 +28,10 @@ func runResolveHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 	closed := false
 	for !closed {
 		select {
-		case _, ok := <-c:
+		case _, ok := <-updateChan:
 			if ok {
 				rc := lookupResolveConfig(ctx, key)
-				resolveTagsToHash(ctx, *rc)
-				// XXX if err start timer
+				resolveTagsToHash(ctx, *rc, receiveChan)
 			} else {
 				// Closed
 				rs := lookupResolveStatus(ctx, key)
@@ -39,26 +39,33 @@ func runResolveHandler(ctx *downloaderContext, key string, c <-chan Notify) {
 					unpublishResolveStatus(ctx, rs)
 				}
 				closed = true
-				// XXX stop timer
 			}
 		case <-ticker.C:
 			log.Tracef("runResolveHandler(%s) timer", key)
 			rs := lookupResolveStatus(ctx, key)
 			if rs != nil {
-				maybeRetryResolve(ctx, rs)
+				maybeRetryResolve(ctx, rs, receiveChan)
 			}
 		}
 	}
 	log.Functionf("runResolveHandler(%s) DONE", key)
 }
 
-func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus) {
+func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus,
+	receiveChan chan<- CancelChannel) {
 
 	// object is either in download progress or,
 	// successfully downloaded, nothing to do
 	if !status.HasError() {
 		return
 	}
+	config := lookupResolveConfig(ctx, status.Key())
+	if config == nil {
+		log.Functionf("maybeRetryResolve(%s) no config",
+			status.Key())
+		return
+	}
+
 	t := time.Now()
 	elapsed := t.Sub(status.ErrorTime)
 	if elapsed < retryTime {
@@ -69,13 +76,6 @@ func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus) {
 	}
 	log.Functionf("maybeRetryResolve(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
-
-	config := lookupResolveConfig(ctx, status.Key())
-	if config == nil {
-		log.Functionf("maybeRetryResolve(%s) no config",
-			status.Key())
-		return
-	}
 
 	if status.RetryCount == 0 {
 		status.OrigError = status.Error
@@ -88,7 +88,7 @@ func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus) {
 	status.SetErrorNow(errStr)
 	publishResolveStatus(ctx, status)
 
-	resolveTagsToHash(ctx, *config)
+	resolveTagsToHash(ctx, *config, receiveChan)
 }
 
 func publishResolveStatus(ctx *downloaderContext,
@@ -136,13 +136,17 @@ func lookupResolveStatus(ctx *downloaderContext,
 	return &status
 }
 
-func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
+func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
+	receiveChan chan<- CancelChannel) {
+
 	var (
 		err                           error
 		errStr, remoteName, serverURL string
 		syncOp                        zedUpload.SyncOpType = zedUpload.SyncOpGetObjectMetaData
 		trType                        zedUpload.SyncTransportType
 		auth                          *zedUpload.AuthInput
+		sha256                        string
+		cancelled                     bool
 	)
 
 	rs := lookupResolveStatus(ctx, rc.Key())
@@ -243,10 +247,14 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		log.Functionf("Using IP source %v if %s transport %v",
 			ipSrc, ifname, dsCtx.TransportMethod)
 
-		sha256, err := objectMetadata(ctx, trType, syncOp, serverURL, auth,
+		sha256, cancelled, err = objectMetadata(ctx, trType, syncOp, serverURL, auth,
 			dsCtx.Dpath, dsCtx.Region,
-			ifname, ipSrc, remoteName)
+			ifname, ipSrc, remoteName, receiveChan)
 		if err != nil {
+			if cancelled {
+				errStr = "tag resolution cancelled by user"
+				break
+			}
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
@@ -256,9 +264,12 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig) {
 		return
 
 	}
-	log.Errorf("All source IP addresses failed. All errors:%s", errStr)
-	errStr = fmt.Sprintf("Will retry in %v: %s",
-		retryTime, errStr)
+	if !cancelled {
+		log.Errorf("All source IP addresses failed. All errors:%s",
+			errStr)
+		errStr = fmt.Sprintf("Will retry in %v: %s",
+			retryTime, errStr)
+	}
 	rs.SetErrorNow(errStr)
 	publishResolveStatus(ctx, rs)
 }
