@@ -261,7 +261,14 @@ var deferredDelete = make([]timeAndContentTreeStatus, 0)
 // deleteContentTree optionally delays the delete using the above slice
 func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	log.Functionf("deleteContentTree for %v", status.ContentID)
-	if ctx.deferContentDelete == 0 {
+
+	// Clean up in case it was never resolved
+	deleteResolveConfig(ctx, status.ResolveKey())
+
+	// If the content tree did not complete, or knob is at default of
+	// no defer, then delete. Otherwise honor defer time to to avoid
+	// delete then re-download
+	if status.State < types.LOADED || ctx.deferContentDelete == 0 {
 		doDeleteContentTree(ctx, status)
 	} else {
 		expiry := time.Now().Add(time.Duration(ctx.deferContentDelete) * time.Second)

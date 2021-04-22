@@ -20,13 +20,15 @@ import (
 // Drona APIs for object Download
 func handleSyncOp(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
-	dst *types.DatastoreConfig) {
+	dst *types.DatastoreConfig, receiveChan chan<- CancelChannel) {
 	var (
 		err                                                    error
 		errStr, locFilename, locDirname, remoteName, serverURL string
 		syncOp                                                 zedUpload.SyncOpType = zedUpload.SyncOpDownload
 		trType                                                 zedUpload.SyncTransportType
 		auth                                                   *zedUpload.AuthInput
+		cancelled                                              bool
+		contentType                                            string
 	)
 
 	// the target filename, where to place the download, is provided in config.
@@ -45,7 +47,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if err != nil {
 		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
 			retryTime, config.Name, err)
-		handleSyncOpResponse(ctx, config, status, locFilename, key, errStr)
+		handleSyncOpResponse(ctx, config, status, locFilename, key,
+			errStr, cancelled)
 		return
 	}
 
@@ -79,7 +82,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			downloadMaxPortCost)
 		log.Error(err.Error())
 		handleSyncOpResponse(ctx, config, status, locFilename,
-			key, err.Error())
+			key, err.Error(), cancelled)
 		return
 	}
 
@@ -158,7 +161,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if errStr != "" {
 		log.Errorf("Error preparing to download. All errors:%s", errStr)
 		handleSyncOpResponse(ctx, config, status, locFilename,
-			key, errStr)
+			key, errStr, cancelled)
 		return
 	}
 
@@ -181,10 +184,16 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			status: status,
 		}
 		downloadStartTime := time.Now()
-		contentType, err := download(ctx, trType, st, syncOp, serverURL, auth,
+		contentType, cancelled, err = download(ctx, trType, st, syncOp, serverURL, auth,
 			dsCtx.Dpath, dsCtx.Region,
-			config.Size, ifname, ipSrc, remoteName, locFilename)
+			config.Size, ifname, ipSrc, remoteName, locFilename,
+			receiveChan)
 		if err != nil {
+			if cancelled {
+				log.Errorf("download %s cancelled", serverURL)
+				errStr = "download cancelled by user"
+				break
+			}
 			sourceFailureError(ipSrc.String(), ifname, metricsURL, err)
 			errStr = errStr + "\n" + err.Error()
 			continue
@@ -207,13 +216,16 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				size, size)
 		}
 		handleSyncOpResponse(ctx, config, status,
-			locFilename, key, "")
+			locFilename, key, "", cancelled)
 		return
 
 	}
-	log.Errorf("All source IP addresses failed. All errors:%s", errStr)
+	if !cancelled {
+		log.Errorf("All source IP addresses failed. All errors:%s",
+			errStr)
+	}
 	handleSyncOpResponse(ctx, config, status, locFilename,
-		key, errStr)
+		key, errStr, cancelled)
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
@@ -228,7 +240,7 @@ func getServerURL(dsCtx *types.DatastoreContext) (string, error) {
 
 func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	status *types.DownloaderStatus, locFilename string,
-	key string, errStr string) {
+	key string, errStr string, cancelled bool) {
 
 	// have finished the download operation
 	// based on the result, perform some storage
@@ -237,7 +249,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	if errStr != "" {
 		// Delete file, and update the storage
 		doDelete(ctx, key, locFilename, status)
-		status.HandleDownloadFail(errStr, retryTime)
+		status.HandleDownloadFail(errStr, retryTime, cancelled)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)
@@ -250,7 +262,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		// error, so delete the file
 		doDelete(ctx, key, locFilename, status)
 		errStr := fmt.Sprintf("%v", err)
-		status.HandleDownloadFail(errStr, retryTime)
+		status.HandleDownloadFail(errStr, retryTime, cancelled)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)

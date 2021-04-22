@@ -18,14 +18,18 @@ import (
 // Returns the content-type of the object downloaded, normally from the
 // Content-Type header, but subject to whatever the DronaRequest implementation
 // determined it is, empty string if not available; and the error, if any.
+// Returns a cancel bool to tell the caller to not retry using other
+// interfaces or IP addresses.
 func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	status Status, syncOp zedUpload.SyncOpType, downloadURL string,
 	auth *zedUpload.AuthInput, dpath, region string, maxsize uint64, ifname string,
-	ipSrc net.IP, filename, locFilename string) (string, error) {
+	ipSrc net.IP, filename, locFilename string,
+	receiveChan chan<- CancelChannel) (string, bool, error) {
 
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
 	var err error
+	var cancel bool
 	switch trType {
 	case zedUpload.SyncHttpTr, zedUpload.SyncSftpTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
@@ -40,7 +44,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s", err)
-		return "", err
+		return "", cancel, err
 	}
 	// check for proxies on the selected management port interface
 	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
@@ -62,11 +66,23 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
 		int64(maxsize), true, respChan)
 	if req == nil {
-		return "", errors.New("NewRequest failed")
+		return "", cancel, errors.New("NewRequest failed")
 	}
 
 	req = req.WithCancel(context.Background())
 	defer req.Cancel()
+
+	// Tell caller where we can be cancelled
+	cancelChan := make(chan Notify, 1)
+	receiveChan <- cancelChan
+	go func() {
+		<-cancelChan
+		cancel = true
+		errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
+			dpath, region, filename)
+		log.Error(errStr)
+		req.Cancel()
+	}()
 
 	req.Post()
 
@@ -83,7 +99,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				errStr := fmt.Sprintf("Size '%v' provided in image config of '%s' is incorrect.\nDownload status (%v / %v). Aborting the download",
 					totalSize, resp.GetLocalName(), currentSize, totalSize)
 				log.Errorln(errStr)
-				return "", errors.New(errStr)
+				return "", cancel, errors.New(errStr)
 			}
 			// Did anything change since last update?
 			change := status.Progress(progress, currentSize,
@@ -95,7 +111,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 						time.Since(lastProgress),
 						currentSize, totalSize)
 					log.Error(err)
-					return "", err
+					return "", cancel, err
 				}
 			} else {
 				lastProgress = time.Now()
@@ -108,28 +124,32 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			_, err = resp.GetUpStatus()
 		}
 		if resp.IsError() {
-			return "", err
+			return "", cancel, err
 		}
 		log.Functionf("Done for %v size %d",
 			resp.GetLocalName(), resp.GetAsize())
-		return req.GetContentType(), nil
+		return req.GetContentType(), cancel, nil
 	}
 	// if we got here, channel was closed
 	// range ends on a closed channel, which is the equivalent of "!ok"
 	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
 		dpath, region, filename)
 	log.Errorln(errStr)
-	return "", errors.New(errStr)
+	return "", cancel, errors.New(errStr)
 }
 
+// objectMetaData resolves a tag to a sha and returns the sha
+// Returns a cancel bool to tell the caller to not retry using other
+// interfaces or IP addresses.
 func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	syncOp zedUpload.SyncOpType, downloadURL string,
 	auth *zedUpload.AuthInput, dpath, region string, ifname string,
-	ipSrc net.IP, filename string) (string, error) {
+	ipSrc net.IP, filename string, receiveChan chan<- CancelChannel) (string, bool, error) {
 
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
 	var err error
+	var cancel bool
 	var sha256 string
 	switch trType {
 	case zedUpload.SyncOCIRegistryTr:
@@ -139,7 +159,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s", err)
-		return sha256, err
+		return sha256, cancel, err
 	}
 	// check for proxies on the selected management port interface
 	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
@@ -162,12 +182,23 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	req := dEndPoint.NewRequest(syncOp, filename, "",
 		0, true, respChan)
 	if req == nil {
-		return sha256, errors.New("NewRequest failed")
+		return sha256, cancel, errors.New("NewRequest failed")
 	}
 
-	// XXX add timer?
 	req = req.WithCancel(context.Background())
 	defer req.Cancel()
+
+	// Tell caller where we can be cancelled
+	cancelChan := make(chan Notify, 1)
+	receiveChan <- cancelChan
+	go func() {
+		<-cancelChan
+		cancel = true
+		errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
+			dpath, region, filename)
+		log.Error(errStr)
+		req.Cancel()
+	}()
 
 	req.Post()
 
@@ -179,7 +210,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 					resp.GetLocalName(),
 					time.Since(lastProgress))
 				log.Error(err)
-				return "", err
+				return "", cancel, err
 			}
 			continue
 		}
@@ -190,16 +221,16 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			_, err = resp.GetUpStatus()
 		}
 		if resp.IsError() {
-			return sha256, err
+			return sha256, cancel, err
 		}
 		log.Functionf("Resolve config Done for %v: sha %v",
 			filename, resp.GetSha256())
-		return sha256, nil
+		return sha256, cancel, nil
 	}
 	// if we got here, channel was closed
 	// range ends on a closed channel, which is the equivalent of "!ok"
 	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
 		dpath, region, filename)
 	log.Errorln(errStr)
-	return sha256, errors.New(errStr)
+	return sha256, cancel, errors.New(errStr)
 }

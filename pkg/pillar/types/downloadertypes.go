@@ -137,8 +137,8 @@ func (status *DownloaderStatus) ClearPendingStatus() {
 }
 
 // HandleDownloadFail : Do Failure specific tasks
-func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time.Duration) {
-	if retryTime != 0 {
+func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time.Duration, cancelled bool) {
+	if retryTime != 0 && !cancelled {
 		errStr = fmt.Sprintf("Will retry in %v: %s",
 			retryTime, errStr)
 	}

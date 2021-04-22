@@ -9,17 +9,15 @@ import (
 
 type resolveHandler struct {
 	// We have one goroutine per provisioned domU object.
-	// Channel is used to send notifications about config (add and updates)
-	// Channel is closed when the object is deleted
 	// The go-routine owns writing status for the object
 	// The key in the map is the objects Key().
 
-	handlers map[string]chan<- Notify
+	handlers map[string]*handlerChannels
 }
 
 func makeResolveHandler() *resolveHandler {
 	return &resolveHandler{
-		handlers: make(map[string]chan<- Notify),
+		handlers: make(map[string]*handlerChannels),
 	}
 }
 
@@ -30,19 +28,35 @@ func (r *resolveHandler) create(ctxArg interface{},
 
 	log.Functionf("resolveHandler.modify(%s)", key)
 	ctx := ctxArg.(*downloaderContext)
-	h, ok := r.handlers[key]
+	_, ok := r.handlers[key]
 	if ok {
 		log.Fatalf("resolveHandler.create called on config that already exists")
 	}
-	h1 := make(chan Notify, 1)
-	r.handlers[key] = h1
+	updateChan := make(chan Notify, 1)
+	receiveChan := make(chan CancelChannel, 1)
+	h := handlerChannels{
+		updateChan:  updateChan,
+		receiveChan: receiveChan,
+	}
+	r.handlers[key] = &h
+
+	// Pick up the current cancel channel from the receiveChan and save
+	// it so it can be used if there is a cancel
+	go func() {
+		for ch := range receiveChan {
+			log.Noticef("resolveHandler(%s) received cancelChan %v",
+				key, ch)
+			h.currentCancelChan = ch
+		}
+		log.Noticef("resolveHandler(%s) receiveChan func done", key)
+	}()
+
 	log.Functionf("Creating %s at %s", "runResolveHandler",
 		agentlog.GetMyStack())
-	go runResolveHandler(ctx, key, h1)
-	h = h1
+	go runResolveHandler(ctx, key, updateChan, receiveChan)
 
 	select {
-	case h <- Notify{}:
+	case h.updateChan <- Notify{}:
 		log.Functionf("resolveHandler.modify(%s) sent notify", key)
 	default:
 		// handler is slow
@@ -59,7 +73,7 @@ func (r *resolveHandler) modify(ctxArg interface{},
 		log.Fatalf("resolveHandler.modify called on config that does not exist")
 	}
 	select {
-	case h <- Notify{}:
+	case h.updateChan <- Notify{}:
 		log.Functionf("resolveHandler.modify(%s) sent notify", key)
 	default:
 		// handler is slow
@@ -73,13 +87,35 @@ func (r *resolveHandler) delete(ctxArg interface{},
 	log.Functionf("resolveHandler.delete(%s)", key)
 	// Do we have a channel/goroutine?
 	h, ok := r.handlers[key]
-	if ok {
-		log.Tracef("Closing channel")
-		close(h)
-		delete(r.handlers, key)
-	} else {
-		log.Tracef("resolveHandler.delete: unknown %s", key)
+	if !ok {
+		log.Functionf("resolveHandler.delete: unknown %s", key)
 		return
 	}
+
+	if h.currentCancelChan != nil {
+		select {
+		case h.currentCancelChan <- Notify{}:
+			log.Noticef("resolveHandler.delete(%s) sent cancel to %v",
+				key, h.currentCancelChan)
+		default:
+			// handler is slow
+			log.Warnf("resolveHandler.delete(%s) NOT sent cancel",
+				key)
+		}
+		// We only cancel one operation once
+		log.Noticef("resolveHandler.modify(%s) closing cancel channel %v",
+			key, h.currentCancelChan)
+		close(h.currentCancelChan)
+		h.currentCancelChan = nil
+	}
+	log.Functionf("Closing update channel")
+	close(h.updateChan)
+	h.updateChan = nil
+
+	log.Functionf("Closing receive channel")
+	close(h.receiveChan)
+	h.receiveChan = nil
+
+	delete(r.handlers, key)
 	log.Functionf("resolveHandler.delete(%s) done", key)
 }
