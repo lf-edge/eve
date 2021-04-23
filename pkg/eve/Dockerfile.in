@@ -1,6 +1,6 @@
 FROM alpine:3.12 as tools
 RUN mkdir -p /out/etc/apk /out/boot && cp -r /etc/apk/* /out/etc/apk/
-RUN apk add --no-cache --initdb -p /out qemu-img=5.0.0-r2 tar=1.32-r1 uboot-tools=2020.04-r0 coreutils=8.32-r0
+RUN apk add --no-cache --initdb -p /out qemu-img=5.0.0-r2 tar=1.32-r2 uboot-tools=2020.04-r0 coreutils=8.32-r0
 # hadolint ignore=DL3006
 FROM MKISO_TAG as iso
 # hadolint ignore=DL3006
