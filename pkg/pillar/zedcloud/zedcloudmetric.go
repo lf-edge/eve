@@ -8,11 +8,13 @@
 package zedcloud
 
 import (
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
-	"sync"
-	"time"
 )
 
 // agentMetrics has one entry per agentName aka LogObject
@@ -122,6 +124,46 @@ func GetCloudMetrics(log *base.LogObject) types.MetricsMap {
 		allMetrics[log] = agentMetrics{metrics: make(types.MetricsMap)}
 	}
 	return allMetrics[log].metrics
+}
+
+// GetAppURLset - get app url string set
+func GetAppURLset(log *base.LogObject) []string {
+	l := []string{}
+	cms1 := GetCloudMetrics(log)
+	for _, cm := range cms1 {
+		for k, m := range cm.URLCounters {
+			log.Tracef("findMetrics: %v", m)
+			if strings.Contains(k, "apps/instanceid") {
+				l = append(l, k)
+			}
+		}
+	}
+	return getUniqueValues(l)
+}
+
+func getUniqueValues(inSlice []string) []string {
+	keys := make(map[string]bool)
+	list := []string{}
+
+	for _, entry := range inSlice {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
+
+// CleanAppCloudMetrics - remove app log metric in map by url
+func CleanAppCloudMetrics(log *base.LogObject, url string) {
+	metrics := GetCloudMetrics(log)
+	for intf, m := range metrics {
+		if _, ok := m.URLCounters[url]; ok {
+			delete(m.URLCounters, url)
+			log.Tracef("CleanAppCloudMetrics: on %s deleted metric of url %s", intf, url)
+			continue
+		}
+	}
 }
 
 // Append concatenates different interfaces and URLs into a union map
