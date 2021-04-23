@@ -74,6 +74,7 @@ type loguploaderContext struct {
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	subDeviceNetworkStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
+	subAppInstConfig       pubsub.Subscription
 	usableAddrCount        int
 	metrics                types.NewlogMetrics
 	serverNameAndPort      string
@@ -152,6 +153,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	loguploaderCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	// get the AppInstanceConfig, will use for maintaining the current
+	// log MetricsMap http URL sets
+	subAppInstConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppInstanceConfig{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	loguploaderCtx.subAppInstConfig = subAppInstConfig
+	subAppInstConfig.Activate()
+
 	sendCtxInit(&loguploaderCtx)
 
 	for loguploaderCtx.usableAddrCount == 0 {
@@ -226,6 +243,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 	}
 
+	pubidx := 0
 	for {
 		select {
 		case change := <-subDeviceNetworkStatus.MsgChan():
@@ -233,6 +251,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAppInstConfig.MsgChan():
+			subAppInstConfig.ProcessChange(change)
 
 		case <-publishCloudTimer.C:
 			start := time.Now()
@@ -246,6 +267,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorln(err)
 			}
 			ps.CheckMaxTimeTopic(agentName, "publishCloudTimer", start, warningTime, errorTime)
+			pubidx++
+			if pubidx%360 == 0 { // reuse the timer, do check hourly for MetricMap
+				checkAppLogMetrics(&loguploaderCtx)
+			}
 
 		case <-metricsPublishTimer.C:
 			metricsPub.Publish("global", loguploaderCtx.metrics)
@@ -409,6 +434,49 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.usableAddrCount = newAddrCount
 	log.Tracef("handleDNSDelete done for %s", key)
+}
+
+// periodically check if the log for current app metric-map url list
+// is still valid. if we don't have this domain anymore, remove them.
+// using subAppInstConfig deletion won't work since the entries of those
+// app can still wait for upload on the device, the action of uploading
+// to the url can happen after the app is deleted.
+func checkAppLogMetrics(ctx *loguploaderContext) {
+	var l, l3 []string
+
+	// get current configured apps
+	sub := ctx.subAppInstConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := c.(types.AppInstanceConfig)
+		l = append(l, config.UUIDandVersion.UUID.String())
+	}
+
+	// get the url set in the log metric-map
+	l2 := zedcloud.GetAppURLset(log)
+	if len(l) == len(l2) {
+		log.Tracef("checkAppLogMetrics: log metric url is the same length %d", len(l))
+		return
+	}
+	log.Tracef("checkAppLogMetrics: app config len %d, log metrics url length %d", len(l), len(l2))
+
+	// get a removal set
+	for _, m := range l2 {
+		foundit := false
+		for _, n := range l {
+			if strings.Contains(m, n) {
+				foundit = true
+			}
+		}
+		if foundit {
+			continue
+		}
+		l3 = append(l3, m)
+	}
+	log.Tracef("checkAppLogMetrics: len %d, list of remove urls %v", len(l3), l3)
+	for _, rem := range l3 {
+		zedcloud.CleanAppCloudMetrics(log, rem)
+	}
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string, statusArg interface{}) {
