@@ -220,6 +220,7 @@ ID=""
 for audio in $(lspci -D  | grep Audio | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "Audio${ID}" "$audio")
 cat <<__EOT__
+    ${COMMA}
     {
       "ztype": 2,
       "phylabel": "Audio${ID}",
@@ -229,9 +230,9 @@ cat <<__EOT__
       },
       "logicallabel": "Audio${ID}",
       "usagePolicy": {}
-    },
 __EOT__
     ID=$(( ${ID:-0} + 1 ))
+    COMMA="},"
 done
 
 cat <<__EOT__
