@@ -21,7 +21,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	pcap "github.com/packetcap/go-pcap"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 type flowStats struct {
@@ -89,6 +89,7 @@ const (
 	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
 	appShiftBits    uint32 = 24       // top 8 bits for App Number
 	maxFlowPack     int    = 125      // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
+	flowStaleSec    int64  = 1800     // 30 min not touched, the publication will be removed
 )
 
 type dnsSys struct {
@@ -321,6 +322,9 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			log.Tracef("!!FlowStats: clear dns record for bn%d", bnNum)
 		}
 	}
+
+	// check and remove stale flowlog publications
+	checkFlowUnpublish(ctx)
 }
 
 // conntrack flow of two uni-directional stats into one
@@ -582,12 +586,26 @@ func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
 		scope.Sequence = strconv.Itoa(*seq)
 	}
 	flowKey = scope.UUID.String() + scope.NetUUID.String() + scope.Sequence
+	ctx.flowPublishMap[flowKey] = time.Now().Unix()
+
 	ctx.pubAppFlowMonitor.Publish(flowKey, *flowdata)
 	log.Functionf("FlowStats: publish to zedagent: total records %d, sequence %d\n", *idx, *seq)
 	*seq++
 	flowdata.Flows = nil
 	flowdata.DNSReqs = nil
 	*idx = 0
+}
+
+func checkFlowUnpublish(ctx *zedrouterContext) {
+	now := time.Now().Unix()
+	for k, m := range ctx.flowPublishMap {
+		passed := now - m
+		if passed > flowStaleSec { // no update after 30 minutes, remove this flowlog
+			log.Functionf("checkFlowUnpublish: key %s, sec passed %d, remove", k, passed)
+			ctx.pubAppFlowMonitor.Unpublish(k)
+			delete(ctx.flowPublishMap, k)
+		}
+	}
 }
 
 // DNSMonitor : DNS Query and Reply monitor on bridges

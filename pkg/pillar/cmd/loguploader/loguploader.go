@@ -454,8 +454,9 @@ func checkAppLogMetrics(ctx *loguploaderContext) {
 
 	// get the url set in the log metric-map
 	l2 := zedcloud.GetAppURLset(log)
-	if len(l) == len(l2) {
-		log.Tracef("checkAppLogMetrics: log metric url is the same length %d", len(l))
+	if len(l) >= len(l2) { // large or equal, not every app sends logs
+		log.Tracef("checkAppLogMetrics: log metric url number %d is the same or less than app %d",
+			len(l2), len(l))
 		return
 	}
 	log.Tracef("checkAppLogMetrics: app config len %d, log metrics url length %d", len(l), len(l2))
@@ -473,7 +474,7 @@ func checkAppLogMetrics(ctx *loguploaderContext) {
 		}
 		l3 = append(l3, m)
 	}
-	log.Tracef("checkAppLogMetrics: len %d, list of remove urls %v", len(l3), l3)
+	log.Tracef("checkAppLogMetrics: list of remove urls %v", l3)
 	for _, rem := range l3 {
 		zedcloud.CleanAppCloudMetrics(log, rem)
 	}
