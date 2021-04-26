@@ -7,6 +7,7 @@
 : "${staticroutes:=}"
 : "${ip:=}"
 : "${hostname:=}"
+: "${router:=}"
 
 [ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
 
@@ -81,8 +82,14 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add ${ip}/${mask} dev $interface
-    # shellcheck disable=SC2086
-    [ -n "$router" ] && [ -n "$staticroutes" ] && install_classless_routes $staticroutes
+    # shellcheck disable=SC2154
+    if [ -n "$router" ] ; then
+      if [ -n "$staticroutes" ] ; then
+        install_classless_routes $staticroutes
+      else
+        route add default gw "${router}" dev "${interface}"
+      fi
+    fi
     # setup dns
     if [ "$interface" == "$PEERDNS_IF" ] ; then
       # remove previous dns
@@ -128,7 +135,13 @@ case "$1" in
         ip addr add "${ip}"/"${mask}" dev "$interface"
       fi
       # shellcheck disable=SC2086
-      [ -n "$router" ] && [ -n "$staticroutes" ] && install_classless_routes $staticroutes
+      if [ -n "$router" ] ; then
+        if [ -n "$staticroutes" ] ; then
+          install_classless_routes $staticroutes
+        else
+          route add default gw "${router}" dev "${interface}"
+        fi
+      fi
       update_ip_hosts "$old_ip" $ip
     fi
     if [ -n "$REDO_DNS" -a "$interface" == "$PEERDNS_IF" ] ; then
