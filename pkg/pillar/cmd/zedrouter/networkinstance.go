@@ -534,10 +534,12 @@ func doNetworkInstanceSanityCheck(
 		return errors.New(err)
 	}
 
-	if err := checkPortAvailable(ctx, status); err != nil {
-		log.Errorf("checkPortAvailable failed: Port: %s, err:%s",
-			status.CurrentUplinkIntf, err)
-		return err
+	if status.Logicallabel != "" {
+		if err := checkPortAvailable(ctx, status); err != nil {
+			log.Errorf("checkPortAvailable failed: Port: %s, err:%s",
+				status.CurrentUplinkIntf, err)
+			return err
+		}
 	}
 
 	// IpType - Check for valid types
@@ -1319,7 +1321,12 @@ func bridgeActivate(ctx *zedrouterContext,
 			status.DisplayName, status.BridgeName)
 		return nil
 	}
-
+	// Do we have any external port?
+	if status.Logicallabel == "" {
+		log.Noticef("bridgeActivate(%s) no logicallabel",
+			status.DisplayName)
+		return nil
+	}
 	bridgeLink, err := findBridge(status.BridgeName)
 	if err != nil {
 		errStr := fmt.Sprintf("findBridge(%s) failed %s",
@@ -1367,6 +1374,12 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 	if !strings.HasPrefix(status.BridgeName, "bn") {
 		log.Noticef("bridgeInactivateforNetworkInstance(%s) %s ignored",
 			status.DisplayName, status.BridgeName)
+		return
+	}
+	// Do we have any external port?
+	if status.Logicallabel == "" {
+		log.Noticef("bridgeInactivateforNetworkInstance(%s) no logicallabel",
+			status.DisplayName)
 		return
 	}
 	// Find logicallabel
