@@ -993,6 +993,11 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				networkInfo)
 		}
 
+		if !aiStatus.ACLModifyTime.IsZero() {
+			t, _ := ptypes.TimestampProto(aiStatus.ACLModifyTime)
+			ReportAppInfo.AclModifyTime = t
+		}
+
 		for _, vr := range aiStatus.VolumeRefStatusList {
 			ReportAppInfo.VolumeRefs = append(ReportAppInfo.VolumeRefs,
 				vr.VolumeID.String())

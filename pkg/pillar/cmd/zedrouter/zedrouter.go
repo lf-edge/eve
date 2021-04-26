@@ -917,6 +917,7 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	// Set up ACLs
 	ruleList, dependList, err := createACLConfiglet(ctx, aclArgs, ulConfig.ACLs)
+	status.ACLModifyTime = time.Now()
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
@@ -1357,6 +1358,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	ruleList, dependList, err := updateACLConfiglet(ctx, aclArgs,
 		oldulConfig.ACLs, ulConfig.ACLs, rules.ACLRules,
 		ulStatus.ACLDependList, force)
+	status.ACLModifyTime = time.Now()
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}

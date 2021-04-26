@@ -154,8 +154,8 @@ type AppInstanceStatus struct {
 
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
-	State          SwState
-	MissingNetwork bool // If some Network UUID not found
+	State         SwState
+	ACLModifyTime time.Time // Indicates last modifications we handled
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource

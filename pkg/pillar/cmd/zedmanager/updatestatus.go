@@ -413,6 +413,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 		return changed
 	}
+	if ns.ACLModifyTime != status.ACLModifyTime {
+		log.Functionf("Update ACLModifyTime to %v for %s",
+			ns.ACLModifyTime, uuidStr)
+		status.ACLModifyTime = ns.ACLModifyTime
+		changed = true
+	}
 	if ns.HasError() {
 		log.Errorf("Received error from zedrouter for %s: %s",
 			uuidStr, ns.Error)
@@ -422,6 +428,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	updateAppNetworkStatus(status, ns)
+	changed = true
 	if !ns.Activated {
 		log.Functionf("Waiting for AppNetworkStatus Activated for %s", uuidStr)
 		return changed
@@ -749,6 +756,12 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 			log.Functionf("Waiting for AppNetworkStatus !Activated for %s",
 				uuidStr)
 		}
+		if ns.ACLModifyTime != status.ACLModifyTime {
+			log.Functionf("Update ACLModifyTime to %v for %s",
+				ns.ACLModifyTime, uuidStr)
+			status.ACLModifyTime = ns.ACLModifyTime
+			changed = true
+		}
 		if ns.HasError() {
 			log.Errorf("Received error from zedrouter for %s: %s",
 				uuidStr, ns.Error)
@@ -818,9 +831,16 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		return changed
 	}
 	updateAppNetworkStatus(status, ns)
+	changed = true
 	if ns.Pending() {
 		log.Functionf("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
 		return changed
+	}
+	if ns.ACLModifyTime != status.ACLModifyTime {
+		log.Functionf("Update ACLModifyTime to %v for %s",
+			ns.ACLModifyTime, uuidStr)
+		status.ACLModifyTime = ns.ACLModifyTime
+		changed = true
 	}
 	// XXX should we make it not Activated?
 	if ns.HasError() {

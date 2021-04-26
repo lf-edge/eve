@@ -121,7 +121,8 @@ type AppNetworkStatus struct {
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
 	UnderlayNetworkList  []UnderlayNetworkStatus
-	AwaitNetworkInstance bool // If any Missing flag is set in the networks
+	AwaitNetworkInstance bool      // If any Missing flag is set in the networks
+	ACLModifyTime        time.Time // Indicates last modifications we handled
 	// Any errros from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

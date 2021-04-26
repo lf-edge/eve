@@ -506,6 +506,7 @@ message ZInfoApp {
   ZSwState state = 15;
   repeated ZInfoNetwork network = 16;       // up/down; allocated IP
   repeated string volumeRefs = 17;          // volume UUIDs
+  google.protobuf.Timestamp acl_modify_time = 18; // Last time ACL changes were applied
 }
 
 // ipSec state information
