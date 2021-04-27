@@ -569,6 +569,34 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	portConfig.Version = version
 	portConfig.Ports = newPorts
 
+	// Check if all management ports have errors
+	// Propagate any parse errors for all ports to the DPC
+	// since controller expects LastError and LastFailed for the DPC
+	ok := false
+	mgmtCount := 0
+	errStr := ""
+	for _, p := range portConfig.Ports {
+		if !p.IsMgmt {
+			continue
+		}
+		mgmtCount++
+		if !p.HasError() {
+			ok = true
+			break
+		}
+		errStr += p.LastError + "\n"
+	}
+	if !ok {
+		if errStr != "" {
+			errStr = "All management ports failed to parse: " + errStr
+		} else if mgmtCount == 0 {
+			errStr = "No management interfaces"
+		} else {
+			errStr = "All management ports failed parser"
+		}
+		portConfig.RecordFailure(errStr)
+	}
+
 	// Any content change?
 	// Even if only ErrorAndTime changed we publish so
 	// the change can be sent back to the controller using ctx.devicePortConfigList
