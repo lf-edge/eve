@@ -26,6 +26,7 @@ type volumeWorkDescription struct {
 	// Used for results
 	FileLocation  string
 	VolumeCreated bool
+	CreateTime    time.Time
 }
 
 // casIngestWorkDescription cas ingest work we feed into the worker go routine
@@ -41,6 +42,7 @@ type volumeWorkResult struct {
 	// Used to update VolumeStatus
 	FileLocation  string
 	VolumeCreated bool
+	CreateTime    time.Time
 }
 
 // casIngestWorkResult result of ingesting
@@ -130,6 +132,9 @@ func volumeWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 		volumeCreated, fileLocation, err = destroyVolume(ctx, d.status)
 	}
 	d.VolumeCreated = volumeCreated
+	if volumeCreated {
+		d.CreateTime = time.Now()
+	}
 	d.FileLocation = fileLocation
 	result := worker.WorkResult{
 		Key:         w.Key,
@@ -181,6 +186,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	// loadedBlobs are BlobStatus for the ones we loaded; publicize their new states.
 	for _, blob := range loadedBlobs {
 		blob.State = types.LOADED
+		blob.CreateTime = time.Now()
 		publishBlobStatus(ctx, &blob)
 		d.loaded = append(d.loaded, blob.Sha256)
 	}
@@ -235,5 +241,6 @@ func popVolumeWorkResult(ctx *volumemgrContext, key string) *volumeWorkResult {
 		WorkResult:    *res,
 		FileLocation:  d.FileLocation,
 		VolumeCreated: d.VolumeCreated,
+		CreateTime:    d.CreateTime,
 	}
 }

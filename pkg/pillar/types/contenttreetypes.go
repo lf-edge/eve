@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -110,11 +111,15 @@ type ContentTreeStatus struct {
 	DisplayName       string
 	HasResolverRef    bool
 	State             SwState
-	TotalSize         int64  // expected size as reported by the downloader, if any
-	CurrentSize       int64  // current total downloaded size as reported by the downloader
-	Progress          uint   // In percent i.e., 0-100
-	FileLocation      string // Location of filestystem
-	NameIsURL         bool
+	// XXX RefCount not needed?
+	// RefCount                uint
+	// LastRefCountChangeTime  time.Time
+	CreateTime   time.Time // When LOADED
+	TotalSize    int64     // expected size as reported by the downloader, if any
+	CurrentSize  int64     // current total downloaded size as reported by the downloader
+	Progress     uint      // In percent i.e., 0-100
+	FileLocation string    // Location of filestystem
+	NameIsURL    bool
 	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
 	Blobs []string
 

@@ -1073,7 +1073,13 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ContentResourcesInfo := new(info.ContentResources)
 		ContentResourcesInfo.CurSizeBytes = uint64(ctStatus.TotalSize)
 		ReportContentInfo.Resources = ContentResourcesInfo
-
+		createTime, _ := ptypes.TimestampProto(ctStatus.CreateTime)
+		ReportContentInfo.Usage = &info.UsageInfo{
+			// XXX RefCount: uint32(ctStatus.RefCount),
+			RefCount:               1,
+			LastRefcountChangeTime: createTime,
+			CreateTime:             createTime,
+		}
 		ReportContentInfo.Sha256 = ctStatus.ContentSha256
 		ReportContentInfo.ProgressPercentage = uint32(ctStatus.Progress)
 		ReportContentInfo.GenerationCount = ctStatus.GenerationCounter
@@ -1161,6 +1167,13 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 				ReportVolumeInfo.Resources = VolumeResourcesInfo
 			}
 		}
+		createTime, _ := ptypes.TimestampProto(volStatus.CreateTime)
+		lastChangeTime, _ := ptypes.TimestampProto(volStatus.LastRefCountChangeTime)
+		ReportVolumeInfo.Usage = &info.UsageInfo{
+			RefCount:               uint32(volStatus.RefCount),
+			LastRefcountChangeTime: lastChangeTime,
+			CreateTime:             createTime,
+		}
 
 		ReportVolumeInfo.ProgressPercentage = uint32(volStatus.Progress)
 		ReportVolumeInfo.GenerationCount = volStatus.GenerationCounter
@@ -1229,7 +1242,13 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 		state = blobStatus.State
 		objErr = blobStatus.HasError()
 		ReportBlobInfo.ProgressPercentage = blobStatus.GetDownloadedPercentage()
-		ReportBlobInfo.Usage = &info.UsageInfo{RefCount: uint32(blobStatus.RefCount)}
+		createTime, _ := ptypes.TimestampProto(blobStatus.CreateTime)
+		lastChangeTime, _ := ptypes.TimestampProto(blobStatus.LastRefCountChangeTime)
+		ReportBlobInfo.Usage = &info.UsageInfo{
+			RefCount:               uint32(blobStatus.RefCount),
+			LastRefcountChangeTime: lastChangeTime,
+			CreateTime:             createTime,
+		}
 		ReportBlobInfo.Resources = &info.ContentResources{CurSizeBytes: blobStatus.Size}
 	}
 	ReportBlobInfoList.Blob = append(ReportBlobInfoList.Blob, ReportBlobInfo)

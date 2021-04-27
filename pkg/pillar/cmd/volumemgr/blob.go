@@ -121,6 +121,7 @@ func downloadBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 func AddRefToBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobStatus) {
 	for _, blob := range blobStatus {
 		blob.RefCount++
+		blob.LastRefCountChangeTime = time.Now()
 		log.Functionf("AddRefToBlobStatus: RefCount to %d for Blob %s",
 			blob.RefCount, blob.Sha256)
 		publishBlobStatus(ctx, blob)
@@ -134,6 +135,7 @@ func RemoveRefFromBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobSta
 			log.Fatalf("RemoveRefFromBlobStatus: Attempting to reduce 0 Refcount for blob %s ", blob.Sha256)
 		}
 		blob.RefCount--
+		blob.LastRefCountChangeTime = time.Now()
 		log.Functionf("RemoveRefFromBlobStatus: RefCount to %d for Blob %s",
 			blob.RefCount, blob.Sha256)
 		if blob.RefCount == 0 {
@@ -273,11 +275,12 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 		if existingChild == nil {
 			return []*types.BlobStatus{
 				{
-					DatastoreID: blob.DatastoreID,
-					RelativeURL: replaceSha(blob.RelativeURL, manifest.Digest),
-					Sha256:      strings.ToLower(manifest.Digest.Hex),
-					Size:        uint64(manifest.Size),
-					State:       types.INITIAL,
+					DatastoreID:            blob.DatastoreID,
+					RelativeURL:            replaceSha(blob.RelativeURL, manifest.Digest),
+					Sha256:                 strings.ToLower(manifest.Digest.Hex),
+					Size:                   uint64(manifest.Size),
+					LastRefCountChangeTime: time.Now(),
+					State:                  types.INITIAL,
 				},
 			}
 		} else if existingChild.State == types.LOADED {
@@ -310,12 +313,13 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 				} else {
 					log.Functionf("getBlobChildren(%s): creating a new BlobStatus for child %s", blob.Sha256, childHash)
 					blobChildren = append(blobChildren, &types.BlobStatus{
-						DatastoreID: blob.DatastoreID,
-						RelativeURL: replaceSha(blob.RelativeURL, child.Digest),
-						Sha256:      childHash,
-						Size:        uint64(child.Size),
-						State:       types.INITIAL,
-						MediaType:   string(child.MediaType),
+						DatastoreID:            blob.DatastoreID,
+						RelativeURL:            replaceSha(blob.RelativeURL, child.Digest),
+						Sha256:                 childHash,
+						Size:                   uint64(child.Size),
+						State:                  types.INITIAL,
+						MediaType:              string(child.MediaType),
+						LastRefCountChangeTime: time.Now(),
 					})
 				}
 			}
@@ -418,13 +422,15 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, blobSha string) *types.Blob
 	if vs != nil && !vs.Expired {
 		log.Functionf("lookupOrCreateBlobStatus(%s) VerifyImageStatus found, creating and publishing BlobStatus", blobSha)
 		blob := &types.BlobStatus{
-			Sha256:      blobSha,
-			State:       vs.State,
-			Path:        vs.FileLocation,
-			Size:        uint64(vs.Size),
-			CurrentSize: vs.Size,
-			TotalSize:   vs.Size,
-			Progress:    100,
+			Sha256:                 blobSha,
+			State:                  vs.State,
+			Path:                   vs.FileLocation,
+			Size:                   uint64(vs.Size),
+			CurrentSize:            vs.Size,
+			TotalSize:              vs.Size,
+			Progress:               100,
+			CreateTime:             time.Now(),
+			LastRefCountChangeTime: time.Now(),
 		}
 		updateBlobFromVerifyImageStatus(vs, blob)
 		startBlobVerification(ctx, blob)
@@ -535,13 +541,15 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
 			log.Functionf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
-				Sha256:      strings.TrimPrefix(blobInfo.Digest, "sha256:"),
-				Size:        uint64(blobInfo.Size),
-				State:       types.LOADED,
-				MediaType:   mediaType,
-				TotalSize:   blobInfo.Size,
-				CurrentSize: blobInfo.Size,
-				Progress:    100,
+				Sha256:                 strings.TrimPrefix(blobInfo.Digest, "sha256:"),
+				Size:                   uint64(blobInfo.Size),
+				State:                  types.LOADED,
+				MediaType:              mediaType,
+				TotalSize:              blobInfo.Size,
+				CurrentSize:            blobInfo.Size,
+				Progress:               100,
+				LastRefCountChangeTime: time.Now(),
+				CreateTime:             time.Now(),
 			}
 			newBlobStatus = append(newBlobStatus, blobStatus)
 		} else {

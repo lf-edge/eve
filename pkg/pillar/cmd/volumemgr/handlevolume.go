@@ -59,6 +59,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 			log.Functionf("RefCount changed from %d to %d for %s",
 				status.RefCount, config.RefCount, config.DisplayName)
 			status.RefCount = config.RefCount
+			status.LastRefCountChangeTime = time.Now()
 		}
 		updateVolumeStatusRefCount(ctx, status)
 		publishVolumeStatus(ctx, status)
@@ -108,6 +109,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		VolumeDir:               config.VolumeDir,
 		DisplayName:             config.DisplayName,
 		RefCount:                config.RefCount,
+		LastRefCountChangeTime:  time.Now(),
 		LastUse:                 time.Now(),
 		State:                   types.INITIAL,
 	}
@@ -118,6 +120,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		status.Progress = 100
 		status.FileLocation = status.PathName()
 		status.VolumeCreated = true
+		status.CreateTime = time.Now()
 		actualSize, maxSize, _, _, err := utils.GetVolumeSize(log, status.FileLocation)
 		if err != nil {
 			log.Error(err)
@@ -269,6 +272,9 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 			log.Functionf("VolumeWorkResult(%s) location %s, created %t",
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
 			status.VolumeCreated = vr.VolumeCreated
+			if vr.VolumeCreated {
+				status.CreateTime = vr.CreateTime
+			}
 			status.FileLocation = vr.FileLocation
 			if vr.Error != nil {
 				status.SetErrorWithSource(vr.Error.Error(),
@@ -315,6 +321,7 @@ func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) {
 	newRefCount := vcRefCount + vrcRefCount
 	if newRefCount != oldRefCount {
 		vs.RefCount = newRefCount
+		vs.LastRefCountChangeTime = time.Now()
 		log.Functionf("updateVolumeStatusRefCount(%s) updated from %d to %d",
 			vs.Key(), oldRefCount, newRefCount)
 	}
