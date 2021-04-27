@@ -997,11 +997,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
-	cms := zedcloud.GetCloudMetrics(log)
 	subClientMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedclient",
 		MyAgentName: agentName,
-		TopicImpl:   cms,
+		TopicImpl:   types.MetricsMap{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1011,7 +1010,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// cloud metrics of loguploader
 	subLoguploaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "loguploader",
-		TopicImpl: cms,
+		TopicImpl: types.MetricsMap{},
 		Activate:  true,
 		Ctx:       &zedagentCtx,
 	})
@@ -1021,7 +1020,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDownloaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
 		MyAgentName: agentName,
-		TopicImpl:   cms,
+		TopicImpl:   types.MetricsMap{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})

@@ -312,8 +312,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	zedboxStats.NumGoRoutines = uint32(runtime.NumGoroutine()) // number of zedbox goroutines
 	ReportDeviceMetric.Zedbox = zedboxStats
 
-	// Collect zedcloud metrics from ourselves and other agents
-	cms := types.MetricsMap{} // Start empty
+	// Transfer to a local copy in since metrics updates are done concurrently
+	cms := types.MetricsMap{}
 	zedagentMetrics := zedcloud.GetCloudMetrics(log)
 	if zedagentMetrics != nil {
 		cms = zedcloud.Append(cms, zedagentMetrics)

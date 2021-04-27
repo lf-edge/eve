@@ -74,10 +74,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	cms := zedcloud.GetCloudMetrics(log) // Need type of data
 	metricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: cms,
+		TopicType: types.MetricsMap{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -174,7 +173,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err := metricsPub.Publish("global", zedcloud.GetCloudMetrics(log))
+			// Transfer to a local copy in since metrics updates are
+			// done concurrently
+			cms := zedcloud.Append(types.MetricsMap{},
+				zedcloud.GetCloudMetrics(log))
+			err := metricsPub.Publish("global", cms)
 			if err != nil {
 				log.Errorln(err)
 			}
