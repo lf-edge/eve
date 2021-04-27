@@ -434,6 +434,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	if cipherMetricsNim != nil {
 		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsNim)
 	}
+	if cipherMetricsZR != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsZR)
+	}
 	for agentName, cm := range cipherMetrics {
 		log.Tracef("Cipher metrics for %s: %+v", agentName, cm)
 		metric := metrics.CipherMetric{AgentName: agentName,

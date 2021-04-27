@@ -68,6 +68,8 @@ type AppInstanceConfig struct {
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+
+	MetaDataType MetaDataType
 }
 
 type AppInstanceOpsCmd struct {

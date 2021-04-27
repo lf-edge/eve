@@ -9,10 +9,12 @@ package zedrouter
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -35,9 +37,14 @@ type hostnameHandler struct {
 	ctx *zedrouterContext
 }
 
+// Provides links for OpenStack metadata/userdata
+type openstackHandler struct {
+	ctx *zedrouterContext
+}
+
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
 	if bridgeIP == "" {
-		err := fmt.Errorf("Can't run server on %s: no bridgeIP", bridgeName)
+		err := fmt.Errorf("can't run server on %s: no bridgeIP", bridgeName)
 		log.Error(err)
 		return err
 	}
@@ -48,6 +55,10 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 	mux.Handle("/eve/v1/external_ipv4", ipHandler)
 	hostnameHandler := &hostnameHandler{ctx: ctx}
 	mux.Handle("/eve/v1/hostname", hostnameHandler)
+
+	openstackHandler := &openstackHandler{ctx: ctx}
+	mux.Handle("/openstack", openstackHandler)
+	mux.Handle("/openstack/", openstackHandler)
 
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
@@ -226,4 +237,102 @@ func (hdl hostnameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp := []byte(anStatus.UUIDandVersion.UUID.String() + "\n")
 		w.Write(resp)
 	}
+}
+
+// ServeHTTP for openstackHandler metadata service
+func (hdl openstackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("openstackHandler ServeHTTP request: %s", r.URL.String())
+	dirname, filename := path.Split(strings.TrimSuffix(r.URL.Path, "/"))
+	dirname = strings.TrimSuffix(dirname, "/")
+	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
+	var hostname string
+	var id string
+	if anStatus != nil {
+		hostname = anStatus.DisplayName
+		id = anStatus.UUIDandVersion.UUID.String()
+	} else {
+		errorLine := fmt.Sprintf("no AppNetworkStatus for %s",
+			remoteIP.String())
+		log.Error(errorLine)
+		http.Error(w, errorLine, http.StatusNotImplemented)
+		return
+	}
+	anConfig := lookupAppNetworkConfig(hdl.ctx, anStatus.Key())
+	if anConfig == nil {
+		errorLine := fmt.Sprintf("no AppNetworkConfig for %s",
+			anStatus.Key())
+		log.Error(errorLine)
+		http.Error(w, errorLine, http.StatusNotImplemented)
+		return
+	}
+	if anConfig.MetaDataType != types.MetaDataOpenStack {
+		errorLine := fmt.Sprintf("no MetaDataOpenStack for %s",
+			anStatus.Key())
+		log.Tracef(errorLine)
+		http.Error(w, errorLine, http.StatusNotFound)
+		return
+	}
+	switch filename {
+	case "openstack":
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "latest")
+	case "meta_data.json":
+		keys := getSSHPublicKeys(hdl.ctx, anConfig)
+		var keysMap []map[string]string
+		publicKeys := make(map[string]string)
+		for ind, key := range keys {
+			keysMap = append(keysMap, map[string]string{
+				"data": fmt.Sprintf("%s\n", key),
+				"type": "ssh",
+				"name": fmt.Sprintf("key-%d", ind),
+			})
+			publicKeys[fmt.Sprintf("key-%d", ind)] = fmt.Sprintf("%s\n", key)
+		}
+		resp, _ := json.Marshal(map[string]interface{}{
+			"uuid":         id,
+			"hostname":     hostname,
+			"name":         hostname,
+			"launch_index": 0,
+			"keys":         keysMap,
+			"public_keys":  publicKeys,
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(resp)
+	case "network_data.json":
+		resp, _ := json.Marshal(map[string]interface{}{
+			"services": []string{},
+			"networks": []string{},
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(resp)
+	case "user_data":
+		userData, err := getCloudInitUserData(hdl.ctx, anConfig)
+		if err != nil {
+			errorLine := fmt.Sprintf("cannot get userData for %s: %v",
+				anStatus.Key(), err)
+			log.Error(errorLine)
+			http.Error(w, errorLine, http.StatusInternalServerError)
+			return
+		}
+		ud, err := base64.StdEncoding.DecodeString(userData)
+		if err != nil {
+			errorLine := fmt.Sprintf("cannot decode userData for %s: %v",
+				anStatus.Key(), err)
+			log.Error(errorLine)
+			http.Error(w, errorLine, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/yaml")
+		w.WriteHeader(http.StatusOK)
+		w.Write(ud)
+	case "vendor_data.json":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{}"))
+	}
+	w.WriteHeader(http.StatusNotFound)
 }

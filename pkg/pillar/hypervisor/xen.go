@@ -144,6 +144,9 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 
 	// finally we can start it up
 	spec.Get().Process.Args = []string{"/etc/xen/scripts/xen-start", status.DomainName, file.Name()}
+	if config.MetaDataType == types.MetaDataOpenStack {
+		spec.Get().Process.Args = append(spec.Get().Process.Args, "smbios_product")
+	}
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}

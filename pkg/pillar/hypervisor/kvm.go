@@ -437,6 +437,11 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		dmArgs = append(dmArgs, ctx.dmCPUArgs...)
 	}
 
+	if config.MetaDataType == types.MetaDataOpenStack {
+		// we need to set product_name to support cloud-init
+		dmArgs = append(dmArgs, "-smbios", "type=1,product=OpenStack Compute")
+	}
+
 	os.MkdirAll(kvmStateDir+domainName, 0777)
 
 	args := []string{ctx.dmExec}

@@ -35,10 +35,38 @@ type DomainConfig struct {
 	IoAdapterList  []IoAdapter
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	CloudInitUserData *string // base64-encoded
+	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+
+	// MetaDataType for select type of metadata service for app
+	MetaDataType MetaDataType
+}
+
+// MetaDataType of metadata service for app
+// must match the values in the proto definition
+type MetaDataType uint8
+
+// types of metadata service for app if CloudInitUserData provided
+const (
+	MetaDataDrive MetaDataType = iota + 0 // Default
+	MetaDataNone
+	MetaDataOpenStack
+)
+
+// String returns the string name
+func (metaDataType MetaDataType) String() string {
+	switch metaDataType {
+	case MetaDataDrive:
+		return "MetaDataDrive"
+	case MetaDataNone:
+		return "MetaDataNone"
+	case MetaDataOpenStack:
+		return "MetaDataOpenStack"
+	default:
+		return fmt.Sprintf("Unknown MetaDataType %d", metaDataType)
+	}
 }
 
 // GetOCIConfigDir returns a location for OCI Config

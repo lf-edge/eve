@@ -18,6 +18,13 @@ message InstanceOpsCmd {
   string opsTime = 4; // Not currently used
 }
 
+// Type of metadata to use
+enum MetaDataType {
+  MetaDataDrive = 0;
+  MetaDataNone = 1; // Do not use metadata
+  MetaDataOpenStack = 2;
+}
+
 // The complete configuration for an Application Instance
 // When changing key fields such as the drives/volumeRefs or the number
 // of interfaces, the controller is required to issue a purge command i.e.,
@@ -100,6 +107,9 @@ message AppInstanceConfig {
   // Note that since the name volumeRef was used before and deprecated
   // python protobuf seems to require that we use a different name.
   repeated VolumeRef volumeRefList = 16;
+
+  // metadata type to use for app if provided inside userData
+  MetaDataType metaDataType = 17;
 }
 
 // Reference to a Volume specified separately in the API
