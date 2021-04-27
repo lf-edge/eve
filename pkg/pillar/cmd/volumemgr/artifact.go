@@ -1,3 +1,6 @@
+// Copyright (c) 2020,2021 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package volumemgr
 
 import (
@@ -6,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	ctrcontent "github.com/containerd/containerd/content"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
@@ -89,10 +93,12 @@ func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatu
 			err.Error())
 	}
 	blobStatuses = append(blobStatuses, &types.BlobStatus{
-		Content:   manifestBytes,
-		State:     types.VERIFIED,
-		MediaType: string(v1types.OCIManifestSchema1),
-		Sha256:    digest.FromBytes(manifestBytes).Encoded(),
+		Content:                manifestBytes,
+		State:                  types.VERIFIED,
+		MediaType:              string(v1types.OCIManifestSchema1),
+		Sha256:                 digest.FromBytes(manifestBytes).Encoded(),
+		CreateTime:             time.Now(),
+		LastRefCountChangeTime: time.Now(),
 	})
 
 	configReaderAt, err := provider.ReaderAt(context.Background(), manifest.Config)
@@ -109,14 +115,16 @@ func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatu
 	blen := int64(len(configBytes))
 	// and the config file which was in the manifest
 	blobStatuses = append(blobStatuses, &types.BlobStatus{
-		Content:     configBytes,
-		State:       types.VERIFIED,
-		Size:        uint64(blen),
-		CurrentSize: blen,
-		TotalSize:   blen,
-		Progress:    100,
-		MediaType:   string(v1types.OCIConfigJSON),
-		Sha256:      manifest.Config.Digest.Encoded(),
+		Content:                configBytes,
+		State:                  types.VERIFIED,
+		Size:                   uint64(blen),
+		CurrentSize:            blen,
+		TotalSize:              blen,
+		Progress:               100,
+		MediaType:              string(v1types.OCIConfigJSON),
+		Sha256:                 manifest.Config.Digest.Encoded(),
+		CreateTime:             time.Now(),
+		LastRefCountChangeTime: time.Now(),
 	})
 	return blobStatuses, nil
 }

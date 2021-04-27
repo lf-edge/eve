@@ -161,6 +161,7 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 			DisplayName:       config.DisplayName,
 			State:             types.INITIAL,
 			Blobs:             []string{},
+			// LastRefCountChangeTime: time.Now(),
 		}
 
 		// we only publish the BlobStatus if we have the hash for it; this
@@ -179,12 +180,14 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 					mediaType = ""
 				}
 				rootBlob := &types.BlobStatus{
-					DatastoreID: config.DatastoreID,
-					RelativeURL: config.RelativeURL,
-					Sha256:      strings.ToLower(config.ContentSha256),
-					Size:        config.MaxDownloadSize,
-					State:       types.INITIAL,
-					MediaType:   mediaType,
+					DatastoreID:            config.DatastoreID,
+					RelativeURL:            config.RelativeURL,
+					Sha256:                 strings.ToLower(config.ContentSha256),
+					Size:                   config.MaxDownloadSize,
+					State:                  types.INITIAL,
+					MediaType:              mediaType,
+					CreateTime:             time.Now(),
+					LastRefCountChangeTime: time.Now(),
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}

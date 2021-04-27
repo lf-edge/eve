@@ -93,11 +93,13 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			rootBlob := lookupOrCreateBlobStatus(ctx, status.ContentSha256)
 			if rootBlob == nil {
 				rootBlob = &types.BlobStatus{
-					DatastoreID: status.DatastoreID,
-					RelativeURL: status.RelativeURL,
-					Sha256:      status.ContentSha256,
-					Size:        status.MaxDownloadSize,
-					State:       types.INITIAL,
+					DatastoreID:            status.DatastoreID,
+					RelativeURL:            status.RelativeURL,
+					Sha256:                 status.ContentSha256,
+					Size:                   status.MaxDownloadSize,
+					State:                  types.INITIAL,
+					CreateTime:             time.Now(),
+					LastRefCountChangeTime: time.Now(),
 				}
 				log.Functionf("doUpdateContentTree: publishing new root BlobStatus (%s) for content tree (%s)",
 					status.ContentSha256, status.ContentID)
@@ -389,6 +391,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		}
 		log.Functionf("doUpdateContentTree(%s): image exists in CAS, Content Tree load is completely LOADED", status.Key())
 		status.State = types.LOADED
+		status.CreateTime = time.Now()
 		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
 		status.FileLocation = ""
 
@@ -497,6 +500,9 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					log.Functionf("From vr set VolumeCreated to %s for %s",
 						vr.FileLocation, status.VolumeID)
 					status.VolumeCreated = vr.VolumeCreated
+					if status.VolumeCreated {
+						status.CreateTime = vr.CreateTime
+					}
 					changed = true
 				}
 				if status.FileLocation != vr.FileLocation && vr.Error == nil {
@@ -524,6 +530,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		if status.State == types.CREATING_VOLUME && status.VolumeCreated {
 			if !status.HasError() {
 				status.State = types.CREATED_VOLUME
+				status.CreateTime = time.Now()
 			}
 			changed = true
 			// Work is done
