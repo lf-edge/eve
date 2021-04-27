@@ -126,10 +126,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 	}
 
-	cms := zedcloud.GetCloudMetrics(log) // Need type of data
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: cms,
+		TopicType: types.MetricsMap{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -475,7 +474,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 	}
 
-	err = pub.Publish("global", zedcloud.GetCloudMetrics(log))
+	// Transfer to a local copy in case metrics updates are done concurrently
+	cms := zedcloud.Append(types.MetricsMap{}, zedcloud.GetCloudMetrics(log))
+	err = pub.Publish("global", cms)
 	if err != nil {
 		log.Errorln(err)
 	}

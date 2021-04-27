@@ -108,6 +108,12 @@ func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int6
 	mutex.Unlock()
 }
 
+// GetCloudMetrics returns the metrics for an agent aka log pointer.
+// Note that the caller can not safely use this directly since the map
+// might be modified by other goroutines. But the output can be Append'ed to
+// a map owned by the caller.
+// Recommended usage:
+// cms := zedcloud.Append(types.MetricsMap{}, zedcloud.GetCloudMetrics(log))
 func GetCloudMetrics(log *base.LogObject) types.MetricsMap {
 	if allMetrics == nil {
 		logrus.Fatal("no allMetrics")
@@ -118,8 +124,13 @@ func GetCloudMetrics(log *base.LogObject) types.MetricsMap {
 	return allMetrics[log].metrics
 }
 
-// Concatenate different interfaces and URLs into a union map
+// Append concatenates different interfaces and URLs into a union map
+// Assumes the caller has exclusive access to cms. Uses mutex to serialize
+// access to cms1
 func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	for ifname, cm1 := range cms1 {
 		cm, ok := cms[ifname]
 		if !ok {

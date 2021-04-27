@@ -171,11 +171,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Functionf("Have %d management ports with usable addresses", loguploaderCtx.usableAddrCount)
 
 	// Publish cloud metrics
-	cms := zedcloud.GetCloudMetrics(log) // Need type of data
 	pubCloud, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
-			TopicType: cms,
+			TopicType: types.MetricsMap{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -238,7 +237,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-publishCloudTimer.C:
 			start := time.Now()
 			log.Tracef("publishCloudTimer cloud metrics at at %s", time.Now().String())
-			err := pubCloud.Publish("global", zedcloud.GetCloudMetrics(log))
+			// Transfer to a local copy in in case metrics updates
+			// are done concurrently
+			cms := zedcloud.Append(types.MetricsMap{},
+				zedcloud.GetCloudMetrics(log))
+			err := pubCloud.Publish("global", cms)
 			if err != nil {
 				log.Errorln(err)
 			}
