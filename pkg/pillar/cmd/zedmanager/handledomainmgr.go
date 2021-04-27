@@ -46,6 +46,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		CloudInitUserData: aiConfig.CloudInitUserData,
 		CipherBlockStatus: aiConfig.CipherBlockStatus,
 		GPUConfig:         "legacy",
+		MetaDataType:      aiConfig.MetaDataType,
 	}
 
 	dc.DiskConfigList = make([]types.DiskConfig, 0, len(aiStatus.VolumeRefStatusList))

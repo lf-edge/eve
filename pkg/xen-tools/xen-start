@@ -53,7 +53,7 @@ xen_info() {
 }
 
 # pre-flight checks
-[ $# -ne 2 ] && bail "Usage: $0 <domain name> <domain config>"
+[ $# -lt 2 ] && bail "Usage: $0 <domain name> <domain config> [smbios_product system-product-name]"
 
 # declare the status as running
 mkdir -p /run/tasks >/dev/null 2>&1
@@ -74,6 +74,14 @@ xl create "$2" -p $EXTRA_ARGS || bail "xl created failed"
 
 # we may need to wait for domain to come online for us to manipulate it (timing out in under 30 sec)
 ID=$(domID "$1")
+
+if [ $# -eq 3 ]
+then
+  PRODUCT_NAME="OpenStack Compute"
+  # FIXME: it is not persist after VM reboot from inside
+  xenstore-write "/local/domain/$ID/bios-strings/system-product-name" "$PRODUCT_NAME" || echo "fail to set product name"
+fi
+
 # check it timed out
 if [ -z "$ID" ]; then
   echo broken > "/run/tasks/$1"

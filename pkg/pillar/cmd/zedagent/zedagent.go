@@ -71,6 +71,7 @@ var networkMetrics types.NetworkMetrics
 var cipherMetricsDL types.CipherMetricsMap
 var cipherMetricsDM types.CipherMetricsMap
 var cipherMetricsNim types.CipherMetricsMap
+var cipherMetricsZR types.CipherMetricsMap
 
 // Context for handleDNSModify
 type DNSContext struct {
@@ -1058,6 +1059,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
+	subCipherMetricsZR, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetricsMap{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	//Parse SMART data
 	go parseSMARTData()
@@ -1227,6 +1238,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					err)
 			} else {
 				cipherMetricsNim = m.(types.CipherMetricsMap)
+			}
+
+		case change := <-subCipherMetricsZR.MsgChan():
+			subCipherMetricsZR.ProcessChange(change)
+			m, err := subCipherMetricsZR.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsZR.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsZR = m.(types.CipherMetricsMap)
 			}
 
 		case change := <-subNetworkInstanceStatus.MsgChan():

@@ -1582,11 +1582,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			}
 			status.EnvVariables = envList
 		} else {
-			ds, err := createCloudInitISO(ctx, config, ciStr)
-			if err != nil {
-				return err
+			if config.MetaDataType == types.MetaDataDrive {
+				ds, err := createCloudInitISO(ctx, config, ciStr)
+				if err != nil {
+					return err
+				}
+				status.DiskStatusList = append(status.DiskStatusList, *ds)
 			}
-			status.DiskStatusList = append(status.DiskStatusList, *ds)
 		}
 	}
 
