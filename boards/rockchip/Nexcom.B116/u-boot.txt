@@ -1,0 +1,2 @@
+env set devnum 1
+run scan_dev_for_efi

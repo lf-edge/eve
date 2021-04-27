@@ -186,6 +186,12 @@ var mToF = []modelToFuncs{
 		ledName:   "uno",
 	},
 	{
+		model:     "rockchip.evb_rk3399.NexCore,Q116.rockchip,rk3399",
+		initFunc:  InitLedCmd,
+		blinkFunc: ExecuteLedCmd,
+		ledName:   "eve",
+	},
+	{
 		model:     "AAEON.UP-APL01",
 		initFunc:  InitLedCmd,
 		blinkFunc: ExecuteLedCmd,
