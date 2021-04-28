@@ -11,11 +11,14 @@ package domainmgr
 import (
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
@@ -101,4 +104,308 @@ func decodeAndParseEnvVariablesFromCloudInit(ciStr string) (map[string]string, e
 	}
 
 	return parseEnvVariablesFromCloudInit(string(ud))
+}
+
+// Definitions of various cloud-init multi-part messages
+
+var ciGood = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciNoct = `MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciNoboundary = `Content-Type: multipart/mixed"
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciNotmultipart = `Content-Type: text/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciNofile = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciNocd = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciSubdirs = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="a/b/commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="a/c/../../empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciEscape = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="a/../../commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="a/c/../../empty.txt"
+
+--===============dZOZMyOGZ9KiSApI==--
+`
+
+var ciTruncated = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="empty.txt"
+
+`
+
+var ciTruncatedOne = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+--===============dZOZMyOGZ9KiSApI==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="commands.txt"
+
+echo "Hello World!"
+
+
+
+--===============dZOZMyOGZ9KiSApI==
+`
+
+var ciTruncatedZero = `Content-Type: multipart/mixed; boundary="===============dZOZMyOGZ9KiSApI=="
+MIME-Version: 1.0
+
+`
+
+func TestHandleMimeMultipart(t *testing.T) {
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "domainmgr", 0)
+	testMatrix := map[string]struct {
+		ciStr           string
+		expectMultipart bool
+		expectFail      bool
+	}{
+		"Test empty": {
+			ciStr:           "",
+			expectMultipart: false,
+			expectFail:      false,
+		},
+		"Test no Content-Type": {
+			ciStr:           ciNoct,
+			expectMultipart: false,
+			expectFail:      false,
+		},
+		"Test no boundary": {
+			ciStr:           ciNoboundary,
+			expectMultipart: false,
+			expectFail:      false,
+		},
+		"Test not Content-Type multipart": {
+			ciStr:           ciNotmultipart,
+			expectMultipart: false,
+			expectFail:      false,
+		},
+		"Test no filename": {
+			ciStr:           ciNofile,
+			expectMultipart: true,
+			expectFail:      true,
+		},
+		"Test no Content-Disposition": {
+			ciStr:           ciNocd,
+			expectMultipart: true,
+			expectFail:      true,
+		},
+		"Test good": {
+			ciStr:           ciGood,
+			expectMultipart: true,
+			expectFail:      false,
+		},
+		"Test subdirs": {
+			ciStr:           ciSubdirs,
+			expectMultipart: true,
+			expectFail:      false,
+		},
+		"Test escape": {
+			ciStr:           ciEscape,
+			expectMultipart: true,
+			expectFail:      true,
+		},
+		"Test truncated": {
+			ciStr:           ciTruncated,
+			expectMultipart: true,
+			expectFail:      true,
+		},
+		"Test truncated one": {
+			ciStr:           ciTruncatedOne,
+			expectMultipart: true,
+			expectFail:      false,
+		},
+		"Test truncated zero": {
+			ciStr:           ciTruncatedZero,
+			expectMultipart: true,
+			expectFail:      true,
+		},
+	}
+	dir, err := ioutil.TempDir("", "domainmgr_test")
+	assert.Nil(t, err)
+	if err != nil {
+		return
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		ok, err := handleMimeMultipart(dir, test.ciStr)
+		assert.Equal(t, test.expectMultipart, ok)
+		if test.expectFail {
+			assert.NotNil(t, err)
+		} else {
+			assert.Nil(t, err)
+		}
+	}
+	os.RemoveAll(dir)
 }
