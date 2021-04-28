@@ -1373,23 +1373,6 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	config *types.NetworkInstanceConfig) error {
 
 	config.DomainName = ipspec.GetDomain()
-	// Parse Subnet
-	if s := ipspec.GetSubnet(); s != "" {
-		_, subnet, err := net.ParseCIDR(s)
-		if err != nil {
-			return errors.New(fmt.Sprintf("bad subnet %s: %s",
-				s, err))
-		}
-		config.Subnet = *subnet
-	}
-	// Parse Gateway
-	if g := ipspec.GetGateway(); g != "" {
-		config.Gateway = net.ParseIP(g)
-		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("bad gateway IP %s",
-				g))
-		}
-	}
 	// Parse NTP Server
 	if n := ipspec.GetNtp(); n != "" {
 		config.NtpServer = net.ParseIP(n)
@@ -1407,6 +1390,23 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 		}
 		config.DnsServers = append(config.DnsServers, ds)
 	}
+	// Parse Subnet
+	if s := ipspec.GetSubnet(); s != "" {
+		_, subnet, err := net.ParseCIDR(s)
+		if err != nil {
+			return errors.New(fmt.Sprintf("bad subnet %s: %s",
+				s, err))
+		}
+		config.Subnet = *subnet
+	}
+	// Parse Gateway
+	if g := ipspec.GetGateway(); g != "" {
+		config.Gateway = net.ParseIP(g)
+		if config.Gateway == nil {
+			return errors.New(fmt.Sprintf("bad gateway IP %s",
+				g))
+		}
+	}
 	// Parse DhcpRange
 	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())
@@ -1421,6 +1421,73 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 		}
 		config.DhcpRange.Start = start
 		config.DhcpRange.End = end
+	}
+
+	addrCount := types.GetIPAddrCountOnSubnet(config.Subnet)
+	if addrCount <= types.MinSubnetSize {
+		return fmt.Errorf("network(%s), Subnet too small(%d)",
+			config.Key(), addrCount)
+	}
+
+	// if not set, take some default
+	if config.Gateway == nil {
+		config.Gateway = types.AddToIP(config.Subnet.IP, 1)
+		log.Warnf("network(%s), No Gateway, setting default(%s)",
+			config.Key(), config.Gateway.String())
+	}
+	dhcpRangeStart := 2
+	if addrCount >= types.LargeSubnetSize {
+		// the dhcpRange starts at the half point,
+		// provided the DhcpRange.End is not set
+		if config.DhcpRange.End == nil {
+			dhcpRangeStart = addrCount / 2
+		}
+	}
+	// last addressable endpoint, with 0 base, and subnet.IP as start,
+	// it accounts for (2^(iplen - subnetMask) - 2) addresses
+	dhcpRangeEnd := addrCount - 2
+
+	// if not set, take some default
+	if config.DhcpRange.Start == nil {
+		config.DhcpRange.Start = types.AddToIP(config.Subnet.IP,
+			dhcpRangeStart)
+		log.Warnf("network(%s), No Dhcp Start, setting default(%s)",
+			config.Key(), config.DhcpRange.Start.String())
+	}
+	if config.DhcpRange.End == nil {
+		config.DhcpRange.End = types.AddToIP(config.Subnet.IP,
+			dhcpRangeEnd)
+		log.Warnf("network(%s), No Dhcp End, setting default(%s)",
+			config.Key(), config.DhcpRange.End.String())
+	}
+	// check whether the dhcp range(start, end)
+	// equal (network, gateway, broadcast) addresses
+	if network := types.GetIPNetwork(config.Subnet); network != nil {
+		if network.Equal(config.DhcpRange.Start) {
+			log.Warnf("network(%s), Dhcp Start is Network(%s), correcting",
+				config.Key(), config.Subnet.IP.String())
+			config.DhcpRange.Start =
+				types.AddToIP(config.DhcpRange.Start, 1)
+		}
+		if config.Gateway.Equal(config.DhcpRange.Start) {
+			log.Warnf("network(%s), Dhcp Start is Gateway(%s), correcting",
+				config.Key(), config.Gateway.String())
+			config.DhcpRange.Start =
+				types.AddToIP(config.Gateway, 1)
+		}
+	}
+	if bcast := types.GetIPBroadcast(config.Subnet); bcast != nil {
+		if bcast.Equal(config.DhcpRange.End) {
+			log.Warnf("network(%s), Dhcp End is Broadcast(%s), correcting",
+				config.Key(), bcast.String())
+			config.DhcpRange.End =
+				types.AddToIP(config.DhcpRange.End, -1)
+		}
+	}
+	// Gateway should not be inside the DhcpRange
+	if config.DhcpRange.Contains(config.Gateway) {
+		return fmt.Errorf("gateway(%s) inside Dhcp Range",
+			config.Gateway.String())
 	}
 	return nil
 }

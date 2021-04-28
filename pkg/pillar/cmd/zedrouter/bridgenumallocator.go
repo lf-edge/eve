@@ -13,7 +13,7 @@ import (
 	"github.com/satori/go.uuid"
 )
 
-var AllocReservedBridgeNumBits Bitmap
+var AllocReservedBridgeNumBits types.Bitmap
 
 // Read the existing bridgeNums out of what we published/checkpointed.
 // Also read what we have persisted before a reboot

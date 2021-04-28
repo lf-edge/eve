@@ -4,6 +4,7 @@
 package types
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -1851,6 +1852,16 @@ type IpRange struct {
 	End   net.IP
 }
 
+// Contains used to evaluate whether an IP address
+// is within the range
+func (ipRange IpRange) Contains(ipAddr net.IP) bool {
+	if bytes.Compare(ipAddr, ipRange.Start) >= 0 &&
+		bytes.Compare(ipAddr, ipRange.End) <= 0 {
+		return true
+	}
+	return false
+}
+
 func (config NetworkXObjectConfig) Key() string {
 	return config.UUID.String()
 }
@@ -2354,6 +2365,10 @@ type AppNetworkACLArgs struct {
 	NIType     NetworkInstanceType
 	// This is the same AppNum that comes from AppNetworkStatus
 	AppNum int32
+	// On change, collect this information
+	OldAppIP      string
+	OldBridgeIP   string
+	OldBridgeName string
 }
 
 // IPTablesRule : iptables rule detail
@@ -2910,4 +2925,90 @@ type AppInstMetaData struct {
 // Key : App Instance Metadata unique key
 func (data AppInstMetaData) Key() string {
 	return data.AppInstUUID.String()
+}
+
+// Bitmap :
+// Bitmap of the reserved and allocated resources
+// Keeps 256 bits indexed by 0 to 255.
+type Bitmap [32]byte
+
+// IsSet :
+// Test the bit value
+func (bits *Bitmap) IsSet(i int) bool {
+	return bits[i/8]&(1<<uint(7-i%8)) != 0
+}
+
+// Set :
+// Set the bit value
+func (bits *Bitmap) Set(i int) {
+	bits[i/8] |= 1 << uint(7-i%8)
+}
+
+// Clear :
+// Clear the bit value
+func (bits *Bitmap) Clear(i int) {
+	bits[i/8] &^= 1 << uint(7-i%8)
+}
+
+// AddToIP :
+func AddToIP(ip net.IP, addition int) net.IP {
+	if addr := ip.To4(); addr != nil {
+		val := uint32(addr[0])<<24 + uint32(addr[1])<<16 +
+			uint32(addr[2])<<8 + uint32(addr[3])
+		val += uint32(addition)
+		byte0 := byte((val >> 24) & 0xFF)
+		byte1 := byte((val >> 16) & 0xFF)
+		byte2 := byte((val >> 8) & 0xFF)
+		byte3 := byte(val & 0xFF)
+		return net.IPv4(byte0, byte1, byte2, byte3)
+	}
+	//TBD:XXX, IPv6 handling
+	return net.IP{}
+}
+
+// GetIPAddrCountOnSubnet IP address count on subnet
+func GetIPAddrCountOnSubnet(subnet net.IPNet) int {
+	prefixLen, _ := subnet.Mask.Size()
+	if prefixLen != 0 {
+		if subnet.IP.To4() != nil {
+			return 0x01 << (32 - prefixLen)
+		}
+		if subnet.IP.To16() != nil {
+			return 0x01 << (128 - prefixLen)
+		}
+	}
+	return 0
+}
+
+// GetIPNetwork  :
+// returns the first IP Address of the subnet(Network Address)
+func GetIPNetwork(subnet net.IPNet) net.IP {
+	return subnet.IP.Mask(subnet.Mask)
+}
+
+// GetIPBroadcast :
+// returns the last IP Address of the subnet(Broadcast Address)
+func GetIPBroadcast(subnet net.IPNet) net.IP {
+	if network := GetIPNetwork(subnet); network != nil {
+		if addrCount := GetIPAddrCountOnSubnet(subnet); addrCount != 0 {
+			return AddToIP(network, addrCount-1)
+		}
+	}
+	return net.IP{}
+}
+
+// AppNumber :
+// PS. Any change to BitMapMax, must be
+// reflected in the BitMap Size(32 bytes)
+const (
+	BitMapMax       = 255 // with 0 base, its 256
+	MinSubnetSize   = 8   // minimum Subnet Size
+	LargeSubnetSize = 16  // for determining default Dhcp Range
+)
+
+// AppNetworkUNetModifyData :
+type AppNetworkUNetModifyData struct {
+	OldAppIP      string
+	OldBridgeIP   string
+	OldBridgeName string
 }

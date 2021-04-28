@@ -152,6 +152,8 @@ const (
 	MemoryNotificationType = "memory_notification"
 	// DiskNotificationType
 	DiskNotificationType = "disk_notification"
+	// UUIDPairToNumLogType:
+	UUIDPairToNumLogType LogObjectType = "uuid_pair_to_num"
 )
 
 // RelationObjectType :
