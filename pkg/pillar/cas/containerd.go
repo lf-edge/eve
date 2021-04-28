@@ -595,7 +595,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 		err = fmt.Errorf("PrepareContainerRootDir: exception while fetching image config for reference %s: %s",
 			reference, err.Error())
 		logrus.Errorf(err.Error())
-		//return err
+		return err
 	}
 	mountpoints := clientImageSpec.Config.Volumes
 	execpath := clientImageSpec.Config.Entrypoint
