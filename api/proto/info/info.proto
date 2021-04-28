@@ -152,6 +152,8 @@ message ZInfoDNS {
 
 // Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
 // plus additions starting at BOOTING
+// This is used for Existing Objects. For any New objects, create and use
+// a Separate enum for SwState specific to that  object. Ex: ZDeviceState
 enum ZSwState {
   INVALID               = 0;
   INITIAL               = 1;    // Config received
@@ -160,7 +162,10 @@ enum ZSwState {
   DELIVERED             = 4;    // Verification completed
   INSTALLED             = 5;    // Installed, ready for activation
   BOOTING               = 6;    // booting. Booting and above means that App is activated.
-  RUNNING               = 7;    // running
+  // Terminal State
+  // For AppInstance, RUNNING is equivalent to ONLINE.
+  RUNNING               = 7;    // Object is Online / Running
+
   HALTING               = 8;    // being halted
   HALTED                = 9;    // Halted
   RESTARTING            = 10;   // Restarting due to restart command
@@ -170,12 +175,27 @@ enum ZSwState {
   RESOLVED_TAG          = 13;   // Tag has been resolved/failed
   // Prior to INSTALLED we go through these:
   CREATING_VOLUME       = 14;   // Volume create in progress
+
+  // Terminal State for Volumes
+  // For Volumes, CREATED_VOLUME is equivalent to ONLINE.
   CREATED_VOLUME        = 15;   // Volume create done/failed
+
   VERIFYING             = 16;   // Verification in-progress
   VERIFIED              = 17;   // Verification completed
   LOADING               = 18;   // Loading blob in CAS
+
+  // Terminal State for some objects.
+  // For objects like ContentTree and Blob, Loaded is equivalent to
+  // ONLINE state for the object
   LOADED                = 19;   // Loaded blob in CAS
+
   AWAITNETWORKINSTANCE  = 20;   // Wait for network instance
+
+  // Terminal State - Object in Error State
+  // If an App Instance encounters an Error, it will be in ERROR
+  // state. If an App Instance is in ERROR state, it means there is NO DOMAIN
+  // currently running.
+  ERROR                 = 21;   // Error State
 }
 
 // SW Info for Apps
@@ -252,7 +272,7 @@ message ZInfoAppInstance {
 message ZInfoDeviceTasks {
   string name = 1;
   string namespace = 2;
-  ZSwState status = 3;
+  // deprecated 3
 }
 
 enum ZSimcardState {
@@ -276,6 +296,28 @@ message ZCellularModuleInfo {
     string name = 1;
     string imei = 2;
     string firmware_version = 3;
+}
+
+// Device Run State
+enum ZDeviceState {
+    // Just to handle Un-Initialized runState variable Internally
+    ZDEVICE_STATE_UNSPECIFIED = 0;
+    // Device is Online. This only means all components of EVE are up.
+    // This does not indicate the Status of Apps or other configured objects.
+    // During booting up after reboot, Device might be reported as ONLINE
+    // while apps are still being processed.
+    ZDEVICE_STATE_ONLINE = 1;
+    // Device Reboot in Progress. Device is in the process of going down.
+    // Once the device comes back up and Eve is started, device reports the
+    // the state as "BOOTING"
+    ZDEVICE_STATE_REBOOTING = 2;
+    ZDEVICE_STATE_MAINTENANCE_MODE = 3;
+    // Device BaseOs Update in Progress
+    ZDEVICE_STATE_BASEOS_UPDATING = 4;
+    // Device is booting up. This state is reported when EVE is started and
+    // is able to communicate with the controller. When all the components of
+    // EVE are up, it transitions to ONLINE.
+    ZDEVICE_STATE_BOOTING = 5;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -355,6 +397,9 @@ message ZInfoDevice {
   // or from UPDATED state of another version), copy over current
   // deviceConfig.baseOs_update_counter
   uint32 baseos_update_counter = 43;
+
+  // Device State
+  ZDeviceState state = 44;
 }
 
 // Different reasons for a boot/reboot
@@ -458,7 +503,10 @@ message ZInfoDevSW {
   string partitionLabel = 3; // E.g., "IMGA"
   string partitionDevice = 4;// /dev/something
   string partitionState = 5; // state obtained from cboot
+
+  // Once BaseOs start using ContentTrees, this field may be deprecated.
   ZSwState status = 6;       // E.g., "DOWNLOADED"
+
   string shortVersion = 7;   // From rootfs i.e., image
   string longVersion = 8;    // E.g., the yml file content from build
   ErrorInfo swErr = 9;
@@ -505,6 +553,8 @@ message ZInfoApp {
 
   bool systemApp = 6;
   string AppName = 7;
+
+  // EVE stopped sending this. Can be removed.
   repeated ZInfoSW softwareList = 8; // XXX to be deprecated in favor of volumeRefs
   // deprecated = 9;
   // deprecated = 11;
@@ -575,6 +625,15 @@ message ZInfoVpn {
   repeated ZInfoVpnConn conn = 10; // Connection Information
 }
 
+enum ZNetworkInstanceState {
+    ZNETINST_STATE_UNSPECIFIED = 0;
+    ZNETINST_STATE_INIT = 1;
+    // Terminal State.
+    ZNETINST_STATE_ONLINE = 2;
+    // Terminal State.
+    ZNETINST_STATE_ERROR = 3;
+}
+
 // Network Instance information
 message ZInfoNetworkInstance {
   string networkID = 2;        // UUID
@@ -584,6 +643,7 @@ message ZInfoNetworkInstance {
   string displayname = 6;      // From NetworkInstance config
   bool activated = 7;          // Forwarding enabled
   google.protobuf.Timestamp upTimeStamp = 8;
+  // OBSOLETE - No longer used.
   ZInfoSW softwareList = 9;    // E.g., VPN version; XXX to be deprecated?
 
   string CurrentUplinkIntf = 10;  // current uplink interface in use by this NI
@@ -603,6 +663,7 @@ message ZInfoNetworkInstance {
     // deprecated = 32; ZInfoLisp linfo = 32
   }
   repeated ErrorInfo networkErr = 40;
+  ZNetworkInstanceState state = 41;
 }
 
 message UsageInfo {
@@ -622,6 +683,14 @@ message ZInfoVolume {
   string displayName = 2;
   UsageInfo usage = 3;
   VolumeResources resources = 4;
+  // Allowed States:
+  //    UNSPECIFIED
+  //    INITIAL
+  //    CREATED_VOLUME  ( Terminal State )
+  //    DOWNLOADING
+  //    VERIFYING
+  //    LOADING
+  //    ERROR    ( Terminal State )
   ZSwState state = 5;
   uint32 progressPercentage = 6; // 0-100% Use depends on state i.e., download vs. verification vs. volume creation
 
@@ -643,7 +712,15 @@ message ZInfoContentTree {
   string sha256 = 3;
   ContentResources resources = 4;
   UsageInfo usage = 5;
-  ZSwState state = 6;   // INITIAL, DOWNLOAD_STARTED, DOWNLOADED, DELIVERED
+  // Allowed States:
+  //    UNSPECIFIED
+  //    INITIAL
+  //    DOWNLOADING
+  //    VERIFYING
+  //    LOADING
+  //    LOADED   ( Terminal State )
+  //    ERROR    ( Terminal State )
+  ZSwState state = 6;
   uint32 progressPercentage = 7; // 0-100% Depending on state if it is download or verification
 
   ErrorInfo err = 8;
@@ -655,7 +732,15 @@ message ZInfoBlob {
   string sha256 = 1;
   ContentResources resources = 2;
   UsageInfo usage = 3;
-  ZSwState state = 4;   // INITIAL, DOWNLOAD_STARTED, DOWNLOADED, DELIVERED
+  // Allowed States:
+  //    UNSPECIFIED
+  //    INITIAL
+  //    DOWNLOADING
+  //    VERIFYING
+  //    LOADING
+  //    LOADED   ( Terminal State )
+  //    ERROR    ( Terminal State )
+  ZSwState state = 4;
   uint32 progressPercentage = 5; // 0-100% Depending on state if it is download or verification
   ErrorInfo err = 6;
 }
