@@ -9,14 +9,14 @@ ENV BUILD_PKGS \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.11.15
-ARG KERNEL_VERSION_x86_64=5.11.15
+ARG KERNEL_VERSION_aarch64=5.12
+ARG KERNEL_VERSION_x86_64=5.12
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
 
 # The only variable that is used everywhere is KERNEL_SERIES, so we stick it into env
-SHELL ["/bin/sh", "-c", "export KERNEL_SERIES=$(eval echo \\$KERNEL_VERSION_$(uname -m) | sed -e 's#.[^.]*$#.x#') ; /bin/sh -c \"$1\"", "-" ]
+SHELL ["/bin/sh", "-c", "export KERNEL_SERIES=$(eval echo \\$KERNEL_VERSION_$(uname -m) | sed -e 's#^\\([^.]*\\)\\.\\([^.]*\\).*$#\\1.\\2.x#') ; /bin/sh -c \"$1\"", "-" ]
 
 # We copy the entire directory. This copies some unneeded files, but
 # allows us to check for the existence /patches-${KERNEL_SERIES} to
@@ -99,13 +99,6 @@ RUN ./autogen.sh && \
     make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
 
 # Out-of-tree, creepy modules
-#  * Maxlinear USB (option #2 https://github.com/lipnitsk/xr/archive/master.zip)
-WORKDIR /linux
-ADD https://www.maxlinear.com/document?id=21651 /tmp/xr.zip
-RUN unzip -d /tmp /tmp/xr.zip ;\
-    make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
-                   M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
-         modules modules_install
 #  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
 RUN if [ "$(uname -m)" != aarch64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
@@ -113,6 +106,8 @@ RUN if [ "$(uname -m)" != aarch64 ]; then \
        make -C /tmp/rtl8821CU KSRC=/linux modules &&\
        install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
      fi
+
+WORKDIR /linux
 
 # Strip at least some of the modules to conserve space
 RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi

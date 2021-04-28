@@ -4,8 +4,9 @@ Date: Wed, 16 Dec 2020 03:45:04 +0000
 Subject: [PATCH] get_fs()/set_fs() have been deprecated on x86
 
 ---
- os_dep/osdep_service.c | 10 ----------
- 1 file changed, 10 deletions(-)
+ os_dep/osdep_service.c    | 10 ----------
+ os_dep/linux/recv_linux.c | 10 ----------
+ 2 file changed, 10 deletions(-)
 
 diff --git a/os_dep/osdep_service.c b/os_dep/osdep_service.c
 index c27d3b0..c192040 100755
@@ -71,6 +72,21 @@ index c27d3b0..c192040 100755
  			closeFile(fp);
  
  			RTW_INFO("%s writeFile, ret:%d\n", __FUNCTION__, ret);
+diff --git a/os_dep/linux/recv_linux.c b/os_dep/linux/recv_linux.c
+index c27d3b0..c192040 100755
+--- a/os_dep/linux/recv_linux.c	2021-04-29 21:07:09.120000000 +0000
++++ b/os_dep/linux/recv_linux.c	2021-04-29 21:25:56.340000000 +0000
+@@ -355,8 +355,8 @@
+ 
+ #ifdef CONFIG_RTW_GRO
+ 		if (pregistrypriv->en_gro) {
+-			if (rtw_napi_gro_receive(&padapter->napi, pskb) != GRO_DROP)
+-				rx_ok = _TRUE;
++			rtw_napi_gro_receive(&padapter->napi, pskb);
++			rx_ok = _TRUE;
+ 			goto next;
+ 		}
+ #endif /* CONFIG_RTW_GRO */
 -- 
 2.20.1
 
