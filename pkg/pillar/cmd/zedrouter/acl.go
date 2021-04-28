@@ -427,7 +427,7 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 		aclArgs.IPVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
 
 	// the catch all log/drop rules are towards the end of the rule list
-	// hance we are inserting the rule in reverse order at
+	// hence we are inserting the rule in reverse order at
 	// the top of a target chain, to ensure the drop rules
 	// will be at the end of the rule stack, and the acl match
 	// rules will be at the top of the rule stack for an app
@@ -1465,16 +1465,23 @@ func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, 
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	if compareACLs(oldACLs, ACLs) == true && !force {
+	// check if IP Addresses etc. have changed
+	nameChange := false
+	if aclArgs.AppIP != aclArgs.OldAppIP ||
+		aclArgs.BridgeName != aclArgs.OldBridgeName ||
+		aclArgs.BridgeIP != aclArgs.OldBridgeIP {
+		nameChange = true
+	}
+	if compareACLs(oldACLs, ACLs) == true && !force && !nameChange {
 		log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
-			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
+			aclArgs.OldBridgeName, aclArgs.VifName, aclArgs.OldAppIP)
 		return oldRules, oldDepend, nil
 	}
 
 	rules, err := deleteACLConfiglet(aclArgs, oldRules)
 	if err != nil {
 		log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
-			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
+			aclArgs.OldBridgeName, aclArgs.VifName, aclArgs.OldAppIP)
 		return rules, nil, err
 	}
 
@@ -1488,13 +1495,14 @@ func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, 
 		family = syscall.AF_INET6
 	}
 	var srcIP net.IP
-	if aclArgs.AppIP == "0.0.0.0" || aclArgs.AppIP == "" {
+	if aclArgs.OldAppIP == "0.0.0.0" || aclArgs.OldAppIP == "" {
 		srcIP = net.ParseIP("0.0.0.0")
 	} else {
-		srcIP = net.ParseIP(aclArgs.AppIP)
+		srcIP = net.ParseIP(aclArgs.OldAppIP)
 	}
 	if srcIP == nil {
-		log.Errorf("updateACLConfiglet: App IP (%s) parse failed", aclArgs.AppIP)
+		log.Errorf("updateACLConfiglet: App IP (%s) parse failed",
+			aclArgs.OldAppIP)
 	} else {
 		mark := getConnmark(uint8(aclArgs.AppNum), 0, false)
 		number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family,

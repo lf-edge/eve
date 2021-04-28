@@ -15,15 +15,11 @@ import (
 	"github.com/satori/go.uuid"
 )
 
-// Bitmap of the reserved and allocated
-// Keeps 256 bits indexed by 0 to 255.
-type Bitmap [32]byte
+var AllocReservedAppNumBits types.Bitmap
 
-func (bits *Bitmap) IsSet(i int) bool { return bits[i/8]&(1<<uint(7-i%8)) != 0 }
-func (bits *Bitmap) Set(i int)        { bits[i/8] |= 1 << uint(7-i%8) }
-func (bits *Bitmap) Clear(i int)      { bits[i/8] &^= 1 << uint(7-i%8) }
-
-var AllocReservedAppNumBits Bitmap
+const (
+	appNumType = "appNum"
+)
 
 // Read the existing appNums out of what we published/checkpointed.
 // Also read what we have persisted before a reboot
@@ -32,53 +28,57 @@ var AllocReservedAppNumBits Bitmap
 func appNumAllocatorInit(ctx *zedrouterContext) {
 
 	pubAppNetworkStatus := ctx.pubAppNetworkStatus
-	pubUuidToNum := ctx.pubUuidToNum
+	pub := ctx.pubUuidToNum
+	numType := appNumType
 
-	items := pubUuidToNum.GetAll()
-	for _, st := range items {
-		status := st.(types.UuidToNum)
-		if status.NumType != "appNum" {
+	items := pub.GetAll()
+	for _, item := range items {
+		appNumMap := item.(types.UuidToNum)
+		if appNumMap.NumType != numType {
 			continue
 		}
-		log.Functionf("appNumAllocatorInit found %v\n", status)
-		appNum := status.Number
-		uuid := status.UUID
+		log.Functionf("appNumAllocatorInit found %v", appNumMap)
+		appNum := appNumMap.Number
+		baseID := appNumMap.UUID
 
 		// If we have a config for the UUID we should mark it as
 		// allocated; otherwise mark it as reserved.
 		// XXX however, on startup we are not likely to have any
 		// config yet.
-		if AllocReservedAppNumBits.IsSet(appNum) {
-			log.Errorf("AllocReservedAppNumBits already set for %s num %d\n",
-				uuid.String(), appNum)
+		baseMap := appNumBaseGet()
+		if baseMap.IsSet(appNum) {
+			log.Errorf("Bitmap is already set for %s num %d",
+				baseID.String(), appNum)
 			continue
 		}
-		log.Functionf("Reserving appNum %d for %s\n", appNum, uuid)
-		AllocReservedAppNumBits.Set(appNum)
+		log.Functionf("Reserving appNum %d for %s",
+			appNum, baseID)
+		baseMap.Set(appNum)
 		// Clear InUse
-		uuidtonum.UuidToNumFree(log, ctx.pubUuidToNum, uuid)
+		uuidtonum.UuidToNumFree(log, pub, baseID)
 	}
 	// In case zedrouter process restarted we fill in InUse from
 	// AppNetworkStatus
 	items = pubAppNetworkStatus.GetAll()
-	for _, st := range items {
-		status := st.(types.AppNetworkStatus)
+	for _, item := range items {
+		status := item.(types.AppNetworkStatus)
 		appNum := status.AppNum
-		uuid := status.UUIDandVersion.UUID
+		baseID := status.UUIDandVersion.UUID
 
 		// If we have a config for the UUID we should mark it as
 		// allocated; otherwise mark it as reserved.
 		// XXX however, on startup we are not likely to have any
 		// config yet.
-		if !AllocReservedAppNumBits.IsSet(appNum) {
-			log.Fatalf("AllocReservedAppNumBits not set for %s num %d\n",
-				uuid.String(), appNum)
+		baseMap := appNumBaseGet()
+		if !baseMap.IsSet(appNum) {
+			log.Fatalf("Bitmap is not set for %s num %d",
+				baseID.String(), appNum)
 			continue
 		}
-		log.Functionf("Marking InUse appNum %d for %s\n", appNum, uuid)
+		log.Functionf("Marking InUse appNum %d for %s", appNum, baseID)
 		// Set InUse
-		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, appNum,
-			false, "appNum")
+		uuidtonum.UuidToNumAllocate(log, pub, baseID, appNum,
+			false, numType)
 	}
 }
 
@@ -86,98 +86,111 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 // before the agent started, then we free it up.
 func appNumAllocatorGC(ctx *zedrouterContext) {
 
-	pubUuidToNum := ctx.pubUuidToNum
+	pub := ctx.pubUuidToNum
+	numType := appNumType
 
 	log.Functionf("appNumAllocatorGC")
 	freedCount := 0
-	items := pubUuidToNum.GetAll()
-	for _, st := range items {
-		status := st.(types.UuidToNum)
-		if status.NumType != "appNum" {
+	items := pub.GetAll()
+	for _, item := range items {
+		appNumMap := item.(types.UuidToNum)
+		if appNumMap.NumType != numType {
 			continue
 		}
-		if status.InUse {
+		if appNumMap.InUse {
 			continue
 		}
-		if status.CreateTime.After(ctx.agentStartTime) {
+		if appNumMap.CreateTime.After(ctx.agentStartTime) {
 			continue
 		}
-		log.Functionf("appNumAllocatorGC: freeing %+v", status)
-		appNumFree(ctx, status.UUID)
+		log.Functionf("appNumAllocatorGC: freeing %+v", appNumMap)
+		appNumFree(ctx, appNumMap.UUID)
 		freedCount++
 	}
 	log.Functionf("appNumAllocatorGC freed %d", freedCount)
 }
 
-func appNumAllocate(ctx *zedrouterContext,
-	uuid uuid.UUID, isZedmanager bool) int {
+func appNumAllocate(ctx *zedrouterContext, baseID uuid.UUID,
+	isZedmanager bool) int {
+
+	pub := ctx.pubUuidToNum
+	numType := appNumType
+	baseMap := appNumBaseGet()
 
 	// Do we already have a number?
-	appNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid, "appNum")
+	appNum, err := uuidtonum.UuidToNumGet(log, pub, baseID,
+		numType)
 	if err == nil {
-		log.Functionf("Found allocated appNum %d for %s\n", appNum, uuid)
-		if !AllocReservedAppNumBits.IsSet(appNum) {
-			log.Fatalf("AllocReservedAppNumBits not set for %d\n",
-				appNum)
+		log.Functionf("Found allocated appNum %d for %s", appNum,
+			baseID)
+		if !baseMap.IsSet(appNum) {
+			log.Fatalf("Bitmap value(%d) is not set", appNum)
 		}
 		// Set InUse and update time
-		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, appNum,
-			false, "appNum")
+		uuidtonum.UuidToNumAllocate(log, pub, baseID, appNum,
+			false, numType)
 		return appNum
 	}
 
 	// Find a free number in bitmap; look for zero if isZedmanager
-	if isZedmanager && !AllocReservedAppNumBits.IsSet(0) {
+	if isZedmanager && !baseMap.IsSet(0) {
 		appNum = 0
-		log.Functionf("Allocating appNum %d for %s isZedmanager\n",
-			appNum, uuid)
+		log.Functionf("Allocating appNum %d for %s isZedmanager",
+			appNum, baseID)
 	} else {
 		// XXX could look for non-0xFF bytes first for efficiency
 		appNum = 0
 		for i := 1; i < 256; i++ {
-			if !AllocReservedAppNumBits.IsSet(i) {
+			if !baseMap.IsSet(i) {
 				appNum = i
-				log.Functionf("Allocating appNum %d for %s\n",
-					appNum, uuid)
+				log.Functionf("Allocating appNum %d for %s",
+					appNum, baseID)
 				break
 			}
 		}
 		if appNum == 0 {
-			log.Functionf("Failed to find free appNum for %s. Reusing!\n",
-				uuid)
-			oldUuid, oldAppNum, err := uuidtonum.UuidToNumGetOldestUnused(log, ctx.pubUuidToNum, "appNum")
+			log.Functionf("Failed to find free appNum for %s. Reusing!",
+				baseID)
+			oldBaseID, oldAppNum, err :=
+				uuidtonum.UuidToNumGetOldestUnused(log, pub, numType)
 			if err != nil {
 				log.Fatal("All 255 appNums are in use!")
 			}
-			log.Functionf("Reuse found appNum %d for %s. Reusing!\n",
-				oldAppNum, oldUuid)
-			uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, oldUuid)
-			AllocReservedAppNumBits.Clear(oldAppNum)
+			log.Functionf("Reuse found appNum %d for %s. Reusing!",
+				oldAppNum, oldBaseID)
+			uuidtonum.UuidToNumDelete(log, pub, oldBaseID)
+			baseMap.Clear(oldAppNum)
 			appNum = oldAppNum
 		}
 	}
-	if AllocReservedAppNumBits.IsSet(appNum) {
-		log.Fatalf("AllocReservedAppNumBits already set for %d\n",
-			appNum)
+	if baseMap.IsSet(appNum) {
+		log.Fatalf("Bitmap is already set for %d", appNum)
 	}
-	AllocReservedAppNumBits.Set(appNum)
-	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum, uuid, appNum, true,
-		"appNum")
+	baseMap.Set(appNum)
+	uuidtonum.UuidToNumAllocate(log, pub, baseID, appNum, true,
+		numType)
 	return appNum
 }
 
-func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
+func appNumFree(ctx *zedrouterContext, baseID uuid.UUID) {
 
-	appNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid, "appNum")
+	pub := ctx.pubUuidToNum
+	numType := appNumType
+	appNum, err := uuidtonum.UuidToNumGet(log, pub, baseID, numType)
 	if err != nil {
-		log.Fatalf("appNumFree: num not found for %s\n",
-			uuid.String())
+		log.Fatalf("num not found for %s",
+			baseID.String())
 	}
+	baseMap := appNumBaseGet()
 	// Check that number exists in the allocated numbers
-	if !AllocReservedAppNumBits.IsSet(appNum) {
-		log.Fatalf("appNumFree: AllocReservedAppNumBits not set for %d\n",
-			appNum)
+	if !baseMap.IsSet(appNum) {
+		log.Fatalf("Bitmap is not set for %d", appNum)
 	}
-	AllocReservedAppNumBits.Clear(appNum)
-	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, uuid)
+	baseMap.Clear(appNum)
+	uuidtonum.UuidToNumDelete(log, pub, baseID)
+}
+
+// returns base bitMap
+func appNumBaseGet() *types.Bitmap {
+	return &AllocReservedAppNumBits
 }

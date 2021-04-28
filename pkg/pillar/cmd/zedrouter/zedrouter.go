@@ -10,6 +10,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"flag"
@@ -69,6 +70,7 @@ type zedrouterContext struct {
 	GCInitialized          bool
 	pubUuidToNum           pubsub.Publication
 	dhcpLeases             []dnsmasqLease
+	pubUUIDPairToNum       pubsub.Publication
 
 	// NetworkInstance
 	subNetworkInstanceConfig  pubsub.Subscription
@@ -153,6 +155,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	pubUuidToNum.ClearRestarted()
 
+	pubUUIDPairToNum, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.UUIDPairToNum{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubUUIDPairToNum.ClearRestarted()
+
 	// Create the dummy interface used to re-direct DROP/REJECT packets.
 	createFlowMonDummyInterface()
 
@@ -231,6 +243,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.pubUuidToNum = pubUuidToNum
+	zedrouterCtx.pubUUIDPairToNum = pubUUIDPairToNum
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
@@ -405,6 +418,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
 	handleInit(runDirname)
+	appNumOnUNetInit(&zedrouterCtx)
 
 	// Before we process any NetworkInstances we want to know the
 	// assignable adapters.
@@ -543,7 +557,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subAppNetworkConfig.MsgChan():
-			// If we have an NetworkInstanceConfig process it first
+			// If we have NetworkInstanceConfig process it first
 			checkAndProcessNetworkInstanceConfig(&zedrouterCtx)
 			subAppNetworkConfig.ProcessChange(change)
 
@@ -562,6 +576,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
+			appNumMapOnUNetGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
 			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
@@ -587,7 +602,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subAppNetworkConfig.MsgChan():
-			// If we have an NetworkInstanceConfig process it first
+			// If we have NetworkInstanceConfig process it first
 			checkAndProcessNetworkInstanceConfig(&zedrouterCtx)
 			subAppNetworkConfig.ProcessChange(change)
 
@@ -709,6 +724,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
+			appNumMapOnUNetGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
 			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
@@ -879,6 +895,12 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	}
 	publishAppNetworkStatus(ctx, &status)
 
+	// allocate application numbers on underlay network
+	if err := appNumsOnUNetAllocate(ctx, &config); err != nil {
+		addError(ctx, &status, "handleAppNetworkCreate", err)
+		return
+	}
+
 	if config.Activate {
 		doActivate(ctx, config, &status)
 	}
@@ -1012,7 +1034,6 @@ func appNetworkDoActivateAllUnderlayNetworks(
 			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
 		err := appNetworkDoActivateUnderlayNetwork(
 			ctx, config, status, ipsets, &ulConfig, ulNum)
-
 		if err != nil {
 			return err
 		}
@@ -1053,12 +1074,56 @@ func appNetworkDoActivateUnderlayNetwork(
 		addError(ctx, status, "error from network instance", err)
 		return err
 	}
-	networkInstanceInfo := &netInstStatus.NetworkInstanceInfo
-
 	// Fetch the network that this underlay is attached to
-	bridgeName := networkInstanceInfo.BridgeName
 	vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
 		strconv.Itoa(status.AppNum)
+
+	// appMac may not change across network transition,
+	// so only called once, on activation
+	var appMac string // Handed to domU
+	if ulConfig.AppMacAddr != nil {
+		appMac = ulConfig.AppMacAddr.String()
+	} else {
+		appMac = generateAppMac(status.UUIDandVersion.UUID,
+			ulNum, status.AppNum, netInstStatus)
+	}
+	log.Functionf("appMac %s\n", appMac)
+	ulStatus := &status.UnderlayNetworkList[ulNum-1]
+	return appNetworkUNetActivate(ctx, config, status, ulConfig,
+		ulStatus, vifName, appMac, ipsets)
+}
+
+func appNetworkUNetActivate(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ulConfig *types.UnderlayNetworkConfig,
+	ulStatus *types.UnderlayNetworkStatus,
+	vifName string, appMac string,
+	ipsets []string) error {
+
+	netInstStatus := lookupNetworkInstanceStatus(ctx,
+		ulConfig.Network.String())
+	if netInstStatus == nil {
+		err := fmt.Errorf("no network instance status for %s",
+			ulConfig.Network.String())
+		log.Error(err.Error())
+		// Set up to retry later
+		status.AwaitNetworkInstance = true
+		addError(ctx, status, "doActivate underlay", err)
+		return err
+	}
+	if netInstStatus.HasError() {
+		err := errors.New(netInstStatus.Error)
+		log.Error(err.Error())
+		// Set up to retry later
+		status.AwaitNetworkInstance = true
+		addError(ctx, status, "error from network instance", err)
+		return err
+	}
+	networkInstanceInfo := &netInstStatus.NetworkInstanceInfo
+	appID := status.UUIDandVersion.UUID
+	bridgeName := networkInstanceInfo.BridgeName
 	uLink, err := findBridge(bridgeName)
 	if err != nil {
 		log.Error(err.Error())
@@ -1071,18 +1136,8 @@ func appNetworkDoActivateUnderlayNetwork(
 	log.Functionf("bridgeName %s MAC %s\n",
 		bridgeName, bridgeMac.String())
 
-	var appMac string // Handed to domU
-	if ulConfig.AppMacAddr != nil {
-		appMac = ulConfig.AppMacAddr.String()
-	} else {
-		appMac = generateAppMac(status.UUIDandVersion.UUID,
-			ulNum, status.AppNum, netInstStatus)
-	}
-	log.Functionf("appMac %s\n", appMac)
-
 	// Record what we have so far
-	ulStatus := &status.UnderlayNetworkList[ulNum-1]
-	log.Functionf("doActivate ulNum %d: %v\n", ulNum, ulStatus)
+	log.Functionf("doActivate : %v", ulStatus)
 	ulStatus.Name = ulConfig.Name
 	ulStatus.Bridge = bridgeName
 	ulStatus.BridgeMac = bridgeMac
@@ -1108,15 +1163,14 @@ func appNetworkDoActivateUnderlayNetwork(
 		}
 	}
 
-	bridgeIPAddr, appIPAddr, err := getUlAddrs(ctx, ulNum-1,
-		status.AppNum, ulStatus, netInstStatus)
+	appIPAddr, err := getUlAddrs(ctx, netInstStatus, ulStatus, appID)
 	if err != nil {
-		err := fmt.Errorf("Bridge/App IP address allocation failed: %v",
-			err)
+		err := fmt.Errorf("App IP address allocation failed: %v", err)
 		log.Error(err.Error())
 		addError(ctx, status, "getUlAddrs", err)
 		return err
 	}
+	bridgeIPAddr := netInstStatus.BridgeIPAddr
 	log.Functionf("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
 	// appIPAddr is "" for switch NI. DHCP snoop will set AllocatedIPv4Addr later
@@ -1144,7 +1198,6 @@ func appNetworkDoActivateUnderlayNetwork(
 		addError(ctx, status, "createACL", err)
 		return err
 	}
-	appID := status.UUIDandVersion.UUID
 	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
 	if appIPAddr != "" {
@@ -1337,58 +1390,79 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 
 // XXX Need additional logic for IPv6 underlays.
 func getUlAddrs(ctx *zedrouterContext,
-	ifnum int, appNum int,
-	status *types.UnderlayNetworkStatus,
-	netInstStatus *types.NetworkInstanceStatus) (string, string, error) {
-
-	log.Functionf("getUlAddrs(%d/%d)\n", ifnum, appNum)
-
-	bridgeIPAddr := ""
-	appIPAddr := ""
-
-	// Allocate bridgeIPAddr based on BridgeMac
-	log.Functionf("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
-		ifnum, appNum, netInstStatus.UUID.String(),
-		status.BridgeMac.String())
+	netInstStatus *types.NetworkInstanceStatus,
+	ulStatus *types.UnderlayNetworkStatus, appID uuid.UUID) (string, error) {
 	var err error
-	var addr string
-	addr, err = lookupOrAllocateIPv4(ctx, netInstStatus,
-		status.BridgeMac)
+	var mac net.HardwareAddr
+	networkID := netInstStatus.UUID
+
+	if netInstStatus.Subnet.IP == nil ||
+		netInstStatus.DhcpRange.Start == nil {
+		log.Functionf("getUlAddrs(%s): app(%s), no subnet\n",
+			networkID.String(), appID.String())
+		return "", nil
+	}
+	if ulStatus.Mac == "" {
+		log.Functionf("getUlAddrs(%s): app(%s) fail: no mac",
+			networkID.String(), appID.String())
+		return "", nil
+	}
+	log.Functionf("getUlAddrs(%s): app(%s)",
+		networkID.String(), appID.String())
+
+	// XXX or change type of VifInfo.Mac to avoid parsing?
+	mac, err = net.ParseMAC(ulStatus.Mac)
 	if err != nil {
-		log.Errorf("getUlAddrs: Bridge IP address allocation failed %s\n", err)
-		return bridgeIPAddr, appIPAddr, err
-	} else {
-		bridgeIPAddr = addr
+		errStr := fmt.Sprintf("parse Mac fail: %v\n", err)
+		log.Errorf("getUlAddrs(%s): app(%s) fail: %s\n",
+			networkID.String(), appID.String(), err)
+		return "", errors.New(errStr)
 	}
 
-	if status.AppIPAddr != nil {
-		// Static IP assignment case.
-		// Note that appIPAddr can be in a different subnet.
-		// Assumption is that the config specifies a gateway/router
-		// in the same subnet as the static address.
-		appIPAddr = status.AppIPAddr.String()
-		recordIPAssignment(ctx, netInstStatus, status.AppIPAddr,
-			status.Mac)
-	} else if status.Mac != "" {
-		// XXX or change type of VifInfo.Mac to avoid parsing?
-		var mac net.HardwareAddr
-		mac, err = net.ParseMAC(status.Mac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ", status.Mac, err)
+	ipAddr := ""
+	// for static IP Address
+	if ulStatus.AppIPAddr != nil {
+		ipAddr = ulStatus.AppIPAddr.String()
+		// the IP Address, should not be in dhcpRange
+		if netInstStatus.DhcpRange.Contains(ulStatus.AppIPAddr) {
+			errStr := fmt.Sprintf("static IP(%s) is in DhcpRange(%s, %s)",
+				ipAddr, netInstStatus.DhcpRange.Start.String(),
+				netInstStatus.DhcpRange.End.String())
+			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
+				networkID.String(), appID.String(), errStr)
+			return "", errors.New(errStr)
 		}
-		log.Functionf("getUlAddrs(%d/%d for %s) app Mac %s\n",
-			ifnum, appNum, netInstStatus.UUID.String(), mac.String())
-		addr, err = lookupOrAllocateIPv4(ctx, netInstStatus, mac)
+		// IP Address must be inside the subnet range
+		if !netInstStatus.Subnet.Contains(ulStatus.AppIPAddr) {
+			errStr := fmt.Sprintf("static IP(%s) is outside subnet range",
+				ipAddr)
+			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
+				networkID.String(), appID.String(), errStr)
+			return "", errors.New(errStr)
+		}
+	} else {
+		// get the app number for the underlay network entry
+		appNum, err := appNumOnUNetGet(ctx, networkID, appID)
 		if err != nil {
-			log.Errorf("getUlAddrs: App IP address allocation failed: %s\n", err)
-			return bridgeIPAddr, appIPAddr, err
-		} else {
-			appIPAddr = addr
+			errStr := fmt.Sprintf("App Number get failed: %v", err)
+			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
+				networkID.String(), appID.String(), errStr)
+			return "", errors.New(errStr)
+		}
+		ipAddr, err = lookupOrAllocateIPv4(netInstStatus, appID, appNum, mac)
+		if err != nil {
+			errStr := fmt.Sprintf("IP Addr get fail: %v", err)
+			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
+				networkID.String(), appID.String(), errStr)
+			return "", errors.New(errStr)
 		}
 	}
-	log.Functionf("getUlAddrs(%d/%d) done %s/%s\n",
-		ifnum, appNum, bridgeIPAddr, appIPAddr)
-	return bridgeIPAddr, appIPAddr, err
+	addr := net.ParseIP(ipAddr)
+	ulStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
+	recordIPAssignment(ctx, netInstStatus, addr, ulStatus.Mac)
+	log.Functionf("getUlAddrs(%s): App %s done, ipAddr: %s",
+		networkID.String(), appID.String(), ipAddr)
+	return ipAddr, nil
 }
 
 // Caller should clear the appropriate status.Pending* if the the caller will
@@ -1449,6 +1523,18 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 	// configure the ipsets for all the domU's interfaces/bridges.
 	ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
 
+	// handle Network changes in underlay and
+	// collect IP Address/Name changes
+	uNetModData, err := doAppNetworkModifyUNetAppNums(ctx, config,
+		oldConfig, status, ipsets)
+	if err != nil {
+		log.Error(err.Error())
+		addError(ctx, status, "handleModify", err)
+		status.PendingModify = false
+		publishAppNetworkStatus(ctx, status)
+		return
+	}
+
 	// If we are not activated, then the doActivate below will set up
 	// the ACLs
 	if status.Activated {
@@ -1456,8 +1542,9 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 		// check to see if need to launch the process
 		appCheckStatsCollect(ctx, &config, status)
 
-		// Look for ACL changes in underlay
-		doAppNetworkModifyAllUnderlayNetworks(ctx, config, oldConfig, status, ipsets)
+		// handle Network, ACL changes in underlay
+		doAppNetworkModifyAllUnderlayNetworks(ctx, config,
+			oldConfig, status, uNetModData, ipsets)
 
 		// Write out what we modified to AppNetworkStatus
 		// Note that lengths are the same as before
@@ -1465,13 +1552,10 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 			status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 				config.UnderlayNetworkList[i]
 		}
-	}
-
-	if config.Activate && !status.Activated {
-		// XXX the doAppNetworkModify calls above did
-		// an updateACL and doActivate will do a createACL resulting
-		// in duplicate (but harmless) rules.
-		doActivate(ctx, config, status)
+	} else {
+		if config.Activate {
+			doActivate(ctx, config, status)
+		}
 	}
 
 	status.PendingModify = false
@@ -1550,6 +1634,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 	config types.AppNetworkConfig,
 	oldConfig types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
+	uNetModData []types.AppNetworkUNetModifyData,
 	ipsets []string) {
 
 	for i := range config.UnderlayNetworkList {
@@ -1557,28 +1642,33 @@ func doAppNetworkModifyAllUnderlayNetworks(
 		ulConfig := &config.UnderlayNetworkList[i]
 		oldulConfig := &oldConfig.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
-		doAppNetworkModifyUnderlayNetwork(
-			ctx, status, ulConfig, oldulConfig, ulStatus, ipsets, false)
+		doAppNetworkModifyUNetAcls(ctx, status, ulConfig,
+			oldulConfig, ulStatus, uNetModData[i], ipsets, false)
 	}
 	publishAppNetworkStatus(ctx, status)
 }
 
-func doAppNetworkModifyUnderlayNetwork(
+func doAppNetworkModifyUNetAcls(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ulConfig *types.UnderlayNetworkConfig,
 	oldulConfig *types.UnderlayNetworkConfig,
 	ulStatus *types.UnderlayNetworkStatus,
+	uNetModData types.AppNetworkUNetModifyData,
 	ipsets []string, force bool) {
 
+	appID := status.UUIDandVersion.UUID
 	bridgeName := ulStatus.Bridge
 	appIPAddr := ulStatus.AllocatedIPv4Addr
 
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
-		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netstatus.IfNameList, NIType: netstatus.Type,
+		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr,
+		AppIP: appIPAddr, OldAppIP: uNetModData.OldAppIP,
+		OldBridgeName: uNetModData.OldBridgeName,
+		OldBridgeIP:   uNetModData.OldBridgeIP,
+		UpLinks:       netstatus.IfNameList, NIType: netstatus.Type,
 		AppNum: int32(status.AppNum)}
 
 	// We ignore any errors in netstatus
@@ -1586,7 +1676,6 @@ func doAppNetworkModifyUnderlayNetwork(
 	// XXX could there be a change to AllocatedIPAddress?
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
-	appID := status.UUIDandVersion.UUID
 	rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
 	ruleList, dependList, err := updateACLConfiglet(ctx, aclArgs,
 		oldulConfig.ACLs, ulConfig.ACLs, rules.ACLRules,
@@ -1618,6 +1707,112 @@ func doAppNetworkModifyUnderlayNetwork(
 	publishNetworkInstanceStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+func doAppNetworkModifyUNetAppNums(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	oldConfig types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ipsets []string) ([]types.AppNetworkUNetModifyData, error) {
+	var uNetModData []types.AppNetworkUNetModifyData
+	for i := range config.UnderlayNetworkList {
+		log.Tracef("handleModify ulNum %d\n", i)
+		ulConfig := &config.UnderlayNetworkList[i]
+		oldulConfig := &oldConfig.UnderlayNetworkList[i]
+		ulStatus := &status.UnderlayNetworkList[i]
+		modData, err := doAppNetworkModifyUNetAppNum(ctx, config,
+			status, ulConfig, oldulConfig, ulStatus, ipsets)
+		if err != nil {
+			return uNetModData, err
+		}
+		uNetModData = append(uNetModData, modData)
+	}
+	return uNetModData, nil
+}
+
+// on network transition,
+// release the appNum and acquire appNum on the new network instance
+func doAppNetworkModifyUNetAppNum(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ulConfig *types.UnderlayNetworkConfig,
+	oldulConfig *types.UnderlayNetworkConfig,
+	ulStatus *types.UnderlayNetworkStatus,
+	ipsets []string) (types.AppNetworkUNetModifyData, error) {
+	appID := status.UUIDandVersion.UUID
+	networkID := ulConfig.Network
+	oldNetworkID := ulStatus.Network
+	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
+	if netstatus == nil {
+		errStr := fmt.Sprintf("network instance status get fail :%s",
+			networkID.String())
+		log.Errorf("doAppNetworkModifyUNetAppNum(%s, %s): fail: %s",
+			networkID.String(), appID.String(), errStr)
+		return types.AppNetworkUNetModifyData{}, errors.New(errStr)
+	}
+	oldnetstatus := lookupNetworkInstanceStatus(ctx, oldNetworkID.String())
+	if oldnetstatus == nil {
+		errStr := fmt.Sprintf("network instance status get fail :%s",
+			oldNetworkID.String())
+		log.Errorf("doAppNetworkModifyUNetAppNum(%s, %s): fail: %s",
+			networkID.String(), appID.String(), errStr)
+		return types.AppNetworkUNetModifyData{}, errors.New(errStr)
+	}
+	modData := types.AppNetworkUNetModifyData{
+		OldAppIP:      ulStatus.AllocatedIPv4Addr,
+		OldBridgeIP:   oldnetstatus.BridgeIPAddr,
+		OldBridgeName: oldnetstatus.BridgeName,
+	}
+	change := false
+	// network association change
+	if !uuid.Equal(networkID, oldNetworkID) {
+		// release the app number on old network
+		if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID); err == nil {
+			appNumOnUNetFree(ctx, oldNetworkID, appID)
+		}
+		// allocate an app number on new network
+		isStatic := (ulConfig.AppIPAddr != nil)
+		if _, err := appNumOnUNetAllocate(ctx, networkID, appID,
+			isStatic, false); err != nil {
+			errStr := fmt.Sprintf("underlay network pp num allocate fail :%s",
+				err)
+			log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
+				networkID.String(), appID.String(), errStr)
+			return modData, errors.New(errStr)
+		}
+		change = true
+	}
+	// Static IP Addr Change, Bridge IP Change etc
+	// TBD:XXX may be retart the qnsmasq etc. with new ids would suffice
+	if bytes.Compare(oldulConfig.AppIPAddr, ulConfig.AppIPAddr) != 0 ||
+		ulStatus.BridgeIPAddr != netstatus.BridgeIPAddr {
+		change = true
+	}
+	// if activated, deactivate the interface and release resources
+	// on the old network and try to activate the underlay interface
+	// on new network
+	if change && status.Activated {
+		appNetworkDoInactivateUnderlayNetwork(ctx, status,
+			ulStatus, ipsets)
+		if err := appNetworkUNetActivate(ctx, config, status,
+			ulConfig, ulStatus, ulStatus.Vif, ulStatus.Mac,
+			ipsets); err != nil {
+			errStr := fmt.Sprintf("Underly Network activation fail: %s",
+				err)
+			log.Errorf("doAppNetworkModifyUNetAppNum(%s, %s): fail: %s",
+				networkID.String(), appID.String(), errStr)
+			return modData, errors.New(errStr)
+		}
+		// As Acls have been cleared, new IP Address
+		// allocated, erasing old state and ACLs are recreated,
+		// assume new values
+		modData.OldAppIP = ulStatus.AllocatedIPv4Addr
+		modData.OldBridgeIP = netstatus.BridgeIPAddr
+		modData.OldBridgeName = netstatus.BridgeName
+	}
+	return modData, nil
 }
 
 func maybeRemoveStaleIpsets(staleIpsetHosts []string) {
@@ -1657,6 +1852,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	unpublishAppNetworkStatus(ctx, status)
 
 	appNumFree(ctx, status.UUIDandVersion.UUID)
+	appNumsOnUNetFree(ctx, status)
 	log.Functionf("handleDelete done for %s\n", status.DisplayName)
 }
 
@@ -1688,13 +1884,13 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 	status *types.AppNetworkStatus,
 	ipsets []string) {
 
+	appID := status.UUIDandVersion.UUID
 	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
 		ulStatus := &status.UnderlayNetworkList[ulNum]
 		log.Functionf("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
 		appNetworkDoInactivateUnderlayNetwork(
 			ctx, status, ulStatus, ipsets)
 	}
-	appID := status.UUIDandVersion.UUID
 	delete(ctx.NLaclMap, appID)
 }
 
@@ -1737,12 +1933,12 @@ func appNetworkDoInactivateUnderlayNetwork(
 			appIPAddr)
 	}
 
+	appID := status.UUIDandVersion.UUID
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netstatus.IfNameList}
 
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
-	appID := status.UUIDandVersion.UUID
 	if ulStatus.Vif != "" {
 		rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
 		ruleList, err := deleteACLConfiglet(aclArgs, rules.ACLRules)
@@ -2063,6 +2259,8 @@ func updateACLIPAddr(ctx *zedrouterContext, changedDepend []types.ACLDepend) {
 					i, status.Key())
 				continue
 			}
+			netstatus := lookupNetworkInstanceStatus(ctx,
+				ulStatus.Network.String())
 			match := false
 			for _, d := range ulStatus.ACLDependList {
 				// if d.Ifname in changedDepend
@@ -2087,8 +2285,13 @@ func updateACLIPAddr(ctx *zedrouterContext, changedDepend []types.ACLDepend) {
 			}
 			ipsets := compileAppInstanceIpsets(ctx,
 				config.UnderlayNetworkList)
-			doAppNetworkModifyUnderlayNetwork(ctx, &status,
-				ulConfig, ulConfig, ulStatus, ipsets, true)
+			modData := types.AppNetworkUNetModifyData{
+				OldAppIP:      ulStatus.AllocatedIPv4Addr,
+				OldBridgeIP:   ulStatus.BridgeIPAddr,
+				OldBridgeName: netstatus.BridgeName,
+			}
+			doAppNetworkModifyUNetAcls(ctx, &status,
+				ulConfig, ulConfig, ulStatus, modData, ipsets, true)
 			publishAppNetworkStatus(ctx, &status)
 		}
 	}
@@ -2322,14 +2525,14 @@ func doDnsmasqRestart(ctx *zedrouterContext) {
 }
 
 // XXX: Dead code. May be useful when we do wireguard/tailscale
-func deleteAppInstaneOverlayRoute(
+func deleteAppInstanceOverlayRoute(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 	bridgeName := "" // XXX Fill bridge name
 	oLink, err := findBridge(bridgeName)
 	if err != nil {
 		addError(ctx, status, "findBridge", err)
-		log.Functionf("deleteAppInstaneOverlayRoute done for %s\n",
+		log.Functionf("deleteAppInstanceOverlayRoute done for %s\n",
 			status.DisplayName)
 		return
 	}
@@ -2346,9 +2549,9 @@ func deleteAppInstaneOverlayRoute(
 	if err != nil {
 		errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
 			EID.String()+subnetSuffix, err)
-		addError(ctx, status, "deleteAppInstaneOverlayRoute",
+		addError(ctx, status, "deleteAppInstanceOverlayRoute",
 			errors.New(errStr))
-		log.Functionf("deleteAppInstaneOverlayRoute done for %s\n",
+		log.Functionf("deleteAppInstanceOverlayRoute done for %s\n",
 			status.DisplayName)
 		return
 	}
@@ -2356,9 +2559,9 @@ func deleteAppInstaneOverlayRoute(
 	if err := netlink.RouteDel(&rt); err != nil {
 		errStr := fmt.Sprintf("RouteDelete %s failed: %s",
 			EID, err)
-		addError(ctx, status, "deleteAppInstaneOverlayRoute",
+		addError(ctx, status, "deleteAppInstanceOverlayRoute",
 			errors.New(errStr))
-		log.Functionf("deleteAppInstaneOverlayRoute done for %s\n",
+		log.Functionf("deleteAppInstanceOverlayRoute done for %s\n",
 			status.DisplayName)
 	}
 }
