@@ -2144,27 +2144,37 @@ func createCloudInitISO(ctx *domainContext,
 	}
 	defer os.RemoveAll(dir)
 
-	metafile, err := os.Create(dir + "/meta-data")
+	// XXX presumably this should be controlled by a knob so we
+	// pass through multi-part MIME as user-data and we still
+	// create the meta-data.
+	ok, err := handleMimeMultipart(dir, ciStr)
 	if err != nil {
-		log.Fatalf("createCloudInitISO failed %s", err)
+		return nil, err
 	}
-	metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
-		config.UUIDandVersion.UUID.String(),
-		config.UUIDandVersion.Version))
-	metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
-		config.UUIDandVersion.UUID.String()))
-	metafile.Close()
+	if !ok {
+		metafile, err := os.Create(dir + "/meta-data")
+		if err != nil {
+			log.Fatalf("createCloudInitISO failed %s", err)
+		}
+		metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
+			config.UUIDandVersion.UUID.String(),
+			config.UUIDandVersion.Version))
+		metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
+			config.UUIDandVersion.UUID.String()))
+		metafile.Close()
 
-	userFileName := "/user-data"
-	if strings.Contains(ciStr, "#junos-config") {
-		userFileName = "/juniper.conf"
+		// Handle normal user-data
+		userFileName := "/user-data"
+		if strings.Contains(ciStr, "#junos-config") {
+			userFileName = "/juniper.conf"
+		}
+		userfile, err := os.Create(dir + userFileName)
+		if err != nil {
+			log.Fatalf("createCloudInitISO failed %s", err)
+		}
+		userfile.WriteString(ciStr)
+		userfile.Close()
 	}
-	userfile, err := os.Create(dir + userFileName)
-	if err != nil {
-		log.Fatalf("createCloudInitISO failed %s", err)
-	}
-	userfile.WriteString(ciStr)
-	userfile.Close()
 
 	if err := mkisofs(fileName, dir); err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s", err)
