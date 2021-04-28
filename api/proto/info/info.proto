@@ -375,6 +375,7 @@ enum MaintenanceModeReason {
   MAINTENANCE_MODE_REASON_NONE = 0;
   MAINTENANCE_MODE_REASON_USER_REQUESTED = 1;
   MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP = 2;
+  MAINTENANCE_MODE_REASON_LOW_DISK_SPACE = 3;
 }
 
 // The current and fallback system adapter information
