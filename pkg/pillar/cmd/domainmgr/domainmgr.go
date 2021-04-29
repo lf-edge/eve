@@ -96,6 +96,9 @@ type domainContext struct {
 	// Common CAS client which can be used by multiple routines.
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
+
+	// From global config setting
+	processCloudInitMultiPart bool
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -2009,6 +2012,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
 			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
 		}
+		ctx.processCloudInitMultiPart = gcp.GlobalValueBool(types.ProcessCloudInitMultiPart)
 		ctx.GCInitialized = true
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s. "+
@@ -2144,14 +2148,17 @@ func createCloudInitISO(ctx *domainContext,
 	}
 	defer os.RemoveAll(dir)
 
-	// XXX presumably this should be controlled by a knob so we
-	// pass through multi-part MIME as user-data and we still
-	// create the meta-data.
-	ok, err := handleMimeMultipart(dir, ciStr)
-	if err != nil {
-		return nil, err
+	didMultipart := false
+	// If we need to help the guest VM we look for MIME multi-part
+	// and use it to lay out the file/directory structure for the ISO
+	// image. If the content is not multi-part we treat it as normal.
+	if ctx.processCloudInitMultiPart {
+		didMultipart, err = handleMimeMultipart(dir, ciStr)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if !ok {
+	if !didMultipart {
 		metafile, err := os.Create(dir + "/meta-data")
 		if err != nil {
 			log.Fatalf("createCloudInitISO failed %s", err)
