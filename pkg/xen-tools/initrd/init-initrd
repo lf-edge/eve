@@ -27,7 +27,7 @@ else
 fi
 
 mkdir /mnt/rootfs/dev >/dev/null 2>&1
-mkdir /mnt/rootfs/sys >/dev/null 2>&1
+mkdir -p /mnt/rootfs/sys/fs/cgroup >/dev/null 2>&1
 mkdir /mnt/rootfs/proc >/dev/null 2>&1
 mkdir /dev/pts >/dev/null 2>&1
 mkdir /dev/shm >/dev/null 2>&1
@@ -38,6 +38,7 @@ if [ -d /mnt/rootfs/dev/eve ]; then
 fi
 mount -o rbind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
+mount -t cgroup cgroup /mnt/rootfs/sys/fs/cgroup
 mount -o bind /proc /mnt/rootfs/proc
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
 mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
