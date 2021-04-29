@@ -213,6 +213,9 @@ const (
 
 	// XXX Temporary flag to disable RFC 3442 classless static route usage
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
+
+	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
+	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -769,6 +772,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
+	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
