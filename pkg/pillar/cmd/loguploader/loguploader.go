@@ -62,6 +62,7 @@ var (
 	contSentFailure     int64
 	dev4xxfile          resp4xxlogfile
 	app4xxfile          resp4xxlogfile
+	appGzipMap          map[string]bool // current app gzip files counts with app-uuid as key
 )
 
 type resp4xxlogfile struct {
@@ -442,40 +443,38 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 // app can still wait for upload on the device, the action of uploading
 // to the url can happen after the app is deleted.
 func checkAppLogMetrics(ctx *loguploaderContext) {
-	var l, l3 []string
+	var ai, rmlist []string
 
 	// get current configured apps
 	sub := ctx.subAppInstConfig
 	items := sub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
-		l = append(l, config.UUIDandVersion.UUID.String())
+		ai = append(ai, config.UUIDandVersion.UUID.String())
 	}
 
 	// get the url set in the log metric-map
-	l2 := zedcloud.GetAppURLset(log)
-	if len(l) >= len(l2) { // large or equal, not every app sends logs
-		log.Tracef("checkAppLogMetrics: log metric url number %d is the same or less than app %d",
-			len(l2), len(l))
-		return
-	}
-	log.Tracef("checkAppLogMetrics: app config len %d, log metrics url length %d", len(l), len(l2))
+	urlstats := zedcloud.GetAppURLset(log)
+	log.Tracef("checkAppLogMetrics: app config len %d, log metrics url length %d", len(ai), len(urlstats))
 
 	// get a removal set
-	for _, m := range l2 {
+	for _, stats := range urlstats {
 		foundit := false
-		for _, n := range l {
-			if strings.Contains(m, n) {
+		for _, n := range ai {
+			if strings.Contains(stats, n) {
 				foundit = true
 			}
 		}
 		if foundit {
 			continue
 		}
-		l3 = append(l3, m)
+		if isInAppUUIDMap(stats) {
+			continue
+		}
+		rmlist = append(rmlist, stats)
 	}
-	log.Tracef("checkAppLogMetrics: list of remove urls %v", l3)
-	for _, rem := range l3 {
+	log.Tracef("checkAppLogMetrics: list of remove urls %v", rmlist)
+	for _, rem := range rmlist {
 		zedcloud.CleanAppCloudMetrics(log, rem)
 	}
 }
@@ -550,6 +549,7 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 	var isApp bool
 	if zipDir == types.NewlogUploadAppDir {
 		isApp = true
+		appGzipMap = make(map[string]bool)
 	}
 	for _, f := range files {
 		if f.IsDir() {
@@ -563,6 +563,9 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 		if fileTime == 0 || fileTime > fTime {
 			fileTime = fTime
 			gotFileName = f.Name()
+		}
+		if isApp {
+			buildAppUUIDMap(f.Name())
 		}
 	}
 
@@ -619,6 +622,42 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 	}
 	log.Tracef("doFetchSend: does not find gz log file")
 	return 0
+}
+
+func buildAppUUIDMap(fName string) {
+	var appUUID string
+	if strings.HasPrefix(fName, types.AppPrefix) && strings.HasSuffix(fName, ".gz") {
+		fStr1 := strings.TrimPrefix(fName, types.AppPrefix)
+		fStr := strings.Split(fStr1, types.AppSuffix)
+		if len(fStr) != 2 {
+			err := fmt.Errorf("app split is not 2")
+			log.Error(err)
+			return
+		}
+		appUUID = fStr[0]
+	}
+
+	if len(appUUID) > 0 {
+		if _, ok := appGzipMap[appUUID]; !ok {
+			appGzipMap[appUUID] = true
+		}
+	}
+}
+
+func isInAppUUIDMap(urlStr string) bool {
+	str1 := strings.Split(urlStr, "apps/instanceid/")
+	if len(str1) < 2 {
+		return false
+	}
+	str2 := strings.Split(str1[1], "/newlogs")
+	if len(str2) < 2 {
+		return false
+	}
+	uuid := str2[0]
+	if _, ok := appGzipMap[uuid]; !ok {
+		return false
+	}
+	return true
 }
 
 func getTimeNumber(isApp bool, fName string) (bool, int) {

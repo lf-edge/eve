@@ -89,7 +89,7 @@ type zedrouterContext struct {
 	appStatsInterval          uint32
 	aclog                     *logrus.Logger // App Container logger
 	disableDHCPAllOnesNetMask bool
-	flowPublishMap            map[string]int64
+	flowPublishMap            map[string]time.Time
 }
 
 var debug = false
@@ -161,7 +161,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		dnsServers:         make(map[string][]net.IP),
 		aclog:              agentlog.CustomLogInit(logrus.InfoLevel),
 		NLaclMap:           make(map[uuid.UUID]map[string]types.ULNetworkACLs),
-		flowPublishMap:     make(map[string]int64),
+		flowPublishMap:     make(map[string]time.Time),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)

@@ -586,7 +586,7 @@ func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
 		scope.Sequence = strconv.Itoa(*seq)
 	}
 	flowKey = scope.UUID.String() + scope.NetUUID.String() + scope.Sequence
-	ctx.flowPublishMap[flowKey] = time.Now().Unix()
+	ctx.flowPublishMap[flowKey] = time.Now()
 
 	ctx.pubAppFlowMonitor.Publish(flowKey, *flowdata)
 	log.Functionf("FlowStats: publish to zedagent: total records %d, sequence %d\n", *idx, *seq)
@@ -597,9 +597,8 @@ func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
 }
 
 func checkFlowUnpublish(ctx *zedrouterContext) {
-	now := time.Now().Unix()
 	for k, m := range ctx.flowPublishMap {
-		passed := now - m
+		passed := int64(time.Since(m) / time.Second)
 		if passed > flowStaleSec { // no update after 30 minutes, remove this flowlog
 			log.Functionf("checkFlowUnpublish: key %s, sec passed %d, remove", k, passed)
 			ctx.pubAppFlowMonitor.Unpublish(k)
