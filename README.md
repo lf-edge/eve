@@ -12,8 +12,7 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 ## How to use
 
-You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com), [Make](https://www.gnu.org/software/make/)
-and [go 1.13+](https://golang.org) installed in your system.
+You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com) 20.10+, [Make](https://www.gnu.org/software/make/), and [go 1.16+](https://golang.org) installed in your system.
 
 ### Use pre-built release binaries
 
@@ -61,6 +60,11 @@ docker version
 ```sh
 $ brew install git make jq qemu
 ```
+
+#### On Apple Silicon (ARM64) 
+
+The build of QEMU 5.2.0, from Brew has a [known errata](https://gitlab.com/qemu-project/qemu/-/commit/c118881ee607dcac) related to Just-In-Time code compilation being broken (running a VM fails with "```Could not allocate dynamic translator buffer```"), when ran on ARM64 systems, under MacOS 11.2.x. Please build a newer release of QEMU (minimal version 6.0.0), from QEMU.org, which includes the afformentioned fix, or wait for this to be fixed in [Brew](https://github.com/Homebrew/homebrew-core/pull/76318). 
+
 
 ##### On Ubuntu Linux
 
@@ -379,7 +383,7 @@ diskutil eject /dev/sdXXX
 
 Alternatively the image can be written with tools like [Balena's Etcher](https://www.balena.io/etcher/)
 
-## A quick note on linuxkit
+## A quick note on LinuxKit
 
 You may be wondering why do we have a container-based architecture for a Xen-centric environment. First of all, OCI containers are a key type of a workload for our platform. Which means having OCI environment to run them is a key requirement. We run them via:
 
