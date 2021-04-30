@@ -213,3 +213,8 @@ Use your real name (sorry, no pseudonyms or anonymous contributions.)
 
 If you set your `user.name` and `user.email` git configs, you can sign your
 commit automatically with `git commit -s`.
+
+## Check how we are doing
+
+Linux Foundation maintains a [project health dashboard](https://insights.lfx.linuxfoundation.org/projects/lfedge)
+for all its LF Edge projects including Project EVE.
