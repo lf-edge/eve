@@ -161,7 +161,7 @@ fi
 if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" > /dev/console
 elif [ -f $FIRSTBOOTFILE ]; then
-    exho "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" > /dev/console
+    echo "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" > /dev/console
 else
     echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" > /dev/console
 fi
@@ -384,8 +384,9 @@ if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
         if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
-            echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs"
+            echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs; disabling tpm"
             $BINDIR/generate-device.sh -b $CONFIGDIR/device
+            touch $CONFIGDIR/disable-tpm
         fi
     else
         $BINDIR/generate-device.sh -b $CONFIGDIR/device
