@@ -73,7 +73,7 @@ If the last point sounds a lot like [draw the rest of the owl](https://knowyourm
 * Watchdog
 * LEDs (to allow EVE to signal its state)
 * USB
-* Radio hardware (WiFi, LTE, BLE, Zigbee, LoRA, etc.)
+* [Radio hardware (WiFi, LTE, BLE, Zigbee, LoRA, etc.)](WIRELESS.md)
 * I/O hardware (serial ports, GPIO, sensors, etc.)
 * Any other hardware that you may discover in ACPI tables or device tree
 
@@ -99,7 +99,7 @@ The Linux kernel view of the device hierarchy created based on the information p
 
 ### 4.2. Bus discovery
 
-Having a manifest of all the hardware present on the system is only as useful as CPU's ability to talk to all that hardware. Some of the hardware can be driven directly by memory mapped registers and DMA, other require buses to be available. A bus itself is a kind of a hardware device (at least the end of the bus that connects it to the host CPU) and Linux kernel tracks all the buses it knows about under `/sys/bus/`. Before you can move to enabling a driver, make sure that the required bus is visible under `/sus/bus/BUS-NAME`. The most interesting subfolder under that is `/sus/bus/BUS-NAME/devices`. This is Linux kernel's idea of what devices sit on that bus. Sophisticated buses (like USB) allow for dynamic device enumeration and discovery so that `/sus/bus/usb/devices` is maintained up-to-date by the bus driver itself. Simpler buses (like I2C) don't allow for device discovery. The device sitting on such a bus has to either be described in an ACPI table or device tree entry OR it has to be [manually instantiated](https://www.kernel.org/doc/html/latest/i2c/instantiating-devices.html). For example, the following will instantiate device with the name `eeprom` at I2C address `0x50` on an I2C bus #3:
+Having a manifest of all the hardware present on the system is only as useful as CPU's ability to talk to all that hardware. Some of the hardware can be driven directly by memory mapped registers and DMA, other require buses to be available. A bus itself is a kind of a hardware device (at least the end of the bus that connects it to the host CPU) and Linux kernel tracks all the buses it knows about under `/sys/bus/`. Before you can move to enabling a driver, make sure that the required bus is visible under `/sys/bus/BUS-NAME`. The most interesting subfolder under that is `/sys/bus/BUS-NAME/devices`. This is Linux kernel's idea of what devices sit on that bus. Sophisticated buses (like USB) allow for dynamic device enumeration and discovery so that `/sys/bus/usb/devices` is maintained up-to-date by the bus driver itself. Simpler buses (like I2C) don't allow for device discovery. The device sitting on such a bus has to either be described in an ACPI table or device tree entry OR it has to be [manually instantiated](https://www.kernel.org/doc/html/latest/i2c/instantiating-devices.html). For example, the following will instantiate device with the name `eeprom` at I2C address `0x50` on an I2C bus #3:
 
 ```console
 echo eeprom 0x50 > /sys/bus/i2c/devices/i2c-3/new_device
@@ -116,7 +116,7 @@ If all else fails you may need to write [your own client](https://www.kernel.org
 
 ### 4.3 Pin control
 
-Before PCIe, memory mapped registers and DMA - hardware could only be accessed by a CPU via pins on its package also know as GPIO. Electrically, a given pin can be either at 0 or 1 voltage level and CPU has to ways of setting these values:
+Before PCIe, memory mapped registers and DMA - hardware could only be accessed by a CPU via pins on its package also know as GPIO. Electrically, a given pin can be either at 0 or 1 voltage level and CPU has two ways of setting these values:
 
 * bit-banging: write that 0 or 1 to a certain memory mapped register
 * pin muxing: arrange for the pin to be driven by an outside electronic component according to the certain protocol
