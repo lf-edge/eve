@@ -18,11 +18,12 @@ message InstanceOpsCmd {
   string opsTime = 4; // Not currently used
 }
 
-// Type of metadata to use
+// Type of cloud-init data to provide to application
 enum MetaDataType {
   MetaDataDrive = 0;
-  MetaDataNone = 1; // Do not use metadata
+  MetaDataNone = 1; // Do not provide metadata
   MetaDataOpenStack = 2;
+  MetaDataDriveMultipart = 3; // Process multipart MIME for application
 }
 
 // The complete configuration for an Application Instance

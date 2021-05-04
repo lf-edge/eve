@@ -1582,7 +1582,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			}
 			status.EnvVariables = envList
 		} else {
-			if config.MetaDataType == types.MetaDataDrive {
+			switch config.MetaDataType {
+			case types.MetaDataDrive, types.MetaDataDriveMultipart:
 				ds, err := createCloudInitISO(ctx, config, ciStr)
 				if err != nil {
 					return err
@@ -2153,8 +2154,10 @@ func createCloudInitISO(ctx *domainContext,
 	didMultipart := false
 	// If we need to help the guest VM we look for MIME multi-part
 	// and use it to lay out the file/directory structure for the ISO
-	// image. If the content is not multi-part we treat it as normal.
-	if ctx.processCloudInitMultiPart {
+	// image. Even if set, If the content is not multi-part we treat it
+	// as normal and fill in a user-data file below.
+	if config.MetaDataType == types.MetaDataDriveMultipart ||
+		ctx.processCloudInitMultiPart {
 		didMultipart, err = handleMimeMultipart(dir, ciStr)
 		if err != nil {
 			return nil, err
