@@ -63,7 +63,7 @@ func Append(cms types.CipherMetricsMap, cms1 types.CipherMetricsMap) types.Ciphe
 		cm, ok := cms[agentName]
 		if !ok {
 			// New agentName; take all
-			cms[agentName] = cm
+			cms[agentName] = cm1
 			continue
 		}
 		if cm.LastFailure.IsZero() {
