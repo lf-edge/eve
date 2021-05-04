@@ -394,7 +394,9 @@ func launchHostProbe(ctx *zedrouterContext) {
 					}
 					if foundport {
 						startTime := time.Now()
-						resp, _, _, err := zedcloud.SendOnIntf(&zcloudCtx, remoteURL, info.IfName, 0, nil, true)
+						const allowProxy = true
+						const useOnboard = false
+						resp, _, _, err := zedcloud.SendOnIntf(&zcloudCtx, remoteURL, info.IfName, 0, nil, allowProxy, useOnboard)
 						if err != nil {
 							log.Tracef("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
 						}
