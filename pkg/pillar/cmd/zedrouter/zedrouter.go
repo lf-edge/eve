@@ -542,6 +542,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	for {
 		select {
+		case change := <-subControllerCert.MsgChan():
+			subControllerCert.ProcessChange(change)
+
+		case change := <-subEdgeNodeCert.MsgChan():
+			subEdgeNodeCert.ProcessChange(change)
+
+		case change := <-subCipherContext.MsgChan():
+			subCipherContext.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
