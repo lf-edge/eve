@@ -886,7 +886,7 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
-		done, _, _ = myGet(zedcloudCtx, reqURL, ifname, retryCount)
+		done, _, _ = myGet(ctx, reqURL, ifname, retryCount)
 		if done {
 			break
 		}
@@ -939,7 +939,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		time.Sleep(delay)
 		var resp *http.Response
 		var buf []byte
-		done, resp, rtf, buf = myPost(zedcloudCtx, reqURL, ifname, retryCount,
+		done, resp, rtf, buf = myPost(ctx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
 		if done {
 			parsePrint(reqURL, resp, buf)
@@ -1033,9 +1033,10 @@ func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, e
 // Returns true when done; false when retry.
 // Returns the response when done. Caller can not use resp.Body but
 // can use the contents []byte
-func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
+func myGet(ctx *diagContext, reqURL string, ifname string,
 	retryCount int) (bool, *http.Response, []byte) {
 
+	zedcloudCtx := ctx.zedcloudCtx
 	var preqURL string
 	if strings.HasPrefix(reqURL, "http:") {
 		preqURL = reqURL
@@ -1054,7 +1055,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	}
 	const allowProxy = true
 	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
-		reqURL, ifname, 0, nil, allowProxy)
+		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
 		switch rtf {
 		case types.SenderStatusUpgrade:
@@ -1093,9 +1094,10 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	}
 }
 
-func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
+func myPost(ctx *diagContext, reqURL string, ifname string,
 	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
 
+	zedcloudCtx := ctx.zedcloudCtx
 	var preqURL string
 	if strings.HasPrefix(reqURL, "http:") {
 		preqURL = reqURL
@@ -1114,7 +1116,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	}
 	const allowProxy = true
 	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
-		reqURL, ifname, reqlen, b, allowProxy)
+		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
 		switch rtf {
 		case types.SenderStatusUpgrade:

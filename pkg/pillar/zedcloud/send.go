@@ -101,7 +101,8 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 		return nil, nil, remoteTemporaryFailure, err
 	}
 	for _, intf := range intfs {
-		resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy)
+		const useOnboard = false
+		resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, useOnboard)
 		// this changes original boolean logic a little in V2 API, basically the last rtf non-zero enum would
 		// overwrite the previous one in the loop if they are differ
 		if rtf != types.SenderStatusNone {
@@ -197,7 +198,8 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		}
 		// This VerifyAllIntf() is called for "ping" url only, it does not have
 		// return envelope verifying check. Thus below does not check other values of rtf.
-		resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
+		const useOnboard = false
+		resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, useOnboard)
 		switch rtf {
 		case types.SenderStatusRefused, types.SenderStatusCertInvalid:
 			remoteTemporaryFailure = true
@@ -254,11 +256,11 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 // to allow the caller to look at StatusCode
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
-func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, types.SenderResult, error) {
+func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, useOnboard bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
 	var reqUrl string
-	var useTLS, isEdgenode, isGet, useOnboard, isCerts bool
+	var useTLS, isEdgenode, isGet, isCerts bool
 
 	senderStatus := types.SenderStatusNone
 	if strings.HasPrefix(destURL, "http:") {
