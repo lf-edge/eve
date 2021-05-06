@@ -714,6 +714,11 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	log.Tracef("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
 	log.Tracef("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
+
+	// publish the cloud MetricsMap for zedagent for device debugging purpose
+	if zedagentMetrics != nil {
+		ctx.pubMetricsMap.Publish("global", zedagentMetrics)
+	}
 }
 
 func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
