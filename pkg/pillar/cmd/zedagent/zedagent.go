@@ -98,6 +98,7 @@ type zedagentContext struct {
 	subNetworkInstanceMetrics pubsub.Subscription
 	subAppFlowMonitor         pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
+	pubMetricsMap             pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
@@ -239,6 +240,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
+
+	// Publish zedagent cloud metrics
+	cloudMetricsPub, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.MetricsMap{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.pubMetricsMap = cloudMetricsPub
 
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
