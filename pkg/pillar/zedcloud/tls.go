@@ -107,6 +107,11 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 			return nil, err
 		}
 		sha := strings.TrimSpace(string(line))
+		if len(sha) == 0 {
+			errStr := fmt.Sprintf("Read zero byte from sha file")
+			log.Errorf(errStr)
+			return nil, errors.New(errStr)
+		}
 		v2RootFilename := types.CertificateDirname + "/" + sha
 		caCert, err := ioutil.ReadFile(v2RootFilename)
 		if err != nil {
@@ -239,6 +244,11 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 			return false
 		}
 		sha := strings.TrimSpace(string(line))
+		if len(sha) == 0 {
+			errStr := fmt.Sprintf("Read zero byte from sha file")
+			log.Errorf(errStr)
+			return false
+		}
 		v2RootFilename := types.CertificateDirname + "/" + sha
 		caCert, err := ioutil.ReadFile(v2RootFilename)
 		if err != nil {
