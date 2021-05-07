@@ -1829,6 +1829,11 @@ func changedACLDepend(ctx *zedrouterContext, oldDNS types.DeviceNetworkStatus,
 	newDNS types.DeviceNetworkStatus) []types.ACLDepend {
 
 	var dependList []types.ACLDepend
+	// Any change of ports in DeviceNetworkStatus that can affect application
+	// network instances will be responded to by the network probing subsystem
+	// by changing current uplink of the affected network instance.
+	// Any change to current uplink of a network instance triggers a complete
+	// re-programming of ACLs.
 	for i, op := range oldDNS.Ports {
 		if len(newDNS.Ports) <= i {
 			log.Tracef("changedACLDepend: %s disappeared",
@@ -1858,6 +1863,11 @@ func changedACLDepend(ctx *zedrouterContext, oldDNS types.DeviceNetworkStatus,
 					IPAddr: oai.Addr}
 				dependList = append(dependList, depend)
 			}
+		}
+		// Does the new DNS port have new addresses?
+		if len(np.AddrInfoList) > len(op.AddrInfoList) {
+			depend := types.ACLDepend{Ifname: np.IfName}
+			dependList = append(dependList, depend)
 		}
 	}
 	return dependList
