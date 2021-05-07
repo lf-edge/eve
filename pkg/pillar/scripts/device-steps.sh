@@ -126,16 +126,16 @@ echo
 # /persist/certs/v2tlsbaseroot-certificates.sha256. This is to prepare for a future
 # feature where the controller can update the base file.
 # Note that programatically we add any proxy certificates to the list of roots we trust.
-if [ ! -f /config/v2tlsbaseroot-certificates.pem ]; then
+if [ ! -s /config/v2tlsbaseroot-certificates.pem ]; then
     echo "$(date -Ins -u) Creating default /config/v2tlsbaseroot-certificates.pem"
     cp -p /etc/ssl/certs/ca-certificates.crt /config/v2tlsbaseroot-certificates.pem
 fi
 sha=$(openssl sha256 /config/v2tlsbaseroot-certificates.pem | awk '{print $2}')
-if [ ! -f "$PERSIST_CERTS/$sha" ]; then
+if [ ! -s "$PERSIST_CERTS/$sha" ]; then
     echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to $PERSIST_CERTS"
     cp /config/v2tlsbaseroot-certificates.pem "$PERSIST_CERTS/$sha"
 fi
-if [ ! -f "$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256" ]; then
+if [ ! -s "$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256" ]; then
     echo "$(date -Ins -u) Setting /config/v2tlsbaseroot-certificates.pem as current"
     echo "$sha" >"$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256"
 fi
@@ -256,7 +256,7 @@ if ! pgrep ledmanager >/dev/null; then
     $BINDIR/ledmanager &
     wait_for_touch ledmanager
 fi
-if [ ! -f $CONFIGDIR/device.cert.pem ]; then
+if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     touch $FIRSTBOOTFILE # For nodeagent
 fi
 
@@ -405,7 +405,7 @@ done
 # Add ndpd to watchdog
 touch "$WATCHDOG_PID/ntpd.pid"
 
-if [ ! -f $CONFIGDIR/device.cert.pem ]; then
+if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     touch $CONFIGDIR/self-register-pending
     sync
@@ -436,7 +436,7 @@ else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
 fi
-if [ ! -f $CONFIGDIR/server ] || [ ! -f $CONFIGDIR/root-certificate.pem ]; then
+if [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; then
     echo "$(date -Ins -u) No server or root-certificate to connect to. Done"
     exit 0
 fi
