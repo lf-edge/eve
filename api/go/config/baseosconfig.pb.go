@@ -183,6 +183,70 @@ func (x *BaseOSConfig) GetVolumeID() string {
 	return ""
 }
 
+type BaseOS struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// UUID for ContentTree with BaseOS image
+	ContentTreeUuid string `protobuf:"bytes,1,opt,name=content_tree_uuid,json=contentTreeUuid,proto3" json:"content_tree_uuid,omitempty"`
+	// retry_update
+	// Retry the BaseOs update if the update failed previously.
+	// 1) If this image is in FAILED state, retry the image update.
+	// 2) If this image is already active and fully installed (PartitionState = UPDATED),
+	//    Do nothing. Just update the baseos_update_counter in Info message.
+	// 3) If this image is same as active image, but status is NOT yet UPDATED, or
+	//    if the update to this image is in progress, wait till the update
+	//    concludes (Success / Error+rollback) - then trigger the retry as needed.
+	RetryUpdate *DeviceOpsCmd `protobuf:"bytes,2,opt,name=retry_update,json=retryUpdate,proto3" json:"retry_update,omitempty"`
+}
+
+func (x *BaseOS) Reset() {
+	*x = BaseOS{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_config_baseosconfig_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BaseOS) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BaseOS) ProtoMessage() {}
+
+func (x *BaseOS) ProtoReflect() protoreflect.Message {
+	mi := &file_config_baseosconfig_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BaseOS.ProtoReflect.Descriptor instead.
+func (*BaseOS) Descriptor() ([]byte, []int) {
+	return file_config_baseosconfig_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BaseOS) GetContentTreeUuid() string {
+	if x != nil {
+		return x.ContentTreeUuid
+	}
+	return ""
+}
+
+func (x *BaseOS) GetRetryUpdate() *DeviceOpsCmd {
+	if x != nil {
+		return x.RetryUpdate
+	}
+	return nil
+}
+
 var File_config_baseosconfig_proto protoreflect.FileDescriptor
 
 var file_config_baseosconfig_proto_rawDesc = []byte{
@@ -209,11 +273,19 @@ var file_config_baseosconfig_proto_rawDesc = []byte{
 	0x18, 0x0a, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0d, 0x62, 0x61, 0x73, 0x65, 0x4f, 0x53, 0x56, 0x65,
 	0x72, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x1a, 0x0a, 0x08, 0x76, 0x6f, 0x6c, 0x75, 0x6d, 0x65, 0x49,
 	0x44, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x76, 0x6f, 0x6c, 0x75, 0x6d, 0x65, 0x49,
-	0x44, 0x42, 0x3d, 0x0a, 0x15, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e,
-	0x65, 0x76, 0x65, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5a, 0x24, 0x67, 0x69, 0x74, 0x68,
-	0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65,
-	0x76, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x44, 0x22, 0x7c, 0x0a, 0x06, 0x42, 0x61, 0x73, 0x65, 0x4f, 0x53, 0x12, 0x2a, 0x0a, 0x11, 0x63,
+	0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x5f, 0x74, 0x72, 0x65, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x54,
+	0x72, 0x65, 0x65, 0x55, 0x75, 0x69, 0x64, 0x12, 0x46, 0x0a, 0x0c, 0x72, 0x65, 0x74, 0x72, 0x79,
+	0x5f, 0x75, 0x70, 0x64, 0x61, 0x74, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x23, 0x2e,
+	0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x63,
+	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x4f, 0x70, 0x73, 0x43,
+	0x6d, 0x64, 0x52, 0x0b, 0x72, 0x65, 0x74, 0x72, 0x79, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x42,
+	0x3d, 0x0a, 0x15, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76,
+	0x65, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5a, 0x24, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
+	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65,
+	0x2f, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -228,22 +300,25 @@ func file_config_baseosconfig_proto_rawDescGZIP() []byte {
 	return file_config_baseosconfig_proto_rawDescData
 }
 
-var file_config_baseosconfig_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_config_baseosconfig_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_config_baseosconfig_proto_goTypes = []interface{}{
 	(*OSKeyTags)(nil),      // 0: org.lfedge.eve.config.OSKeyTags
 	(*OSVerDetails)(nil),   // 1: org.lfedge.eve.config.OSVerDetails
 	(*BaseOSConfig)(nil),   // 2: org.lfedge.eve.config.BaseOSConfig
-	(*UUIDandVersion)(nil), // 3: org.lfedge.eve.config.UUIDandVersion
-	(*Drive)(nil),          // 4: org.lfedge.eve.config.Drive
+	(*BaseOS)(nil),         // 3: org.lfedge.eve.config.BaseOS
+	(*UUIDandVersion)(nil), // 4: org.lfedge.eve.config.UUIDandVersion
+	(*Drive)(nil),          // 5: org.lfedge.eve.config.Drive
+	(*DeviceOpsCmd)(nil),   // 6: org.lfedge.eve.config.DeviceOpsCmd
 }
 var file_config_baseosconfig_proto_depIdxs = []int32{
-	3, // 0: org.lfedge.eve.config.BaseOSConfig.uuidandversion:type_name -> org.lfedge.eve.config.UUIDandVersion
-	4, // 1: org.lfedge.eve.config.BaseOSConfig.drives:type_name -> org.lfedge.eve.config.Drive
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	4, // 0: org.lfedge.eve.config.BaseOSConfig.uuidandversion:type_name -> org.lfedge.eve.config.UUIDandVersion
+	5, // 1: org.lfedge.eve.config.BaseOSConfig.drives:type_name -> org.lfedge.eve.config.Drive
+	6, // 2: org.lfedge.eve.config.BaseOS.retry_update:type_name -> org.lfedge.eve.config.DeviceOpsCmd
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_config_baseosconfig_proto_init() }
@@ -290,6 +365,18 @@ func file_config_baseosconfig_proto_init() {
 				return nil
 			}
 		}
+		file_config_baseosconfig_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*BaseOS); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -297,7 +384,7 @@ func file_config_baseosconfig_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_config_baseosconfig_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
