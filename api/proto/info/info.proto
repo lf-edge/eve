@@ -347,6 +347,14 @@ message ZInfoDevice {
 
   // Information about hardware capabilities
   Capabilities capabilities = 42;
+
+  // BaseOsUpgrade Retry Counter. This must be updated only when:
+  // 1) if the configured BaseOs partition is set to UPDATED, mirror
+  // the current value of baseos_update.counter
+  // 2) At the start if a BaseOs update (either from a partition in error state
+  // or from UPDATED state of another version), copy over current
+  // deviceConfig.baseOs_update_counter
+  uint32 baseos_update_counter = 43;
 }
 
 // Different reasons for a boot/reboot
