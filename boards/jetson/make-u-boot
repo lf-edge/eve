@@ -4,8 +4,8 @@ VERSION=$1
 #########################################################
 SCRIPT_HOME="$PWD"
 SOURCE_URL=https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
-UBOOT_DIR=$SCRIPT_HOME/u-boot
-UBOOR_SRC_DIR=$UBOOT_DIR/src
+UBOOT_DIR="$SCRIPT_HOME"/u-boot
+UBOOR_SRC_DIR="$UBOOT_DIR"/src
 #########################################################
 
 function cleanup() {
@@ -24,9 +24,9 @@ if [ "$(uname -m)" = x86_64 ]; then
 fi
 
 function apply_patches() {
-  if [ -d "$UBOOT_DIR/patches/$VERSION" ]; then
+  if [ -d "$UBOOT_DIR/patches-$VERSION" ]; then
     cd "$UBOOT_DIR"/src || return
-    for patch in "$UBOOT_DIR"/patches/"$VERSION"/*.patch; do
+    for patch in "$UBOOT_DIR/patches-$VERSION"/*.patch; do
       echo "Applying ${patch}"
       patch -p1 < "$patch"
     done
@@ -39,4 +39,7 @@ apply_patches
 make -C "$UBOOR_SRC_DIR" O=build/p3450-0000 p3450-0000_defconfig
 make -C "$UBOOR_SRC_DIR" O=build/p3450-0000 -j "$(getconf _NPROCESSORS_ONLN)"
 
+if ! [ -e BSP/t210/Linux_for_Tegra/bootloader/t210ref/p3450-0000/u-boot.bin_orig ]; then
+  mv BSP/t210/Linux_for_Tegra/bootloader/t210ref/p3450-0000/u-boot.bin BSP/t210/Linux_for_Tegra/bootloader/t210ref/p3450-0000/u-boot.bin_orig
+fi
 cp "$UBOOR_SRC_DIR"/build/p3450-0000/u-boot.bin BSP/t210/Linux_for_Tegra/bootloader/t210ref/p3450-0000/u-boot.bin
