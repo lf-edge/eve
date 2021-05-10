@@ -1,0 +1,44 @@
+From 147a697e9a9f4371482a517e966aee49c2e7634f Mon Sep 17 00:00:00 2001
+From: Dmitriy Aleksandrov <goodmobiledevices@gmail.com>
+Date: Mon, 10 May 2021 11:32:19 +0300
+Subject: [PATCH] include: configs: t210: set correct address for DTB kernel
+
+Let's take a look at the TegraBoot logs:
+[0001.421] Debug Init done
+[0001.423] Marked DTB cacheable
+[0001.426] Bootloader DTB loaded at 0x83000000
+[0001.431] Marked DTB cacheable
+[0001.434] Kernel DTB loaded at 0x83100000
+[0001.438] DeviceTree Init done
+[0001.451] Pinmux applied successfully
+
+We see that the dtb for the Kernel is loaded at 0x83100000 and the bootloader dtb is loaded at 0x83000000
+
+But in t210 memory u-boot layout dtb for kernel reads from 0x83000000 address.
+https://github.com/u-boot/u-boot/blob/632fb978a513e22e4cbc8410156a185716216649/include/configs/tegra210-common.h#L50
+
+This patch set correct address for kernel dtb, after this patch u-boot load correct dtb for kernel.
+
+Signed-off-by: Dmitriy Aleksandrov <goodmobiledevices@gmail.com>
+---
+ include/configs/tegra210-common.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/include/configs/tegra210-common.h b/include/configs/tegra210-common.h
+index 2226effe..aaa75e05 100644
+--- a/include/configs/tegra210-common.h
++++ b/include/configs/tegra210-common.h
+@@ -47,8 +47,8 @@
+ 	"pxefile_addr_r=0x90100000\0" \
+ 	"kernel_addr_r=" __stringify(CONFIG_LOADADDR) "\0" \
+ 	"fdtfile=" FDTFILE "\0" \
+-	"fdt_addr_r=0x83000000\0" \
+-	"ramdisk_addr_r=0x83200000\0"
++	"fdt_addr_r=0x83100000\0" \
++	"ramdisk_addr_r=0x83300000\0"
+ 
+ /* For USB EHCI controller */
+ #define CONFIG_EHCI_IS_TDI
+-- 
+2.25.1
+
