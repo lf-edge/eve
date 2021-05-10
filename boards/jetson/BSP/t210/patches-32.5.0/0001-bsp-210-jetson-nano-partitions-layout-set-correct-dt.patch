@@ -1,0 +1,58 @@
+From 82244237627a08451415996ba33288199f927898 Mon Sep 17 00:00:00 2001
+From: Dmitriy Aleksandrov <goodmobiledevices@gmail.com>
+Date: Mon, 10 May 2021 10:51:13 +0300
+Subject: [PATCH] bsp: 210: jetson-nano: partitions layout: set correct dtb
+ files * In partitions layout nvidia have a two partitions for dtb, first -
+ for bootloader, second for kernel. L4T uses the same DTB in both partitions,
+ because the L4T kernel can work with this dtb. But vanilla linux kernel
+ cannot work with this.
+
+Signed-off-by: Dmitriy Aleksandrov <goodmobiledevices@gmail.com>
+---
+ bootloader/t210ref/cfg/flash_l4t_t210_max-spi_p3448.xml | 2 +-
+ flash.sh                                                | 7 ++++++-
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/bootloader/t210ref/cfg/flash_l4t_t210_max-spi_p3448.xml b/bootloader/t210ref/cfg/flash_l4t_t210_max-spi_p3448.xml
+index a24d1d2..5d769d5 100644
+--- a/bootloader/t210ref/cfg/flash_l4t_t210_max-spi_p3448.xml
++++ b/bootloader/t210ref/cfg/flash_l4t_t210_max-spi_p3448.xml
+@@ -66,7 +66,7 @@
+             <file_system_attribute> 0 </file_system_attribute>
+             <allocation_attribute> 0x8 </allocation_attribute>
+             <percent_reserved> 0 </percent_reserved>
+-            <filename> DTBFILE </filename>
++            <filename> BOOTLOADERDTBFILE </filename>
+             <description> **Required.** Contains Bootloader DTB binary. </description>
+         </partition>
+ 
+diff --git a/flash.sh b/flash.sh
+index cb7ad11..147a786 100755
+--- a/flash.sh
++++ b/flash.sh
+@@ -1523,7 +1523,7 @@ if [ "${CHIPID}" = "0x19" ]; then
+ fi;
+ mkfilepath cfgfile	"${CFGFILE}"	"${TARGET_DIR}/cfg/${EMMC_CFG}";
+ mkfilepath dtbfile	"${DTBFILE}"	"${DTB_DIR}/${DTB_FILE}";
+-
++mkfilepath dtbfilebootloader	"${DTBFILE}"	"${DTB_DIR}/${DTB_FILE}_orig";
+ mkfilesoft kernelinitrd	"${INITRD}"	"${BL_DIR}/l4t_initrd.img";
+ mkfilesoft tegraboot	"${TEGRABOOT}"	"${TARGET_DIR}/nvtboot.bin";
+ mkfilesoft wb0boot	"${WB0BOOT}"	"${TARGET_DIR}/nvtbootwb0.bin";
+@@ -2315,8 +2315,13 @@ if [ "${dtbfile}" != "" ]; then
+ 	cp "${BL_DIR}/${dtbfilename}" "${BL_DIR}/kernel_${dtbfilename}"
+ 	dtbfilename="kernel_${dtbfilename}";
+ 
++	cp2local dtbfilebootloader "${BL_DIR}/${dtbfilename}_orig";
++	cp "${BL_DIR}/${dtbfilename}_orig" "${BL_DIR}/bootloader_${dtbfilename}"
++	dtbbootloaderfile="bootloader_${dtbfilename}";
++
+ 	DTB_TAG+="-e s/DXB/DTB/ ";
+ 	DTB_TAG+="-e s/KERNELDTB-NAME/kernel-dtb/ ";
++	DTB_TAG+="-e s/BOOTLOADERDTBFILE/${dtbbootloaderfile}/ ";
+ 	DTB_TAG+="-e s/DTBFILE/${dtbfilename}/ ";
+ 	DTB_TAG+="-e s/KERNELDTB-FILE/${dtbfilename}/ ";
+ 	DTB_TAG+="-e s/DTB_FILE/${dtbfilename}/ ";			#COMPAT
+-- 
+2.25.1
+

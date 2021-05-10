@@ -8,7 +8,6 @@ BSP_VERSION_ARR=(); while IFS=$'\n' read -r line; do BSP_VERSION_ARR+=("$line");
 NVIDIA_BSP_DIR=$SCRIPT_HOME/BSP
 NVIDIA_BSP_PLATFORM_DIR="$NVIDIA_BSP_DIR/t$TEGRA_PLATFORM"
 NVIDIA_BSP_L4T_DIR=$NVIDIA_BSP_PLATFORM_DIR/Linux_for_Tegra
-######################### T210 ##########################
 NVIDIA_BSP_PACKAGE="Tegra${TEGRA_PLATFORM}_Linux_R${BSP_VERSION}_aarch64.tbz2"
 NVIDIA_BSP_LINK="https://developer.download.nvidia.com/embedded/L4T/r${BSP_VERSION_ARR[0]}_Release_v${BSP_VERSION_ARR[1]}.${BSP_VERSION_ARR[2]}/T${TEGRA_PLATFORM}/${NVIDIA_BSP_PACKAGE}"
 ##################### TEGRA BSP END #####################
@@ -26,9 +25,9 @@ function prepare_bsp() {
 }
 
 function apply_bsp_patches() {
-  if [ -d "$NVIDIA_BSP_PLATFORM_DIR"/patches/"$BSP_VERSION" ]; then
+  if [ -d "$NVIDIA_BSP_PLATFORM_DIR"/patches-"$BSP_VERSION" ]; then
     cd "$NVIDIA_BSP_L4T_DIR" || return
-    for patch in "$NVIDIA_BSP_PLATFORM_DIR"/patches/"$BSP_VERSION"/*.patch; do
+    for patch in "$NVIDIA_BSP_PLATFORM_DIR"/patches-"$BSP_VERSION"/*.patch; do
       echo "Applying $patch"
       patch -p1 < "$patch"
     done
