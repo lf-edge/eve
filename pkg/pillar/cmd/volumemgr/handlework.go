@@ -183,11 +183,8 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 
 	// load the blobs
 	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(status.ReferenceID(), *root, loadBlobs...)
-	// loadedBlobs are BlobStatus for the ones we loaded; publicize their new states.
+	// loadedBlobs are BlobStatus for the ones we loaded
 	for _, blob := range loadedBlobs {
-		blob.State = types.LOADED
-		blob.CreateTime = time.Now()
-		publishBlobStatus(ctx, &blob)
 		d.loaded = append(d.loaded, blob.Sha256)
 	}
 	result := worker.WorkResult{
@@ -213,6 +210,12 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(casIngestWorkDescription)
+	// loaded has the hashes of the blobs we loaded; publicise their new states.
+	blobs := lookupBlobStatuses(ctx, d.loaded...)
+	for _, blob := range blobs {
+		blob.State = types.LOADED
+		publishBlobStatus(ctx, blob)
+	}
 	updateStatusByBlob(ctx, d.status.Blobs...)
 	return nil
 }
