@@ -21,7 +21,7 @@ import (
 
 //TBD: Have a better way to calculate this number.
 //For now it is based on some trial-and-error experiments
-const qemuOverHead = int64(600 * 1024 * 1024)
+const minQemuOverHead = int64(600 * 1024 * 1024)
 
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
 
@@ -476,6 +476,13 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
 
+	/* 2.5 % of total memory */
+	qemuOverHead := int64(config.Memory) * 1024 * 25 / 1000
+	if qemuOverHead < minQemuOverHead {
+		qemuOverHead = minQemuOverHead
+	}
+
+	logrus.Debugf("Qemu overhead for domain %s is %d bytes", status.DomainName, qemuOverHead)
 	spec.AdjustMemLimit(config, qemuOverHead)
 	spec.Get().Process.Args = args
 	logrus.Infof("Hypervisor args: %v", args)
