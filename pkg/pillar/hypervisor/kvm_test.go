@@ -231,7 +231,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -257,7 +257,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -265,7 +265,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -300,7 +300,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -322,7 +322,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -493,7 +493,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -519,7 +519,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -527,7 +527,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -562,7 +562,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -584,7 +584,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -733,7 +733,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -759,7 +759,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -767,7 +767,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -802,7 +802,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -824,7 +824,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1067,7 +1067,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1093,7 +1093,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -1101,7 +1101,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1136,7 +1136,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1158,7 +1158,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1174,9 +1174,19 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.8"
   addr = "0x0"
 
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
+  bus = "pci.9"
+  addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
   path = "/dev/ttyS0"
@@ -1336,7 +1346,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1364,7 +1374,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -1372,7 +1382,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1409,7 +1419,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1431,7 +1441,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1447,9 +1457,19 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.8"
   addr = "0x0"
 
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
+  bus = "pci.9"
+  addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
   path = "/dev/ttyS0"
@@ -1470,9 +1490,23 @@ func TestCreateDomConfig(t *testing.T) {
 	config.VirtualizationMode = types.FML
 	t.Run("amd64-fml", func(t *testing.T) {
 		conf.Seek(0, 0)
+		config.IoAdapterList = append(config.IoAdapterList, types.IoAdapter{
+			Type: types.IoNetEth,
+			Name: "eth1",
+		})
+		aa.IoBundleList = append(aa.IoBundleList, types.IoBundle{
+			Type:            types.IoNetEth,
+			AssignmentGroup: "eth1-1",
+			Phylabel:        "eth1",
+			Ifname:          "eth1",
+			PciLong:         "0000:04:00.0",
+			UsedByUUID:      config.UUIDandVersion.UUID,
+		})
 		if err := kvmIntel.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
+		aa.IoBundleList = aa.IoBundleList[:len(aa.IoBundleList)-1]
+		config.IoAdapterList = config.IoAdapterList[:len(config.IoAdapterList)-1]
 		defer os.Truncate(conf.Name(), 0)
 
 		result, err := ioutil.ReadFile(conf.Name())
@@ -1610,7 +1644,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1636,7 +1670,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -1644,7 +1678,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1679,7 +1713,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1701,7 +1735,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1717,9 +1751,32 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.8"
   addr = "0x0"
 
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
+  bus = "pci.9"
+  addr = "0x0"
+[device "pci.10"]
+  driver = "pcie-root-port"
+  port = "110"
+  chassis = "10"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0xa"
+
+[device]
+  driver = "vfio-pci"
+  host = "04:00.0"
+  bus = "pci.10"
+  addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
   path = "/dev/ttyS0"
@@ -1858,7 +1915,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "14"
   chassis = "4"
   bus = "pcie.0"
-  addr = "4"
+  addr = "0x4"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -1884,7 +1941,7 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "share_dir"
-  addr = "5"
+  addr = "0x5"
 
 
 [device "pci.6"]
@@ -1892,7 +1949,7 @@ func TestCreateDomConfig(t *testing.T) {
   port = "16"
   chassis = "6"
   bus = "pcie.0"
-  addr = "6"
+  addr = "0x6"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -1927,7 +1984,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "7"
+  addr = "0x7"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1949,7 +2006,7 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "8"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "8"
+  addr = "0x8"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1965,9 +2022,19 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.8"
   addr = "0x0"
 
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
+  bus = "pci.9"
+  addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
   path = "/dev/ttyS0"
