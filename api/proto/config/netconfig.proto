@@ -48,6 +48,12 @@ message NetworkAdapter {
 
   // firewall
   repeated ACE acls = 40;
+
+  // access port vlan id
+  // app interface with access vlan id of zero will be treated as trunk port
+  // valid vlan id range: 2 - 4093
+  // vlan id 1 is implicitly used by linux bridges
+  uint32 access_vlan_id = 41;
 }
 
 message WirelessConfig {
