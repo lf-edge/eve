@@ -1476,19 +1476,20 @@ func doAppNetworkModifyUnderlayNetwork(
 	maybeRemoveStaleIpsets(staleIpsets)
 }
 
-func maybeRemoveStaleIpsets(staleIpsets []string) {
-	// Remove stale ipsets
+func maybeRemoveStaleIpsets(staleIpsetHosts []string) {
+	// Remove stale ipsets previously created for ACLs with the "host" match.
 	// In case if there are any references to these ipsets from other
 	// domUs, then the kernel would not remove them.
 	// The ipset destroy command would just fail.
-	for _, ipset := range staleIpsets {
-		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipset))
+	for _, host := range staleIpsetHosts {
+		ipsetBasename := hostIpsetBasename(host)
+		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipsetBasename))
 		if err != nil {
-			log.Errorln("ipset destroy ipv4", ipset, err)
+			log.Errorln("ipset destroy ipv4", ipsetBasename, err)
 		}
-		err = ipsetDestroy(fmt.Sprintf("ipv6.%s", ipset))
+		err = ipsetDestroy(fmt.Sprintf("ipv6.%s", ipsetBasename))
 		if err != nil {
-			log.Errorln("ipset destroy ipv6", ipset, err)
+			log.Errorln("ipset destroy ipv6", ipsetBasename, err)
 		}
 	}
 }

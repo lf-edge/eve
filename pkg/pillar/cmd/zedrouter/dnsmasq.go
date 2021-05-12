@@ -107,11 +107,11 @@ func createDnsmasqConfiglet(
 	ctx *zedrouterContext,
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
-	ipsets []string, uplink string,
+	ipsetHosts []string, uplink string,
 	dnsServers []net.IP, ntpServers []net.IP) {
 
-	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v ntpServers %v",
-		bridgeName, bridgeIPAddr, netconf, ipsets, uplink, dnsServers, ntpServers)
+	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsetHosts %v uplink %s dnsServers %v ntpServers %v",
+		bridgeName, bridgeIPAddr, netconf, ipsetHosts, uplink, dnsServers, ntpServers)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
@@ -161,9 +161,10 @@ func createDnsmasqConfiglet(
 		file.WriteString("no-resolv\n")
 	}
 
-	for _, ipset := range ipsets {
+	for _, host := range ipsetHosts {
+		ipsetBasename := hostIpsetBasename(host)
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
-			ipset, ipset, ipset))
+			host, ipsetBasename, ipsetBasename))
 	}
 	file.WriteString(fmt.Sprintf("pid-file=/run/dnsmasq.%s.pid\n",
 		bridgeName))
