@@ -518,8 +518,13 @@ func publishFscryptVaultStatus(ctx *vaultMgrContext,
 				status.SetErrorNow(stdOut + stdErr)
 			}
 		} else {
-			statusMsg := etpm.CompareLegacyandSealedKey().String()
-			status.SetErrorNow(statusMsg)
+			sealedKeyType := etpm.CompareLegacyandSealedKey()
+			switch sealedKeyType {
+			case etpm.SealedKeyTypeReused, etpm.SealedKeyTypeNew:
+				status.ClearError()
+			default:
+				status.SetErrorNow(sealedKeyType.String())
+			}
 			if strings.Contains(stdOut, "Unlocked: Yes") {
 				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
 			} else {
