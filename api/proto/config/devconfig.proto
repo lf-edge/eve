@@ -90,6 +90,30 @@ message EdgeDevConfig {
 
   // Baseos Config Block
   BaseOS baseos = 26;
+
+  // global_profile, if set, controls set of applications which will run.
+  // The Activate=true app instances which have this profile in their profile_list
+  // will run. If the global_profile is not set, then the profile_list is not
+  // used to gate the application instances.
+  string global_profile = 27;
+
+  // local_profile_server, if set, indicates a hostname/IPv4/IPv6 address and
+  // optional port number at which EVE will request for a local profile.
+  // If such a local profile is retrieved, it will override the global_profile.
+  // The syntax follows the usual URL server name syntax thus the following
+  // are example valid strings:
+  //    [fe80::1]:1234
+  //    10.1.1.1:1234
+  //    hostname:1234
+  //    [fe80::1]
+  //    10.1.1.1
+  //    hostname
+  // If the port number is not specified, it will default to 8888
+  string local_profile_server = 28;
+  // Together with a local_profile_server one can specify a
+  // profile_server_token. EVE must verify that the response from the
+  // local_profile_server contains this token.
+  string profile_server_token = 29;
 }
 
 message ConfigRequest {
