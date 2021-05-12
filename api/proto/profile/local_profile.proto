@@ -1,0 +1,16 @@
+// Copyright(c) 2021 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package org.lfedge.eve.profile;
+option go_package  = "github.com/lf-edge/eve/api/go/profile";
+
+option java_package = "org.lfedge.eve.profile";
+
+// LocalProfile message is sent in response to a GET to
+// the api/v1/local_profile API
+message LocalProfile {
+   string local_profile = 1;
+   string server_token = 2;
+}

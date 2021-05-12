@@ -400,6 +400,10 @@ message ZInfoDevice {
 
   // Device State
   ZDeviceState state = 44;
+
+  // Is there a local_profile from a local_profile_server?
+  // The global_profile from the controller is not echoed in this field.
+  string local_profile = 45;
 }
 
 // Different reasons for a boot/reboot
