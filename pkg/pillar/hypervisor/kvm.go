@@ -604,7 +604,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
 			}
 			pciPTContext.Xvga = false
-			pciPTContext.PCIId = pciPTContext.PCIId + 1;
+			pciPTContext.PCIId = pciPTContext.PCIId + 1
 		}
 	}
 	if len(serialAssignments) != 0 {
@@ -842,6 +842,20 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	}
 
 	return nil
+}
+
+func (ctx kvmContext) PCISameController(id1 string, id2 string) bool {
+	tag1, err := types.PCIGetIOMMU(id1)
+	if err != nil {
+		return types.PCISameController(id1, id2)
+	}
+
+	tag2, err := types.PCIGetIOMMU(id2)
+	if err != nil {
+		return types.PCISameController(id1, id2)
+	}
+
+	return tag1 == tag2
 }
 
 func usbBusPort(USBAddr string) (string, string) {
