@@ -845,12 +845,12 @@ func (ctx kvmContext) PCIRelease(long string) error {
 }
 
 func (ctx kvmContext) PCISameController(id1 string, id2 string) bool {
-	tag1, err := types.PCIGetIOMMU(id1)
+	tag1, err := types.PCIGetIOMMUGroup(id1)
 	if err != nil {
 		return types.PCISameController(id1, id2)
 	}
 
-	tag2, err := types.PCIGetIOMMU(id2)
+	tag2, err := types.PCIGetIOMMUGroup(id2)
 	if err != nil {
 		return types.PCISameController(id1, id2)
 	}
