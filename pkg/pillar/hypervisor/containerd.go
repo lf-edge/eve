@@ -222,6 +222,10 @@ func (ctx ctrdContext) PCIRelease(long string) error {
 	}
 }
 
+func (ctx ctrdContext) PCISameController(id1 string, id2 string) bool {
+	return types.PCISameController(id1, id2)
+}
+
 func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }

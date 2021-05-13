@@ -586,6 +586,11 @@ func (ctx xenContext) PCIRelease(long string) error {
 	return nil
 }
 
+func (ctx xenContext) PCISameController(id1 string, id2 string) bool {
+	// we maybe better off returning types.PCISameController(id1, id2) here
+	return false
+}
+
 func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()

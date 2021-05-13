@@ -380,7 +380,7 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 // CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
 // assignment groups have the same PCI ID (ignoring the PCI function number)
 // Returns true if there was a modification so caller can publish.
-func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject) bool {
+func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCISameController func(string, string) bool) bool {
 	changed := false
 	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
@@ -391,7 +391,7 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject) bool
 			if ib.AssignmentGroup != "" && ib2.AssignmentGroup == ib.AssignmentGroup {
 				continue
 			}
-			if PCISameController(ib.PciLong, ib2.PciLong) {
+			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
 				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
 					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
 				log.Error(err)
@@ -406,7 +406,7 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject) bool
 
 // ExpandControllers expands the list to include other PCI functions on the same PCI controller
 // (while ignoring the function number). The output might have duplicate entries.
-func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoBundle) []*IoBundle {
+func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoBundle, PCISameController func(string, string) bool) []*IoBundle {
 	var elist []*IoBundle
 
 	elist = list
@@ -425,7 +425,7 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 					ib2.Phylabel, ib2.PciLong)
 				continue
 			}
-			if PCISameController(ib.PciLong, ib2.PciLong) {
+			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
 				log.Warnf("ExpandController found %s matching %s; long %s long %s",
 					ib2.Phylabel, ib.Phylabel, ib2.PciLong, ib.PciLong)
 				elist = append(elist, ib2)
