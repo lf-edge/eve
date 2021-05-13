@@ -25,7 +25,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x16\x63onfig/appconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xac\x05\n\x11\x41ppInstanceConfig\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x37\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.config.VmConfig\x12,\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x1c.org.lfedge.eve.config.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x39\n\ninterfaces\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.config.NetworkAdapter\x12\x30\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x1e.org.lfedge.eve.config.Adapter\x12\x36\n\x07restart\x18\t \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x34\n\x05purge\x18\n \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12\x36\n\ncipherData\x18\r \x01(\x0b\x32\".org.lfedge.eve.config.CipherBlock\x12\x1a\n\x12\x63ollectStatsIPAddr\x18\x0f \x01(\t\x12\x37\n\rvolumeRefList\x18\x10 \x03(\x0b\x32 .org.lfedge.eve.config.VolumeRef\x12\x39\n\x0cmetaDataType\x18\x11 \x01(\x0e\x32#.org.lfedge.eve.config.MetaDataType\"E\n\tVolumeRef\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x17\n\x0fgenerationCount\x18\x02 \x01(\x03\x12\x11\n\tmount_dir\x18\x03 \x01(\t*J\n\x0cMetaDataType\x12\x11\n\rMetaDataDrive\x10\x00\x12\x10\n\x0cMetaDataNone\x10\x01\x12\x15\n\x11MetaDataOpenStack\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x16\x63onfig/appconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xac\x05\n\x11\x41ppInstanceConfig\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x37\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.config.VmConfig\x12,\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x1c.org.lfedge.eve.config.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x39\n\ninterfaces\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.config.NetworkAdapter\x12\x30\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x1e.org.lfedge.eve.config.Adapter\x12\x36\n\x07restart\x18\t \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x34\n\x05purge\x18\n \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12\x36\n\ncipherData\x18\r \x01(\x0b\x32\".org.lfedge.eve.config.CipherBlock\x12\x1a\n\x12\x63ollectStatsIPAddr\x18\x0f \x01(\t\x12\x37\n\rvolumeRefList\x18\x10 \x03(\x0b\x32 .org.lfedge.eve.config.VolumeRef\x12\x39\n\x0cmetaDataType\x18\x11 \x01(\x0e\x32#.org.lfedge.eve.config.MetaDataType\"E\n\tVolumeRef\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x17\n\x0fgenerationCount\x18\x02 \x01(\x03\x12\x11\n\tmount_dir\x18\x03 \x01(\t*f\n\x0cMetaDataType\x12\x11\n\rMetaDataDrive\x10\x00\x12\x10\n\x0cMetaDataNone\x10\x01\x12\x15\n\x11MetaDataOpenStack\x10\x02\x12\x1a\n\x16MetaDataDriveMultipart\x10\x03\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,config_dot_vm__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,])
 
@@ -51,11 +51,16 @@ _METADATATYPE = _descriptor.EnumDescriptor(
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='MetaDataDriveMultipart', index=3, number=3,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=972,
-  serialized_end=1046,
+  serialized_end=1074,
 )
 _sym_db.RegisterEnumDescriptor(_METADATATYPE)
 
@@ -63,6 +68,7 @@ MetaDataType = enum_type_wrapper.EnumTypeWrapper(_METADATATYPE)
 MetaDataDrive = 0
 MetaDataNone = 1
 MetaDataOpenStack = 2
+MetaDataDriveMultipart = 3
 
 
 
