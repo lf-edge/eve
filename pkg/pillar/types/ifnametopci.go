@@ -79,8 +79,8 @@ func PCISameController(long1 string, long2 string) bool {
 	return ctrl1 == ctrl2
 }
 
-// PCIGetIOMMU returns IOMMU group tag as seen by the control domain
-func PCIGetIOMMU(long string) (string, error) {
+// PCIGetIOMMUGroup returns IOMMU group tag as seen by the control domain
+func PCIGetIOMMUGroup(long string) (string, error) {
 	pathDev := pciPath + "/" + long + "/iommu_group"
 	if iommuPath, err := os.Readlink(pathDev); err != nil {
 		return "", fmt.Errorf("can't determine iommu group for %s (%v)", long, err)
