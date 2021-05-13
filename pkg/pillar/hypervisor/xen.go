@@ -588,6 +588,8 @@ func (ctx xenContext) PCIRelease(long string) error {
 
 func (ctx xenContext) PCISameController(id1 string, id2 string) bool {
 	// we maybe better off returning types.PCISameController(id1, id2) here
+	// but for now -- lets just warn:
+	logrus.Infof("can't validate that %s and %s can be assigned separately: trusting Xen to do the right thing", id1, id2)
 	return false
 }
 
