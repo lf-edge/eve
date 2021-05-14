@@ -1,4 +1,5 @@
-FROM lfedge/eve-alpine:6.2.0 AS build
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+FROM ${EVE_BUILDER_IMAGE} AS build
 
 ENV PKGS mtools dosfstools
 RUN eve-alpine-deploy.sh
