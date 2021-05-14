@@ -8,7 +8,7 @@ bail() {
 
 [ "$#" -gt 2 ] || bail "Usage: $0 <alpine version> <path to the cache> [packages...]"
 
-ALPINE_REPO="http://dl-cdn.alpinelinux.org/alpine/v$1"
+ALPINE_REPO="$(cat /etc/apk/cache.url)/v$1"
 CACHE="$2/$(apk --print-arch)"
 ROOTFS="$CACHE/../rootfs"
 shift 2
