@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [arm64-secure, ubuntu-20.04]
+        os: [arm64-secure, ubuntu-20.04, ubuntu-latest]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -24,6 +24,23 @@ jobs:
         env:
           REF: ${{ github.ref }}
         run: |
+          # we are using ubuntu-latest as our riscv64 cross build machine
+          if [ "${{ matrix.os }}" = ubuntu-latest ]; then
+             APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+             # the following weird statement is here to speed up the happy path
+             # if the default server is responding -- we can skip apt update
+             $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+             # we need to build our own version of cross-enabled linuxkit, while upstream is sorting things out
+             make LINUXKIT_VERSION=master LINUXKIT_SOURCE=https://github.com/rvs/linuxkit.git linuxkit
+             # constraining environment for riscv64 builds
+             EVE_BUILDER_IMAGE=$(./build-tools/bin/linuxkit pkg show-tag pkg/alpine)-riscv64
+             echo "PKGS=pkg/alpine pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/mkimage-raw-efi" >> "$GITHUB_ENV"
+             echo "ZARCH=riscv64" >> "$GITHUB_ENV"
+             echo 'LK_BUILD_ARGS={"EVE_BUILDER_IMAGE": "'$EVE_BUILDER_IMAGE'"}' >> "$GITHUB_ENV"
+             echo "EVE_ARTIFACTS=images/docker-compose.yml" >> "$GITHUB_ENV"
+             # the following is here only for one iteration of bootstrap
+             docker build --build-arg DEFAULT_USER=root -t $EVE_BUILDER_IMAGE -f build-tools/src/scripts/Dockerfile.alpine.bootstrap $(mktemp -d)
+          fi
           echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
       - name: Login to DockerHUB
@@ -44,7 +61,7 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make V=1 LINUXKIT_PKG_TARGET=push pkgs; then
+             if make -e V=1 LINUXKIT_PKG_TARGET=push pkgs; then
                 break
              else
                 # the most likely reason for 'make pkgs' to fail is
@@ -59,15 +76,15 @@ jobs:
         # build #1 without push (do not push either unless both can build)
         run: |
           rm -rf dist dist.xen
-          make V=1 HV=kvm eve
+          make -e V=1 HV=kvm eve
           mv -f dist dist.xen
       - name: Build and push EVE for Xen
         # since build #1 works, build and push #2
         run: |
-          make V=1 HV=xen LINUXKIT_PKG_TARGET=push eve
+          make -e V=1 HV=xen LINUXKIT_PKG_TARGET=push eve
       - name: Build and push EVE for KVM
         # redo build #1 with push
         run: |
           rm -rf dist
           mv -f dist.xen dist
-          make V=1 HV=kvm LINUXKIT_PKG_TARGET=push eve
+          make -e V=1 HV=kvm LINUXKIT_PKG_TARGET=push eve
