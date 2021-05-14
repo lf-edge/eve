@@ -37,7 +37,7 @@
 | newlog.allow.fastupload | boolean | false | allow faster upload gzip logfiles to controller |
 | memory.apps.ignore.check | boolean | false | Ignore memory usage check for Apps|
 | newlog.gzipfiles.ondisk.maxmegabytes | integer in Mbytes | 2048 | the quota for keepig newlog gzip files on device |
-| process.cloud-init.multipart" | boolean | false | help VMs which do not handle mime multi-part themselves |
+| process.cloud-init.multipart | boolean | false | help VMs which do not handle mime multi-part themselves |
 
 In addition, there can be per-agent settings.
 The Per-agent settings begin with "agent.*agentname*.*setting*"

@@ -1,7 +1,9 @@
 // Copyright (c) 2017 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// default ipset configlet for interfaces towards domU
+// Default ipset configlet for interfaces towards domU.
+// Note that for ipsets we use the following naming scheme:
+//  ipsetName = ipv[46].<ipsetBasename>
 
 package zedrouter
 
@@ -13,18 +15,21 @@ import (
 	"net"
 )
 
+// Netfilter limits ipset name to contain at most 31 characters.
+const ipsetNameLenLimit = 31
+
 // Create a pair of local ipsets called "ipv6.local" and "ipv4.local"
 // XXX should we add 169.254.0.0/16 as well?
 func createDefaultIpset() {
 
 	log.Tracef("createDefaultIpset()\n")
-	ipsetName := "local"
-	err := ipsetCreatePair(ipsetName, "hash:net")
+	ipsetBasename := "local"
+	err := ipsetCreatePair(ipsetBasename, "hash:net")
 	if err != nil {
-		log.Fatal("ipsetCreatePair for ", ipsetName, err)
+		log.Fatal("ipsetCreatePair for ", ipsetBasename, err)
 	}
-	set4 := "ipv4." + ipsetName
-	set6 := "ipv6." + ipsetName
+	set4 := "ipv4." + ipsetBasename
+	set6 := "ipv6." + ipsetBasename
 
 	prefixes := []string{"fe80::/10", "ff02::/16"}
 	for _, prefix := range prefixes {
@@ -50,13 +55,13 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 
 	log.Tracef("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
 		vifname, nameToIPList, appIPAddr)
-	ipsetName := "eids." + vifname
-	err := ipsetCreatePair(ipsetName, "hash:ip")
+	ipsetBasename := "eids." + vifname
+	err := ipsetCreatePair(ipsetBasename, "hash:ip")
 	if err != nil {
-		log.Fatal("ipsetCreatePair for ", ipsetName, err)
+		log.Fatal("ipsetCreatePair for ", ipsetBasename, err)
 	}
-	set4 := "ipv4." + ipsetName
-	set6 := "ipv6." + ipsetName
+	set4 := "ipv4." + ipsetBasename
+	set6 := "ipv6." + ipsetBasename
 	var appIP net.IP
 	if appIPAddr != "" {
 		// XXX should we change strings to net.IP across the board
@@ -105,9 +110,9 @@ func updateDefaultIpsetConfiglet(vifname string,
 
 	log.Tracef("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
 		vifname, oldList, newList)
-	ipsetName := "eids." + vifname
-	set4 := "ipv4." + ipsetName
-	set6 := "ipv6." + ipsetName
+	ipsetBasename := "eids." + vifname
+	set4 := "ipv4." + ipsetBasename
+	set6 := "ipv6." + ipsetBasename
 
 	// Look for IPs which should be deleted
 	for _, ne := range oldList {
@@ -151,9 +156,9 @@ func updateDefaultIpsetConfiglet(vifname string,
 func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
 
 	log.Tracef("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
-	ipsetName := "eids." + vifname
-	set4 := "ipv4." + ipsetName
-	set6 := "ipv6." + ipsetName
+	ipsetBasename := "eids." + vifname
+	set4 := "ipv4." + ipsetBasename
+	set6 := "ipv6." + ipsetBasename
 
 	err := ipsetDestroy(set4)
 	if err != nil && printOnError {
@@ -166,9 +171,9 @@ func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
 }
 
 // If doesn't exist create the ipv4/ipv6 pair of sets.
-func ipsetCreatePair(ipsetName string, setType string) error {
-	set4 := "ipv4." + ipsetName
-	set6 := "ipv6." + ipsetName
+func ipsetCreatePair(ipsetBasename string, setType string) error {
+	set4 := "ipv4." + ipsetBasename
+	set6 := "ipv6." + ipsetBasename
 	if !ipsetExists(set4) {
 		if err := ipsetCreate(set4, setType, 4); err != nil {
 			return err

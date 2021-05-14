@@ -90,7 +90,7 @@ then
     echo "::1 localhost" >> /mnt/rootfs/etc/hosts
     for i in $(cd /sys/class/net && echo eth*); do
         ip link set dev "$i" up
-        udhcpc --interface="$i" --script=/udhcpc_script.sh -O staticroutes
+        udhcpc --interface="$i" --script=/udhcpc_script.sh -O staticroutes -b
     done
 fi
 

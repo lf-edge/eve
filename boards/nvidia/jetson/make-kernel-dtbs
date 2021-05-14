@@ -1,0 +1,51 @@
+#!/bin/bash
+#########################################################
+KERNEL_VERSION=$1
+KERNEL_MAJOR=$(echo "$KERNEL_VERSION" | cut -f1 -d.)
+KERNEL_SERIES=$(eval echo \\"$KERNEL_VERSION" | sed -e 's#.[^.]*$#.x#')
+KERNEL_SOURCE_URL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.xz"
+#########################################################
+SCRIPT_HOME="$PWD"
+LINUX_DIR="$SCRIPT_HOME"/linux
+LINUX_PATCHES_DIR="$LINUX_DIR"/patches
+LINUX_SRC_DIR="$LINUX_DIR"/src
+
+function cleanup() {
+  set +e
+  rm -rf "$LINUX_SRC_DIR"
+}
+trap cleanup EXIT
+
+mkdir -p "$LINUX_DIR"
+
+[ -f linux/linux-"$KERNEL_VERSION".tar.xz ] || curl -o linux/linux-"$KERNEL_VERSION".tar.xz -fsSLO "$KERNEL_SOURCE_URL" && \
+  tar xf linux/linux-"$KERNEL_VERSION".tar.xz -C "$LINUX_DIR"/ && \
+  rm -rf linux/linux-"$KERNEL_VERSION".tar.xz && mv "$LINUX_DIR"/linux* "$LINUX_SRC_DIR"
+
+if [ "$(uname -m)" = x86_64 ]; then
+    "$SCRIPT_HOME"/get-gcc
+    export CROSS_COMPILE="$SCRIPT_HOME"/gcc/bin/aarch64-linux-gnu-
+    export ARCH=arm64
+fi
+
+function apply_patches() {
+  if [ -d "$LINUX_PATCHES_DIR/$KERNEL_SERIES" ]; then
+    cd "$LINUX_SRC_DIR" || return
+    for patch in "$LINUX_PATCHES_DIR/$KERNEL_SERIES"/*.patch; do
+      echo "Applying ${patch}"
+      patch -p1 < "$patch"
+    done
+    cd "$SCRIPT_HOME" || return
+  fi
+}
+
+apply_patches
+
+make -C "$LINUX_SRC_DIR" -j "$(getconf _NPROCESSORS_ONLN)" defconfig
+make -C "$LINUX_SRC_DIR" -j "$(getconf _NPROCESSORS_ONLN)" dtbs
+
+# Jetson nano 4GB ram dtb
+if ! [ -e BSP/t210/Linux_for_Tegra/kernel/dtb/tegra210-p3448-0000-p3449-0000-b00.dtb_orig ]; then
+  mv BSP/t210/Linux_for_Tegra/kernel/dtb/tegra210-p3448-0000-p3449-0000-b00.dtb BSP/t210/Linux_for_Tegra/kernel/dtb/tegra210-p3448-0000-p3449-0000-b00.dtb_orig
+fi
+cp linux/src/arch/arm64/boot/dts/nvidia/tegra210-p3450-0000.dtb BSP/t210/Linux_for_Tegra/kernel/dtb/tegra210-p3448-0000-p3449-0000-b00.dtb

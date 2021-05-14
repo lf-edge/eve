@@ -6,6 +6,8 @@
 package zedrouter
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -103,9 +105,48 @@ func freeACEId(candidate int32) {
 	}
 }
 
+// Returns basename (without the "ipvX." prefix) to use for ipset matching
+// a given domain name (ACE match of type "host").
+// Needs to ensure that the ipset name doesn't exceed the length
+// limit of 31 characters imposed by netfilter.
+func hostIpsetBasename(hostname string) string {
+	maxLen := ipsetNameLenLimit - 5 // leave 5 characters for "ipvX."
+	if len(hostname) <= maxLen {
+		return hostname
+	}
+	const (
+		// Minimum number of characters the hash should contain
+		// to bring the probability of collision down to an acceptable level.
+		hashMinLen = 8
+		// Separator between a hostname suffix and a hash-generated prefix.
+		sep = "#"
+	)
+	// Function tries to keep some suffix from the original host name
+	// (to keep the ipset name human-readable and traceable to its source)
+	// and replaces only the remaining subdomains with a hash value.
+	labels := strings.Split(hostname, ".")
+	var suffixLen, i int
+	for i = len(labels); i > 0; i-- {
+		if suffixLen+len(labels[i-1])+1+hashMinLen > maxLen {
+			break
+		}
+		suffixLen += len(labels[i-1]) + 1
+	}
+	labels = labels[i:]
+	suffix := strings.Join(labels, ".")
+	// Prepend (very likely unique) prefix generated as a BASE64-encoded
+	// hash calculated using SHA-256 from the full host name.
+	h := sha256.New()
+	h.Write([]byte(hostname))
+	prefix := base64.URLEncoding.EncodeToString(h.Sum(nil))
+	return prefix[:maxLen-1-len(suffix)] + sep + suffix
+}
+
 // IpSet routines
 // Go through the list of ACEs and create dnsmasq ipset configuration
-// lines required for host matches
+// lines required for host matches.
+// Returns full domain names, even if the corresponding ipsets use names
+// shortened by a hash function.
 func compileAceIpsets(ACLs []types.ACE) []string {
 	ipsets := []string{}
 
@@ -789,16 +830,17 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 			}
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
-			err := ipsetCreatePair(match.Value, "hash:ip")
+			ipsetBasename := hostIpsetBasename(match.Value)
+			err := ipsetCreatePair(ipsetBasename, "hash:ip")
 			if err != nil {
 				log.Errorln("ipset create for ",
 					match.Value, err)
 			}
 			switch aclArgs.IPVer {
 			case 4:
-				ipsetName = "ipv4." + match.Value
+				ipsetName = "ipv4." + ipsetBasename
 			case 6:
-				ipsetName = "ipv6." + match.Value
+				ipsetName = "ipv6." + ipsetBasename
 			}
 		case "eidset":
 			if aclArgs.NIType == types.NetworkInstanceTypeSwitch {

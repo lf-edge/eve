@@ -53,6 +53,7 @@ const (
 	MetaDataDrive MetaDataType = iota + 0 // Default
 	MetaDataNone
 	MetaDataOpenStack
+	MetaDataDriveMultipart // Process multipart MIME for application
 )
 
 // String returns the string name
@@ -64,6 +65,8 @@ func (metaDataType MetaDataType) String() string {
 		return "MetaDataNone"
 	case MetaDataOpenStack:
 		return "MetaDataOpenStack"
+	case MetaDataDriveMultipart:
+		return "MetaDataDriveMultipart"
 	default:
 		return fmt.Sprintf("Unknown MetaDataType %d", metaDataType)
 	}
