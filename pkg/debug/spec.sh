@@ -73,7 +73,7 @@ fi
 
 DISK=$(lsblk -b  | grep disk | awk '{ total += $4; } END { print int(total/(1024*1024*1024)); }')
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
-HSM=$([ -e /dev/tpm0 ] && echo 1 || echo 0)
+HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
 
 cat <<__EOT__
 {
