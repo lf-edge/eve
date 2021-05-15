@@ -103,6 +103,7 @@ INSTALLER_IMG=$(INSTALLER).$(INSTALLER_IMG_FORMAT)
 INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
 CURRENT_FIRMWARE_DIR=$(CURRENT_INSTALLER)/firmware
 BIOS_IMG=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_CODE.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
+UBOOT_IMG=$(INSTALLER_FIRMWARE_DIR)/boot
 
 RUNME=$(BUILD_DIR)/runme.sh
 BUILD_YML=$(BUILD_DIR)/build.yml
@@ -153,6 +154,7 @@ CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
+QEMU_SYSTEM_riscv64=qemu-system-riscv64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
@@ -161,6 +163,7 @@ QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
 QEMU_ACCEL__$(shell uname -s)_arm64=-machine virt,virtualization=true -cpu cortex-a57
 QEMU_ACCEL__$(shell uname -s)_amd64=-machine q35 -cpu SandyBridge
+QEMU_ACCEL__$(shell uname -s)_riscv64=-machine virt -cpu rv64
 QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s)_$(ZARCH))
 
 QEMU_OPTS_NET1=192.168.1.0/24
@@ -176,8 +179,10 @@ QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(CURRENT_FIRM
 QEMU_OPTS_BIOS_=-bios $(CURRENT_FIRMWARE_DIR)/OVMF.fd
 QEMU_OPTS_BIOS=$(QEMU_OPTS_BIOS_$(PFLASH))
 
-QEMU_OPTS_arm64= -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
-QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
+QEMU_OPTS_amd64=-smbios type=1,serial=31415926
+QEMU_OPTS_arm64=-smbios type=1,serial=31415926 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
+QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
+QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
@@ -334,7 +339,8 @@ $(INSTALLER_IMG): PKG=mkimage-raw-efi
 $(KERNEL_IMG): PKG=new-kernel
 $(IPXE_IMG): PKG=ipxe
 $(BIOS_IMG): PKG=uefi
-$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG): $(LINUXKIT) | $(INSTALLER)
+$(UBOOT_IMG): PKG=u-boot
+$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG))-$(DOCKER_ARCH_TAG) $(notdir $@)
 	$(QUIET): $@: Succeeded
@@ -366,14 +372,14 @@ run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
 run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
-run-rootfs: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
+run-rootfs: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB)
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,format=vvfat
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
 	$(QUIET): $@: Succeeded
 
-run-grub: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
-	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,label=EVE,file=fat:rw:$(EFI_PART)/..
+run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB)
+	# [ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,id=uefi-disk,label=EVE,file=fat:rw:$(EFI_PART)/..
 	$(QUIET): $@: Succeeded
 
 run-compose: images/docker-compose.yml images/version.yml
