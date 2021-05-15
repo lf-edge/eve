@@ -1,0 +1,449 @@
+From 28bd7b088b226508ae19102ce78633468453dd99 Mon Sep 17 00:00:00 2001
+From: a <a@b.c>
+Date: Sat, 8 May 2021 03:22:02 +0000
+Subject: [PATCH] Linux loading on riscv64
+
+---
+ grub-core/Makefile.core.def                 |   4 +-
+ grub-core/loader/{riscv => riscv32}/linux.c |   0
+ grub-core/loader/riscv64/linux.c            | 380 ++++++++++++++++++++
+ include/grub/riscv32/linux.h                |   2 +-
+ include/grub/riscv64/linux.h                |   2 +-
+ 5 files changed, 384 insertions(+), 4 deletions(-)
+ rename grub-core/loader/{riscv => riscv32}/linux.c (100%)
+ create mode 100644 grub-core/loader/riscv64/linux.c
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 8022e1c0a..655a45de7 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -1809,8 +1809,8 @@ module = {
+   arm_efi = loader/arm64/linux.c;
+   arm_uboot = loader/arm/linux.c;
+   arm64 = loader/arm64/linux.c;
+-  riscv32 = loader/riscv/linux.c;
+-  riscv64 = loader/riscv/linux.c;
++  riscv32 = loader/riscv32/linux.c;
++  riscv64 = loader/riscv64/linux.c;
+   common = loader/linux.c;
+   common = lib/cmdline.c;
+   enable = noemu;
+diff --git a/grub-core/loader/riscv/linux.c b/grub-core/loader/riscv32/linux.c
+similarity index 100%
+rename from grub-core/loader/riscv/linux.c
+rename to grub-core/loader/riscv32/linux.c
+diff --git a/grub-core/loader/riscv64/linux.c b/grub-core/loader/riscv64/linux.c
+new file mode 100644
+index 000000000..630015495
+--- /dev/null
++++ b/grub-core/loader/riscv64/linux.c
+@@ -0,0 +1,380 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2018  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/charset.h>
++#include <grub/command.h>
++#include <grub/err.h>
++#include <grub/file.h>
++#include <grub/fdt.h>
++#include <grub/linux.h>
++#include <grub/loader.h>
++#include <grub/mm.h>
++#include <grub/types.h>
++#include <grub/cpu/linux.h>
++#include <grub/efi/efi.h>
++#include <grub/efi/fdtload.h>
++#include <grub/efi/memory.h>
++#include <grub/efi/pe32.h>
++#include <grub/i18n.h>
++#include <grub/lib/cmdline.h>
++#include <grub/verify.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++static grub_dl_t my_mod;
++static int loaded;
++
++static void *kernel_addr;
++static grub_uint64_t kernel_size;
++
++static char *linux_args;
++static grub_uint32_t cmdline_size;
++
++static grub_addr_t initrd_start;
++static grub_addr_t initrd_end;
++
++grub_err_t
++grub_arch_efi_linux_check_image (struct linux_arch_kernel_header * lh)
++{
++  if (lh->magic != GRUB_LINUX_RISCV_MAGIC_SIGNATURE)
++    return grub_error(GRUB_ERR_BAD_OS, "invalid magic number");
++
++  if ((lh->code0 & 0xffff) != GRUB_PE32_MAGIC)
++    return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
++                       N_("plain image kernel not supported - rebuild with CONFIG_(U)EFI_STUB enabled"));
++
++  grub_dprintf ("linux", "UEFI stub kernel:\n");
++  grub_dprintf ("linux", "PE/COFF header @ %08x\n", lh->hdr_offset);
++
++  return GRUB_ERR_NONE;
++}
++
++static grub_err_t
++finalize_params_linux (void)
++{
++  int node, retval;
++
++  void *fdt;
++
++  fdt = grub_fdt_load (GRUB_EFI_LINUX_FDT_EXTRA_SPACE);
++
++  if (!fdt)
++    goto failure;
++
++  node = grub_fdt_find_subnode (fdt, 0, "chosen");
++  if (node < 0)
++    node = grub_fdt_add_subnode (fdt, 0, "chosen");
++
++  if (node < 1)
++    goto failure;
++
++  /* Set initrd info */
++  if (initrd_start && initrd_end > initrd_start)
++    {
++      grub_dprintf ("linux", "Initrd @ %p-%p\n",
++                    (void *) initrd_start, (void *) initrd_end);
++
++      retval = grub_fdt_set_prop64 (fdt, node, "linux,initrd-start",
++                                    initrd_start);
++      if (retval)
++        goto failure;
++      retval = grub_fdt_set_prop64 (fdt, node, "linux,initrd-end",
++                                    initrd_end);
++      if (retval)
++        goto failure;
++    }
++
++  if (grub_fdt_install() != GRUB_ERR_NONE)
++    goto failure;
++
++  return GRUB_ERR_NONE;
++
++failure:
++  grub_fdt_unload();
++  return grub_error(GRUB_ERR_BAD_OS, "failed to install/update FDT");
++}
++
++grub_err_t
++grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
++{
++  grub_efi_loaded_image_t *loaded_image = NULL;
++  grub_efi_memory_mapped_device_path_t *mempath;
++  grub_efi_handle_t image_handle;
++  grub_efi_boot_services_t *b;
++  grub_efi_status_t status;
++  int len;
++
++  mempath = grub_malloc (2 * sizeof (grub_efi_memory_mapped_device_path_t));
++  if (!mempath)
++    return grub_errno;
++
++  mempath[0].header.type = GRUB_EFI_HARDWARE_DEVICE_PATH_TYPE;
++  mempath[0].header.subtype = GRUB_EFI_MEMORY_MAPPED_DEVICE_PATH_SUBTYPE;
++  mempath[0].header.length = grub_cpu_to_le16_compile_time (sizeof (*mempath));
++  mempath[0].memory_type = GRUB_EFI_LOADER_DATA;
++  mempath[0].start_address = addr;
++  mempath[0].end_address = addr + size;
++
++  mempath[1].header.type = GRUB_EFI_END_DEVICE_PATH_TYPE;
++  mempath[1].header.subtype = GRUB_EFI_END_ENTIRE_DEVICE_PATH_SUBTYPE;
++  mempath[1].header.length = sizeof (grub_efi_device_path_t);
++
++  b = grub_efi_system_table->boot_services;
++  status = b->load_image (0, grub_efi_image_handle,
++                          (grub_efi_device_path_t *) mempath,
++                          (void *) addr, size, &image_handle);
++  if (status != GRUB_EFI_SUCCESS)
++    return grub_error (GRUB_ERR_BAD_OS, "cannot load image");
++
++  grub_dprintf ("linux", "linux command line: '%s'\n", args);
++
++  /* Convert command line to UCS-2 */
++  loaded_image = grub_efi_get_loaded_image (image_handle);
++  if (!loaded_image)
++    return grub_error(GRUB_ERR_BAD_OS, "cannot get image");
++  loaded_image->load_options_size = len =
++    (grub_strlen (args) + 1) * sizeof (grub_efi_char16_t);
++  loaded_image->load_options =
++    grub_efi_allocate_any_pages (GRUB_EFI_BYTES_TO_PAGES (loaded_image->load_options_size));
++  if (!loaded_image->load_options)
++    return grub_errno;
++
++  loaded_image->load_options_size =
++    2 * grub_utf8_to_utf16 (loaded_image->load_options, len,
++                            (grub_uint8_t *) args, len, NULL);
++
++  grub_dprintf ("linux", "starting image %p\n", image_handle);
++  status = b->start_image (image_handle, 0, NULL);
++
++  /* When successful, not reached */
++  b->unload_image (image_handle);
++  grub_efi_free_pages ((grub_addr_t) loaded_image->load_options,
++                       GRUB_EFI_BYTES_TO_PAGES (loaded_image->load_options_size));
++
++  return grub_errno;
++}
++
++static grub_err_t
++grub_linux_boot (void)
++{
++  if (finalize_params_linux () != GRUB_ERR_NONE)
++    return grub_errno;
++
++  return (grub_arch_efi_linux_boot_image((grub_addr_t)kernel_addr,
++                                         kernel_size, linux_args));
++}
++
++static grub_err_t
++grub_linux_unload (void)
++{
++  grub_dl_unref (my_mod);
++  loaded = 0;
++  if (initrd_start)
++    grub_efi_free_pages ((grub_efi_physical_address_t) initrd_start,
++                         GRUB_EFI_BYTES_TO_PAGES (initrd_end - initrd_start));
++  initrd_start = initrd_end = 0;
++  grub_free (linux_args);
++  if (kernel_addr)
++    grub_efi_free_pages ((grub_addr_t) kernel_addr,
++                         GRUB_EFI_BYTES_TO_PAGES (kernel_size));
++  grub_fdt_unload ();
++  return GRUB_ERR_NONE;
++}
++
++/* According to the Linux arch/riscv/include/asm/efi.h */
++#define INITRD_MAX_ADDRESS_OFFSET (256ULL << 20)
++
++/*
++ * This function returns a pointer to a legally allocated initrd buffer,
++ * or NULL if unsuccessful
++ */
++static void *
++allocate_initrd_mem (int initrd_pages)
++{
++  grub_addr_t max_addr;
++
++  if (grub_efi_get_ram_base (&max_addr) != GRUB_ERR_NONE)
++    return NULL;
++
++  max_addr += INITRD_MAX_ADDRESS_OFFSET - 1;
++
++  return grub_efi_allocate_pages_real (max_addr, initrd_pages,
++                                       GRUB_EFI_ALLOCATE_MAX_ADDRESS,
++                                       GRUB_EFI_LOADER_DATA);
++}
++
++static grub_err_t
++grub_cmd_initrd (grub_command_t cmd __attribute__ ((unused)),
++                 int argc, char *argv[])
++{
++  struct grub_linux_initrd_context initrd_ctx = { 0, 0, 0 };
++  int initrd_size, initrd_pages;
++  void *initrd_mem = NULL;
++
++  if (argc == 0)
++    {
++      grub_error (GRUB_ERR_BAD_ARGUMENT, N_("filename expected"));
++      goto fail;
++    }
++
++  if (!loaded)
++    {
++      grub_error (GRUB_ERR_BAD_ARGUMENT,
++                  N_("you need to load the kernel first"));
++      goto fail;
++    }
++
++  if (grub_initrd_init (argc, argv, &initrd_ctx))
++    goto fail;
++
++  initrd_size = grub_get_initrd_size (&initrd_ctx);
++  grub_dprintf ("linux", "Loading initrd\n");
++
++  initrd_pages = (GRUB_EFI_BYTES_TO_PAGES (initrd_size));
++  initrd_mem = allocate_initrd_mem (initrd_pages);
++
++  if (!initrd_mem)
++    {
++      grub_error (GRUB_ERR_OUT_OF_MEMORY, N_("out of memory"));
++      goto fail;
++    }
++
++  if (grub_initrd_load (&initrd_ctx, argv, initrd_mem))
++    goto fail;
++
++  initrd_start = (grub_addr_t) initrd_mem;
++  initrd_end = initrd_start + initrd_size;
++  grub_dprintf ("linux", "[addr=%p, size=0x%x]\n",
++                (void *) initrd_start, initrd_size);
++
++fail:
++  grub_initrd_close (&initrd_ctx);
++  if (initrd_mem && !initrd_start)
++    grub_efi_free_pages ((grub_addr_t) initrd_mem, initrd_pages);
++
++  return grub_errno;
++}
++
++static grub_err_t
++grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
++                int argc, char *argv[])
++{
++  grub_file_t file = 0;
++  struct linux_arch_kernel_header lh;
++  grub_err_t err;
++
++  grub_dl_ref (my_mod);
++
++  if (argc == 0)
++    {
++      grub_error (GRUB_ERR_BAD_ARGUMENT, N_("filename expected"));
++      goto fail;
++    }
++
++  file = grub_file_open (argv[0], GRUB_FILE_TYPE_LINUX_KERNEL);
++  if (!file)
++    goto fail;
++
++  kernel_size = grub_file_size (file);
++
++  if (grub_file_read (file, &lh, sizeof (lh)) < (long) sizeof (lh))
++    return grub_errno;
++
++  if (grub_arch_efi_linux_check_image (&lh) != GRUB_ERR_NONE)
++    goto fail;
++
++  grub_loader_unset();
++
++  grub_dprintf ("linux", "kernel file size: %lld\n", (long long) kernel_size);
++  kernel_addr = grub_efi_allocate_any_pages (GRUB_EFI_BYTES_TO_PAGES (kernel_size));
++  grub_dprintf ("linux", "kernel numpages: %lld\n",
++                (long long) GRUB_EFI_BYTES_TO_PAGES (kernel_size));
++  if (!kernel_addr)
++    {
++      grub_error (GRUB_ERR_OUT_OF_MEMORY, N_("out of memory"));
++      goto fail;
++    }
++
++  grub_file_seek (file, 0);
++  if (grub_file_read (file, kernel_addr, kernel_size)
++      < (grub_int64_t) kernel_size)
++    {
++      if (!grub_errno)
++        grub_error (GRUB_ERR_BAD_OS, N_("premature end of file %s"), argv[0]);
++      goto fail;
++    }
++
++  grub_dprintf ("linux", "kernel @ %p\n", kernel_addr);
++
++  cmdline_size = grub_loader_cmdline_size (argc, argv) + sizeof (LINUX_IMAGE);
++  linux_args = grub_malloc (cmdline_size);
++  if (!linux_args)
++    {
++      grub_error (GRUB_ERR_OUT_OF_MEMORY, N_("out of memory"));
++      goto fail;
++    }
++  grub_memcpy (linux_args, LINUX_IMAGE, sizeof (LINUX_IMAGE));
++  err = grub_create_loader_cmdline (argc, argv,
++                                    linux_args + sizeof (LINUX_IMAGE) - 1,
++                                    cmdline_size,
++                                    GRUB_VERIFY_KERNEL_CMDLINE);
++  if (err)
++    goto fail;
++
++  if (grub_errno == GRUB_ERR_NONE)
++    {
++      grub_loader_set (grub_linux_boot, grub_linux_unload, 0);
++      loaded = 1;
++    }
++
++fail:
++  if (file)
++    grub_file_close (file);
++
++  if (grub_errno != GRUB_ERR_NONE)
++    {
++      grub_dl_unref (my_mod);
++      loaded = 0;
++    }
++
++  if (linux_args && !loaded)
++    grub_free (linux_args);
++
++  if (kernel_addr && !loaded)
++    grub_efi_free_pages ((grub_addr_t) kernel_addr,
++                         GRUB_EFI_BYTES_TO_PAGES (kernel_size));
++
++  return grub_errno;
++}
++
++static grub_command_t cmd_linux, cmd_initrd;
++
++GRUB_MOD_INIT (linux)
++{
++  cmd_linux = grub_register_command ("linux", grub_cmd_linux, 0,
++                                     N_("Load Linux."));
++  cmd_initrd = grub_register_command ("initrd", grub_cmd_initrd, 0,
++                                      N_("Load initrd."));
++  my_mod = mod;
++}
++
++GRUB_MOD_FINI (linux)
++{
++  grub_unregister_command (cmd_linux);
++  grub_unregister_command (cmd_initrd);
++}
+diff --git a/include/grub/riscv32/linux.h b/include/grub/riscv32/linux.h
+index 512b777c8..bb4ceb5bb 100644
+--- a/include/grub/riscv32/linux.h
++++ b/include/grub/riscv32/linux.h
+@@ -19,7 +19,7 @@
+ #ifndef GRUB_RISCV32_LINUX_HEADER
+ #define GRUB_RISCV32_LINUX_HEADER 1
+ 
+-#define GRUB_LINUX_RISCV_MAGIC_SIGNATURE 0x52534356 /* 'RSCV' */
++#define GRUB_LINUX_RISCV_MAGIC_SIGNATURE 0x05435352 /* little endian, 'RSC\x05' */
+ 
+ /* From linux/Documentation/riscv/booting.txt */
+ struct linux_riscv_kernel_header
+diff --git a/include/grub/riscv64/linux.h b/include/grub/riscv64/linux.h
+index 3630c30fb..9d9e05190 100644
+--- a/include/grub/riscv64/linux.h
++++ b/include/grub/riscv64/linux.h
+@@ -19,7 +19,7 @@
+ #ifndef GRUB_RISCV64_LINUX_HEADER
+ #define GRUB_RISCV64_LINUX_HEADER 1
+ 
+-#define GRUB_LINUX_RISCV_MAGIC_SIGNATURE 0x52534356 /* 'RSCV' */
++#define GRUB_LINUX_RISCV_MAGIC_SIGNATURE 0x05435352 /* little endian, 'RSC\x05' */
+ 
+ #define GRUB_EFI_PE_MAGIC	0x5A4D
+ 
+-- 
+2.31.1
+
