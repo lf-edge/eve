@@ -9,18 +9,22 @@
 #   git clone https://git.linaro.org/uefi/uefi-tools.git
 #   ./uefi-tools/edk2-build.sh -b DEBUG -b RELEASE all
 #
-FROM lfedge/eve-alpine:6.2.0 as build
-ENV BUILD_PKGS curl make gcc g++ python3 libuuid iasl nasm util-linux-dev bash git util-linux patch
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+# hadolint ignore=DL3006
+FROM ${EVE_BUILDER_IMAGE} as build
+ENV BUILD_PKGS curl make gcc g++ python3 libuuid nasm util-linux-dev bash git util-linux patch
+ENV BUILD_PKGS_amd64 iasl
+ENV BUILD_PKGS_arm64 iasl
 RUN eve-alpine-deploy.sh
 
 RUN git clone --depth 1 -b edk2-stable202005 https://github.com/tianocore/edk2.git /ws
+RUN git clone --depth 1 https://github.com/riscv/opensbi.git /opensbi
 WORKDIR /ws
 RUN git submodule update --init
 COPY build.sh /ws/
 COPY patch /ws/patch
 RUN bash -c 'patch -p0 < patch/*'
 RUN ln -s python3 /usr/bin/python
-RUN make -C BaseTools
 RUN ./build.sh
 
 # now create an out dir for all the artifacts

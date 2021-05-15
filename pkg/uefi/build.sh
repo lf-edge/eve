@@ -1,11 +1,18 @@
 #!/bin/bash
 
+make -C BaseTools
+
 # shellcheck disable=SC1091
 . edksetup.sh
 
 set -e
 
 case $(uname -m) in
+    riscv64) make -C /opensbi -j "$(nproc)" PLATFORM=generic
+             cp /opensbi/build/platform/generic/firmware/fw_payload.elf OVMF_CODE.fd
+             cp /opensbi/build/platform/generic/firmware/fw_payload.bin OVMF_VARS.fd
+             cp /opensbi/build/platform/generic/firmware/fw_jump.bin OVMF.fd
+             ;;
     aarch64) build -b RELEASE -t GCC5 -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc
              cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_EFI.fd OVMF.fd
              cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_VARS.fd OVMF_VARS.fd
