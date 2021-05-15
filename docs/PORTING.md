@@ -45,3 +45,7 @@ To sum it up, here's what the above variables do:
 * `ZARCH` explicit selection of the architecture to build for (unless you don't have to do a cross-build)
 * `EVE_ARTIFACTS` what artifacts to put into an `eve` container
 * `LK_BUILD_ARGS` overrides required for linuxkit
+
+## 4. Porting firmware, low-level bootloader and GRUB on the new CPU
+
+Once `pkg/alpine` is available for the target CPU architecture the first 3 EVE packages to be made available next are always [uefi](../pkg/uefi), [grub](../pkg/grub) and possibly [u-boot](../pkg/u-boot). Making these packages available will allow you to star qemu in system mode and have the barebones execution environment that will get you all the way to loading Linux kernel and potentially type-1 hypervisors like Xen. The Makefile target that needs to be enabled once all these packages are available is `make run-grub` and it typically requires update to the architecture specific settings of how qemu is command line is produced by Makefile rules (see various `QEMU_*` variables in the Makefile).
