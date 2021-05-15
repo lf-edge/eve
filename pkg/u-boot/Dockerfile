@@ -1,4 +1,6 @@
-FROM lfedge/eve-alpine:6.2.0 as build
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+# hadolint ignore=DL3006
+FROM ${EVE_BUILDER_IMAGE} as build
 ENV BUILD_PKGS bash binutils-dev build-base bc curl bison flex openssl-dev python3 swig
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
@@ -11,6 +13,7 @@ ENV RAPBERRY_FIRMWARE_BLOBS_VERSION 1.20200601
 ENV RAPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RAPBERRY_FIRMWARE_BLOBS_VERSION}
 ENV TARGET_x86_64 qemu-x86_64_defconfig
 ENV TARGET_aarch64 rpi_4_defconfig
+ENV TARGET_riscv64 qemu-riscv64_smode_defconfig
 
 RUN curl -fsSL ${SOURCE_URL} | tar -C / -xzf - && mv /u-boot* /u-boot
 
