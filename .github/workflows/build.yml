@@ -44,5 +44,5 @@ jobs:
       - name: Upload EVE
         uses: actions/upload-artifact@v2
         with:
-          name: eve-${{ env.ARCH }}
-          path: eve.tar
+          name: lktcache
+          path: $HOME/.linuxkit/cache
