@@ -19,6 +19,7 @@ type Hypervisor interface {
 
 	PCIReserve(string) error
 	PCIRelease(string) error
+	PCISameController(string, string) bool
 
 	GetHostCPUMem() (types.HostMemory, error)
 	GetDomsCPUMem() (map[string]types.DomainMetric, error)

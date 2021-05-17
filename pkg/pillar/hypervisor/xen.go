@@ -586,6 +586,17 @@ func (ctx xenContext) PCIRelease(long string) error {
 	return nil
 }
 
+func (ctx xenContext) PCISameController(id1 string, id2 string) bool {
+	// We can not currently do enforcement based on iommu groups for Xen,
+	// since the hypervisor hides that from dom0. Thus we assume that initial
+	// bringup and model creation is done using KVM. That model can then be
+	// used with KVM and Xen. Note that it maybe possible to improve Xen
+	// disclosure of iommu groups (at least by interrogating it) but it would
+	// require patching Xen itself (which may be a useful TODO).
+	logrus.Infof("can't validate that %s and %s can be assigned separately: trusting Xen to do the right thing", id1, id2)
+	return false
+}
+
 func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()

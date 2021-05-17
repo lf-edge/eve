@@ -236,14 +236,14 @@ const qemuDiskTemplate = `
   driver = "virtio-9p-pci"
   fsdev = "fsdev{{.DiskID}}"
   mount_tag = "share_dir"
-  addr = "{{.PCIId}}"
+  addr = "{{printf "0x%x" .PCIId}}"
 {{else}}
 [device "pci.{{.PCIId}}"]
   driver = "pcie-root-port"
   port = "1{{.PCIId}}"
   chassis = "{{.PCIId}}"
   bus = "pcie.0"
-  addr = "{{.PCIId}}"
+  addr = "{{printf "0x%x" .PCIId}}"
 
 [drive "drive-virtio-disk{{.DiskID}}"]
   file = "{{.FileLocation}}"
@@ -277,7 +277,7 @@ const qemuNetTemplate = `
   chassis = "{{.PCIId}}"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "{{.PCIId}}"
+  addr = "{{printf "0x%x" .PCIId}}"
 
 [netdev "hostnet{{.NetID}}"]
   type = "tap"
@@ -295,9 +295,19 @@ const qemuNetTemplate = `
 `
 
 const qemuPciPassthruTemplate = `
+[device "pci.{{.PCIId}}"]
+  driver = "pcie-root-port"
+  port = "1{{.PCIId}}"
+  chassis = "{{.PCIId}}"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "{{printf "0x%x" .PCIId}}"
+
 [device]
   driver = "vfio-pci"
   host = "{{.PciShortAddr}}"
+  bus = "pci.{{.PCIId}}"
+  addr = "0x0"
 {{- if .Xvga }}
   x-vga = "on"
 {{- end -}}
@@ -576,9 +586,10 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}
 	if len(pciAssignments) != 0 {
 		pciPTContext := struct {
+			PCIId        int
 			PciShortAddr string
 			Xvga         bool
-		}{PciShortAddr: "", Xvga: false}
+		}{PCIId: netContext.PCIId, PciShortAddr: "", Xvga: false}
 
 		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
 		for _, pa := range pciAssignments {
@@ -593,6 +604,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
 			}
 			pciPTContext.Xvga = false
+			pciPTContext.PCIId = pciPTContext.PCIId + 1
 		}
 	}
 	if len(serialAssignments) != 0 {
@@ -830,6 +842,20 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	}
 
 	return nil
+}
+
+func (ctx kvmContext) PCISameController(id1 string, id2 string) bool {
+	tag1, err := types.PCIGetIOMMUGroup(id1)
+	if err != nil {
+		return types.PCISameController(id1, id2)
+	}
+
+	tag2, err := types.PCIGetIOMMUGroup(id2)
+	if err != nil {
+		return types.PCISameController(id1, id2)
+	}
+
+	return tag1 == tag2
 }
 
 func usbBusPort(USBAddr string) (string, string) {

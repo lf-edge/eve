@@ -2273,7 +2273,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			len(aa.IoBundleList))
 
 		// check for mismatched PCI-ids and assignment groups and mark as errors
-		aa.CheckBadAssignmentGroups(log)
+		aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 		for i := range aa.IoBundleList {
 			ib := &aa.IoBundleList[i]
 			log.Functionf("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
@@ -2318,7 +2318,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			aa.AddOrUpdateIoBundle(log, *ib)
 
 			// check for mismatched PCI-ids and assignment groups and mark as errors
-			aa.CheckBadAssignmentGroups(log)
+			aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 			// Lookup since it could have changed
 			ib = aa.LookupIoBundlePhylabel(ib.Phylabel)
 			updatePortAndPciBackIoBundle(ctx, ib, false)
@@ -2383,7 +2383,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle,
 	// expand list to include other PCI functions on the same PCI controller
 	// since they need to be treated as part of the same bundle even if the
 	// EVE controller doesn't know it
-	list = aa.ExpandControllers(log, list)
+	list = aa.ExpandControllers(log, list, hyper.PCISameController)
 	for _, ib := range list {
 		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) {
 			isPort = true

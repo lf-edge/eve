@@ -370,7 +370,7 @@ var aa2Errors = []string{
 
 func TestCheckBadAssignmentGroups(t *testing.T) {
 	log := base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
-	changed := aa2.CheckBadAssignmentGroups(log)
+	changed := aa2.CheckBadAssignmentGroups(log, PCISameController)
 	assert.True(t, changed)
 	assert.Equal(t, len(aa2.IoBundleList), len(aa2Errors))
 	for i, ib := range aa2.IoBundleList {
@@ -437,7 +437,7 @@ func TestExpandControllers(t *testing.T) {
 		t.Logf("TESTCASE: %s - Running", testname)
 		preList := aa2.LookupIoBundleGroup(test.assignmentGroup)
 		preLen := len(preList)
-		postList := aa2.ExpandControllers(log, preList)
+		postList := aa2.ExpandControllers(log, preList, PCISameController)
 		postLen := len(postList)
 		assert.Equal(t, test.preLen, preLen)
 		assert.Equal(t, test.postLen, postLen)

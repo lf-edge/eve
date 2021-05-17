@@ -33,6 +33,10 @@ message EdgeDevConfig {
   repeated DatastoreConfig datastores = 6;
 
   // deprecated 7; DeviceLispDetails lispInfo = 7
+
+  // OBSOLETE - base. Use baseos instead. Controller should fill this for
+  // backward compatibility till all the Older Eve images are no longer
+  // supported.
   repeated BaseOSConfig base = 8;        // BaseOSImage config block
   DeviceOpsCmd reboot = 9;
   DeviceOpsCmd backup = 10;
@@ -83,6 +87,9 @@ message EdgeDevConfig {
   // if we set new epoch, EVE sends all info messages to controller
   // it captures when a new controller takes over and needs all the info be resent
   int64 controller_epoch = 25;
+
+  // Baseos Config Block
+  BaseOS baseos = 26;
 }
 
 message ConfigRequest {

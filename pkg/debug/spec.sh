@@ -72,6 +72,8 @@ else
 fi
 
 DISK=$(lsblk -b  | grep disk | awk '{ total += $4; } END { print int(total/(1024*1024*1024)); }')
+WDT=$([ -e /dev/watchdog ] && echo true || echo false)
+HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
 
 cat <<__EOT__
 {
@@ -81,7 +83,10 @@ cat <<__EOT__
   "attr": {
     "memory": "${MEM}G",
     "storage": "${DISK}G",
-    "Cpus": "${CPUS}"
+    "Cpus": "${CPUS}",
+    "watchdog": ${WDT},
+    "hsm": ${HSM},
+    "leds": 0
   },
   "logo": {
     "logo_back":"/workspace/spec/logo_back_.jpg",
