@@ -1,14 +1,16 @@
 #!/bin/sh
 #shellcheck disable=SC2039
-# This script creates an initial hardware model file
-# The output is conservative when it comes to assignment groups in that
-# it does not form any assignment groups but merely checks whether there are
-# multiple functions on the same controller, and in that case the assignment
-# group is set to empty.
+# This script creates an initial hardware model file.
+# It should be run on KVM and without having already made some adapters be
+# app direct
+# The KVM requirement is due to looking at iommu_group and that might be
+# bogus under Xen
 # Note that the generated USB configuration does not include each USB port
 # aka receptacle, since that is not known to software; only the controllers
 # can be seen. Those can be manually added after determining which USB controller
 # handles the different USB ports.
+# Also, the user needs to fill in the jpg links with the photos of the front
+# and back of the box.
 
 if [ "$(uname -m)" = x86_64 ]; then
    ARCH=2
@@ -16,34 +18,15 @@ else
    ARCH=4
 fi
 
-# pci_long_to_dev returns the bus:controller without the function value
+# pci_iommu_group returns the iommu_group, or "" if there is none
 # $1 is the PciLong value
-pci_long_to_dev() {
+# If running on Xen we can't tell the safe groups
+pci_iommu_group() {
     local pcilong=$1
-    local dom=${pcilong%%:*}
-    local rest=${pcilong#"$dom":}
-    local bus=${rest%%:*}
-    rest=${rest#"$bus":}
-    local dev=${rest%%:*}
-    local ct=${dev%%.*}
-    # local fn=${dev##*.}
-    echo "$bus:$ct"
-}
-
-# pci_check_multifunction returns 0 if the controller has multiple functions
-# $1 is the PciLong value
-pci_check_multifunction() {
-    local pcilong=$1
-    local short_no_fn
-    short_no_fn=$(pci_long_to_dev "$pcilong")
-    count=$(lspci | grep -c ^"$short_no_fn")
-    if [ "$count" = 0 ]; then
-        echo "XXX missing PCI device $pcilong"
-        exit 1
-    elif [ "$count" = 1 ]; then
-        return 1
+    if [ -e /dev/xen ]; then
+        echo "warning:no_group_determined_using_xen"
     else
-        return 0
+        readlink "/sys/bus/pci/devices/$pcilong/iommu_group" 2>/dev/null | sed 's,.*kernel/,,'
     fi
 }
 
@@ -53,13 +36,8 @@ pci_check_multifunction() {
 # verify that there are no other functions on that controller
 # $1 is the name; $2 is the PciLong value
 get_assignmentgroup() {
-    local name=$1
     local pcilong=$2
-    if pci_check_multifunction "$pcilong"; then
-        echo ""
-    else
-        echo "$name"
-    fi
+    pci_iommu_group "$pcilong"
 }
 
 
