@@ -25,6 +25,7 @@ jobs:
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
+          echo "The LinuxKit cache is currently:" &&  du -sh $HOME/.linuxkit/cache 
       - name: Build EVE for Xen
         run: |
           make V=1 ROOTFS_VERSION="$VERSION" HV=xen eve
