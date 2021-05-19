@@ -100,7 +100,8 @@ using the proxy server's certificate in PEM format, here is an example:
             "NetworkProxyEnable": false,
             "NetworkProxyURL": "",
             "ProxyCertPEM": [
-                "MIIDSjCCAjKgAwIBAgIQRK+wgNajJ7qJMDmGLvhAazANBgkqhkiG9w0BAQUFADA/
+                "-----BEGIN CERTIFICATE-----
+                MIIDSjCCAjKgAwIBAgIQRK+wgNajJ7qJMDmGLvhAazANBgkqhkiG9w0BAQUFADA/
                 MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
                 DkRTVCBSb290IENBIFgzMB4XDTAwMDkzMDIxMTIxOVoXDTIxMDkzMDE0MDExNVow
                 PzEkMCIGA1UEChMbRGlnaXRhbCBTaWduYXR1cmUgVHJ1c3QgQ28uMRcwFQYDVQQD
@@ -117,7 +118,8 @@ using the proxy server's certificate in PEM format, here is an example:
                 AvHRAosZy5Q6XkjEGB5YGV8eAlrwDPGxrancWYaLbumR9YbK+rlmM6pZW87ipxZz
                 R8srzJmwN0jP41ZL9c8PDHIyh8bwRLtTcm1D9SZImlJnt1ir/md2cXjbDaJWFBM5
                 JDGFoqgCWjBH4d1QB7wCCZAA62RjYJsWvIjJEubSfZGL+T0yjWW06XyxV3bqxbYo
-                Ob8VZRzI9neWagqNdwvYkQsEjgfbKbYK7p2CNTUQ"
+                Ob8VZRzI9neWagqNdwvYkQsEjgfbKbYK7p2CNTUQ
+                -----END CERTIFICATE-----
             ],
 ```
 
