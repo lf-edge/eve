@@ -108,7 +108,7 @@ Domain manager needs to decrypt the sensitive user data from the app instance co
 
 Domain manager passes the cipher block from the app configuration and subscription contexts of controller certificates and cipher context to the cipher package for the decryption.
 
-The user data are only kept in memory in the domainmgr, but for cloud-init it is used to create a CDROM image which is passed to the application. This CDROM image lives in /var/run/domainmgr/cloudinit which is a filesystem backed by memory.
+The user data are only kept in memory in the domainmgr, but for cloud-init it is used to create a CDROM image which is passed to the application. This CDROM image lives in `/run/domainmgr/cloudinit` which is a filesystem backed by memory.
 
 ## Refreshing of the controller certificates in EVE
 
