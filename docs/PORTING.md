@@ -38,3 +38,10 @@ It is typical to constrain the set of packages being produced for the new archit
 The last statement in the series is used to constrain the initial content of the 2nd package that must be available from Day 1: `pkg/eve`. That is the final package that all of EVE users interact with in order to produce various images. It is typically advised to start with the `pkg/eve` package that is effectively just `pkg/alpine` plus one static artifact `images/docker-compose.yml` to begin with.
 
 The set of the packages `PKGS` you need to make available from the get go is `pkg/alpine` plus whatever maybe required to enable `pkg/eve`. These packages are typically very easy to port and they constitute a good testcase for making sure that `pkg/alpine` is actually functional.
+
+To sum it up, here's what the above variables do:
+
+* `PKGS` the list of the packages that is ready to be built for a new architecture (bare minimum is pkg/alpine and pkg/eve)
+* `ZARCH` explicit selection of the architecture to build for (unless you don't have to do a cross-build)
+* `EVE_ARTIFACTS` what artifacts to put into an `eve` container
+* `LK_BUILD_ARGS` overrides required for linuxkit
