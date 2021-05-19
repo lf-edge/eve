@@ -282,7 +282,7 @@ Use [tools/makeusbconf.bat](../tools/makeusbconf.bat) for Windows OS. It will as
 The blinking pattern can be extracted from the shell using
 
 ```bash
-cat /var/tmp/ledmanager/config/ledconfig.json
+cat /run/global/LedBlinkCounter/ledconfig.json
 ```
 
 If the device does not have any usable IP addresses it will be 1,
@@ -296,13 +296,9 @@ One can test the connectivity to the controller using
     /opt/zededa/bin/diag
 ```
 
-The logs for the onboarding attempts are in ```/persist/`zboot curpart`/log/client.log```
+The logs for the onboarding attempts are in the [directories](./LOGGING.md) under ```/persist/newlog/``` with a source field set to `client`.
 
-If there are no IP addresses, the logs for network interface manager can help:
-
-```bash
-    /persist/`zboot curpart`/log/nim.log
-```
+If there are no IP addresses, the logs for network interface manager can help, which have a source field set to `nim`.
 
 The ```/persist/status/nim/DevicePortConfigList/global.json``` contains the set
 of DevicePortConfig which have been tried, any errors, last time they succeeded
