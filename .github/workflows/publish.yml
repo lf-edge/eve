@@ -39,7 +39,7 @@ jobs:
              echo 'LK_BUILD_ARGS={"EVE_BUILDER_IMAGE": "'$EVE_BUILDER_IMAGE'"}' >> "$GITHUB_ENV"
              echo "EVE_ARTIFACTS=images/docker-compose.yml" >> "$GITHUB_ENV"
              # the following is here only for one iteration of bootstrap
-             docker build --build-arg DEFAULT_USER=root -t $EVE_BUILDER_IMAGE -f build-tools/src/scripts/Dockerfile.alpine.bootstrap $(mktemp -d)
+             docker build --build-arg DEFAULT_USER=root --build-arg DEFAULT_HOME=/ -t $EVE_BUILDER_IMAGE -f build-tools/src/scripts/Dockerfile.alpine.bootstrap $(mktemp -d)
           fi
           echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
