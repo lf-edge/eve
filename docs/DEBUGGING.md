@@ -25,39 +25,15 @@ To enable USB keyboard and/or storage access post onboarding it is necessary to 
 
 ## Reboots
 
-EVE is architected in such a way that if any service is unresponsive for a period of time, the entire device will reboot. To track
-down the source of reboots, follow this process:
+EVE is architected in such a way that if any service is unresponsive for a period of time, the entire device will reboot. When this happens a BootReason is constructed and sent in the device info message to the controller. If there is a golang panic there can also be useful information found in `/persist/agentdebug/`.
+If the device fails to communicate its info messages and logs to the controller, the logs can be inspected on the device in the [directories](./LOGGING.md) under `/persist/newlog/`.
 
-1. Go to the log directory. These are in `/var/persist/{IMGA,IMGB}/logs/` when on the base operating system, and `/persist/{IMGA,IMGB}/logs/` when in pillar via `eve enter`
-1. Check for the reason for reboot by looking in `device-steps.log` for the phrase `reboot-reason`. There will be lines that indicate the reason for the last reboot.
-1. Using the output, determine which agent was unresponsive, causing watchdog to reboot it.
-1. Look at the log for the particular agent as `<agent>.log`.
-1. Find the line that shows the dumped stack right before watchdog invoked a reboot. The stack was dumped by watchdog sending a `SIGUSR1` to the process. Thus, search the logfile for `SIGUSR1`.
-1. Look through the stack trace to see the various goroutines and why it is stuck.
-
-### Reboot Example
-
-Check for the reason for reboot in `device-steps.log
-
-```sh
-$ grep reboot-reason device-steps.log
-IMGA reboot-reason: Watchdog report at 2020-01-16T22:00:15,757460668+00:00: 250 /var/run/nim.touch
-Common reboot-reason: Watchdog report at 2020-01-16T22:00:15,757460668+00:00: 250 /var/run/nim.touch
-```
-
-The watchdog rebooted the device because the nim agent was unresponsive, as indicated by it not touching the flag file /var/run/nim.touch in 300 seconds
-
-Now we can look for the stack by finding `SIGUSR1` in `nim.log`:
-
-```sh
-$ grep SIGUSR1 nim.log
-<very long and messy output>
-```
+If BootReason indicates the system crashed due to a touch file, this means that some goroutine was running to slowly. When this happens the system automatically sends a SIGUSR1 signal to ask the process to log all of its stack traces. This is sent to the logs, but also saved in `/persist/agentdebug/*/sigusr1`.
 
 The output will be a single long line with carriage returns and tabs as escaped characters. Fix it by replacing the characters and dumping them to a file:
 
 ```sh
-$ grep SIGUSR1 nim.log | sed 's/\\n/\'$'\n''/g' | sed 's/\\t/\'$'\t''/g'
+$ cat /persist/agentdebug/zedbox/sigusr1 | sed 's/\\n/\'$'\n''/g' | sed 's/\\t/\'$'\t''/g'
 {"file":"/pillar/agentlog/agentlog.go:71","func":"github.com/lf-edge/eve/pkg/pillar/agentlog.handleSignals","level":"warning","msg":"SIGUSR1 triggered stack traces:
 goroutine 10 [running]:
 github.com/lf-edge/eve/pkg/pillar/agentlog.getStacks(0xc000080101, 0xc000000004, 0x1465007)
