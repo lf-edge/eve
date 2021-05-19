@@ -44,7 +44,8 @@ RUN echo http://eve-alpine-packages.s3.amazonaws.com > /etc/apk/cache.url
 
 # set the defaults for docker run
 ARG DEFAULT_USER=builder
+ARG DEFAULT_HOME=/home/builder
 ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 USER ${DEFAULT_USER}
-WORKDIR /home/builder
+WORKDIR ${DEFAULT_HOME}
 CMD sh
