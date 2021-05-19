@@ -84,7 +84,7 @@ The device certificates are currently self-signed by the device with a long life
 
 But in the future EVE can send Certificate Signing Requests over the EVE API to have the controller ask some backend CA to sign the device certificates in the cases where that facilitates managing the devices.
 
-The device generates additional key pairs and certificates, since different keys are required to have different usage. This includes an ECDH certificate used for object encryption (to minimize exposure of secrets in the configuration) which is generated using the TPM is available, otherwise stored as a file in the config partition. In the future there will also be a device attestation certificate (with the appropriate key usage settings to perform remote attestation from the TPM). Both the ECDH and attestation certificates are signed using the device certificate. Collectively we call these additional device-side certificates EdgeNode certificates.
+The device generates additional key pairs and certificates, since different keys are required to have different usage. This includes an ECDH certificate used for object encryption (to minimize exposure of secrets in the configuration) which is generated using the TPM is available, and stored in a file in the /persist partition. There is also an attestation certificate  (with the appropriate key usage settings to perform remote attestation from the TPM), and a certificate for the TPM endorsement key (which is needed by some vTPM use). All three additional certificates are signed using the device private key. Collectively we call these additional device-side certificates EdgeNode certificates.
 
 ### Controller trusting EVE
 
@@ -98,7 +98,13 @@ There are several ways in which devices running EVE can be on-boarded to a contr
 
 One approach is that EVE is booted and the TPM is used to generate the device certificate, and that device certificate is securely delivered from the factory to the intended end user of the device. That end user can then upload the device certificate to the controller to claim the device. (A controller would presumably check for attempts for more than one party claiming ownership of the same device hence so that a disclosed device certificate can be detected.)
 
-Another approach is that an onboarding token (in the form of a certificate and private key) is added to the EVE image, but the factory does not need to boot EVE and upload information after installing the image. When the device boots EVE the first time at the installation site it will present the onboarding certificate and its serial numbers using a register API call to the controller, and the user can scan and upload the serial number to the controller. This has weaker security especially if serial numbers can be guessed by an attacker having an account on the same controller, but different devices can be given different onboarding tokens to make such attacks more difficult.
+Another approach is that an onboarding token (in the form of a certificate and private key) is added to the EVE image, but the factory does not need to boot EVE and upload information after installing the image. When the device boots EVE the first time at the installation site it will present the onboarding certificate and its hardware serial numbers using a register API call to the controller, and the user can scan and upload the serial number to the controller. This has weaker security especially if serial numbers can be guessed by an attacker having an account on the same controller, but different devices can be given different onboarding tokens to make such attacks more difficult.
+
+A variant of that approach is to use a random soft serial number. When EVE is installed it generates a /config/soft_serial which is a random 128-bit UUID. If installed from a USB stick this serial number (together with the less random hardware serial number) are written to a directory on the USB installer stick.
+
+When EVE is calling the register API it will present both the hardware serial and soft serial, hence if the controller has been told of the random soft serial for the device we avoid depending on guessable hardware serial numbers.
+
+In both cases of calling the register API the factory can choose the granularity of the onboarding token. A single onboarding token can be used for a large production run of devices, or for fewer devices, or even be generated for each individual device. The choice depends on the capabilities of the factory installation site and the logistics of conveying the information (device certificate, onboarding tokens and/or serial numbers) from the factory to the end user.
 
 ## Encrypted Data Store
 
