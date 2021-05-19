@@ -279,7 +279,7 @@ currentversion:
 	@cat $(CURRENT_DIR)/installer/eve_version
 
 
-.PHONY: currentversion
+.PHONY: currentversion linuxkit
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
