@@ -100,6 +100,12 @@ One approach is that EVE is booted and the TPM is used to generate the device ce
 
 Another approach is that an onboarding token (in the form of a certificate and private key) is added to the EVE image, but the factory does not need to boot EVE and upload information after installing the image. When the device boots EVE the first time at the installation site it will present the onboarding certificate and its hardware serial numbers using a register API call to the controller, and the user can scan and upload the serial number to the controller. This has weaker security especially if serial numbers can be guessed by an attacker having an account on the same controller, but different devices can be given different onboarding tokens to make such attacks more difficult.
 
+The onboarding token lives in conf/onboard.*.pem in the repo, and this is used to build the config disk image which ends up in /config/ when EVE is booted. Thus the onboarding key UUID can be extracted using
+
+```shell
+openssl x509 -in conf/onboard.cert.pem -text | grep CN
+```
+
 A variant of that approach is to use a random soft serial number. When EVE is installed it generates a /config/soft_serial which is a random 128-bit UUID. If installed from a USB stick this serial number (together with the less random hardware serial number) are written to a directory on the USB installer stick.
 
 When EVE is calling the register API it will present both the hardware serial and soft serial, hence if the controller has been told of the random soft serial for the device we avoid depending on guessable hardware serial numbers.
