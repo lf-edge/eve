@@ -1,5 +1,7 @@
 # This file must be kept as much in sync with pkg/kernel/Dockerfile as posisble
-FROM lfedge/eve-alpine:6.2.0 AS kernel-build
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+# hadolint ignore=DL3006
+FROM ${EVE_BUILDER_IMAGE} as kernel-build
 
 ENV BUILD_PKGS \
     argp-standalone automake bash bc binutils-dev bison build-base curl \
@@ -9,8 +11,9 @@ ENV BUILD_PKGS \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.12
-ARG KERNEL_VERSION_x86_64=5.12
+ARG KERNEL_VERSION_riscv64=5.12.5
+ARG KERNEL_VERSION_aarch64=5.12.5
+ARG KERNEL_VERSION_x86_64=5.12.5
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -55,6 +58,9 @@ RUN case $(uname -m) in \
     aarch64) \
         KERNEL_DEF_CONF=/linux/arch/arm64/configs/defconfig; \
         ;; \
+    riscv64) \
+        KERNEL_DEF_CONF=/linux/arch/riscv/configs/defconfig; \
+        ;; \
     esac  && \
     cp /kernel_config-${KERNEL_SERIES}-$(uname -m) ${KERNEL_DEF_CONF}; \
     if [ -n "${EXTRA}" ]; then \
@@ -76,6 +82,9 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
         ;; \
     aarch64) \
         cp arch/arm64/boot/Image.gz /out/kernel; \
+        ;; \
+    riscv64) \
+        cp arch/riscv/boot/Image.gz /out/kernel; \
         ;; \
     esac && \
     cp System.map /out && \
@@ -100,7 +109,7 @@ RUN ./autogen.sh && \
 
 # Out-of-tree, creepy modules
 #  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
-RUN if [ "$(uname -m)" != aarch64 ]; then \
+RUN if [ "$(uname -m)" = x86_64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
        (cd /tmp/rtl8821CU && git checkout 2dc966f0dc99 && patch -p1 < /rtl8821CU.patch ) &&\
        make -C /tmp/rtl8821CU KSRC=/linux modules &&\
@@ -110,10 +119,10 @@ RUN if [ "$(uname -m)" != aarch64 ]; then \
 WORKDIR /linux
 
 # Strip at least some of the modules to conserve space
-RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
+RUN [ "$(uname -m)" = x86_64 ] || strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko`
 
 # Device Tree Blobs
-RUN if [ "$(uname -m)" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install ;fi
+RUN [ "$(uname -m)" = x86_64 ] || make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install
 
 # Package all the modules up
 RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
