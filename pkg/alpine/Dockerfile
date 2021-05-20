@@ -35,3 +35,5 @@ COPY --from=cache /mirror /mirror/
 COPY eve-alpine-deploy.sh go-compile.sh /bin/
 
 RUN apk update && apk upgrade -a
+# FIXME: workaround for riscv64 package layout
+RUN [ "$(uname -m)" != riscv64 ] || ln -s python3.9 /usr/bin/python3
