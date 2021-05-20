@@ -429,6 +429,11 @@ if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     SELF_REGISTER=1
+    # Did we fail to generate a certificate?
+    if [ ! -s $CONFIGDIR/device.cert.pem ]; then
+        echo "$(date -Ins -u) Failed to generate a device certificate. Done" | tee /dev/console
+        exit 0
+    fi
 elif [ -f $CONFIGDIR/self-register-pending ]; then
     echo "$(date -Ins -u) previous self-register failed/killed/rebooted"
     SELF_REGISTER=1
@@ -437,7 +442,7 @@ else
     SELF_REGISTER=0
 fi
 if [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; then
-    echo "$(date -Ins -u) No server or root-certificate to connect to. Done"
+    echo "$(date -Ins -u) No server or root-certificate to connect to. Done" | tee /dev/console
     exit 0
 fi
 
