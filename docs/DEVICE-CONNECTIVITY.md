@@ -70,6 +70,8 @@ The nim retains the currently working configuration, plus the following in prior
 1. An override file from a USB stick (if any)
 1. The last resort if so enabled
 
+This is based on comparing the TimePriority field in the configuration, where the information receive from zedagent has a TimePriority based on when it was last received or changed, and the override file should contain an explicit TimePriority field. The last resort configuration is the lowest priority with a TimePriority of Jan 1, 1970.
+
 Once the most recent configuration received from the controller has been tested and found to be usable, then all but the (optional) last resort configuration are pruned from the above list.
 When a new configuration is received from the controller it will keep the old configuration from the controller as a fallback.
 

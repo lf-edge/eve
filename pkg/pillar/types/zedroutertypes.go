@@ -655,16 +655,24 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 	if sanitizeTimePriority {
 		zeroTime := time.Time{}
 		if config.TimePriority == zeroTime {
-			// If we can stat the file use its modify time
+			// A json override file should really contain a
+			// timepriority field so we can determine whether
+			// it or the information received from the controller
+			// is more current.
+			// If we can stat the file we use 1980, otherwise
+			// we use 1970; using the modify time of the file
+			// is too unpredictable.
 			filename := fmt.Sprintf("%s/DevicePortConfig/%s.json",
 				TmpDirname, key)
-			fi, err := os.Stat(filename)
+			_, err := os.Stat(filename)
 			if err == nil {
-				config.TimePriority = fi.ModTime()
+				config.TimePriority = time.Date(1980,
+					time.January, 1, 0, 0, 0, 0, time.UTC)
 			} else {
-				config.TimePriority = time.Unix(0, 0)
+				config.TimePriority = time.Date(1970,
+					time.January, 1, 0, 0, 0, 0, time.UTC)
 			}
-			log.Functionf("DoSanitize: Forcing TimePriority for %s to %v\n",
+			log.Warnf("DoSanitize: Forcing TimePriority for %s to %v",
 				key, config.TimePriority)
 		}
 	}
