@@ -46,6 +46,8 @@ The above build/USB file can specify multiple management interfaces, as well as
 non-management interface, and can specify static IP and DNS configuration
 (for environments where DHCP is not used), plus WiFi and cellular modem specifics. In addition it can specify proxies using several different mechanism.
 
+The build/USB file should include a TimePriority field, since this is used to determine whether the information from the file or from the controller should be applied; the more recent information is what will be used by EVE.
+
 ### Example DevicePortConfig
 
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
@@ -53,6 +55,7 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
 ```json
 {
     "Version": 1,
+    "TimePriority": "2021-05-20T22:13:31.07683525Z",
     "Ports": [
         {
             "AddrSubnet": "",
@@ -135,6 +138,7 @@ An example file with eth0 being static and eth1 using dhcp is:
 ```json
 {
     "Version": 1,
+    "TimePriority": "2021-05-20T22:13:31.07683525Z",
     "Ports": [
         {
             "AddrSubnet": "38.108.181.238/24",
@@ -171,6 +175,7 @@ To specify that wwan0 should be secondary (only used if eth0 can not be used to 
 ```json
 {
     "Version": 1,
+    "TimePriority": "2021-05-20T22:13:31.07683525Z",
     "Ports": [
         {
             "Dhcp": 4,
@@ -203,6 +208,7 @@ use DHCP 0. For example,
 ```json
 {
     "Version": 1,
+    "TimePriority": "2021-05-20T22:13:31.07683525Z",
     "Ports": [
         {
             "Dhcp": 4,
