@@ -33,13 +33,10 @@ jobs:
              # we need to build our own version of cross-enabled linuxkit, while upstream is sorting things out
              make LINUXKIT_VERSION=master LINUXKIT_SOURCE=https://github.com/rvs/linuxkit.git linuxkit
              # constraining environment for riscv64 builds
-             EVE_BUILDER_IMAGE=$(./build-tools/bin/linuxkit pkg show-tag pkg/alpine)-riscv64
              echo "PKGS=pkg/alpine pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/mkimage-raw-efi" >> "$GITHUB_ENV"
              echo "ZARCH=riscv64" >> "$GITHUB_ENV"
-             echo 'LK_BUILD_ARGS={"EVE_BUILDER_IMAGE": "'$EVE_BUILDER_IMAGE'"}' >> "$GITHUB_ENV"
+             echo 'LK_BUILD_ARGS={"EVE_BUILDER_IMAGE": "lfedge/eve-alpine:abcff574e06af277a13fe88c9f4c59407e1ba1ff-riscv64"}' >> "$GITHUB_ENV"
              echo "EVE_ARTIFACTS=images/docker-compose.yml" >> "$GITHUB_ENV"
-             # the following is here only for one iteration of bootstrap
-             docker build --build-arg DEFAULT_USER=root --build-arg DEFAULT_HOME=/ -t $EVE_BUILDER_IMAGE -f build-tools/src/scripts/Dockerfile.alpine.bootstrap $(mktemp -d)
           fi
           echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
