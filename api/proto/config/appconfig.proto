@@ -119,7 +119,7 @@ message AppInstanceConfig {
   // device.
   repeated string profile_list = 18;
 
-  // The static IP address assinged on the NetworkAdpater of the App which serves
+  // The static IP address assigned on the NetworkAdpater of the App which serves
   // as the local data store server. If this 'localDataStoreIPAddr' is valid,
   // it enables the device datastore config where the FQDN IP address matches this
   // address and to be routed locally inside the device. If a Port map is enabled

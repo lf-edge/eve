@@ -69,6 +69,9 @@ func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
 	// "mismatched local address type ip"
 	// This will make the ResolveIPAddr a TCPAddr without needing to
 	// say what SRC port number to use.
+	if localAddr == nil {
+		return nil
+	}
 	localTCPAddr := net.TCPAddr{IP: localAddr}
 	localUDPAddr := net.UDPAddr{IP: localAddr}
 	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
