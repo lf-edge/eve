@@ -1804,9 +1804,10 @@ type UnderlayNetworkConfig struct {
 	//	If this is non-empty ( != ""), the UL network Config should not be
 	// 	processed further. It Should just	be flagged to be in error state
 	//  back to the cloud.
-	Error   string
-	Network uuid.UUID // Points to a NetworkInstance.
-	ACLs    []ACE
+	Error        string
+	Network      uuid.UUID // Points to a NetworkInstance.
+	ACLs         []ACE
+	AccessVlanID uint32
 }
 
 type UnderlayNetworkStatus struct {
@@ -1940,6 +1941,12 @@ type NetworkInstanceInfo struct {
 	// to this bridge and their statistics.
 	// We add statistics from all vifs while reporting to cloud.
 	VifMetricMap map[string]NetworkMetric
+
+	// Maintain a map of all access vlan ids to their counts, used by apps
+	// connected to this network instance.
+	VlanMap map[uint32]uint32
+	// Counts the number of trunk ports attached to this network instance
+	NumTrunkPorts uint32
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(

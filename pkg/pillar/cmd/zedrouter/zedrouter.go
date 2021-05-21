@@ -995,6 +995,24 @@ func appNetworkDoActivateUnderlayNetwork(
 	ulStatus.Mac = appMac
 	ulStatus.HostName = config.Key()
 
+	if netInstStatus.Type == types.NetworkInstanceTypeSwitch {
+		if ulConfig.AccessVlanID <= 1 {
+			// No valid vlan configuration on this app adapter.
+			// There are valid vlans configured on adpaters of other apps
+			// connected to this particular network instance.
+			// Make this adapter trunk port
+			ulStatus.Vlan.IsTrunk = true
+			ulStatus.Vlan.Start = 1
+			ulStatus.Vlan.End = 4093
+			netInstStatus.NumTrunkPorts++
+		} else {
+			ulStatus.Vlan.IsTrunk = false
+			ulStatus.Vlan.Start = ulConfig.AccessVlanID
+			ulStatus.Vlan.End = ulConfig.AccessVlanID
+			netInstStatus.VlanMap[ulConfig.AccessVlanID]++
+		}
+	}
+
 	bridgeIPAddr, appIPAddr, err := getUlAddrs(ctx, ulNum-1,
 		status.AppNum, ulStatus, netInstStatus)
 	if err != nil {
@@ -1675,6 +1693,19 @@ func appNetworkDoInactivateUnderlayNetwork(
 		startDnsmasq(bridgeName)
 	}
 	netstatus.RemoveVif(log, ulStatus.Vif)
+	if netstatus.Type == types.NetworkInstanceTypeSwitch {
+		if ulStatus.AccessVlanID <= 1 {
+			netstatus.NumTrunkPorts--
+		} else {
+			netstatus.VlanMap[ulStatus.AccessVlanID]++
+			if _, ok := netstatus.VlanMap[ulStatus.AccessVlanID]; ok {
+				netstatus.VlanMap[ulStatus.AccessVlanID]--
+				if netstatus.VlanMap[ulStatus.AccessVlanID] == 0 {
+					delete(netstatus.VlanMap, ulStatus.AccessVlanID)
+				}
+			}
+		}
+	}
 	netstatus.BridgeIPSets = newIpsets
 	log.Functionf("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)

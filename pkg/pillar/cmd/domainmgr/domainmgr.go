@@ -1316,8 +1316,30 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 			status.Key())
 	}
 	status.Activated = true
+	setupVlans(status.VifList)
 	log.Functionf("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
+}
+
+func setupVlans(vifList []types.VifInfo) {
+	for _, vif := range vifList {
+		vlanInfo := ""
+		if vif.Vlan.IsTrunk {
+			vlanInfo = fmt.Sprintf("%d-%d", vif.Vlan.Start, vif.Vlan.End)
+		} else if vif.Vlan.Start != 0 {
+			vlanInfo = fmt.Sprintf("%d pvid untagged", vif.Vlan.Start)
+		} else {
+			continue
+		}
+		args := []string{"vlan", "add", "dev", vif.Vif, "vid"}
+		args = append(args, strings.Split(vlanInfo, " ")...)
+		log.Functionf("Calling command %s %v\n", "bridge", args)
+		out, err := base.Exec(log, "bridge", args...).CombinedOutput()
+		if err != nil {
+			errStr := fmt.Sprintf("bridge command %s failed %s output %s", args, err, out)
+			log.Errorln(errStr)
+		}
+	}
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
