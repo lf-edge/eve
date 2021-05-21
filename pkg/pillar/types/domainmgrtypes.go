@@ -373,6 +373,8 @@ type DomainMetric struct {
 	UsedMemory        uint32
 	AvailableMemory   uint32
 	UsedMemoryPercent float64
+	LastHeard         time.Time
+	Activated         bool
 }
 
 // Key returns the key for pubsub

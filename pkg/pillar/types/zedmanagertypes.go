@@ -158,6 +158,7 @@ type AppInstanceStatus struct {
 	// Error* set implies error.
 	State          SwState
 	MissingNetwork bool // If some Network UUID not found
+	MissingMemory  bool // Waiting for memory
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
