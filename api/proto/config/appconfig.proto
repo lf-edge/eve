@@ -118,6 +118,14 @@ message AppInstanceConfig {
   // be started independent of the global or local profile specified for the
   // device.
   repeated string profile_list = 18;
+
+  // The static IP address assinged on the NetworkAdpater of the App which serves
+  // as the local data store server. If this 'localDataStoreIPAddr' is valid,
+  // it enables the device datastore config where the FQDN IP address matches this
+  // address and to be routed locally inside the device. If a Port map is enabled
+  // for external access, that would be a normal inbound access operation for
+  // this App to serve the data store remotely also.
+  string localDataStoreIPAddr = 19;
 }
 
 // Reference to a Volume specified separately in the API

@@ -65,6 +65,8 @@ type AppInstanceConfig struct {
 	RemoteConsole     bool
 	// Collect Stats IP Address, assume port is the default docker API for http: 2375
 	CollectStatsIPAddr net.IP
+	// local datastore IP address
+	LocalDataStoreIPAddr net.IP
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus

@@ -219,4 +219,5 @@ type DatastoreContext struct {
 	APIKey          string
 	Password        string
 	Region          string
+	IsLocal         bool
 }

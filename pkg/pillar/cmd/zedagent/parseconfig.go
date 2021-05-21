@@ -12,6 +12,7 @@ import (
 	"hash"
 	"io/ioutil"
 	"net"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -449,6 +450,29 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 	}
 
+	// If datastore has local flag set, but the new apps don't
+	// need it anymore, remove this
+	dsItems := getconfigCtx.pubDatastoreConfig.GetAll()
+	for _, ds := range dsItems {
+		dsConfig := ds.(types.DatastoreConfig)
+		if !dsConfig.IsLocal {
+			continue
+		}
+		found := false
+		for _, appcfg := range Apps {
+			if isHostInFqdn(dsConfig.Fqdn, appcfg.GetLocalDataStoreIPAddr()) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			dsConfig.IsLocal = false
+			log.Functionf("parseAppInstanceConfig: remove local flag on %s", dsConfig.Fqdn)
+			getconfigCtx.pubDatastoreConfig.Publish(dsConfig.Key(), dsConfig)
+		}
+	}
+	dsItems = getconfigCtx.pubDatastoreConfig.GetAll()
+
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
 		// change but something else in the EdgeDeviceConfig did
@@ -479,6 +503,22 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		// fill in the collect stats IP address of the App
 		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
+		ipAddr := cfgApp.GetLocalDataStoreIPAddr()
+		if ipAddr != "" {
+			appInstance.LocalDataStoreIPAddr = net.ParseIP(ipAddr)
+			for _, ds := range dsItems {
+				configds := ds.(types.DatastoreConfig)
+				if configds.IsLocal {
+					continue
+				}
+				if isHostInFqdn(configds.Fqdn, ipAddr) {
+					log.Functionf("parseAppInstanceConfig: %s, add local flag", configds.Fqdn)
+					configds.IsLocal = true
+					getconfigCtx.pubDatastoreConfig.Publish(configds.Key(), configds)
+					break
+				}
+			}
+		}
 
 		// fill the overlay/underlay config
 		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
@@ -516,6 +556,18 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
 	}
+}
+
+func isHostInFqdn(fqdn, hostIP string) bool {
+	myurl, err := url.Parse(fqdn)
+	if err != nil {
+		log.Errorf("isHostInFqdn: %v", err)
+		return false
+	}
+	if myurl.Hostname() == hostIP {
+		return true
+	}
+	return false
 }
 
 var systemAdaptersPrevConfigHash []byte
@@ -972,6 +1024,17 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		log.Tracef("publishDatastoresConfig: unpublishing %s", k)
 		ctx.pubDatastoreConfig.Unpublish(k)
 	}
+	// may have multiple local data store IP addresses
+	var dsAddr []string
+	pub := ctx.pubAppInstanceConfig
+	items = pub.GetAll()
+	for _, c := range items {
+		config := c.(types.AppInstanceConfig)
+		if config.LocalDataStoreIPAddr != nil {
+			dsAddr = append(dsAddr, config.LocalDataStoreIPAddr.String())
+		}
+	}
+
 	for _, ds := range cfgDatastores {
 		datastore := new(types.DatastoreConfig)
 		datastore.UUID, _ = uuid.FromString(ds.Id)
@@ -981,6 +1044,13 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		datastore.ApiKey = ds.ApiKey
 		datastore.Password = ds.Password
 		datastore.Region = ds.Region
+		for _, addr := range dsAddr {
+			if len(addr) > 0 && isHostInFqdn(ds.Fqdn, addr) {
+				datastore.IsLocal = true
+				log.Functionf("publishDatastoreConfig: %s, add local flag", ds.Fqdn)
+				break
+			}
+		}
 		// XXX compatibility with unmodified zedcloud datastores
 		// default to "us-west-2"
 		if datastore.Region == "" {

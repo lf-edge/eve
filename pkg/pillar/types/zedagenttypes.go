@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // This is what we assume will come from the ZedControl for base OS.
@@ -196,6 +196,7 @@ type DatastoreConfig struct {
 	Password string // XXX: to be deprecated, use CipherBlockStatus instead
 	Dpath    string // depending on DsType, it could be bucket or path
 	Region   string
+	IsLocal  bool // if the url is device local app IP
 
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus

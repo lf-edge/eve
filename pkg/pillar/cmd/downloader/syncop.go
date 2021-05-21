@@ -5,6 +5,7 @@ package downloader
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -29,6 +30,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		auth                                                   *zedUpload.AuthInput
 		cancelled                                              bool
 		contentType                                            string
+		tryCount                                               int
 	)
 
 	// the target filename, where to place the download, is provided in config.
@@ -75,15 +77,21 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	log.Functionf("Downloading <%s> to <%s> using %d downloadMaxPortCost",
 		config.Name, locFilename, downloadMaxPortCost)
 
-	addrCount := types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-		downloadMaxPortCost)
-	if addrCount == 0 {
-		err := fmt.Errorf("No IP management port addresses with cost <= %d",
+	if !dsCtx.IsLocal {
+		tryCount = types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
 			downloadMaxPortCost)
-		log.Error(err.Error())
-		handleSyncOpResponse(ctx, config, status, locFilename,
-			key, err.Error(), cancelled)
-		return
+		if tryCount == 0 {
+			err := fmt.Errorf("No IP management port addresses with cost <= %d",
+				downloadMaxPortCost)
+			log.Error(err.Error())
+			handleSyncOpResponse(ctx, config, status, locFilename,
+				key, err.Error(), cancelled)
+			return
+		}
+	} else {
+		// for local datastore, the app network may not be setup yet, but downloader
+		// will keep retry in 10 mins later
+		tryCount = 1
 	}
 
 	switch dsCtx.TransportMethod {
@@ -166,17 +174,24 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// Loop through all interfaces until a success
-	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
-		ipSrc, err := types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-			addrIndex, "", downloadMaxPortCost)
-		if err != nil {
-			log.Errorf("GetLocalAddr failed: %s", err)
-			errStr = errStr + "\n" + err.Error()
-			continue
+	for idx := 0; idx < tryCount; idx++ {
+		var ifname string
+		var ipSrc net.IP
+		if !dsCtx.IsLocal {
+			ipSrc, err = types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+				idx, "", downloadMaxPortCost)
+			if err != nil {
+				log.Errorf("GetLocalAddr failed: %s", err)
+				errStr = errStr + "\n" + err.Error()
+				continue
+			}
+			ifname = types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
+			log.Functionf("Using IP source %v if %s transport %v",
+				ipSrc, ifname, dsCtx.TransportMethod)
+		} else {
+			// for the benefit of cloud metrics
+			ifname = "localhost"
 		}
-		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
-		log.Functionf("Using IP source %v if %s transport %v",
-			ipSrc, ifname, dsCtx.TransportMethod)
 
 		// do the download
 		st := &PublishStatus{
@@ -309,6 +324,7 @@ func constructDatastoreContext(ctx *downloaderContext, configName string, NameIs
 		APIKey:          decBlock.DsAPIKey,
 		Password:        decBlock.DsPassword,
 		Region:          dst.Region,
+		IsLocal:         dst.IsLocal,
 	}
 	return &dsCtx, nil
 }
