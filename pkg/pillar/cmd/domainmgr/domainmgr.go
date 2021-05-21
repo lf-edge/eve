@@ -959,35 +959,19 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 			status.Key())
 		return
 	}
+	if !config.Activate {
+		log.Errorf("maybeRetryAdapters(%s) Config not Activate - nothing to do",
+			status.Key())
+		status.AdaptersFailed = false
+		publishDomainStatus(ctx, status)
+		return
+	}
 	log.Noticef("maybeRetryAdapters(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
-	if err := configAdapters(ctx, *config); err != nil {
-		log.Errorf("Failed to reserve adapters for %s: %s",
-			config.Key(), err)
-		status.PendingAdd = false
-		status.SetErrorNow(err.Error())
-		status.AdaptersFailed = true
-		publishDomainStatus(ctx, status)
-		cleanupAdapters(ctx, config.IoAdapterList,
-			config.UUIDandVersion.UUID)
-		return
-	}
-	status.AdaptersFailed = false
-	if status.HasError() {
-		log.Noticef("maybeRetryAdapters(%s) clearing existing error: %s",
-			status.Key(), status.Error)
-		status.ClearError()
-	}
-
-	// We now have reserved all of the IoAdapters
-	status.IoAdapterList = config.IoAdapterList
-
 	// Write any Location so that it can later be deleted based on status
 	publishDomainStatus(ctx, status)
-	if config.Activate {
-		doActivate(ctx, *config, status)
-	}
+	doActivate(ctx, *config, status)
 	// work done
 	publishDomainStatus(ctx, status)
 	log.Functionf("maybeRetryAdapters(%s) DONE for %s",
@@ -1005,6 +989,20 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 	}
 	status := st.(types.DomainStatus)
 	return &status
+}
+
+// lookupDomainStatusByUUID ignores the version part of the key
+func lookupDomainStatusByUUID(ctx *domainContext, uuid uuid.UUID) *types.DomainStatus {
+
+	pub := ctx.pubDomainStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.DomainStatus)
+		if status.UUIDandVersion.UUID == uuid {
+			return &status
+		}
+	}
+	return nil
 }
 
 func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
@@ -1057,22 +1055,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		return
 	}
 
-	if err := configAdapters(ctx, *config); err != nil {
-		log.Errorf("Failed to reserve adapters for %v: %s",
-			config, err)
-		status.PendingAdd = false
-		status.SetErrorNow(err.Error())
-		status.AdaptersFailed = true
-		publishDomainStatus(ctx, &status)
-		cleanupAdapters(ctx, config.IoAdapterList,
-			config.UUIDandVersion.UUID)
-		return
-	}
-
-	status.AdaptersFailed = false
-	// We now have reserved all of the IoAdapters
-	status.IoAdapterList = config.IoAdapterList
-
 	// Write any Location so that it can later be deleted based on status
 	publishDomainStatus(ctx, &status)
 
@@ -1086,36 +1068,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.UUIDandVersion, config.DisplayName)
 }
 
-// XXX clear the UUID assignment; leave in pciback
-func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
-	myUuid uuid.UUID) {
-
-	publishAssignableAdapters := false
-	// Look for any adapters used by us and clear UsedByUUID
-	for _, adapter := range ioAdapterList {
-		log.Tracef("cleanupAdapters processing adapter %d %s",
-			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
-		if len(list) == 0 {
-			continue
-		}
-		for _, ib := range list {
-			if ib.UsedByUUID != myUuid {
-				continue
-			}
-			log.Functionf("cleanupAdapters clearing uuid for adapter %d %s member %s",
-				adapter.Type, adapter.Name, ib.Phylabel)
-			ib.UsedByUUID = nilUUID
-			publishAssignableAdapters = true
-		}
-	}
-	if publishAssignableAdapters {
-		ctx.publishAssignableAdapters()
-	}
-}
-
-// XXX only for USB when usbAccess is set; really assign to pciback then separately
-// assign to domain
+// doAssignAdaptersToDomain only has work to do for USB when usbAccess is set
+// since everything else is already assigned to pciback
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) error {
 
@@ -1128,7 +1082,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 
 		aa := ctx.assignableAdapters
 		list := aa.LookupIoBundleAny(adapter.Name)
-		// We reserved it in handleCreate so nobody could have stolen it
+		// We reserved it in reserveAdapters so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doAssignIoAdaptersToDomain IoBundle disappeared %d %s for %s",
 				adapter.Type, adapter.Name, status.DomainName)
@@ -1149,7 +1103,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					adapter.Type, adapter.Name,
 					status.DomainName)
 			}
-			// Also checked in configAdapters. Check here in case there was a late error.
+			// Also checked in reserveAdapters. Check here in case there was a late error.
 			if ib.Error != "" {
 				return errors.New(ib.Error)
 			}
@@ -1198,23 +1152,28 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	log.Functionf("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
-	if status.AdaptersFailed || status.PendingModify {
-		if err := configAdapters(ctx, config); err != nil {
-			log.Errorf("Failed to reserve adapters for %s: %s",
-				config.Key(), err)
-			status.PendingAdd = false
-			status.SetErrorNow(err.Error())
-			status.AdaptersFailed = true
-			publishDomainStatus(ctx, status)
-			cleanupAdapters(ctx, config.IoAdapterList,
-				config.UUIDandVersion.UUID)
-			return
-		}
 
-		status.AdaptersFailed = false
-		// We now have reserved all of the IoAdapters
-		status.IoAdapterList = config.IoAdapterList
+	if err := reserveAdapters(ctx, config); err != nil {
+		log.Errorf("Failed to reserve adapters for %s: %s",
+			config.Key(), err)
+		status.PendingAdd = false
+		status.SetErrorNow(err.Error())
+		status.AdaptersFailed = true
+		publishDomainStatus(ctx, status)
+		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
+			nil)
+		status.IoAdapterList = nil
+		return
 	}
+	status.AdaptersFailed = false
+	if status.HasError() {
+		log.Noticef("maybeRetryAdapters(%s) clearing existing error: %s",
+			status.Key(), status.Error)
+		status.ClearError()
+	}
+
+	// We now have reserved all of the IoAdapters
+	status.IoAdapterList = config.IoAdapterList
 
 	// Assign any I/O devices
 	if err := doAssignIoAdaptersToDomain(ctx, config, status); err != nil {
@@ -1224,7 +1183,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.SetErrorNow(err.Error())
 		status.AdaptersFailed = true
 		publishDomainStatus(ctx, status)
-		cleanupAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID)
+		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
+			nil)
 		status.IoAdapterList = nil
 		return
 	}
@@ -1467,58 +1427,59 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		status.Activated = false
 		status.State = types.HALTED
 	}
+	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
+		status)
+	status.IoAdapterList = nil
 	publishDomainStatus(ctx, status)
-
-	pciUnassign(ctx, status, false)
 
 	log.Functionf("doInactivate(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
-// XXX currently only unassigns USB if usbAccess is set
-func pciUnassign(ctx *domainContext, status *types.DomainStatus,
-	ignoreErrors bool) {
+// releaseAdapters is called when the domain is done with the device and we
+// clear UsedByUUID
+// In addition, if USB and usbAccess is set, we move it back to the host.
+// If status is set, any errors are recorded in status
+func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
+	myUUID uuid.UUID, status *types.DomainStatus) {
 
-	log.Functionf("pciUnassign(%v, %v) for %s",
-		status.UUIDandVersion, ignoreErrors, status.DisplayName)
-
-	// Unassign any pci devices but keep UsedByUUID set and keep in status
+	log.Functionf("releaseAdapters(%s)", myUUID)
+	ignoreErrors := (status == nil)
 	var assignments []string
-	for _, adapter := range status.IoAdapterList {
-		log.Tracef("doInactivate processing adapter %d %s",
+	for _, adapter := range ioAdapterList {
+		log.Tracef("releaseAdapters processing adapter %d %s",
 			adapter.Type, adapter.Name)
 		aa := ctx.assignableAdapters
 		list := aa.LookupIoBundleAny(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
-			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s",
-				adapter.Type, adapter.Name, status.DomainName)
+			if ignoreErrors {
+				continue
+			}
+			log.Fatalf("releaseAdapters IoBundle disappeared %d %s for %s",
+				adapter.Type, adapter.Name, myUUID)
 		}
 		for _, ib := range list {
 			if ib == nil {
 				continue
 			}
-			if ib.UsedByUUID != status.UUIDandVersion.UUID {
-				log.Functionf("doInactivate IoBundle not ours by %s: %d %s for %s",
+			if ib.UsedByUUID != myUUID {
+				log.Warnf("releaseAdapters IoBundle not ours by %s: %d %s for %s",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
-					status.DomainName)
+					myUUID)
 				continue
 			}
-			// XXX also unassign others and assign during Activate?
-			if !isInUsbGroup(*aa, *ib) {
-				continue
-			}
-			if ib.PciLong == "" {
-				log.Warnf("doInactivate lookup missing: %d %s for %s",
-					adapter.Type, adapter.Name, status.DomainName)
-			} else if ctx.usbAccess && ib.IsPCIBack {
-				log.Functionf("Removing %s (%s) from %s",
-					ib.Phylabel, ib.PciLong, status.DomainName)
+			// If this is USB and usbAccess is set, them move
+			// it to dom0/host so it can be used for keyboard etc
+			if isInUsbGroup(*aa, *ib) && ib.PciLong != "" &&
+				ctx.usbAccess && ib.IsPCIBack {
+				log.Functionf("releaseAdapters removing %s (%s) from %s",
+					ib.Phylabel, ib.PciLong, myUUID)
 				assignments = addNoDuplicate(assignments, ib.PciLong)
 
 				ib.IsPCIBack = false
 			}
-			ib.UsedByUUID = nilUUID // XXX see comment above. Clear if usbAccess only?
+			ib.UsedByUUID = nilUUID
 		}
 		checkIoBundleAll(ctx)
 	}
@@ -1603,11 +1564,10 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	return nil
 }
 
-// Check and reserve any assigned adapters
-// XXX rename to reserveAdapters?
-func configAdapters(ctx *domainContext, config types.DomainConfig) error {
+// Check for errors and reserve any assigned adapters by setting UsedByUUID
+func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 
-	log.Functionf("configAdapters(%v) for %s",
+	log.Functionf("reserveAdapters(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	defer ctx.publishAssignableAdapters()
@@ -1621,7 +1581,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	}
 
 	for _, adapter := range config.IoAdapterList {
-		log.Functionf("configAdapters processing adapter %d %s",
+		log.Functionf("reserveAdapters processing adapter %d %s",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
 		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
@@ -1634,7 +1594,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 			if ibp == nil {
 				continue
 			}
-			log.Functionf("configAdapters processing adapter %d %s member %s",
+			log.Functionf("reserveAdapters processing adapter %d %s member %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
 			if ibp.UsedByUUID != config.UUIDandVersion.UUID &&
 				ibp.UsedByUUID != nilUUID {
@@ -1658,7 +1618,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 				return fmt.Errorf("no I/O virtualization support: adapter %d %s member %s cannot be assigned",
 					adapter.Type, adapter.Name, ibp.Phylabel)
 			}
-			log.Tracef("configAdapters setting uuid %s for adapter %d %s member %s",
+			log.Tracef("reserveAdapters setting uuid %s for adapter %d %s member %s",
 				config.Key(), adapter.Type, adapter.Name, ibp.Phylabel)
 			ibp.UsedByUUID = config.UUIDandVersion.UUID
 		}
@@ -1861,16 +1821,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	if status.Activated {
 		doInactivate(ctx, status, true)
-	} else {
-		pciUnassign(ctx, status, true)
 	}
-
-	// Look for any adapters used by us and clear UsedByUUID
-	// XXX zedagent might assume that the setting to nil arrives before
-	// the delete of the DomainStatus. Check
-	cleanupAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID)
-
-	publishDomainStatus(ctx, status)
 
 	// Check if the USB controller became available for dom0
 	updateUsbAccess(ctx)
@@ -1885,6 +1836,9 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 	// Write out what we modified to DomainStatus aka delete
 	unpublishDomainStatus(ctx, status)
+	// No point in publishing metrics any more
+	ctx.pubDomainMetric.Unpublish(status.Key())
+
 	log.Functionf("handleDelete(%v) DONE for %s",
 		status.UUIDandVersion, status.DisplayName)
 }

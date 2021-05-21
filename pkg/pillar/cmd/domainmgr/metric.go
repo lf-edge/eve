@@ -43,6 +43,7 @@ func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
+	now := time.Now()
 	for domainName, dm := range dmList {
 		uuid, err := types.DomainnameToUUID(domainName)
 		if err != nil {
@@ -50,19 +51,50 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 			continue
 		}
 		dm.UUIDandVersion.UUID = uuid
+		status := lookupDomainStatusByUUID(ctx, uuid)
+		if status != nil {
+			dm.UUIDandVersion.Version = status.UUIDandVersion.Version
+			dm.Activated = status.Activated
+		}
+		if !dm.Activated {
+			// We clear the memory so it doesn't accidentally get
+			// reported.  We keep the CPUTotal and AvailableMemory
+			dm.UsedMemory = 0
+			dm.UsedMemoryPercent = 0
+		}
+		dm.LastHeard = now
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
 	}
-
+	// Which ones did not report hence are gone?
+	items := ctx.pubDomainMetric.GetAll()
+	for _, m := range items {
+		dm := m.(types.DomainMetric)
+		if dm.LastHeard.Equal(now) || dm.UUIDandVersion.UUID == nilUUID {
+			continue
+		}
+		log.Functionf("Found unheard DomainMetrics for %s", dm.Key())
+		status := lookupDomainStatus(ctx, dm.Key())
+		if status == nil {
+			ctx.pubDomainMetric.Unpublish(dm.Key())
+			continue
+		}
+		dm.Activated = false
+		// We clear the memory so it doesn't accidentally get reported
+		// We keep the CPUTotal and AvailableMemory
+		dm.UsedMemory = 0
+		dm.UsedMemoryPercent = 0
+		ctx.pubDomainMetric.Publish(dm.Key(), dm)
+	}
 	hm, _ := hyper.GetHostCPUMem()
 	if hyper.Name() != "xen" {
 		// the the hypervisor other than Xen, we don't have the Dom0 stats. Get the host
 		// cpu and memory for the device here
-		formatAndPublishHostCPUMem(ctx, hm)
+		formatAndPublishHostCPUMem(ctx, hm, now)
 	}
 	ctx.pubHostMemory.Publish("global", hm)
 }
 
-func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory) {
+func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory, now time.Time) {
 	var hostUUID types.UUIDandVersion
 	var usedPerc, busy float64
 	used := hm.TotalMemoryMB - hm.FreeMemoryMB
@@ -99,6 +131,8 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory) {
 		UsedMemory:        uint32(used),
 		AvailableMemory:   uint32(hm.FreeMemoryMB),
 		UsedMemoryPercent: usedPerc,
+		LastHeard:         now,
+		Activated:         true,
 	}
 	log.Tracef("formatAndPublishHostCPUMem: hostcpu, dm %+v, CPU num %d", dm, CPUnum)
 	ctx.pubDomainMetric.Publish(dm.Key(), dm)

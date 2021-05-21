@@ -10,22 +10,36 @@ import (
 )
 
 // getRemainingMemory returns how many bytes remain for app instance usage
-func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, error) {
+// which is based on the running and about to run app instances.
+// It also returns a count for the app instances which are not in those
+// categories
+func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, error) {
 
-	var usedMemorySize uint64
+	var usedMemorySize uint64   // Sum of Activated || ActivateInprogress
+	var latentMemorySize uint64 // For others
+
 	pubAppInstanceStatus := ctxPtr.pubAppInstanceStatus
 	itemsAppInstanceStatus := pubAppInstanceStatus.GetAll()
-	for _, iterAppInstanceStatusJSON := range itemsAppInstanceStatus {
-		iterAppInstanceStatus := iterAppInstanceStatusJSON.(types.AppInstanceStatus)
-		usedMemorySize += uint64(iterAppInstanceStatus.FixedResources.Memory) << 10
+	for _, st := range itemsAppInstanceStatus {
+		status := st.(types.AppInstanceStatus)
+		mem := uint64(status.FixedResources.Memory) << 10
+		if status.Activated || status.ActivateInprogress {
+			usedMemorySize += mem
+		} else {
+			latentMemorySize += mem
+		}
 	}
 	memoryReservedForEve := ctxPtr.globalConfig.GlobalValueInt(types.EveMemoryLimitInBytes)
 	usedMemorySize += uint64(memoryReservedForEve)
 	deviceMemorySize, err := sysTotalMemory(ctxPtr)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return deviceMemorySize - usedMemorySize, nil
+	if usedMemorySize > deviceMemorySize {
+		return 0, latentMemorySize, nil
+	} else {
+		return deviceMemorySize - usedMemorySize, latentMemorySize, nil
+	}
 }
 
 func sysTotalMemory(ctx *zedmanagerContext) (uint64, error) {

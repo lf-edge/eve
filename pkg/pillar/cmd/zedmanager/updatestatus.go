@@ -92,6 +92,8 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	}
 }
 
+// doUpdate will set checkFreedResources in context if some resources
+// might have been freed up.
 func doUpdate(ctx *zedmanagerContext,
 	config types.AppInstanceConfig,
 	status *types.AppInstanceStatus) bool {
@@ -391,6 +393,45 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 
+	// Check that if we have sufficient memory
+	if !status.ActivateInprogress && !status.Activated &&
+		!ctx.globalConfig.GlobalValueBool(types.IgnoreMemoryCheckForApps) {
+
+		remaining, latent, err := getRemainingMemory(ctx)
+		if err != nil {
+			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
+				err)
+			log.Errorf("doActivate(%s) failed: %s",
+				status.Key(), errStr)
+			status.SetErrorWithSource(errStr,
+				types.AppInstanceConfig{}, time.Now())
+			status.MissingMemory = true
+			changed = true
+			return changed
+		}
+		if remaining < uint64(config.FixedResources.Memory)<<10 {
+			errStr := fmt.Sprintf("Remaining memory bytes %d app instance needs %d\n",
+				remaining, config.FixedResources.Memory<<10)
+			log.Errorf("doActivate(%s) failed: %s",
+				status.Key(), errStr)
+			status.SetErrorWithSource(errStr,
+				types.AppInstanceConfig{}, time.Now())
+			status.MissingMemory = true
+			publishAppInstanceStatus(ctx, status)
+			changed = true
+			return changed
+		}
+		if remaining < latent+uint64(config.FixedResources.Memory)<<10 {
+			log.Warnf("Deploying %s memory %d kB remaining %d kB but latent memory use %d kB",
+				config.DisplayName, config.FixedResources.Memory,
+				remaining>>10, latent>>10)
+		} else {
+			log.Functionf("Deploying %s memory %d kB remaining %d kB latent %d kB",
+				config.DisplayName, config.FixedResources.Memory,
+				remaining>>10, latent>>10)
+		}
+	}
+	// Commit that we will be using memory and
 	// Track that we have cleanup work in case something fails
 	status.ActivateInprogress = true
 
@@ -766,6 +807,7 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	done = true
 	status.Activated = false
 	status.ActivateInprogress = false
+	ctx.checkFreedResources = true
 	log.Functionf("doInactivate done for %s", uuidStr)
 	return changed, done
 }
@@ -910,6 +952,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	// XXX fix assymetry?
 	status.Activated = false
 	status.ActivateInprogress = false
+	ctx.checkFreedResources = true
 	changed = true
 	log.Functionf("doInactivateHalt done for %s", uuidStr)
 	return changed

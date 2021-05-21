@@ -48,6 +48,7 @@ type zedmanagerContext struct {
 	globalConfig         *types.ConfigItemValueMap
 	pubUuidToNum         pubsub.Publication
 	GCInitialized        bool
+	checkFreedResources  bool // Set when app instance has !Activated
 }
 
 var debug = false
@@ -284,6 +285,40 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
+		if ctx.checkFreedResources {
+			start := time.Now()
+			checkRetry(&ctx)
+			ps.CheckMaxTimeTopic(agentName, "checkRetry", start,
+				warningTime, errorTime)
+			ctx.checkFreedResources = false
+		}
+	}
+}
+
+func checkRetry(ctxPtr *zedmanagerContext) {
+	log.Noticef("checkRetry")
+	items := ctxPtr.pubAppInstanceStatus.GetAll()
+	for _, st := range items {
+		status := st.(types.AppInstanceStatus)
+		if !status.MissingMemory {
+			continue
+		}
+		config := lookupAppInstanceConfig(ctxPtr, status.Key())
+		if config == nil {
+			log.Noticef("checkRetry: %s waiting for memory but no config",
+				status.Key())
+			continue
+		}
+		if !status.IsErrorSource(types.AppInstanceConfig{}) {
+			log.Noticef("checkRetry: %s waiting for memory but no error",
+				status.Key())
+			continue
+		}
+		status.ClearErrorWithSource()
+		status.MissingMemory = false
+
+		log.Noticef("checkRetry: %s waiting for memory", status.Key())
+		handleModify(ctxPtr, status.Key(), *config, *config)
 	}
 }
 
@@ -456,19 +491,6 @@ func handleCreate(ctxArg interface{}, key string,
 	if config.FixedResources.VCpus == 0 {
 		errStr := "Invalid Cpu count - 0\n"
 		allErrors += errStr
-	}
-
-	if !ctx.globalConfig.GlobalValueBool(types.IgnoreMemoryCheckForApps) {
-		remaining, err := getRemainingMemory(ctx)
-		if err != nil {
-			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
-				err)
-			allErrors += errStr
-		} else if remaining < uint64(config.FixedResources.Memory)<<10 {
-			errStr := fmt.Sprintf("Remaining memory bytes %d app instance needs %d\n",
-				remaining, config.FixedResources.Memory<<10)
-			allErrors += errStr
-		}
 	}
 
 	// if some error, return
