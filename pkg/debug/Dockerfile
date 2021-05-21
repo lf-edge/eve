@@ -3,7 +3,9 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-alpine:6.2.0 as build
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+# hadolint ignore=DL3006
+FROM ${EVE_BUILDER_IMAGE} as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
@@ -16,7 +18,7 @@ RUN eve-alpine-deploy.sh
 ENV LSHW_VERSION 02.19.2
 
 # setting up building account
-RUN adduser -G abuild -D builder
+RUN adduser -G abuild -D builder || :
 RUN su builder -c 'abuild-keygen -a -n'
 
 COPY --chown=builder:abuild abuild/ /

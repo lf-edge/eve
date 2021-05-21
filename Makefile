@@ -261,7 +261,8 @@ endif
 # since they are not getting published in Docker HUB
 PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
 PKGS_riscv64=pkg/alpine pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
-             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/grub pkg/new-kernel
+             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/grub pkg/new-kernel \
+	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init
 PKGS=$(PKGS_$(ZARCH))
 
 # Top-level targets
@@ -541,9 +542,7 @@ pkg/%: eve-% FORCE
 $(RUNME) $(BUILD_YML):
 	cp pkg/eve/$(@F) $@
 
-EVE_ARTIFACTS_$(ZARCH)=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART)
-EVE_ARTIFACTS_riscv64=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG)                                 fullname-rootfs $(BOOT_PART)
-EVE_ARTIFACTS=$(EVE_ARTIFACTS_$(ZARCH))
+EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART)
 eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|

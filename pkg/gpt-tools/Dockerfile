@@ -1,4 +1,6 @@
-FROM lfedge/eve-alpine:6.2.0 as build
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+# hadolint ignore=DL3006
+FROM ${EVE_BUILDER_IMAGE} as build
 ENV BUILD_PKGS gcc make file patch libc-dev util-linux-dev linux-headers openssl-dev g++ tar
 RUN eve-alpine-deploy.sh
 
@@ -50,6 +52,7 @@ COPY vboot_reference-${VBOOT_COMMIT}.tar.gz /
 RUN tar xvzf vboot_reference-${VBOOT_COMMIT}.tar.gz
 
 WORKDIR /vboot_reference
+RUN [ -d host/arch/riscv64 ] || cp -r host/arch/arm host/arch/riscv64
 RUN make cgpt LDFLAGS=-static CFLAGS=-Wno-error=address-of-packed-member
 RUN cp build/cgpt/cgpt /out/cgpt
 
