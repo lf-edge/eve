@@ -71,6 +71,17 @@ func checkPortAvailable(
 	return nil
 }
 
+func enableVlanFiltering(bridgeName string) {
+	args := strings.Split(fmt.Sprintf("link set dev %s type bridge vlan_filtering 1", bridgeName), " ")
+	log.Functionf("Calling command %s %v\n", "ip", args)
+	out, err := base.Exec(log, "ip", args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("ip command %s failed %s output %s",
+			args, err, out)
+		log.Errorln(errStr)
+	}
+}
+
 func disableIcmpRedirects(bridgeName string) {
 	sysctlSetting := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", bridgeName)
 	args := []string{"-w", sysctlSetting}
@@ -121,6 +132,7 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 		return errors.New(errStr), ""
 	}
 	disableIcmpRedirects(bridgeName)
+	enableVlanFiltering(bridgeName)
 
 	// Get Ifindex of bridge and store it in network instance status
 	bridgeLink, err := netlink.LinkByName(bridgeName)
@@ -309,6 +321,7 @@ func handleNetworkInstanceCreate(
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: make(map[string]net.IP),
 			VifMetricMap:  make(map[string]types.NetworkMetric),
+			VlanMap:       make(map[uint32]uint32),
 		},
 	}
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate

@@ -334,11 +334,20 @@ func (status DomainStatus) LogKey() string {
 	return string(base.DomainStatusLogType) + "-" + status.Key()
 }
 
+// VlanInfo :
+type VlanInfo struct {
+	Start   uint32
+	End     uint32
+	IsTrunk bool
+}
+
 type VifInfo struct {
 	Bridge  string
 	Vif     string
 	VifUsed string // Has -emu in name in Status if appropriate
 	Mac     string
+
+	Vlan VlanInfo
 }
 
 // DomainManager will pass these to the xen xl config file
