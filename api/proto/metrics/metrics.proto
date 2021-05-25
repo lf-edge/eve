@@ -406,6 +406,8 @@ message ZMetricNetworkInstance {
   // deprecated = 31; ZMetricLispGlobal lispGlobalStats = 31
 
   ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
+
+  vlanInfo vlan_info = 41; // Information about vlans attached to this network instance
 }
 
 message ZMetricVolume {
@@ -520,4 +522,9 @@ message logfileMetrics {
 // zedboxStats - for zedbox process items
 message zedboxStats {
   uint32 numGoRoutines = 1;
+}
+
+message vlanInfo {
+  uint32 num_trunk_ports = 1;
+  map <uint32, uint32> vlan_counts = 2;
 }
