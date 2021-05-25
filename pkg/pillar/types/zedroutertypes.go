@@ -2273,6 +2273,9 @@ const (
 // 		Extracted from the protobuf NetworkInstanceConfig
 type NetworkInstanceStatus struct {
 	NetworkInstanceConfig
+	// Make sure the Activate from the config isn't exposed as a boolean
+	Activate uint64
+
 	ChangeInProgress ChangeInProgressType
 
 	// Activated

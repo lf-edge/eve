@@ -199,13 +199,6 @@ func networkInstanceBridgeDelete(
 	}
 }
 
-func isNetworkInstanceCloud(status *types.NetworkInstanceStatus) bool {
-	if status.Type == types.NetworkInstanceTypeCloud {
-		return true
-	}
-	return false
-}
-
 func doBridgeAclsDelete(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
@@ -365,7 +358,7 @@ func handleNetworkInstanceCreate(
 	status.ChangeInProgress = types.ChangeInProgressTypeNone
 	publishNetworkInstanceStatus(ctx, &status)
 	// Hooks for updating dependent objects
-	checkAndRecreateAppNetwork(ctx, config.UUID)
+	checkAndRecreateAppNetwork(ctx, status)
 	log.Functionf("handleNetworkInstanceCreate(%s) done\n", key)
 }
 
@@ -431,6 +424,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		} else {
 			// Find bridge created by nim
 			if bridgeName, bridgeMac, err = doLookupBridge(ctx, status); err != nil {
+				// We will retry later
 				return err
 			}
 			status.BridgeName = bridgeName
@@ -651,7 +645,7 @@ func DoNetworkInstanceStatusDhcpRangeSanityCheck(
 
 func doNetworkInstanceModify(ctx *zedrouterContext,
 	config types.NetworkInstanceConfig,
-	status *types.NetworkInstanceStatus) {
+	status *types.NetworkInstanceStatus) error {
 
 	log.Functionf("doNetworkInstanceModify: key %s\n", config.UUID)
 	if config.Type != status.Type {
@@ -661,13 +655,14 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 		err := fmt.Errorf("Changing Type of NetworkInstance from %d to %d is not supported", status.Type, config.Type)
 		log.Error(err)
 		status.SetErrorNow(err.Error())
+		return err
 	}
 
 	err := checkNIphysicalPort(ctx, status)
 	if err != nil {
 		log.Error(err)
 		status.SetErrorNow(err.Error())
-		return
+		return err
 	}
 
 	if config.Logicallabel != status.Logicallabel {
@@ -675,7 +670,7 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 			status.Logicallabel, config.Logicallabel)
 		log.Error(err)
 		status.SetErrorNow(err.Error())
-		return
+		return err
 	}
 
 	if config.Activate && !status.Activated {
@@ -685,13 +680,14 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 				config.Key(), err)
 			log.Error(err)
 			status.SetErrorNow(err.Error())
-		} else {
-			status.Activated = true
+			return err
 		}
+		status.Activated = true
 	} else if status.Activated && !config.Activate {
 		doNetworkInstanceInactivate(ctx, status)
 		status.Activated = false
 	}
+	return nil
 }
 
 func checkNIphysicalPort(ctx *zedrouterContext, status *types.NetworkInstanceStatus) error {
@@ -709,12 +705,11 @@ func checkNIphysicalPort(ctx *zedrouterContext, status *types.NetworkInstanceSta
 	return nil
 }
 
-// getSwitchNetworkInstanceUsingIfname
-//		This function assumes if a port used by networkInstance of type SWITCH
-//		is not shared by other switch network instances.
-func getSwitchNetworkInstanceUsingIfname(
+// getSwitchNetworkInstanceListByIfname returns all
+// network instances of type SWITCH using the ifname
+func getSwitchNetworkInstanceListByIfname(
 	ctx *zedrouterContext,
-	ifname string) (status *types.NetworkInstanceStatus) {
+	ifname string) (statusList []*types.NetworkInstanceStatus) {
 
 	pub := ctx.pubNetworkInstanceStatus
 	items := pub.GetAll()
@@ -724,25 +719,25 @@ func getSwitchNetworkInstanceUsingIfname(
 		ifname2 := types.LogicallabelToIfName(ctx.deviceNetworkStatus,
 			status.Logicallabel)
 		if ifname2 != ifname {
-			log.Functionf("getSwitchNetworkInstanceUsingIfname: NI (%s) not using %s; using %s",
+			log.Functionf("getSwitchNetworkInstanceListByIfname: NI (%s) not using %s; using %s",
 				status.DisplayName, ifname, ifname2)
 			continue
 		}
 
 		if status.Type != types.NetworkInstanceTypeSwitch {
-			log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) "+
+			log.Functionf("getSwitchNetworkInstanceListByIfname: networkInstance (%s) "+
 				"not of type (%d) switch\n",
 				status.DisplayName, status.Type)
 			continue
 		}
 		// Found Status using the Port.
-		log.Functionf("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) using "+
+		log.Functionf("getSwitchNetworkInstanceListByIfname: networkInstance (%s) using "+
 			"logicallabel: %s, ifname: %s, type: %d\n",
 			status.DisplayName, status.Logicallabel, ifname, status.Type)
 
-		return &status
+		statusList = append(statusList, &status)
 	}
-	return nil
+	return statusList
 }
 
 // haveSwitchNetworkInstances returns true if we have one or more switch
@@ -1038,20 +1033,117 @@ func maybeUpdateBridgeIPAddr(
 	ctx *zedrouterContext,
 	ifname string) {
 
-	status := getSwitchNetworkInstanceUsingIfname(ctx, ifname)
-	if status == nil {
-		return
-	}
-	log.Functionf("maybeUpdateBridgeIPAddr: found "+
-		"NetworkInstance %s", status.DisplayName)
+	statusList := getSwitchNetworkInstanceListByIfname(ctx, ifname)
 
-	if !status.Activated {
-		log.Errorf("maybeUpdateBridgeIPAddr: "+
-			"network instance %s not activated\n", status.DisplayName)
+	for _, status := range statusList {
+		log.Functionf("maybeUpdateBridgeIPAddr: found "+
+			"NetworkInstance %s", status.DisplayName)
+
+		if !status.Activated {
+			log.Errorf("maybeUpdateBridgeIPAddr: network instance %s not activated",
+				status.DisplayName)
+			continue
+		}
+		updateBridgeIPAddr(ctx, status)
+	}
+}
+
+// maybeRetryNetworkInstances retries for all
+func maybeRetryNetworkInstances(ctx *zedrouterContext) {
+
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
+		retryNetworkInstance(ctx, &status)
+	}
+}
+
+// retryNetworkInstance handles redoing an activate after an error
+// Clears the error if it succeeds.
+// Also will discover new errors like ports which have disappeared.
+func retryNetworkInstance(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
+
+	config := lookupNetworkInstanceConfig(ctx, status.Key())
+	if config == nil {
+		log.Functionf("retryNetworkInstance(%s) no config",
+			status.DisplayName)
 		return
 	}
-	updateBridgeIPAddr(ctx, status)
-	return
+	if !config.Activate {
+		return
+	}
+	// Leave ant parse errors in place
+	if config.HasError() {
+		log.Functionf("retryNetworkInstance(%s) has parse error",
+			status.DisplayName)
+		return
+	}
+
+	// Could an error have been cleared or a port disappeared resulting
+	// in a new error?
+	if status.HasError() {
+		if err := ensurePortName(ctx, status); err != nil {
+			log.Errorf("retryNetworkInstance(%s) failed: %v",
+				status.DisplayName, err)
+			return
+		}
+		err := doNetworkInstanceModify(ctx, *config, status)
+		if err == nil {
+			log.Noticef("retryNetworkInstance(%s) clearing error %v",
+				status.DisplayName, status.Error)
+			status.ClearError()
+			niUpdateNIprobing(ctx, status)
+		} else {
+			log.Noticef("retryNetworkInstance(%s) still has error %v",
+				status.DisplayName, status.Error)
+		}
+	} else {
+		if err := ensurePortName(ctx, status); err != nil {
+			log.Errorf("retryNetworkInstance(%s) failed: %v",
+				status.DisplayName, err)
+			return
+		}
+
+		err := doNetworkInstanceModify(ctx, *config, status)
+		if err != nil {
+			log.Noticef("retryNetworkInstance(%s) set error %v",
+				status.DisplayName, status.Error)
+			niUpdateNIprobing(ctx, status)
+			status.Activated = false
+		}
+	}
+	publishNetworkInstanceStatus(ctx, status)
+}
+
+func ensurePortName(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	if status.BridgeName != "" {
+		return nil
+	}
+	// Find bridge created by nim
+	bridgeName, bridgeMac, err := doLookupBridge(ctx, status)
+	if err != nil {
+		log.Errorf("retryNetworkInstance(%s) failed: %s",
+			status.DisplayName, err.Error())
+		return err
+	}
+	status.BridgeName = bridgeName
+
+	// Get Ifindex of bridge and store it in network instance status
+	bridgeLink, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		log.Errorf("retryNetworkInstance(%s) failed: %s",
+			status.DisplayName, err.Error())
+		log.Error(err)
+		return err
+	}
+	status.BridgeIfindex = bridgeLink.Attrs().Index
+
+	status.BridgeMac = bridgeMac
+	publishNetworkInstanceStatus(ctx, status)
+	return nil
 }
 
 // doNetworkInstanceActivate
@@ -1712,6 +1804,18 @@ func checkAndReprogramNetworkInstances(ctx *zedrouterContext) {
 			"network instance %s", status.CurrentUplinkIntf, status.PrevUplinkIntf,
 			status.DisplayName)
 		doNetworkInstanceFallback(ctx, &status)
+	}
+}
+
+// propagateNetworkInstToAppNetwork handles clearing/updating of error propagation to
+// the AppNetworkStatus
+func propagateNetworkInstToAppNetwork(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	instanceItems := pub.GetAll()
+
+	for _, instance := range instanceItems {
+		status := instance.(types.NetworkInstanceStatus)
+		checkAndRecreateAppNetwork(ctx, status)
 	}
 }
 
