@@ -857,31 +857,29 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 }
 
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
-	status *types.AppNetworkStatus) {
+	status *types.AppNetworkStatus) error {
 
-	log.Functionf("%s-%s\n",
-		config.DisplayName, config.UUIDandVersion)
+	log.Functionf("doActivate %s-%s", config.DisplayName, config.UUIDandVersion)
 
 	// Check that Network exists for all underlays.
 	// We look for AwaitNetworkInstance when a NetworkInstance is added
 	allNetworksExist := appNetworkCheckAllNetworksExist(ctx, config, status)
 	if !allNetworksExist {
-		// XXX error or not?
+		// Not reported as error since should be transient, but has unique state
 		status.AwaitNetworkInstance = true
 		log.Functionf("doActivate(%v) for %s: missing networks\n",
 			config.UUIDandVersion, config.DisplayName)
 		publishAppNetworkStatus(ctx, status)
-		return
-	} else if status.AwaitNetworkInstance {
-		status.AwaitNetworkInstance = false
-		publishAppNetworkStatus(ctx, status)
+		return nil
 	}
+
 	appNetworkDoCopyNetworksToStatus(ctx, config, status)
-	if !validateAppNetworkConfig(ctx, config, status) {
-		log.Errorf("doActivate(%v) AppNetwork Config check failed for %s\n",
-			config.UUIDandVersion, config.DisplayName)
+	if err := validateAppNetworkConfig(ctx, config, status); err != nil {
+		log.Errorf("doActivate(%v) AppNetwork Config check failed for %s: %v",
+			config.UUIDandVersion, config.DisplayName, err)
+		// addError has already been done
 		publishAppNetworkStatus(ctx, status)
-		return
+		return err
 	}
 
 	// Note that with IPv4/IPv6 interfaces the domU can do
@@ -889,26 +887,42 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	// configure the ipsets for all the domU's interfaces/bridges.
 	ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
 
-	appNetworkDoActivateAllUnderlayNetworks(ctx, config, status, ipsets)
-
+	err := appNetworkDoActivateAllUnderlayNetworks(ctx, config, status, ipsets)
+	if err != nil {
+		log.Error(err.Error())
+		publishAppNetworkStatus(ctx, status)
+		return err
+	}
+	if status.AwaitNetworkInstance {
+		log.Functionf("doActivate %s-%s clearing error %s",
+			config.DisplayName, config.UUIDandVersion, status.Error)
+		status.AwaitNetworkInstance = false
+		// XXX better to use ErrorWithSource and check for NetworkInstanceStatus?
+		status.ClearError()
+	}
 	status.Activated = true
 	publishAppNetworkStatus(ctx, status)
 	log.Functionf("doActivate done for %s\n", config.DisplayName)
+	return nil
 }
 
 func appNetworkDoActivateAllUnderlayNetworks(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
-	ipsets []string) {
+	ipsets []string) error {
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
 		log.Tracef("ulNum %d network %s ACLs %v\n",
 			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
-		appNetworkDoActivateUnderlayNetwork(
+		err := appNetworkDoActivateUnderlayNetwork(
 			ctx, config, status, ipsets, &ulConfig, ulNum)
 
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func appNetworkDoActivateUnderlayNetwork(
@@ -917,7 +931,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	status *types.AppNetworkStatus,
 	ipsets []string,
 	ulConfig *types.UnderlayNetworkConfig,
-	ulNum int) {
+	ulNum int) error {
 
 	netInstConfig := lookupNetworkInstanceConfig(ctx,
 		ulConfig.Network.String())
@@ -928,18 +942,21 @@ func appNetworkDoActivateUnderlayNetwork(
 	netInstStatus := lookupNetworkInstanceStatus(ctx,
 		ulConfig.Network.String())
 	if netInstStatus == nil {
-		errStr := fmt.Sprintf("no status for %s",
+		err := fmt.Errorf("no network instance status for %s",
 			ulConfig.Network.String())
-		err := errors.New(errStr)
+		log.Error(err.Error())
+		// Set up to retry later
+		status.AwaitNetworkInstance = true
 		addError(ctx, status, "doActivate underlay", err)
-		return
+		return err
 	}
 	if netInstStatus.HasError() {
-		log.Errorf("doActivate sees network error %s\n",
-			netInstStatus.Error)
-		addError(ctx, status, "error from network instance",
-			errors.New(netInstStatus.Error))
-		return
+		err := errors.New(netInstStatus.Error)
+		log.Error(err.Error())
+		// Set up to retry later
+		status.AwaitNetworkInstance = true
+		addError(ctx, status, "error from network instance", err)
+		return err
 	}
 	networkInstanceInfo := &netInstStatus.NetworkInstanceInfo
 
@@ -949,10 +966,11 @@ func appNetworkDoActivateUnderlayNetwork(
 		strconv.Itoa(status.AppNum)
 	uLink, err := findBridge(bridgeName)
 	if err != nil {
+		log.Error(err.Error())
+		// Set up to retry later
+		status.AwaitNetworkInstance = true
 		addError(ctx, status, "findBridge", err)
-		log.Functionf("doActivate done for %s\n",
-			config.DisplayName)
-		return
+		return err
 	}
 	bridgeMac := uLink.HardwareAddr
 	log.Functionf("bridgeName %s MAC %s\n",
@@ -980,10 +998,11 @@ func appNetworkDoActivateUnderlayNetwork(
 	bridgeIPAddr, appIPAddr, err := getUlAddrs(ctx, ulNum-1,
 		status.AppNum, ulStatus, netInstStatus)
 	if err != nil {
+		err := fmt.Errorf("Bridge/App IP address allocation failed: %v",
+			err)
+		log.Error(err.Error())
 		addError(ctx, status, "getUlAddrs", err)
-		log.Errorf("appNetworkDoActivateUnderlayNetwork: Bridge/App IP address allocation "+
-			"failed for app %s", status.DisplayName)
-		return
+		return err
 	}
 	log.Functionf("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
@@ -1007,10 +1026,11 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	// Set up ACLs
 	ruleList, dependList, err := createACLConfiglet(ctx, aclArgs, ulConfig.ACLs)
+	ulStatus.ACLDependList = dependList
 	if err != nil {
 		addError(ctx, status, "createACL", err)
+		return err
 	}
-	ulStatus.ACLDependList = dependList
 	appID := status.UUIDandVersion.UUID
 	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
@@ -1049,6 +1069,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
+	return nil
 }
 
 // generateAppMac picks a fixed address for Local and Cloud and uses a fixed
@@ -1131,43 +1152,50 @@ func appNetworkCheckAllNetworksExist(
 	return true
 }
 
-// Called when a NetworkInstance is added
+// Called when a NetworkInstance is added or when an error is cleared
 // Walk all AppNetworkStatus looking for AwaitNetworkInstance, then
 // check if network UUID is there.
-func checkAndRecreateAppNetwork(
-	ctx *zedrouterContext, network uuid.UUID) {
+// Also check if error on network instance and propagate to app network
+func checkAndRecreateAppNetwork(ctx *zedrouterContext, niStatus types.NetworkInstanceStatus) {
 
-	log.Functionf("checkAndRecreateAppNetwork(%s)\n", network.String())
+	log.Functionf("checkAndRecreateAppNetwork(%s)", niStatus.Key())
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
-		if !status.AwaitNetworkInstance {
-			continue
-		}
-		log.Functionf("checkAndRecreateAppNetwork(%s) missing for %s\n",
-			network.String(), status.DisplayName)
-
 		config := lookupAppNetworkConfig(ctx, status.Key())
 		if config == nil {
 			log.Warnf("checkAndRecreateAppNetwork(%s) no config for %s\n",
-				network.String(), status.DisplayName)
+				niStatus.Key(), status.DisplayName)
 			continue
 		}
-		if !config.IsNetworkUsed(network) {
+		if !config.IsNetworkUsed(niStatus.UUID) {
 			continue
 		}
-		log.Functionf("checkAndRecreateAppNetwork(%s) recreating for %s\n",
-			network.String(), status.DisplayName)
-		if status.HasError() {
-			log.Functionf("checkAndRecreateAppNetwork(%s) remove error %s for %s\n",
-				network.String(), status.Error,
-				status.DisplayName)
-			status.ClearError()
+
+		// Any new error?
+		if niStatus.HasError() {
+			err := errors.New(niStatus.Error)
+			if niStatus.Error != status.Error {
+				log.Error(niStatus.Error)
+				// Set up to retry later
+				status.AwaitNetworkInstance = true
+				addError(ctx, &status, "error from network instance", err)
+				publishAppNetworkStatus(ctx, &status)
+			}
+			return
 		}
+		// Any error to clear?
+		// XXX better to use ErrorWithSource and check for NetworkInstanceStatus?
+		if !status.AwaitNetworkInstance || !status.HasError() {
+			continue
+		}
+
+		log.Functionf("checkAndRecreateAppNetwork(%s) try remove error %s for %s",
+			niStatus.Key(), status.Error, status.DisplayName)
 		doActivate(ctx, *config, &status)
-		log.Functionf("checkAndRecreateAppNetwork done for %s\n",
-			config.DisplayName)
+		log.Functionf("checkAndRecreateAppNetwork(%s) done for %s\n",
+			niStatus.Key(), config.DisplayName)
 	}
 }
 
@@ -1283,10 +1311,11 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 	status.PendingModify = true
 	publishAppNetworkStatus(ctx, status)
 
-	if !doAppNetworkSanityCheckForModify(ctx, config, oldConfig, status) {
+	if err := doAppNetworkSanityCheckForModify(ctx, config, oldConfig, status); err != nil {
 		status.PendingModify = false
 		publishAppNetworkStatus(ctx, status)
-		log.Errorf("handleAppNetworkModify: Config check failed for %s\n", config.DisplayName)
+		log.Errorf("handleAppNetworkModify: Config check failed for %s: %v",
+			config.DisplayName, err)
 		return
 	}
 
@@ -1348,7 +1377,8 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 
 func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	config types.AppNetworkConfig, oldConfig types.AppNetworkConfig,
-	status *types.AppNetworkStatus) bool {
+	status *types.AppNetworkStatus) error {
+
 	// XXX what about changing the number of interfaces as
 	// part of an inactive/active transition?
 	// XXX We could should we allow the addition of interfaces
@@ -1356,48 +1386,50 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	// But deletion is hard.
 	// For now don't allow any adds or deletes.
 	if len(config.UnderlayNetworkList) != len(oldConfig.UnderlayNetworkList) {
-		errStr := fmt.Sprintf("Unsupported: Changed number of underlays for %s",
+		err := fmt.Errorf("Unsupported: Changed number of underlays for %s",
 			config.UUIDandVersion)
-		addError(ctx, status, "handleModify", errors.New(errStr))
-		log.Functionf("handleModify done for %s\n", config.DisplayName)
-		return false
+		log.Error(err.Error())
+		addError(ctx, status, "handleModify", err)
+		return err
 	}
 	// Wait for all network instances to arrive if they have not already.
 	if status.AwaitNetworkInstance {
-		log.Errorf("Still waiting for all network instances to arrive for %s",
+		err := fmt.Errorf("Still waiting for all network instances to arrive for %s",
 			config.UUIDandVersion)
-		return false
+		log.Error(err.Error())
+		// We intentionally do not addError here but we return the error indication
+		return err
 	}
 	for i := range config.UnderlayNetworkList {
 		ulConfig := &config.UnderlayNetworkList[i]
 		netconfig := lookupNetworkInstanceConfig(ctx,
 			ulConfig.Network.String())
 		if netconfig == nil {
-			errStr := fmt.Sprintf("no network Instance config for %s",
+			err := fmt.Errorf("no network Instance config for %s",
 				ulConfig.Network.String())
-			err := errors.New(errStr)
 			addError(ctx, status, "lookupNetworkInstanceConfig", err)
-			return false
+			return err
 		}
 		netstatus := lookupNetworkInstanceStatus(ctx,
 			ulConfig.Network.String())
 		if netstatus == nil {
 			// We had a netconfig but no status!
-			errStr := fmt.Sprintf("no network Instance status for %s",
+			err := fmt.Errorf("no network Instance status for %s",
 				ulConfig.Network.String())
-			err := errors.New(errStr)
 			addError(ctx, status, "handleModify underlay sanity check "+
 				" - no network instance", err)
-			return false
+			return err
 		}
 	}
 
-	if !validateAppNetworkConfig(ctx, config, status) {
+	if err := validateAppNetworkConfig(ctx, config, status); err != nil {
 		publishAppNetworkStatus(ctx, status)
-		log.Errorf("handleModify: AppNetworkConfig check failed for %s\n", config.DisplayName)
-		return false
+		log.Errorf("handleModify: AppNetworkConfig check failed for %s: %v",
+			config.DisplayName, err)
+		// addError has already been done
+		return err
 	}
-	return true
+	return nil
 }
 
 func doAppNetworkModifyAllUnderlayNetworks(
@@ -1747,6 +1779,10 @@ func handleAAImpl(ctxArg interface{}, key string,
 	}
 	log.Functionf("handleAAImpl() %+v\n", status)
 	*ctx.assignableAdapters = status
+
+	// Look for ports which disappeared
+	maybeRetryNetworkInstances(ctx)
+	propagateNetworkInstToAppNetwork(ctx)
 	log.Functionf("handleAAImpl() done\n")
 }
 
@@ -1805,6 +1841,9 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		updateACLIPAddr(ctx, changedDepend)
 	}
 
+	// Look for ports which disappeared
+	maybeRetryNetworkInstances(ctx)
+	propagateNetworkInstToAppNetwork(ctx)
 	log.Functionf("handleDNSImpl done for %s\n", key)
 }
 
@@ -1929,20 +1968,18 @@ func updateACLIPAddr(ctx *zedrouterContext, changedDepend []types.ACLDepend) {
 }
 
 func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetworkConfig,
-	appNetStatus *types.AppNetworkStatus) bool {
+	appNetStatus *types.AppNetworkStatus) error {
 	log.Functionf("AppNetwork(%s), check for duplicate port map acls", appNetConfig.DisplayName)
 	// For App Networks, check for common port map rules
 	ulCfgList0 := appNetConfig.UnderlayNetworkList
 	if len(ulCfgList0) == 0 {
-		return true
+		return nil
 	}
 	if containsHangingACLPortMapRule(ctx, ulCfgList0) {
-		log.Errorf("app (%s) on network with no uplink and has portmap rule\n",
-			appNetConfig.DisplayName)
-		errStr := fmt.Sprintf("network with no uplink, has portmap")
-		err := errors.New(errStr)
+		err := fmt.Errorf("network with no uplink, has portmap")
+		log.Error(err.Error())
 		addError(ctx, appNetStatus, "underlayACL", err)
-		return false
+		return err
 	}
 	sub := ctx.subAppNetworkConfig
 	items := sub.GetAll()
@@ -1965,12 +2002,14 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 			continue
 		}
 		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
-			log.Errorf("app %s and %s have duplicate portmaps",
+			err := fmt.Errorf("app %s and %s have duplicate portmaps",
 				appNetStatus.DisplayName, appNetStatus1.DisplayName)
-			return false
+			log.Error(err.Error())
+			addError(ctx, appNetStatus, "underlayACL", err)
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
 // whether there is a portmap rule, on with a network instance with no
