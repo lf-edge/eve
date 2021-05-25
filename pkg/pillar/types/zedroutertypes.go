@@ -2318,6 +2318,8 @@ func (status NetworkInstanceStatus) LogModify(logBase *base.LogObject, old inter
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		AddField("vlan-port-info", fmt.Sprintf("%v", status.VlanMap)).
+		AddField("num-trunk-ports-int64", status.NumTrunkPorts).
 		Noticef("Network instance status modify")
 }
 
