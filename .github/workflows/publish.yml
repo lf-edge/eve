@@ -70,17 +70,26 @@ jobs:
           done
       - name: Build EVE for KVM
         # build #1 without push (do not push either unless both can build)
+        if: ${{ matrix.os != 'ubuntu-latest' }}
         run: |
           rm -rf dist dist.xen
           make -e V=1 HV=kvm eve
           mv -f dist dist.xen
       - name: Build and push EVE for Xen
         # since build #1 works, build and push #2
+        if: ${{ matrix.os != 'ubuntu-latest' }}
         run: |
           make -e V=1 HV=xen LINUXKIT_PKG_TARGET=push eve
       - name: Build and push EVE for KVM
         # redo build #1 with push
+        if: ${{ matrix.os != 'ubuntu-latest' }}
         run: |
           rm -rf dist
           mv -f dist.xen dist
           make -e V=1 HV=kvm LINUXKIT_PKG_TARGET=push eve
+      - name: Build EVE for riscv64
+        # special HV for riscv64
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: |
+          rm -rf dist dist.xen
+          make -e V=1 HV=mini LINUXKIT_PKG_TARGET=push eve
