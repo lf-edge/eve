@@ -8,9 +8,9 @@ import (
 	"net"
 	"strings"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 )
 
 // UpdateBridge ensures that all of the Ethernet interfaces

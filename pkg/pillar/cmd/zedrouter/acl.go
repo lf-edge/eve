@@ -15,9 +15,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 )
 
 // UDPProtocol : UDP protocol match in ACL

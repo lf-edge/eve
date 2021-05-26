@@ -6,9 +6,9 @@
 package devicenetwork
 
 import (
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 	"net"
 	"reflect"
 )

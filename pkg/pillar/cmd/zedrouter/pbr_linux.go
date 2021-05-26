@@ -12,9 +12,9 @@ package zedrouter
 import (
 	"syscall"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 )
 
 // Return the all routes for one interface

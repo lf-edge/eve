@@ -9,10 +9,10 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 var logger *logrus.Logger

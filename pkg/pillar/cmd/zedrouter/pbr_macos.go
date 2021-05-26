@@ -9,8 +9,8 @@
 package zedrouter
 
 import (
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 )
 
 func getDefaultIPv4Route(ifindex int) *netlink.Route {

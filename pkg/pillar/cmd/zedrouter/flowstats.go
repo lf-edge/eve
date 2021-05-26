@@ -16,12 +16,12 @@ import (
 
 	"syscall"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	pcap "github.com/packetcap/go-pcap"
 	uuid "github.com/satori/go.uuid"
+	"github.com/vishvananda/netlink"
 )
 
 type flowStats struct {

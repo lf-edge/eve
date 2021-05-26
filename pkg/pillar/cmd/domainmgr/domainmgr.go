@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -39,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 const (

@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
-	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 // Indexed by UUID

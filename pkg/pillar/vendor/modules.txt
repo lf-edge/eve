@@ -240,8 +240,6 @@ github.com/docker/go-metrics
 github.com/docker/go-units
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
-# github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
-github.com/eriknordmark/netlink
 # github.com/form3tech-oss/jwt-go v3.2.2+incompatible
 github.com/form3tech-oss/jwt-go
 # github.com/fsnotify/fsnotify v1.4.9
@@ -419,9 +417,10 @@ github.com/stretchr/testify/assert
 github.com/syndtr/gocapability/capability
 # github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 github.com/tatsushid/go-fastping
-# github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 => github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8
+# github.com/vishvananda/netlink v0.0.0-20210521210133-6f4f9eb80eb3 => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
+github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
-# github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f
+# github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
 github.com/vishvananda/netns
 # github.com/willf/bitset v1.1.11
 github.com/willf/bitset
