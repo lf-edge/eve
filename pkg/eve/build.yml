@@ -1,3 +1,7 @@
 image: eve
 org: lfedge
 network: yes
+arches:
+  - amd64
+  - arm64
+
