@@ -1002,7 +1002,7 @@ func appNetworkDoActivateUnderlayNetwork(
 			// connected to this particular network instance.
 			// Make this adapter trunk port
 			ulStatus.Vlan.IsTrunk = true
-			ulStatus.Vlan.Start = 1
+			ulStatus.Vlan.Start = 2
 			ulStatus.Vlan.End = 4093
 			netInstStatus.NumTrunkPorts++
 		} else {
