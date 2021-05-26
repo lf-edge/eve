@@ -524,7 +524,8 @@ message zedboxStats {
   uint32 numGoRoutines = 1;
 }
 
+// Contains information about the access vlans attached to network instance
 message vlanInfo {
-  uint32 num_trunk_ports = 1;
-  map <uint32, uint32> vlan_counts = 2;
+  uint32 num_trunk_ports = 1; // Number of ports attached to this network instance that are designated trunk
+  map <uint32, uint32> vlan_counts = 2; // vlan id to it's usage count map
 }
