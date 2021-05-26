@@ -1,11 +1,11 @@
 ---
 name: EdenEMH_ARM
 on:  # yamllint disable-line rule:truthy
-    workflow_run:
-    workflows:
-      - Publish
-    types:
-      - completed
+  workflow_run:
+  workflows:
+    - Publish
+  types:
+    - completed
 # yamllint disable rule:line-length
 jobs:
   integration:
@@ -80,7 +80,7 @@ jobs:
         run: |
           ssh root@${{steps.ubuntu.outputs.ip}} 'git clone https://github.com/lf-edge/eve.git && cd eve && git checkout '"$GITHUB_SHA"
         env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock  
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
       - name: Create EVE server on packet hosting
         id: eve
         run: |
