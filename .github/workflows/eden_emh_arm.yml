@@ -1,8 +1,11 @@
 ---
 name: EdenEMH_ARM
 on:  # yamllint disable-line rule:truthy
-  push:
-    branches: [master]
+    workflow_run:
+    workflows:
+      - Publish
+    types:
+      - completed
 # yamllint disable rule:line-length
 jobs:
   integration:
@@ -63,14 +66,21 @@ jobs:
       - name: Get and setup EDEN on ubuntu packet server
         run: |
           ssh root@${{steps.ubuntu.outputs.ip}} 'sudo rm -rf ~/eden'
-          ssh root@${{steps.ubuntu.outputs.ip}} 'git clone https://github.com/lf-edge/eden.git && cd eden && git checkout '"$GITHUB_SHA"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'git clone https://github.com/lf-edge/eden.git'
           ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && make clean && make build && make build-tests'
           ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden config add --devmodel=general --arch=arm64'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden config set default --key eve.tag --value="snapshot"'
           ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden config set default --key eve.hv --value='"${{ matrix.hv }}"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden config set default --key=eden.tests --value=~/eve/tests/eden'
           ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden setup -v debug --netboot=true'
           ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden start'
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      - name: Get EVE repo on ubuntu packet server
+        run: |
+          ssh root@${{steps.ubuntu.outputs.ip}} 'git clone https://github.com/lf-edge/eve.git && cd eve && git checkout '"$GITHUB_SHA"
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock  
       - name: Create EVE server on packet hosting
         id: eve
         run: |
@@ -89,7 +99,7 @@ jobs:
       - name: Onboard EVE and run test
         run: |
           ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden eve onboard'
-          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && EDEN_TEST=gcp EDEN_TEST_REGISTRY=n ./eden test tests/workflow -v debug'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && EDEN_TEST=gcp EDEN_TEST_REGISTRY=n ./eden test ~/eve/tests/eden/workflow -v debug'
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
       - name: Collect logs
