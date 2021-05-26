@@ -9,7 +9,7 @@
 package devicenetwork
 
 import (
-	"github.com/eriknordmark/netlink"
+	"github.com/vishvananda/netlink"
 )
 
 // Handle a link change

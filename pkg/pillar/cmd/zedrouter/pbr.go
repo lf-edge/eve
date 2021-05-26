@@ -12,8 +12,8 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 )
 
 var baseTableIndex = 500 // Number tables from here + ifindex

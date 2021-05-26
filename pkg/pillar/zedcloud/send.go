@@ -22,11 +22,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
+	"github.com/vishvananda/netlink"
 )
 
 // ZedCloudContent is set up by NewContext() below

@@ -22,7 +22,6 @@ require (
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
-	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/garyburd/redigo v1.6.2 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
@@ -61,8 +60,7 @@ require (
 	github.com/sirupsen/logrus v1.8.0
 	github.com/stretchr/testify v1.7.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
-	github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 // indirect
-	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
+	github.com/vishvananda/netlink v0.0.0-20210521210133-6f4f9eb80eb3
 	github.com/yvasiyarov/go-metrics v0.0.0-20150112132944-c25f46c4b940 // indirect
 	github.com/yvasiyarov/gorelic v0.0.7 // indirect
 	github.com/yvasiyarov/newrelic_platform_go v0.0.0-20160601141957-9c099fbc30e9 // indirect
@@ -83,9 +81,9 @@ replace github.com/lf-edge/eve/api/go => ../../api/go
 
 replace github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
 
-replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20190903203740-41fa442996b8
+replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20210521210133-6f4f9eb80eb3
 
-replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8
+replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
 
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 

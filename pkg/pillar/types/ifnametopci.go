@@ -15,8 +15,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/vishvananda/netlink"
 )
 
 const basePath = "/sys/class/net"

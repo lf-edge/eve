@@ -7,8 +7,8 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/vishvananda/netlink"
 )
 
 const (

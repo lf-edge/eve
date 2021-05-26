@@ -28,11 +28,11 @@ import (
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
+	"github.com/vishvananda/netlink"
 
 	v1stat "github.com/containerd/cgroups/stats/v1"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
