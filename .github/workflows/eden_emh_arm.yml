@@ -105,8 +105,9 @@ jobs:
       - name: Collect logs
         if: ${{ always() }}
         run: |
-          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden log --format json' > trace.log
-          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden info' > info.log
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden log --format json' > trace.log || echo "no log"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden info' > info.log || echo "no info"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'docker logs eden_adam' > adam.log 2>&1 || echo "no adam log"
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
       - name: Terminate packet servers
@@ -124,3 +125,4 @@ jobs:
           path: |
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log
+            ${{ github.workspace }}/adam.log
