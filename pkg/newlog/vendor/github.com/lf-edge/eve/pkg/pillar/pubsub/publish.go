@@ -51,6 +51,7 @@ type PublicationImpl struct {
 	global      bool
 	defaultName string
 	updaterList *Updaters
+	persistent  bool
 	logger      *logrus.Logger
 	log         *base.LogObject
 
@@ -59,7 +60,39 @@ type PublicationImpl struct {
 
 // IsRestarted has this publication been set to "restarted"
 func (pub *PublicationImpl) IsRestarted() bool {
-	return pub.km.restarted
+	return pub.km.restartCounter != 0
+}
+
+// RestartCounter number of times this this publication been set to "restarted"
+func (pub *PublicationImpl) RestartCounter() int {
+	return pub.km.restartCounter
+}
+
+// CheckMaxSize returns an error if the item is too large and would result
+// in a fatal if it was published
+func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
+	topic := TypeToName(item)
+	name := pub.nameString()
+	if topic != pub.topic {
+		errStr := fmt.Sprintf("CheckMaxSize(%s): item is wrong topic %s",
+			name, topic)
+		pub.log.Fatalln(errStr)
+	}
+	val := reflect.ValueOf(item)
+	if val.Kind() == reflect.Ptr {
+		pub.log.Fatalf("CheckMaxSize got a pointer for %s", name)
+	}
+	// marshal to json bytes to send to the driver
+	b, err := json.Marshal(item)
+	if err != nil {
+		pub.log.Fatal("json Marshal in CheckMaxSize", err)
+	}
+	// Remove the large items which would use files
+	b, err = removeLarge(pub.log, b, pub.driver.LargeDirName())
+	if err != nil {
+		return err
+	}
+	return pub.driver.CheckMaxSize(key, b)
 }
 
 // Publish publish a key-value pair
@@ -107,9 +140,11 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	// marshal to json bytes to send to the driver
 	b, err := json.Marshal(item)
 	if err != nil {
-		pub.log.Fatal("json Marshal in socketdriver Publish", err)
+		pub.log.Fatal("json Marshal in Publish", err)
 	}
 
+	// We pass the full json to the driver including any pubsub-large
+	// items to have a complete checkpoint.
 	return pub.driver.Publish(key, b)
 }
 
@@ -138,7 +173,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 	return pub.driver.Unpublish(key)
 }
 
-// SignalRestarted signal that a publication is restarted
+// SignalRestarted signal that a publication is restarted one more time
 func (pub *PublicationImpl) SignalRestarted() error {
 	pub.log.Tracef("pub.SignalRestarted(%s)\n", pub.nameString())
 	return pub.restartImpl(true)
@@ -183,10 +218,12 @@ func (pub *PublicationImpl) Iterate(function base.StrMapFunc) {
 // Close the publisher
 func (pub *PublicationImpl) Close() error {
 	items := pub.GetAll()
-	for key := range items {
-		pub.log.Functionf("Close(%s) unloading key %s",
-			pub.nameString(), key)
-		pub.Unpublish(key)
+	if !pub.persistent {
+		for key := range items {
+			pub.log.Functionf("Close(%s) unloading key %s",
+				pub.nameString(), key)
+			pub.Unpublish(key)
+		}
 	}
 	pub.ClearRestarted()
 	pub.driver.Stop()
@@ -215,19 +252,26 @@ func (pub *PublicationImpl) updatersNotify(name string) {
 	pub.updaterList.lock.Unlock()
 }
 
-// Only reads json files. Sets restarted if that file was found.
+// Only reads json files. Sets restarted if that file was found and contains
+// an integer
 func (pub *PublicationImpl) populate() {
 	name := pub.nameString()
 
 	pub.log.Tracef("populate(%s)\n", name)
 
-	pairs, restarted, err := pub.driver.Load()
+	pairs, restartCounter, err := pub.driver.Load()
 	if err != nil {
 		// Could be a truncated or empty file
 		pub.log.Error(err)
 		return
 	}
 	for key, itemB := range pairs {
+		// Just in case large items were stored separately
+		itemB, err = readAddLarge(pub.log, itemB)
+		if err != nil {
+			// Handle missing files??
+			pub.log.Error(err)
+		}
 		item, err := parseTemplate(pub.log, itemB, pub.topicType)
 		if err != nil {
 			// Handle bad files such as those of size zero
@@ -236,7 +280,7 @@ func (pub *PublicationImpl) populate() {
 		}
 		pub.km.key.Store(key, item)
 	}
-	pub.km.restarted = restarted
+	pub.km.restartCounter = restartCounter
 	pub.log.Tracef("populate(%s) done\n", name)
 }
 
@@ -251,6 +295,7 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 	var keys []string
 	name := pub.nameString()
 	items := pub.GetAll()
+	dirname := fmt.Sprintf("%s/%s", pub.driver.LargeDirName(), pub.nameString())
 	// Look for deleted
 	for localKey := range localCollection {
 		_, ok := items[localKey]
@@ -272,12 +317,21 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 		if local == nil {
 			pub.log.Tracef("determineDiffs(%s): key %s added\n",
 				name, originKey)
+			// Extract large fields and save to file
+			originb, err = writeAndRemoveLarge(pub.log, originb, dirname)
+			if err != nil {
+				pub.log.Fatal(err)
+			}
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else if bytes.Compare(originb, local) != 0 {
 			pub.log.Tracef("determineDiffs(%s): key %s replacing due to diff\n",
 				name, originKey)
-			// XXX is deepCopy needed?
+			// Extract large fields and save to file
+			originb, err = writeAndRemoveLarge(pub.log, originb, dirname)
+			if err != nil {
+				pub.log.Fatal(err)
+			}
 			localCollection[originKey] = originb
 			keys = append(keys, originKey)
 		} else {
@@ -305,20 +359,24 @@ func (pub *PublicationImpl) nameString() string {
 func (pub *PublicationImpl) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	pub.log.Functionf("pub.restartImpl(%s, %v)\n", name, restarted)
+	var restartCounter int
+	if restarted {
+		restartCounter = pub.km.restartCounter + 1
+	} else {
+		restartCounter = 0
+	}
 
-	if restarted == pub.km.restarted {
+	if restartCounter == pub.km.restartCounter {
 		pub.log.Functionf("pub.restartImpl(%s, %v) value unchanged\n",
 			name, restarted)
 		return nil
 	}
-	pub.km.restarted = restarted
-	if restarted {
-		// XXX lock on restarted to make sure it gets noticed?
-		// XXX bug?
-		// Implicit in updaters lock??
-		pub.updatersNotify(name)
-	}
-	return pub.driver.Restart(restarted)
+	pub.km.restartCounter = restartCounter
+	// XXX lock on restarted to make sure it gets noticed?
+	// XXX bug?
+	// Implicit in updaters lock??
+	pub.updatersNotify(name)
+	return pub.driver.Restart(restartCounter)
 }
 
 func (pub *PublicationImpl) dump(infoStr string) {
@@ -335,5 +393,5 @@ func (pub *PublicationImpl) dump(infoStr string) {
 		return true
 	}
 	pub.km.key.Range(dumper)
-	pub.log.Tracef("\trestarted %t\n", pub.km.restarted)
+	pub.log.Tracef("\trestarted %d", pub.km.restartCounter)
 }

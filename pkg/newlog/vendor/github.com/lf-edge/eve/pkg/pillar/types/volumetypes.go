@@ -25,6 +25,7 @@ type VolumeConfig struct {
 	GenerationCounter       int64
 	VolumeDir               string
 	DisplayName             string
+	HasNoAppReferences      bool
 }
 
 // Key is volume UUID which will be unique
@@ -106,11 +107,13 @@ type VolumeStatus struct {
 	DisplayName             string
 	State                   SwState
 	RefCount                uint
+	LastRefCountChangeTime  time.Time
 	Progress                uint   // In percent i.e., 0-100
 	TotalSize               int64  // expected size as reported by the downloader, if any
 	CurrentSize             int64  // current total downloaded size as reported by the downloader
 	FileLocation            string // Location of filestystem
 	VolumeCreated           bool   // Done aka Activated
+	CreateTime              time.Time
 	ContentFormat           zconfig.Format
 	LastUse                 time.Time
 	PreReboot               bool // Was volume last use prior to device reboot?

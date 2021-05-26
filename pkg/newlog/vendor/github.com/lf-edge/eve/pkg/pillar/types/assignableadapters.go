@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018,2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -12,7 +12,9 @@ package types
 // file on boot.
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
@@ -47,15 +49,16 @@ type IoBundle struct {
 
 	Usage zcommon.PhyIoMemberUsage
 
-	// FreeUplink - The network connection through this adapter is Free.
-	// Prefer this adapter for connecting to the cloud.
-	FreeUplink bool
+	// Cost is zero for the free ports; less desirable ports have higher numbers
+	Cost uint8
 
 	// The following set of I/O addresses and info/aliases are used to find
 	// a device, and also to configure it.
 	// XXX TBD: Add PciClass, PciVendor and PciDevice strings as well
 	// for matching
-	Ifname  string // Matching for network PCI devices e.g., "eth1"
+	Ifname string // Matching for network PCI devices e.g., "eth1"
+
+	// Attributes from controller but can also be set locally.
 	PciLong string // Specific PCI bus address in Domain:Bus:Device.Funcion syntax
 	// For non-PCI devices such as the ISA serial ports we have:
 	// XXX: Why is IRQ a string?? Should convert it into Int.
@@ -80,6 +83,8 @@ type IoBundle struct {
 	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
+	Error     string
+	ErrorTime time.Time
 }
 
 // Really a constant
@@ -132,17 +137,12 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 		return true
 	}
 	if phyAdapter.Assigngrp != ib.AssignmentGroup {
-		log.Functionf("Ifname changed from %s to %s",
+		log.Functionf("AssignmentGroup changed from %s to %s",
 			ib.AssignmentGroup, phyAdapter.Assigngrp)
 		return true
 	}
 	if phyAdapter.Usage != ib.Usage {
 		log.Functionf("Usage changed from %d to %d", ib.Usage, phyAdapter.Usage)
-		return true
-	}
-	if phyAdapter.UsagePolicy.FreeUplink != ib.FreeUplink {
-		log.Functionf("FreeUplink changed from %t to %t",
-			ib.FreeUplink, phyAdapter.UsagePolicy.FreeUplink)
 		return true
 	}
 	return false
@@ -163,7 +163,6 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
-	ib.FreeUplink = phyAdapter.UsagePolicy.FreeUplink
 	// Guard against models without ifname for network adapters
 	if ib.Type.IsNet() && ib.Ifname == "" {
 		log.Warnf("phyAdapter IsNet without ifname: phylabel %s logicallabel %s",
@@ -250,6 +249,7 @@ func (aa AssignableAdapters) LogKey() string {
 // the function updates it, while preserving the most specific information.
 // The information we preserve are of two kinds:
 // - IsPort/IsPCIBack/UsedByUUID which come from interaction with nim
+// - PciLong, UsbAddr, etc which come from controller but might be filled in by domainmgr
 // - Unique/MacAddr which come from the PhysicalIoAdapter
 func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBundle) {
 	curIbPtr := aa.LookupIoBundlePhylabel(ib.Phylabel)
@@ -278,6 +278,31 @@ func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBund
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve IsPCIBack %t",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.IsPCIBack)
 		ib.IsPCIBack = curIbPtr.IsPCIBack
+	}
+	if curIbPtr.PciLong != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve PciLong %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.PciLong)
+		ib.PciLong = curIbPtr.PciLong
+	}
+	if curIbPtr.Irq != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Irq %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Irq)
+		ib.Irq = curIbPtr.Irq
+	}
+	if curIbPtr.Ioports != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Ioports %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Ioports)
+		ib.Ioports = curIbPtr.Ioports
+	}
+	if curIbPtr.Serial != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Serial %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Serial)
+		ib.Serial = curIbPtr.Serial
+	}
+	if curIbPtr.UsbAddr != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve UsbAddr %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsbAddr)
+		ib.UsbAddr = curIbPtr.UsbAddr
 	}
 	if curIbPtr.Unique != "" {
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
@@ -350,4 +375,62 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 		}
 	}
 	return nil
+}
+
+// CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
+// assignment groups have the same PCI ID (ignoring the PCI function number)
+// Returns true if there was a modification so caller can publish.
+func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCISameController func(string, string) bool) bool {
+	changed := false
+	for i := range aa.IoBundleList {
+		ib := &aa.IoBundleList[i]
+		for _, ib2 := range aa.IoBundleList {
+			if ib2.Phylabel == ib.Phylabel {
+				continue
+			}
+			if ib.AssignmentGroup != "" && ib2.AssignmentGroup == ib.AssignmentGroup {
+				continue
+			}
+			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
+				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
+					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
+				log.Error(err)
+				ib.Error = err.Error()
+				ib.ErrorTime = time.Now()
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// ExpandControllers expands the list to include other PCI functions on the same PCI controller
+// (while ignoring the function number). The output might have duplicate entries.
+func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoBundle, PCISameController func(string, string) bool) []*IoBundle {
+	var elist []*IoBundle
+
+	elist = list
+	for _, ib := range list {
+		for i := range aa.IoBundleList {
+			ib2 := &aa.IoBundleList[i]
+			already := false
+			for _, ib3 := range elist {
+				if ib2.Phylabel == ib3.Phylabel {
+					already = true
+					break
+				}
+			}
+			if already {
+				log.Tracef("ExpandController already %s long %s",
+					ib2.Phylabel, ib2.PciLong)
+				continue
+			}
+			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
+				log.Warnf("ExpandController found %s matching %s; long %s long %s",
+					ib2.Phylabel, ib.Phylabel, ib2.PciLong, ib.PciLong)
+				elist = append(elist, ib2)
+			}
+		}
+	}
+	return elist
 }

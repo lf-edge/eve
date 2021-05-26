@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ type Publisher struct {
 	logger         *logrus.Logger
 	log            *base.LogObject
 	doneChan       chan struct{}
+	rootDir        string
 }
 
 // Publish publish a key-value pair
@@ -62,9 +64,9 @@ func (s *Publisher) Unpublish(key string) error {
 }
 
 // Load load entire persisted data set into a map
-func (s *Publisher) Load() (map[string][]byte, bool, error) {
+func (s *Publisher) Load() (map[string][]byte, int, error) {
 	dirName := s.dirName
-	foundRestarted := false
+	restartCounter := 0
 	items := make(map[string][]byte)
 
 	s.log.Tracef("Load(%s)\n", s.name)
@@ -73,12 +75,24 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 	if err != nil {
 		// Drive on?
 		s.log.Error(err)
-		return items, foundRestarted, err
+		return items, restartCounter, err
 	}
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name(), ".json") {
 			if file.Name() == "restarted" {
-				foundRestarted = true
+				statusFile := dirName + "/" + file.Name()
+				sb, err := ioutil.ReadFile(statusFile)
+				if err != nil {
+					s.log.Errorf("Load: %s for %s\n", err, statusFile)
+					continue
+				}
+				restartCounter, err = strconv.Atoi(string(sb))
+				// Treat present but empty file as "1" to
+				// handle old file in /persist
+				if err != nil {
+					s.log.Warnf("Load: %s for %s; treat as 1", err, statusFile)
+					restartCounter = 1
+				}
 			}
 			continue
 		}
@@ -102,7 +116,7 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 		}
 		items[key] = sb
 	}
-	return items, foundRestarted, err
+	return items, restartCounter, err
 }
 
 // Start start publishing on the socket
@@ -153,16 +167,17 @@ func (s *Publisher) Stop() error {
 	return nil
 }
 
-// Restart indicate that the topic is restarted, or clear it
-func (s *Publisher) Restart(restarted bool) error {
+// Restart indicate that the topic is restarted if counter is non-zero
+func (s *Publisher) Restart(restartCounter int) error {
 	restartFile := s.dirName + "/" + "restarted"
-	if restarted {
-		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
+	if restartCounter != 0 {
+		str := strconv.Itoa(restartCounter)
+		cb := []byte(str)
+		err := fileutils.WriteRename(restartFile, cb)
 		if err != nil {
 			errStr := fmt.Sprintf("pub.restartImpl(%s): openfile failed %s", s.name, err)
 			return errors.New(errStr)
 		}
-		f.Close()
 	} else {
 		if err := os.Remove(restartFile); err != nil {
 			errStr := fmt.Sprintf("pub.restartImpl(%s): remove failed %s", s.name, err)
@@ -172,13 +187,18 @@ func (s *Publisher) Restart(restarted bool) error {
 	return nil
 }
 
+// LargeDirName where to put large fields
+func (s *Publisher) LargeDirName() string {
+	return fmt.Sprintf("%s/persist/pubsub-large", s.rootDir)
+}
+
 func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()
 
 	// Track the set of keys/values we are sending to the peer
 	sendToPeer := make(pubsub.LocalCollection)
-	sentRestarted := false
+	sentRestartCounter := 0
 
 	// Small buffer since we only read "request <topic>"
 	buf := make([]byte, 256)
@@ -230,13 +250,13 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 		s.log.Errorf("serveConnection(%s/%d) sendComplete failed %s\n", s.name, instance, err)
 		return
 	}
-	if s.restarted.IsRestarted() && !sentRestarted {
-		err = s.sendRestarted(conn)
+	if s.restarted.RestartCounter() != sentRestartCounter {
+		err = s.sendRestarted(conn, s.restarted.RestartCounter())
 		if err != nil {
 			s.log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n", s.name, instance, err)
 			return
 		}
-		sentRestarted = true
+		sentRestartCounter = s.restarted.RestartCounter()
 	}
 
 	// Handle any changes
@@ -256,6 +276,8 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 		}
 		waitTime := time.Since(startWait)
 		s.log.Tracef("serveConnection(%s/%d) received notification waited %d seconds\n", s.name, instance, waitTime/time.Second)
+		// Grab any change to restartCounter before we determine diffs
+		newRestartCounter := s.restarted.RestartCounter()
 
 		// Update and determine which keys changed
 		keys := s.differ.DetermineDiffs(sendToPeer)
@@ -267,13 +289,13 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 			return
 		}
 
-		if s.restarted.IsRestarted() && !sentRestarted {
-			err = s.sendRestarted(conn)
+		if newRestartCounter != sentRestartCounter {
+			err = s.sendRestarted(conn, newRestartCounter)
 			if err != nil {
 				s.log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n", s.name, instance, err)
 				return
 			}
-			sentRestarted = true
+			sentRestartCounter = newRestartCounter
 		}
 	}
 	s.log.Warnf("serveConnection(%s) goroutine exiting", s.name)
@@ -332,9 +354,9 @@ func (s *Publisher) sendDelete(sock net.Conn, key string) error {
 	return err
 }
 
-func (s *Publisher) sendRestarted(sock net.Conn) error {
+func (s *Publisher) sendRestarted(sock net.Conn, restartCounter int) error {
 	s.log.Functionf("sendRestarted(%s)\n", s.name)
-	buf := fmt.Sprintf("restarted %s", s.topic)
+	buf := fmt.Sprintf("restarted %s %d", s.topic, restartCounter)
 	if len(buf) >= maxsize {
 		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
 			len(buf), s.name, s.topic)
@@ -352,4 +374,18 @@ func (s *Publisher) sendComplete(sock net.Conn) error {
 	}
 	_, err := sock.Write([]byte(buf))
 	return err
+}
+
+// CheckMaxSize returns an error if too large
+func (s *Publisher) CheckMaxSize(key string, val []byte) error {
+	s.log.Tracef("CheckMaxSize(%s): key %s\n", s.name, key)
+	// base64-encode to avoid having spaces in the key and val
+	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
+	sendVal := base64.StdEncoding.EncodeToString(val)
+	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
+	if len(buf) >= maxsize {
+		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
+			key, len(buf), maxsize)
+	}
+	return nil
 }

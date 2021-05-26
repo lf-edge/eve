@@ -15,8 +15,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/vishvananda/netlink"
 )
 
 const basePath = "/sys/class/net"
@@ -67,6 +67,26 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 // PCILongToShort returns the PCI ID without the domain id
 func PCILongToShort(long string) string {
 	return strings.SplitAfterN(long, ":", 2)[1]
+}
+
+// PCISameController compares the PCI-ID without comparing the controller
+func PCISameController(long1 string, long2 string) bool {
+	if long1 == "" || long2 == "" {
+		return false
+	}
+	ctrl1 := strings.SplitAfter(long1, ".")[0]
+	ctrl2 := strings.SplitAfter(long2, ".")[0]
+	return ctrl1 == ctrl2
+}
+
+// PCIGetIOMMUGroup returns IOMMU group tag as seen by the control domain
+func PCIGetIOMMUGroup(long string) (string, error) {
+	pathDev := pciPath + "/" + long + "/iommu_group"
+	if iommuPath, err := os.Readlink(pathDev); err != nil {
+		return "", fmt.Errorf("can't determine iommu group for %s (%v)", long, err)
+	} else {
+		return path.Base(iommuPath), nil
+	}
 }
 
 // Check if an ID like 0000:03:00.0 exists
@@ -174,8 +194,8 @@ func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) {
 		return "", nil
 	}
 	if !pciLongExists(long) {
-		errStr := fmt.Sprintf("PCI device ifname %s long %s does not exist",
-			ib.Ifname, long)
+		errStr := fmt.Sprintf("PCI device %s long %s does not exist",
+			ib.Phylabel, long)
 		return long, errors.New(errStr)
 	}
 	return long, nil

@@ -55,10 +55,6 @@ type OldGlobalConfig struct {
 
 	AllowAppVnc bool
 
-	// These settings control how the EVE microservices
-	// will use free and non-free (e.g., WWAN) ports for image downloads.
-	AllowNonFreeImages TriState
-
 	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
 	// dom0. The rest is available for Apps.
 	Dom0MinDiskUsagePercent  uint32
@@ -116,8 +112,6 @@ var globalConfigDefaults = OldGlobalConfig{
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
-
-	AllowNonFreeImages: TS_ENABLED,
 
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
@@ -191,9 +185,6 @@ func ApplyDefaults(newgc OldGlobalConfig) OldGlobalConfig {
 	}
 	if newgc.DefaultRemoteLogLevel == "" {
 		newgc.DefaultRemoteLogLevel = globalConfigDefaults.DefaultRemoteLogLevel
-	}
-	if newgc.AllowNonFreeImages == TS_NONE {
-		newgc.AllowNonFreeImages = globalConfigDefaults.AllowNonFreeImages
 	}
 
 	if newgc.Dom0MinDiskUsagePercent == 0 {
@@ -334,7 +325,6 @@ func (config OldGlobalConfig) MoveBetweenConfigs() *ConfigItemValueMap {
 	newConfig.SetGlobalValueInt(NetworkSendTimeout, config.NetworkSendTimeout)
 
 	newConfig.SetGlobalValueTriState(NetworkFallbackAnyEth, config.NetworkFallbackAnyEth)
-	newConfig.SetGlobalValueTriState(AllowNonFreeImages, config.AllowNonFreeImages)
 
 	newConfig.SetGlobalValueBool(AllowAppVnc, config.AllowAppVnc)
 	newConfig.SetGlobalValueBool(UsbAccess, config.UsbAccess)

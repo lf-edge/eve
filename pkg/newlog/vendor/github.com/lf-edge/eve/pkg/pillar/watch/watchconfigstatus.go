@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 )
@@ -66,6 +65,10 @@ func watchReadDir(log *base.LogObject, configDir string, fileChanges chan<- stri
 // Generates 'M' events for all existing and all creates/modify.
 // Generates 'D' events for all deletes.
 // Generates a 'R' event when the initial directories have been processed
+// This assumes that the caller ensures that the restart and restarted files
+// are handled last in a set of changes close in time, since
+// the directory can see multiple modifications (content and attributes) and in
+// different order.
 func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan <-chan struct{}, fileChanges chan<- string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -74,7 +77,6 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 	defer w.Close()
 
 	funcDone := make(chan struct{})
-	log.Functionf("Creating %s at %s", "func", agentlog.GetMyStack())
 	go func() {
 		done := false
 		for !done {
@@ -135,7 +137,8 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 		fileChanges <- "M " + "restarted"
 	}
 
-	// Watch for changes or timeout
+	// Watch for changes or timeout. This is to any issues where fsnotify
+	// fails to deliver some notification.
 	interval := 10 * time.Minute
 	max := float64(interval)
 	min := max * 0.3
@@ -153,7 +156,8 @@ func WatchStatus(log *base.LogObject, statusDir string, jsonOnly bool, doneChan 
 
 		case <-ticker.C:
 			// Remove and re-add
-			// XXX do we also need to re-scan?
+			// We also re-scan the directory for any changed we
+			// missed.
 			// log.Traceln("WatchStatus remove/re-add", statusDir)
 			err = w.Remove(statusDir)
 			if err != nil {
