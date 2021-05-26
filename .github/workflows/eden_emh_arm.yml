@@ -1,0 +1,116 @@
+---
+name: EdenEMH_ARM
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches: [master]
+# yamllint disable rule:line-length
+jobs:
+  integration:
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        conf_eden_server: ["-l dfw2 -c c2.large.arm"]
+        conf_eve_server: ["-l dfw2 -c c2.large.arm"]
+        hv: ["kvm"]
+    steps:
+      - name: Setup packages
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.list.save
+          sudo add-apt-repository ppa:longsleep/golang-backports
+          sudo apt install -y golang jq expect
+      - name: Get eden
+        uses: actions/checkout@v2
+      - name: Create ubuntu server on packet hosting
+        id: ubuntu
+        run: |
+          packet_ubuntu_id=$(./shell-scripts/packet/create.sh ${{ matrix.conf_eden_server }} -p "$PACKET_PROJECT" -ns gh-action -os ubuntu_18_04)
+          packet_ubuntu_ip=$(./shell-scripts/packet/wait-eth0.sh $packet_ubuntu_id 100)
+          echo "Packet server ID: ${packet_ubuntu_id}"
+          echo "Packet server IP: ${packet_ubuntu_ip}"
+          echo "::set-output name=id::$packet_ubuntu_id"
+          echo "::set-output name=ip::$packet_ubuntu_ip"
+          echo "Waiting for the deployment to complete"
+          ./shell-scripts/packet/wait-provisioning.sh $packet_ubuntu_id
+          sleep 100
+        env:
+          PACKET_TOKEN: ${{ secrets.PACKET_TOKEN }}
+          PACKET_PROJECT: ${{ secrets.PACKET_PROJECT }}
+      - name: Create SSH key
+        run: |
+          mkdir -p ~/.ssh/keys/
+          echo "$SSH_PRIVATE_KEY" > "$SSH_KEY_PATH"
+          sudo chmod 600 "$SSH_KEY_PATH"
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ./shell-scripts/packet/ssh-add.sh "$SSH_KEY_PATH" "$SSH_PASSPHRASE"
+          ssh-keyscan -H ${{steps.ubuntu.outputs.ip}} > ~/.ssh/known_hosts
+        env:
+          SSH_PRIVATE_KEY: ${{secrets.PACKET_SSH_KEY}}
+          SSH_PASSPHRASE: ${{secrets.PACKET_SSH_PASSPHRASE}}
+          SSH_KEY_PATH: ${{ github.workspace }}/../private.key
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      - name: Install Dependencies to packet ubuntu server for EDEN
+        run: |
+          ssh root@${{steps.ubuntu.outputs.ip}} 'sudo apt-get update && sudo apt-get remove docker docker-engine docker.io containerd runc'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --no-tty --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'echo "deb [arch=arm64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'sudo apt-get install -y jq make git expect qemu binfmt-support qemu-user-static qemu-utils qemu-system-x86 qemu-system-aarch64'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'sudo add-apt-repository ppa:longsleep/golang-backports && sudo apt install -y golang'
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      - name: Get and setup EDEN on ubuntu packet server
+        run: |
+          ssh root@${{steps.ubuntu.outputs.ip}} 'sudo rm -rf ~/eden'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'git clone https://github.com/lf-edge/eden.git && cd eden && git checkout '"$GITHUB_SHA"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && make clean && make build && make build-tests'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden config add --devmodel=general --arch=arm64'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden config set default --key eve.hv --value='"${{ matrix.hv }}"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden setup -v debug --netboot=true'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden start'
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      - name: Create EVE server on packet hosting
+        id: eve
+        run: |
+          device_id=$(ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && export PACKET_TOKEN='"$PACKET_TOKEN"' && ./shell-scripts/packet/create-eve.sh'" ${{ matrix.conf_eve_server }} -p $PACKET_PROJECT"' -ns eve-gh-action')
+          device_ip=$(ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && export PACKET_TOKEN='"$PACKET_TOKEN"' && ./shell-scripts/packet/wait-eth0.sh '"$device_id"' 200')
+          echo "Packet EVE ID: $device_id"
+          echo "Packet EVE IP: $device_ip"
+          echo "::set-output name=id::$device_id"
+          echo "Waiting for the deployment to complete"
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && export PACKET_TOKEN='"$PACKET_TOKEN"' && ./shell-scripts/packet/wait-provisioning.sh '"$device_id"
+          sleep 100
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          PACKET_TOKEN: ${{ secrets.PACKET_TOKEN }}
+          PACKET_PROJECT: ${{ secrets.PACKET_PROJECT }}
+      - name: Onboard EVE and run test
+        run: |
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden eve onboard'
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && EDEN_TEST=gcp EDEN_TEST_REGISTRY=n ./eden test tests/workflow -v debug'
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      - name: Collect logs
+        if: ${{ always() }}
+        run: |
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden log --format json' > trace.log
+          ssh root@${{steps.ubuntu.outputs.ip}} 'cd eden && ./eden info' > info.log
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      - name: Terminate packet servers
+        if: ${{ always() }}
+        run: |
+          ./shell-scripts/packet/delete.sh ${{steps.ubuntu.outputs.id}}
+          ./shell-scripts/packet/delete.sh ${{steps.eve.outputs.id}}
+        env:
+          PACKET_TOKEN: ${{ secrets.PACKET_TOKEN }}
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: eden-packet${{ matrix.conf_eden_server }}---eve-packet${{ matrix.conf_eve_server }}-${{ matrix.hv }}
+          path: |
+            ${{ github.workspace }}/trace.log
+            ${{ github.workspace }}/info.log
