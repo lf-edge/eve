@@ -527,20 +527,12 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		PCIId, NetID     int
 		Driver           string
 		Mac, Bridge, Vif string
-		Vlan             string
 	}{PCIId: diskContext.PCIId, NetID: 0}
 	t, _ = template.New("qemuNet").Parse(qemuNetTemplate)
 	for _, net := range config.VifList {
 		netContext.Mac = net.Mac
 		netContext.Bridge = net.Bridge
 		netContext.Vif = net.Vif
-		vlan := "0"
-		if net.Vlan.IsTrunk == true {
-			vlan = fmt.Sprintf("%d-%d", net.Vlan.Start, net.Vlan.End)
-		} else {
-			vlan = fmt.Sprintf("%d", net.Vlan.Start)
-		}
-		netContext.Vlan = vlan
 		if config.VirtualizationMode == types.LEGACY {
 			netContext.Driver = "e1000"
 		} else {
