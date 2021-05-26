@@ -1321,23 +1321,46 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// VLAN filtering could have been enabled on the bridge immediately after
+// it's creation in zedrouter itself. For some strange reason netlink
+// throws back error saying that the device is busy is vlan filtering is enabled
+// immediately creation.
+// We are either keep retrying in a loop in zedrouter or enable it when needed
+// in domainmgr
+func enableVlanFiltering(bridgeName string) {
+	bridge, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		log.Errorf("isVlanFilteringSet: LinkByName failed for %s: %s", bridgeName, err)
+		return
+	}
+	if !*bridge.(*netlink.Bridge).VlanFiltering {
+		// Enable VLAN filtering on bridge
+		if err := netlink.BridgeSetVlanFiltering(bridge, true); err != nil {
+			errStr := fmt.Sprintf("enableVlanFiltering on %s failed: %s",
+				bridgeName, err)
+			log.Errorf(errStr)
+		}
+	}
+}
+
 func setupVlans(vifList []types.VifInfo) {
 	for _, vif := range vifList {
-		vlanInfo := ""
-		if vif.Vlan.IsTrunk {
-			vlanInfo = fmt.Sprintf("%d-%d", vif.Vlan.Start, vif.Vlan.End)
-		} else if vif.Vlan.Start != 0 {
-			vlanInfo = fmt.Sprintf("%d pvid untagged", vif.Vlan.Start)
-		} else {
-			continue
-		}
-		args := []string{"vlan", "add", "dev", vif.Vif, "vid"}
-		args = append(args, strings.Split(vlanInfo, " ")...)
-		log.Functionf("Calling command %s %v\n", "bridge", args)
-		out, err := base.Exec(log, "bridge", args...).CombinedOutput()
+		bridgeName := vif.Bridge
+		enableVlanFiltering(bridgeName)
+
+		link, err := netlink.LinkByName(vif.Vif)
 		if err != nil {
-			errStr := fmt.Sprintf("bridge command %s failed %s output %s", args, err, out)
-			log.Errorln(errStr)
+			log.Errorf("setupVlans: Vlan setup failed: %s", err)
+			return
+		}
+		if !vif.Vlan.IsTrunk {
+			netlink.BridgeVlanAdd(link, uint16(vif.Vlan.Start), true, true, false, false)
+		} else {
+			start := vif.Vlan.Start
+			end := vif.Vlan.End
+			for vlanID := start; vlanID <= end; vlanID++ {
+				netlink.BridgeVlanAdd(link, uint16(vlanID), false, false, false, false)
+			}
 		}
 	}
 }
