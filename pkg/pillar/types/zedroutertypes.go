@@ -2012,6 +2012,13 @@ type NetworkInstanceMetrics struct {
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
 	VpnMetrics     *VpnMetrics
+	VlanMetrics    VlanMetrics
+}
+
+// VlanMetrics :
+type VlanMetrics struct {
+	NumTrunkPorts uint32
+	VlanCounts    map[uint32]uint32
 }
 
 // ProbeMetrics - NI probe metrics

@@ -1354,6 +1354,9 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
 	niMetrics.NetworkMetrics = netMetrics
 	niMetrics.ProbeMetrics = getNIProbeMetric(ctx, status)
+
+	niMetrics.VlanMetrics.NumTrunkPorts = status.NumTrunkPorts
+	niMetrics.VlanMetrics.VlanCounts = status.VlanMap
 	switch status.Type {
 	case types.NetworkInstanceTypeCloud:
 		if strongSwanVpnStatusGet(ctx, status, &niMetrics) {
