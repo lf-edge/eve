@@ -137,7 +137,7 @@ func (status BaseOsStatus) LogModify(logBase *base.LogObject, old interface{}) {
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("BaseOs status modify")
+			Noticef("BaseOs status modify")
 	}
 }
 

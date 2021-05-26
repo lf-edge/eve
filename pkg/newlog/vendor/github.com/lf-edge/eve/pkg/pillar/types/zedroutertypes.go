@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -9,14 +9,15 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
-	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 // Indexed by UUID
@@ -26,6 +27,9 @@ type AppNetworkConfig struct {
 	Activate            bool
 	GetStatsIPAddr      net.IP
 	UnderlayNetworkList []UnderlayNetworkConfig
+	CloudInitUserData   *string `json:"pubsub-large-CloudInitUserData"`
+	CipherBlockStatus   CipherBlockStatus
+	MetaDataType        MetaDataType
 }
 
 func (config AppNetworkConfig) Key() string {
@@ -58,9 +62,9 @@ func (config AppNetworkConfig) LogModify(logBase *base.LogObject, old interface{
 			AddField("old-activate", oldConfig.Activate).
 			Noticef("App network config modify")
 	} else {
-		// XXX remove?
+		// Log at Function level
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Noticef("App network config modify other change")
+			Functionf("App network config modify other change")
 	}
 }
 
@@ -156,9 +160,9 @@ func (status AppNetworkStatus) LogModify(logBase *base.LogObject, old interface{
 			AddField("old-activated", oldStatus.Activated).
 			Noticef("App network status modify")
 	} else {
-		// XXX remove?
+		// Log at Function level
 		logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-			Noticef("App network status modify other change")
+			Functionf("App network status modify other change")
 	}
 
 	if status.HasError() {
@@ -166,7 +170,7 @@ func (status AppNetworkStatus) LogModify(logBase *base.LogObject, old interface{
 		logObject.CloneAndAddField("activated", status.Activated).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("App network status modify")
+			Noticef("App network status modify")
 	}
 }
 
@@ -368,9 +372,9 @@ func (config DevicePortConfigList) LogModify(logBase *base.LogObject, old interf
 			AddField("old-num-portconfig-int64", len(oldConfig.PortConfigList)).
 			Noticef("DevicePortConfigList modify")
 	} else {
-		// XXX remove?
+		// Log at Trace level - most likely just a timestamp change
 		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Noticef("DevicePortConfigList modify other change")
+			Tracef("DevicePortConfigList modify other change")
 	}
 
 }
@@ -499,10 +503,6 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 			AddField("old-last-error", oldConfig.LastError).
 			AddField("old-state", oldConfig.State.String()).
 			Noticef("DevicePortConfig modify")
-	} else {
-		// XXX remove?
-		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Noticef("DevicePortConfig modify other change")
 	}
 	// XXX which fields to compare/log?
 	for i, p := range config.Ports {
@@ -655,16 +655,24 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 	if sanitizeTimePriority {
 		zeroTime := time.Time{}
 		if config.TimePriority == zeroTime {
-			// If we can stat the file use its modify time
+			// A json override file should really contain a
+			// timepriority field so we can determine whether
+			// it or the information received from the controller
+			// is more current.
+			// If we can stat the file we use 1980, otherwise
+			// we use 1970; using the modify time of the file
+			// is too unpredictable.
 			filename := fmt.Sprintf("%s/DevicePortConfig/%s.json",
 				TmpDirname, key)
-			fi, err := os.Stat(filename)
+			_, err := os.Stat(filename)
 			if err == nil {
-				config.TimePriority = fi.ModTime()
+				config.TimePriority = time.Date(1980,
+					time.January, 1, 0, 0, 0, 0, time.UTC)
 			} else {
-				config.TimePriority = time.Unix(0, 0)
+				config.TimePriority = time.Date(1970,
+					time.January, 1, 0, 0, 0, 0, time.UTC)
 			}
-			log.Functionf("DoSanitize: Forcing TimePriority for %s to %v\n",
+			log.Warnf("DoSanitize: Forcing TimePriority for %s to %v",
 				key, config.TimePriority)
 		}
 	}
@@ -726,7 +734,7 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			p1.Logicallabel != p2.Logicallabel ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
-			p1.Free != p2.Free {
+			p1.Cost != p2.Cost {
 			return false
 		}
 		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
@@ -889,6 +897,13 @@ type WirelessConfig struct {
 	Wifi     []WifiConfig // Wifi Config params
 }
 
+const (
+	// PortCostMin is the lowest cost
+	PortCostMin = uint8(0)
+	// PortCostMax is the highest cost
+	PortCostMax = uint8(255)
+)
+
 // NetworkPortConfig has the configuration and some status like TestResults
 // for one IfName.
 // XXX odd to have ParseErrors and/or TestResults here but we don't have
@@ -901,8 +916,8 @@ type NetworkPortConfig struct {
 	Alias        string // From SystemAdapter's alias
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
-	IsMgmt      bool // Used to talk to controller
-	Free        bool // Higher priority to talk to controller since no cost
+	IsMgmt      bool  // Used to talk to controller
+	Cost        uint8 // Zero is free
 	DhcpConfig
 	ProxyConfig
 	WirelessCfg WirelessConfig
@@ -916,7 +931,7 @@ type NetworkPortStatus struct {
 	Logicallabel   string
 	Alias          string // From SystemAdapter's alias
 	IsMgmt         bool   // Used to talk to controller
-	Free           bool
+	Cost           uint8
 	Dhcp           DhcpType
 	Subnet         net.IPNet
 	NtpServer      net.IP // This comes from network instance configuration
@@ -1035,10 +1050,6 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed).
 				Noticef("DeviceNetworkStatus port modify")
-		} else {
-			logObject.CloneAndAddField("ifname", p.IfName).
-				AddField("diff", cmp.Diff(op, p)).
-				Noticef("DeviceNetworkStatus port modify other change")
 		}
 	}
 }
@@ -1068,9 +1079,8 @@ func (status DeviceNetworkStatus) LogKey() string {
 	return string(base.DeviceNetworkStatusLogType) + "-" + status.Key()
 }
 
-// MostlyEqual compares two DeviceNetworkStatus but skips things the test status/results aspects.
+// MostlyEqual compares two DeviceNetworkStatus but skips things the test status/results aspects, including State and Testing.
 // We compare the Ports in array order.
-// XXX State and Testing?
 func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool {
 
 	if len(status.Ports) != len(status2.Ports) {
@@ -1083,7 +1093,7 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			p1.Logicallabel != p2.Logicallabel ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
-			p1.Free != p2.Free {
+			p1.Cost != p2.Cost {
 			return false
 		}
 		if p1.Dhcp != p2.Dhcp ||
@@ -1122,6 +1132,31 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		}
 
 		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) {
+			return false
+		}
+	}
+	return true
+}
+
+// MostlyEqualStatus compares two DeviceNetworkStatus but skips things that are
+// unimportant like just an increase in the success timestamp, but detects
+// when a port changes to/from a failure.
+func (status *DeviceNetworkStatus) MostlyEqualStatus(status2 DeviceNetworkStatus) bool {
+
+	if !status.MostlyEqual(status2) {
+		return false
+	}
+	if status.State != status2.State || status.Testing != status2.Testing ||
+		status.CurrentIndex != status2.CurrentIndex {
+		return false
+	}
+	if len(status.Ports) != len(status2.Ports) {
+		return false
+	}
+	for i, p1 := range status.Ports {
+		p2 := status2.Ports[i]
+		// Did we change to/from failure?
+		if p1.HasError() != p2.HasError() {
 			return false
 		}
 	}
@@ -1178,35 +1213,57 @@ func rotate(arr []string, amount int) []string {
 	return append(append([]string{}, arr[amount:]...), arr[:amount]...)
 }
 
-// Return all management ports
+// GetMgmtPortsSortedCost returns all management ports sorted by port cost
+// rotation causes rotation/round-robin within each cost
+func GetMgmtPortsSortedCost(globalStatus DeviceNetworkStatus, rotation int) []string {
+	return getMgmtPortsSortedCostImpl(globalStatus, rotation,
+		PortCostMax, false)
+}
+
+// GetMgmtPortsSortedCostWithoutFailed returns all management ports sorted by
+// port cost ignoring ports with failures.
+// rotation causes rotation/round-robin within each cost
+func GetMgmtPortsSortedCostWithoutFailed(globalStatus DeviceNetworkStatus, rotation int) []string {
+	return getMgmtPortsSortedCostImpl(globalStatus, rotation,
+		PortCostMax, true)
+}
+
+// getMgmtPortsSortedCostImpl returns all management ports sorted by port cost
+// up to and including the maxCost
+func getMgmtPortsSortedCostImpl(globalStatus DeviceNetworkStatus, rotation int, maxCost uint8, dropFailed bool) []string {
+	ifnameList := []string{}
+	costList := getPortCostListImpl(globalStatus, maxCost)
+	for _, cost := range costList {
+		ifnameList = append(ifnameList,
+			getMgmtPortsImpl(globalStatus, rotation, true, cost, dropFailed)...)
+	}
+	return ifnameList
+}
+
+// GetMgmtPortsAny returns all management ports
 func GetMgmtPortsAny(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsImpl(globalStatus, rotation, false, false)
+	return getMgmtPortsImpl(globalStatus, rotation, false, 0, false)
 }
 
-// Return all free management ports
-func GetMgmtPortsFree(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsImpl(globalStatus, rotation, true, false)
-}
-
-// Return all non-free management ports
-func GetMgmtPortsNonFree(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsImpl(globalStatus, rotation, false, true)
+// GetMgmtPortsByCost returns all management ports with a given port cost
+func GetMgmtPortsByCost(globalStatus DeviceNetworkStatus, cost uint8) []string {
+	return getMgmtPortsImpl(globalStatus, 0, true, cost, false)
 }
 
 // Returns the IfNames.
 func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
-	freeOnly bool, nonfreeOnly bool) []string {
+	matchCost bool, cost uint8, dropFailed bool) []string {
 
 	var ifnameList []string
 	for _, us := range globalStatus.Ports {
-		if freeOnly && !us.Free {
-			continue
-		}
-		if nonfreeOnly && us.Free {
+		if matchCost && us.Cost != cost {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
 			!us.IsMgmt {
+			continue
+		}
+		if dropFailed && us.HasError() {
 			continue
 		}
 		ifnameList = append(ifnameList, us.IfName)
@@ -1214,56 +1271,83 @@ func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
 	return rotate(ifnameList, rotation)
 }
 
-// Return number of local IP addresses for all the management ports
-// excluding link-local addresses
+// GetPortCostList returns the sorted list of port costs
+// with cost zero entries first.
+func GetPortCostList(globalStatus DeviceNetworkStatus) []uint8 {
+
+	return getPortCostListImpl(globalStatus, PortCostMax)
+}
+
+// getPortCostListImpl returns the sorted port costs up to and including the max
+func getPortCostListImpl(globalStatus DeviceNetworkStatus, maxCost uint8) []uint8 {
+	var costList []uint8
+	for _, us := range globalStatus.Ports {
+		costList = append(costList, us.Cost)
+	}
+	if len(costList) == 0 {
+		return []uint8{}
+	}
+	// Need sort -u so separately we remove the duplicates
+	sort.Slice(costList,
+		func(i, j int) bool { return costList[i] < costList[j] })
+	unique := make([]uint8, 0, len(costList))
+	i := 0
+	unique = append(unique, costList[0])
+	for _, cost := range costList {
+		if cost != unique[i] && cost <= maxCost {
+			unique = append(unique, cost)
+			i++
+		}
+	}
+	return unique
+}
+
+// CountLocalAddrAnyNoLinkLocal returns the number of local IP addresses for
+// all the management ports (for all port costs) excluding link-local addresses
 func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, false, "", false)
+	addrs, _ := getLocalAddrListImpl(globalStatus, "", PortCostMax,
+		false, 0)
 	return len(addrs)
 }
 
-// Return number of local IP addresses for all the management ports
-// excluding link-local addresses
+// CountLocalAddrAnyNoLinkLocalIf return number of local IP addresses for
+// the interface excluding link-local addresses
 func CountLocalAddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) int {
+	phylabelOrIfname string) (int, error) {
+
+	if phylabelOrIfname == "" {
+		return 0, fmt.Errorf("ifname not specified")
+	}
+	// Count the number of addresses which apply
+	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+		PortCostMax, false, 0)
+	return len(addrs), err
+}
+
+// CountLocalAddrNoLinkLocalWithCost is like CountLocalAddrAnyNoLinkLocal but
+// in addition allows the caller to specify the cost between
+// PortCostMin (0) and PortCostMax(255).
+// If 0 is specified it only considers cost 0 ports.
+// if 255 is specified it considers all the ports.
+func CountLocalAddrNoLinkLocalWithCost(globalStatus DeviceNetworkStatus,
+	maxCost uint8) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, false, phylabelOrIfname, false)
+	addrs, _ := getLocalAddrListImpl(globalStatus, "", maxCost,
+		false, 0)
 	return len(addrs)
 }
 
-// Return a list of free management ports that have non link local IP addresses
-// Used by LISP.
-func GetMgmtPortsFreeNoLinkLocal(globalStatus DeviceNetworkStatus) []NetworkPortStatus {
-	// Return MgmtPort list with valid non link local addresses
-	links, _ := getInterfaceAndAddr(globalStatus, true, "", false)
-	return links
-}
-
-// Return number of local IP addresses for all the free management ports
-// excluding link-local addresses
-func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
-
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
-	return len(addrs)
-}
-
-// XXX move AF functionality to getInterfaceAddr?
-// Only IPv4 counted
+// CountLocalIPv4AddrAnyNoLinkLocal is like CountLocalAddrAnyNoLinkLocal but
+// only IPv4 addresses are counted
 func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, false, "", false)
-	count := 0
-	for _, addr := range addrs {
-		if addr.To4() == nil {
-			continue
-		}
-		count += 1
-	}
-	return count
+	addrs, _ := getLocalAddrListImpl(globalStatus, "", PortCostMax,
+		false, 4)
+	return len(addrs)
 }
 
 // CountDNSServers returns the number of DNS servers; for phylabelOrIfname if set
@@ -1318,79 +1402,57 @@ func GetNTPServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 	return servers
 }
 
-// Return number of local IP addresses for all the management ports with given name
-// excluding link-local addresses
-func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) int {
-
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, phylabelOrIfname, false)
-	return len(addrs)
-}
-
-// Return number of local IP addresses for all the management ports with given name
-// excluding link-local addresses
-// Only IPv4 counted
+// CountLocalIPv4AddrAnyNoLinkLocalIf is like CountLocalAddrAnyNoLinkLocalIf but
+// only IPv4 addresses are counted
 func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) int {
+	phylabelOrIfname string) (int, error) {
 
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, phylabelOrIfname, false)
-	count := 0
-	for _, addr := range addrs {
-		if addr.To4() == nil {
-			continue
-		}
-		count += 1
+	if phylabelOrIfname == "" {
+		return 0, fmt.Errorf("ifname not specified")
 	}
-	return count
+	// Count the number of addresses which apply
+	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+		PortCostMax, false, 4)
+	return len(addrs), err
 }
 
-// Pick one address from all of the management ports, unless if phylabelOrIfname is set
-// in which we pick from that phylabelOrIfname. Includes link-local addresses.
-// We put addresses from the free management ports first in the list i.e.,
-// returned for the lower 'pickNum'
-func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string) (net.IP, error) {
-
-	freeOnly := false
-	includeLinkLocal := true
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname, freeOnly,
-		includeLinkLocal)
-}
-
-// Pick one address from all of the management ports, unless if phylabelOrIfname is set
-// in which we pick from that phylabelOrIfname. Excludes link-local addresses.
-// We put addresses from the free management ports first in the list i.e.,
-// returned for the lower 'pickNum'
+// GetLocalAddrAnyNoLinkLocal is used to pick one address from:
+// - phylabelOrIfname if set.
+// - otherwise from all of the management ports
+// Excludes link-local addresses.
+// The addresses are sorted in cost order thus as the caller starts with
+// pickNum zero and increases it will use the ports in cost order.
 func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
 	phylabelOrIfname string) (net.IP, error) {
 
-	freeOnly := false
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname, freeOnly,
-		includeLinkLocal)
+	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname,
+		PortCostMax, includeLinkLocal, 0)
 }
 
-// Pick one address from the free management ports, unless if phylabelOrIfname is set
-// in which we pick from that phylabelOrIfname. Excludes link-local addresses.
-// We put addresses from the free management ports first in the list i.e.,
-// returned for the lower 'pickNum'
-func GetLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string) (net.IP, error) {
+// GetLocalAddrNoLinkLocalWithCost is like GetLocalAddrNoLinkLocal but
+// in addition allows the caller to specify the cost between
+// PortCostMin (0) and PortCostMax(255).
+// If 0 is specified it only considers local addresses on cost zero ports;
+// if 255 is specified it considers all the local addresses.
+func GetLocalAddrNoLinkLocalWithCost(globalStatus DeviceNetworkStatus, pickNum int,
+	phylabelOrIfname string, maxCost uint8) (net.IP, error) {
 
-	freeOnly := true
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname, freeOnly,
-		includeLinkLocal)
+	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname,
+		maxCost, includeLinkLocal, 0)
 }
 
+// getLocalAddrImpl returns an IP address based on interfaces sorted in
+// cost order. If phylabelOrIfname is set, the addresses are from that
+// interface. Otherwise from all management interfaces up to and including maxCost.
+// af can be set to 0 (any), 4, IPv4), or 6 (IPv6) to select the family.
 func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string, freeOnly bool, includeLinkLocal bool) (net.IP, error) {
+	phylabelOrIfname string, maxCost uint8, includeLinkLocal bool,
+	af uint) (net.IP, error) {
 
-	// Count the number of addresses which apply
-	addrs, err := getInterfaceAddr(globalStatus, freeOnly, phylabelOrIfname,
-		includeLinkLocal)
+	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+		maxCost, includeLinkLocal, af)
 	if err != nil {
 		return net.IP{}, err
 	}
@@ -1399,58 +1461,44 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 	return addrs[pickNum], nil
 }
 
-func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, phylabelOrIfname string,
-	includeLinkLocal bool) ([]NetworkPortStatus, error) {
+// getLocalAddrListImpl returns a list IP addresses based on interfaces sorted
+// in cost order. If phylabelOrIfname is set, the addresses are from that
+// interface. Otherwise from all management interfaces up to and including maxCost
+// af can be set to 0 (any), 4, IPv4), or 6 (IPv6) to select a subset.
+func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
+	phylabelOrIfname string, maxCost uint8, includeLinkLocal bool,
+	af uint) ([]net.IP, error) {
 
-	var links []NetworkPortStatus
-	var ifname string
-	if phylabelOrIfname != "" {
-		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
+	var ifnameList []string
+	if phylabelOrIfname == "" {
+		// Get interfaces in cost order
+		ifnameList = getMgmtPortsSortedCostImpl(globalStatus, 0,
+			maxCost, false)
 	} else {
-		ifname = phylabelOrIfname
+		ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
+		us := GetPort(globalStatus, ifname)
+		if us == nil {
+			return []net.IP{}, fmt.Errorf("Unknown interface %s",
+				ifname)
+		}
+		if us.Cost > maxCost {
+			return []net.IP{}, fmt.Errorf("Interface %s cost %d exceeds maxCost %d",
+				ifname, us.Cost, maxCost)
+		}
+		ifnameList = []string{ifname}
 	}
-	for _, us := range globalStatus.Ports {
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt && ifname == "" {
-			continue
+	addrs := []net.IP{}
+	for _, ifname := range ifnameList {
+		ifaddrs, err := getLocalAddrIf(globalStatus, ifname,
+			includeLinkLocal, af)
+		// If we are looking across all interfaces, then We ignore errors
+		// since we get them if there are no addresses on a ports
+		if err != nil && phylabelOrIfname != "" {
+			return addrs, err
 		}
-		if free && !us.Free {
-			continue
-		}
-		// If ifname is set it should match
-		if us.IfName != ifname && ifname != "" {
-			continue
-		}
-
-		link := NetworkPortStatus{
-			IfName:       us.IfName,
-			Phylabel:     us.Phylabel,
-			Logicallabel: us.Logicallabel,
-			Alias:        us.Alias,
-			IsMgmt:       us.IsMgmt,
-			Free:         us.Free,
-		}
-		if includeLinkLocal {
-			link.AddrInfoList = us.AddrInfoList
-			links = append(links, link)
-		} else {
-			var addrs []AddrInfo
-			for _, a := range us.AddrInfoList {
-				if !a.Addr.IsLinkLocalUnicast() {
-					addrs = append(addrs, a)
-				}
-			}
-			if len(addrs) > 0 {
-				link.AddrInfoList = addrs
-				links = append(links, link)
-			}
-		}
+		addrs = append(addrs, ifaddrs...)
 	}
-	if len(links) != 0 {
-		return links, nil
-	} else {
-		return []NetworkPortStatus{}, errors.New("No good MgmtPorts")
-	}
+	return addrs, nil
 }
 
 // Return the list of ifnames in DNC which exist in the kernel
@@ -1496,19 +1544,16 @@ func IsMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool 
 	return false
 }
 
-// Check if a physical label or ifname is a free management port
-func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool {
+// GetPortCost returns the port cost
+// Returns 0 if the ifname does not exist.
+func GetPortCost(globalStatus DeviceNetworkStatus, phylabelOrIfname string) uint8 {
 	for _, us := range globalStatus.Ports {
 		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
 			continue
 		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
-			continue
-		}
-		return us.Free
+		return us.Cost
 	}
-	return false
+	return 0
 }
 
 func GetPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) *NetworkPortStatus {
@@ -1540,56 +1585,50 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 	return ""
 }
 
-// GetInterfaceAddrs returns all IP addresses on the phylabelOrIfName except
-// link local
-func GetInterfaceAddrs(globalStatus DeviceNetworkStatus,
+// GetLocalAddrList returns all IP addresses on the phylabelOrIfName except
+// the link local addresses.
+func GetLocalAddrList(globalStatus DeviceNetworkStatus,
 	phylabelOrIfname string) ([]net.IP, error) {
 
 	if phylabelOrIfname == "" {
 		return []net.IP{}, fmt.Errorf("ifname not specified")
 	}
-	return getInterfaceAddr(globalStatus, false, phylabelOrIfname, false)
+	ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
+	return getLocalAddrIf(globalStatus, ifname, false, 0)
 }
 
-// Returns addresses based on free, ifname, and whether or not we want
-// IPv6 link-locals. Only applies to management ports unless ifname is set.
-// If free is not set, the addresses from the free management ports are first.
-func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
-	phylabelOrIfname string, includeLinkLocal bool) ([]net.IP, error) {
+// getLocalAddrIf returns all of the IP addresses for the ifname.
+// includeLinkLocal and af can be used to exclude addresses.
+func getLocalAddrIf(globalStatus DeviceNetworkStatus, ifname string,
+	includeLinkLocal bool, af uint) ([]net.IP, error) {
 
-	var freeAddrs []net.IP
-	var nonfreeAddrs []net.IP
-	var ifname string
-	if phylabelOrIfname != "" {
-		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
-	} else {
-		ifname = phylabelOrIfname
-	}
+	var addrs []net.IP
 	for _, us := range globalStatus.Ports {
-		if free && !us.Free {
+		if us.IfName != ifname {
 			continue
 		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt && ifname == "" {
-			continue
-		}
-		// If ifname is set it should match
-		if us.IfName != ifname && ifname != "" {
-			continue
-		}
-		var addrs []net.IP
 		for _, i := range us.AddrInfoList {
-			if includeLinkLocal || !i.Addr.IsLinkLocalUnicast() {
-				addrs = append(addrs, i.Addr)
+			if !includeLinkLocal && i.Addr.IsLinkLocalUnicast() {
+				continue
 			}
-		}
-		if free {
-			freeAddrs = append(freeAddrs, addrs...)
-		} else {
-			nonfreeAddrs = append(nonfreeAddrs, addrs...)
+			if i.Addr == nil {
+				continue
+			}
+			switch af {
+			case 0:
+				// Accept any
+			case 4:
+				if i.Addr.To4() == nil {
+					continue
+				}
+			case 6:
+				if i.Addr.To4() != nil {
+					continue
+				}
+			}
+			addrs = append(addrs, i.Addr)
 		}
 	}
-	addrs := append(freeAddrs, nonfreeAddrs...)
 	if len(addrs) != 0 {
 		return addrs, nil
 	} else {
@@ -1718,10 +1757,10 @@ type ProbeInfo struct {
 	GatewayUP  bool // local nexthop is in UP state
 	LocalAddr  net.IP
 	NhAddr     net.IP
-	IsFree     bool
 	FailedCnt  uint32 // continuous ping fail count, reset when ping success
 	SuccessCnt uint32 // continous ping success count, reset when ping fail
 
+	Cost uint8
 	// remote host probe state
 	RemoteHostUP    bool   // remote host is in UP state
 	FailedProbeCnt  uint32 // continuous remote ping fail count, reset when ping success
@@ -1893,10 +1932,6 @@ type NetworkInstanceInfo struct {
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
 
-	// Any errrors from provisioning the network
-	// ErrorAndTime provides SetErrorNow() and ClearError()
-	ErrorAndTime
-
 	// Vif metric map. This should have a union of currently existing
 	// vifs and previously deleted vifs.
 	// XXX When a vif is removed from bridge (app instance delete case),
@@ -2056,7 +2091,7 @@ func (nms NetworkMetrics) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Network nms create")
+	logObject.Metricf("Network metrics create")
 }
 
 // LogModify :
@@ -2165,6 +2200,10 @@ type NetworkInstanceConfig struct {
 
 	// For other network services - Proxy / StrongSwan etc..
 	OpaqueConfig string
+
+	// Any errrors from the parser
+	// ErrorAndTime provides SetErrorNow() and ClearError()
+	ErrorAndTime
 }
 
 func (config *NetworkInstanceConfig) Key() string {
@@ -2178,7 +2217,7 @@ func (config NetworkInstanceConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Network instance config create")
+	logObject.Noticef("Network instance config create")
 }
 
 // LogModify :
@@ -2192,14 +2231,14 @@ func (config NetworkInstanceConfig) LogModify(logBase *base.LogObject, old inter
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-		Metricf("Network instance config modify")
+		Noticef("Network instance config modify")
 }
 
 // LogDelete :
 func (config NetworkInstanceConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceConfigLogType, "",
 		config.UUIDandVersion.UUID, config.LogKey())
-	logObject.Metricf("Network instance config delete")
+	logObject.Noticef("Network instance config delete")
 
 	base.DeleteLogObject(logBase, config.LogKey())
 }
@@ -2255,7 +2294,7 @@ func (status NetworkInstanceStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Network instance status create")
+	logObject.Noticef("Network instance status create")
 }
 
 // LogModify :
@@ -2269,14 +2308,14 @@ func (status NetworkInstanceStatus) LogModify(logBase *base.LogObject, old inter
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Metricf("Network instance status modify")
+		Noticef("Network instance status modify")
 }
 
 // LogDelete :
 func (status NetworkInstanceStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.NetworkInstanceStatusLogType, "",
 		status.UUIDandVersion.UUID, status.LogKey())
-	logObject.Metricf("Network instance status delete")
+	logObject.Noticef("Network instance status delete")
 
 	base.DeleteLogObject(logBase, status.LogKey())
 }
@@ -2754,7 +2793,7 @@ func (vifIP VifIPTrig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Vif IP trig create")
+	logObject.Noticef("Vif IP trig create")
 }
 
 // LogModify :
@@ -2768,14 +2807,14 @@ func (vifIP VifIPTrig) LogModify(logBase *base.LogObject, old interface{}) {
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldVifIP, vifIP)).
-		Metricf("Vif IP trig modify")
+		Noticef("Vif IP trig modify")
 }
 
 // LogDelete :
 func (vifIP VifIPTrig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
 		nilUUID, vifIP.LogKey())
-	logObject.Metricf("Vif IP trig delete")
+	logObject.Noticef("Vif IP trig delete")
 
 	base.DeleteLogObject(logBase, vifIP.LogKey())
 }
@@ -2803,7 +2842,7 @@ func (status OnboardingStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Onboarding status create")
+	logObject.Noticef("Onboarding status create")
 }
 
 // LogModify :
@@ -2817,14 +2856,14 @@ func (status OnboardingStatus) LogModify(logBase *base.LogObject, old interface{
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
-		Metricf("Onboarding status modify")
+		Noticef("Onboarding status modify")
 }
 
 // LogDelete :
 func (status OnboardingStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.OnboardingStatusLogType, "",
 		nilUUID, status.LogKey())
-	logObject.Metricf("Onboarding status delete")
+	logObject.Noticef("Onboarding status delete")
 
 	base.DeleteLogObject(logBase, status.LogKey())
 }

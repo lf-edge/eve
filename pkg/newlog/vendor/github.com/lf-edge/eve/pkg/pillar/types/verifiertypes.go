@@ -158,7 +158,7 @@ func (status VerifyImageStatus) LogModify(logBase *base.LogObject, old interface
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("VerifyImage status modify")
+			Noticef("VerifyImage status modify")
 	}
 }
 

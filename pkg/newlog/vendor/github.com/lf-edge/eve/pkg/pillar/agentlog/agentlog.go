@@ -4,7 +4,6 @@
 package agentlog
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -27,6 +27,7 @@ const (
 	stackFile      = "reboot-stack"
 	rebootImage    = "reboot-image"
 	bootReasonFile = "boot-reason"
+	maxReadSize    = 16384 // From files in /persist
 )
 
 var savedRebootReason = "unknown"
@@ -305,7 +306,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	if bootReason != types.BootReasonNone {
 		filename = "/persist/" + bootReasonFile
 		brString := bootReason.String()
-		cur, _ := statAndRead(nil, filename)
+		cur, _, _ := fileutils.StatAndRead(nil, filename, maxReadSize)
 		if cur != "" {
 			// Note: can not use log here since we are called from a log hook!
 			fmt.Printf("not replacing BootReason %s with %s\n",
@@ -350,53 +351,23 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 func GetRebootReason(log *base.LogObject) (string, time.Time, string) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
-	reason, ts := statAndRead(log, reasonFilename)
-	stack, _ := statAndRead(log, stackFilename)
+	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
+	stack, _, _ := fileutils.StatAndRead(log, stackFilename, maxReadSize)
 	return reason, ts, stack
 }
 
 // GetBootReason returns the BootReason enum, which is stored as a string in /persist, together with its timestamp
 func GetBootReason(log *base.LogObject) (types.BootReason, time.Time) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, bootReasonFile)
-	reason, ts := statAndRead(log, reasonFilename)
+	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
 	return types.BootReasonFromString(reason), ts
 }
 
 // GetRebootImage : Image from which the reboot happened
 func GetRebootImage(log *base.LogObject) string {
 	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
-	image, _ := statAndRead(log, rebootFilename)
+	image, _, _ := fileutils.StatAndRead(log, rebootFilename, maxReadSize)
 	return image
-}
-
-const maxReadSize = 16384
-
-// Returns content and Modtime
-// We limit the size we read to 16k
-func statAndRead(log *base.LogObject, filename string) (string, time.Time) {
-	fi, err := os.Stat(filename)
-	if err != nil {
-		// File doesn't exist
-		return "", time.Time{}
-	}
-	f, err := os.Open(filename)
-	if err != nil {
-		if log != nil {
-			log.Errorf("statAndRead failed %s", err)
-		}
-		return "", fi.ModTime()
-	}
-	defer f.Close()
-	r := bufio.NewReader(f)
-	content := make([]byte, maxReadSize)
-	n, err := r.Read(content)
-	if err != nil {
-		if log != nil {
-			log.Errorf("statAndRead failed %s", err)
-		}
-		return "", fi.ModTime()
-	}
-	return string(content[0:n]), fi.ModTime()
 }
 
 // Append if file exists.

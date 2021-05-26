@@ -35,10 +35,41 @@ type DomainConfig struct {
 	IoAdapterList  []IoAdapter
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	CloudInitUserData *string // base64-encoded
+	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
+
+	// MetaDataType for select type of metadata service for app
+	MetaDataType MetaDataType
+}
+
+// MetaDataType of metadata service for app
+// must match the values in the proto definition
+type MetaDataType uint8
+
+// types of metadata service for app if CloudInitUserData provided
+const (
+	MetaDataDrive MetaDataType = iota + 0 // Default
+	MetaDataNone
+	MetaDataOpenStack
+	MetaDataDriveMultipart // Process multipart MIME for application
+)
+
+// String returns the string name
+func (metaDataType MetaDataType) String() string {
+	switch metaDataType {
+	case MetaDataDrive:
+		return "MetaDataDrive"
+	case MetaDataNone:
+		return "MetaDataNone"
+	case MetaDataOpenStack:
+		return "MetaDataOpenStack"
+	case MetaDataDriveMultipart:
+		return "MetaDataDriveMultipart"
+	default:
+		return fmt.Sprintf("Unknown MetaDataType %d", metaDataType)
+	}
 }
 
 // GetOCIConfigDir returns a location for OCI Config
@@ -283,7 +314,7 @@ func (status DomainStatus) LogModify(logBase *base.LogObject, old interface{}) {
 			AddField("activated", status.Activated).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("domain status modify")
+			Noticef("domain status modify")
 	}
 }
 
@@ -316,6 +347,7 @@ type VifInfo struct {
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
+	VolumeKey    string
 	FileLocation string // Location of the volume
 	ReadOnly     bool
 	Format       zconfig.Format
@@ -324,6 +356,7 @@ type DiskConfig struct {
 }
 
 type DiskStatus struct {
+	VolumeKey    string
 	ReadOnly     bool
 	FileLocation string // From DiskConfig
 	Format       zconfig.Format
@@ -435,4 +468,10 @@ func (hm HostMemory) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (hm HostMemory) LogKey() string {
 	return string(base.HostMemoryLogType) + "-" + hm.Key()
+}
+
+// Capabilities represents device information
+type Capabilities struct {
+	HWAssistedVirtualization bool // VMX/SVM for amd64 or Arm virtualization extensions for arm64
+	IOVirtualization         bool // I/O Virtualization support
 }

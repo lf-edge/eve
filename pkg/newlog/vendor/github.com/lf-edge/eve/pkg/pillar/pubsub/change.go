@@ -6,8 +6,8 @@ type Operation byte
 const (
 	// Restart operation is a restart
 	Restart Operation = iota
-	// Create operation is create a new key
-	Create
+	// Sync operation is a complete/sync of the initial content
+	Sync
 	// Delete operation is delete an existing key
 	Delete
 	// Modify operation is modify the value of an existing key

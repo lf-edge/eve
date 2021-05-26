@@ -22,7 +22,7 @@ import (
 // "request" from client after connect to sanity check subject.
 // Server sends the other messages; "update" for initial values.
 // "complete" once all initial keys/values in collection have been sent.
-// "restarted" if/when pub.km.restarted is set.
+// "restarted" if/when pub.km.restartCounter is set.
 // Ongoing we send "update" and "delete" messages.
 // They keys and values are base64-encoded since they might contain spaces.
 // We include typeName after command word for sanity checks.
@@ -32,7 +32,7 @@ import (
 //	"update" topic key json-val
 //	"delete" topic key
 //	"complete" topic (aka synchronized)
-//	"restarted" topic
+//	"restarted" topic count
 
 // We always publish to our collection.
 // We always write to a file in order to have a checkpoint on restart
@@ -158,6 +158,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 		logger:         s.Logger,
 		log:            s.Log,
 		doneChan:       doneChan,
+		rootDir:        s.RootDir,
 	}, nil
 }
 
@@ -215,6 +216,7 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 		logger:           s.Logger,
 		log:              s.Log,
 		doneChan:         doneChan,
+		rootDir:          s.RootDir,
 	}, nil
 }
 
