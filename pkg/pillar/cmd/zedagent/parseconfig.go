@@ -1546,19 +1546,6 @@ func parseUnderlayNetworkConfigEntry(
 	// XXX set ulCfg.IntfOrder from API once available
 	ulCfg.IntfOrder = intfOrder
 	ulCfg.AccessVlanID = intfEnt.AccessVlanId
-	/*
-		// Test code till the cloud starts sending vlans
-		if strings.Contains(cfgApp.Displayname, "test1") {
-			// XXXXX
-			ulCfg.AccessVlanID = 100
-		} else if strings.Contains(cfgApp.Displayname, "test2") {
-			// XXXXX
-			ulCfg.AccessVlanID = 200
-		} else if strings.Contains(cfgApp.Displayname, "vyos") {
-			// XXXXX
-			ulCfg.AccessVlanID = 0
-		}
-	*/
 	return ulCfg
 }
 
