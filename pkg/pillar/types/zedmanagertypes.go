@@ -55,7 +55,7 @@ type AppInstanceConfig struct {
 	Errors              []string
 	FixedResources      VmConfig // CPU etc
 	VolumeRefConfigList []VolumeRefConfig
-	Activate            bool
+	Activate            bool //EffectiveActivate in AppInstanceStatus must be used for the actual activation
 	UnderlayNetworkList []UnderlayNetworkConfig
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
@@ -70,6 +70,8 @@ type AppInstanceConfig struct {
 	CipherBlockStatus
 
 	MetaDataType MetaDataType
+
+	ProfileList []string
 }
 
 type AppInstanceOpsCmd struct {
@@ -159,6 +161,9 @@ type AppInstanceStatus struct {
 	State          SwState
 	MissingNetwork bool // If some Network UUID not found
 	MissingMemory  bool // Waiting for memory
+
+	EffectiveActivate bool //set here effective activate after profile check and apply
+
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource

@@ -495,6 +495,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
 
+	// Report if there is a local override of profile
+	if ctx.getconfigCtx.currentProfile != ctx.getconfigCtx.globalProfile {
+		ReportDeviceInfo.LocalProfile = ctx.getconfigCtx.currentProfile
+	}
+
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo

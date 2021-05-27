@@ -39,7 +39,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	dc := types.DomainConfig{
 		UUIDandVersion:    aiConfig.UUIDandVersion,
 		DisplayName:       aiConfig.DisplayName,
-		Activate:          aiConfig.Activate,
+		Activate:          aiStatus.EffectiveActivate,
 		AppNum:            AppNum,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
