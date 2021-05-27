@@ -19,6 +19,8 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	log.Functionf("MaybeAddAppNetworkConfig for %s displayName %s", key,
 		displayName)
 
+	effectiveActivate := effectiveActivateCurrentProfile(aiConfig, ctx.currentProfile)
+
 	changed := false
 	m := lookupAppNetworkConfig(ctx, key)
 	if m != nil {
@@ -28,9 +30,9 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 				aiConfig.UUIDandVersion)
 			return
 		}
-		if m.Activate != aiConfig.Activate {
+		if m.Activate != effectiveActivate {
 			log.Functionf("MaybeAddAppNetworkConfig Activate changed from %v to %v",
-				m.Activate, aiConfig.Activate)
+				m.Activate, effectiveActivate)
 			changed = true
 		}
 		if !m.GetStatsIPAddr.Equal(aiConfig.CollectStatsIPAddr) {
@@ -68,7 +70,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		nc := types.AppNetworkConfig{
 			UUIDandVersion:    aiConfig.UUIDandVersion,
 			DisplayName:       aiConfig.DisplayName,
-			Activate:          aiConfig.Activate,
+			Activate:          effectiveActivate,
 			GetStatsIPAddr:    aiConfig.CollectStatsIPAddr,
 			CloudInitUserData: aiConfig.CloudInitUserData,
 			CipherBlockStatus: aiConfig.CipherBlockStatus,

@@ -486,6 +486,7 @@ type ZedAgentStatus struct {
 	BootReason           BootReason // Current reason to reboot
 	MaintenanceMode      bool       // Don't run apps etc
 	ForceFallbackCounter int        // Try image fallback when counter changes
+	CurrentProfile       string     // Current profile
 }
 
 // Key :
