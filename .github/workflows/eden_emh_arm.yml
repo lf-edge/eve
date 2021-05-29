@@ -24,6 +24,8 @@ jobs:
           sudo apt install -y golang jq expect
       - name: Get eden
         uses: actions/checkout@v2
+        with:
+          repository: 'lf-edge/eden'
       - name: Create ubuntu server on packet hosting
         id: ubuntu
         run: |
