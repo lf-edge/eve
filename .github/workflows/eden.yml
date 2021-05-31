@@ -49,7 +49,12 @@ jobs:
           else
              make -C eve V=1 pkgs
              make -C eve V=1 ROOTFS_VERSION="$TAG" HV=kvm eve
-             docker rmi -f $(docker images --filter=reference="lfedge/eve-*" -q)||echo "skip conflicts"
+             IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
+             IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
+             IMAGES="$IMAGES $(docker images -f reference="golang" -q)"
+             IMAGES="$IMAGES $(docker images -f dangling=true -q)"
+             docker rmi -f $IMAGES||echo "skip conflicts"
+             rm -rf ~/.linuxkit
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
       - name: set debug log level
