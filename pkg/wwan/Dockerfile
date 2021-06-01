@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:6.2.0 as build
+FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS automake autoconf gettext gettext-dev git pkgconfig \
                libtool libc-dev linux-headers gcc make glib-dev \
                autoconf-archive patch cmake

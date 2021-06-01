@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:6.2.0 as build
+FROM lfedge/eve-alpine:6.7.0 as build
 # Building qemu in strip-down mirovm only mode: curl
 # qemu 5.1 dependencies: python3 glib-dev pixman-dev
 # qemu 5.2+ dependencies: py3-setuptools bash perl

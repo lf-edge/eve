@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:6.2.0 AS build
+FROM lfedge/eve-alpine:6.7.0 AS build
 
 ENV PKGS dosfstools libarchive-tools binutils mtools sfdisk sgdisk xfsprogs \
          e2fsprogs util-linux coreutils multipath-tools squashfs-tools
