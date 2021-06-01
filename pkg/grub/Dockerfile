@@ -1,4 +1,4 @@
-ARG EVE_BUILDER_IMAGE=linuxkit/alpine:8b53d842a47fce43464e15f65ee2f68b82542330
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 # hadolint ignore=DL3006
 FROM ${EVE_BUILDER_IMAGE} as grub-build
 
