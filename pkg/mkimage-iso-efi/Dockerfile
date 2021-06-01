@@ -1,4 +1,4 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 FROM ${EVE_BUILDER_IMAGE} AS build
 
 ENV PKGS dosfstools libarchive-tools binutils mtools xorriso

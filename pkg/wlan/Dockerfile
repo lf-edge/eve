@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:6.2.0 as build
+FROM lfedge/eve-alpine:6.7.0 as build
 ENV PKGS alpine-baselayout musl-utils wireless-tools wpa_supplicant
 RUN eve-alpine-deploy.sh
 

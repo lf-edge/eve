@@ -1,4 +1,4 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 FROM ${EVE_BUILDER_IMAGE} AS build
 
 ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev

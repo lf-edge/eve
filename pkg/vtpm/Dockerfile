@@ -6,7 +6,7 @@
 #    and the server
 
 #Build TPM2-TSS and TPM2-TOOLS
-FROM lfedge/eve-alpine:6.2.0 as build
+FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make \
                openssl-dev protobuf-dev gnupg curl-dev patch
 ENV PKGS alpine-baselayout musl-utils

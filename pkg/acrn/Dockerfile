@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:6.2.0 as kernel-build
+FROM lfedge/eve-alpine:6.7.0 as kernel-build
 
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev gettext iasl         \

@@ -3,7 +3,7 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.2.0
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 # hadolint ignore=DL3006
 FROM ${EVE_BUILDER_IMAGE} as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
