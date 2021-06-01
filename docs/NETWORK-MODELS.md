@@ -76,11 +76,30 @@ There is no connection directly to the off-device network; remote access is avai
 If an EVE device is instructed to connect ECOs via L3, it should do the following:
 
 1. Set up an L3 network on the device using a Linux bridge
+   * Checks if the existing Ethernet is not a bridge, If so rename it to **kethN** and create a bridge and name it **ethN** and move the MAC address. Reverse this actions if it's removed from DevicePortConfig(DPC)
+   * Bridges creating after DevicePortConfig changes and also after (re)boot when it receives initial config from the controller.
+   * At least one Ethernet port is assigned to EVE for management traffic
+
 1. Connect all ECOs which have this `Local` network enabled to the bridge
+
 1. If a port has been allocated to the network:
    * Set up NAT
    * Connect the designated port to the NAT
    * Connect the NAT to the bridge
+
+1. Networks can be assigned to applications using different methods
+   * app-direct which is PCI passthrough; application runs device driver
+   * a network instance is created on ethN, and the applications are given a virtual Ethernet adapter to that network instance
+   * In the latter case, EVE provides “default deny” basic firewall. Application flows (allowed and denied) are reported to controller
+
+Types of Usage - Indicates how each adaptor must be used by Eve:
+* `PhyIoUsageNone` - None
+* `PhyIoUsageMgmtAndApps` - Used by both management and apps.
+* `PhyIoUsageShared` - Shared by multiple apps
+* `PhyIoUsageDedicated` - Used by only one app
+* `PhyIoUsageDisabled` - Adapter Blocked. Do not use the Adapter.
+* `PhyIoUsageMgmtOnly` - Used for management traffic only. Cannot be used by Apps.
+
 
 ##### Cloud
 
