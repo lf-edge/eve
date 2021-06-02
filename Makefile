@@ -500,7 +500,7 @@ $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG)
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
+$(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
