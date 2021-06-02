@@ -139,9 +139,13 @@ do_efi() {
 
 do_installer() {
   mkefifs
+  # Copy bootloaders to usb root
+  cp -r "$BOOT_DIR"/* /efifs/ 2>/dev/null || :
+  # Copy bootloaders to boot folder for installer
+  mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
   cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$INSTALLER_IMG" /UsbInvocationScript.txt /efifs
-  mkdir /efifs/boot && touch /efifs/boot/.boot_repository
+  touch /efifs/boot/.boot_repository
   od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
   do_system_vfat_part "$1" "$INSTALLER_SYS_PART_SIZE"
 }
