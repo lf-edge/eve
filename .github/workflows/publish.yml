@@ -93,3 +93,19 @@ jobs:
         run: |
           rm -rf dist dist.xen
           make -e V=1 HV=mini LINUXKIT_PKG_TARGET=push eve
+
+  index:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    runs-on: ubuntu-20.04
+    needs: build
+    steps:
+      - name: Login to DockerHUB
+        run: |
+          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
+             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+      - name: multi-arch index for pkgs
+        run: |
+          make -e V=1 pkgmanifests
+      - name: multi-arch index for eve
+        run: |
+          make -e V=1 manifest-eve

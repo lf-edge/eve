@@ -13,6 +13,9 @@ GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
+# arches to attempt to build multi-arch manifest. WILL IGNORE MISSING. to attempt to build multi-arch manifest. WILL IGNORE MISSING.
+MANIFESTARCHES:=amd64 arm64 riscv64
+
 export CGO_ENABLED GOOS GOARCH PATH
 
 # A set of tweakable knobs for our build needs (tweak at your risk!)
@@ -259,11 +262,19 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
+
+# PKGSALL is all of our packages; we may filter based on a platform
+PKGSALL=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
+
+# platform-specific
+PKGS_$(ZARCH)=$(PKGSALL)
 PKGS_riscv64=pkg/alpine pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/grub pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init
 PKGS=$(PKGS_$(ZARCH))
+
+# just the names of the packages
+PKGNAMES=$(PKGSALL:pkg/%=%)
 
 # Top-level targets
 
@@ -527,6 +538,8 @@ pkgs: RESCAN_DEPS=
 pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
+pkgmanifests: $(addprefix manifest-,$(PKGNAMES))
+
 
 pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar
 	$(QUIET): $@: Succeeded
@@ -552,6 +565,16 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --disable-content-trust --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --release $(EVE_REL) $(FORCE_BUILD) $| ;\
 	fi
 	$(QUIET): $@: Succeeded
+
+manifest-%:
+	# make sure none exists
+	docker manifest rm $(shell $(LINUXKIT) pkg show-tag pkg/$*) || true
+	# we are willing to tolerate missing arches, sort of like manifest-tool's --ignore-missing
+	# the --amend will modify an existing one, if it exists
+	for arch in $(MANIFESTARCHES); do \
+		docker manifest create $(shell $(LINUXKIT) pkg show-tag pkg/$*) --amend $(shell $(LINUXKIT) pkg show-tag pkg/$*)-$${arch} || true;\
+	done
+	docker manifest push $(shell $(LINUXKIT) pkg show-tag pkg/$*)
 
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
