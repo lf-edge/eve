@@ -134,6 +134,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
+		case change := <-ctx.decryptCipherContext.SubEdgeNodeCert.MsgChan():
+			ctx.decryptCipherContext.SubEdgeNodeCert.ProcessChange(change)
+
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:

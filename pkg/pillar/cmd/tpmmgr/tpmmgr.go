@@ -1377,8 +1377,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		pubEdgeNodeCert, err := ps.NewPublication(
 			pubsub.PublicationOptions{
-				AgentName: agentName,
-				TopicType: types.EdgeNodeCert{},
+				AgentName:  agentName,
+				Persistent: true,
+				TopicType:  types.EdgeNodeCert{},
 			})
 		if err != nil {
 			log.Fatal(err)

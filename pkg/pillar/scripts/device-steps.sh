@@ -521,6 +521,11 @@ else
     fi
 fi
 
+echo "$(date -Ins -u) Starting tpmmgr as a service agent"
+$BINDIR/tpmmgr runAsService &
+wait_for_touch tpmmgr
+touch "$WATCHDOG_FILE/tpmmgr.touch"
+
 # XXX to handle a downgrade we need a /config/uuid file to boot old EVE
 if [ ! -f $CONFIGDIR/uuid ]; then
     echo "$(date -Ins -u) cp -p $PERSISTDIR/status/uuid $CONFIGDIR/uuid"
@@ -549,11 +554,6 @@ done
 $BINDIR/vaultmgr runAsService &
 wait_for_touch vaultmgr
 touch "$WATCHDOG_FILE/vaultmgr.touch"
-
-echo "$(date -Ins -u) Starting tpmmgr as a service agent"
-$BINDIR/tpmmgr runAsService &
-wait_for_touch tpmmgr
-touch "$WATCHDOG_FILE/tpmmgr.touch"
 
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do
