@@ -51,6 +51,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
+		Persistent:  true,
 		Ctx:         ctx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,

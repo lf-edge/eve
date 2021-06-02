@@ -361,6 +361,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeCert{},
 		Activate:    false,
+		Persistent:  true,
 		Ctx:         &zedrouterCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
