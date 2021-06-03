@@ -105,6 +105,18 @@ echo "Run acpid daemon"
 acpid -l /proc/self/fd/1
 
 cmd=`cat /mnt/cmdline`
+
+if [ -f /mnt/cmdline_with_user ];
+then
+  if [ -f /mnt/rootfs/usr/bin/sudo ];
+  then
+    cmd=$(cat /mnt/cmdline_with_user)
+    echo "Rootfs has '/usr/bin/sudo'. Using '$cmd' as exec command"
+  else
+    echo "Rootfs does not have '/usr/bin/sudo'. Using '$cmd' as exec command"
+  fi
+fi
+
 echo "Executing $cmd"
 #shellcheck disable=SC2086
 eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $cmd <> /dev/console 2>&1

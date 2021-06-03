@@ -170,7 +170,12 @@ func (s *ociSpec) AddLoader(volume string) error {
 			if s.Process.User.GID != 0 {
 				groupInsert = fmt.Sprintf("-g '#%d'", s.Process.User.GID)
 			}
-			execpath = fmt.Sprintf("/usr/bin/sudo -u '#%d' %s %s %s", s.Process.User.UID, groupInsert, envInsert, execpath)
+			execpathWithUser := fmt.Sprintf("/usr/bin/sudo -u '#%d' %s %s %s", s.Process.User.UID, groupInsert,
+				envInsert, execpath)
+			if err := ioutil.WriteFile(filepath.Join(volumeRoot, "cmdline_with_user"),
+				[]byte(execpathWithUser), 0644); err != nil {
+				return err
+			}
 		}
 		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "cmdline"),
 			[]byte(execpath), 0644); err != nil {
