@@ -28,7 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -705,6 +705,14 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
 			utils.UpdateLedManagerConfig(log, 4)
+		}
+		// If successfully connected to the controller, log the peer certificates,
+		// can be used to detect if it's a MiTM proxy
+		if resp != nil && resp.TLS != nil {
+			for i, cert := range resp.TLS.PeerCertificates {
+				log.Noticef("Peer certificate:(%d) Issuer: %s, Subject: %s, NotAfter: %v",
+					i, cert.Issuer, cert.Subject, cert.NotAfter)
+			}
 		}
 		return true, devUUID, hardwaremodel
 	}
