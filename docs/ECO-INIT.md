@@ -9,7 +9,7 @@ This includes:
 * network creation and initialization
 * ECO launch
 
-For a deeper understanding off ECOs, please read [ECOs.md](./ECOs.md).
+For a deeper understanding off ECOs, please read [ECOS.md](./ECOS.md).
 
 ## Process
 
