@@ -88,10 +88,6 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 		contentType string
 	)
 
-	// send out the maximum size as we understand it
-	stats.Size = maxsize
-	sendStats(prgchan, stats)
-
 	opts := options(username, apiKey, client)
 
 	// The OCI distribution spec only uses /blobs/ endpoint for layers or config, not index or manifest.
@@ -128,7 +124,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 
 	logrus.Infof("PullBlob(%s): trying to fetch manifest", image)
 	// check if we have a manifest
-	r, contentType, err = ociGetManifest(ref, opts)
+	r, contentType, size, err = ociGetManifest(ref, opts)
 	if err != nil {
 		logrus.Infof("PullBlob(%s): unable to fetch manifest (%s), trying blob", image, err.Error())
 		// if we have a hash try to get the actual layer
@@ -149,7 +145,21 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 			defer lr.Close()
 			r = lr
 		}
+		size, err = layer.Size()
+		if err != nil {
+			return 0, "", fmt.Errorf("could not get layer size %s: %v", ref.String(), err)
+		}
 	}
+
+	// check size in case of provided maxsize
+	if maxsize != 0 && size > maxsize {
+		return 0, "", fmt.Errorf("actual size of blob (%s, %s, %s) %d is more than provided %d",
+			registry, repo, hash, size, maxsize)
+	}
+
+	// send out the size
+	stats.Size = size
+	sendStats(prgchan, stats)
 
 	if localFile != "" {
 		f, err := os.Create(localFile)
@@ -171,7 +181,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 	pw := &ProgressWriter{
 		w:       w,
 		updates: c,
-		size:    maxsize,
+		size:    size,
 	}
 
 	go func() {
@@ -213,12 +223,12 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 }
 
 // ociGetManifest get an OCI manifest
-func ociGetManifest(ref name.Reference, opts []remote.Option) (io.Reader, string, error) {
+func ociGetManifest(ref name.Reference, opts []remote.Option) (io.Reader, string, int64, error) {
 	desc, err := remote.Get(ref, opts...)
 	if err != nil {
-		return nil, "", fmt.Errorf("error getting manifest: %v", err)
+		return nil, "", 0, fmt.Errorf("error getting manifest: %v", err)
 	}
-	return bytes.NewReader(desc.Manifest), string(desc.MediaType), nil
+	return bytes.NewReader(desc.Manifest), string(desc.MediaType), desc.Size, nil
 }
 
 // Pull downloads an entire image from a registry and saves it as a tar file at the provided location.
