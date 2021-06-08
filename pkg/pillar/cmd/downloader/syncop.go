@@ -5,9 +5,11 @@ package downloader
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -29,6 +31,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		auth                                                   *zedUpload.AuthInput
 		cancelled                                              bool
 		contentType                                            string
+		addrCount                                              int
 	)
 
 	// the target filename, where to place the download, is provided in config.
@@ -74,17 +77,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	downloadMaxPortCost := ctx.downloadMaxPortCost
 	log.Functionf("Downloading <%s> to <%s> using %d downloadMaxPortCost",
 		config.Name, locFilename, downloadMaxPortCost)
-
-	addrCount := types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-		downloadMaxPortCost)
-	if addrCount == 0 {
-		err := fmt.Errorf("No IP management port addresses with cost <= %d",
-			downloadMaxPortCost)
-		log.Error(err.Error())
-		handleSyncOpResponse(ctx, config, status, locFilename,
-			key, err.Error(), cancelled)
-		return
-	}
 
 	switch dsCtx.TransportMethod {
 	case zconfig.DsType_DsContainerRegistry.String():
@@ -165,18 +157,44 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		return
 	}
 
+	// if the server URL ends with '.local', it is considered to be local data store
+	dsLocal := strings.HasSuffix(serverURL, ".local") || strings.HasSuffix(serverURL, ".local.")
+	if dsLocal {
+		addrCount = 1
+	} else {
+		addrCount = types.CountLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+			downloadMaxPortCost)
+		if addrCount == 0 {
+			err := fmt.Errorf("No IP management port addresses with cost <= %d",
+				downloadMaxPortCost)
+			log.Error(err.Error())
+			handleSyncOpResponse(ctx, config, status, locFilename,
+				key, err.Error(), cancelled)
+			return
+		}
+	}
+
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
-		ipSrc, err := types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
-			addrIndex, "", downloadMaxPortCost)
-		if err != nil {
-			log.Errorf("GetLocalAddr failed: %s", err)
-			errStr = errStr + "\n" + err.Error()
-			continue
+		var ifname string
+		var ipSrc net.IP
+		if !dsLocal {
+			ipSrc, err = types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
+				addrIndex, "", downloadMaxPortCost)
+			if err != nil {
+				log.Errorf("GetLocalAddr failed: %s", err)
+				errStr = errStr + "\n" + err.Error()
+				continue
+			}
+			ifname = types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
+		} else {
+			serverURL, ifname, ipSrc, err = findDSmDNS(ctx, serverURL)
+			if err != nil {
+				break
+			}
 		}
-		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
-		log.Functionf("Using IP source %v if %s transport %v",
-			ipSrc, ifname, dsCtx.TransportMethod)
+		log.Functionf("Using server URL %s IP source %v if %s transport %v",
+			serverURL, ipSrc, ifname, dsCtx.TransportMethod)
 
 		// do the download
 		st := &PublishStatus{

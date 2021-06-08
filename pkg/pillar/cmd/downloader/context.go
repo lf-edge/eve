@@ -11,19 +11,20 @@ import (
 )
 
 type downloaderContext struct {
-	decryptCipherContext   cipher.DecryptCipherContext
-	dCtx                   *zedUpload.DronaCtx
-	subDeviceNetworkStatus pubsub.Subscription
-	subDownloaderConfig    pubsub.Subscription
-	pubDownloaderStatus    pubsub.Publication
-	subResolveConfig       pubsub.Subscription
-	pubResolveStatus       pubsub.Publication
-	pubCipherBlockStatus   pubsub.Publication
-	subDatastoreConfig     pubsub.Subscription
-	deviceNetworkStatus    types.DeviceNetworkStatus
-	subGlobalConfig        pubsub.Subscription
-	GCInitialized          bool
-	downloadMaxPortCost    uint8
+	decryptCipherContext     cipher.DecryptCipherContext
+	dCtx                     *zedUpload.DronaCtx
+	subDeviceNetworkStatus   pubsub.Subscription
+	subDownloaderConfig      pubsub.Subscription
+	pubDownloaderStatus      pubsub.Publication
+	subResolveConfig         pubsub.Subscription
+	pubResolveStatus         pubsub.Publication
+	pubCipherBlockStatus     pubsub.Publication
+	subDatastoreConfig       pubsub.Subscription
+	subNetworkInstanceStatus pubsub.Subscription
+	deviceNetworkStatus      types.DeviceNetworkStatus
+	subGlobalConfig          pubsub.Subscription
+	GCInitialized            bool
+	downloadMaxPortCost      uint8
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
@@ -114,6 +115,19 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	}
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Subscribe to NetworkInstanceStatus from zedagent
+	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.NetworkInstanceStatus{},
+		Activate:    false,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subNetworkInstanceStatus = subNetworkInstanceStatus
+	subNetworkInstanceStatus.Activate()
 
 	// Look for DatastoreConfig. We should process this
 	// before any download config. Without DataStore Config,

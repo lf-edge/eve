@@ -36,6 +36,7 @@ require (
 	github.com/gorilla/handlers v1.5.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.4.2
+	github.com/grandcat/zeroconf v1.0.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20210225073503-d06523e83fb9

@@ -165,6 +165,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
+		case change := <-ctx.subNetworkInstanceStatus.MsgChan():
+			ctx.subNetworkInstanceStatus.ProcessChange(change)
+
 		case change := <-ctx.subDownloaderConfig.MsgChan():
 			ctx.subDownloaderConfig.ProcessChange(change)
 
