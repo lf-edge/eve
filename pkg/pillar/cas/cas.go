@@ -105,6 +105,9 @@ type CAS interface {
 	// The rootPath is expected to end in a basename that becomes the snapshotID
 	PrepareContainerRootDir(rootPath, reference, rootBlobSha string) error
 
+	// UnmountContainerRootDir unmounts container's rootPath.
+	UnmountContainerRootDir(rootPath string) error
+
 	// RemoveContainerRootDir removes contents of a container's rootPath, existing snapshot and reference.
 	RemoveContainerRootDir(rootPath string) error
 
