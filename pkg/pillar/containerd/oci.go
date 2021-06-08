@@ -113,16 +113,11 @@ func (s *ociSpec) AddLoader(volume string) error {
 	// massages .Mounts
 	if s.Root.Path != "/" { // FIXME-TASKS: it should be enough to give original OCI spec to a loader
 		volumeRoot := path.Join(s.Root.Path, "..")
-		// create full copy of our runtime spec
-		f, err := os.Create(filepath.Join(volumeRoot, ociRuntimeSpecFilename))
-		if err != nil {
-			return err
-		} else {
-			defer f.Close()
-		}
-		if err = s.Save(f); err != nil {
-			return err
-		}
+
+		// TODO: work with saving of spec
+		// In case of saving spec here we mistakenly preserve old mounts on purge and restart of app
+		// due to re-loading of saved mounts (appended in UpdateMounts for the first boot of app)
+		// inside UpdateFromVolume for the next boot on restart of app
 
 		// create mountpoints manifest
 		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "mountPoints"),
