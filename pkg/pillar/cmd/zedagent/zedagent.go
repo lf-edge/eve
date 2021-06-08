@@ -701,6 +701,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeNodeCert{},
 		Activate:      false,
+		Persistent:    true,
 		Ctx:           &zedagentCtx,
 		CreateHandler: handleEdgeNodeCertCreate,
 		ModifyHandler: handleEdgeNodeCertModify,
