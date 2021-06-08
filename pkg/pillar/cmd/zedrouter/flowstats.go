@@ -110,7 +110,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	var instData networkAttrs
 	var timeOutTuples []flowStats
 	var totalFlow int
-	var dnsPacked bool
 
 	instData.ipaclattr = make(map[int]map[int]aclAttr) // App-ID/ACL-Num/aclAttr table
 	instData.appIPinfo = make(map[int][]appInfo)
@@ -138,7 +137,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 		log.Tracef("***FlowStats(%d): device=%v, size of the flows %d\n", proto, devUUID, len(connT))
 
 		for _, entry := range connT { // loop through and process current timedout flow collection
-
 			flowTuple := flowMergeProcess(entry, instData)
 			// flowTuple := FlowMergeTuple(entry, instData, ipToName)
 			if flowTuple.IsTimeOut == false || flowTuple.foundApp == false {
@@ -155,8 +153,18 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 
 	// per app/bridge packing flow stats to be uploaded
 	for bnx := range instData.bnNet {
-		for appIdx := range instData.appNet {
+		// obtain DNS entries recorded since the last flow collection
+		bnNum, err := bridgeStrToNum(ctx, bnx)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		dnssys[bnNum].Lock()
+		dnsEntries := dnssys[bnNum].Snoop
+		dnssys[bnNum].Snoop = nil
+		dnssys[bnNum].Unlock()
 
+		for appIdx := range instData.appNet {
 			var sequence, flowIdx int
 
 			// fill in the partial scope information, later the aclNum and aclAttr will decide
@@ -175,7 +183,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			// temp print out the flow "tuple" and stats per app/bridge
 			for i, tuple := range timeOutTuples { // search for flowstats by bridge
 				var aclattr aclAttr
-				var bridgeName string
 				var aclNum int
 				var aclaction types.ACLActionType
 
@@ -205,9 +212,8 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 						continue
 					}
 
-					bridgeName = aclattr.bridge
-					if strings.Compare(bnx, bridgeName) != 0 {
-						log.Tracef("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
+					if aclattr.bridge != bnx {
+						log.Tracef("FlowStats: == bridge name not match %s, %s\n", bnx, aclattr.bridge)
 						continue
 					}
 					scope.Intf = aclattr.intfname // App side DomU internal interface name
@@ -220,16 +226,10 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 						continue
 					}
 					scope.Intf = appinfo.intf
-					bridgeName = appinfo.localintf
 					aclaction = types.ACLActionDrop
 					aclNum = 0
 				}
 
-				bnNum, err := bridgeStrToNum(ctx, bridgeName)
-				if err != nil {
-					log.Error(err)
-					continue
-				}
 				// temp print out log for the flow
 				log.Tracef("FlowStats [%d]: on bn%d %s\n", i, bnNum, tuple.String()) // just print for now
 
@@ -260,22 +260,15 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				}
 			}
 
-			if len(flowdata.Flows) == 0 { // this app/brigde does not match any timedout flow
-				continue
-			}
-
 			var dnsrec [2]map[string]dnsEntry
 			dnsrec[0] = make(map[string]dnsEntry) // store IPv4 addresses from dns
 			dnsrec[1] = make(map[string]dnsEntry) // store IPv6 addresses from dns
-			bnNum, err := bridgeStrToNum(ctx, bnx)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
 
-			// get the bringe-X dns request/replies
-			dnssys[bnNum].Lock()
-			for _, dnsdata := range dnssys[bnNum].Snoop {
+			// select dns request/replies corresponding to this app
+			for _, dnsdata := range dnsEntries {
+				if !checkAppIPAddr(instData.appIPinfo[appIdx], dnsdata.AppIP) {
+					continue
+				}
 				// unique by domain name, latest reply overwrite previous ones
 				if dnsdata.isIPv4 {
 					dnsrec[0][dnsdata.DomainName] = dnsdata
@@ -283,9 +276,11 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					dnsrec[1][dnsdata.DomainName] = dnsdata
 				}
 			}
+
+			// append dns records into the flow data
 			for idx := range dnsrec {
 				for _, dnsRec := range dnsrec[idx] {
-					// temp print out all unique dns replies for the bridge
+					// temp print out all unique dns replies for the bridge/app
 					log.Tracef("!!FlowStats: DNS time %v, domain %s, appIP %v, count %d, Answers %v",
 						dnsRec.TimeStamp, dnsRec.DomainName, dnsRec.AppIP, dnsRec.ANCount, dnsRec.Answers)
 
@@ -294,7 +289,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 						Addrs:       dnsRec.Answers,
 						RequestTime: dnsRec.TimeStamp.UnixNano(),
 					}
-					dnsPacked = true
 					flowdata.DNSReqs = append(flowdata.DNSReqs, dnsrec)
 					flowIdx++
 					if flowIdx > maxFlowPack {
@@ -302,27 +296,12 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					}
 				}
 			}
-			dnssys[bnNum].Unlock()
 
 			// flow record done for the bridge/app
 			// publish the flow data (per app/bridge) and sequence (for size limit) to zedagent now
 			flowPublish(ctx, &flowdata, &sequence, &flowIdx)
 		}
 	}
-
-	// remove the dns data already uploaded
-	if dnsPacked {
-		for bnx := range instData.bnNet {
-			bnNum, err := bridgeStrToNum(ctx, bnx)
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			dnssys[bnNum].Snoop = nil
-			log.Tracef("!!FlowStats: clear dns record for bn%d", bnNum)
-		}
-	}
-
 	// check and remove stale flowlog publications
 	checkFlowUnpublish(ctx)
 }
