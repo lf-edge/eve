@@ -50,7 +50,8 @@ stdout '100% packet loss'
 
 message 'Switching to 2st network'
 eden pod modify pong --networks n2
-test eden.app.test -test.v -timewait 20m RUNNING pong
+test eden.app.test -test.v -timewait 5m PURGING pong
+test eden.app.test -test.v -timewait 10m RUNNING pong
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh
@@ -65,7 +66,8 @@ stdout '0% packet loss'
 
 message 'Switching back to 1st network'
 eden pod modify pong --networks n1
-test eden.app.test -test.v -timewait 20m RUNNING pong
+test eden.app.test -test.v -timewait 5m PURGING pong
+test eden.app.test -test.v -timewait 10m RUNNING pong
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh
