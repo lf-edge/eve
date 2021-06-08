@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -626,10 +626,21 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	return nil
 }
 
+// UnmountContainerRootDir unmounts container's rootPath
+func (c *containerdCAS) UnmountContainerRootDir(rootPath string) error {
+	if err := mount.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
+		err = fmt.Errorf("UnmountContainerRootDir: exception while unmounting: %v/%v. %v",
+			rootPath, containerRootfsPath, err)
+		logrus.Error(err.Error())
+		return err
+	}
+	return nil
+}
+
 // RemoveContainerRootDir removes contents of a container's rootPath and snapshot.
 func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 	//Step 1: Un-mount container's rootfs
-	if err := syscall.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
+	if err := c.UnmountContainerRootDir(rootPath); err != nil {
 		err = fmt.Errorf("RemoveContainerRootDir: exception while unmounting: %v/%v. %v",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())

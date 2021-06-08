@@ -1475,6 +1475,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		status.Activated = false
 		status.State = types.HALTED
 	}
+	unmountContainers(ctx, status.DiskStatusList)
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
@@ -1482,6 +1483,18 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Functionf("doInactivate(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
+}
+
+//unmountContainers process provided diskStatusList and unmount all disks with Format_CONTAINER
+func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus) {
+	for _, ds := range diskStatusList {
+		switch ds.Format {
+		case zconfig.Format_CONTAINER:
+			if err := ctx.casClient.UnmountContainerRootDir(ds.FileLocation); err != nil {
+				log.Errorf("unmountContainers: %s", err)
+			}
+		}
+	}
 }
 
 // releaseAdapters is called when the domain is done with the device and we
