@@ -90,8 +90,25 @@ jobs:
         run: |
           ./eden log --format json > trace.log || echo "no log"
           ./eden info > info.log || echo "no info"
+          ./eden metric > metric.log || echo "no metric"
+          ./eden netstat > netstat.log || echo "no netstat"
           docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
           ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" > console.log || echo "no device log"
+      - name: Log counting
+        if: ${{ always() }}
+        run: |
+          echo "::group::Total errors"
+          echo "$(jq '.severity' trace.log|grep err|wc -l)"
+          echo "::endgroup::"
+          echo "::group::Errors by source"
+          echo "errors by source: $(jq -s 'map(select(.severity|contains("err")))|group_by(.source)|map({"source": .[0].source, "total":length})|sort_by(.total)|reverse[]' trace.log)"
+          echo "::endgroup::"
+          echo "::group::Error log content duplicates"
+          echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.content)|map(select(length>1))' trace.log)"
+          echo "::endgroup::"
+          echo "::group::Error log function filename duplicates"
+          echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.filename)|map(select(length>10))|map({"source": .[0].source, "filename": .[0].filename, "function": .[0].function, "content": [.[].content], "total":length})|sort_by(.total)| reverse[]' trace.log)"
+          echo "::endgroup::"
       - name: Clean
         if: ${{ always() }}
         run: |
@@ -108,4 +125,6 @@ jobs:
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log
             ${{ github.workspace }}/adam.log
+            ${{ github.workspace }}/netstat.log
+            ${{ github.workspace }}/metric.log
             ${{ github.workspace }}/console.log

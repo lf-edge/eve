@@ -2,6 +2,14 @@
 
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
 
+# source for very long domains: https://longest.domains/
+{{$long_domain := "theofficialabsolutelongestdomainnameregisteredontheworldwideweb.international"}}
+
+# non-existent domain statically assigned to an (existing public) IP address through a host file
+{{$fake_domain := "this-fake-domain-is-associated-with-zededa.com"}}
+
+{{$network_name := "n1"}}
+
 [!exec:bash] stop
 [!exec:sleep] stop
 [!exec:ssh] stop
@@ -12,26 +20,68 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with a 1 reboot limit
 ! test eden.reboot.test -test.v -timewait 40m -reboot=0 -count=1 &
 
-# Define access only to github.com
-eden pod deploy -n curl-acl --memory=512MB docker://itmoeve/eclient:0.4 -p 2223:22 --acl=github.com
+message 'Resetting of EVE'
+eden eve reset
+exec sleep 20
 
-test eden.app.test -test.v -timewait 10m RUNNING curl-acl
+# use zededa.com IP address as a target for $fake_domain
+exec -t 10m bash dns_lookup.sh zededa.com
+# read the result of dns lookup (host_ip variable)
+source .env
+
+# Create network for which ACLs will be defined.
+eden network create 10.11.12.0/24 -n {{$network_name}} -s {{$fake_domain}}:$host_ip
+test eden.network.test -test.v -timewait 10m ACTIVATED {{$network_name}}
+
+# First app is only allowed to access github.com and $long_domain.
+eden pod deploy -n curl-acl1 --memory=512MB docker://itmoeve/eclient:0.4 -p 2223:22 --networks={{$network_name}} --acl={{$network_name}}:github.com --acl={{$network_name}}:{{$long_domain}}
+# Second app is only allowed to access $long_domain and $fake_domain.
+eden pod deploy -n curl-acl2 --memory=512MB docker://itmoeve/eclient:0.4 -p 2224:22 --networks={{$network_name}} --acl={{$network_name}}:{{$long_domain}} --acl={{$network_name}}:{{$fake_domain}}
+
+test eden.app.test -test.v -timewait 10m RUNNING curl-acl1 curl-acl2
 
 exec -t 10m bash wait_ssh.sh 2223
+exec -t 10m bash wait_ssh.sh 2224
 
 exec sleep 10
 
-# Try to curl host we defined
+# Try to curl hosts allowed by ACLs
 exec -t 1m bash curl.sh 2223 github.com
 stderr 'Connected to github.com'
-
-# Try to curl another host
+exec -t 1m bash curl.sh 2223 {{$long_domain}}
+stderr 'Connected to {{$long_domain}}'
+! exec -t 1m bash curl.sh 2223 {{$fake_domain}}
+! stderr 'Connected'
 ! exec -t 1m bash curl.sh 2223 google.com
 ! stderr 'Connected'
 
-eden pod delete curl-acl
+exec -t 1m bash curl.sh 2224 {{$long_domain}}
+stderr 'Connected to {{$long_domain}}'
+# TODO: ACLs + static DNS entries do not work together
+#exec -t 1m bash curl.sh 2224 {{$fake_domain}}
+#stderr 'Connected to {{$fake_domain}}'
+! exec -t 1m bash curl.sh 2224 github.com
+! stderr 'Connected'
+! exec -t 1m bash curl.sh 2224 google.com
+! stderr 'Connected'
 
-test eden.app.test -test.v -timewait 10m - curl-acl
+# Wait for network packets information
+exec -t 20m bash wait_netstat.sh {{$network_name}} google.com github.com {{$long_domain}} {{$fake_domain}}
+stdout 'google.com'
+stdout 'github.com'
+stdout '{{$long_domain}}'
+stdout '{{$fake_domain}}'
+
+# Cleanup - undeploy applications
+eden pod delete curl-acl1
+eden pod delete curl-acl2
+test eden.app.test -test.v -timewait 10m - curl-acl1 curl-acl2
+
+# Cleanup - remove network
+eden network delete {{$network_name}}
+test eden.network.test -test.v -timewait 10m - {{$network_name}}
+eden network ls
+! stdout '^{{$network_name}}\s'
 
 -- wait_ssh.sh --
 
@@ -48,6 +98,15 @@ do
   done
 done
 
+-- dns_lookup.sh --
+
+# Performs DNS lookup for a given hostname and adds host_ip=<ip> into the .env file
+# The script uses 'getent' command to avoid dependencies on tools like 'host', 'dig', etc.
+# Usage: dns_lookup.sh <hostname>
+
+IP=$(getent hosts $1 | head -n 1 | cut -d ' ' -f 1)
+echo host_ip=$IP>>.env
+
 -- curl.sh --
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
@@ -55,6 +114,17 @@ HOST=$($EDEN eve ip)
 
 echo {{template "ssh"}}$HOST -p $1 curl -v --max-time 30 "$2"
 {{template "ssh"}}$HOST -p $1 curl -v --max-time 30 "$2"
+
+-- wait_netstat.sh --
+#!/bin/sh
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+
+echo "Waiting for netstat results"
+for p in ${@: 2}
+do
+  until "$EDEN" network netstat $1 | grep $p; do sleep 30; done
+done
+"$EDEN" network netstat $1
 
 -- eden-config.yml --
 {{/* Test's config file */}}
