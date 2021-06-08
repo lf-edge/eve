@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	filters "github.com/lf-edge/eve/pkg/pillar/conntrack"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -22,7 +23,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	logger = loggerArg
 	log = logArg
 	delFlow := flag.Bool("D", false, "Delete flow")
-	delSrcIP := flag.String("s", "", "Delete flow with Srouce IP")
+	delSrcIP := flag.String("s", "", "Delete flow with source IP")
 	delProto := flag.Int("p", 0, "Delete flow with protocol ID")
 	delFamily := flag.String("f", "", "Delete flow with ipv6")
 	delPort := flag.Int("P", 0, "Delete flow with port number")
@@ -58,11 +59,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				mask = uint32(*markMask)
 			}
 
-			number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family, src, proto, port, mark, mask, true)
+			number, err := netlink.ConntrackDeleteFilter(netlink.ConntrackTable, family,
+				filters.SrcIPFilter{
+					Log:       log,
+					SrcIP:     src,
+					Proto:     proto,
+					SrcPort:   port,
+					Mark:      mark,
+					MarkMask:  mask,
+					DebugShow: true})
 			if err != nil {
-				logger.Println("ConntrackDeleteIPSrc error:", err)
+				logger.Println("ConntrackDeleteFilter error:", err)
 			} else {
-				fmt.Printf("ConntrackDeleteIPSrc: deleted %d flow\n", number)
+				fmt.Printf("ConntrackDeleteFilter: deleted %d flow\n", number)
 			}
 			return 0
 		}
