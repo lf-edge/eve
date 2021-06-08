@@ -8,12 +8,16 @@
 
 # EDEN_TEST_USB_PT -- "y" enables USB Passthrough test (disabled by default).
 
+# EDEN_TEST_AUDIO_PT -- "y" enables Audio Passthrough test (disabled by default).
+
+# EDEN_TEST_REGISTRY env. var. -- "y"(default) performs the local EDEN registry test
+
 
 
 
 
 #./eden config add default
-/bin/echo Eden setup (01/35)
+/bin/echo Eden setup (01/37)
 eden.escript.test -test.run TestEdenScripts/eden_setup
 #source ~/.eden/activate.sh
 
@@ -21,13 +25,14 @@ eden.escript.test -test.run TestEdenScripts/eden_setup
 # Making some settings for test configuration if we work with QEMU
 
 
+
 eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 8027:8027
 
 
 
-/bin/echo Eden start (02/35)
+/bin/echo Eden start (02/37)
 eden.escript.test -test.run TestEdenScripts/eden_start
-/bin/echo Eden onboard (03/35)
+/bin/echo Eden onboard (03/37)
 eden.escript.test -test.run TestEdenScripts/eden_onboard
 
 
@@ -35,52 +40,58 @@ eden.escript.test -test.run TestEdenScripts/eden_onboard
 # Just restart EVE if not using the SETUP steps
 # Is it QEMU?
 
-/bin/echo EVE restart (04/35)
+/bin/echo EVE restart (04/37)
 eden.escript.test -test.run TestEdenScripts/eve_restart
 
 
 
-/bin/echo Eden Log test (05/35)
+/bin/echo Eden Log test (05/37)
 eden.escript.test -testdata ../lim/testdata/ -test.run TestEdenScripts/log_test
-/bin/echo Eden SSH test (06/35)
+/bin/echo Eden SSH test (06/37)
 eden.escript.test -test.run TestEdenScripts/ssh
 
-/bin/echo Eden Metric test (08/35)
+/bin/echo Eden Metric test (08/37)
 eden.escript.test -testdata ../lim/testdata/ -test.run TestEdenScripts/metric_test
 
-/bin/echo Escript args test (09/35)
+/bin/echo Escript args test (09/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/arg -args=test1=123,test2=456
-/bin/echo Escript template test (10/35)
+/bin/echo Escript template test (10/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/template
-/bin/echo Escript message test (11/35)
+/bin/echo Escript message test (11/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/message
-/bin/echo Escript nested scripts test (12/35)
+/bin/echo Escript nested scripts test (12/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/nested_scripts
-/bin/echo Escript time test (13/35)
+/bin/echo Escript time test (13/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/time
-/bin/echo Escript source test (14/35)
+/bin/echo Escript source test (14/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/source
-/bin/echo Escript fail scenario test (15/35)
+/bin/echo Escript fail scenario test (15/37)
 eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/fail_scenario
 
-/bin/echo Eden basic network test (16/35)
+/bin/echo Eden basic network test (16/37)
 eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/network_test
-/bin/echo Eden basic volumes test (17.1/35)
+/bin/echo Eden basic volumes test (17.1/37)
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volumes_test
-/bin/echo Eden sftp volumes test (17.2/35)
+/bin/echo Eden sftp volumes test (17.2/37)
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volume_sftp
 
-/bin/echo Eden Host only ACL (18.1/35)
+/bin/echo Eden eclient with mounted volume (17.3/37)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/mount
+
+
+/bin/echo Eden Host only ACL (18.1/37)
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/host-only
-/bin/echo Eden ACL to particular host (18.2/35)
+/bin/echo Eden ACL to particular host (18.2/37)
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/acl
-/bin/echo Eden Network light (19/35)
+/bin/echo Eden profile test (18.3/37)
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/profile
+/bin/echo Eden Network light (19/37)
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/networking_light
-/bin/echo Eden Networks switch (20/35)
+/bin/echo Eden Networks switch (20/37)
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/nw_switch
-/bin/echo Eden Network Ports switch (21/35)
+/bin/echo Eden Network Ports switch (21/37)
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_switch
-/bin/echo Eden Network portmap test (21.1/35)
+/bin/echo Eden Network portmap test (21.1/37)
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_forward
 
 
@@ -88,12 +99,13 @@ eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_
 
 
 
-/bin/echo Eden Reboot test (33/35)
+
+/bin/echo Eden Reboot test (34/37)
 eden.escript.test -test.run TestEdenScripts/reboot_test
 
-/bin/echo Eden base OS update http (34/35)
+/bin/echo Eden base OS update http (35/37)
 eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_http
-/bin/echo Eden base OS update oci (35/35)
+/bin/echo Eden base OS update oci (36/37)
 eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_oci
 
 
