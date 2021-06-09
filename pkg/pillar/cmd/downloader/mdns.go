@@ -28,9 +28,9 @@ func findDSmDNS(dctx *downloaderContext, serverURL string) (string, string, net.
 	var newURL string
 	var foundIP []net.IP
 
-	urls := strings.Split(serverURL, hostname)
-	if len(urls) != 2 {
-		return "", "", nil, fmt.Errorf("findDSmDNS: urls format error %v", urls)
+	urlParts := strings.SplitN(serverURL, hostname, 2)
+	if len(urlParts) != 2 {
+		return "", "", nil, fmt.Errorf("findDSmDNS: urls format error %v", urlParts)
 	}
 
 	// try to loop through the well-known services, workstation, http and https
@@ -57,7 +57,7 @@ func findDSmDNS(dctx *downloaderContext, serverURL string) (string, string, net.
 	}
 
 	if len(foundIP) == 0 {
-		return "", "", nil, fmt.Errorf("findDSmDNS: mDNS host not found")
+		return "", "", nil, fmt.Errorf("findDSmDNS: mDNS host not found for %s", hostname)
 	}
 
 	// find the first src/dst pair we can use for local DS downloading
@@ -65,7 +65,7 @@ func findDSmDNS(dctx *downloaderContext, serverURL string) (string, string, net.
 		ipStr := dsIP.String()
 		ifname, ipSrc := findLocalDsSrc(niItems, net.ParseIP(ipStr))
 		if ipSrc != nil {
-			newURL = urls[0] + ipStr + urls[1]
+			newURL = urlParts[0] + ipStr + urlParts[1]
 			return newURL, ifname, ipSrc, nil
 		}
 	}
@@ -112,6 +112,10 @@ func queryService(ifs []net.Interface, hostname, service string) ([]net.IP, erro
 }
 
 func findLocalDsSrc(niItems map[string]interface{}, hostip net.IP) (ifname string, ipSrc net.IP) {
+	if hostip == nil {
+		log.Errorf("findLocalDsSrc: host ip nil passed in")
+		return "", nil
+	}
 	for _, item := range niItems {
 		status := item.(types.NetworkInstanceStatus)
 		if status.IsIpAssigned(hostip) {
