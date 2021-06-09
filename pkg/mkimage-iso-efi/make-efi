@@ -27,7 +27,7 @@ fi
 
 # for installer we need to add a uuid and override grub.cfg
 if [ "$1" = installer ]; then
-   mkdir boot && touch boot/.boot_repository
+   mkdir -p boot && touch boot/.boot_repository
    od -An -x -N 16 /dev/random | tr -d ' ' > boot/.uuid
    cp grub.cfg EFI/BOOT/
 fi
