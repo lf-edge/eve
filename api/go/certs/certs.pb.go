@@ -292,7 +292,7 @@ func (x *ZCert) GetHashAlgo() evecommon.HashAlgorithm {
 	if x != nil {
 		return x.HashAlgo
 	}
-	return evecommon.HashAlgorithm_HASH_ALGORITHM_INVALID
+	return evecommon.HashAlgorithm(0)
 }
 
 func (x *ZCert) GetCertHash() []byte {

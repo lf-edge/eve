@@ -51,6 +51,9 @@ message DatastoreConfig {
 
   // contains the encrypted credentials
   CipherBlock cipherData = 7;
+
+  // Uploaded datastore certificate or certificate chain
+  repeated bytes dsCertPEM = 8;
 }
 
 

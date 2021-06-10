@@ -257,7 +257,7 @@ func (x *Adapter) GetType() evecommon.PhyIoType {
 	if x != nil {
 		return x.Type
 	}
-	return evecommon.PhyIoType_PhyIoNoop
+	return evecommon.PhyIoType(0)
 }
 
 func (x *Adapter) GetName() string {
