@@ -129,7 +129,7 @@ func (x *AuthContainer) GetAlgo() evecommon.HashAlgorithm {
 	if x != nil {
 		return x.Algo
 	}
-	return evecommon.HashAlgorithm_HASH_ALGORITHM_INVALID
+	return evecommon.HashAlgorithm(0)
 }
 
 func (x *AuthContainer) GetSenderCertHash() []byte {

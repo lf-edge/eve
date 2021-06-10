@@ -181,7 +181,7 @@ func (x *CipherContext) GetHashScheme() evecommon.HashAlgorithm {
 	if x != nil {
 		return x.HashScheme
 	}
-	return evecommon.HashAlgorithm_HASH_ALGORITHM_INVALID
+	return evecommon.HashAlgorithm(0)
 }
 
 func (x *CipherContext) GetKeyExchangeScheme() KeyExchangeScheme {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // This is what we assume will come from the ZedControl for base OS.
@@ -189,13 +189,14 @@ const (
 )
 
 type DatastoreConfig struct {
-	UUID     uuid.UUID
-	DsType   string
-	Fqdn     string
-	ApiKey   string // XXX: to be deprecated, use CipherBlockStatus instead
-	Password string // XXX: to be deprecated, use CipherBlockStatus instead
-	Dpath    string // depending on DsType, it could be bucket or path
-	Region   string
+	UUID      uuid.UUID
+	DsType    string
+	Fqdn      string
+	ApiKey    string // XXX: to be deprecated, use CipherBlockStatus instead
+	Password  string // XXX: to be deprecated, use CipherBlockStatus instead
+	Dpath     string // depending on DsType, it could be bucket or path
+	Region    string
+	DsCertPEM [][]byte // cert chain used for the datastore
 
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus
