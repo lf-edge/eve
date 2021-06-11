@@ -10,6 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
 func handleVolumeCreate(ctxArg interface{}, key string,
@@ -115,11 +116,39 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 	}
 	updateVolumeStatusRefCount(ctx, status)
 	status.ContentFormat = volumeFormat[status.Key()]
-	if _, err := os.Stat(status.PathName()); err == nil {
+
+	created := false
+
+	persistFsType := ctx.persistType
+
+	if persistFsType == types.PersistZFS {
+		zvolName := status.ZVolName(types.VolumeZFSPool)
+		if _, err := zfs.GetDatasetOptions(log, zvolName); err == nil {
+			zVolDevice := zfs.GetZVolDeviceByDataset(zvolName)
+			if zVolDevice == "" {
+				errStr := fmt.Sprintf("cannot find device for zvol %s of %s", zvolName, status.Key())
+				status.SetError(errStr, time.Now())
+				publishVolumeStatus(ctx, status)
+				updateVolumeRefStatus(ctx, status)
+				if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+					log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+				}
+				return
+			}
+			created = true
+			status.FileLocation = zVolDevice
+		}
+	} else {
+		if _, err := os.Stat(status.PathName()); err == nil {
+			created = true
+			status.FileLocation = status.PathName()
+		}
+	}
+
+	if created {
 		status.State = types.CREATED_VOLUME
 		status.Progress = 100
-		status.FileLocation = status.PathName()
-		status.VolumeCreated = true
+		status.SubState = types.VolumeSubStateCreated
 		status.CreateTime = time.Now()
 		actualSize, maxSize, _, _, err := utils.GetVolumeSize(log, status.FileLocation)
 		if err != nil {
@@ -133,6 +162,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			status.TotalSize = int64(actualSize)
 			status.CurrentSize = int64(actualSize)
 		}
+		updateStatusByPersistType(status, persistFsType)
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
@@ -264,16 +294,18 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 		log.Functionf("maybeDeleteVolume for %v Done", status.Key())
 		return
 	}
-	if status.VolumeCreated {
+	if status.SubState == types.VolumeSubStateCreated {
 		// Asynch destruction; make sure we have a request for the work
 		AddWorkDestroy(ctx, status)
 		vr := popVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
 			log.Functionf("VolumeWorkResult(%s) location %s, created %t",
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
-			status.VolumeCreated = vr.VolumeCreated
 			if vr.VolumeCreated {
+				status.SubState = types.VolumeSubStateCreated
 				status.CreateTime = vr.CreateTime
+			} else {
+				status.SubState = types.VolumeSubStateInitial
 			}
 			status.FileLocation = vr.FileLocation
 			if vr.Error != nil {
@@ -284,7 +316,7 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 					status.Error)
 				status.ClearErrorWithSource()
 			}
-			if !status.VolumeCreated {
+			if status.SubState != types.VolumeSubStateCreated {
 				DeleteWorkDestroy(ctx, status)
 			}
 		} else {
@@ -368,4 +400,29 @@ func quantifyChanges(config types.VolumeConfig,
 	log.Functionf("quantifyChanges for %s %s returns %v, %s",
 		config.Key(), config.DisplayName, needRegeneration, regenerationReason)
 	return needRegeneration, regenerationReason
+}
+
+func handleZVolStatusCreate(ctxArg interface{}, key string, configArg interface{}) {
+	log.Functionf("handleZVolStatusCreate for %s", key)
+	ctx := ctxArg.(*volumemgrContext)
+	status := configArg.(types.ZVolStatus)
+	for _, s := range ctx.pubVolumeStatus.GetAll() {
+		volumeStatus := s.(types.VolumeStatus)
+		if volumeStatus.ZVolName(types.VolumeZFSPool) == status.Dataset {
+			updateVolumeStatus(ctx, volumeStatus.VolumeID)
+			break
+		}
+	}
+	log.Functionf("handleZVolStatusCreate for %s, done", key)
+}
+
+func lookupZVolStatusByDataset(ctxPtr *volumemgrContext, dataset string) *types.ZVolStatus {
+	for _, s := range ctxPtr.subZVolStatus.GetAll() {
+		zVolStatus := s.(types.ZVolStatus)
+		if zVolStatus.Dataset == dataset {
+			return &zVolStatus
+		}
+	}
+	log.Functionf("lookupZVolStatusByDataset: not found for dataset %s", dataset)
+	return nil
 }

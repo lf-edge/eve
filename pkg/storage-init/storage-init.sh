@@ -25,7 +25,7 @@ fi
 
 INIT_FS=0
 P3_FS_TYPE_DEFAULT=ext4
-if grep zfs /hostfs/etc/eve-release; then
+if grep -E 'zfs-(kvm|xen|acrn)' /hostfs/etc/eve-release; then
    P3_FS_TYPE_DEFAULT=zfs
 fi
 
@@ -108,14 +108,25 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
        P3_FS_TYPE=zfs
     fi
 
-    #For systems with ext3 filesystem, try not to change to ext4, since it will brick
-    #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
-    #when we do usb install, this way the transition is more controlled.
-    #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
-    if { [ "$P3_FS_TYPE" != ext3 ] && [ "$P3_FS_TYPE" != ext4 ]; } || ! "fsck.$P3_FS_TYPE" -y "$P3" ; then
-       echo "P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
-       INIT_FS=1
-       P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+    if [ "$P3_FS_TYPE" = zfs_member ]; then
+        if ! chroot /hostfs zpool import -d "$P3" persist; then
+            echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
+            INIT_FS=1
+            P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+        else
+            # set from zfs_member to zfs
+            P3_FS_TYPE="zfs"
+        fi
+    else
+        #For systems with ext3 filesystem, try not to change to ext4, since it will brick
+        #the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
+        #when we do usb install, this way the transition is more controlled.
+        #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
+        if { [ "$P3_FS_TYPE" != ext3 ] && [ "$P3_FS_TYPE" != ext4 ]; } || ! "fsck.$P3_FS_TYPE" -y "$P3" ; then
+           echo "$(date -Ins -u) P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
+           INIT_FS=1
+           P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+        fi
     fi
 
     case "$P3_FS_TYPE" in
@@ -128,7 +139,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                    tune2fs -O encrypt "$P3" && \
                    mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR
                    ;;
-             zfs*) if [ "$INIT_FS" = 1 ]; then
+             zfs) if [ "$INIT_FS" = 1 ]; then
                       # note that we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
                       #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
                       chroot /hostfs zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist "$P3" && \

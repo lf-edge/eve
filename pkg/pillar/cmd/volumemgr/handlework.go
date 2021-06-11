@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	workCreate = "create"
-	workIngest = "ingest"
+	workCreate  = "create"
+	workIngest  = "ingest"
+	workPrepare = "prepare"
 )
 
 // volumeWorkDescription volume creation/deletion work we feed into the worker go routine.
@@ -22,6 +23,7 @@ const (
 type volumeWorkDescription struct {
 	create  bool
 	destroy bool
+	prepare bool
 	status  types.VolumeStatus
 	// Used for results
 	FileLocation  string
@@ -43,6 +45,11 @@ type volumeWorkResult struct {
 	FileLocation  string
 	VolumeCreated bool
 	CreateTime    time.Time
+}
+
+// What we track for the result
+type volumePrepareResult struct {
+	worker.WorkResult // Error etc
 }
 
 // casIngestWorkResult result of ingesting
@@ -75,6 +82,24 @@ func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 		status: *status,
 	}
 	w := worker.Work{Kind: workIngest, Key: status.Key(), Description: d}
+	// Don't fail on errors to make idempotent (Submit returns an error if
+	// the work was already submitted)
+	done, err := ctx.worker.TrySubmit(w)
+	if err != nil {
+		log.Errorf("TrySubmit %s failed: %s", status.Key(), err)
+	} else if !done {
+		log.Fatalf("Failed to submit work due to queue length for %s",
+			status.Key())
+	}
+}
+
+// AddWorkPrepare adds a Work job to create a volume
+func AddWorkPrepare(ctx *volumemgrContext, status *types.VolumeStatus) {
+	d := volumeWorkDescription{
+		prepare: true,
+		status:  *status,
+	}
+	w := worker.Work{Kind: workPrepare, Key: status.Key(), Description: d}
 	// Don't fail on errors to make idempotent (Submit returns an error if
 	// the work was already submitted)
 	done, err := ctx.worker.TrySubmit(w)
@@ -198,8 +223,32 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	return result
 }
 
+// volumePrepareWorker implementation of work.WorkFunction that prepares volume creation
+func volumePrepareWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
+	ctx := ctxPtr.(*volumemgrContext)
+	d := w.Description.(volumeWorkDescription)
+	err := prepareVolume(ctx, d.status)
+	result := worker.WorkResult{
+		Key:         w.Key,
+		Description: d,
+	}
+	if err != nil {
+		result.Error = err
+		result.ErrorTime = time.Now()
+	}
+	return result
+}
+
 // processVolumeWorkResult handle the work result that was a volume action
 func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
+	ctx := ctxPtr.(*volumemgrContext)
+	d := res.Description.(volumeWorkDescription)
+	updateVolumeStatus(ctx, d.status.VolumeID)
+	return nil
+}
+
+// processVolumePrepareResult handle the work result that was a volume prepare action
+func processVolumePrepareResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(volumeWorkDescription)
 	updateVolumeStatus(ctx, d.status.VolumeID)
@@ -245,5 +294,16 @@ func popVolumeWorkResult(ctx *volumemgrContext, key string) *volumeWorkResult {
 		FileLocation:  d.FileLocation,
 		VolumeCreated: d.VolumeCreated,
 		CreateTime:    d.CreateTime,
+	}
+}
+
+// popVolumeWorkResult get the result exactly once
+func popVolumePrepareResult(ctx *volumemgrContext, key string) *volumePrepareResult {
+	res := ctx.worker.Pop(key)
+	if res == nil {
+		return nil
+	}
+	return &volumePrepareResult{
+		WorkResult: *res,
 	}
 }

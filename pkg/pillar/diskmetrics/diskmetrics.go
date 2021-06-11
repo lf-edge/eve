@@ -10,20 +10,11 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// Matches the json output of qemu-img info
-type ImgInfo struct {
-	VirtualSize uint64 `json:"virtual-size"`
-	Filename    string `json:"filename"`
-	ClusterSize uint64 `json:"cluster-size"`
-	Format      string `json:"format"`
-	ActualSize  uint64 `json:"actual-size"`
-	DirtyFlag   bool   `json:"dirty-flag"`
-}
-
-func GetImgInfo(log *base.LogObject, diskfile string) (*ImgInfo, error) {
-	var imgInfo ImgInfo
+func GetImgInfo(log *base.LogObject, diskfile string) (*types.ImgInfo, error) {
+	var imgInfo types.ImgInfo
 
 	if _, err := os.Stat(diskfile); err != nil {
 		return nil, err
@@ -57,6 +48,21 @@ func ResizeImg(log *base.LogObject, diskfile string, newsize uint64) error {
 	}
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "resize", diskfile,
 		fmt.Sprintf("%d", newsize)).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
+			err, output)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+//ConvertImg do conversion of diskfile to outputFile with defined format
+func ConvertImg(log *base.LogObject, diskfile, outputFile, outputFormat string) error {
+	if _, err := os.Stat(diskfile); err != nil {
+		return err
+	}
+	args := []string{"convert", "-O", outputFormat, diskfile, outputFile}
+	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)

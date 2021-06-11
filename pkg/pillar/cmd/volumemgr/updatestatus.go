@@ -11,6 +11,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -465,7 +466,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 		if ctStatus.State == types.LOADED &&
 			status.State != types.CREATING_VOLUME &&
-			!status.VolumeCreated {
+			status.SubState == types.VolumeSubStateInitial {
 
 			_, err := ctx.casClient.GetImageHash(ctStatus.ReferenceID())
 			if err != nil {
@@ -483,26 +484,62 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.ReferenceName = ctStatus.ReferenceID()
 			status.ContentFormat = ctStatus.Format
 			changed = true
-			// Asynch creation; ensure we have requested it
-			AddWorkCreate(ctx, status)
+			// Asynch preparation; ensure we have requested it
+			AddWorkPrepare(ctx, status)
 		}
 		if status.IsErrorSource(types.ContentTreeStatus{}) {
 			log.Functionf("doUpdate: Clearing volume error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
-		if status.State == types.CREATING_VOLUME && !status.VolumeCreated {
+		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateInitial {
+			vr := popVolumePrepareResult(ctx, status.Key())
+			if vr != nil {
+				log.Functionf("doUpdateVol: VolumePrepareResult(%s)", status.Key())
+				if vr.Error != nil {
+					log.Errorf("doUpdateVol: Error received from the volume prepare worker %v",
+						vr.Error)
+					status.SetErrorWithSource(vr.Error.Error(),
+						types.VolumeStatus{}, vr.ErrorTime)
+					changed = true
+					return changed, false
+				} else if status.IsErrorSource(types.VolumeStatus{}) {
+					log.Functionf("doUpdateVol: Clearing volume error %s", status.Error)
+					status.ClearErrorWithSource()
+					changed = true
+				}
+				status.SubState = types.VolumeSubStatePreparing
+				changed = true
+			} else {
+				log.Functionf("doUpdateVol: VolumePrepareResult(%s) not found", status.Key())
+			}
+		}
+		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
+			if ctx.persistType == types.PersistZFS && !status.IsContainer() {
+				zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName(types.VolumeZFSPool))
+				if zVolStatus != nil {
+					status.SubState = types.VolumeSubStatePrepareDone
+					changed = true
+				}
+			} else {
+				status.SubState = types.VolumeSubStatePrepareDone
+				changed = true
+			}
+			if status.SubState == types.VolumeSubStatePrepareDone {
+				// Asynch creation; ensure we have requested it
+				AddWorkCreate(ctx, status)
+			}
+		}
+		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePrepareDone {
 			vr := popVolumeWorkResult(ctx, status.Key())
 			if vr != nil {
 				log.Functionf("doUpdateVol: VolumeWorkResult(%s) location %s, created %t",
 					status.Key(), vr.FileLocation, vr.VolumeCreated)
-				if status.VolumeCreated != vr.VolumeCreated {
+				if vr.VolumeCreated && status.SubState == types.VolumeSubStatePrepareDone {
 					log.Functionf("From vr set VolumeCreated to %s for %s",
 						vr.FileLocation, status.VolumeID)
-					status.VolumeCreated = vr.VolumeCreated
-					if status.VolumeCreated {
-						status.CreateTime = vr.CreateTime
-					}
+					status.SubState = types.VolumeSubStateCreated
+					status.CreateTime = vr.CreateTime
 					changed = true
 				}
 				if status.FileLocation != vr.FileLocation && vr.Error == nil {
@@ -527,7 +564,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				log.Functionf("doUpdateVol: VolumeWorkResult(%s) not found", status.Key())
 			}
 		}
-		if status.State == types.CREATING_VOLUME && status.VolumeCreated {
+		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateCreated {
 			if !status.HasError() {
 				status.State = types.CREATED_VOLUME
 				status.CreateTime = time.Now()
@@ -548,6 +585,8 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					changed = true
 				}
 			}
+			persistFsType := vault.ReadPersistType()
+			updateStatusByPersistType(status, persistFsType)
 			return changed, true
 		}
 	default:
@@ -715,5 +754,17 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	}
 	if !found {
 		log.Warnf("XXX updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
+	}
+}
+
+//updateStatusByPersistType set parameters of VolumeStatus according to provided PersistType
+func updateStatusByPersistType(status *types.VolumeStatus, fsType types.PersistType) {
+	if status.ContentFormat == zconfig.Format_CONTAINER {
+		//we do not want to modify containers for now
+		return
+	}
+	switch fsType {
+	case types.PersistZFS:
+		status.ContentFormat = zconfig.Format_RAW
 	}
 }
