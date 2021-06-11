@@ -25,6 +25,8 @@ const (
 	VolumeClearDirName = ClearDirName + "/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
+	//VolumeZFSPool - pool for create volumes
+	VolumeZFSPool = "persist" + "/volumes"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -77,4 +79,7 @@ const (
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
 	// EveMemoryLimitFile - stores memory reserved for eve
 	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
+
+	// ContainerdContentDir - path to containerd`s content store
+	ContainerdContentDir = PersistDir + "/containerd/io.containerd.content.v1.content"
 )

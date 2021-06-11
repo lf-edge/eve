@@ -86,9 +86,9 @@ func GetOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	}
 	persistFsType := ReadPersistType()
 	switch persistFsType {
-	case "ext4":
+	case types.PersistExt4:
 		return getFscryptOperInfo(log)
-	case "zfs":
+	case types.PersistZFS:
 		return getZfsOperInfo(log)
 	default:
 		log.Tracef("Unsupported filesystem (%s), setting status to disabled",
@@ -110,14 +110,12 @@ func execCmd(command string, args ...string) (string, string, error) {
 	return stdoutStr, stderrStr, err
 }
 
-//ReadPersistType returns the persist filesystem type
-//e.g ext4, zfs, ext3 etc.
-//returns "" in case of read error
-func ReadPersistType() string {
+//ReadPersistType returns the persist filesystem
+func ReadPersistType() types.PersistType {
 	persistFsType := ""
 	pBytes, err := ioutil.ReadFile(evePersistTypeFile)
 	if err == nil {
 		persistFsType = strings.TrimSpace(string(pBytes))
 	}
-	return persistFsType
+	return types.ParsePersistType(persistFsType)
 }
