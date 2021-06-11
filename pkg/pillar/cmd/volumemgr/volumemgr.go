@@ -21,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/sirupsen/logrus"
 )
@@ -66,6 +67,7 @@ type volumemgrContext struct {
 	pubDiskMetric           pubsub.Publication
 	pubAppDiskMetric        pubsub.Publication
 	subDatastoreConfig      pubsub.Subscription
+	subZVolStatus           pubsub.Subscription
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
 	deferDelete             *time.Ticker
@@ -87,6 +89,8 @@ type volumemgrContext struct {
 	casClient cas.CAS
 
 	volumeConfigCreateDeferredMap map[string]*types.VolumeConfig
+
+	persistType types.PersistType
 }
 
 var debug = false
@@ -121,6 +125,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		vdiskGCTime:        3600,
 		deferContentDelete: 0,
 		globalConfig:       types.DefaultConfigItemValueMap(),
+		persistType:        vault.ReadPersistType(),
 	}
 
 	log.Functionf("Starting %s", agentName)
@@ -151,8 +156,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Create the background worker
 	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
-		workCreate: {Request: volumeWorker, Response: processVolumeWorkResult},
-		workIngest: {Request: casIngestWorker, Response: processCasIngestWorkResult},
+		workCreate:  {Request: volumeWorker, Response: processVolumeWorkResult},
+		workIngest:  {Request: casIngestWorker, Response: processCasIngestWorkResult},
+		workPrepare: {Request: volumePrepareWorker, Response: processVolumePrepareResult},
 	})
 
 	// Set up our publications before the subscriptions so ctx is set
@@ -418,6 +424,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
 
+	subZVolStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleZVolStatusCreate,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zfsmanager",
+		TopicImpl:     types.ZVolStatus{},
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subZVolStatus = subZVolStatus
+	subZVolStatus.Activate()
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -534,10 +554,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)
 
+		case change := <-ctx.subZVolStatus.MsgChan():
+			ctx.subZVolStatus.ProcessChange(change)
+
 		case <-ctx.gc.C:
 			start := time.Now()
 			gcObjects(&ctx, volumeEncryptedDirName)
 			gcObjects(&ctx, volumeClearDirName)
+			gcDatasets(&ctx, types.VolumeZFSPool)
 			if !ctx.initGced {
 				gcUnusedInitObjects(&ctx)
 				ctx.initGced = true

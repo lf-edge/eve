@@ -28,7 +28,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -1208,11 +1207,11 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			}
 		default:
 			// assume everything else to be disk formats
-			imgInfo, err := diskmetrics.GetImgInfo(log, ds.FileLocation)
-			if err == nil && imgInfo.Format != strings.ToLower(ds.Format.String()) {
-				err = fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img %v\n"+
+			_, _, format, _, err := utils.GetVolumeSize(log, ds.FileLocation)
+			if err == nil && format != strings.ToLower(ds.Format.String()) {
+				err = fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img/zfs get %v\n"+
 					"Note: Format mismatch may be because of disk corruption also.",
-					ds.Format, imgInfo.Format)
+					ds.Format, format)
 			}
 			if err != nil {
 				log.Errorf("Failed to check disk format: %v", err.Error())
