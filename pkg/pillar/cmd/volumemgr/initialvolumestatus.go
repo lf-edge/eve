@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
 // populateExistingVolumesFormat iterates over the directory and takes format
@@ -70,6 +72,34 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 		}
 	}
 	log.Tracef("gcObjects(%s) Done", dirName)
+}
+
+// Periodic garbage collection of children datasets in provided zfs dataset
+func gcDatasets(ctx *volumemgrContext, dataset string) {
+	if ctx.persistType != types.PersistZFS {
+		return
+	}
+	log.Tracef("gcDatasets(%s)", dataset)
+	locations, err := zfs.GetVolumesInDataset(log, dataset)
+	if err != nil {
+		log.Errorf("gcDatasets: GetVolumesInDataset '%s' failed: %v",
+			dataset, err)
+		return
+	}
+	for _, location := range locations {
+		key := types.ZVolNameToKey(location)
+		vs := lookupVolumeStatus(ctx, key)
+		if vs == nil {
+			log.Functionf("gcDatasets: Found unused volume %s. Deleting it.",
+				location)
+			output, err := zfs.DestroyDataset(log, location)
+			if err != nil {
+				log.Errorf("gcDatasets: DestroyDataset '%s' failed: %v output:%s",
+					location, err, output)
+			}
+		}
+	}
+	log.Tracef("gcDatasets(%s) Done", dataset)
 }
 
 func getVolumeKeyAndFormat(dirName, name string) (key string, format string, tmp bool, err error) {

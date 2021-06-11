@@ -646,14 +646,14 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 	}
 	persistFsType := vault.ReadPersistType()
 	switch persistFsType {
-	case "ext4":
+	case types.PersistExt4:
 		if err := setupDefaultVaultOnExt4(); err != nil {
 			return err
 		}
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
 			etpm.CompareLegacyandSealedKey().String())
-	case "zfs":
+	case types.PersistZFS:
 		if err := setupDefaultVaultOnZfs(); err != nil {
 			return err
 		}
@@ -724,9 +724,9 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 func publishVaultStatus(ctx *vaultMgrContext) {
 	persistFsType := vault.ReadPersistType()
 	switch persistFsType {
-	case "ext4":
+	case types.PersistExt4:
 		publishAllFscryptVaultStatus(ctx)
-	case "zfs":
+	case types.PersistZFS:
 		publishAllZfsVaultStatus(ctx)
 	default:
 		log.Warnf("Ignoring unknown filesystem type %s", persistFsType)
@@ -757,7 +757,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	case "setupDeprecatedVaults":
 		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
-		case "ext4":
+		case types.PersistExt4:
 			if err := setupDeprecatedVaultsOnExt4(true); err != nil {
 				log.Error(err)
 				return 1

@@ -181,3 +181,13 @@ func PathToKey(path string) string {
 	key := strings.ReplaceAll(path, "/", "-")
 	return key
 }
+
+// ImgInfo matches the json output of qemu-img info
+type ImgInfo struct {
+	VirtualSize uint64 `json:"virtual-size"`
+	Filename    string `json:"filename"`
+	ClusterSize uint64 `json:"cluster-size"`
+	Format      string `json:"format"`
+	ActualSize  uint64 `json:"actual-size"`
+	DirtyFlag   bool   `json:"dirty-flag"`
+}

@@ -42,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/zfsmanager"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/reverse"
@@ -98,6 +99,7 @@ var (
 		"vaultmgr":         {f: vaultmgr.Run, inline: inlineUnlessService},
 		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
 		"watcher":          {f: watcher.Run},
+		"zfsmanager":       {f: zfsmanager.Run},
 	}
 	logger *logrus.Logger
 	log    *base.LogObject
