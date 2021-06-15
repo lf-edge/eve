@@ -37,7 +37,7 @@ jobs:
           ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
           echo "ARCH=$ARCH" >> "$GITHUB_ENV"
           for i in xen kvm; do
-             docker tag "lfedge/eve:$VERSION-$i" "$TAG-$i-$ARCH"
+             docker tag "lfedge/eve:$VERSION-$i-$ARCH" "$TAG-$i-$ARCH"
              IMGS="$IMGS $TAG-$i-$ARCH"
           done
           docker save $IMGS > eve.tar
