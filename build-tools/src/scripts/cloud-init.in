@@ -3,8 +3,11 @@ packages:
   - jq
   - qemu-utils
   - make
-  - docker.io
   - git
+  - apt-transport-https
+  - curl
+  - ca-certificates
+  - gnupg
 
 groups:
   - docker
@@ -27,7 +30,11 @@ write_files:
     owner: root:root
 
 runcmd:
-  - curl -L https://github.com/actions/runner/releases/download/v2.273.6/actions-runner-linux-@ZARCH@-2.273.6.tar.gz | sudo -u eve -i tar xzf -
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+  - add-apt-repository "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  - apt-get install -y docker-ce docker-ce-cli containerd.io
+  - systemctl enable --now docker
+  - curl -L https://github.com/actions/runner/releases/download/v2.278.0/actions-runner-linux-@ZARCH@-2.278.0.tar.gz | sudo -u eve -i tar xzf -
   - sudo -u eve -i ./config.sh --name @ZARCH@ --replace --unattended --url https://github.com/lf-edge/eve --token @GH_TOKEN@
 
 power_state:
