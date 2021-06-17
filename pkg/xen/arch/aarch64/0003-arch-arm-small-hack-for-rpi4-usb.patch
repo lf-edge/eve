@@ -1,0 +1,32 @@
+From fafd866db71dc014a06ae180ff44946a002762cd Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Thu, 17 Jun 2021 05:40:22 +0300
+Subject: [PATCH] arch: arm: small hack for rpi4 usb
+ device tree node generation.
+
+Fix device tree generation failed.
+
+(XEN) Unable to retrieve address 0 for /scb/pcie@7d500000/pci@1,0/usb@1,0
+(XEN) Device tree generation failed (-22).
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ arch/arm/domain_build.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/domain_build.c b/arch/arm/domain_build.c
+index 282416e..daa37d7 100644
+--- a/arch/arm/domain_build.c
++++ b/arch/arm/domain_build.c
+@@ -1410,7 +1410,7 @@ static int __init handle_device(struct domain *d, struct dt_device_node *dev,
+         {
+             printk(XENLOG_ERR "Unable to retrieve address %u for %s\n",
+                    i, dt_node_full_name(dev));
+-            return res;
++            continue;
+         }
+ 
+         res = map_range_to_domain(dev, addr, size, &mr_data);
+-- 
+2.25.1
+
