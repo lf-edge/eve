@@ -1,0 +1,40 @@
+From f6f09a685a96dca81d19c7f1dd09255ee37d484c Mon Sep 17 00:00:00 2001
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Thu, 17 Jun 2021 03:36:51 +0300
+Subject: [PATCH] PCI: brcmstb: Restore initial fundamental reset
+
+[1] replaced a single reset function with a pointer to one of two
+implementations, but also removed the call asserting the reset
+at the start of brcm_pcie_setup. Doing so breaks Raspberry Pis with
+VL805 XHCI controllers lacking dedicated SPI EEPROMs, which have been
+used for USB booting but then need to be reset so that the kernel
+can reconfigure them. The lack of a reset causes the firmware's loading
+of the EEPROM image to RAM to fail, breaking USB for the kernel.
+
+See: https://www.raspberrypi.org/forums/viewtopic.php?p=1758157#p1758157
+
+Fixes: 04356ac ("PCI: brcmstb: Add bcm7278 PERST# support")
+
+[1] 04356ac ("PCI: brcmstb: Add bcm7278 PERST# support")
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.com>
+---
+ drivers/pci/controller/pcie-brcmstb.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/pci/controller/pcie-brcmstb.c b/drivers/pci/controller/pcie-brcmstb.c
+index 9c3d29822..771dcc9e2 100644
+--- a/drivers/pci/controller/pcie-brcmstb.c
++++ b/drivers/pci/controller/pcie-brcmstb.c
+@@ -869,6 +869,8 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
+ 
+ 	/* Reset the bridge */
+ 	pcie->bridge_sw_init_set(pcie, 1);
++	pcie->perst_set(pcie, 1);
++
+ 	usleep_range(100, 200);
+ 
+ 	/* Take the bridge out of reset */
+-- 
+2.25.1
+
