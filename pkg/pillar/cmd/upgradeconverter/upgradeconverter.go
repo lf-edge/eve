@@ -35,6 +35,10 @@ var preVaultconversionHandlers = []ConversionHandler{
 		handlerFunc: moveConfigItemValueMap,
 	},
 	{
+		description: "Move any configuration files from /config/GlobalConfig to /persist/status",
+		handlerFunc: importFromConfigPartition,
+	},
+	{
 		description: "Apply defaults for new items in ConfigItemValueMap",
 		handlerFunc: applyDefaultConfigItem,
 	},

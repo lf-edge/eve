@@ -11,19 +11,14 @@
 package ssh
 
 import (
-	"bufio"
-	"io"
 	"io/ioutil"
 	"os"
-	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 const (
 	runDir                   = "/run"
-	baseAuthorizedKeysFile   = types.IdentityDirname + "/authorized_keys"
 	targetAuthorizedKeysFile = runDir + "/authorized_keys"
 )
 
@@ -39,34 +34,6 @@ func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Chmod(0600)
 
-	fileDesc, err := os.Open(baseAuthorizedKeysFile)
-	if err != nil {
-		log.Warnln("Open ", err)
-	} else {
-		reader := bufio.NewReader(fileDesc)
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				log.Traceln(err)
-				if err != io.EOF {
-					log.Errorln("ReadString ", err)
-					return
-				}
-				break
-			}
-			// remove trailing "/n" from line
-			line = line[0 : len(line)-1]
-
-			// Is it a comment or a key?
-			if strings.HasPrefix(line, "#") {
-				continue
-			}
-			if _, err = tmpfile.WriteString(line); err != nil {
-				log.Error(err)
-				return
-			}
-		}
-	}
 	if authorizedKeys != "" {
 		if _, err := tmpfile.WriteString(authorizedKeys); err != nil {
 			log.Error(err)

@@ -14,7 +14,6 @@ TMPDIR=/persist/tmp
 ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
-GCDIR=$PERSISTDIR/config/ConfigItemValueMap
 AGENTS0="zedagent ledmanager nim nodeagent domainmgr loguploader"
 AGENTS1="zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher"
 AGENTS="$AGENTS0 $AGENTS1"
@@ -166,19 +165,6 @@ elif [ -f $FIRSTBOOTFILE ]; then
 else
     echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" > /dev/console
 fi
-
-# Copy any GlobalConfig from /config
-dir=$CONFIGDIR/GlobalConfig
-for f in "$dir"/*.json; do
-    if [ "$f" = "$dir/*.json" ]; then
-        break
-    fi
-    if [ ! -d $GCDIR ]; then
-        mkdir -p $GCDIR
-    fi
-    echo "$(date -Ins -u) Copying from $f to $GCDIR"
-    cp -p "$f" $GCDIR
-done
 
 if [ ! -d $PERSISTDIR/log ]; then
     echo "$(date -Ins -u) Creating $PERSISTDIR/log"

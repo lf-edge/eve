@@ -19,7 +19,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
@@ -1622,9 +1621,6 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		oldMetricInterval := oldGlobalConfig.GlobalValueInt(types.MetricInterval)
 		newMetricInterval := newGlobalConfig.GlobalValueInt(types.MetricInterval)
 
-		oldSSHAuthorizedKeys := oldGlobalConfig.GlobalValueString(types.SSHAuthorizedKeys)
-		newSSHAuthorizedKeys := newGlobalConfig.GlobalValueString(types.SSHAuthorizedKeys)
-
 		if newConfigInterval != oldConfigInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"ConfigInterval", oldConfigInterval, newConfigInterval)
@@ -1635,11 +1631,6 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"MetricInterval", oldMetricInterval, newMetricInterval)
 			updateMetricsTimer(newMetricInterval, ctx.metricsTickerHandle)
-		}
-		if newSSHAuthorizedKeys != oldSSHAuthorizedKeys {
-			log.Functionf("parseConfigItems: %s changed from %v to %v",
-				"SshAuthorizedKeys", oldSSHAuthorizedKeys, newSSHAuthorizedKeys)
-			ssh.UpdateSshAuthorizedKeys(log, newSSHAuthorizedKeys)
 		}
 		oldMaintenanceMode := oldGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
 		newMaintenanceMode := newGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
