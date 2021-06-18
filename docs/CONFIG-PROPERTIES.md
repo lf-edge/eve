@@ -25,7 +25,7 @@
 | network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet, WiFi, or LTE |
 | network.download.max.cost | 0-255 | 0 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
-| debug.enable.ssh | boolean, or authorized ssh key | false | allow ssh to EVE |
+| debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |
 | debug.default.loglevel | string | info | min level saved in files on device |
 | debug.default.remote.loglevel | string | warning | min level sent to controller |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
