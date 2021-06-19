@@ -347,15 +347,6 @@ if [ -f $CONFIGDIR/DevicePortConfig/usb.json ]; then
     echo "$(date -Ins -u) Removing old $CONFIGDIR/DevicePortConfig/usb.json"
     rm -f $CONFIGDIR/DevicePortConfig/usb.json
 fi
-# Copy any DevicePortConfig from /config
-dir=$CONFIGDIR/DevicePortConfig
-for f in "$dir"/*.json; do
-    if [ "$f" = "$dir/*.json" ]; then
-        break
-    fi
-    echo "$(date -Ins -u) Copying from $f to $DPCDIR"
-    cp -p "$f" $DPCDIR
-done
 
 # Get IP addresses
 echo "$(date -Ins -u) Starting nim"

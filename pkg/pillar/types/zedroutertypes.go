@@ -442,7 +442,7 @@ type DevicePortConfig struct {
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
 	State        PendDPCStatus
-
+	OriginFile   string // File to be deleted once DevicePortConfigList published
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
 
