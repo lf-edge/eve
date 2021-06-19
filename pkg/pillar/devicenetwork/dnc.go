@@ -147,6 +147,17 @@ func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.Dev
 		log.Functionf("publishing DevicePortConfigList compressed: %+v\n", dpcl)
 		ctx.PubDevicePortConfigList.Publish("global", dpcl)
 	}
+	// Check and delete any OriginFile; might already have been deleted
+	for i, dpc := range dpcl.PortConfigList {
+		if dpc.OriginFile == "" {
+			continue
+		}
+		err := os.Remove(dpc.OriginFile)
+		if err == nil {
+			log.Noticef("Removed OriginFile %s for %d",
+				dpc.OriginFile, i)
+		}
+	}
 	return dpcl
 }
 
@@ -193,6 +204,14 @@ func compressDPCL(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 				break
 			}
 			log.Functionf("compressDPCL: Ignoring - i = %d, dpc: %+v", i, dpc)
+			// Check and delete any OriginFile; might already have been deleted
+			if dpc.OriginFile != "" {
+				err := os.Remove(dpc.OriginFile)
+				if err == nil {
+					log.Noticef("Removed OriginFile %s for %d",
+						dpc.OriginFile, i)
+				}
+			}
 		}
 	}
 
