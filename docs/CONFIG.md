@@ -239,6 +239,19 @@ Then add the valid json file named as global.json in that directory.
 Finally:
 make config.img; make installer.raw
 
+### Retrieving inventory information from installer media
+
+During installation from USB stick EVE will put some information about device into INVENTORY partition.
+It contains of soft-serial and hardware model and may content additional information of devices and kernel messages
+if `eve_blackbox` provided in kernel cmdline. See [pkg/mkimage-raw-efi/install](../pkg/mkimage-raw-efi/install) for
+additional info.
+
+To retrieve information you can mount INVENTORY partition on Linux and read files inside.
+For retrieving information from Windows OS you can use tool provided in
+[tools/inventory-extract-windows](../tools/inventory-extract-windows).
+To list numbers of drives and help run `inventory-extract-windows.exe`
+To extract Inventory from drive N to directory DIR run `inventory-extract-windows.exe -drive N -dir DIR`
+
 ### Creating USB sticks
 
 The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can run on any system that supports Docker to create a USB stick.

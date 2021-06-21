@@ -689,6 +689,10 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
+inventory-extract-windows: $(GOBUILDER)
+	$(DOCKER_GO) "GO111MODULE=on GOOS=windows CGO_ENABLED=0 go build -o /go/bin/inventory-extract-windows.exe -mod=mod ." $(CURDIR)/tools/inventory-extract-windows
+	@echo Done building inventory-extract-windows at $(CURDIR)/.go/bin/inventory-extract-windows.exe
+
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH linuxkit
 FORCE:
