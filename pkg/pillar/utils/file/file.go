@@ -10,11 +10,14 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"golang.org/x/sys/unix"
 )
+
+const maxCounterReadSize = 16384 // Max size of counter file
 
 // WriteRename write data to a fmpfile and then rename it to a desired name
 func WriteRename(fileName string, b []byte) error {
@@ -91,4 +94,28 @@ func StatAndRead(log *base.LogObject, filename string, maxReadSize int) (string,
 		err = nil
 	}
 	return string(content[0:n]), fi.ModTime(), err
+}
+
+// ReadSavedCounter returns counter value from provided file
+// If the file doesn't exist or doesn't contain an integer it returns false
+func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
+	if log != nil {
+		log.Tracef("ReadSavedCounter(%s) - reading", fileName)
+	}
+
+	b, _, err := StatAndRead(log, fileName, maxCounterReadSize)
+	if err == nil {
+		c, err := strconv.Atoi(b)
+		if err != nil {
+			if log != nil {
+				log.Errorf("ReadSavedCounter(%s): %s", fileName, err)
+				return 0, false
+			}
+		}
+		return uint32(c), true
+	}
+	if log != nil {
+		log.Warnf("ReadSavedCounter(%s): %s", fileName, err)
+	}
+	return 0, false
 }

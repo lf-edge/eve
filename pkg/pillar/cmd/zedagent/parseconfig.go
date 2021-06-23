@@ -86,6 +86,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// publish updated configuration.
 		forceSystemAdaptersParse := physioChanged || networksChanged
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
+		parseBaseOS(getconfigCtx, config)
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseContentInfoConfig(getconfigCtx, config)
@@ -119,7 +120,44 @@ func shutdownAppsGlobal(ctx *zedagentContext) {
 	shutdownApps(ctx.getconfigCtx)
 }
 
-var baseosPrevConfigHash []byte
+var baseOSPrevConfigHash []byte
+
+func parseBaseOS(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) {
+
+	baseOS := config.GetBaseos()
+	if baseOS == nil {
+		log.Warn("parseBaseOS: nil config received")
+		return
+	}
+	h := sha256.New()
+	computeConfigElementSha(h, baseOS)
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, baseOSPrevConfigHash)
+	if same {
+		return
+	}
+	log.Functionf("parseBaseOS: Applying updated config "+
+		"prevSha: % x, "+
+		"NewSha : % x, "+
+		"baseOS: %v",
+		baseOSPrevConfigHash, configHash, baseOS)
+	baseOSPrevConfigHash = configHash
+	if baseOS.GetRetryUpdate() != nil {
+		if getconfigCtx.configRetryUpdateCounter != baseOS.GetRetryUpdate().GetCounter() {
+			log.Noticef("configRetryUpdateCounter update from %d to %d",
+				getconfigCtx.configRetryUpdateCounter, baseOS.GetRetryUpdate().GetCounter())
+			getconfigCtx.configRetryUpdateCounter = baseOS.GetRetryUpdate().GetCounter()
+		}
+	}
+	cfg := &types.BaseOs{
+		ContentTreeUUID:          baseOS.ContentTreeUuid,
+		ConfigRetryUpdateCounter: getconfigCtx.configRetryUpdateCounter,
+	}
+	publishBaseOs(getconfigCtx, cfg)
+}
+
+var baseOSConfigPrevConfigHash []byte
 
 func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
@@ -130,7 +168,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		computeConfigElementSha(h, os)
 	}
 	configHash := h.Sum(nil)
-	same := bytes.Equal(configHash, baseosPrevConfigHash)
+	same := bytes.Equal(configHash, baseOSConfigPrevConfigHash)
 	if same {
 		return
 	}
@@ -138,9 +176,9 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		"prevSha: % x, "+
 		"NewSha : % x, "+
 		"cfgOsList: %v",
-		baseosPrevConfigHash, configHash, cfgOsList)
+		baseOSConfigPrevConfigHash, configHash, cfgOsList)
 
-	baseosPrevConfigHash = configHash
+	baseOSConfigPrevConfigHash = configHash
 
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
@@ -1740,6 +1778,15 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
 	pub.Publish(key, *config)
+}
+
+func publishBaseOs(getconfigCtx *getconfigContext,
+	config *types.BaseOs) {
+
+	log.Tracef("publishBaseOs ConfigRetryUpdateCounter: %d, ContentTreeUUID: %v",
+		config.ConfigRetryUpdateCounter, config.ContentTreeUUID)
+	pub := getconfigCtx.pubBaseOs
+	pub.Publish("global", *config)
 }
 
 // Get sha256 for a subset of the protobuf message.

@@ -56,6 +56,7 @@ type getconfigContext struct {
 	pubAppNetworkConfig      pubsub.Publication
 	subAppNetworkStatus      pubsub.Subscription
 	pubBaseOsConfig          pubsub.Publication
+	pubBaseOs                pubsub.Publication
 	pubDatastoreConfig       pubsub.Publication
 	pubNetworkInstanceConfig pubsub.Publication
 	pubControllerCert        pubsub.Publication
@@ -75,6 +76,8 @@ type getconfigContext struct {
 	localProfileTrigger      chan Notify
 
 	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
+
+	configRetryUpdateCounter uint32 // received from config
 }
 
 // devUUID is set in Run and never changed

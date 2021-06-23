@@ -539,3 +539,14 @@ type DeviceOpsCmd struct {
 	DesiredState bool
 	OpsTime      string
 }
+
+// BaseOSMgrStatus : for sending from baseosmgr
+type BaseOSMgrStatus struct {
+	CurrentRetryUpdateCounter uint32 // CurrentRetryUpdateCounter from baseosmgr
+}
+
+// BaseOs : copy of zconfig.BaseOS
+type BaseOs struct {
+	ContentTreeUUID          string
+	ConfigRetryUpdateCounter uint32
+}
