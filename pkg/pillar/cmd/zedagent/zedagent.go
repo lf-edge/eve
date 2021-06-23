@@ -95,6 +95,7 @@ type zedagentContext struct {
 	TriggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
 	subBaseOsStatus           pubsub.Subscription
+	subBaseOsMgrStatus        pubsub.Subscription
 	subNetworkInstanceMetrics pubsub.Subscription
 	subAppFlowMonitor         pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
@@ -397,6 +398,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
+
+	pubBaseOs, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.BaseOs{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubBaseOs.ClearRestarted()
+	getconfigCtx.pubBaseOs = pubBaseOs
 
 	pubZedAgentStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -918,6 +929,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subCapabilities = subCapabilities
 	subCapabilities.Activate()
 
+	subBaseOsMgrStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "baseosmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.BaseOSMgrStatus{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	zedagentCtx.subBaseOsMgrStatus = subBaseOsMgrStatus
+	subBaseOsMgrStatus.Activate()
+
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
 
@@ -1331,6 +1354,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subCapabilities.MsgChan():
 			subCapabilities.ProcessChange(change)
+
+		case change := <-subBaseOsMgrStatus.MsgChan():
+			subBaseOsMgrStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection

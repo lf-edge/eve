@@ -4,12 +4,10 @@
 package baseosmgr
 
 import (
-	"bufio"
-	"io/ioutil"
-	"os"
 	"strconv"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
@@ -18,8 +16,6 @@ const (
 	// XXX move to locationconst.go?
 	checkpointDirname     = types.PersistDir + "/checkpoint"
 	forcefallbackFilename = checkpointDirname + "/forceFallbackCounter"
-
-	maxReadSize = 16384
 )
 
 // handle zedagent status events to look if the ForceFallbackCounter changes
@@ -120,51 +116,16 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 // readForceFallbackCounter reads the persistent file
 // If the file doesn't exist or doesn't contain an integer it returns false
 func readForceFallbackCounter() (int, bool) {
-	if _, err := os.Stat(forcefallbackFilename); err != nil {
-		return 0, false
-	}
-	s, err := read(forcefallbackFilename)
-	if err != nil {
-		return 0, false
-	}
-	c, err := strconv.Atoi(s)
-	if err != nil {
-		log.Errorf("readForceFallbackCounter parse %s failed: %s",
-			s, err)
-		return 0, false
-	}
-	return int(c), true
+	c, parsed := fileutils.ReadSavedCounter(log, forcefallbackFilename)
+	return int(c), parsed
 }
 
 // writeForceFallbackCounter writes the persistent file
 // Errors are logged but otherwise ignored
 func writeForceFallbackCounter(fallbackCounter int) {
 	b := []byte(strconv.Itoa(fallbackCounter))
-	err := ioutil.WriteFile(forcefallbackFilename, b, 0644)
+	err := fileutils.WriteRename(forcefallbackFilename, b)
 	if err != nil {
 		log.Errorf("writeForceFallbackCounter write: %s", err)
 	}
-}
-
-// read returns the content of the file as a string
-// We limit the size we read to 16k
-func read(filename string) (string, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		if log != nil {
-			log.Errorf("read failed %s", err)
-		}
-		return "", err
-	}
-	defer f.Close()
-	r := bufio.NewReader(f)
-	content := make([]byte, maxReadSize)
-	n, err := r.Read(content)
-	if err != nil {
-		if log != nil {
-			log.Errorf("read failed %s", err)
-		}
-		return "", err
-	}
-	return string(content[0:n]), nil
 }

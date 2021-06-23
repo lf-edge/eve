@@ -231,6 +231,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 
+	ReportDeviceInfo.BaseosUpdateCounter = getBaseosUpdateCounter(ctx)
+
 	// Report BaseOs Status for the two partitions
 	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
 		// Look for a matching IMGA/IMGB in baseOsStatus
@@ -812,4 +814,14 @@ func getCapabilities(ctx *zedagentContext) *info.Capabilities {
 		HWAssistedVirtualization: capabilities.HWAssistedVirtualization,
 		IOVirtualization:         capabilities.IOVirtualization,
 	}
+}
+
+func getBaseosUpdateCounter(ctx *zedagentContext) uint32 {
+	m, err := ctx.subBaseOsMgrStatus.Get("global")
+	if err != nil {
+		log.Warnf("ctx.subBaseOsMgrStatus.Get failed: %s", err)
+		return 0
+	}
+	status := m.(types.BaseOSMgrStatus)
+	return status.CurrentRetryUpdateCounter
 }

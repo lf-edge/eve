@@ -28,6 +28,11 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
+
+	// last value of baseOsMgrContext.currentUpdateRetry for persistence
+	currentRetryUpdateCounterFile = types.PersistStatusDir + "/current_retry_update_counter"
+	// last value of baseOsMgrContext.configUpdateRetry for persistence
+	configRetryUpdateCounterFile = types.PersistStatusDir + "/config_retry_update_counter"
 )
 
 // Set from Makefile
@@ -37,11 +42,13 @@ type baseOsMgrContext struct {
 	pubBaseOsStatus      pubsub.Publication
 	pubContentTreeConfig pubsub.Publication
 	pubZbootStatus       pubsub.Publication
+	pubBaseOsMgrStatus   pubsub.Publication
 
 	subGlobalConfig      pubsub.Subscription
 	globalConfig         *types.ConfigItemValueMap
 	GCInitialized        bool
 	subBaseOsConfig      pubsub.Subscription
+	subBaseOs            pubsub.Subscription
 	subZbootConfig       pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
 	subNodeAgentStatus   pubsub.Subscription
@@ -49,6 +56,8 @@ type baseOsMgrContext struct {
 	rebootReason         string    // From last reboot
 	rebootTime           time.Time // From last reboot
 	rebootImage          string    // Image from which the last reboot happened
+	currentUpdateRetry   uint32    // UpdateRetryCounter from last retry; it will be sent for info
+	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
 
 	worker worker.Worker // For background work
 }
@@ -92,6 +101,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)
+
+	// load saved values or fill with 0
+	ctx.currentUpdateRetry = readSavedCurrentRetryUpdateCounter()
+	ctx.configUpdateRetry = readSavedConfigRetryUpdateCounter()
+	publishBaseOSMgrStatus(&ctx)
 
 	// initialize module specific subscriber handles
 	initializeGlobalConfigHandles(ps, &ctx)
@@ -142,6 +156,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-ctx.subZedAgentStatus.MsgChan():
 			ctx.subZedAgentStatus.ProcessChange(change)
 
+		case change := <-ctx.subBaseOs.MsgChan():
+			ctx.subBaseOs.ProcessChange(change)
+
 		case res := <-ctx.worker.MsgChan():
 			res.Process(&ctx, true)
 
@@ -161,14 +178,14 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 		log.Functionf("handleBaseOsConfigDelete: unknown %s", key)
 		return
 	}
-	handleBaseOsDelete(ctx, key, status)
+	handleBaseOsConfigDeleteByStatus(ctx, key, status)
 	log.Functionf("handleBaseOsConfigDelete(%s) done", key)
 }
 
 // base os config modify event
-func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
+func handleBaseOsConfigCreate(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Functionf("handleBaseOsCreate(%s)", key)
+	log.Functionf("handleBaseOsConfigCreate(%s)", key)
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := configArg.(types.BaseOsConfig)
 	status := types.BaseOsStatus{
@@ -195,19 +212,19 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	baseOsHandleStatusUpdate(ctx, &config, &status)
 }
 
-func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{},
+func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{},
 	oldConfigArg interface{}) {
 
-	log.Functionf("handleBaseOsModify(%s)", key)
+	log.Functionf("handleBaseOsConfigModify(%s)", key)
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := configArg.(types.BaseOsConfig)
 	status := lookupBaseOsStatus(ctx, key)
 	if status == nil {
-		log.Errorf("handleBaseOsModify status not found, ignored %+v", key)
+		log.Errorf("handleBaseOsConfigModify status not found, ignored %+v", key)
 		return
 	}
 
-	log.Functionf("handleBaseOsModify(%s) for %s Activate %v",
+	log.Functionf("handleBaseOsConfigModify(%s) for %s Activate %v",
 		config.Key(), config.BaseOsVersion, config.Activate)
 
 	// Check image count
@@ -226,10 +243,10 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{},
 }
 
 // base os config delete event
-func handleBaseOsDelete(ctx *baseOsMgrContext, key string,
+func handleBaseOsConfigDeleteByStatus(ctx *baseOsMgrContext, key string,
 	status *types.BaseOsStatus) {
 
-	log.Functionf("handleBaseOsDelete for %s", status.BaseOsVersion)
+	log.Functionf("handleBaseOsConfigDeleteByStatus for %s", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
 }
 
@@ -312,6 +329,17 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	pubZbootStatus.ClearRestarted()
 	ctx.pubZbootStatus = pubZbootStatus
+
+	pubBaseOsMgrStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.BaseOSMgrStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubBaseOsMgrStatus.ClearRestarted()
+	ctx.pubBaseOsMgrStatus = pubBaseOsMgrStatus
 }
 
 func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
@@ -408,8 +436,8 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 			TopicImpl:     types.BaseOsConfig{},
 			Activate:      false,
 			Ctx:           ctx,
-			CreateHandler: handleBaseOsCreate,
-			ModifyHandler: handleBaseOsModify,
+			CreateHandler: handleBaseOsConfigCreate,
+			ModifyHandler: handleBaseOsConfigModify,
 			DeleteHandler: handleBaseOsConfigDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
@@ -419,6 +447,25 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
+
+	subBaseOs, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			MyAgentName:   agentName,
+			TopicImpl:     types.BaseOs{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleBaseOsCreate,
+			ModifyHandler: handleBaseOsModify,
+			DeleteHandler: handleBaseOsDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subBaseOs = subBaseOs
+	subBaseOs.Activate()
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
@@ -514,4 +561,12 @@ func handleZbootConfigDelete(ctxArg interface{}, key string,
 	// Nothing to do. We report ZbootStatus for the IMG* partitions
 	// in any case
 	log.Functionf("handleZbootConfigDelete(%s) done", key)
+}
+
+func publishBaseOSMgrStatus(ctx *baseOsMgrContext) {
+	log.Function("publish BaseOSMgrStatus")
+	ctx.pubBaseOsMgrStatus.Publish("global",
+		types.BaseOSMgrStatus{
+			CurrentRetryUpdateCounter: ctx.currentUpdateRetry,
+		})
 }

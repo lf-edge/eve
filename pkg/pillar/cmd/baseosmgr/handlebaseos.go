@@ -14,6 +14,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	uuid "github.com/satori/go.uuid"
 )
@@ -825,6 +826,9 @@ func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig,
 		// Check if we have a failed update which needs a kick
 		maybeRetryInstall(ctx)
 
+		//sync currentUpdateRetry
+		handleUpdateRetryCounter(ctx, ctx.configUpdateRetry)
+
 		log.Functionf("handleZbootTestComplete(%s) to True done",
 			config.Key())
 		return
@@ -1017,4 +1021,179 @@ func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsS
 			dateStr)
 		status.SetError(reason, ctxPtr.rebootTime)
 	}
+}
+
+func handleBaseOsCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleBaseOsImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleBaseOsImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctxPtr := ctxArg.(*baseOsMgrContext)
+	baseOs := statusArg.(types.BaseOs)
+
+	handleUpdateRetryCounter(ctxPtr, baseOs.ConfigRetryUpdateCounter)
+
+	log.Functionf("handleBaseOsImpl(%s) done", key)
+}
+
+func handleBaseOsDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// do nothing
+	log.Functionf("handleBaseOsDelete(%s) done", key)
+}
+
+//isImageInErrorState returns true if we try to update to not-active image without success
+//also returns ZbootStatus
+func isImageInErrorState(ctxPtr *baseOsMgrContext) (bool, *types.ZbootStatus) {
+	curPartName := zboot.GetCurrentPartition()
+	partStatus := getZbootStatus(ctxPtr, curPartName)
+	if partStatus == nil {
+		log.Functionf("No current partition status for %s", curPartName)
+		return false, nil
+	}
+	if partStatus.PartitionState != "active" {
+		log.Functionf("Current partition status for %s is not active: %s",
+			curPartName, partStatus.PartitionState)
+		return false, nil
+	}
+	otherPartName := zboot.GetOtherPartition()
+	partStatus = getZbootStatus(ctxPtr, otherPartName)
+	if partStatus == nil {
+		log.Functionf("No other partition status for %s",
+			otherPartName)
+		return false, nil
+	}
+	shortVerOtherPart := partStatus.ShortVersion
+	if shortVerOtherPart == "" {
+		log.Functionf("Other partition has no version")
+		return false, partStatus
+	}
+	if partStatus.PartitionState != "inprogress" {
+		log.Functionf("Other partition state %s not inprogress",
+			partStatus.PartitionState)
+		return false, partStatus
+	}
+	baseOSConfig := lookupBaseOsConfigByVersion(ctxPtr, shortVerOtherPart)
+	if baseOSConfig == nil {
+		log.Functionf("Cannot found BaseOsConfig with %s version; ignoring RetryUpdateCounter",
+			shortVerOtherPart)
+		return false, partStatus
+	}
+	if !baseOSConfig.Activate {
+		log.Functionf("BaseOsConfig %s has no activate; ignoring RetryUpdateCounter", baseOSConfig.Key())
+		return false, partStatus
+	}
+	return true, partStatus
+}
+
+// handleUpdateRetryCounter checks
+// if current partition is not active: just update configUpdateRetry
+// if other partition is in failed state: if retryUpdateCounter changed: save current counters and initiate re-update
+// in other case update configUpdateRetry and currentUpdateRetry, save them and publish
+func handleUpdateRetryCounter(ctxPtr *baseOsMgrContext, retryUpdateCounter uint32) {
+	curPartName := zboot.GetCurrentPartition()
+	partStatus := getZbootStatus(ctxPtr, curPartName)
+	if partStatus == nil {
+		log.Warnf("handleUpdateRetryCounter: No current partition status for %s; failed RetryUpdateCounter",
+			curPartName)
+		return
+	}
+	if partStatus.PartitionState != "active" {
+		if ctxPtr.configUpdateRetry == retryUpdateCounter {
+			log.Functionf("No change in retryUpdateCounter: %d", retryUpdateCounter)
+			return
+		}
+		log.Noticef("handleUpdateRetryCounter: configUpdateRetry changed "+
+			"with no active partition: %d to %d; ignoring it",
+			ctxPtr.configUpdateRetry, retryUpdateCounter)
+		return
+	}
+	if failed, failedPartStatus := isImageInErrorState(ctxPtr); failed {
+		if ctxPtr.configUpdateRetry == retryUpdateCounter {
+			log.Functionf("No change in retryUpdateCounter: %d", retryUpdateCounter)
+			return
+		}
+		log.Noticef("handleUpdateRetryCounter: configUpdateRetry change: %d to %d",
+			ctxPtr.configUpdateRetry, retryUpdateCounter)
+		ctxPtr.configUpdateRetry = retryUpdateCounter
+		// save it to avoid loop of re-upgrade - failing - re-upgrade
+		saveConfigRetryUpdateCounter(ctxPtr)
+		log.Noticef("UpdateRetry from %s to %s",
+			partStatus.ShortVersion, failedPartStatus.ShortVersion)
+		zboot.SetOtherPartitionStateUpdating(log)
+		updateAndPublishZbootStatus(ctxPtr, failedPartStatus.PartitionLabel, false)
+		baseOsStatus := lookupBaseOsStatusByPartLabel(ctxPtr, failedPartStatus.PartitionLabel)
+		if baseOsStatus != nil {
+			baseOsSetPartitionInfoInStatus(ctxPtr, baseOsStatus, failedPartStatus.PartitionLabel)
+			publishBaseOsStatus(ctxPtr, baseOsStatus)
+		}
+		return
+	}
+	if ctxPtr.configUpdateRetry != retryUpdateCounter {
+		log.Noticef("handleUpdateRetryCounter: configUpdateRetry change: %d to %d",
+			ctxPtr.configUpdateRetry, retryUpdateCounter)
+		ctxPtr.configUpdateRetry = retryUpdateCounter
+		saveConfigRetryUpdateCounter(ctxPtr)
+	}
+	if ctxPtr.currentUpdateRetry != retryUpdateCounter {
+		log.Noticef("handleUpdateRetryCounter: currentUpdateRetry change: %d to %d",
+			ctxPtr.currentUpdateRetry, retryUpdateCounter)
+		ctxPtr.currentUpdateRetry = retryUpdateCounter
+		saveCurrentRetryUpdateCounter(ctxPtr)
+	}
+	publishBaseOSMgrStatus(ctxPtr)
+}
+
+func lookupBaseOsConfigByVersion(ctxPtr *baseOsMgrContext, shortVersion string) *types.BaseOsConfig {
+	sub := ctxPtr.subBaseOsConfig
+	items := sub.GetAll()
+	for _, cfg := range items {
+		baseOSConfig := cfg.(types.BaseOsConfig)
+		if baseOSConfig.BaseOsVersion == shortVersion {
+			return &baseOSConfig
+		}
+	}
+	return nil
+}
+
+func saveCurrentRetryUpdateCounter(ctxPtr *baseOsMgrContext) {
+	log.Functionf("saveCurrentRetryUpdateCounter (%s) - counter: %d",
+		currentRetryUpdateCounterFile, ctxPtr.currentUpdateRetry)
+	err := fileutils.WriteRename(currentRetryUpdateCounterFile,
+		[]byte(fmt.Sprintf("%d", ctxPtr.currentUpdateRetry)))
+	if err != nil {
+		log.Errorf("saveCurrentRetryUpdateCounter write to %s: %s", currentRetryUpdateCounterFile, err)
+	}
+}
+
+func saveConfigRetryUpdateCounter(ctxPtr *baseOsMgrContext) {
+	log.Functionf("saveConfigRetryUpdateCounter (%s) - counter: %d",
+		configRetryUpdateCounterFile, ctxPtr.configUpdateRetry)
+	err := fileutils.WriteRename(configRetryUpdateCounterFile,
+		[]byte(fmt.Sprintf("%d", ctxPtr.configUpdateRetry)))
+	if err != nil {
+		log.Errorf("saveConfigRetryUpdateCounter write to %s: %s", configRetryUpdateCounterFile, err)
+	}
+}
+
+func readSavedConfigRetryUpdateCounter() uint32 {
+	fileName := configRetryUpdateCounterFile
+	log.Tracef("readSavedConfigRetryUpdateCounter - reading %s", fileName)
+	counter, _ := fileutils.ReadSavedCounter(log, fileName)
+	return counter
+}
+
+func readSavedCurrentRetryUpdateCounter() uint32 {
+	fileName := currentRetryUpdateCounterFile
+	log.Tracef("readSavedCurrentRetryUpdateCounter - reading %s", fileName)
+	counter, _ := fileutils.ReadSavedCounter(log, fileName)
+	return counter
 }
