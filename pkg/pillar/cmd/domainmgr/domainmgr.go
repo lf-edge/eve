@@ -1657,6 +1657,10 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 			}
 			log.Functionf("reserveAdapters processing adapter %d %s member %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
+			if ibp.AssignmentGroup == "" {
+				return fmt.Errorf("adapter %d %s member %s is not assignable",
+					adapter.Type, adapter.Name, ibp.Phylabel)
+			}
 			if ibp.UsedByUUID != config.UUIDandVersion.UUID &&
 				ibp.UsedByUUID != nilUUID {
 				return fmt.Errorf("adapter %d %s used by %s",
