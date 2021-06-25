@@ -233,7 +233,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=ccece6a4889e15850dfbaf6d5170939c83edb103
+LINUXKIT_VERSION=39ad5a1ab6217d13964c98d8a12180c273431f5e
 LINUXKIT_ACTUAL=$(shell $(LINUXKIT) version 2>/dev/null | awk '/commit:/ {print $$2}')
 ifneq ($(LINUXKIT_ACTUAL),$(LINUXKIT_VERSION))
 .PHONY: $(LINUXKIT)
