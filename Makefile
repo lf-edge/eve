@@ -234,11 +234,6 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 LINUXKIT_VERSION=ccece6a4889e15850dfbaf6d5170939c83edb103
-LINUXKIT_ACTUAL=$(shell $(LINUXKIT) version 2>/dev/null | awk '/commit:/ {print $$2}')
-ifneq ($(LINUXKIT_ACTUAL),$(LINUXKIT_VERSION))
-.PHONY: $(LINUXKIT)
-endif
-
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS= $(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD)  --platforms $(LINUXKIT_PLATFORM_TARGET)
 LINUXKIT_PKG_TARGET=build
@@ -621,7 +616,7 @@ $(LINUXKIT): | $(GOBUILDER)
 	cd /tmp/linuxkit && \
 	git checkout $(LINUXKIT_VERSION) && \
 	cd /tmp/linuxkit/src/cmd/linuxkit && \
-	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor --ldflags '-X github.com/linuxkit/linuxkit/src/cmd/linuxkit/version.GitCommit=$(LINUXKIT_VERSION)' . && \
+	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor . && \
 	cd && \
 	rm -rf /tmp/linuxkit" \
 	$(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
@@ -690,7 +685,7 @@ docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH linuxkit
+.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH
 FORCE:
 
 help:
