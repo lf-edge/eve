@@ -1,4 +1,4 @@
-# Contributing to EVE
+# Contributing to EVE 
 
 EVE community shares the spirit of the [Apache Way](https://apache.org/theapacheway/)
 and believes in "Community over Code". We welcome any and all types of contributions
@@ -209,7 +209,7 @@ By making a contribution to this project, I certify that:
 
 Then you just add a line to every git commit message:
 
-```Signed-off-by: Joe Smith <joe.smith@email.com>```
+    Signed-off-by: Joe Smith <joe.smith@email.com>
 
 Use your real name (sorry, no pseudonyms or anonymous contributions.)
 
