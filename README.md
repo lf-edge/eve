@@ -12,7 +12,8 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 ## How to use
 
-You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com) 20.10+, [Make](https://www.gnu.org/software/make/), and [go 1.16+](https://golang.org) installed in your system.
+You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com), [Make](https://www.gnu.org/software/make/)
+and [go 1.13+](https://golang.org) installed in your system.
 
 ### Use pre-built release binaries
 
@@ -60,10 +61,6 @@ docker version
 ```sh
 $ brew install git make jq qemu
 ```
-
-#### On Apple Silicon (ARM64)
-
-QEMU 6.0.0, or later is required, to run EVE on Apple Silicon-based systems. This can be installed, using Brew, or compiled from a release source archive, from the [QEMU](https://www.qemu.org) Website.
 
 ##### On Ubuntu Linux
 
@@ -382,7 +379,7 @@ diskutil eject /dev/sdXXX
 
 Alternatively the image can be written with tools like [Balena's Etcher](https://www.balena.io/etcher/)
 
-## A quick note on LinuxKit
+## A quick note on linuxkit
 
 You may be wondering why do we have a container-based architecture for a Xen-centric environment. First of all, OCI containers are a key type of a workload for our platform. Which means having OCI environment to run them is a key requirement. We run them via:
 

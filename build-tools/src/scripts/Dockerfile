@@ -1,4 +1,4 @@
-ARG GOVER=1.16
+ARG GOVER=1.15.3
 FROM golang:${GOVER}-alpine
 ARG USER
 ARG GROUP
@@ -13,6 +13,7 @@ RUN deluser ${USER} ; delgroup ${GROUP} || :
 RUN sed -ie /:${UID}:/d /etc/passwd /etc/shadow ; sed -ie /:${GID}:/d /etc/group || :
 RUN addgroup -g ${GID} ${GROUP} && adduser -h /home/${USER} -G ${GROUP} -D -H -u ${UID} ${USER}
 RUN echo "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER}
+RUN go get github.com/golang/dep/cmd/dep
 RUN go get -u github.com/golang/protobuf/protoc-gen-go
 RUN go get -u gotest.tools/gotestsum
 RUN go get -u github.com/seamia/protodot
