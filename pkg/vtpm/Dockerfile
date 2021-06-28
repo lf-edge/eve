@@ -15,7 +15,7 @@ RUN eve-alpine-deploy.sh
 WORKDIR /
 RUN wget https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz && \
     wget https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig && \
-    gpg2 -q --keyserver keys.gnupg.net --recv-keys 99089D72 && \
+    gpg2 -q --keyserver keyserver.ubuntu.com --recv-keys 99089D72 && \
     gpg2 -q --verify autoconf-archive-2019.01.06.tar.xz.sig
 
 #Build autoconf-archive
