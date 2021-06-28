@@ -1,19 +1,13 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018,2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//watcher tells ledmanager about
-//change in ledmanager config file,
-//which contains number of times
-//LED has to blink on any device
-//ledmanager notify each event by
-//triggering blink on device.
-//number of blink is equal to
-//blink counter received by status
-//file...
-//After each blink we will take
-//pause of 200ms.
-//After end of each event we will take
-//pause of 1200ms...
+// ledmanager subscribes to LedBlinkCounter and DeviceNetworkStatus
+// Based on this it determines the state of progression in the form of a
+// number. The number can be output as a blinking sequence on a a LED
+// which is determined based on the hardware model, or it can be sent to some
+// display device.
+// When blinking there is a pause of 200ms after each blink and a 1200ms pause
+// after each sequence.
 
 package ledmanager
 
@@ -39,8 +33,7 @@ import (
 )
 
 const (
-	agentName        = "ledmanager"
-	ledConfigDirName = "/var/tmp/ledmanager/config"
+	agentName = "ledmanager"
 )
 
 // State passed to handlers
@@ -56,152 +49,154 @@ type ledManagerContext struct {
 	GCInitialized          bool
 }
 
-type Blink200msFunc func(ledName string)
-type BlinkInitFunc func(ledName string)
+// DisplayFunc takes an argument which can be the name of a LED or display
+type DisplayFunc func(arg string, counter int)
 
-// The ledName is a string like wifi_active in /sys/class/leds
+// InitFunc takes an argument which can be the name of a LED or display
+type InitFunc func(arg string)
+
 type modelToFuncs struct {
-	model     string
-	initFunc  BlinkInitFunc
-	blinkFunc Blink200msFunc
-	ledName   string
-	regexp    bool
+	model       string
+	initFunc    InitFunc
+	displayFunc DisplayFunc
+	arg         string // Passed to initFunc and displayFunc
+	regexp      bool   // model string is a regex
 }
 
-// XXX introduce wildcard matching on model names? Just a default at the end
 var mToF = []modelToFuncs{
 	{
-		model:     "Supermicro.SYS-E100-9APP",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "Supermicro.SYS-E100-9APP",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 	{
-		model:     "Supermicro.SYS-E100-9S",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd},
+		model:       "Supermicro.SYS-E100-9S",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
+	},
 	{
-		model:     "Supermicro.SYS-E50-9AP",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "Supermicro.SYS-E50-9AP",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 	{ // XXX temporary fix for old BIOS
-		model:     "Supermicro.Super Server",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "Supermicro.Super Server",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 	{
-		model:     "Supermicro.SYS-E300-8D",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "Supermicro.SYS-E300-8D",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 	{
-		model:     "Supermicro.SYS-E300-9A-4CN10P",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "Supermicro.SYS-E300-9A-4CN10P",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 	{
-		model:     "Supermicro.SYS-5018D-FN8T",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "Supermicro.SYS-5018D-FN8T",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 	{
-		model:     "PC Engines.apu2",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "apu2:green:led3",
+		model:       "PC Engines.apu2",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "apu2:green:led3",
 	},
 	{
-		model:     "Dell Inc..Edge Gateway 3001",
-		initFunc:  InitDellCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "/sys/class/gpio/gpio346/value",
+		model:       "Dell Inc..Edge Gateway 3001",
+		initFunc:    InitDellCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "/sys/class/gpio/gpio346/value",
 	},
 	{
-		model:     "Dell Inc..Edge Gateway 3002",
-		initFunc:  InitDellCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "/sys/class/gpio/gpio346/value",
+		model:       "Dell Inc..Edge Gateway 3002",
+		initFunc:    InitDellCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "/sys/class/gpio/gpio346/value",
 	},
 	{
-		model:     "Dell Inc..Edge Gateway 3003",
-		initFunc:  InitDellCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "/sys/class/gpio/gpio346/value",
+		model:       "Dell Inc..Edge Gateway 3003",
+		initFunc:    InitDellCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "/sys/class/gpio/gpio346/value",
 	},
 	{
-		model:     "SIEMENS AG.SIMATIC IPC127E",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "ipc127:green:1",
+		model:       "SIEMENS AG.SIMATIC IPC127E",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "ipc127:green:1",
 	},
 	{
-		model:     "hisilicon,hi6220-hikey.hisilicon,hi6220.",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "wifi_active",
+		model:       "hisilicon,hi6220-hikey.hisilicon,hi6220.",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "wifi_active",
 	},
 	{
-		model:     "hisilicon,hikey.hisilicon,hi6220.",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "wifi_active",
+		model:       "hisilicon,hikey.hisilicon,hi6220.",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "wifi_active",
 	},
 	{
-		model:     "LeMaker.HiKey-6220",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "wifi_active",
+		model:       "LeMaker.HiKey-6220",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "wifi_active",
 	},
 	{
 		model:  "QEMU.*",
 		regexp: true,
-		// No dd disk light blinking on QEMU
+		// No disk light blinking on QEMU
 	},
 	{
 		model:  "Parallels.*",
 		regexp: true,
-		// No dd disk light blinking on Parallels
+		// No disk light blinking on Parallels
 	},
 	{
 		model:  "Google.*",
 		regexp: true,
-		// No dd disk light blinking on Google
+		// No disk light blinking on Google
 	},
 	{
-		model:     "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "led0",
+		model:       "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "led0",
 	},
 	{
-		model:     "RaspberryPi.RPi4",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "led0",
+		model:       "RaspberryPi.RPi4",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "led0",
 	},
 	{
-		model:     "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "uno",
+		model:       "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "uno",
 	},
 	{
-		model:     "rockchip.evb_rk3399.NexCore,Q116.rockchip,rk3399",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "eve",
+		model:       "rockchip.evb_rk3399.NexCore,Q116.rockchip,rk3399",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "eve",
 	},
 	{
-		model:     "AAEON.UP-APL01",
-		initFunc:  InitLedCmd,
-		blinkFunc: ExecuteLedCmd,
-		ledName:   "upboard:blue:",
+		model:       "AAEON.UP-APL01",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "upboard:blue:",
 	},
 	{
 		// Last in table as a default
-		model:     "",
-		initFunc:  InitDDCmd,
-		blinkFunc: ExecuteDDCmd,
+		model:       "",
+		initFunc:    InitForceDiskCmd,
+		displayFunc: ExecuteForceDiskCmd,
 	},
 }
 
@@ -246,19 +241,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	model := hardware.GetHardwareModel(log)
 	log.Noticef("Got HardwareModel %s", model)
 
-	var blinkFunc Blink200msFunc
-	var initFunc BlinkInitFunc
-	var ledName string
+	var displayFunc DisplayFunc
+	var initFunc InitFunc
+	var arg string
 	setFuncs := func(m modelToFuncs) {
-		blinkFunc = m.blinkFunc
+		displayFunc = m.displayFunc
 		initFunc = m.initFunc
-		ledName = m.ledName
+		arg = m.arg
 	}
 	for _, m := range mToF {
 		if !m.regexp && m.model == model {
 			setFuncs(m)
-			log.Functionf("Found %v led %s for model %s",
-				blinkFunc, ledName, model)
+			log.Functionf("Found %v arg %s for model %s",
+				displayFunc, arg, model)
 			break
 		}
 		if m.regexp {
@@ -266,8 +261,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorf("Fail in regexp parse: %s", err)
 			} else if re.MatchString(model) {
 				setFuncs(m)
-				log.Functionf("Found %v led %s for model %s by pattern %s",
-					blinkFunc, ledName, model, m.model)
+				log.Functionf("Found %v arg %s for model %s by pattern %s",
+					displayFunc, arg, model, m.model)
 				break
 			}
 		}
@@ -279,14 +274,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	if initFunc != nil {
-		initFunc(ledName)
+		initFunc(arg)
 	}
 
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
-	log.Functionf("Creating %s at %s", "triggerBinkOnDevice", agentlog.GetMyStack())
-	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc, ledName)
+	log.Functionf("Creating %s at %s", "handleDisplayUpdate",
+		agentlog.GetMyStack())
+	go handleDisplayUpdate(ctx.countChange, displayFunc, arg)
 
 	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -434,8 +430,10 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 	log.Functionf("handleLedBlinkDelete done for %s", key)
 }
 
-func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc,
-	ledName string) {
+// handleDisplayUpdate waits for changes and displays/blinks the based on
+// the updated counter
+func handleDisplayUpdate(countChange chan int, displayFunc DisplayFunc,
+	arg string) {
 
 	var counter int
 	for {
@@ -446,12 +444,10 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc,
 		default:
 			log.Tracef("Unchanged counter: %d", counter)
 		}
-		log.Traceln("Number of times LED will blink: ", counter)
-		for i := 0; i < counter; i++ {
-			if blinkFunc != nil {
-				blinkFunc(ledName)
-			}
-			time.Sleep(200 * time.Millisecond)
+		log.Tracef("Displaying counter %d", counter)
+		// XXX separate logic if display? No need to update every 1200ms
+		if displayFunc != nil {
+			displayFunc(arg, counter)
 		}
 		time.Sleep(1200 * time.Millisecond)
 	}
@@ -462,8 +458,8 @@ func DummyCmd() {
 }
 
 var printOnce = true
-var diskDevice string // Based on largest disk
-var ddCount int       // Based on time for 200ms
+var diskDevice string   // Based on largest disk
+var diskRepeatCount int // Based on time for 200ms
 
 // InitDellCmd prepares "Cloud LED" on Dell IoT gateways by enabling GPIO endpoint
 func InitDellCmd(ledName string) {
@@ -483,14 +479,14 @@ var (
 	readBuffer   []byte
 )
 
-// InitDDCmd determines the disk (using the largest disk) and measures
+// InitForceDiskCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
-func InitDDCmd(ledName string) {
+func InitForceDiskCmd(ledName string) {
 	disk := diskmetrics.FindLargestDisk(log)
 	if disk == "" {
 		return
 	}
-	log.Functionf("InitDDCmd using disk %s", disk)
+	log.Functionf("InitForceDiskCmd using disk %s", disk)
 	readBuffer = make([]byte, bufferLength)
 	diskDevice = "/dev/" + disk
 	count := 100 * 16
@@ -511,17 +507,28 @@ func InitDDCmd(ledName string) {
 		count = 1
 	}
 	log.Noticef("Measured %v; count %d", elapsed, count)
-	ddCount = count
+	diskRepeatCount = count
 }
 
-// Should be tuned so that the LED lights up for 200ms
-// Disable cache since there might be a filesystem on the device
-func ExecuteDDCmd(ledName string) {
-	if diskDevice == "" || ddCount == 0 {
+// ExecuteForceDiskCmd does counter number of 200ms blinks and returns
+// It assumes the init function has determined a diskRepeatCount and a disk.
+func ExecuteForceDiskCmd(arg string, counter int) {
+	for i := 0; i < counter; i++ {
+		doForceDiskBlink()
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// doForceDiskBlink assumes the init function has determined a diskRepeatCount
+// which makes the disk LED light up for 200ms
+// We do this with caching disabled since there might be a filesystem on the
+// device in which case the disk LED would otherwise not light up.
+func doForceDiskBlink() {
+	if diskDevice == "" || diskRepeatCount == 0 {
 		DummyCmd()
 		return
 	}
-	uncachedDiskRead(ddCount)
+	uncachedDiskRead(diskRepeatCount)
 }
 
 func uncachedDiskRead(count int) {
@@ -569,9 +576,17 @@ func InitLedCmd(ledName string) {
 	}
 }
 
-// ExecuteLedCmd can use different LEDs in /sys/class/leds
+// ExecuteLedCmd does counter number of 200ms blinks and returns
+func ExecuteLedCmd(ledName string, counter int) {
+	for i := 0; i < counter; i++ {
+		doLedBlink(ledName)
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// doLedBlink can use different LEDs in /sys/class/leds
 // Enable the led for 200ms
-func ExecuteLedCmd(ledName string) {
+func doLedBlink(ledName string) {
 	var brightnessFilename string
 	b := []byte("1")
 	if strings.HasPrefix(ledName, "/") {
