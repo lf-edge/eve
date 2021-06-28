@@ -50,7 +50,8 @@ type ledManagerContext struct {
 }
 
 // DisplayFunc takes an argument which can be the name of a LED or display
-type DisplayFunc func(arg string, counter int)
+type DisplayFunc func(deviceNetworkStatus *types.DeviceNetworkStatus,
+	arg string, counter int)
 
 // InitFunc takes an argument which can be the name of a LED or display
 type InitFunc func(arg string)
@@ -61,6 +62,7 @@ type modelToFuncs struct {
 	displayFunc DisplayFunc
 	arg         string // Passed to initFunc and displayFunc
 	regexp      bool   // model string is a regex
+	isDisplay   bool   // no periodic blinking/update
 }
 
 var mToF = []modelToFuncs{
@@ -151,6 +153,11 @@ var mToF = []modelToFuncs{
 		model:  "QEMU.*",
 		regexp: true,
 		// No disk light blinking on QEMU
+		initFunc:    createLogfile,
+		displayFunc: appendLogfile,
+		// XXX set this to test output to a file:
+		// arg:         "/persist/log/ledmanager-status.log",
+		isDisplay: true,
 	},
 	{
 		model:  "Parallels.*",
@@ -244,10 +251,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	var displayFunc DisplayFunc
 	var initFunc InitFunc
 	var arg string
+	var isDisplay bool
 	setFuncs := func(m modelToFuncs) {
 		displayFunc = m.displayFunc
 		initFunc = m.initFunc
 		arg = m.arg
+		isDisplay = m.isDisplay
 	}
 	for _, m := range mToF {
 		if !m.regexp && m.model == model {
@@ -282,7 +291,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.countChange = make(chan int)
 	log.Functionf("Creating %s at %s", "handleDisplayUpdate",
 		agentlog.GetMyStack())
-	go handleDisplayUpdate(ctx.countChange, displayFunc, arg)
+	go handleDisplayUpdate(&ctx, displayFunc, arg, isDisplay)
 
 	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
@@ -432,22 +441,26 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 
 // handleDisplayUpdate waits for changes and displays/blinks the based on
 // the updated counter
-func handleDisplayUpdate(countChange chan int, displayFunc DisplayFunc,
-	arg string) {
+func handleDisplayUpdate(ctx *ledManagerContext, displayFunc DisplayFunc,
+	arg string, isDisplay bool) {
 
 	var counter int
 	for {
+		changed := false
 		select {
-		case counter = <-countChange:
+		case counter = <-ctx.countChange:
 			log.Tracef("Received counter update: %d",
 				counter)
+			changed = true
 		default:
 			log.Tracef("Unchanged counter: %d", counter)
 		}
-		log.Tracef("Displaying counter %d", counter)
-		// XXX separate logic if display? No need to update every 1200ms
 		if displayFunc != nil {
-			displayFunc(arg, counter)
+			log.Tracef("Displaying counter %d", counter)
+			// Skip unchanged updates if it is a true display
+			if changed || !isDisplay {
+				displayFunc(&ctx.deviceNetworkStatus, arg, counter)
+			}
 		}
 		time.Sleep(1200 * time.Millisecond)
 	}
@@ -512,7 +525,8 @@ func InitForceDiskCmd(ledName string) {
 
 // ExecuteForceDiskCmd does counter number of 200ms blinks and returns
 // It assumes the init function has determined a diskRepeatCount and a disk.
-func ExecuteForceDiskCmd(arg string, counter int) {
+func ExecuteForceDiskCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
+	arg string, counter int) {
 	for i := 0; i < counter; i++ {
 		doForceDiskBlink()
 		time.Sleep(200 * time.Millisecond)
@@ -577,7 +591,8 @@ func InitLedCmd(ledName string) {
 }
 
 // ExecuteLedCmd does counter number of 200ms blinks and returns
-func ExecuteLedCmd(ledName string, counter int) {
+func ExecuteLedCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
+	ledName string, counter int) {
 	for i := 0; i < counter; i++ {
 		doLedBlink(ledName)
 		time.Sleep(200 * time.Millisecond)
@@ -609,6 +624,58 @@ func doLedBlink(ledName string) {
 	err = ioutil.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
 		log.Trace(err, brightnessFilename)
+	}
+}
+
+// createLogfile will use the arg to create a file
+func createLogfile(filename string) {
+	log.Functionf("createLogfile(%s)", filename)
+}
+
+// appendLogfile
+func appendLogfile(deviceNetworkStatus *types.DeviceNetworkStatus,
+	filename string, counter int) {
+
+	if filename == "" {
+		// Disabled
+		return
+	}
+	str := ""
+	switch counter {
+	case 0:
+		str = "Linux booting"
+	case 1:
+		str = "EVE-OS booting"
+	case 2:
+		str = "acquiring IP address"
+	case 3:
+		str = "reached controller"
+	case 4:
+		str = "online"
+	default:
+		str = "error"
+	}
+	msg := fmt.Sprintf("Progress: %d %s\n", counter, str)
+	for _, p := range deviceNetworkStatus.Ports {
+		if p.IsMgmt {
+			addrs := ""
+			for _, ai := range p.AddrInfoList {
+				addrs += ai.Addr.String() + " "
+			}
+			m1 := fmt.Sprintf("%s IP %s\n", p.IfName, addrs)
+			msg = msg + m1
+		}
+	}
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0644)
+	if err != nil {
+		log.Errorf("OpenFile %s failed: %v", filename, err)
+		return
+	}
+	defer file.Close()
+	if _, err := file.WriteString(msg); err != nil {
+		log.Errorf("WriteString %s failed: %v", filename, err)
+		return
 	}
 }
 
