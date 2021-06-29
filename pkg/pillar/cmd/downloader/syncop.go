@@ -190,6 +190,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		} else {
 			serverURL, ifname, ipSrc, err = findDSmDNS(ctx, serverURL)
 			if err != nil {
+				log.Errorf("find datastore mDNS failed: %s", err)
+				errStr = errStr + "\n" + err.Error()
 				break
 			}
 		}
@@ -204,7 +206,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		downloadStartTime := time.Now()
 		contentType, cancelled, err = download(ctx, trType, st, syncOp, serverURL, auth,
 			dsCtx.Dpath, dsCtx.Region,
-			config.Size, ifname, ipSrc, remoteName, locFilename,
+			config.Size, ifname, ipSrc, remoteName, locFilename, dst.DsCertPEM,
 			receiveChan)
 		if err != nil {
 			if cancelled {

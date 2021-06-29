@@ -7,11 +7,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
+
+	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedpac"
-	"net/url"
-	"strings"
 )
 
 func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname string,
@@ -123,28 +125,40 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 }
 
 // IntfLookupProxyCfg - check if the intf has proxy configured
-func IntfLookupProxyCfg(log *base.LogObject, status *types.DeviceNetworkStatus, ifname, downloadURL string) string {
+func IntfLookupProxyCfg(log *base.LogObject, status *types.DeviceNetworkStatus, ifname, downloadURL string,
+	trType zedUpload.SyncTransportType) string {
 	// if proxy is not on the intf, then don't change anything
 	// if download URL has "http://" or "https://" then no change here regardless of proxy
 	// if there is proxy on this intf, treat empty url scheme as for https or http but prefer https,
 	// replace the passed-in download-url scheme "docker://" and maybe "sftp://" later, to https
+	// XXX for sftp, currently the FQDN can not have scheme attached, but url.Parse will fail without it
+	if !strings.Contains(downloadURL, "://") {
+		switch trType {
+		case zedUpload.SyncSftpTr:
+			downloadURL = "http://" + downloadURL
+		case zedUpload.SyncOCIRegistryTr, zedUpload.SyncHttpTr:
+			downloadURL = "https://" + downloadURL
+		default:
+			downloadURL = "https://" + downloadURL
+		}
+	}
 	passURL, err := url.Parse(downloadURL)
 	if err != nil {
 		return downloadURL
 	}
 
 	switch passURL.Scheme {
-	case "http://", "https://":
+	case "http", "https":
 		return downloadURL
 	}
 
 	tmpURL := passURL
-	tmpURL.Scheme = "https://"
+	tmpURL.Scheme = "https"
 	proxyURL, err := LookupProxy(log, status, ifname, tmpURL.String())
 	if err == nil && proxyURL != nil {
 		return tmpURL.String()
 	}
-	tmpURL.Scheme = "http://"
+	tmpURL.Scheme = "http"
 	proxyURL, err = LookupProxy(log, status, ifname, tmpURL.String())
 	if err == nil && proxyURL != nil {
 		return tmpURL.String()

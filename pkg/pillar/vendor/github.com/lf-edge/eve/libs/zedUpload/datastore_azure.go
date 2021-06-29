@@ -81,6 +81,11 @@ func (ep *AzureTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	return nil
 }
 
+// WithSrcIPAndHTTPSCerts append certs for https datastore
+func (ep *AzureTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
+	return fmt.Errorf("not supported")
+}
+
 // bind to specific interface for this connection
 func (ep *AzureTransportMethod) WithBindIntf(intf string) error {
 	return fmt.Errorf("not supported")

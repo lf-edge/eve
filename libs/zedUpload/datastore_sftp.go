@@ -84,13 +84,18 @@ func (ep *SftpTransportMethod) Close() error {
 
 // WithSrcIPSelection use the specific ip as source address for this connection
 func (ep *SftpTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	return fmt.Errorf("not supported")
+	return nil
 }
 
 // WithSrcIPAndProxySelection use the specific ip as source address for this
 // connection and connect via the provided proxy URL
 func (ep *SftpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	proxy *url.URL) error {
+	return fmt.Errorf("not supported")
+}
+
+// WithSrcIPAndHTTPSCerts append certs for https datastore
+func (ep *SftpTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
 	return fmt.Errorf("not supported")
 }
 

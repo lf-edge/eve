@@ -23,7 +23,7 @@ import (
 func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	status Status, syncOp zedUpload.SyncOpType, downloadURL string,
 	auth *zedUpload.AuthInput, dpath, region string, maxsize uint64, ifname string,
-	ipSrc net.IP, filename, locFilename string,
+	ipSrc net.IP, filename, locFilename string, certs [][]byte,
 	receiveChan chan<- CancelChannel) (string, bool, error) {
 
 	// create Endpoint
@@ -47,13 +47,27 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return "", cancel, err
 	}
 	// check for proxies on the selected management port interface
-	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
+	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
 	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
-	if err == nil && proxyURL != nil {
-		log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
-		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
+	if err == nil {
+		if proxyURL != nil {
+			log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
+			err = dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
+		} else {
+			if len(certs) > 0 {
+				log.Functionf("%s: Set server certs", trType)
+				err = dEndPoint.WithSrcIPAndHTTPSCerts(ipSrc, certs)
+			} else {
+				err = dEndPoint.WithSrcIPSelection(ipSrc)
+			}
+		}
+		if err != nil {
+			log.Errorf("Set source IP failed: %s", err)
+			return "", cancel, err
+		}
 	} else {
-		dEndPoint.WithSrcIPSelection(ipSrc)
+		log.Errorf("Lookup Proxy failed: %s", err)
+		return "", cancel, err
 	}
 
 	var respChan = make(chan *zedUpload.DronaRequest)
@@ -162,7 +176,7 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		return sha256, cancel, err
 	}
 	// check for proxies on the selected management port interface
-	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL)
+	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
 
 	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
