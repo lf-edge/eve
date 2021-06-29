@@ -989,6 +989,9 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
+
+		datastore.DsCertPEM = ds.GetDsCertPEM()
+
 		datastore.CipherBlockStatus = parseCipherBlock(ctx, datastore.Key(),
 			ds.GetCipherData())
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)

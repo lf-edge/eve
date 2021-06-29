@@ -92,6 +92,11 @@ func (ep *OCITransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	return nil
 }
 
+// WithSrcIPAndHTTPSCerts append certs for https datastore
+func (ep *OCITransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
+	return fmt.Errorf("not supported")
+}
+
 // WithBindIntf bind to specific interface for this connection
 func (ep *OCITransportMethod) WithBindIntf(intf string) error {
 	localAddr := getSrcIpFromInterface(intf)

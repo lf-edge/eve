@@ -58,6 +58,7 @@ type DronaEndPoint interface {
 	Action(req *DronaRequest) error
 	Close() error
 	WithSrcIPSelection(localAddr net.IP) error
+	WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error
 	WithSrcIPAndProxySelection(localAddr net.IP, proxy *url.URL) error
 	WithBindIntf(intf string) error
 	WithLogging(onoff bool) error
