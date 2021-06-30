@@ -429,7 +429,7 @@ func (x *PhysicalIO) GetPtype() evecommon.PhyIoType {
 	if x != nil {
 		return x.Ptype
 	}
-	return evecommon.PhyIoType_PhyIoNoop
+	return evecommon.PhyIoType(0)
 }
 
 func (x *PhysicalIO) GetPhylabel() string {
@@ -464,7 +464,7 @@ func (x *PhysicalIO) GetUsage() evecommon.PhyIoMemberUsage {
 	if x != nil {
 		return x.Usage
 	}
-	return evecommon.PhyIoMemberUsage_PhyIoUsageNone
+	return evecommon.PhyIoMemberUsage(0)
 }
 
 func (x *PhysicalIO) GetUsagePolicy() *PhyIOUsagePolicy {

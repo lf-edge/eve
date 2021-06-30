@@ -45,6 +45,7 @@ type IoBundle struct {
 
 	// Assignment Group, is unique label that is applied across PhysicalIOs
 	// Entire group can be assigned to application or nothing at all
+	// If this is an empty string it means the IoBundle can not be assigned.
 	AssignmentGroup string
 
 	Usage zcommon.PhyIoMemberUsage

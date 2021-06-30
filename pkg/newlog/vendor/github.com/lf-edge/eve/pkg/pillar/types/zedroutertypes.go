@@ -442,7 +442,7 @@ type DevicePortConfig struct {
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
 	State        PendDPCStatus
-
+	OriginFile   string // File to be deleted once DevicePortConfigList published
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
 
@@ -1804,9 +1804,10 @@ type UnderlayNetworkConfig struct {
 	//	If this is non-empty ( != ""), the UL network Config should not be
 	// 	processed further. It Should just	be flagged to be in error state
 	//  back to the cloud.
-	Error   string
-	Network uuid.UUID // Points to a NetworkInstance.
-	ACLs    []ACE
+	Error        string
+	Network      uuid.UUID // Points to a NetworkInstance.
+	ACLs         []ACE
+	AccessVlanID uint32
 }
 
 type UnderlayNetworkStatus struct {
@@ -1940,6 +1941,12 @@ type NetworkInstanceInfo struct {
 	// to this bridge and their statistics.
 	// We add statistics from all vifs while reporting to cloud.
 	VifMetricMap map[string]NetworkMetric
+
+	// Maintain a map of all access vlan ids to their counts, used by apps
+	// connected to this network instance.
+	VlanMap map[uint32]uint32
+	// Counts the number of trunk ports attached to this network instance
+	NumTrunkPorts uint32
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -2005,6 +2012,13 @@ type NetworkInstanceMetrics struct {
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
 	VpnMetrics     *VpnMetrics
+	VlanMetrics    VlanMetrics
+}
+
+// VlanMetrics :
+type VlanMetrics struct {
+	NumTrunkPorts uint32
+	VlanCounts    map[uint32]uint32
 }
 
 // ProbeMetrics - NI probe metrics
@@ -2273,6 +2287,9 @@ const (
 // 		Extracted from the protobuf NetworkInstanceConfig
 type NetworkInstanceStatus struct {
 	NetworkInstanceConfig
+	// Make sure the Activate from the config isn't exposed as a boolean
+	Activate uint64
+
 	ChangeInProgress ChangeInProgressType
 
 	// Activated

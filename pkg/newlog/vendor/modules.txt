@@ -1,12 +1,15 @@
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
 # github.com/euank/go-kmsg-parser v2.0.0+incompatible
+## explicit
 github.com/euank/go-kmsg-parser/kmsgparser
 # github.com/fsnotify/fsnotify v1.4.9
 github.com/fsnotify/fsnotify
 # github.com/golang/protobuf v1.4.3
+## explicit
 github.com/golang/protobuf/ptypes/timestamp
 # github.com/google/go-cmp v0.5.4
+## explicit
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -15,12 +18,14 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-containerregistry v0.1.4
 github.com/google/go-containerregistry/pkg/v1/types
 # github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000 => ../../api/go
+## explicit
 github.com/lf-edge/eve/api/go/certs
 github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/evecommon
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/logs
 # github.com/lf-edge/eve/pkg/pillar v0.0.0-20210526054436-4dcc82533ea3 => ../pillar
+## explicit
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/flextimer
@@ -31,19 +36,17 @@ github.com/lf-edge/eve/pkg/pillar/types
 github.com/lf-edge/eve/pkg/pillar/utils/file
 github.com/lf-edge/eve/pkg/pillar/utils/logging
 github.com/lf-edge/eve/pkg/pillar/watch
-# github.com/magefile/mage v1.11.0
-github.com/magefile/mage/mg
-github.com/magefile/mage/sh
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
-# github.com/sirupsen/logrus v1.8.0
+# github.com/sirupsen/logrus v1.8.1
+## explicit
 github.com/sirupsen/logrus
-# github.com/vishvananda/netlink v0.0.0-20210521210133-6f4f9eb80eb3 => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
+# github.com/vishvananda/netlink v1.1.1-0.20201029203352-d40f9887b852 => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
 github.com/vishvananda/netns
-# golang.org/x/sys v0.0.0-20210225014209-683adc9d29d7
+# golang.org/x/sys v0.0.0-20210324051608-47abb6519492
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -75,3 +78,6 @@ google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/timestamppb
+# github.com/lf-edge/eve/api/go => ../../api/go
+# github.com/lf-edge/eve/pkg/pillar => ../pillar
+# github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3

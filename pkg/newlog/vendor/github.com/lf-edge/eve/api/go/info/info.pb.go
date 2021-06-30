@@ -1198,7 +1198,7 @@ func (x *ZioBundle) GetType() evecommon.PhyIoType {
 	if x != nil {
 		return x.Type
 	}
-	return evecommon.PhyIoType_PhyIoNoop
+	return evecommon.PhyIoType(0)
 }
 
 func (x *ZioBundle) GetName() string {
@@ -1240,7 +1240,7 @@ func (x *ZioBundle) GetUsage() evecommon.PhyIoMemberUsage {
 	if x != nil {
 		return x.Usage
 	}
-	return evecommon.PhyIoMemberUsage_PhyIoUsageNone
+	return evecommon.PhyIoMemberUsage(0)
 }
 
 func (x *ZioBundle) GetErr() *ErrorInfo {
@@ -3194,7 +3194,7 @@ func (x *DevicePort) GetUsage() evecommon.PhyIoMemberUsage {
 	if x != nil {
 		return x.Usage
 	}
-	return evecommon.PhyIoMemberUsage_PhyIoUsageNone
+	return evecommon.PhyIoMemberUsage(0)
 }
 
 func (x *DevicePort) GetNetworkUUID() string {

@@ -11,9 +11,9 @@ import (
 	"time"
 
 	ctrcontent "github.com/containerd/containerd/content"
-	"github.com/deislabs/oras/pkg/content"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/pkg/content"
 )
 
 // IngesterCloser an ingester that also has a Close(). May return nil

@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"github.com/containerd/containerd/remotes"
-	auth "github.com/deislabs/oras/pkg/auth/docker"
+	auth "oras.land/oras-go/pkg/auth/docker"
 )
 
 type Registry struct {
