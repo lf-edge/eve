@@ -1,3 +1,26 @@
+## 1.10.3
+
+### Fixes
+- updates golang/x/net to fix vulnerability detected by snyk (#394) [c479356]
+
+## 1.10.2
+
+### Fixes
+- Add ExpectWithOffset, EventuallyWithOffset and ConsistentlyWithOffset to WithT (#391) [990941a]
+
+## 1.10.1
+
+### Fixes
+- Update dependencies (#389) [9f5eecd]
+
+## 1.10.0
+
+### Features
+- Add HaveHTTPStatusMatcher (#378) [f335c94]
+- Changed matcher for content-type in VerifyJSONRepresenting (#377) [6024f5b]
+- Make ghttp usable with x-unit style tests (#376) [c0be499]
+- Implement PanicWith matcher (#381) [f8032b4]
+
 ## 1.9.0
 
 ### Features

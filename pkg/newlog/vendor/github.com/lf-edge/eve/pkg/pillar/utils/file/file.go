@@ -34,6 +34,8 @@ func WriteRename(fileName string, b []byte) error {
 			fileName, err)
 		return errors.New(errStr)
 	}
+	// Make sure the file is flused from buffers onto the disk
+	tmpfile.Sync()
 	if err := tmpfile.Close(); err != nil {
 		errStr := fmt.Sprintf("WriteRename(%s): %s",
 			fileName, err)
