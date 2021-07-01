@@ -16,10 +16,9 @@ import (
 // and the sequence counter.
 // It will resolve the tag in name to sha256
 type ResolveConfig struct {
-	DatastoreID      uuid.UUID
-	Name             string
-	AllowNonFreePort bool
-	Counter          uint32
+	DatastoreID uuid.UUID
+	Name        string
+	Counter     uint32
 }
 
 // Key : DatastoreID, name and sequence counter are used
@@ -77,6 +76,8 @@ type ResolveStatus struct {
 	RetryCount  int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
+	// We save the original error when we do a retry
+	OrigError string
 }
 
 // Key : DatastoreID, name and sequence counter are used
@@ -126,7 +127,7 @@ func (status ResolveStatus) LogModify(logBase *base.LogObject, old interface{}) 
 			AddField("retry-count-int64", status.RetryCount).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("Resolve status modify")
+			Noticef("Resolve status modify")
 	}
 }
 

@@ -4,6 +4,8 @@
 package types
 
 import (
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -27,7 +29,8 @@ type BlobStatus struct {
 	// Used *only* when this has data and Path is ""
 	Content []byte
 	// State of download of this blob; only supports: INITIAL, DOWNLOADING, DOWNLOADED, VERIFYING, VERIFIED
-	State SwState
+	State      SwState
+	CreateTime time.Time
 	// MediaType the actual media type string for this blob
 	MediaType string
 	// HasDownloaderRef whether or not we have started a downloader for this blob
@@ -35,9 +38,10 @@ type BlobStatus struct {
 	// HasVerifierRef whether or not we have started a verifier for this blob
 	HasVerifierRef bool
 	// RefCount number of consumers referring this object
-	RefCount    uint
-	TotalSize   int64 // expected size as reported by the downloader, if any
-	CurrentSize int64 // current total downloaded size as reported by the downloader
+	RefCount               uint
+	LastRefCountChangeTime time.Time
+	TotalSize              int64 // expected size as reported by the downloader, if any
+	CurrentSize            int64 // current total downloaded size as reported by the downloader
 	// Progress percentage downloaded 0-100, defined by CurrentSize/TotalSize
 	Progress uint
 	// ErrorAndTimeWithSource provide common error handling capabilities
@@ -120,7 +124,7 @@ func (status BlobStatus) LogModify(logBase *base.LogObject, old interface{}) {
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("error", status.Error).
 			AddField("error-time", status.ErrorTime).
-			Errorf("Blob status modify")
+			Noticef("Blob status modify")
 	}
 }
 

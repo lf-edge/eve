@@ -67,7 +67,7 @@
 // The `DriverPublisher` publishes messages and, optionally, persists them.
 // It also can `Unpublish` messages, as well as `Load` all messages from
 // persistence store. Finally, it must be able to set and clear a `restarted`
-// flag.
+// flag/counter.
 //
 // The actual interface is key-value pairs, where it either is requested to
 // publish a key (string) and value (`interface{}`), or unpublish a key.

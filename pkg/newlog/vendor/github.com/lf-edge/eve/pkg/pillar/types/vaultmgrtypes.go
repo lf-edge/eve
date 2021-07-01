@@ -50,7 +50,7 @@ func (status VaultStatus) LogModify(logBase *base.LogObject, old interface{}) {
 		errAndTime := status.ErrorAndTime
 		logObject.CloneAndAddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("Vault status modify")
+			Noticef("Vault status modify")
 	}
 }
 

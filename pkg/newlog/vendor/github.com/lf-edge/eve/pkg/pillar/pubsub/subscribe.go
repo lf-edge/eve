@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -21,7 +22,7 @@ type SubscriptionImpl struct {
 	ModifyHandler       SubModifyHandler
 	DeleteHandler       SubDeleteHandler
 	RestartHandler      SubRestartHandler
-	SynchronizedHandler SubRestartHandler
+	SynchronizedHandler SubSyncHandler
 	MaxProcessTimeWarn  time.Duration // If set generate warning if ProcessChange
 	MaxProcessTimeError time.Duration // If set generate warning if ProcessChange
 	Persistent          bool
@@ -64,7 +65,7 @@ func (sub *SubscriptionImpl) Close() error {
 			sub.nameString(), key)
 		handleDelete(sub, key)
 	}
-	handleRestart(sub, false)
+	handleRestart(sub, 0)
 	handleSynchronized(sub, false)
 	return nil
 }
@@ -72,7 +73,7 @@ func (sub *SubscriptionImpl) Close() error {
 // populate is used when activating a persistent subscription to read
 // from the json files. This ensures that even if the publisher hasn't started
 // yet, the subscriber will be notified with the initial content.
-// This sets restarted if the restarted file was found.
+// This sets restartCounter if the restarted file exists and contains an integer.
 // Note that this directly calls handleModify thus unlike subsequent
 // changes the agent's handler will be called without going through
 // a select on the MsgChan and ProcessChange call.
@@ -85,7 +86,7 @@ func (sub *SubscriptionImpl) populate() {
 
 	sub.log.Functionf("populate(%s)", name)
 
-	pairs, restarted, err := sub.driver.Load()
+	pairs, restartCounter, err := sub.driver.Load()
 	if err != nil {
 		// Could be a truncated or empty file
 		sub.log.Error(err)
@@ -95,8 +96,8 @@ func (sub *SubscriptionImpl) populate() {
 		sub.log.Functionf("populate(%s) key %s", name, key)
 		handleModify(sub, key, itemB)
 	}
-	if restarted {
-		handleRestart(sub, true)
+	if restartCounter != 0 {
+		handleRestart(sub, restartCounter)
 	}
 	sub.log.Functionf("populate(%s) done", name)
 }
@@ -112,8 +113,18 @@ func (sub *SubscriptionImpl) ProcessChange(change Change) {
 
 	switch change.Operation {
 	case Restart:
-		handleRestart(sub, true)
-	case Create:
+		name := sub.nameString()
+		restartCounter, err := strconv.Atoi(change.Key)
+		// Treat present but empty file as "1" to handle old file
+		// in /persist
+		if err != nil {
+			sub.log.Warnf("Load: %s for %s; read %s treat as 1",
+				err, name, change.Key)
+		}
+		sub.log.Tracef("Restart(%s) key %s counter %d",
+			name, change.Key, restartCounter)
+		handleRestart(sub, restartCounter)
+	case Sync:
 		handleSynchronized(sub, true)
 	case Delete:
 		handleDelete(sub, change.Key)
@@ -153,7 +164,12 @@ func (sub *SubscriptionImpl) Iterate(function base.StrMapFunc) {
 
 // Restarted - Check if the Publisher has Restarted
 func (sub *SubscriptionImpl) Restarted() bool {
-	return sub.km.restarted
+	return sub.km.restartCounter != 0
+}
+
+// RestartCounter - Check how many times the Publisher has Restarted
+func (sub *SubscriptionImpl) RestartCounter() int {
+	return sub.km.restartCounter
 }
 
 // Synchronized -
@@ -193,7 +209,7 @@ func (sub *SubscriptionImpl) dump(infoStr string) {
 		return true
 	}
 	sub.km.key.Range(dumper)
-	sub.log.Tracef("\trestarted %t\n", sub.km.restarted)
+	sub.log.Tracef("\trestarted %d\n", sub.km.restartCounter)
 	sub.log.Tracef("\tsynchronized %t\n", sub.synchronized)
 }
 
@@ -202,6 +218,14 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
+	// Any large items which were stored separately?
+	itemcb, err := readAddLarge(sub.log, itemcb)
+	if err != nil {
+		errStr := fmt.Sprintf("handleModify(%s): readAddLarge failed %s",
+			name, err)
+		sub.log.Errorln(errStr)
+		return
+	}
 	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
 	if err != nil {
 		errStr := fmt.Sprintf("handleModify(%s): json failed %s",
@@ -278,20 +302,21 @@ func handleDelete(ctxArg interface{}, key string) {
 	sub.log.Tracef("pubsub.handleDelete(%s) done for key %s\n", name, key)
 }
 
-func handleRestart(ctxArg interface{}, restarted bool) {
+func handleRestart(ctxArg interface{}, restartCounter int) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Tracef("pubsub.handleRestart(%s) restarted %v\n", name, restarted)
-	if restarted == sub.km.restarted {
+	sub.log.Tracef("pubsub.handleRestart(%s) restartCounter %d",
+		name, restartCounter)
+	if restartCounter == sub.km.restartCounter {
 		sub.log.Tracef("pubsub.handleRestart(%s) value unchanged\n", name)
 		return
 	}
-	sub.km.restarted = restarted
+	sub.km.restartCounter = restartCounter
 	if sub.RestartHandler != nil {
-		(sub.RestartHandler)(sub.userCtx, restarted)
+		(sub.RestartHandler)(sub.userCtx, restartCounter)
 	}
-	sub.log.Tracef("pubsub.handleRestart(%s) done for restarted %v\n",
-		name, restarted)
+	sub.log.Tracef("pubsub.handleRestart(%s) done for restartCounter %d",
+		name, restartCounter)
 }
 
 func handleSynchronized(ctxArg interface{}, synchronized bool) {
