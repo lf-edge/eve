@@ -15,7 +15,7 @@ import (
 	"io"
 	"time"
 
-	orascontent "github.com/deislabs/oras/pkg/content"
+	orascontent "oras.land/oras-go/pkg/content"
 
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
