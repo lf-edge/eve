@@ -11,10 +11,12 @@ import (
 	"net"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/lf-edge/eve/pkg/pillar/watch"
@@ -35,12 +37,13 @@ type Subscriber struct {
 	logger           *logrus.Logger
 	log              *base.LogObject
 	doneChan         chan struct{}
+	rootDir          string
 }
 
 // Load load entire persisted data set into a map
-func (s *Subscriber) Load() (map[string][]byte, bool, error) {
+func (s *Subscriber) Load() (map[string][]byte, int, error) {
 	dirName := s.dirName
-	foundRestarted := false
+	restartCounter := 0
 	items := make(map[string][]byte)
 
 	s.log.Tracef("Load(%s)\n", s.name)
@@ -49,12 +52,24 @@ func (s *Subscriber) Load() (map[string][]byte, bool, error) {
 	if err != nil {
 		// Drive on?
 		s.log.Error(err)
-		return items, foundRestarted, err
+		return items, restartCounter, err
 	}
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name(), ".json") {
 			if file.Name() == "restarted" {
-				foundRestarted = true
+				statusFile := dirName + "/" + file.Name()
+				sb, err := ioutil.ReadFile(statusFile)
+				if err != nil {
+					s.log.Errorf("Load: %s for %s\n", err, statusFile)
+					continue
+				}
+				restartCounter, err = strconv.Atoi(string(sb))
+				// Treat present but empty file as "1" to
+				// handle old file in /persist
+				if err != nil {
+					s.log.Warnf("Load: %s for %s; treat as 1", err, statusFile)
+					restartCounter = 1
+				}
 			}
 			continue
 		}
@@ -78,7 +93,7 @@ func (s *Subscriber) Load() (map[string][]byte, bool, error) {
 		}
 		items[key] = sb
 	}
-	return items, foundRestarted, err
+	return items, restartCounter, err
 }
 
 // Start start the subscriber listening on the given name and topic
@@ -148,6 +163,11 @@ func (s *Subscriber) Stop() error {
 	}
 }
 
+// LargeDirName where to put large fields
+func (s *Subscriber) LargeDirName() string {
+	return fmt.Sprintf("%s/persist/pubsub-large", s.rootDir)
+}
+
 func (s *Subscriber) watchSock() {
 	for {
 		msg, key, val := s.connectAndRead()
@@ -156,13 +176,14 @@ func (s *Subscriber) watchSock() {
 		case "hello":
 			// Do nothing
 		case "complete":
-			// XXX to handle restart we need to handle "complete"
+			// XXX to handle connection/process restart we need to handle "sync"
 			// by doing a sweep across the KeyMap to handleDelete
 			// what we didn't see before the "complete"
-			s.C <- pubsub.Change{Operation: pubsub.Create, Key: "done"}
+			s.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
 
 		case "restarted":
-			s.C <- pubsub.Change{Operation: pubsub.Restart, Key: "done"}
+			s.C <- pubsub.Change{Operation: pubsub.Restart,
+				Key: key}
 
 		case "delete":
 			s.C <- pubsub.Change{Operation: pubsub.Delete, Key: key}
@@ -286,9 +307,19 @@ func (s *Subscriber) read() (string, string, []byte) {
 	// XXX are there error cases where we should Close and
 	// continue aka reconnect?
 	switch msg {
-	case "hello", "restarted", "complete":
+	case "hello", "complete":
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
 		return msg, "", nil
+
+	case "restarted":
+		if count < 3 {
+			errStr := fmt.Sprintf("connectAndRead(%s): too short restarted", s.name)
+			s.log.Errorln(errStr)
+			return "", "", nil
+		}
+		counter := string(reply[2])
+		s.log.Tracef("connectAndRead(%s) Got message %s type %s counter %s", s.name, msg, t, counter)
+		return msg, counter, nil
 
 	case "delete":
 		if count < 3 {
@@ -341,42 +372,106 @@ func (s *Subscriber) read() (string, string, []byte) {
 	}
 }
 
+// translate takes file notifications from a file watcher and converts them
+// pubsub operations. Normally this is 1-1 but since the file watcher can not
+// ensure ordering for the restarted file we delay those until a bit to ensure
+// they are delivered after any notifictions for other files.
 func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 	statusDirName := s.dirName
-	for change := range in {
-		s.log.Tracef("translate received message '%s'", change)
-		operation := string(change[0])
-		fileName := string(change[2:])
-		// Remove .json from name */
-		name := strings.Split(fileName, ".json")
-		switch {
-		case operation == "R":
-			s.log.Functionf("Received restart <%s>\n", fileName)
-			// I do not know why, but the "R" operation from the file watcher
-			// historically called the Complete operation, leading to the
-			// "Synchronized" handler being called.
-			out <- pubsub.Change{Operation: pubsub.Create}
-		case operation == "M" && fileName == "restarted":
-			s.log.Tracef("Found restarted file\n")
-			out <- pubsub.Change{Operation: pubsub.Restart}
-		case !strings.HasSuffix(fileName, ".json"):
-			// s.log.Tracef("Ignoring file <%s> operation %s\n",
-			//	fileName, operation)
-			continue
-		case operation == "D":
-			out <- pubsub.Change{Operation: pubsub.Delete, Key: name[0]}
-		case operation == "M":
-			statusFile := path.Join(statusDirName, fileName)
-			cb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				s.log.Errorf("%s for %s\n", err, statusFile)
-				continue
+	gotRestarted := false
+	var restartedValue string
+
+	// Delay sending restarted until we have seen other changes
+	interval := 3 * time.Second
+	max := float64(interval)
+	min := max / 3
+	ticker := flextimer.NewRangeTicker(time.Duration(1000*min),
+		time.Duration(1000*max))
+
+	for {
+		select {
+		case _, ok := <-ticker.C:
+			if !ok || !gotRestarted {
+				// skip handling in case of closed or not restarted
+				break
 			}
-			out <- pubsub.Change{Operation: pubsub.Modify, Key: name[0], Value: cb}
-		default:
-			s.log.Fatal("Unknown operation from Watcher: ", operation)
+			out <- pubsub.Change{Operation: pubsub.Restart, Key: restartedValue}
+			s.log.Functionf("sent restarted file with %s",
+				restartedValue)
+			gotRestarted = false
+			restartedValue = ""
+			ticker.UpdateRangeTicker(time.Duration(1000*min),
+				time.Duration(1000*max))
+
+		case change, ok := <-in:
+			if !ok {
+				if gotRestarted {
+					out <- pubsub.Change{Operation: pubsub.Restart, Key: restartedValue}
+					s.log.Warnf("translate goroutine exiting flushed restarted %s",
+						restartedValue)
+					gotRestarted = false
+					restartedValue = ""
+				} else {
+					s.log.Warnf("translate goroutine exiting")
+				}
+				close(out)
+				ticker.StopTicker()
+				return
+			}
+			s.log.Tracef("translate received message '%s'", change)
+			operation := string(change[0])
+			fileName := string(change[2:])
+			// Remove .json from name */
+			name := strings.Split(fileName, ".json")
+			switch {
+			case operation == "R":
+				s.log.Functionf("Received restart <%s>", fileName)
+				// I do not know why, but the "R" operation from the file watcher
+				// historically called the Complete operation, leading to the
+				// "Synchronized" handler being called.
+				out <- pubsub.Change{Operation: pubsub.Sync}
+			case operation == "M" && fileName == "restarted":
+				statusFile := path.Join(statusDirName, fileName)
+				cb, err := ioutil.ReadFile(statusFile)
+				if err != nil {
+					s.log.Errorf("%s for %s\n", err, statusFile)
+					continue
+				}
+				// Should we send a previous restarted?
+				if gotRestarted {
+					out <- pubsub.Change{Operation: pubsub.Restart, Key: restartedValue}
+					s.log.Functionf("flush restarted queued %s new %s",
+						restartedValue, string(cb))
+				}
+				gotRestarted = true
+				restartedValue = string(cb)
+				s.log.Functionf("Starting timer restarted %s for %v %v",
+					restartedValue,
+					time.Duration(min), time.Duration(max))
+				ticker.UpdateRangeTicker(time.Duration(min),
+					time.Duration(max))
+
+			case !strings.HasSuffix(fileName, ".json"):
+				// s.log.Tracef("Ignoring file <%s> operation %s\n",
+				//	fileName, operation)
+				continue
+			case operation == "D":
+				out <- pubsub.Change{Operation: pubsub.Delete, Key: name[0]}
+				s.log.Tracef("sent delete file for %s",
+					name[0])
+			case operation == "M":
+				statusFile := path.Join(statusDirName, fileName)
+				cb, err := ioutil.ReadFile(statusFile)
+				if err != nil {
+					s.log.Errorf("%s for %s\n", err, statusFile)
+					continue
+				}
+				out <- pubsub.Change{Operation: pubsub.Modify, Key: name[0], Value: cb}
+				s.log.Tracef("sent modify file for %s",
+					name[0])
+			default:
+				s.log.Fatal("Unknown operation from Watcher: ", operation)
+			}
 		}
 	}
-	s.log.Warnf("translate goroutine exiting")
-	close(out)
 }

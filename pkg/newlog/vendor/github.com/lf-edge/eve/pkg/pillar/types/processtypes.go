@@ -26,6 +26,7 @@ type ProcessMetric struct {
 	VMBytes       uint64
 	RssBytes      uint64
 	MemoryPercent float32
+	Stack         string
 }
 
 // Key returns the key for pubsub

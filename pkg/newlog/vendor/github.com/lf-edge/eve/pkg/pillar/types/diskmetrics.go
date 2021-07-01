@@ -22,6 +22,7 @@ var ReportDiskPaths = []string{
 var ReportDirPaths = []string{
 	PersistDir + "/downloads", // XXX old to be removed
 	PersistDir + "/img",       // XXX old to be removed
+	PersistDir + "/containerd",
 	PersistDir + "/tmp",
 	PersistDir + "/log",
 	PersistDir + "/newlog",

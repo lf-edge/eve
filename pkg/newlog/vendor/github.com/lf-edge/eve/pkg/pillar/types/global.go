@@ -177,6 +177,11 @@ const (
 	// ForceFallbackCounter global setting key
 	ForceFallbackCounter = "force.fallback.counter"
 
+	// DownloadMaxPortCost global setting key controls
+	// how the EVE microservices will use free and non-free (e.g., WWAN)
+	// ports for image downloads.
+	DownloadMaxPortCost GlobalSettingKey = "network.download.max.cost"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -194,8 +199,7 @@ const (
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
-	// AllowNonFreeImages global setting key
-	AllowNonFreeImages GlobalSettingKey = "network.allow.wwan.download"
+
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
 
@@ -206,6 +210,12 @@ const (
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
+
+	// XXX Temporary flag to disable RFC 3442 classless static route usage
+	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
+
+	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
+	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -753,6 +763,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		eveMemoryLimitInBytes, 0xFFFFFFFF)
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -760,10 +771,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
+	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
+	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
-	configItemSpecMap.AddTriStateItem(AllowNonFreeImages, TS_ENABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items

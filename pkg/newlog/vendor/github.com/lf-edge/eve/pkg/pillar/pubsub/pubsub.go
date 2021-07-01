@@ -21,7 +21,7 @@ type SubscriptionOptions struct {
 	ModifyHandler  SubModifyHandler
 	DeleteHandler  SubDeleteHandler
 	RestartHandler SubRestartHandler
-	SyncHandler    SubRestartHandler
+	SyncHandler    SubSyncHandler
 	WarningTime    time.Duration
 	ErrorTime      time.Duration
 	AgentName      string
@@ -45,14 +45,17 @@ type SubModifyHandler func(ctx interface{}, key string, status interface{},
 type SubDeleteHandler func(ctx interface{}, key string, status interface{})
 
 // SubRestartHandler generic handler for restarts
-type SubRestartHandler func(ctx interface{}, restarted bool)
+type SubRestartHandler func(ctx interface{}, restartCount int)
+
+// SubSyncHandler generic handler for synchronized
+type SubSyncHandler func(ctx interface{}, synchronized bool)
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
 // We use StringMap with a RWlock to allow concurrent access.
 type keyMap struct {
-	restarted bool
-	key       *base.LockedStringMap
+	restartCounter int
+	key            *base.LockedStringMap
 }
 
 // PubSub is a system for publishing and subscribing to messages
@@ -169,6 +172,7 @@ func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error)
 		km:          keyMap{key: base.NewLockedStringMap()},
 		updaterList: p.updaterList,
 		defaultName: p.driver.DefaultName(),
+		persistent:  options.Persistent,
 		logger:      p.logger,
 		log:         p.log,
 	}

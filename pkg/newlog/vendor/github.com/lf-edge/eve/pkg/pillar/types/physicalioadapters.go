@@ -29,17 +29,8 @@ type PhysicalAddress struct {
 // This is constructed from api/proto/config/devmodel.proto PhyIOUsagePolicy
 // Keep the two structures consistent
 type PhyIOUsagePolicy struct {
+	// FreeUplink is needed while we transition to just a Cost integer
 	FreeUplink bool
-	// FallBackPriority
-	//  0 is the highest priority.
-	//  Lower priority interfaces are used only when NONE of the higher
-	//  priority interfaces are up.
-	//  For example:
-	//      First use all interfaces with priority 0
-	//      if no priority 0 interfaces, use interfaces with priority 1
-	//      if no priority 1 interfaces, use interfaces with priority 2
-	//      and so on..
-	FallBackPriority uint32
 }
 
 // PhysicalIOAdapter - Object used to store Adapter configuration (L1)
@@ -77,7 +68,7 @@ func (ioAdapterList PhysicalIOAdapterList) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Onboarding ioAdapterList create")
+	logObject.Noticef("Onboarding ioAdapterList create")
 }
 
 // LogModify :
@@ -91,14 +82,14 @@ func (ioAdapterList PhysicalIOAdapterList) LogModify(logBase *base.LogObject, ol
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldIoAdapterList, ioAdapterList)).
-		Metricf("Onboarding ioAdapterList modify")
+		Noticef("Onboarding ioAdapterList modify")
 }
 
 // LogDelete :
 func (ioAdapterList PhysicalIOAdapterList) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.PhysicalIOAdapterListLogType, "",
 		nilUUID, ioAdapterList.LogKey())
-	logObject.Metricf("Onboarding ioAdapterList delete")
+	logObject.Noticef("Onboarding ioAdapterList delete")
 
 	base.DeleteLogObject(logBase, ioAdapterList.LogKey())
 }

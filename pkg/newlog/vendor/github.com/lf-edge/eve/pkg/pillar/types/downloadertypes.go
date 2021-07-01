@@ -4,6 +4,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -13,15 +14,14 @@ import (
 
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type DownloaderConfig struct {
-	ImageSha256      string
-	DatastoreID      uuid.UUID
-	Name             string
-	Target           string // file path where to download the file
-	NameIsURL        bool   // If not we form URL based on datastore info
-	AllowNonFreePort bool
-	Size             uint64 // In bytes
-	FinalObjDir      string // final Object Store
-	RefCount         uint
+	ImageSha256 string
+	DatastoreID uuid.UUID
+	Name        string
+	Target      string // file path where to download the file
+	NameIsURL   bool   // If not we form URL based on datastore info
+	Size        uint64 // In bytes
+	FinalObjDir string // final Object Store
+	RefCount    uint
 }
 
 func (config DownloaderConfig) Key() string {
@@ -92,29 +92,30 @@ func (config DownloaderConfig) LogKey() string {
 
 // The key/index to this is the ImageSha256 which comes from DownloaderConfig.
 type DownloaderStatus struct {
-	ImageSha256      string
-	DatastoreID      uuid.UUID
-	Target           string // file path where we download the file
-	Name             string
-	PendingAdd       bool
-	PendingModify    bool
-	PendingDelete    bool
-	RefCount         uint      // Zero means not downloaded
-	LastUse          time.Time // When RefCount dropped to zero
-	Expired          bool      // Handshake to client
-	NameIsURL        bool      // If not we form URL based on datastore info
-	AllowNonFreePort bool
-	State            SwState // DOWNLOADED etc
-	ReservedSpace    uint64  // Contribution to global ReservedSpace
-	Size             uint64  // Once DOWNLOADED; in bytes
-	TotalSize        int64   // expected size as reported by the downloader, if any
-	CurrentSize      int64   // current total downloaded size as reported by the downloader
-	Progress         uint    // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
-	ModTime          time.Time
-	ContentType      string // content-type header, if provided
+	ImageSha256   string
+	DatastoreID   uuid.UUID
+	Target        string // file path where we download the file
+	Name          string
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	RefCount      uint      // Zero means not downloaded
+	LastUse       time.Time // When RefCount dropped to zero
+	Expired       bool      // Handshake to client
+	NameIsURL     bool      // If not we form URL based on datastore info
+	State         SwState   // DOWNLOADED etc
+	ReservedSpace uint64    // Contribution to global ReservedSpace
+	Size          uint64    // Once DOWNLOADED; in bytes
+	TotalSize     int64     // expected size as reported by the downloader, if any
+	CurrentSize   int64     // current total downloaded size as reported by the downloader
+	Progress      uint      // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
+	ModTime       time.Time
+	ContentType   string // content-type header, if provided
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RetryCount int
+	// We save the original error when we do a retry
+	OrigError string
 }
 
 func (status DownloaderStatus) Key() string {
@@ -136,7 +137,11 @@ func (status *DownloaderStatus) ClearPendingStatus() {
 }
 
 // HandleDownloadFail : Do Failure specific tasks
-func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
+func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time.Duration, cancelled bool) {
+	if retryTime != 0 && !cancelled {
+		errStr = fmt.Sprintf("Will retry in %v: %s",
+			retryTime, errStr)
+	}
 	status.SetErrorNow(errStr)
 	status.ClearPendingStatus()
 }
@@ -185,7 +190,7 @@ func (status DownloaderStatus) LogModify(logBase *base.LogObject, old interface{
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("error", errAndTime.Error).
 			AddField("error-time", errAndTime.ErrorTime).
-			Errorf("Download status modify")
+			Noticef("Download status modify")
 	}
 }
 
@@ -214,10 +219,4 @@ type DatastoreContext struct {
 	APIKey          string
 	Password        string
 	Region          string
-}
-
-// AllowNonFreePort looks at GlobalConfig to determine which policy
-// to apply for the download of the object.
-func AllowNonFreePort(gc ConfigItemValueMap) bool {
-	return gc.GlobalValueTriState(AllowNonFreeImages) == TS_ENABLED
 }
