@@ -8,7 +8,7 @@ require (
 	github.com/google/go-cmp v0.5.4
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20210526054436-4dcc82533ea3
-	github.com/sirupsen/logrus v1.8.0
+	github.com/sirupsen/logrus v1.8.1
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
