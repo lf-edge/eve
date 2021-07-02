@@ -51,6 +51,7 @@ gnu-efi-dev
 gnupg
 gnutls
 grep
+gtk-doc
 hdparm
 iasl
 installkernel
@@ -88,11 +89,11 @@ libpciaccess-dev
 libpng
 libpng-dev
 librelp-dev
-libressl-dev
+libretls
 libseccomp-dev
 libssl1.1
 libtirpc-dev
-libtls-standalone
+libretls
 libtool
 libunwind-dev
 libusb
@@ -143,7 +144,6 @@ py3-six
 py3-toml
 python3
 python3-dev
-qemu-img
 radvd
 rsync
 scanelf

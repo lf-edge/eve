@@ -19,7 +19,7 @@
 #   eve-alpine-deploy.sh 3.14
 set -e
 
-ALPINE_VERSION=${1:-3.13}
+ALPINE_VERSION=${1:-3.14}
 
 bail() {
    echo "$@"

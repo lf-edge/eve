@@ -1,4 +1,8 @@
 go
+libressl-dev
+libressl3.3-libcrypto
+libressl3.3-libssl
+libressl3.3-libtls
 libvncserver
 libvncserver-dev
 perf

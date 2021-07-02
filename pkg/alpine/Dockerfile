@@ -1,11 +1,11 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
+ARG EVE_BUILDER_IMAGE=alpine:3.14.0
 FROM ${EVE_BUILDER_IMAGE} AS cache
 
-ARG ALPINE_VERSION=3.13
+ARG ALPINE_VERSION=3.14
 # this is only needed once, when this package
 # is rebased on the new version of Alpine and
 # you have to have FROM alpine:x.y.z above:
-# RUN apk update && apk upgrade -a
+RUN apk update && apk upgrade -a
 
 # Copy Dockerfile so we can include it in the hash
 COPY Dockerfile abuild.conf /etc/
