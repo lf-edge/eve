@@ -13,7 +13,7 @@ import (
 
 	ctrcontent "github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/remotes"
-	"github.com/deislabs/oras/pkg/oras"
+	"oras.land/oras-go/pkg/oras"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )

@@ -31,19 +31,16 @@ github.com/lf-edge/eve/pkg/pillar/types
 github.com/lf-edge/eve/pkg/pillar/utils/file
 github.com/lf-edge/eve/pkg/pillar/utils/logging
 github.com/lf-edge/eve/pkg/pillar/watch
-# github.com/magefile/mage v1.11.0
-github.com/magefile/mage/mg
-github.com/magefile/mage/sh
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
-# github.com/sirupsen/logrus v1.8.0
+# github.com/sirupsen/logrus v1.8.1
 github.com/sirupsen/logrus
-# github.com/vishvananda/netlink v0.0.0-20210521210133-6f4f9eb80eb3 => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
+# github.com/vishvananda/netlink v1.1.1-0.20201029203352-d40f9887b852 => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
 github.com/vishvananda/netns
-# golang.org/x/sys v0.0.0-20210225014209-683adc9d29d7
+# golang.org/x/sys v0.0.0-20210324051608-47abb6519492
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
