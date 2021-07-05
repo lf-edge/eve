@@ -165,17 +165,25 @@ done
 #enumerate NICs
 for ETH in /sys/class/net/*; do
    LABEL=$(echo "$ETH" | sed -e 's#/sys/class/net/##' -e 's#^k##')
+   # Does $LABEL start with wlan or wwan? Change ztype and cost
+   COST=0
+   ZTYPE=1
+   if [ "${LABEL:0:4}" = "wlan" ]; then
+       ZTYPE=5
+   elif [ "${LABEL:0:4}" = "wwan" ]; then
+       ZTYPE=6
+       COST=10
+   fi
    ETH=$(readlink "$ETH")
    if echo "$ETH" | grep -vq '/virtual/'; then
 cat <<__EOT__
     ${COMMA}
     {
-      "ztype": 1,
+      "ztype": ${ZTYPE},
       "usage": 1,
       "phylabel": "${LABEL}",
       "logicallabel": "${LABEL}",
-      "usagePolicy": {
-        "freeUplink": true
+      "cost": ${COST},
       },
 __EOT__
      BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
