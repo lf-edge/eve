@@ -39,6 +39,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -1320,7 +1321,10 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 			status.Key())
 	}
 	status.Activated = true
-	setupVlans(status.VifList)
+	err = setupVlans(status.VifList)
+	if err != nil {
+		log.Errorf("setupVlans failed: %v", err)
+	}
 	log.Functionf("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
@@ -1330,42 +1334,99 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 // throws back error stating that the device is busy if enabling the vlan
 // filtering is tried immediately after bridge creation.
 // We can either loop retrying in zedrouter or enable it when needed in domainmgr
-func enableVlanFiltering(bridgeName string) {
+func enableVlanFiltering(bridgeName string) error {
 	bridge, err := netlink.LinkByName(bridgeName)
 	if err != nil {
 		log.Errorf("enableVlanFiltering: LinkByName failed for %s: %s", bridgeName, err)
-		return
+		return err
 	}
 	if !*bridge.(*netlink.Bridge).VlanFiltering {
 		// Enable VLAN filtering on bridge
 		if err := netlink.BridgeSetVlanFiltering(bridge, true); err != nil {
-			errStr := fmt.Sprintf("enableVlanFiltering on %s failed: %s",
+			err = fmt.Errorf("enableVlanFiltering on %s failed: %w",
 				bridgeName, err)
-			log.Errorf(errStr)
+			log.Error(err)
+			return err
 		}
 	}
+	return nil
 }
 
-func setupVlans(vifList []types.VifInfo) {
+func setupVlans(vifList []types.VifInfo) error {
+	deadline := time.Now().Add(10 * time.Second)
+	const delay = 500 * time.Millisecond
 	for _, vif := range vifList {
-		bridgeName := vif.Bridge
-		enableVlanFiltering(bridgeName)
+		if vif.Vlan.End == 0 {
+			// VLAN not configured for this interface
+			continue
+		}
 
-		link, err := netlink.LinkByName(vif.Vif)
-		if err != nil {
-			log.Errorf("setupVlans: Vlan setup failed: %s", err)
-			return
+		var err error
+		bridgeName := vif.Bridge
+		for {
+			err := enableVlanFiltering(bridgeName)
+			if err == nil {
+				break
+			}
+			if errors.Is(err, unix.EBUSY) {
+				if time.Now().Before(deadline) {
+					log.Warnf("setupVlans: bridge %s is busy, will retry in %s",
+						bridgeName, delay)
+					time.Sleep(delay)
+					continue
+				}
+			}
+			return err
+		}
+
+		var link netlink.Link
+		for {
+			link, err = netlink.LinkByName(vif.Vif)
+			if err == nil {
+				if link.Attrs().MasterIndex == 0 {
+					if time.Now().Before(deadline) {
+						log.Warnf("setupVlans: interface %s is not yet bridged, will retry in %s",
+							vif.Vif, delay)
+						time.Sleep(delay)
+						continue
+					}
+					err := fmt.Errorf("interface %s is not bridged", vif.Vif)
+					return err
+				}
+				break
+			}
+			if _, notFound := err.(netlink.LinkNotFoundError); notFound {
+				if time.Now().Before(deadline) {
+					log.Warnf("setupVlans: interface %s was not found, will retry in %s",
+						vif.Vif, delay)
+					time.Sleep(delay)
+					continue
+				}
+			}
+			err = fmt.Errorf("failed to get link '%s': %w", vif.Vif, err)
+			return err
 		}
 		if !vif.Vlan.IsTrunk {
-			netlink.BridgeVlanAdd(link, uint16(vif.Vlan.Start), true, true, false, false)
+			err = netlink.BridgeVlanAdd(link, uint16(vif.Vlan.Start), true, true, false, false)
+			if err != nil {
+				err = fmt.Errorf("failed to configure VLAN (%d) for access port '%s': %w",
+					vif.Vlan.Start, vif.Vif, err)
+				return err
+			}
 		} else {
 			start := vif.Vlan.Start
 			end := vif.Vlan.End
 			for vlanID := start; vlanID <= end; vlanID++ {
-				netlink.BridgeVlanAdd(link, uint16(vlanID), false, false, false, false)
+				err = netlink.BridgeVlanAdd(link, uint16(vlanID), false, false, false, false)
+				if err != nil {
+					err = fmt.Errorf("failed to configure VLAN (%d) for trunk port '%s': %w",
+						vlanID, vif.Vif, err)
+					return err
+				}
 			}
 		}
 	}
+	return nil
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
