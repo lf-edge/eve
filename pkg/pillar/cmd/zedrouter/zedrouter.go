@@ -78,7 +78,7 @@ type zedrouterContext struct {
 	pubAppFlowMonitor         pubsub.Publication
 	pubAppVifIPTrig           pubsub.Publication
 	pubAppContainerMetrics    pubsub.Publication
-	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
+	networkInstanceStatusMap  sync.Map
 	NLaclMap                  map[uuid.UUID]map[string]types.ULNetworkACLs // app uuid plus bridge ul name
 	dnsServers                map[string][]net.IP                          // Key is ifname
 	checkNIUplinks            chan bool
@@ -168,8 +168,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		NLaclMap:           make(map[uuid.UUID]map[string]types.ULNetworkACLs),
 		flowPublishMap:     make(map[string]time.Time),
 	}
-	zedrouterCtx.networkInstanceStatusMap =
-		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",

@@ -10,10 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/base"
-	uuid "github.com/satori/go.uuid"
 	"net"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
@@ -325,7 +326,7 @@ func handleNetworkInstanceCreate(
 		return
 	}
 
-	ctx.networkInstanceStatusMap[status.UUID] = &status
+	ctx.networkInstanceStatusMap.Store(status.UUID, &status)
 	pub.Publish(status.Key(), status)
 
 	status.PInfo = make(map[string]types.ProbeInfo)
@@ -380,7 +381,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 		doNetworkInstanceInactivate(ctx, status)
 	}
 	doNetworkInstanceDelete(ctx, status)
-	delete(ctx.networkInstanceStatusMap, status.UUID)
+	ctx.networkInstanceStatusMap.Delete(status.UUID)
 	pub.Unpublish(status.Key())
 
 	deleteNetworkInstanceMetrics(ctx, status.Key())
@@ -580,10 +581,11 @@ func doNetworkInstanceSubnetSanityCheck(
 		return errors.New(err)
 	}
 
-	// Verify Subnet doesn't overlap with other network instances
-	for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+	var err error
+	ctx.networkInstanceStatusMap.Range(func(key, value interface{}) bool {
+		iterStatusEntry := value.(*types.NetworkInstanceStatus)
 		if status == iterStatusEntry {
-			continue
+			return true
 		}
 
 		// We check for overlapping subnets by checking the
@@ -598,7 +600,8 @@ func doNetworkInstanceSubnetSanityCheck(
 				status.Subnet.String(), status.Subnet.IP.String(),
 				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
 				iterStatusEntry.Subnet.String())
-			return errors.New(errStr)
+			err = errors.New(errStr)
+			return false
 		}
 
 		// Reverse check..Check if iterStatusEntry.Subnet is contained in status.subnet
@@ -608,10 +611,12 @@ func doNetworkInstanceSubnetSanityCheck(
 				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
 				iterStatusEntry.Subnet.String(),
 				status.Subnet.String())
-			return errors.New(errStr)
+			err = errors.New(errStr)
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return err
 }
 
 // DoDhcpRangeSanityCheck
@@ -1394,7 +1399,7 @@ func publishNetworkInstanceStatus(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
 	copyProbeStats(ctx, status)
-	ctx.networkInstanceStatusMap[status.UUID] = status
+	ctx.networkInstanceStatusMap.Store(status.UUID, status)
 	pub := ctx.pubNetworkInstanceStatus
 	pub.Publish(status.Key(), *status)
 }
