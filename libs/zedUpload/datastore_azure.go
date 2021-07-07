@@ -4,6 +4,7 @@
 package zedUpload
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
@@ -160,7 +161,7 @@ func (ep *AzureTransportMethod) getContext() *DronaCtx {
 }
 
 func (ep *AzureTransportMethod) processAzureUploadByChunks(req *DronaRequest) error {
-	return azure.UploadPartByChunk(ep.acName, ep.acKey, ep.container, req.localName, req.UploadID, ep.hClient, req.Adata)
+	return azure.UploadPartByChunk(ep.acName, ep.acKey, ep.container, req.localName, req.UploadID, ep.hClient, bytes.NewReader(req.Adata))
 }
 
 func (ep *AzureTransportMethod) processAzureDownloadByChunks(req *DronaRequest) error {
