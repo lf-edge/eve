@@ -311,13 +311,14 @@ func launchHostProbe(ctx *zedrouterContext) {
 	remoteURL := getSystemURL()
 	probeMutex.Lock()
 
-	for _, netstatus := range ctx.networkInstanceStatusMap {
+	ctx.networkInstanceStatusMap.Range(func(key, value interface{}) bool {
+		netstatus := value.(*types.NetworkInstanceStatus)
 		var anyNIStateChg bool
 		// XXX Revisit when we support other network instance types.
 		if netstatus.Type != types.NetworkInstanceTypeLocal &&
 			netstatus.Type != types.NetworkInstanceTypeCloud {
 			log.Tracef("launchHostProbe: ni(%s) type %v, skip probing\n", netstatus.BridgeName, netstatus.Type)
-			continue
+			return true
 		}
 		log.Tracef("launchHostProbe: ni(%s) current uplink %s, isUP %v, prev %s, update %v\n",
 			netstatus.BridgeName, netstatus.CurrentUplinkIntf, netstatus.CurrIntfUP, netstatus.PrevUplinkIntf, netstatus.NeedIntfUpdate)
@@ -433,7 +434,8 @@ func launchHostProbe(ctx *zedrouterContext) {
 			publishNetworkInstanceStatus(ctx, netstatus)
 			probeMutex.Lock()
 		}
-	}
+		return true
+	})
 	iteration++
 	probeMutex.Unlock()
 	if needSendSignal {
@@ -747,7 +749,11 @@ func setProbeTimer(ctx *zedrouterContext, probeIntv uint32) {
 
 // copy probing stats from the NI status ListMap into status
 func copyProbeStats(ctx *zedrouterContext, netstatus *types.NetworkInstanceStatus) {
-	mapstatus := ctx.networkInstanceStatusMap[netstatus.UUID]
+	mapst, ok := ctx.networkInstanceStatusMap.Load(netstatus.UUID)
+	if !ok {
+		return
+	}
+	mapstatus := mapst.(*types.NetworkInstanceStatus)
 	if mapstatus != nil {
 		probeMutex.Lock()
 		for _, infom := range mapstatus.PInfo {
@@ -791,7 +797,11 @@ func getNIProbeMetric(ctx *zedrouterContext, netstatus *types.NetworkInstanceSta
 	remoteURL := getSystemURL()
 	probeMutex.Lock()
 	defer probeMutex.Unlock()
-	mapstatus := ctx.networkInstanceStatusMap[netstatus.UUID]
+	mapst, ok := ctx.networkInstanceStatusMap.Load(netstatus.UUID)
+	if !ok {
+		return metrics
+	}
+	mapstatus := mapst.(*types.NetworkInstanceStatus)
 	if mapstatus != nil {
 		metrics.CurrUplinkIntf = mapstatus.CurrentUplinkIntf
 		metrics.RemoteEndpoint = getRemoteURL(mapstatus, remoteURL)
