@@ -384,9 +384,6 @@ touch "$WATCHDOG_PID/ntpd.pid"
 
 if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
-    touch $CONFIGDIR/self-register-pending
-    sync
-    blockdev --flushbufs "$CONFIGDEV"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
         if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
@@ -398,25 +395,19 @@ if [ ! -s $CONFIGDIR/device.cert.pem ]; then
         $BINDIR/generate-device.sh -b $CONFIGDIR/device
     fi
     # Reduce chance that we register with controller and crash before
-    # the filesystem has persisted /config/device.cert.* and
-    # self-register-pending
+    # the filesystem has persisted /config/device.cert.*
     sync
     blockdev --flushbufs "$CONFIGDEV"
     sleep 10
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    SELF_REGISTER=1
     # Did we fail to generate a certificate?
     if [ ! -s $CONFIGDIR/device.cert.pem ]; then
         echo "$(date -Ins -u) Failed to generate a device certificate. Done" | tee /dev/console
         exit 0
     fi
-elif [ -f $CONFIGDIR/self-register-pending ]; then
-    echo "$(date -Ins -u) previous self-register failed/killed/rebooted"
-    SELF_REGISTER=1
 else
-    echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
-    SELF_REGISTER=0
+    echo "$(date -Ins -u) Using existing device key pair"
 fi
 if [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; then
     echo "$(date -Ins -u) No server or root-certificate to connect to. Done" | tee /dev/console
@@ -441,61 +432,34 @@ access_usb
 # Add zedclient to watchdog; it runs as a separate process
 touch "$WATCHDOG_PID/zedclient.pid"
 
-if [ $SELF_REGISTER = 1 ]; then
-    rm -f $ZTMPDIR/zedrouterconfig.json
+rm -f $ZTMPDIR/zedrouterconfig.json
 
-    # Persistently remember we haven't finished selfRegister in case the device
-    # is powered off
-    echo "$(date -Ins -u) Self-registering our device certificate"
-    if ! [ -f $CONFIGDIR/onboard.cert.pem ] || ! [ -f $CONFIGDIR/onboard.key.pem ]; then
-        echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
-        exit 1
-    fi
-    echo "$(date -Ins -u) Starting client selfRegister getUuid"
-    if ! $BINDIR/client selfRegister getUuid; then
-        echo "$(date -Ins -u) client selfRegister failed"
-        exit 1
-    fi
+CLIENT_COMMANDS="getUuid"
+echo "$(date -Ins -u) Get UUID of device registered in controller"
+if [ -f $CONFIGDIR/onboard.cert.pem ] && [ -f $CONFIGDIR/onboard.key.pem ]; then
+   echo "$(date -Ins -u) Self-registering our device certificate"
+   CLIENT_COMMANDS="selfRegister $CLIENT_COMMANDS"
+fi
+echo "$(date -Ins -u) Starting client $CLIENT_COMMANDS"
+# shellcheck disable=SC2086
+if ! $BINDIR/client $CLIENT_COMMANDS; then
+   echo "$(date -Ins -u) client $CLIENT_COMMANDS failed"
+   exit 1
+fi
 
-    # Remove zedclient.pid from watchdog
-    rm "$WATCHDOG_PID/zedclient.pid"
+# Remove zedclient.pid from watchdog
+rm "$WATCHDOG_PID/zedclient.pid"
 
-    rm -f $CONFIGDIR/self-register-pending
-    sync
-    blockdev --flushbufs "$CONFIGDEV"
+uuid=$(cat $PERSISTDIR/status/uuid)
+/bin/hostname "$uuid"
+/bin/hostname >/etc/hostname
 
-    uuid=$(cat $PERSISTDIR/status/uuid)
-    /bin/hostname "$uuid"
-    /bin/hostname >/etc/hostname
-    if ! grep -q "$uuid" /etc/hosts; then
-        # put the uuid in /etc/hosts to avoid complaints
-        echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
-        echo "127.0.0.1 $uuid" >>/etc/hosts
-    else
-        echo "$(date -Ins -u) Found $uuid in /etc/hosts"
-    fi
+if ! grep -q "$uuid" /etc/hosts; then
+    # put the uuid in /etc/hosts to avoid complaints
+    echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
+    echo "127.0.0.1 $uuid" >>/etc/hosts
 else
-    echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
-    echo "$(date -Ins -u) Starting client getUuid"
-    if ! $BINDIR/client getUuid; then
-        echo "$(date -Ins -u) client getUuid failed"
-        exit 1
-    fi
-
-    # Remove zedclient.pid from watchdog
-    rm "$WATCHDOG_PID/zedclient.pid"
-
-    uuid=$(cat $PERSISTDIR/status/uuid)
-    /bin/hostname "$uuid"
-    /bin/hostname >/etc/hostname
-
-    if ! grep -q "$uuid" /etc/hosts; then
-        # put the uuid in /etc/hosts to avoid complaints
-        echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
-        echo "127.0.0.1 $uuid" >>/etc/hosts
-    else
-        echo "$(date -Ins -u) Found $uuid in /etc/hosts"
-    fi
+    echo "$(date -Ins -u) Found $uuid in /etc/hosts"
 fi
 
 echo "$(date -Ins -u) Starting tpmmgr as a service agent"
