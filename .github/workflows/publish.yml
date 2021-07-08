@@ -33,7 +33,7 @@ jobs:
              # we need to build our own version of cross-enabled linuxkit, while upstream is sorting things out
              make LINUXKIT_VERSION=master LINUXKIT_SOURCE=https://github.com/rvs/linuxkit.git linuxkit
              # constraining environment for riscv64 builds
-             TAG=lfedge/eve-alpine:66bb4bae0cf16ff2cce308ffcb329fb82f32feb1-riscv64
+             TAG=lfedge/eve-alpine:81e6520f4f1554789eb1ac299168e72ac37d88e2-riscv64
              echo "ZARCH=riscv64" >> "$GITHUB_ENV"
              echo 'LK_BUILD_ARGS={"EVE_BUILDER_IMAGE":"'$TAG\"} >> "$GITHUB_ENV"
           fi
