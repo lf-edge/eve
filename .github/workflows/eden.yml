@@ -22,7 +22,7 @@ jobs:
           done
       - name: setup
         run: |
-          sudo apt update
+          sudo add-apt-repository ppa:canonical-server/server-backports
           sudo apt install -y qemu-utils qemu-system-x86 jq
       - name: get eden
         uses: actions/checkout@v2
