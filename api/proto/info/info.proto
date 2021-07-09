@@ -435,6 +435,13 @@ enum MaintenanceModeReason {
   MAINTENANCE_MODE_REASON_LOW_DISK_SPACE = 3;
 }
 
+// Different types of app metadata
+enum AppMetaDataType {
+  APP_META_DATA_TYPE_NONE = 0;
+  APP_META_DATA_TYPE_KUBE_CONFIG = 1;
+}
+
+
 // The current and fallback system adapter information
 message SystemAdapterInfo {
   uint32 currentIndex = 1; // Zero means the first/highest priority is used
@@ -772,6 +779,7 @@ message ZInfoMsg {
     ZInfoVolume vinfo = 13;
     ZInfoContentTree cinfo = 14;
     ZInfoBlobList binfo = 15;
+    ZInfoAppMetaData amdinfo = 16;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
@@ -782,4 +790,12 @@ message Capabilities {
   bool HWAssistedVirtualization = 2;
   // I/O Virtualization support
   bool IOVirtualization = 3;
+}
+
+// AppMetaData sends meta data of an application instance
+// e.g kubeconfig, etc
+message ZInfoAppMetaData {
+  string uuid = 1;
+  AppMetaDataType type = 2;
+  repeated bytes data = 3;
 }
