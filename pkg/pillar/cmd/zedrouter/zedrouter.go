@@ -93,6 +93,7 @@ type zedrouterContext struct {
 	// cipher context
 	pubCipherBlockStatus pubsub.Publication
 	decryptCipherContext cipher.DecryptCipherContext
+	pubAppInstMetaData   pubsub.Publication
 }
 
 var debug = false
@@ -241,6 +242,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
+
+	pubAppInstMetaData, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.AppInstMetaData{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppInstMetaData = pubAppInstMetaData
 
 	pubAppNetworkStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

@@ -2914,3 +2914,24 @@ func (status OnboardingStatus) LogDelete(logBase *base.LogObject) {
 func (status OnboardingStatus) LogKey() string {
 	return string(base.OnboardingStatusLogType) + "-" + status.Key()
 }
+
+// AppInstMetaDataType - types of app meta data
+type AppInstMetaDataType uint8
+
+// enum app metadata type
+const (
+	AppInstMetaDataTypeNone AppInstMetaDataType = iota // enum for app inst metadata type
+	AppInstMetaDataTypeKubeConfig
+)
+
+// AppInstMetaData : App Instance Metadata
+type AppInstMetaData struct {
+	AppInstUUID uuid.UUID
+	Data        []byte
+	Type        AppInstMetaDataType
+}
+
+// Key : App Instance Metadata unique key
+func (data AppInstMetaData) Key() string {
+	return data.AppInstUUID.String()
+}
