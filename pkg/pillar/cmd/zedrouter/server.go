@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	stdlog "log"
 	"net"
 	"net/http"
@@ -48,6 +49,11 @@ type openstackHandler struct {
 	ctx *zedrouterContext
 }
 
+// Provides k3s cluster kubeconfig
+type kubeConfigHandler struct {
+	ctx *zedrouterContext
+}
+
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
 	if bridgeIP == "" {
 		err := fmt.Errorf("can't run server on %s: no bridgeIP", bridgeName)
@@ -65,6 +71,9 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 	openstackHandler := &openstackHandler{ctx: ctx}
 	mux.Handle("/openstack", openstackHandler)
 	mux.Handle("/openstack/", openstackHandler)
+
+	kubeConfigHandler := &kubeConfigHandler{ctx: ctx}
+	mux.Handle("/eve/v1/kubeconfig", kubeConfigHandler)
 
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
@@ -510,4 +519,42 @@ func (hdl openstackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{}"))
 	}
 	w.WriteHeader(http.StatusNotFound)
+}
+
+// ServeHTTP for kubeConfigHandler provides cluster kube config
+func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		msg := "kube config handler: request method is not Post"
+		log.Error(msg)
+		http.Error(w, msg, http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Header.Get("Content-Type") != "application/json" {
+		msg := "kube config handler: Content-Type header is not application/json"
+		log.Error(msg)
+		http.Error(w, msg, http.StatusUnsupportedMediaType)
+		return
+	}
+	kubeConfig, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		msg := fmt.Sprintf("kube config handler: ioutil read failed: %v", err)
+		log.Errorf(msg)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
+	if anStatus == nil {
+		msg := fmt.Sprintf("kube config handler: no AppNetworkStatus for %s", remoteIP.String())
+		log.Errorf(msg)
+		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+		return
+	}
+	var appInstMetaData types.AppInstMetaData
+	appInstMetaData.AppInstUUID = anStatus.UUIDandVersion.UUID
+	appInstMetaData.Type = types.AppInstMetaDataTypeKubeConfig
+	appInstMetaData.Data = kubeConfig
+	pub := hdl.ctx.pubAppInstMetaData
+	pub.Publish(appInstMetaData.Key(), appInstMetaData)
+	return
 }
