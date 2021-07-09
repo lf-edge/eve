@@ -704,7 +704,7 @@ func checkNIphysicalPort(ctx *zedrouterContext, status *types.NetworkInstanceSta
 		ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, label)
 		devPort := ctx.deviceNetworkStatus.GetPortByIfName(ifname)
 		if devPort == nil {
-			err := fmt.Sprintf("Network Instance port %s does not exist", label)
+			err := fmt.Sprintf("Network Instance port %s ifname %s does not exist", label, ifname)
 			return errors.New(err)
 		}
 	}

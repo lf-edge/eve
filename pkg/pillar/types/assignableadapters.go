@@ -328,6 +328,16 @@ func (aa *AssignableAdapters) LookupIoBundlePhylabel(phylabel string) *IoBundle 
 	return nil
 }
 
+// LookupIoBundleLogicallabel returns nil if not found
+func (aa *AssignableAdapters) LookupIoBundleLogicallabel(label string) *IoBundle {
+	for i, b := range aa.IoBundleList {
+		if strings.EqualFold(b.Logicallabel, label) {
+			return &aa.IoBundleList[i]
+		}
+	}
+	return nil
+}
+
 // LookupIoBundleGroup returns an empty slice if not found
 // Returns pointers into aa
 func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
@@ -348,7 +358,7 @@ func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 }
 
 // LookupIoBundleAny returns an empty slice if not found; name can be
-// a member phylabel or a group
+// a member phylabel, logicallabel, or a group
 // Returns pointers into aa
 func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
 
@@ -358,7 +368,10 @@ func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
 	}
 	ib := aa.LookupIoBundlePhylabel(name)
 	if ib == nil {
-		return list
+		ib = aa.LookupIoBundleLogicallabel(name)
+		if ib == nil {
+			return list
+		}
 	}
 	if ib.AssignmentGroup == "" {
 		// Singleton
