@@ -350,39 +350,38 @@ mkfifo /run/diag.pipe
 (while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
 $BINDIR/diag -f -o /run/diag.pipe runAsService &
 
-# Wait for having IP addresses for a few minutes
-# so that we are likely to have an address when we run ntp
-echo "$(date -Ins -u) Starting waitforaddr"
-$BINDIR/waitforaddr
-
-# Deposit any diag information from nim
-access_usb
-
-# We need to try our best to setup time *before* we generate the certifiacte.
-# Otherwise the cert may have start date in the future or in 1970
-echo "$(date -Ins -u) Check for NTP config"
-if [ -f /usr/sbin/ntpd ]; then
-    # '-p' means peer in some distros; pidfile in others
-    /usr/sbin/ntpd -q -n -p pool.ntp.org
-    # Run ntpd to keep it in sync.
-    /usr/sbin/ntpd -g -p pool.ntp.org
-else
-    echo "$(date -Ins -u) No ntpd"
-fi
-
-# The device cert generation needs the current time. Some hardware
-# doesn't have a battery-backed clock
-YEAR=$(date +%Y)
-while [ "$YEAR" = "1970" ]; do
-    echo "$(date -Ins -u) It's still 1970; waiting for ntp to advance"
-    sleep 10
-    YEAR=$(date +%Y)
-done
-
-# Add ndpd to watchdog
-touch "$WATCHDOG_PID/ntpd.pid"
-
 if [ ! -s $CONFIGDIR/device.cert.pem ]; then
+    # Wait for having IP addresses for a few minutes
+    # so that we are likely to have an address when we run ntp then create cert
+    echo "$(date -Ins -u) Starting waitforaddr"
+    $BINDIR/waitforaddr
+
+    # Deposit any diag information from nim
+    access_usb
+
+    # We need to try our best to setup time *before* we generate the certifiacte.
+    # Otherwise the cert may have start date in the future or in 1970
+    echo "$(date -Ins -u) Check for NTP config"
+    if [ -f /usr/sbin/ntpd ]; then
+        # '-p' means peer in some distros; pidfile in others
+        /usr/sbin/ntpd -q -n -p pool.ntp.org
+        # Run ntpd to keep it in sync.
+        /usr/sbin/ntpd -g -p pool.ntp.org
+        # Add ndpd to watchdog
+        touch "$WATCHDOG_PID/ntpd.pid"
+    else
+        echo "$(date -Ins -u) No ntpd"
+    fi
+
+    # The device cert generation needs the current time. Some hardware
+    # doesn't have a battery-backed clock
+    YEAR=$(date +%Y)
+    while [ "$YEAR" = "1970" ]; do
+        echo "$(date -Ins -u) It's still 1970; waiting for ntp to advance"
+        sleep 10
+        YEAR=$(date +%Y)
+    done
+
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
