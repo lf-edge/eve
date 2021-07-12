@@ -671,10 +671,11 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		sysAdapter.Name, sysAdapter.LowerLayerName)
 	port := new(types.NetworkPortConfig)
 
-	port.Logicallabel = sysAdapter.Name
+	port.Logicallabel = sysAdapter.Name // XXX Rename field in protobuf?
 	port.Alias = sysAdapter.Alias
 	// Look up using LowerLayerName which should match a phyio PhysicalLabel.
-	// If LowerLayerName was not set we use Name
+	// If LowerLayerName was not set we use Name i.e., assume
+	// Phylabel and Logicallabel are the same
 	if sysAdapter.LowerLayerName == "" {
 		port.Phylabel = sysAdapter.Name
 	} else {

@@ -134,14 +134,15 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			}
 			reportAA := new(zinfo.ZioBundle)
 			reportAA.Type = zcommon.PhyIoType(ia.Type)
-			reportAA.Name = ia.Phylabel
+			reportAA.Name = ia.Logicallabel
+			// XXX Add Phylabel in protobuf message?
 			reportAA.UsedByAppUUID = zcdevUUID.String()
 			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)
 			for _, ib := range list {
 				if ib == nil {
 					continue
 				}
-				reportAA.Members = append(reportAA.Members, ib.Phylabel)
+				reportAA.Members = append(reportAA.Members, ib.Logicallabel)
 				if ib.MacAddr != "" {
 					reportMac := new(zinfo.IoAddresses)
 					reportMac.MacAddress = ib.MacAddr

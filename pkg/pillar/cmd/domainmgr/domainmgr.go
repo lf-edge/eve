@@ -1109,7 +1109,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			if ib == nil {
 				continue
 			}
-			log.Functionf("doAssignIoAdaptersToDomain processing adapter %d %s member %s",
+			log.Functionf("doAssignIoAdaptersToDomain processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ib.Phylabel)
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
 				log.Fatalf("doAssignIoAdaptersToDomain IoBundle stolen by %s: %d %s for %s",
@@ -1745,10 +1745,10 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			if ibp == nil {
 				continue
 			}
-			log.Functionf("reserveAdapters processing adapter %d %s member %s",
+			log.Functionf("reserveAdapters processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
 			if ibp.AssignmentGroup == "" {
-				description.Error = fmt.Sprintf("adapter %d %s member %s is not assignable",
+				description.Error = fmt.Sprintf("adapter %d %s phylabel %s is not assignable",
 					adapter.Type, adapter.Name, ibp.Phylabel)
 				return &description
 			}
@@ -1776,12 +1776,12 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 				return &description
 			}
 			if ibp.IsPort {
-				description.Error = fmt.Sprintf("adapter %d %s member %s is (part of) a zedrouter port",
+				description.Error = fmt.Sprintf("adapter %d %s phylabel %s is (part of) a zedrouter port",
 					adapter.Type, adapter.Name, ibp.Phylabel)
 				return &description
 			}
 			if ibp.Error != "" {
-				description.Error = fmt.Sprintf("adapter %d %s member %s has error: %s",
+				description.Error = fmt.Sprintf("adapter %d %s phylabel %s has error: %s",
 					adapter.Type, adapter.Name, ibp.Phylabel, ibp.Error)
 				return &description
 			}
@@ -1791,11 +1791,11 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 				continue
 			}
 			if ibp.PciLong != "" && !hasIOVirtualization {
-				description.Error = fmt.Sprintf("no I/O virtualization support: adapter %d %s member %s cannot be assigned",
+				description.Error = fmt.Sprintf("no I/O virtualization support: adapter %d %s phylabel %s cannot be assigned",
 					adapter.Type, adapter.Name, ibp.Phylabel)
 				return &description
 			}
-			log.Tracef("reserveAdapters setting uuid %s for adapter %d %s member %s",
+			log.Tracef("reserveAdapters setting uuid %s for adapter %d %s phylabel %s",
 				config.Key(), adapter.Type, adapter.Name, ibp.Phylabel)
 			ibp.UsedByUUID = config.UUIDandVersion.UUID
 		}
