@@ -308,6 +308,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
+		// Did any update above make more resources available for
+		// other app instances?
 		if ctx.checkFreedResources {
 			start := time.Now()
 			checkRetry(&ctx)
