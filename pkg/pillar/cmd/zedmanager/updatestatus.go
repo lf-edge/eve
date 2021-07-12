@@ -397,7 +397,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if !status.ActivateInprogress && !status.Activated &&
 		!ctx.globalConfig.GlobalValueBool(types.IgnoreMemoryCheckForApps) {
 
-		remaining, latent, err := getRemainingMemory(ctx)
+		remaining, latent, halting, err := getRemainingMemory(ctx)
 		if err != nil {
 			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
 				err)
@@ -409,9 +409,16 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 			return changed
 		}
-		if remaining < uint64(config.FixedResources.Memory)<<10 {
-			errStr := fmt.Sprintf("Remaining memory bytes %d app instance needs %d\n",
-				remaining, config.FixedResources.Memory<<10)
+		need := uint64(config.FixedResources.Memory) << 10
+		if remaining < need {
+			var errStr string
+			if remaining+halting < need {
+				errStr = fmt.Sprintf("Remaining memory bytes %d app instance needs %d",
+					remaining, need)
+			} else {
+				errStr = fmt.Sprintf("App instance needs %d bytes but only have %d; waiting for halting app instances to free up %d bytes",
+					need, remaining, halting)
+			}
 			log.Errorf("doActivate(%s) failed: %s",
 				status.Key(), errStr)
 			status.SetErrorWithSource(errStr,
@@ -421,7 +428,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 			return changed
 		}
-		if remaining < latent+uint64(config.FixedResources.Memory)<<10 {
+		if remaining < latent+need {
 			log.Warnf("Deploying %s memory %d kB remaining %d kB but latent memory use %d kB",
 				config.DisplayName, config.FixedResources.Memory,
 				remaining>>10, latent>>10)

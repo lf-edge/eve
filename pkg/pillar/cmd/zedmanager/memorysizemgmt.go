@@ -13,10 +13,13 @@ import (
 // which is based on the running and about to run app instances.
 // It also returns a count for the app instances which are not in those
 // categories
-func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, error) {
+// The amount of memory which is used but will soon be freed from halting
+// app instances is returned as a third counter.
+func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, error) {
 
-	var usedMemorySize uint64   // Sum of Activated || ActivateInprogress
-	var latentMemorySize uint64 // For others
+	var usedMemorySize uint64    // Sum of Activated || ActivateInprogress
+	var latentMemorySize uint64  // For others
+	var haltingMemorySize uint64 // Subset of used which are halting
 
 	pubAppInstanceStatus := ctxPtr.pubAppInstanceStatus
 	itemsAppInstanceStatus := pubAppInstanceStatus.GetAll()
@@ -25,6 +28,10 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, error) {
 		mem := uint64(status.FixedResources.Memory) << 10
 		if status.Activated || status.ActivateInprogress {
 			usedMemorySize += mem
+			config := lookupAppInstanceConfig(ctxPtr, status.Key())
+			if config == nil || !config.Activate {
+				haltingMemorySize += mem
+			}
 		} else {
 			latentMemorySize += mem
 		}
@@ -33,12 +40,12 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, error) {
 	usedMemorySize += uint64(memoryReservedForEve)
 	deviceMemorySize, err := sysTotalMemory(ctxPtr)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	if usedMemorySize > deviceMemorySize {
-		return 0, latentMemorySize, nil
+		return 0, latentMemorySize, haltingMemorySize, nil
 	} else {
-		return deviceMemorySize - usedMemorySize, latentMemorySize, nil
+		return deviceMemorySize - usedMemorySize, latentMemorySize, haltingMemorySize, nil
 	}
 }
 
